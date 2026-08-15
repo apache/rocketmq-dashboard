@@ -61,18 +61,42 @@ public final class CredentialUtils {
     }
 
     /**
-     * Keeps the first and last few characters visible, hides everything else; short values are
-     * fully masked.
+     * Keeps the first and last few Unicode code points visible and hides everything else. Short
+     * values and malformed UTF-16 input are fully masked. Using code-point boundaries prevents a
+     * supplementary character from being split into an isolated surrogate in API responses.
      */
     public static String mask(String value) {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        if (value.length() < MIN_PARTIALLY_MASKED_CREDENTIAL_CHARS) {
+        if (hasUnpairedSurrogate(value)) {
             return CREDENTIAL_MASK;
         }
-        return value.substring(0, VISIBLE_CREDENTIAL_CHARS)
+        int codePointCount = value.codePointCount(0, value.length());
+        if (codePointCount < MIN_PARTIALLY_MASKED_CREDENTIAL_CHARS) {
+            return CREDENTIAL_MASK;
+        }
+        int visiblePrefixEnd = value.offsetByCodePoints(0, VISIBLE_CREDENTIAL_CHARS);
+        int visibleSuffixStart = value.offsetByCodePoints(
+                0, codePointCount - VISIBLE_CREDENTIAL_CHARS);
+        return value.substring(0, visiblePrefixEnd)
                 + CREDENTIAL_MASK
-                + value.substring(value.length() - VISIBLE_CREDENTIAL_CHARS);
+                + value.substring(visibleSuffixStart);
+    }
+
+    private static boolean hasUnpairedSurrogate(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            if (Character.isHighSurrogate(current)) {
+                if (index + 1 >= value.length()
+                        || !Character.isLowSurrogate(value.charAt(index + 1))) {
+                    return true;
+                }
+                index++;
+            } else if (Character.isLowSurrogate(current)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
