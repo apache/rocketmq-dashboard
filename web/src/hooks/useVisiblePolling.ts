@@ -25,10 +25,17 @@ export function useVisiblePolling(
   useEffect(() => {
     if (!enabled) return;
 
+    let pollInFlight = false;
     const pollWhenVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void poll();
-      }
+      if (document.visibilityState !== 'visible' || pollInFlight) return;
+
+      pollInFlight = true;
+      void Promise.resolve()
+        .then(poll)
+        .catch(() => undefined)
+        .finally(() => {
+          pollInFlight = false;
+        });
     };
     const intervalId = window.setInterval(pollWhenVisible, intervalMs);
     document.addEventListener('visibilitychange', pollWhenVisible);
