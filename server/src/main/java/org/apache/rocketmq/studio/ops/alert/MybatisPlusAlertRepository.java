@@ -126,7 +126,9 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         entity.setThreshold(rule.getThreshold());
         entity.setThresholdUnit(rule.getThresholdUnit());
         entity.setDuration(rule.getDuration());
-        entity.setChannels(rule.getChannels() == null ? null : String.join(",", rule.getChannels()));
+        entity.setChannels(rule.getChannels() == null
+                ? null
+                : String.join(",", normalizeChannels(rule.getChannels())));
         entity.setEnabled(rule.isEnabled());
         entity.setLastTriggered(rule.getLastTriggered());
         entity.setDescription(rule.getDescription());
@@ -175,9 +177,14 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         if (!StringUtils.hasText(value)) {
             return List.of();
         }
-        return Arrays.stream(value.split(","))
+        return normalizeChannels(Arrays.asList(value.split(",")));
+    }
+
+    private static List<String> normalizeChannels(List<String> channels) {
+        return channels.stream()
+                .filter(StringUtils::hasText)
                 .map(String::trim)
-                .filter(part -> !part.isEmpty())
-                .collect(Collectors.toList());
+                .distinct()
+                .toList();
     }
 }
