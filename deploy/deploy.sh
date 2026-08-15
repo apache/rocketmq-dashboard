@@ -182,17 +182,30 @@ verify() {
   status=$(ssh "$REMOTE" "podman ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'" 2>&1)
   echo "$status"
 
-  echo ""
-  local http_code
-  http_code=$(ssh "$REMOTE" "curl -sf -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:${PUBLIC_PORT:-6789}" 2>/dev/null || echo "000")
-  if [[ "$http_code" == "200" ]]; then
+  if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
+    echo ""
+    ssh "$REMOTE" \
+      "podman exec rocketmq-server curl -fsS --max-time 5 http://localhost:8888/actuator/health >/dev/null" \
+      || err "后端健康检查失败"
+    log "后端健康检查通过"
+  fi
+
+  if [[ "$TARGET" == "all" || "$TARGET" == "web" ]]; then
+    echo ""
+    local http_code
+    http_code=$(ssh "$REMOTE" \
+      "curl -sf -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:${PUBLIC_PORT:-6789}" \
+      2>/dev/null || echo "000")
+    [[ "$http_code" == "200" ]] || err "前端返回 HTTP $http_code"
     log "前端响应正常 (HTTP $http_code)"
-  else
-    warn "前端返回 HTTP $http_code"
   fi
 
   echo ""
-  log "部署完成 → http://${REMOTE_HOST}:${PUBLIC_PORT:-6789}"
+  if [[ "$TARGET" == "server" ]]; then
+    log "后端部署完成"
+  else
+    log "部署完成 → http://${REMOTE_HOST}:${PUBLIC_PORT:-6789}"
+  fi
 }
 
 # ─── 清理临时文件 ───

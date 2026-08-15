@@ -111,7 +111,6 @@ services:
 networks:
   default:
     name: rocketmq_net
-    external: true
 
 volumes:
   broker-0-store:

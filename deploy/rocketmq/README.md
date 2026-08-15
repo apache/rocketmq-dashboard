@@ -30,6 +30,8 @@ cd deploy/rocketmq
 ./build.sh
 
 # 2. 拉起集群与收发客户端
+# 此 Compose 项目会自动创建名为 rocketmq_net 的共享网络；Studio 的 Compose
+# 配置会以 external 网络方式加入它，因此首次启动无需手工执行 docker network create。
 docker compose up -d
 
 # 3. 观察收发日志（1 TPS）
