@@ -41,5 +41,5 @@ public class CreateCertDTO {
     private String type;
     @NotBlank(message = "issuer is required")
     private String issuer;
-    private List<String> san;
+    private List<@NotBlank(message = "san must not contain blank values") String> san;
 }

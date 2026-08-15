@@ -38,5 +38,5 @@ public class UpdateCertDTO {
     @Pattern(regexp = "TLS|mTLS|ServiceAccount", message = "type must be one of TLS, mTLS, ServiceAccount")
     private String type;
     private String issuer;
-    private List<String> san;
+    private List<@NotBlank(message = "san must not contain blank values") String> san;
 }

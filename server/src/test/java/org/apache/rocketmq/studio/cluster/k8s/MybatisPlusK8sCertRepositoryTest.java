@@ -21,11 +21,16 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.util.Arrays;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusK8sCertRepositoryTest {
@@ -108,6 +113,33 @@ class MybatisPlusK8sCertRepositoryTest {
         assertThatThrownBy(() -> repository(mapper).findById("cert-1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("SAN JSON");
+    }
+
+    @Test
+    void findByIdNormalizesLegacySanValues() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        RmqK8sCertificate entity = certificate();
+        entity.setSan("[\" broker.example \",null,\"\",\"broker.example\",\"api.example\"]");
+        when(mapper.selectById("cert-1")).thenReturn(entity);
+
+        assertThat(repository(mapper).findById("cert-1")).get()
+                .extracting(K8sCertVO::getSan)
+                .isEqualTo(List.of("broker.example", "api.example"));
+    }
+
+    @Test
+    void saveNormalizesSanValuesBeforePersistence() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        K8sCertVO cert = K8sCertVO.builder()
+                .name("broker")
+                .san(Arrays.asList(" broker.example ", null, "", "broker.example", "api.example"))
+                .build();
+
+        repository(mapper).save(cert);
+
+        ArgumentCaptor<RmqK8sCertificate> entity = ArgumentCaptor.forClass(RmqK8sCertificate.class);
+        verify(mapper).insert(entity.capture());
+        assertThat(entity.getValue().getSan()).isEqualTo("[\"broker.example\",\"api.example\"]");
     }
 
     @Test

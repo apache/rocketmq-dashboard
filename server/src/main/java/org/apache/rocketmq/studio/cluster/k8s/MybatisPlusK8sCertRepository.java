@@ -150,7 +150,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
             if (san == null) {
                 throw invalidPersistedValue(certificateId, "SAN JSON", json);
             }
-            return san;
+            return normalizeSan(san);
         } catch (JsonProcessingException exception) {
             throw invalidPersistedValue(certificateId, "SAN JSON", json);
         }
@@ -166,9 +166,17 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
             return null;
         }
         try {
-            return objectMapper.writeValueAsString(san);
+            return objectMapper.writeValueAsString(normalizeSan(san));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Failed to serialize certificate SAN values", exception);
         }
+    }
+
+    private List<String> normalizeSan(List<String> san) {
+        return san.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 }
