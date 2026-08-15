@@ -31,6 +31,15 @@ export interface ClientConnection {
 
 /* ─── Mock Data ─── */
 
+/**
+ * Associates mock client inventories with the Studio instances that own them. The real endpoint
+ * is instance-scoped, so mock mode must not expose every cluster for every selection.
+ */
+export const mockClientClusterByInstance: Readonly<Record<string, string>> = {
+  'instance-direct-1': 'ns-prod',
+  'instance-direct-2': 'ns-pre',
+};
+
 export const mockClients: ClientConnection[] = [
   {
     clientId: 'order-svc-0@10.0.1.12:49152',

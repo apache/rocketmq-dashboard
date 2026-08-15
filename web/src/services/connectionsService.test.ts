@@ -25,9 +25,31 @@ vi.mock('../config', () => ({
 import { listConnections } from './connectionsService';
 
 describe('connectionsService mock connections', () => {
-  it('returns defensive copies after applying filters', async () => {
+  it('isolates client inventories by the required instance id', async () => {
+    const production = await listConnections({ instanceId: 'instance-direct-1' });
+    const preproduction = await listConnections({ instanceId: 'instance-direct-2' });
+
+    expect(production).not.toHaveLength(0);
+    expect(preproduction).not.toHaveLength(0);
+    expect(production.every((connection) => connection.clusterName === 'ns-prod')).toBe(true);
+    expect(preproduction.every((connection) => connection.clusterName === 'ns-pre')).toBe(true);
+    expect(new Set(production.map((connection) => connection.clientId))).not.toEqual(
+      new Set(preproduction.map((connection) => connection.clientId)),
+    );
+  });
+
+  it('returns an empty inventory for an unknown instance', async () => {
+    await expect(listConnections({ instanceId: 'missing-instance' })).resolves.toEqual([]);
+  });
+
+  it('requires the same instance parameter as the real endpoint', async () => {
+    await expect(listConnections()).rejects.toThrow('instanceId is required');
+    await expect(listConnections({ instanceId: '  ' })).rejects.toThrow('instanceId is required');
+  });
+
+  it('returns defensive copies after applying instance, cluster, and type filters', async () => {
     const connections = await listConnections({
-      instanceId: 'instance-1',
+      instanceId: 'instance-direct-1',
       clusterId: 'ns-prod',
       type: 'Consumer',
     });
@@ -38,7 +60,7 @@ describe('connectionsService mock connections', () => {
     connections[0].address = '127.0.0.1:8081';
 
     const fresh = await listConnections({
-      instanceId: 'instance-1',
+      instanceId: 'instance-direct-1',
       clusterId: 'ns-prod',
       type: 'Consumer',
     });
@@ -48,5 +70,11 @@ describe('connectionsService mock connections', () => {
     expect(fresh[0]).not.toBe(connections[0]);
     expect(fresh.every((connection) => connection.clusterName === 'ns-prod')).toBe(true);
     expect(fresh.every((connection) => connection.type === 'Consumer')).toBe(true);
+  });
+
+  it('does not leak another instance when a conflicting cluster filter is supplied', async () => {
+    await expect(
+      listConnections({ instanceId: 'instance-direct-1', clusterId: 'ns-pre' }),
+    ).resolves.toEqual([]);
   });
 });
