@@ -101,6 +101,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListTopicsResponse response = topicsResponse(
                 topicRow("topic-normal", "NORMAL"),
+                null,
                 topicRow("topic-fifo", "FIFO"),
                 topicRow("topic-mystery", "MYSTERY"));
         when(asyncClient.listTopics(any(ListTopicsRequest.class)))
@@ -131,12 +132,13 @@ class AliyunInstanceProviderTest {
                 .statusCode(200)
                 .body(ListConsumerGroupsResponseBody.builder()
                         .data(ListConsumerGroupsResponseBody.Data.builder()
-                                .list(List.of(ListConsumerGroupsResponseBody.List.builder()
-                                        .consumerGroupId("GID_test")
-                                        .messageModel("Clustering")
-                                        .status("RUNNING")
-                                        .remark("test group")
-                                        .build()))
+                                .list(java.util.Arrays.asList(null,
+                                        ListConsumerGroupsResponseBody.List.builder()
+                                                .consumerGroupId("GID_test")
+                                                .messageModel("Clustering")
+                                                .status("RUNNING")
+                                                .remark("test group")
+                                                .build()))
                                 .pageNumber(1L)
                                 .pageSize(100L)
                                 .totalCount(1L)
@@ -198,7 +200,8 @@ class AliyunInstanceProviderTest {
                 .statusCode(200)
                 .body(ListMessagesResponseBody.builder()
                         .data(ListMessagesResponseBody.Data.builder()
-                                .list(List.of(
+                                .list(java.util.Arrays.asList(
+                                        null,
                                         ListMessagesResponseBody.List.builder()
                                                 .messageId("msg-1")
                                                 .topicName("topic-a")
@@ -455,7 +458,7 @@ class AliyunInstanceProviderTest {
                 .statusCode(200)
                 .body(ListTopicsResponseBody.builder()
                         .data(ListTopicsResponseBody.Data.builder()
-                                .list(List.of(rows))
+                                .list(java.util.Arrays.asList(rows))
                                 .pageNumber(1L)
                                 .pageSize(100L)
                                 .totalCount((long) rows.length)

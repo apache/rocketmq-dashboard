@@ -158,6 +158,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
         }
         List<TopicVO> topics = new ArrayList<>();
         for (ListTopicsResponseBody.List item : all) {
+            if (item == null) {
+                continue;
+            }
             TopicVO vo = AliyunConverters.toTopicVO(item, instanceId);
             if (matchesType(type, vo)) {
                 topics.add(vo);
@@ -230,6 +233,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
             return consumers;
         }
         for (ListTopicSubscriptionsResponseBody.Data item : data) {
+            if (item == null) {
+                continue;
+            }
             consumers.add(AliyunConverters.toTopicConsumerVO(item));
         }
         return consumers;
@@ -263,6 +269,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
         }
         List<ConsumerGroupVO> groups = new ArrayList<>();
         for (ListConsumerGroupsResponseBody.List item : all) {
+            if (item == null) {
+                continue;
+            }
             groups.add(AliyunConverters.toConsumerGroupVO(item, instanceId));
         }
         return groups;
@@ -359,6 +368,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
             return subscriptions;
         }
         for (ListConsumerGroupSubscriptionsResponseBody.Data item : data) {
+            if (item == null) {
+                continue;
+            }
             subscriptions.add(AliyunConverters.toSubscriptionEntry(item));
         }
         return subscriptions;
@@ -418,6 +430,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 break;
             }
             for (ListMessagesResponseBody.List item : list) {
+                if (item == null) {
+                    continue;
+                }
                 MessageRecordVO vo = AliyunConverters.toMessageRecord(item);
                 if (!StringUtils.hasText(tag) || tag.equals(vo.getTag())) {
                     records.add(vo);
