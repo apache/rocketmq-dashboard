@@ -422,4 +422,66 @@ describe('ProducerPage', () => {
     expect(within(container).queryByText('producer-1')).not.toBeInTheDocument();
     expect(within(container).queryByText('order-events')).not.toBeInTheDocument();
   });
+
+  it('clears stale results when a new producer query fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection)
+      .mockResolvedValueOnce(
+        producerResult([
+          {
+            clientId: 'producer-1',
+            clientAddr: '192.168.1.10',
+            language: 'JAVA',
+            versionDesc: '5.1.0',
+          },
+        ]),
+      )
+      .mockRejectedValueOnce(new Error('broker unavailable'));
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    const search = screen.getByRole('button', { name: /搜索/ });
+    await user.click(search);
+    expect(await screen.findByText('producer-1')).toBeInTheDocument();
+
+    await user.click(search);
+
+    await waitFor(() => expect(queryProducerConnection).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('producer-1')).not.toBeInTheDocument());
+    expect(screen.queryByText('生产者连接健康')).not.toBeInTheDocument();
+  });
+
+  it('ignores duplicate producer queries while the first request is pending', async () => {
+    const user = userEvent.setup();
+    let resolveQuery: ((value: ProducerConnectionResult) => void) | undefined;
+    vi.mocked(queryProducerConnection).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveQuery = resolve;
+        }),
+    );
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    const search = screen.getByRole('button', { name: /搜索/ });
+    await user.click(search);
+    await waitFor(() => expect(queryProducerConnection).toHaveBeenCalledTimes(1));
+    fireEvent.click(search);
+
+    expect(queryProducerConnection).toHaveBeenCalledTimes(1);
+    resolveQuery?.(producerResult([]));
+    await waitFor(() => expect(search).not.toHaveClass('ant-btn-loading'));
+  });
 });

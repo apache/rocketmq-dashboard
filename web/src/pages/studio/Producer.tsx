@@ -85,6 +85,7 @@ const ProducerPage = () => {
   const { message } = App.useApp();
   const fetchTopicFailedMessage = t('producer.fetchTopicFailed');
   const queryRequestIdRef = useRef(0);
+  const queryInFlightRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +114,7 @@ const ProducerPage = () => {
 
   const handleInstanceChange = (instanceId: string) => {
     queryRequestIdRef.current += 1;
+    queryInFlightRef.current = null;
     setSelectedInstanceId(instanceId);
     setTopicList([]);
     setProducerGroups([]);
@@ -178,11 +180,15 @@ const ProducerPage = () => {
   }, [selectedInstanceId]);
 
   const onFinish = async (values: { selectedTopic: string; producerGroup: string }) => {
+    if (queryInFlightRef.current !== null) return;
     if (!selectedInstanceId) {
       message.error('Select an instance before querying producer connections.');
       return;
     }
     const requestId = ++queryRequestIdRef.current;
+    queryInFlightRef.current = requestId;
+    setConnectionList([]);
+    setConnectionSummary(null);
     setLoading(true);
     try {
       const result = await queryProducerConnection(
@@ -202,6 +208,9 @@ const ProducerPage = () => {
         message.error(t('producer.fetchConnectionFailed'));
       }
     } finally {
+      if (queryInFlightRef.current === requestId) {
+        queryInFlightRef.current = null;
+      }
       if (requestId === queryRequestIdRef.current) {
         setLoading(false);
       }
