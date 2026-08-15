@@ -71,6 +71,12 @@ public class ClusterTopology {
      * Add node
      */
     public void addNode(String nodeName, Long nodeId, String nodeAddress, String nodeType) {
+        if (!"NAMESRV".equals(nodeType)
+                && !"BROKER".equals(nodeType)
+                && !"PROXY".equals(nodeType)) {
+            throw new IllegalArgumentException("Unsupported node type: " + nodeType);
+        }
+
         NodeInfo node = new NodeInfo();
         node.setNodeName(nodeName);
         node.setNodeId(nodeId);
