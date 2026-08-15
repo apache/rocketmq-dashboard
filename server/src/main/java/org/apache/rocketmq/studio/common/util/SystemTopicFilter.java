@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.common.util;
 
 import java.util.Set;
+import org.apache.rocketmq.common.topic.TopicValidator;
 
 /**
  * Shared utility for identifying RocketMQ system topics.
@@ -27,16 +28,8 @@ import java.util.Set;
  */
 public final class SystemTopicFilter {
 
-    private static final Set<String> SYSTEM_TOPIC_PREFIXES = Set.of(
-            "RMQ_SYS_", "rmq_sys_", "SCHEDULE_TOPIC_", "%RETRY%", "%DLQ%",
-            "CID_", "broker_", "BenchmarkTest"
-    );
-
-    private static final Set<String> SYSTEM_TOPICS = Set.of(
-            "TBW102", "SELF_TEST_TOPIC", "DefaultCluster", "OFFSET_MOVED_EVENT",
-            "broker", "SCHEDULE_TOPIC_XXXX", "RMQ_SYS_TRANS_HALF_TOPIC",
-            "RMQ_SYS_TRACE_TOPIC", "RMQ_SYS_TRANS_OP_HALF_TOPIC"
-    );
+    private static final String RETRY_TOPIC_PREFIX = "%RETRY%";
+    private static final String DEAD_LETTER_TOPIC_PREFIX = "%DLQ%";
 
     private SystemTopicFilter() {
     }
@@ -54,15 +47,10 @@ public final class SystemTopicFilter {
         if (topicName == null || topicName.isEmpty()) {
             return true;
         }
-        if (SYSTEM_TOPICS.contains(topicName)) {
-            return true;
-        }
-        for (String prefix : SYSTEM_TOPIC_PREFIXES) {
-            if (topicName.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return brokerNames != null && brokerNames.contains(topicName);
+        return TopicValidator.isSystemTopic(topicName)
+                || topicName.startsWith(RETRY_TOPIC_PREFIX)
+                || topicName.startsWith(DEAD_LETTER_TOPIC_PREFIX)
+                || brokerNames != null && brokerNames.contains(topicName);
     }
 
     /**
