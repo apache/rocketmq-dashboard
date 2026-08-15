@@ -58,7 +58,7 @@ class RocketMQBrokerConfigServiceTest {
         config.setProperty("flushDiskType", "ASYNC_FLUSH");
         doNothing().when(adminExt).updateBrokerConfig("broker-a:10911", config);
         doThrow(new IllegalStateException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), anyString(), anyString());
+                .record(anyString(), anyString(), anyString(), any(), anyString(), anyString());
 
         brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config);
     }
@@ -69,7 +69,7 @@ class RocketMQBrokerConfigServiceTest {
         doThrow(new IllegalStateException("broker unavailable")).when(adminExt)
                 .updateBrokerConfig("broker-a:10911", config);
         doThrow(new IllegalStateException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), anyString(), anyString());
+                .record(anyString(), anyString(), anyString(), any(), anyString(), anyString());
 
         assertThatThrownBy(() -> brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config))
                 .isInstanceOf(BusinessException.class)
@@ -84,7 +84,7 @@ class RocketMQBrokerConfigServiceTest {
         brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config);
 
         verify(auditService).record(
-                "UPDATE_BROKER_CONFIG", "CLUSTER:cluster-a", "cluster-a",
+                "UPDATE_BROKER_CONFIG", "BROKER", "CLUSTER:cluster-a", "cluster-a",
                 "brokerAddr=broker-a:10911, config={}", "SUCCESS");
     }
 }

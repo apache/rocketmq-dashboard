@@ -452,7 +452,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private void recordAudit(String groupName, String detail, String result) {
         try {
-            auditService.record("RESEND_DLQ", groupName, detail, result);
+            auditService.record("RESEND_DLQ", "DLQ", groupName, null, detail, result);
         } catch (Exception e) {
             log.warn("Failed to record DLQ resend audit: {}", e.getMessage());
         }
