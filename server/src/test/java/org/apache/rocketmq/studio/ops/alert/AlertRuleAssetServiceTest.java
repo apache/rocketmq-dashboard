@@ -132,6 +132,22 @@ class AlertRuleAssetServiceTest {
                 "warning", "broker", "BrokerDown", "")), service.loadDefaultRules());
     }
 
+    @Test
+    void assetOperationsShouldDeterministicallyDeduplicateName() {
+        AlertRuleAssetService service = serviceWithResources(
+                resource("duplicate.yaml", "z-location", "groups:\n  - name: second\n    rules:\n"
+                        + "      - alert: SecondRule\n        expr: up == 2\n"),
+                resource("duplicate.yaml", "a-location", "groups:\n  - name: first\n    rules:\n"
+                        + "      - alert: FirstRule\n        expr: up == 1\n"));
+
+        assertEquals(List.of(new AlertRuleAssetInfo("duplicate", "first", 1, List.of("warning"))),
+                service.listAssets());
+        assertEquals(List.of("FirstRule"), service.loadDefaultRules().stream()
+                .map(PrometheusAlertRule::alert)
+                .toList());
+        assertTrue(service.getAssetYaml("duplicate").contains("FirstRule"));
+    }
+
     private static AlertRuleAssetService serviceWithResources(Resource... resources) {
         return new AlertRuleAssetService() {
             @Override
@@ -142,10 +158,19 @@ class AlertRuleAssetServiceTest {
     }
 
     private static Resource resource(String filename, String content) {
+        return resource(filename, filename, content);
+    }
+
+    private static Resource resource(String filename, String description, String content) {
         return new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8)) {
             @Override
             public String getFilename() {
                 return filename;
+            }
+
+            @Override
+            public String getDescription() {
+                return description;
             }
         };
     }

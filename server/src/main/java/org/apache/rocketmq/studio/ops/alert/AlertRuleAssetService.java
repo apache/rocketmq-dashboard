@@ -30,8 +30,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -61,7 +65,7 @@ public class AlertRuleAssetService {
      */
     public List<AlertRuleAssetInfo> listAssets() {
         List<AlertRuleAssetInfo> infos = new ArrayList<>();
-        for (Resource resource : resolveResources()) {
+        for (Resource resource : resolveUniqueResources()) {
             String name = nameOf(resource);
             if (name == null) {
                 continue;
@@ -107,7 +111,7 @@ public class AlertRuleAssetService {
      */
     public List<PrometheusAlertRule> loadDefaultRules() {
         List<PrometheusAlertRule> rules = new ArrayList<>();
-        for (Resource resource : resolveResources()) {
+        for (Resource resource : resolveUniqueResources()) {
             if (nameOf(resource) == null) {
                 continue;
             }
@@ -162,12 +166,21 @@ public class AlertRuleAssetService {
     }
 
     private Resource findResource(String name) {
-        for (Resource resource : resolveResources()) {
+        for (Resource resource : resolveUniqueResources()) {
             if (name.equals(nameOf(resource))) {
                 return resource;
             }
         }
         return null;
+    }
+
+    private List<Resource> resolveUniqueResources() {
+        Map<String, Resource> resourcesByName = new LinkedHashMap<>();
+        Arrays.stream(resolveResources())
+                .filter(resource -> nameOf(resource) != null)
+                .sorted(Comparator.comparing(Resource::getDescription))
+                .forEach(resource -> resourcesByName.putIfAbsent(nameOf(resource), resource));
+        return new ArrayList<>(resourcesByName.values());
     }
 
     protected Resource[] resolveResources() {

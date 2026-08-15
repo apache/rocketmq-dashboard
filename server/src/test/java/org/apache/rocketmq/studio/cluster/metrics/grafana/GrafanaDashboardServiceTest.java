@@ -161,6 +161,24 @@ class GrafanaDashboardServiceTest {
         assertTrue(exception.getMessage().contains("resolve bundled Grafana dashboards"));
     }
 
+    @Test
+    void dashboardOperationsShouldDeterministicallyDeduplicateUid() throws Exception {
+        GrafanaDashboardService service = serviceWithResources(
+                resource("duplicate.json", "z-location", "{\"title\":\"Second\"}"),
+                resource("duplicate.json", "a-location", "{\"title\":\"First\"}"));
+
+        assertEquals(List.of(new GrafanaDashboardInfo("duplicate", "First", "", List.of())),
+                service.listDashboards());
+        assertEquals("First", service.getDashboard("duplicate").get("title"));
+
+        try (ZipInputStream zip = new ZipInputStream(
+                new ByteArrayInputStream(service.getDashboardsArchive()), StandardCharsets.UTF_8)) {
+            assertEquals("duplicate.json", zip.getNextEntry().getName());
+            assertTrue(new String(zip.readAllBytes(), StandardCharsets.UTF_8).contains("First"));
+            assertNull(zip.getNextEntry());
+        }
+    }
+
     private static GrafanaDashboardService serviceWithResources(Resource... resources) {
         return new GrafanaDashboardService(new ObjectMapper()) {
             @Override
@@ -171,10 +189,19 @@ class GrafanaDashboardServiceTest {
     }
 
     private static Resource resource(String filename, String content) {
+        return resource(filename, filename, content);
+    }
+
+    private static Resource resource(String filename, String description, String content) {
         return new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8)) {
             @Override
             public String getFilename() {
                 return filename;
+            }
+
+            @Override
+            public String getDescription() {
+                return description;
             }
         };
     }
