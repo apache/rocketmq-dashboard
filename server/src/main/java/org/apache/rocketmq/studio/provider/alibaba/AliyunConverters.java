@@ -28,11 +28,13 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListRegionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -233,6 +235,7 @@ final class AliyunConverters {
 
     static TraceRecordVO toTraceRecord(GetTraceResponseBody.Data data) {
         List<TraceNodeVO> nodes = new ArrayList<>();
+        List<ConsumerStatusVO> consumerStatuses = new ArrayList<>();
         if (data.getProducerInfo() != null && data.getProducerInfo().getRecords() != null) {
             for (GetTraceResponseBody.ProducerInfoRecords record : data.getProducerInfo().getRecords()) {
                 if (record == null) {
@@ -264,30 +267,60 @@ final class AliyunConverters {
                     continue;
                 }
                 if (consumerInfo.getRecords() == null || consumerInfo.getRecords().isEmpty()) {
+                    String status = consumerInfo.getConsumeStatus();
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
-                            .status(consumerInfo.getConsumeStatus())
+                            .status(status)
                             .build());
+                    consumerStatuses.add(consumerStatus(
+                            consumerInfo.getConsumerGroupId(), status, 0L));
                     continue;
                 }
                 for (GetTraceResponseBody.Records record : consumerInfo.getRecords()) {
                     if (record == null) {
                         continue;
                     }
-                    String operateTime = null;
-                    if (record.getOperations() != null && !record.getOperations().isEmpty()) {
-                        operateTime = record.getOperations().get(0).getOperateTime();
-                    }
+                    String operateTime = firstOperateTime(record.getOperations());
+                    long consumeTime = parseTimeMillis(operateTime);
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
-                            .timestamp(parseTimeMillis(operateTime))
+                            .timestamp(consumeTime)
                             .status(record.getConsumeStatus())
                             .description(joinParts(", ", record.getClientHost(), record.getUserName()))
                             .build());
+                    consumerStatuses.add(consumerStatus(
+                            consumerInfo.getConsumerGroupId(), record.getConsumeStatus(), consumeTime));
                 }
             }
         }
-        return TraceRecordVO.builder().nodes(nodes).build();
+        return TraceRecordVO.builder()
+                .nodes(nodes)
+                .consumerStatus(consumerStatuses)
+                .build();
+    }
+
+    private static String firstOperateTime(List<GetTraceResponseBody.RecordsOperations> operations) {
+        if (operations == null) {
+            return null;
+        }
+        return operations.stream()
+                .filter(operation -> operation != null && operation.getOperateTime() != null)
+                .map(GetTraceResponseBody.RecordsOperations::getOperateTime)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static ConsumerStatusVO consumerStatus(String group, String rawStatus, long consumeTime) {
+        String normalized = rawStatus == null ? "" : rawStatus.toUpperCase(Locale.ROOT);
+        DeliveryStatus status = normalized.contains("SUCCESS") || normalized.contains("OK")
+                ? DeliveryStatus.success
+                : normalized.contains("FAIL") ? DeliveryStatus.failed : DeliveryStatus.pending;
+        return ConsumerStatusVO.builder()
+                .group(group)
+                .deliveryStatus(status)
+                .consumeTime(consumeTime)
+                .retryCount(0)
+                .build();
     }
 
     static java.time.LocalDateTime parseDateTime(String value) {

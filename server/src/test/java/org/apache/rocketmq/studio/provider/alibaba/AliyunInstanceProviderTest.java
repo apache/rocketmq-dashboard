@@ -369,6 +369,47 @@ class AliyunInstanceProviderTest {
         TraceNodeVO consumer = trace.getNodes().get(2);
         assertThat(consumer.getTitle()).isEqualTo("Consumer GID_test");
         assertThat(consumer.getStatus()).isEqualTo("CONSUME_OK");
+        assertThat(trace.getConsumerStatus()).singleElement().satisfies(status -> {
+            assertThat(status.getGroup()).isEqualTo("GID_test");
+            assertThat(status.getDeliveryStatus().name()).isEqualTo("success");
+            assertThat(status.getConsumeTime())
+                    .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:10"));
+        });
+    }
+
+    @Test
+    void getMessageTraceShouldSkipNullConsumerOperations() {
+        stubInstance();
+        stubCallThrough();
+        GetTraceResponse response = GetTraceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetTraceResponseBody.builder()
+                        .data(GetTraceResponseBody.Data.builder()
+                                .consumerInfos(List.of(GetTraceResponseBody.ConsumerInfos.builder()
+                                        .consumerGroupId("GID_test")
+                                        .records(List.of(GetTraceResponseBody.Records.builder()
+                                                .consumeStatus("CONSUME_FAILED")
+                                                .operations(java.util.Arrays.asList(null,
+                                                        GetTraceResponseBody.RecordsOperations.builder()
+                                                                .operateTime("2023-03-22 12:17:10")
+                                                                .build()))
+                                                .build()))
+                                        .build()))
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-1", "orders");
+
+        assertThat(trace.getNodes()).singleElement()
+                .extracting(TraceNodeVO::getTimestamp)
+                .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:10"));
+        assertThat(trace.getConsumerStatus()).singleElement().satisfies(status -> {
+            assertThat(status.getDeliveryStatus().name()).isEqualTo("failed");
+            assertThat(status.getConsumeTime())
+                    .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:10"));
+        });
     }
 
     @Test
