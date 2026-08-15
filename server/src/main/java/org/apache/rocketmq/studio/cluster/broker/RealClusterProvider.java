@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -118,15 +119,24 @@ public class RealClusterProvider implements ClusterProvider {
                 clusterInfo.getClusterAddrTable() == null ? Map.of() : clusterInfo.getClusterAddrTable();
 
         if (clusterAddrTable.isEmpty()) {
-            return List.of(toClusterVO(namesrvAddr, "DefaultCluster", brokerAddrTable.values()));
+            List<BrokerData> brokers = brokerAddrTable.values().stream()
+                    .filter(Objects::nonNull)
+                    .toList();
+            return brokers.isEmpty()
+                    ? List.of()
+                    : List.of(toClusterVO(namesrvAddr, "DefaultCluster", brokers));
         }
 
         return clusterAddrTable.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && !entry.getKey().isBlank())
+                .filter(entry -> entry.getValue() != null)
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> toClusterVO(namesrvAddr, entry.getKey(), entry.getValue().stream()
+                        .filter(Objects::nonNull)
                         .map(brokerAddrTable::get)
-                        .filter(java.util.Objects::nonNull)
+                        .filter(Objects::nonNull)
                         .toList()))
+                .filter(cluster -> !cluster.getBrokers().isEmpty())
                 .toList();
     }
 
@@ -166,7 +176,10 @@ public class RealClusterProvider implements ClusterProvider {
         if (data.getBrokerAddrs() != null) {
             addr = data.getBrokerAddrs().get(MixAll.MASTER_ID);
             if (addr == null) {
-                addr = data.getBrokerAddrs().values().stream().findFirst().orElse(null);
+                addr = data.getBrokerAddrs().values().stream()
+                        .filter(Objects::nonNull)
+                        .findFirst()
+                        .orElse(null);
             }
         }
         return BrokerVO.builder()
