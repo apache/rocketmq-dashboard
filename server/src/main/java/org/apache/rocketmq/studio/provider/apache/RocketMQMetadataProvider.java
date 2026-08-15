@@ -18,10 +18,10 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
-import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -568,14 +568,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     private TopicPerm mapPerm(int perm) {
-        // RocketMQ perm: 6=RW, 4=R, 2=W
-        if (perm == 6) {
-            return TopicPerm.RW;
-        } else if (perm == 4) {
-            return TopicPerm.RO;
-        } else if (perm == 2) {
+        if (PermName.isReadable(perm)) {
+            return PermName.isWriteable(perm) ? TopicPerm.RW : TopicPerm.RO;
+        }
+        if (PermName.isWriteable(perm)) {
             return TopicPerm.WO;
         }
+        // TopicPerm has no inaccessible value; retain the historical fallback for invalid masks.
         return TopicPerm.RW;
     }
 }
