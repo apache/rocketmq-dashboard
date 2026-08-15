@@ -101,9 +101,44 @@ class InstanceProviderRegistryTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
     }
 
+    @Test
+    void constructorShouldRejectDuplicateProvidersForVendorTest() {
+        InstanceProvider duplicate = stubProvider(InstanceVendor.APACHE);
+
+        assertThatThrownBy(() -> new InstanceProviderRegistry(
+                List.of(apacheProvider, duplicate), List.of(), instanceRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Duplicate instance provider registered for vendor APACHE");
+    }
+
+    @Test
+    void constructorShouldRejectDuplicateCatalogsForVendorTest() {
+        CloudCatalogProvider first = stubCatalog(InstanceVendor.ALIYUN);
+        CloudCatalogProvider duplicate = stubCatalog(InstanceVendor.ALIYUN);
+
+        assertThatThrownBy(() -> new InstanceProviderRegistry(
+                List.of(apacheProvider), List.of(first, duplicate), instanceRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Duplicate cloud catalog provider registered for vendor ALIYUN");
+    }
+
+    @Test
+    void catalogForShouldReturnRegisteredCatalogTest() {
+        CloudCatalogProvider catalog = stubCatalog(InstanceVendor.ALIYUN);
+        registry = new InstanceProviderRegistry(List.of(apacheProvider), List.of(catalog), instanceRepository);
+
+        assertThat(registry.catalogFor(InstanceVendor.ALIYUN)).isSameAs(catalog);
+    }
+
     private InstanceProvider stubProvider(InstanceVendor vendor) {
         InstanceProvider provider = mock(InstanceProvider.class);
         when(provider.vendor()).thenReturn(vendor);
         return provider;
+    }
+
+    private CloudCatalogProvider stubCatalog(InstanceVendor vendor) {
+        CloudCatalogProvider catalog = mock(CloudCatalogProvider.class);
+        when(catalog.vendor()).thenReturn(vendor);
+        return catalog;
     }
 }

@@ -37,9 +37,21 @@ public class InstanceProviderRegistry {
     public InstanceProviderRegistry(List<InstanceProvider> providerList,
                                     List<CloudCatalogProvider> catalogList,
                                     InstanceRepository instanceRepository) {
-        providerList.forEach(provider -> providers.put(provider.vendor(), provider));
-        catalogList.forEach(catalog -> catalogs.put(catalog.vendor(), catalog));
+        providerList.forEach(provider -> registerProvider(provider.vendor(), provider));
+        catalogList.forEach(catalog -> registerCatalog(catalog.vendor(), catalog));
         this.instanceRepository = instanceRepository;
+    }
+
+    private void registerProvider(InstanceVendor vendor, InstanceProvider provider) {
+        if (providers.putIfAbsent(vendor, provider) != null) {
+            throw new IllegalStateException("Duplicate instance provider registered for vendor " + vendor);
+        }
+    }
+
+    private void registerCatalog(InstanceVendor vendor, CloudCatalogProvider catalog) {
+        if (catalogs.putIfAbsent(vendor, catalog) != null) {
+            throw new IllegalStateException("Duplicate cloud catalog provider registered for vendor " + vendor);
+        }
     }
 
     public InstanceProvider forVendor(InstanceVendor vendor) {
