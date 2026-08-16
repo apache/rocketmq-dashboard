@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /** MySQL-backed audit repository (rmq_operation_audit). */
@@ -36,7 +37,10 @@ import java.util.stream.Collectors;
 @Repository
 public class MybatisPlusAuditRepository implements AuditRepository {
 
+    private static final long FILTER_OPTIONS_CACHE_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);
+
     private final RmqOperationAuditMapper auditMapper;
+    private volatile CachedFilterOptions cachedFilterOptions;
 
     @Override
     public PageResult<AuditRecordVO> findPage(String search, String operationType,
@@ -54,7 +58,7 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .ge(startDate != null, "gmt_create", startDate)
                 .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result)
-                .orderByDesc("gmt_create");
+                .orderByDesc("gmt_create", "id");
         Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
                 new Page<>(page, pageSize), query);
         List<AuditRecordVO> records = resultPage.getRecords().stream()
@@ -65,6 +69,23 @@ public class MybatisPlusAuditRepository implements AuditRepository {
 
     @Override
     public AuditFilterOptionsVO findFilterOptions() {
+        long now = System.nanoTime();
+        CachedFilterOptions cached = cachedFilterOptions;
+        if (isCacheValid(cached, now)) {
+            return cached.options();
+        }
+        synchronized (this) {
+            cached = cachedFilterOptions;
+            if (isCacheValid(cached, now)) {
+                return cached.options();
+            }
+            AuditFilterOptionsVO options = loadFilterOptions();
+            cachedFilterOptions = new CachedFilterOptions(options, now);
+            return options;
+        }
+    }
+
+    private AuditFilterOptionsVO loadFilterOptions() {
         List<Map<String, Object>> values = auditMapper.selectMaps(
                 new QueryWrapper<RmqOperationAudit>()
                         .select("operation", "resource_type", "cluster_id", "result")
@@ -92,6 +113,14 @@ public class MybatisPlusAuditRepository implements AuditRepository {
         entity.setGmtCreate(timestamp);
         entity.setGmtModified(timestamp);
         auditMapper.insert(entity);
+        cachedFilterOptions = null;
+    }
+
+    private static boolean isCacheValid(CachedFilterOptions cached, long now) {
+        return cached != null && now - cached.createdAtNanos() < FILTER_OPTIONS_CACHE_TTL_NANOS;
+    }
+
+    private record CachedFilterOptions(AuditFilterOptionsVO options, long createdAtNanos) {
     }
 
     @Override

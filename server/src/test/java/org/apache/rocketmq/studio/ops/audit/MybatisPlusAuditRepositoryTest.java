@@ -82,11 +82,11 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(record.getClusterId()).isEqualTo("prod-cn");
         assertThat(record.getErrorMessage()).isEqualTo("denied");
         assertThat(queryCaptor.getValue().getSqlSegment())
-                .contains("operation", "resource_type", "cluster_id", "result");
+                .contains("operation", "resource_type", "cluster_id", "result", "operated_at", "id");
     }
 
     @Test
-    void findFilterOptionsPreservesPersistedValuesFromOneQuery() {
+    void findFilterOptionsPreservesPersistedValuesAndCachesTheResult() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
                         "cluster_id", "prod-cn", "result", "SUCCESS"),
@@ -96,11 +96,13 @@ class MybatisPlusAuditRepositoryTest {
                         "cluster_id", "", "result", "PARTIAL")));
 
         AuditFilterOptionsVO options = repository.findFilterOptions();
+        AuditFilterOptionsVO cachedOptions = repository.findFilterOptions();
 
         assertThat(options.getOperationTypes()).containsExactly(" CREATE_TOPIC ", "DELETE_TOPIC");
         assertThat(options.getResourceTypes()).containsExactly("GROUP", "TOPIC");
         assertThat(options.getClusterIds()).containsExactly("prod-cn", "prod-sh");
         assertThat(options.getResults()).containsExactly("FAILED", "PARTIAL", "SUCCESS");
+        assertThat(cachedOptions).isSameAs(options);
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(auditMapper).selectMaps(queryCaptor.capture());
         assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue()).getSqlSelect())
@@ -146,6 +148,18 @@ class MybatisPlusAuditRepositoryTest {
         verify(auditMapper).deleteByIds(List.of(1L, 2L));
         verify(auditMapper).deleteByIds(List.of(3L, 4L));
         assertThat(deleted).isEqualTo(4);
+    }
+
+    @Test
+    void saveInvalidatesCachedFilterOptions() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+
+        repository.findFilterOptions();
+        repository.save(AuditRecordVO.builder().operationType("CREATE_TOPIC").build());
+        repository.findFilterOptions();
+
+        verify(auditMapper, org.mockito.Mockito.times(2)).selectMaps(any(Wrapper.class));
+        verify(auditMapper).insert(any(RmqOperationAudit.class));
     }
 
     private static RmqOperationAudit auditRecord(Long id) {
