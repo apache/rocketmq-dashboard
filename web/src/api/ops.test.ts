@@ -209,9 +209,8 @@ describe('Ops API - System Alerts & Audit', () => {
   });
 
   it('lists system alerts', async () => {
-    mock.onGet('/system-alerts').reply(200, {
-      code: 200,
-      data: [
+    const page = {
+      items: [
         {
           id: 'a1',
           level: 'critical',
@@ -221,9 +220,16 @@ describe('Ops API - System Alerts & Audit', () => {
           acknowledged: false,
         },
       ],
+      total: 1,
+      page: 1,
+      size: 20,
+    };
+    mock.onGet('/system-alerts').reply(200, {
+      code: 200,
+      data: page,
     });
     const result = await listSystemAlerts();
-    expect(result[0].level).toBe('critical');
+    expect(result.items[0].level).toBe('critical');
   });
 
   it('acknowledges an alert', async () => {

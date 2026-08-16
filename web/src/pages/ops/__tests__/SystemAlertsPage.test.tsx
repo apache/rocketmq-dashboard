@@ -47,37 +47,47 @@ const renderPage = () =>
 describe('SystemAlertsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listSystemAlerts).mockResolvedValue([
-      {
-        id: 'alert-a',
-        level: 'error',
-        title: 'Broker unavailable',
-        description: 'broker a',
-        time: '2026-08-10 01:00',
-        acknowledged: false,
-      },
-      {
-        id: 'alert-b',
-        level: 'warning',
-        title: 'Consumer lag',
-        description: 'consumer b',
-        time: '2026-08-10 01:01',
-        acknowledged: false,
-      },
-    ]);
+    vi.mocked(listSystemAlerts).mockResolvedValue({
+      items: [
+        {
+          id: 'alert-a',
+          level: 'error',
+          title: 'Broker unavailable',
+          description: 'broker a',
+          time: '2026-08-10 01:00',
+          acknowledged: false,
+        },
+        {
+          id: 'alert-b',
+          level: 'warning',
+          title: 'Consumer lag',
+          description: 'consumer b',
+          time: '2026-08-10 01:01',
+          acknowledged: false,
+        },
+      ],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
   });
 
   it('renders an alert with an unknown backend level', async () => {
-    vi.mocked(listSystemAlerts).mockResolvedValue([
-      {
-        id: 'alert-critical',
-        level: 'critical',
-        title: 'Critical broker condition',
-        description: 'A newer backend emitted this level',
-        time: '2026-08-10 01:00',
-        acknowledged: false,
-      },
-    ]);
+    vi.mocked(listSystemAlerts).mockResolvedValue({
+      items: [
+        {
+          id: 'alert-critical',
+          level: 'critical',
+          title: 'Critical broker condition',
+          description: 'A newer backend emitted this level',
+          time: '2026-08-10 01:00',
+          acknowledged: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
 
     renderPage();
 
@@ -87,29 +97,27 @@ describe('SystemAlertsPage', () => {
   });
 
   it('filters backend alert levels case-insensitively', async () => {
-    vi.mocked(listSystemAlerts).mockResolvedValue([
-      {
-        id: 'alert-error',
-        level: 'Error',
-        title: 'Mixed-case error',
-        description: 'error',
-        time: '2026-08-10 01:00',
-        acknowledged: false,
-      },
-      {
-        id: 'alert-warning',
-        level: 'WARNING',
-        title: 'Mixed-case warning',
-        description: 'warning',
-        time: '2026-08-10 01:01',
-        acknowledged: false,
-      },
-    ]);
+    vi.mocked(listSystemAlerts).mockImplementation(async (query = {}) => {
+      const alerts = [
+        {
+          id: 'alert-error', level: 'Error', title: 'Mixed-case error', description: 'error',
+          time: '2026-08-10 01:00', acknowledged: false,
+        },
+        {
+          id: 'alert-warning', level: 'WARNING', title: 'Mixed-case warning', description: 'warning',
+          time: '2026-08-10 01:01', acknowledged: false,
+        },
+      ];
+      const items = query.level
+        ? alerts.filter((alert) => alert.level.toLowerCase() === query.level?.toLowerCase())
+        : alerts;
+      return { items, total: items.length, page: query.page ?? 1, size: query.pageSize ?? 20 };
+    });
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Mixed-case error');
 
-    await user.click(screen.getByRole('button', { name: /严重/ }));
+    await user.click(screen.getByRole('button', { name: /严\s*重/ }));
 
     expect(screen.getByText('Mixed-case error')).toBeInTheDocument();
     expect(screen.queryByText('Mixed-case warning')).not.toBeInTheDocument();

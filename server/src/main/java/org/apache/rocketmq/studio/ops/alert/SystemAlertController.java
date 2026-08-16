@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +28,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -38,9 +38,11 @@ public class SystemAlertController {
     private final AlertService alertService;
 
     @GetMapping
-    public Result<List<SystemAlertVO>> listAlerts(
-            @RequestParam(required = false) String level) {
-        return Result.ok(alertService.listAlerts(level));
+    public Result<PageResult<SystemAlertVO>> listAlerts(
+            @RequestParam(required = false) String level,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(alertService.listAlerts(level, page, pageSize));
     }
 
     @PostMapping("/acknowledge")

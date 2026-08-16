@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +37,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -689,27 +691,28 @@ class AlertServiceTest {
                 .title("Broker Down").acknowledged(false).build();
         SystemAlertVO alert2 = SystemAlertVO.builder().id("a2").level(AlertLevel.error)
                 .title("High Latency").acknowledged(false).build();
-        when(alertRepository.findAlerts("error")).thenReturn(Arrays.asList(alert1, alert2));
+        when(alertRepository.findAlerts("error", 1, 20))
+                .thenReturn(PageResult.of(Arrays.asList(alert1, alert2), 2, 1, 20));
 
-        List<SystemAlertVO> result = alertService.listAlerts("error");
+        PageResult<SystemAlertVO> result = alertService.listAlerts("error", 1, 20);
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getLevel()).isEqualTo(AlertLevel.error);
-        assertThat(result.get(0).getTitle()).isEqualTo("Broker Down");
-        verify(alertRepository).findAlerts("error");
+        assertThat(result.getItems()).hasSize(2);
+        assertThat(result.getItems().get(0).getLevel()).isEqualTo(AlertLevel.error);
+        assertThat(result.getItems().get(0).getTitle()).isEqualTo("Broker Down");
+        verify(alertRepository).findAlerts("error", 1, 20);
     }
 
     @Test
     void listAlertsShouldReturnAllAlertsWhenLevelIsNull() {
         SystemAlertVO alert = SystemAlertVO.builder().id("a1").level(AlertLevel.warning)
                 .title("Slow Consumer").build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(alert));
+        when(alertRepository.findAlerts(null, 1, 20)).thenReturn(PageResult.of(List.of(alert), 1, 1, 20));
 
-        List<SystemAlertVO> result = alertService.listAlerts(null);
+        PageResult<SystemAlertVO> result = alertService.listAlerts(null, 1, 20);
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getLevel()).isEqualTo(AlertLevel.warning);
-        verify(alertRepository).findAlerts(null);
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getLevel()).isEqualTo(AlertLevel.warning);
+        verify(alertRepository).findAlerts(null, 1, 20);
     }
 
     @Test
@@ -723,7 +726,7 @@ class AlertServiceTest {
 
         assertThat(result.isAcknowledged()).isTrue();
         verify(alertRepository).acknowledgeAlert(result);
-        verify(alertRepository, never()).findAlerts(any());
+        verify(alertRepository, never()).findAlerts(any(), anyInt(), anyInt());
         verify(operationAuditService).record(eq("ACKNOWLEDGE_SYSTEM_ALERT"), eq("SYSTEM_ALERT"), eq("a1"),
                 eq(null), eq("acknowledged=true"), eq("SUCCESS"), eq(null));
     }

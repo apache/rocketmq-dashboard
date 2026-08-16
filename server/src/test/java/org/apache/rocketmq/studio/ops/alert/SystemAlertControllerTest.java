@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -58,16 +59,16 @@ class SystemAlertControllerTest {
                 .title("Broker Down")
                 .acknowledged(false)
                 .build();
-        when(alertService.listAlerts("error")).thenReturn(List.of(alert));
+        when(alertService.listAlerts("error", 1, 20)).thenReturn(PageResult.of(List.of(alert), 1, 1, 20));
 
         mockMvc.perform(get("/api/system-alerts").param("level", "error"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].id").value("alert-1"))
-                .andExpect(jsonPath("$.data[0].level").value("error"))
-                .andExpect(jsonPath("$.data[0].acknowledged").value(false));
+                .andExpect(jsonPath("$.data.items[0].id").value("alert-1"))
+                .andExpect(jsonPath("$.data.items[0].level").value("error"))
+                .andExpect(jsonPath("$.data.items[0].acknowledged").value(false));
 
-        verify(alertService).listAlerts("error");
+        verify(alertService).listAlerts("error", 1, 20);
     }
 
     @Test

@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -210,9 +211,10 @@ public class AlertService {
     }
 
 
-    public List<SystemAlertVO> listAlerts(String level) {
-        log.info("Listing system alerts, level={}", level);
-        return alertRepository.findAlerts(level);
+    public PageResult<SystemAlertVO> listAlerts(String level, int page, int pageSize) {
+        validateAlertPagination(page, pageSize);
+        log.info("Listing system alerts, level={}, page={}, pageSize={}", level, page, pageSize);
+        return alertRepository.findAlerts(level, page, pageSize);
     }
 
 
@@ -240,6 +242,15 @@ public class AlertService {
         recordAudit("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS", "SYSTEM_ALERT", null, null,
                 "deleted=" + deleted);
         return deleted;
+    }
+
+    private void validateAlertPagination(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than 0");
+        }
+        if (pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "pageSize must be between 1 and 100");
+        }
     }
 
     private List<PrometheusAlertRule> defaultPrometheusRules() {

@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
@@ -93,13 +95,15 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
-    public List<SystemAlertVO> findAlerts(String level) {
+    public PageResult<SystemAlertVO> findAlerts(String level, int page, int pageSize) {
         QueryWrapper<RmqSystemAlert> query = new QueryWrapper<RmqSystemAlert>()
                 .eq(StringUtils.hasText(level), "level", level == null ? null : level.toLowerCase(Locale.ROOT))
-                .orderByDesc("time");
-        return alertMapper.selectList(query).stream()
+                .orderByDesc("time", "id");
+        Page<RmqSystemAlert> resultPage = alertMapper.selectPage(new Page<>(page, pageSize), query);
+        List<SystemAlertVO> alerts = resultPage.getRecords().stream()
                 .map(MybatisPlusAlertRepository::toAlertVO)
                 .collect(Collectors.toList());
+        return PageResult.of(alerts, resultPage.getTotal(), page, pageSize);
     }
 
     @Override
