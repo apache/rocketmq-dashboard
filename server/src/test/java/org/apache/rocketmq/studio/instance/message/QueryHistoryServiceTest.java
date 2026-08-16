@@ -107,6 +107,7 @@ class QueryHistoryServiceTest {
 
     @Test
     void listsMessageHistoryAsNewestFirstPage() {
+        AuthenticatedUserContext.setUsername("alice");
         RmqMessageQuery entity = new RmqMessageQuery();
         entity.setId(9L);
         entity.setQueryType("KEY");
@@ -132,10 +133,15 @@ class QueryHistoryServiceTest {
             assertThat(item.getMessageKey()).isEqualTo("order-1");
             assertThat(item.getQueriedBy()).isEqualTo("alice");
         });
+
+        ArgumentCaptor<Wrapper<RmqMessageQuery>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(messageQueryMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
 
     @Test
     void summarizesBothHistoryStreams() {
+        AuthenticatedUserContext.setUsername("alice");
         RmqMessageQuery message = new RmqMessageQuery();
         message.setGmtCreate(LocalDateTime.of(2026, 8, 5, 10, 0));
         RmqTraceQuery trace = new RmqTraceQuery();
@@ -150,5 +156,12 @@ class QueryHistoryServiceTest {
         assertThat(summary.getMessageQueries()).isEqualTo(7);
         assertThat(summary.getTraceQueries()).isEqualTo(4);
         assertThat(summary.getLatestQueryAt()).isEqualTo(LocalDateTime.of(2026, 8, 5, 12, 0));
+
+        ArgumentCaptor<Wrapper<RmqMessageQuery>> messageCountCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        ArgumentCaptor<Wrapper<RmqTraceQuery>> traceCountCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(messageQueryMapper).selectCount(messageCountCaptor.capture());
+        verify(traceQueryMapper).selectCount(traceCountCaptor.capture());
+        assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
+        assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
 }
