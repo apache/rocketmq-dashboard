@@ -31,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -46,6 +47,22 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     @Override
     public List<AlertRuleVO> findAllRules() {
         return ruleMapper.selectList(new QueryWrapper<RmqAlertRule>().orderByAsc("name")).stream()
+                .map(MybatisPlusAlertRepository::toRuleVO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public Optional<AlertRuleVO> findRuleById(String id) {
+        return Optional.ofNullable(ruleMapper.selectById(id))
+                .map(MybatisPlusAlertRepository::toRuleVO);
+    }
+
+    @Override
+    public List<AlertRuleVO> findRulesByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return ruleMapper.selectBatchIds(ids).stream()
                 .map(MybatisPlusAlertRepository::toRuleVO)
                 .collect(Collectors.toList());
     }
@@ -83,6 +100,12 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         return alertMapper.selectList(query).stream()
                 .map(MybatisPlusAlertRepository::toAlertVO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Optional<SystemAlertVO> findAlertById(String id) {
+        return Optional.ofNullable(alertMapper.selectById(id))
+                .map(MybatisPlusAlertRepository::toAlertVO);
     }
 
     @Override

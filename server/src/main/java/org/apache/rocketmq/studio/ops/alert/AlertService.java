@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -122,11 +121,8 @@ public class AlertService {
     public AlertRuleVO toggleRule(String id, boolean enabled) {
         log.info("Toggling alert rule id={}, enabled={}", id, enabled);
         validateRuleId(id);
-        List<AlertRuleVO> rules = alertRepository.findAllRules();
-        AlertRuleVO rule = rules.stream()
-                .filter(r -> Objects.equals(r.getId(), id))
-                .findFirst()
-                .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Alert rule not found: " + id));
+        AlertRuleVO rule = alertRepository.findRuleById(id)
+                .orElseThrow(() -> ruleNotFound(id));
         rule.setEnabled(enabled);
         AlertRuleVO saved = alertRepository.saveRule(rule);
         auditRule("TOGGLE_ALERT_RULE", saved, "enabled=" + enabled);
@@ -146,7 +142,7 @@ public class AlertService {
     public AlertRuleBulkResultVO bulkToggleRules(List<String> ids, boolean enabled) {
         List<String> normalizedIds = normalizeBulkIds(ids);
         Map<String, AlertRuleVO> rulesById = new LinkedHashMap<>();
-        for (AlertRuleVO rule : alertRepository.findAllRules()) {
+        for (AlertRuleVO rule : alertRepository.findRulesByIds(normalizedIds)) {
             rulesById.put(rule.getId(), rule);
         }
         List<String> succeeded = new ArrayList<>();
@@ -225,11 +221,9 @@ public class AlertService {
         if (id == null || id.isBlank()) {
             throw new BusinessException(400, "System alert ID is required");
         }
-        List<SystemAlertVO> alerts = alertRepository.findAlerts(null);
-        SystemAlertVO alert = alerts.stream()
-                .filter(a -> Objects.equals(a.getId(), id))
-                .findFirst()
-                .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
+        SystemAlertVO alert = alertRepository.findAlertById(id)
+                .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404,
+                        "System alert not found: " + id));
         alert.setAcknowledged(true);
         if (!alertRepository.acknowledgeAlert(alert)) {
             throw new BusinessException(404, "System alert not found: " + id);

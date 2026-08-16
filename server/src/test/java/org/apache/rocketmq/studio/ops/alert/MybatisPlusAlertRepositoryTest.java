@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -68,6 +69,27 @@ class MybatisPlusAlertRepositoryTest {
         assertThat(repository.findAlerts(null)).singleElement()
                 .satisfies(alert -> assertThat(alert.getLevel()).isEqualTo(
                         org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning));
+    }
+
+    @Test
+    void findAlertByIdShouldMapOnlyTheRequestedAlert() {
+        RmqSystemAlert entity = new RmqSystemAlert();
+        entity.setId("alert-1");
+        entity.setLevel("error");
+        when(alertMapper.selectById("alert-1")).thenReturn(entity);
+
+        Optional<SystemAlertVO> result = repository.findAlertById("alert-1");
+
+        assertThat(result).map(SystemAlertVO::getId).contains("alert-1");
+        verify(alertMapper).selectById("alert-1");
+        verify(alertMapper, never()).selectList(any());
+    }
+
+    @Test
+    void findRulesByIdsShouldSkipDatabaseLookupForAnEmptySelection() {
+        assertThat(repository.findRulesByIds(List.of())).isEmpty();
+
+        verify(ruleMapper, never()).selectBatchIds(any());
     }
 
     @Test
