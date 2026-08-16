@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.ai;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -45,7 +47,11 @@ class AiControllerTest {
     @BeforeEach
     void setUp() {
         aiService = mock(AiService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new AiController(aiService)).build();
+        LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
+        validator.afterPropertiesSet();
+        mockMvc = MockMvcBuilders.standaloneSetup(new AiController(aiService))
+                .setValidator(validator)
+                .build();
 
         when(aiService.catalogVersion()).thenReturn("1.0.0");
         when(aiService.catalogDigest()).thenReturn(DIGEST);
@@ -124,5 +130,29 @@ class AiControllerTest {
                 .andExpect(jsonPath("$.data").isArray());
 
         verify(aiService).executeTool("rmq.cluster.list", Collections.emptyMap());
+    }
+
+    @Test
+    void chatRejectsBlankMessage() throws Exception {
+        mockMvc.perform(post("/api/ai/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"message":" "}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verify(aiService, never()).chat(org.mockito.ArgumentMatchers.any(ChatDTO.class));
+    }
+
+    @Test
+    void executeRejectsBlankCommand() throws Exception {
+        mockMvc.perform(post("/api/ai/execute")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"command":""}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verify(aiService, never()).execute(org.mockito.ArgumentMatchers.any(AiCommandDTO.class));
     }
 }

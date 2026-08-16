@@ -176,6 +176,19 @@ class AuthControllerTest {
     }
 
     @Test
+    void loginShouldRejectBlankCredentials() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":" ","password":""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(authService, never()).login(any(LoginDTO.class));
+    }
+
+    @Test
     void logoutShouldReturnSuccess() throws Exception {
         doNothing().when(authService).logout("Bearer token-1");
         when(authService.isAuthenticated("Bearer token-1")).thenReturn(true);

@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,6 +29,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiCommandDTO {
+    @NotBlank(message = "command is required")
     private String command;
     private String mode;
     private String model;

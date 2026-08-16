@@ -148,6 +148,19 @@ class InstanceControllerTest {
     }
 
     @Test
+    void createInstanceShouldRejectBlankName() throws Exception {
+        mockMvc.perform(post("/api/instances/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":" ","type":"DIRECT","endpoint":"10.0.2.1:8080"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verifyNoInteractions(instanceService);
+    }
+
+    @Test
     void updateInstanceShouldReturnUpdatedInstance() throws Exception {
         InstanceVO update = InstanceVO.builder()
                 .name("updated-name")

@@ -17,12 +17,15 @@
 
 package org.apache.rocketmq.studio.auth;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.ToString;
 
 @Data
 public class LoginDTO {
+    @NotBlank(message = "username is required")
     private String username;
+    @NotBlank(message = "password is required")
     @ToString.Exclude
     private String password;
 }
