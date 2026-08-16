@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.extern.slf4j.Slf4j;
@@ -59,12 +60,19 @@ public class K8sCertService {
         this.clock = clock;
     }
 
-    public List<K8sCertVO> listCerts() {
-        log.info("Listing all K8s certificates");
+    public PageResult<K8sCertVO> listCerts(String search, String cluster, String namespace, String type, String status,
+                                            int page, int pageSize) {
+        validatePage(page, pageSize);
+        String normalizedStatus = normalizeStatus(status);
+        log.info("Listing K8s certificates search={}, cluster={}, namespace={}, type={}, status={}, page={}, pageSize={}",
+                search, cluster, namespace, type, normalizedStatus, page, pageSize);
         LocalDateTime now = LocalDateTime.now(clock);
-        return k8sCertRepository.findAll().stream()
+        PageResult<K8sCertVO> result = k8sCertRepository.findPage(search, cluster, namespace, type, normalizedStatus,
+                page, pageSize);
+        List<K8sCertVO> certificates = result.getItems().stream()
                 .map(cert -> refreshExpirationState(cert, now))
                 .collect(Collectors.toCollection(ArrayList::new));
+        return PageResult.of(certificates, result.getTotal(), page, pageSize);
     }
 
     public K8sCertVO createCert(CreateCertDTO command) {
@@ -177,6 +185,26 @@ public class K8sCertService {
     private void requireCommand(Object command) {
         if (command == null) {
             throw new BusinessException(400, "K8s certificate request is required");
+        }
+    }
+
+    private void validatePage(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than 0");
+        }
+        if (pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "pageSize must be between 1 and 100");
+        }
+    }
+
+    private String normalizeStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return CertStatus.valueOf(status.trim().toLowerCase()).name();
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(400, "Unsupported certificate status: " + status);
         }
     }
 

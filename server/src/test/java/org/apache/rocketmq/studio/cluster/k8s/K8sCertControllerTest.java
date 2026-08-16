@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -29,7 +30,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -54,34 +54,36 @@ class K8sCertControllerTest {
     private K8sCertService k8sCertService;
 
     @Test
-    void listCertsShouldReturnAllCerts() throws Exception {
+    void listCertsShouldReturnAPageOfCertificates() throws Exception {
         K8sCertVO cert1 = buildCert(1L, "rocketmq-tls", CertType.TLS, CertStatus.valid);
         K8sCertVO cert2 = buildCert(2L, "broker-mtls", CertType.mTLS, CertStatus.expiring);
-        when(k8sCertService.listCerts()).thenReturn(Arrays.asList(cert1, cert2));
+        when(k8sCertService.listCerts(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.of(Arrays.asList(cert1, cert2), 2, 1, 20));
 
         mockMvc.perform(get("/api/k8s-certs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].name").value("rocketmq-tls"))
-                .andExpect(jsonPath("$.data[0].type").value("TLS"))
-                .andExpect(jsonPath("$.data[0].status").value("valid"))
-                .andExpect(jsonPath("$.data[1].id").value(2))
-                .andExpect(jsonPath("$.data[1].name").value("broker-mtls"));
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].id").value(1))
+                .andExpect(jsonPath("$.data.items[0].name").value("rocketmq-tls"))
+                .andExpect(jsonPath("$.data.items[0].type").value("TLS"))
+                .andExpect(jsonPath("$.data.items[0].status").value("valid"))
+                .andExpect(jsonPath("$.data.items[1].id").value(2))
+                .andExpect(jsonPath("$.data.items[1].name").value("broker-mtls"));
     }
 
     @Test
-    void listCertsShouldReturnEmptyArrayWhenNoCerts() throws Exception {
-        when(k8sCertService.listCerts()).thenReturn(Collections.emptyList());
+    void listCertsShouldReturnAnEmptyPageWhenNoCerts() throws Exception {
+        when(k8sCertService.listCerts(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
 
         mockMvc.perform(get("/api/k8s-certs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(0));
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items.length()").value(0));
     }
 
     @Test

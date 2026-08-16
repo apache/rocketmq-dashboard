@@ -17,11 +17,13 @@
 package org.apache.rocketmq.studio.cluster.k8s;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
@@ -48,10 +50,23 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     private final ObjectMapper objectMapper;
 
     @Override
-    public List<K8sCertVO> findAll() {
-        return certMapper.selectList(new QueryWrapper<RmqK8sCertificate>().orderByAsc("name")).stream()
+    public PageResult<K8sCertVO> findPage(String search, String cluster, String namespace, String type, String status,
+                                          int page, int pageSize) {
+        QueryWrapper<RmqK8sCertificate> query = new QueryWrapper<RmqK8sCertificate>()
+                .and(StringUtils.hasText(search), wrapper -> wrapper.like("name", search)
+                        .or().like("cluster", search)
+                        .or().like("namespace", search)
+                        .or().like("san", search))
+                .eq(StringUtils.hasText(cluster), "cluster", cluster)
+                .eq(StringUtils.hasText(namespace), "namespace", namespace)
+                .eq(StringUtils.hasText(type), "cert_type", type)
+                .eq(StringUtils.hasText(status), "status", status)
+                .orderByAsc("name", "id");
+        Page<RmqK8sCertificate> resultPage = certMapper.selectPage(new Page<>(page, pageSize), query);
+        List<K8sCertVO> certificates = resultPage.getRecords().stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
+        return PageResult.of(certificates, resultPage.getTotal(), page, pageSize);
     }
 
     @Override

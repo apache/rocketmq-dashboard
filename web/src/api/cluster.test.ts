@@ -63,9 +63,11 @@ describe('K8s certificate API', () => {
   });
 
   it('loads and unwraps certificate records', async () => {
-    mock.onGet('/k8s-certs').reply(200, { code: 200, message: 'success', data: [cert] });
+    const page = { items: [cert], total: 1, page: 2, size: 50 };
+    mock.onGet('/k8s-certs', { params: { page: 2, pageSize: 50, status: 'expiring' } })
+      .reply(200, { code: 200, message: 'success', data: page });
 
-    await expect(listK8sCerts()).resolves.toEqual([cert]);
+    await expect(listK8sCerts({ page: 2, pageSize: 50, status: 'expiring' })).resolves.toEqual(page);
   });
 
   it('returns the certificate created by the backend', async () => {

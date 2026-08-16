@@ -17,12 +17,14 @@
 package org.apache.rocketmq.studio.cluster.k8s;
 
 
-import java.util.List;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+
 import java.util.Optional;
 
 public interface K8sCertRepository {
 
-    List<K8sCertVO> findAll();
+    PageResult<K8sCertVO> findPage(String search, String cluster, String namespace, String type, String status,
+                                   int page, int pageSize);
 
     Optional<K8sCertVO> findById(Long id);
 

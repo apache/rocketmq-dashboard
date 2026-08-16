@@ -16,17 +16,15 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
-import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
+import { listK8sCerts } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
 
 vi.mock('../../../services/clusterService', () => ({
   listK8sCerts: vi.fn(),
-  createK8sCert: vi.fn(),
-  deleteK8sCert: vi.fn(),
 }));
 
 const certs: K8sCertInfo[] = [
@@ -76,7 +74,20 @@ beforeAll(() => {
 describe('K8sCertsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listK8sCerts).mockResolvedValue(certs);
+    vi.mocked(listK8sCerts).mockImplementation(async (query = {}) => {
+      const search = query.search?.trim().toLowerCase();
+      const items = certs.filter(
+        (cert) =>
+          (!search ||
+            [cert.name, cert.cluster, ...(cert.san ?? [])].some((value) =>
+              value.toLowerCase().includes(search),
+            )) &&
+          (!query.cluster || cert.cluster === query.cluster) &&
+          (!query.type || cert.type === query.type) &&
+          (!query.status || cert.status === query.status),
+      );
+      return { items, total: items.length, page: query.page ?? 1, size: query.pageSize ?? 20 };
+    });
   });
 
   const renderPage = () =>
@@ -86,15 +97,13 @@ describe('K8sCertsPage', () => {
       </App>,
     );
 
-  it('displays certificate metadata without SAN or namespace columns', async () => {
+  it('displays certificate SAN metadata', async () => {
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
 
-    expect(screen.getByText('prod-cluster')).toBeInTheDocument();
-    expect(screen.queryByText('broker.prod.example.com')).not.toBeInTheDocument();
-    expect(screen.queryByText('命名空间')).not.toBeInTheDocument();
-    expect(screen.queryByText('SAN')).not.toBeInTheDocument();
+    expect(screen.getByText('broker.prod.example.com')).toBeInTheDocument();
+    expect(screen.getByText('-')).toBeInTheDocument();
   });
 
   it('explains that certificate records are Studio-local metadata', async () => {
@@ -107,65 +116,43 @@ describe('K8sCertsPage', () => {
 
   it.each([
     ['staging-cluster', 'rocketmq-staging-tls', 'rocketmq-prod-tls'],
-    ['prod-tls', 'rocketmq-prod-tls', 'rocketmq-staging-tls'],
+    ['broker.prod.example.com', 'rocketmq-prod-tls', 'rocketmq-staging-tls'],
   ])('searches certificate metadata by %s', async (query, expected, hidden) => {
     const user = userEvent.setup();
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
-    await user.type(screen.getByPlaceholderText('搜索证书名称或集群'), `${query}{enter}`);
+    await user.type(
+      screen.getByPlaceholderText('搜索证书名称、集群或 SAN'),
+      `${query}{enter}`,
+    );
 
     expect(screen.getByText(expected)).toBeInTheDocument();
     expect(screen.queryByText(hidden)).not.toBeInTheDocument();
   });
 
-  it('creates a certificate with PEM content through the modal', async () => {
-    vi.mocked(createK8sCert).mockResolvedValue({
-      ...certs[0],
-      id: 3,
-      name: 'kubernetes-admin-client',
-      cluster: 'kubernetes',
-    });
-    const user = userEvent.setup();
+  it('does not expose local metadata mutations as Kubernetes certificate operations', async () => {
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
-    await user.click(screen.getByRole('button', { name: /新增证书/ }));
 
-    await user.type(
-      screen.getByPlaceholderText('例如：kubernetes-admin-client'),
-      'kubernetes-admin-client',
-    );
-    await user.type(
-      screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）'),
-      'kubernetes',
-    );
-    await user.click(screen.getByRole('button', { name: /添\s*加/ }));
-
-    await waitFor(() =>
-      expect(createK8sCert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'kubernetes-admin-client',
-          cluster: 'kubernetes',
-          type: 'TLS',
-        }),
-      ),
-    );
-    expect(await screen.findByText('kubernetes-admin-client')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '添加证书' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '续期' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
   });
 
-  it('deletes a certificate after confirmation', async () => {
-    vi.mocked(deleteK8sCert).mockResolvedValue();
+  it('trims certificate search text before filtering', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
-    const deleteButtons = screen.getAllByRole('button', { name: /删\s*除/ });
-    await user.click(deleteButtons[0]);
-    const confirmButtons = await screen.findAllByRole('button', { name: /删\s*除/ });
-    await user.click(confirmButtons[confirmButtons.length - 1]);
+    await user.type(
+      screen.getByPlaceholderText('搜索证书名称、集群或 SAN'),
+      '  prod-cluster  {enter}',
+    );
 
-    await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
-    await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
+    expect(screen.getByText('rocketmq-prod-tls')).toBeInTheDocument();
+    expect(screen.queryByText('rocketmq-staging-tls')).not.toBeInTheDocument();
   });
 });

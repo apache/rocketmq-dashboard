@@ -6,6 +6,8 @@ import type {
   ClusterInfo,
   ClusterProbeResult,
   K8sCertInfo,
+  K8sCertPage,
+  K8sCertQuery,
   NameServerConfigDiffResult,
 } from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
@@ -105,9 +107,27 @@ export async function getNameServerConfigDiff(
   };
 }
 
-export async function listK8sCerts(): Promise<K8sCertInfo[]> {
-  if (isMockMode()) return mockCertStore.map((cert) => ({ ...cert, san: [...cert.san] }));
-  return clusterApi.listK8sCerts();
+export async function listK8sCerts(query: K8sCertQuery = {}): Promise<K8sCertPage> {
+  if (!isMockMode()) return clusterApi.listK8sCerts(query);
+
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 20;
+  const matches = mockCertStore.filter((cert) =>
+    (!query.search ||
+      [cert.name, cert.cluster, ...(cert.san ?? [])].some((value) =>
+        value.toLowerCase().includes(query.search!.trim().toLowerCase()),
+      )) &&
+    (!query.cluster || cert.cluster === query.cluster) &&
+    (!query.type || cert.type === query.type) &&
+    (!query.status || cert.status === query.status),
+  );
+  const start = (page - 1) * pageSize;
+  return {
+    items: matches.slice(start, start + pageSize).map((cert) => ({ ...cert, san: [...cert.san] })),
+    total: matches.length,
+    page,
+    size: pageSize,
+  };
 }
 
 export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCertInfo> {

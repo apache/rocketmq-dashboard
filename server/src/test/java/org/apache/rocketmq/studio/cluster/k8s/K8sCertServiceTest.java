@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +33,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -91,25 +91,27 @@ class K8sCertServiceTest {
                 .build();
         secondCert.setId(2L);
 
-        when(k8sCertRepository.findAll()).thenReturn(Arrays.asList(sampleCert, secondCert));
+        when(k8sCertRepository.findPage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.of(Arrays.asList(sampleCert, secondCert), 2, 1, 20));
 
-        List<K8sCertVO> result = k8sCertService.listCerts();
+        PageResult<K8sCertVO> result = k8sCertService.listCerts(null, null, null, null, null, 1, 20);
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getName()).isEqualTo("rocketmq-tls");
-        assertThat(result.get(0).getType()).isEqualTo(CertType.TLS);
-        assertThat(result.get(1).getName()).isEqualTo("broker-mtls");
-        assertThat(result.get(1).getType()).isEqualTo(CertType.mTLS);
-        verify(k8sCertRepository).findAll();
+        assertThat(result.getItems()).hasSize(2);
+        assertThat(result.getItems().get(0).getName()).isEqualTo("rocketmq-tls");
+        assertThat(result.getItems().get(0).getType()).isEqualTo(CertType.TLS);
+        assertThat(result.getItems().get(1).getName()).isEqualTo("broker-mtls");
+        assertThat(result.getItems().get(1).getType()).isEqualTo(CertType.mTLS);
+        verify(k8sCertRepository).findPage(null, null, null, null, null, 1, 20);
     }
 
     @Test
     void listCertsShouldReturnEmptyListWhenNoCerts() {
-        when(k8sCertRepository.findAll()).thenReturn(Collections.emptyList());
+        when(k8sCertRepository.findPage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
 
-        List<K8sCertVO> result = k8sCertService.listCerts();
+        PageResult<K8sCertVO> result = k8sCertService.listCerts(null, null, null, null, null, 1, 20);
 
-        assertThat(result).isEmpty();
+        assertThat(result.getItems()).isEmpty();
     }
 
     @Test
@@ -124,10 +126,10 @@ class K8sCertServiceTest {
                 CertStatus.expired, -1);
         K8sCertVO validCert = copyWithExpiry(5L, now.plusDays(31),
                 CertStatus.expired, -1);
-        when(k8sCertRepository.findAll())
-                .thenReturn(List.of(sampleCert, expiresNowCert, expiringCert, validCert));
+        when(k8sCertRepository.findPage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.of(List.of(sampleCert, expiresNowCert, expiringCert, validCert), 4, 1, 20));
 
-        List<K8sCertVO> result = k8sCertService.listCerts();
+        List<K8sCertVO> result = k8sCertService.listCerts(null, null, null, null, null, 1, 20).getItems();
 
         assertThat(result).extracting(K8sCertVO::getStatus)
                 .containsExactly(CertStatus.expired, CertStatus.expired,

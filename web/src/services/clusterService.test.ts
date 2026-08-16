@@ -154,7 +154,7 @@ describe('clusterService mock clusters', () => {
     try {
       san.push('mutated-create.example.com');
 
-      let stored = (await listK8sCerts()).find((cert) => cert.id === created.id);
+      let stored = (await listK8sCerts()).items.find((cert) => cert.id === created.id);
       expect(stored?.san).toEqual(['proxy.example.com']);
 
       const nextSan = ['proxy-next.example.com'];
@@ -164,7 +164,7 @@ describe('clusterService mock clusters', () => {
       });
       nextSan.push('mutated-update.example.com');
 
-      stored = (await listK8sCerts()).find((cert) => cert.id === created.id);
+      stored = (await listK8sCerts()).items.find((cert) => cert.id === created.id);
       expect(stored?.san).toEqual(['proxy-next.example.com']);
     } finally {
       await deleteK8sCert(created.id);
