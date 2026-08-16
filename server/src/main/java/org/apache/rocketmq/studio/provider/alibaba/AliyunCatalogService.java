@@ -115,7 +115,7 @@ public class AliyunCatalogService implements CloudCatalogProvider {
 
     private List<ListInstancesResponseBody.List> fetchAllInstances(String credentialId, String regionId) {
         List<ListInstancesResponseBody.List> all = new ArrayList<>();
-        for (int page = 1; page <= AliyunConverters.MAX_PAGES; page++) {
+        for (int page = 1; ; page++) {
             ListInstancesRequest request = ListInstancesRequest.builder()
                     .pageNumber(page)
                     .pageSize(AliyunConverters.PAGE_SIZE)
@@ -129,7 +129,13 @@ public class AliyunCatalogService implements CloudCatalogProvider {
                 break;
             }
             all.addAll(list);
-            if (list.size() < AliyunConverters.PAGE_SIZE) {
+            Long totalCount = data.getTotalCount();
+            if (totalCount != null && totalCount < 0) {
+                throw new BusinessException(502, "Aliyun instance catalog returned a negative totalCount");
+            }
+            if (list.size() < AliyunConverters.PAGE_SIZE
+                    || totalCount != null && all.size() >= totalCount
+                    || totalCount == null && page >= AliyunConverters.MAX_PAGES) {
                 break;
             }
         }

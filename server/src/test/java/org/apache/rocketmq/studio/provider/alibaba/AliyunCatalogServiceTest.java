@@ -122,7 +122,8 @@ class AliyunCatalogServiceTest {
 
     @Test
     void listCloudInstancesShouldAggregatePagesTest() {
-        ListInstancesResponse firstPage = instancesResponse(instanceRows(AliyunConverters.PAGE_SIZE, 0));
+        ListInstancesResponse firstPage = instancesResponse(
+                instanceRows(AliyunConverters.PAGE_SIZE, 0), AliyunConverters.PAGE_SIZE + 3L);
         ListInstancesResponse secondPage = instancesResponse(instanceRows(3, AliyunConverters.PAGE_SIZE));
         when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
                 .thenReturn(firstPage, secondPage);
@@ -134,14 +135,18 @@ class AliyunCatalogServiceTest {
     }
 
     @Test
-    void listCloudInstancesShouldStopAtMaxPagesTest() {
-        ListInstancesResponse fullPage = instancesResponse(instanceRows(AliyunConverters.PAGE_SIZE, 0));
-        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(fullPage);
+    void listCloudInstancesShouldContinuePastFallbackPageCapWhenTotalCountRequiresIt() {
+        ListInstancesResponse fullPage = instancesResponse(
+                instanceRows(AliyunConverters.PAGE_SIZE, 0), AliyunConverters.PAGE_SIZE * 6L + 1);
+        ListInstancesResponse finalPage = instancesResponse(instanceRows(1, AliyunConverters.PAGE_SIZE * 6),
+                AliyunConverters.PAGE_SIZE * 6L + 1);
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
+                .thenReturn(fullPage, fullPage, fullPage, fullPage, fullPage, fullPage, finalPage);
 
         List<CloudInstanceOptionVO> options = service.listCloudInstances(CREDENTIAL_ID, REGION, null);
 
-        assertThat(options).hasSize(AliyunConverters.PAGE_SIZE * AliyunConverters.MAX_PAGES);
-        verify(clientFactory, times(AliyunConverters.MAX_PAGES)).call(eq(CREDENTIAL_ID), eq(REGION), any());
+        assertThat(options).hasSize(AliyunConverters.PAGE_SIZE * 6 + 1);
+        verify(clientFactory, times(7)).call(eq(CREDENTIAL_ID), eq(REGION), any());
     }
 
     @Test
@@ -228,6 +233,10 @@ class AliyunCatalogServiceTest {
     }
 
     private static ListInstancesResponse instancesResponse(List<ListInstancesResponseBody.List> rows) {
+        return instancesResponse(rows, (long) rows.size());
+    }
+
+    private static ListInstancesResponse instancesResponse(List<ListInstancesResponseBody.List> rows, long totalCount) {
         return ListInstancesResponse.create().toBuilder()
                 .statusCode(200)
                 .body(ListInstancesResponseBody.builder()
@@ -235,7 +244,7 @@ class AliyunCatalogServiceTest {
                                 .list(rows)
                                 .pageNumber(1L)
                                 .pageSize((long) AliyunConverters.PAGE_SIZE)
-                                .totalCount((long) rows.size())
+                                .totalCount(totalCount)
                                 .build())
                         .build())
                 .build();
