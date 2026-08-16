@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
-    "studio.auth.login-required=false",
+    "studio.auth.login-required=true",
     "management.endpoint.health.show-details=always"
 })
 @AutoConfigureMockMvc
