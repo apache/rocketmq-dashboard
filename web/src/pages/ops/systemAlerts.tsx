@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Card, Tag, Flex, Typography, Badge, Button, message } from 'antd';
+import { Card, Tag, Flex, Typography, Button, message, Pagination } from 'antd';
 import { CheckCircle, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -41,6 +41,9 @@ const SystemAlertsPage = () => {
   };
 
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [acknowledgingIds, setAcknowledgingIds] = useState<Set<number>>(() => new Set());
@@ -49,9 +52,17 @@ const SystemAlertsPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    void listSystemAlerts()
+    setLoading(true);
+    void listSystemAlerts({
+      level: levelFilter === 'all' ? undefined : levelFilter,
+      page,
+      pageSize,
+    })
       .then((data) => {
-        if (!cancelled) setAlerts(data);
+        if (!cancelled) {
+          setAlerts(data.items);
+          setTotal(data.total);
+        }
       })
       .catch(() => {
         if (!cancelled) message.error('系统告警加载失败，请稍后重试');
@@ -63,14 +74,7 @@ const SystemAlertsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  const filtered =
-    levelFilter === 'all'
-      ? alerts
-      : alerts.filter((a) => normalizeAlertLevel(a.level) === levelFilter);
-
-  const unackCount = alerts.filter((a) => !a.acknowledged).length;
+  }, [levelFilter, page, pageSize]);
 
   const handleAck = async (id: number) => {
     setAcknowledgingIds((current) => new Set(current).add(id));
@@ -93,8 +97,17 @@ const SystemAlertsPage = () => {
     setClearing(true);
     try {
       await clearAcknowledgedAlerts();
-      const fresh = await listSystemAlerts();
-      setAlerts(fresh);
+      const fresh = await listSystemAlerts({
+        level: levelFilter === 'all' ? undefined : levelFilter,
+        page,
+        pageSize,
+      });
+      if (fresh.items.length === 0 && fresh.total > 0 && page > 1) {
+        setPage(page - 1);
+      } else {
+        setAlerts(fresh.items);
+        setTotal(fresh.total);
+      }
       message.success(t('sysAlerts.cleared'));
     } catch {
       message.error('清理已确认告警失败，请稍后重试');
@@ -107,7 +120,7 @@ const SystemAlertsPage = () => {
     <div style={{ padding: 24 }}>
       <PageHeader
         title={t('sysAlerts.title')}
-        subtitle={t('sysAlerts.subtitle', { n: unackCount })}
+        subtitle={t('sysAlerts.subtitle', { n: total })}
         extra={
           <Button
             icon={<Trash size={14} />}
@@ -126,20 +139,12 @@ const SystemAlertsPage = () => {
             key={level}
             type={levelFilter === level ? 'primary' : 'default'}
             size="small"
-            onClick={() => setLevelFilter(level)}
+            onClick={() => {
+              setLevelFilter(level);
+              setPage(1);
+            }}
           >
             {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
-            {level !== 'all' && (
-              <Badge
-                count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
-                style={{
-                  marginLeft: 4,
-                  backgroundColor:
-                    level === 'error' ? '#ff4d4f' : level === 'warning' ? '#fa8c16' : '#1677ff',
-                }}
-                size="small"
-              />
-            )}
           </Button>
         ))}
       </Flex>
@@ -147,7 +152,7 @@ const SystemAlertsPage = () => {
       <Flex vertical gap={12}>
         {loading && <Card loading />}
         {!loading &&
-          filtered.map((alert) => {
+          alerts.map((alert) => {
             const normalizedLevel = normalizeAlertLevel(alert.level);
             const cfg = alertLevelConfig[normalizedLevel] ?? {
               color: '#8c8c8c',
@@ -211,7 +216,7 @@ const SystemAlertsPage = () => {
               </div>
             );
           })}
-        {!loading && filtered.length === 0 && (
+        {!loading && alerts.length === 0 && (
           <Card>
             <Flex justify="center" style={{ padding: 40 }}>
               <Text type="secondary">{t('sysAlerts.noAlerts')}</Text>
@@ -219,6 +224,21 @@ const SystemAlertsPage = () => {
           </Card>
         )}
       </Flex>
+      {total > 0 && (
+        <Flex justify="end" style={{ marginTop: 16 }}>
+          <Pagination
+            current={page}
+            pageSize={pageSize}
+            total={total}
+            showSizeChanger
+            pageSizeOptions={[20, 50, 100]}
+            onChange={(nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            }}
+          />
+        </Flex>
+      )}
     </div>
   );
 };

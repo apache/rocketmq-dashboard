@@ -100,12 +100,12 @@ describe('ops service mock data', () => {
 
   it('returns copied system alert rows', async () => {
     const first = await listSystemAlerts();
-    const originalTitle = first[0].title;
-    first[0].title = 'mutated-alert';
+    const originalTitle = first.items[0].title;
+    first.items[0].title = 'mutated-alert';
 
     const second = await listSystemAlerts();
-    expect(second[0].title).toBe(originalTitle);
-    expect(second[0]).not.toBe(first[0]);
+    expect(second.items[0].title).toBe(originalTitle);
+    expect(second.items[0]).not.toBe(first.items[0]);
   });
 
   it('returns copied audit records', async () => {
