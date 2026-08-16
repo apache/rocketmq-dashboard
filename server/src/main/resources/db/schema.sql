@@ -178,7 +178,8 @@ CREATE TABLE IF NOT EXISTS rmq_acl_user (
   white_remote_address VARCHAR(255) COMMENT 'plain access 账号 IP 白名单，空表示不限制',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_username (username)
+  UNIQUE KEY uk_username (username),
+  UNIQUE KEY uk_access_key (access_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 13. 告警规则

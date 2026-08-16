@@ -34,6 +34,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,7 +77,7 @@ class MybatisPlusAclRepositoryTest {
 
     @Test
     void upsertShouldAssignUniqueRuleIdPerPermission() {
-        when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
         when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
         when(ruleMapper.insert(any(RmqAclRule.class))).thenReturn(1);
@@ -108,7 +109,7 @@ class MybatisPlusAclRepositoryTest {
 
     @Test
     void upsertShouldReplacePreviousRulesBeforeInsertingNewOnes() {
-        when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
         when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(2);
         when(ruleMapper.insert(any(RmqAclRule.class))).thenReturn(1);
@@ -128,7 +129,7 @@ class MybatisPlusAclRepositoryTest {
 
     @Test
     void createShouldRejectBlankSecretForNewAccount() {
-        when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
 
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("svc-new")
@@ -147,7 +148,7 @@ class MybatisPlusAclRepositoryTest {
     void updateWithBlankSecretShouldKeepStoredSecret() {
         RmqAclUser existing = userEntity("plain-svc-x", "svc-x",
                 CredentialUtils.encodeBase64("kept-secret-value"));
-        when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(existing);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
         when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
         when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
 
@@ -169,7 +170,7 @@ class MybatisPlusAclRepositoryTest {
 
     @Test
     void createShouldPersistWhiteRemoteAddressAndTrimBlanks() {
-        when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
         when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
 
@@ -189,7 +190,7 @@ class MybatisPlusAclRepositoryTest {
 
     @Test
     void createShouldStoreBlankWhiteRemoteAddressAsNull() {
-        when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
         when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
 
@@ -211,7 +212,7 @@ class MybatisPlusAclRepositoryTest {
         RmqAclUser existing = userEntity("plain-svc-x", "svc-x",
                 CredentialUtils.encodeBase64("kept-secret-value"));
         existing.setWhiteRemoteAddress("10.0.1.0/24");
-        when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(existing);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
         when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
         when(userMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
         when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
@@ -269,6 +270,53 @@ class MybatisPlusAclRepositoryTest {
                 .containsExactly("svc-a", "svc-g");
         assertThat(config.getAccountCount()).isEqualTo(2);
         assertThat(config.isAclEnabled()).isTrue();
+    }
+
+    @Test
+    void plainAccessUpsertShouldRejectDuplicateAccessKeys() {
+        RmqAclUser first = userEntity("plain-first", "svc-duplicate", CredentialUtils.encodeBase64("secret-a"));
+        RmqAclUser second = userEntity("plain-second", "svc-duplicate", CredentialUtils.encodeBase64("secret-b"));
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(first, second));
+
+        assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(PlainAccessConfigVO.builder()
+                        .accessKey("svc-duplicate")
+                        .secretKey("replacement")
+                        .build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        verify(userMapper, never()).insert(any(RmqAclUser.class));
+        verify(userMapper, never()).updateById(any(RmqAclUser.class));
+    }
+
+    @Test
+    void saveRuleShouldNormalizeActionCollectionsBeforePersistence() {
+        when(ruleMapper.selectById("rule-a")).thenReturn(null);
+        when(ruleMapper.insert(any(RmqAclRule.class))).thenReturn(1);
+        AclRuleVO rule = AclRuleVO.builder().id("rule-a").principal("svc-a").resource("orders")
+                .actions(Arrays.asList(" PUB ", null, "", "SUB", "PUB"))
+                .build();
+
+        repository.saveRule(rule);
+
+        ArgumentCaptor<RmqAclRule> captor = ArgumentCaptor.forClass(RmqAclRule.class);
+        verify(ruleMapper).insert(captor.capture());
+        assertThat(captor.getValue().getActions()).isEqualTo("PUB,SUB");
+    }
+
+    @Test
+    void saveUserShouldNormalizeClusterCollectionsBeforePersistence() {
+        when(userMapper.selectById("user-a")).thenReturn(null);
+        when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
+        AclUserVO user = AclUserVO.builder().id("user-a").username("svc-a").accessKey("svc-a")
+                .secretKey("secret").clusters(Arrays.asList(" cluster-a ", null, "", "cluster-b", "cluster-a"))
+                .build();
+
+        repository.saveUser(user);
+
+        ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
+        verify(userMapper).insert(captor.capture());
+        assertThat(captor.getValue().getClusters()).isEqualTo("cluster-a,cluster-b");
     }
 
     private static RmqAclUser userEntity(String id, String accessKey, String encodedSecret) {

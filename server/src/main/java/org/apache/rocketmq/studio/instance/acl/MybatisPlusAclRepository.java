@@ -32,8 +32,10 @@ import lombok.RequiredArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -164,8 +166,13 @@ public class MybatisPlusAclRepository implements AclRepository {
     @Override
     @Transactional
     public PlainAccessConfigVO createAndUpdatePlainAccessConfig(PlainAccessConfigVO config) {
-        RmqAclUser existing = userMapper.selectOne(
+        List<RmqAclUser> existingAccounts = userMapper.selectList(
                 new QueryWrapper<RmqAclUser>().eq("access_key", config.getAccessKey()));
+        if (existingAccounts.size() > 1) {
+            throw new BusinessException(409, "Multiple plain access accounts use accessKey: "
+                    + config.getAccessKey());
+        }
+        RmqAclUser existing = existingAccounts.isEmpty() ? null : existingAccounts.get(0);
         boolean secretProvided = StringUtils.hasText(config.getSecretKey());
         if (!secretProvided && existing == null) {
             throw new BusinessException(400, "secretKey is required for a new plain access account");
@@ -289,7 +296,7 @@ public class MybatisPlusAclRepository implements AclRepository {
         String defaultTopicPerm = null;
         String defaultGroupPerm = null;
         for (AclRuleVO rule : userRules) {
-            String actions = rule.getActions() == null ? "" : String.join(",", rule.getActions());
+            String actions = joinNormalizedCsv(rule.getActions());
             if ("Topic".equals(rule.getResourceType())) {
                 topicPerms.add(rule.getResource() + "=" + actions);
             } else if ("Group".equals(rule.getResourceType())) {
@@ -352,7 +359,7 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setResource(rule.getResource());
         entity.setResourceType(rule.getResourceType());
         entity.setResourcePattern(rule.getResourcePattern());
-        entity.setActions(rule.getActions() == null ? null : String.join(",", rule.getActions()));
+        entity.setActions(joinNormalizedCsv(rule.getActions()));
         entity.setDecision(rule.getDecision());
         entity.setScope(rule.getScope());
         entity.setAclVersion(rule.getAclVersion());
@@ -381,7 +388,7 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setAccessKey(user.getAccessKey());
         entity.setSecretKey(CredentialUtils.encodeBase64(user.getSecretKey()));
         entity.setAdmin(user.isAdmin());
-        entity.setClusters(user.getClusters() == null ? null : String.join(",", user.getClusters()));
+        entity.setClusters(joinNormalizedCsv(user.getClusters()));
         entity.setCreatedAt(user.getCreatedAt());
         entity.setUpdatedAt(LocalDateTime.now());
         return entity;
@@ -394,6 +401,20 @@ public class MybatisPlusAclRepository implements AclRepository {
         return Arrays.stream(value.split(","))
                 .map(String::trim)
                 .filter(part -> !part.isEmpty())
+                .distinct()
                 .collect(Collectors.toList());
+    }
+
+    private static String joinNormalizedCsv(List<String> values) {
+        if (values == null) {
+            return null;
+        }
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                normalized.add(value.trim());
+            }
+        }
+        return normalized.isEmpty() ? null : String.join(",", normalized);
     }
 }
