@@ -122,29 +122,29 @@ describe('ACL page', () => {
     const user = userEvent.setup();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        id: 'instance-a',
+        id: 1,
         name: 'Instance A',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         remark: '',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '',
-        updatedAt: '',
+        gmtCreate: '',
+        gmtModified: '',
       },
       {
-        id: 'instance-b',
+        id: 2,
         name: 'Instance B',
         type: 'DIRECT',
         endpoint: '127.0.0.2:9876',
         remark: '',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '',
-        updatedAt: '',
+        gmtCreate: '',
+        gmtModified: '',
       },
     ]);
-    renderWithProviders(<AclPage />, '/instance/instance-a/acl');
+    renderWithProviders(<AclPage />, '/instance/1/acl');
 
     expect(await screen.findByText('remote-user')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /添加规则/ }));
@@ -558,13 +558,13 @@ describe('ACL page', () => {
 
     await act(async () => {
       firstReveal.resolve({
-        id: 'user-remote',
+        id: 1,
         username: 'remote-admin',
         accessKey: 'stale-access-key',
         secretKey: 'stale-secret-key',
         admin: true,
         clusters: ['cluster-a'],
-        createdAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
       });
     });
 
@@ -582,13 +582,13 @@ describe('ACL page', () => {
 
     await act(async () => {
       thirdReveal.resolve({
-        id: 'user-remote',
+        id: 1,
         username: 'remote-admin',
         accessKey: 'latest-access-key',
         secretKey: 'latest-secret-key',
         admin: true,
         clusters: ['cluster-a'],
-        createdAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
       });
     });
 

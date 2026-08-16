@@ -235,7 +235,8 @@ CREATE TABLE IF NOT EXISTS rmq_acl_user (
   clusters VARCHAR(1024) COMMENT '逗号分隔的集群/实例 id',
   white_remote_address VARCHAR(255) COMMENT 'plain access 账号 IP 白名单，空表示不限制',
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_username (username)
+  UNIQUE KEY uk_username (username),
+  UNIQUE KEY uk_access_key (access_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 13. 告警规则
