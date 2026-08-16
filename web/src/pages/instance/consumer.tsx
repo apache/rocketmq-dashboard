@@ -971,7 +971,7 @@ const ConsumerPageContent = ({
                   dataSource={
                     subscriptionsByGroup[diagnosticCacheKey(selectedInstanceId, record.name)] ?? []
                   }
-                  rowKey="topic"
+                  rowKey={(record) => `${record.topic}-${record.filterMode}-${record.expression}`}
                   loading={
                     subscriptionLoadingByGroup[diagnosticCacheKey(selectedInstanceId, record.name)]
                   }
@@ -1071,7 +1071,7 @@ const ConsumerPageContent = ({
                         >
                           <Statistic
                             title="订阅 Topic 数"
-                            value={selectedGroup.subscribedTopics.length}
+                            value={(selectedGroup.subscribedTopics ?? []).length}
                             prefix={<ListBullets size={18} color="#1677ff" />}
                             valueStyle={{ color: '#1677ff' }}
                           />
@@ -1129,7 +1129,7 @@ const ConsumerPageContent = ({
                       </Descriptions.Item>
                       <Descriptions.Item label="订阅 Topic" span={2}>
                         <Space size={4} wrap>
-                          {selectedGroup.subscribedTopics.map((t) => (
+                          {(selectedGroup.subscribedTopics ?? []).map((t) => (
                             <Tag key={t} color="blue">
                               {t}
                             </Tag>
@@ -1199,7 +1199,9 @@ const ConsumerPageContent = ({
                       <Table
                         columns={subscriptionSubColumns}
                         dataSource={visibleSubscriptions}
-                        rowKey="topic"
+                        rowKey={(record) =>
+                          `${record.topic}-${record.filterMode}-${record.expression}`
+                        }
                         loading={subscriptionLoadingByGroup[selectedDiagnosticKey]}
                         pagination={false}
                         size="small"

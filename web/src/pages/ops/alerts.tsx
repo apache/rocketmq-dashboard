@@ -256,7 +256,7 @@ const AlertsPage = () => {
       title: t('alerts.channels'),
       render: (_, record) => (
         <Flex gap={4} wrap="wrap">
-          {record.channels.map((ch) => (
+          {(record.channels ?? []).map((ch) => (
             <Tag key={ch} color={channelColors[ch]}>
               {channelLabels[ch]}
             </Tag>
