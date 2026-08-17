@@ -51,10 +51,10 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
-                .ge(startDate != null, "operated_at", startDate)
-                .le(endDate != null, "operated_at", endDate)
+                .ge(startDate != null, "gmt_create", startDate)
+                .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result)
-                .orderByDesc("operated_at");
+                .orderByDesc("gmt_create");
         Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
                 new Page<>(page, pageSize), query);
         List<AuditRecordVO> records = resultPage.getRecords().stream()
@@ -88,14 +88,16 @@ public class MybatisPlusAuditRepository implements AuditRepository {
         entity.setResult(record.getResult());
         entity.setErrorMessage(record.getErrorMessage());
         entity.setOperator(record.getOperator());
-        entity.setOperatedAt(record.getTimestamp() == null ? LocalDateTime.now() : record.getTimestamp());
+        LocalDateTime timestamp = record.getTimestamp() == null ? LocalDateTime.now() : record.getTimestamp();
+        entity.setGmtCreate(timestamp);
+        entity.setGmtModified(timestamp);
         auditMapper.insert(entity);
     }
 
     @Override
     public int deleteBefore(LocalDateTime cutoff) {
         return Math.toIntExact(auditMapper.delete(
-                new QueryWrapper<RmqOperationAudit>().lt("operated_at", cutoff)));
+                new QueryWrapper<RmqOperationAudit>().lt("gmt_create", cutoff)));
     }
 
     private List<String> findDistinctValues(List<Map<String, Object>> rows, String column) {
@@ -111,8 +113,8 @@ public class MybatisPlusAuditRepository implements AuditRepository {
 
     private static AuditRecordVO toVO(RmqOperationAudit entity) {
         AuditRecordVO vo = new AuditRecordVO();
-        vo.setId(entity.getId() == null ? null : String.valueOf(entity.getId()));
-        vo.setTimestamp(entity.getOperatedAt());
+        vo.setId(entity.getId());
+        vo.setTimestamp(entity.getGmtCreate());
         vo.setOperator(entity.getOperator());
         vo.setOperationType(entity.getOperation());
         vo.setResourceType(entity.getResourceType());

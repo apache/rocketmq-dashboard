@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -38,7 +39,7 @@ class MybatisPlusSettingsRepositoryTest {
 
     @Test
     void shouldReturnDefaultsWhenGeneralSettingsDoNotExist() {
-        when(settingsMapper.selectById("singleton")).thenReturn(null);
+        when(settingsMapper.selectOne(any())).thenReturn(null);
 
         GeneralSettingsVO settings = repository.loadGeneralSettings();
 
@@ -50,7 +51,7 @@ class MybatisPlusSettingsRepositoryTest {
     void shouldRejectCorruptPersistedGeneralSettings() {
         RmqSettings settings = new RmqSettings();
         settings.setJson("{not-json");
-        when(settingsMapper.selectById("singleton")).thenReturn(settings);
+        when(settingsMapper.selectOne(any())).thenReturn(settings);
 
         assertThatThrownBy(repository::loadGeneralSettings)
                 .isInstanceOf(BusinessException.class)
@@ -63,7 +64,7 @@ class MybatisPlusSettingsRepositoryTest {
     void shouldRejectNullPersistedGeneralSettings() {
         RmqSettings settings = new RmqSettings();
         settings.setJson("null");
-        when(settingsMapper.selectById("singleton")).thenReturn(settings);
+        when(settingsMapper.selectOne(any())).thenReturn(settings);
 
         assertThatThrownBy(repository::loadGeneralSettings)
                 .isInstanceOf(BusinessException.class)
@@ -76,7 +77,7 @@ class MybatisPlusSettingsRepositoryTest {
     void shouldReadValidPersistedGeneralSettings() {
         RmqSettings settings = new RmqSettings();
         settings.setJson("{\"theme\":\"dark\",\"requireLogin\":true}");
-        when(settingsMapper.selectById("singleton")).thenReturn(settings);
+        when(settingsMapper.selectOne(any())).thenReturn(settings);
 
         GeneralSettingsVO loaded = repository.loadGeneralSettings();
 
@@ -89,7 +90,7 @@ class MybatisPlusSettingsRepositoryTest {
         RmqDataSource dataSource = new RmqDataSource();
         dataSource.setDsKey("metrics-prod");
         dataSource.setJson("null");
-        when(dataSourceMapper.selectById("metrics-prod")).thenReturn(dataSource);
+        when(dataSourceMapper.selectOne(any())).thenReturn(dataSource);
 
         assertThatThrownBy(() -> repository.findDataSourceByKey("metrics-prod"))
                 .isInstanceOf(BusinessException.class)
@@ -103,7 +104,7 @@ class MybatisPlusSettingsRepositoryTest {
         RmqDataSource dataSource = new RmqDataSource();
         dataSource.setDsKey("metrics-prod");
         dataSource.setJson("{not-json");
-        when(dataSourceMapper.selectById("metrics-prod")).thenReturn(dataSource);
+        when(dataSourceMapper.selectOne(any())).thenReturn(dataSource);
 
         assertThatThrownBy(() -> repository.findDataSourceByKey("metrics-prod"))
                 .isInstanceOf(BusinessException.class)
@@ -116,7 +117,7 @@ class MybatisPlusSettingsRepositoryTest {
     void shouldReportWhenDataSourceDisappearsDuringReplacement() {
         RmqDataSource existing = new RmqDataSource();
         existing.setDsKey("metrics-prod");
-        when(dataSourceMapper.selectById("metrics-prod")).thenReturn(existing);
+        when(dataSourceMapper.selectOne(any())).thenReturn(existing);
         when(dataSourceMapper.updateById(existing)).thenReturn(0);
         DataSourceVO replacement = DataSourceVO.builder()
                 .key("metrics-prod")

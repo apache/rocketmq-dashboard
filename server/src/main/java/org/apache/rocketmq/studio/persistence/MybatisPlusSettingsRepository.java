@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.persistence;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -39,8 +40,6 @@ import java.util.stream.Collectors;
 @Repository
 public class MybatisPlusSettingsRepository implements SettingsRepository {
 
-    private static final String SETTINGS_ID = "singleton";
-
     private final RmqSettingsMapper settingsMapper;
     private final RmqDataSourceMapper dataSourceMapper;
     private final ObjectMapper objectMapper;
@@ -53,9 +52,18 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * The settings table holds a single row; load it regardless of its auto-increment id.
+     */
+    private RmqSettings findSingletonSettings() {
+        return settingsMapper.selectOne(new QueryWrapper<RmqSettings>()
+                .orderByAsc("id")
+                .last("LIMIT 1"));
+    }
+
     @Override
     public GeneralSettingsVO loadGeneralSettings() {
-        RmqSettings entity = settingsMapper.selectById(SETTINGS_ID);
+        RmqSettings entity = findSingletonSettings();
         if (entity == null || entity.getJson() == null) {
             return GeneralSettingsVO.builder()
                     .theme("system")
@@ -87,16 +95,16 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     public void saveGeneralSettings(GeneralSettingsVO settings) {
         try {
             String json = objectMapper.writeValueAsString(settings);
-            RmqSettings entity = settingsMapper.selectById(SETTINGS_ID);
+            RmqSettings entity = findSingletonSettings();
             if (entity == null) {
                 entity = new RmqSettings();
-                entity.setId(SETTINGS_ID);
                 entity.setJson(json);
-                entity.setUpdatedAt(LocalDateTime.now());
+                entity.setGmtCreate(LocalDateTime.now());
+                entity.setGmtModified(LocalDateTime.now());
                 settingsMapper.insert(entity);
             } else {
                 entity.setJson(json);
-                entity.setUpdatedAt(LocalDateTime.now());
+                entity.setGmtModified(LocalDateTime.now());
                 settingsMapper.updateById(entity);
             }
         } catch (JsonProcessingException e) {
@@ -107,45 +115,63 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
 
     @Override
     public List<DataSourceVO> findAllDataSources() {
-        return dataSourceMapper.selectList(null).stream()
+        return dataSourceMapper.selectList(new QueryWrapper<RmqDataSource>().orderByAsc("id")).stream()
                 .map(this::toDataSourceVO)
                 .collect(Collectors.toList());
     }
 
     @Override
+    @Transactional
     public DataSourceVO saveDataSource(DataSourceVO dataSource) {
         RmqDataSource entity = new RmqDataSource();
-        entity.setDsKey(dataSource.getKey());
+        // The ds_key business key is derived from the auto-increment id: insert first with a
+        // temporary unique key, then publish "ds-<id>" once the id is known.
+        entity.setDsKey("ds-tmp-" + System.currentTimeMillis() + "-" + Math.floorMod(System.nanoTime(), 1_000_000));
         entity.setJson(toJson(dataSource));
-        entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setGmtCreate(LocalDateTime.now());
+        entity.setGmtModified(LocalDateTime.now());
         dataSourceMapper.insert(entity);
+        String dsKey = "ds-" + entity.getId();
+        entity.setDsKey(dsKey);
+        dataSource.setKey(dsKey);
+        entity.setJson(toJson(dataSource));
+        dataSourceMapper.updateById(entity);
         return dataSource;
     }
 
     @Override
     public boolean replaceDataSource(DataSourceVO dataSource) {
-        RmqDataSource existing = dataSourceMapper.selectById(dataSource.getKey());
+        RmqDataSource existing = selectByDsKey(dataSource.getKey());
         if (existing == null) {
             return false;
         }
         existing.setJson(toJson(dataSource));
-        existing.setUpdatedAt(LocalDateTime.now());
+        existing.setGmtModified(LocalDateTime.now());
         return dataSourceMapper.updateById(existing) > 0;
     }
 
     @Override
     public boolean deleteDataSource(String key) {
-        return dataSourceMapper.deleteById(key) > 0;
+        return dataSourceMapper.delete(
+                new QueryWrapper<RmqDataSource>().eq("ds_key", key)) > 0;
     }
 
     @Override
     public Optional<DataSourceVO> findDataSourceByKey(String key) {
-        RmqDataSource entity = dataSourceMapper.selectById(key);
+        RmqDataSource entity = selectByDsKey(key);
         if (entity == null) {
             return Optional.empty();
         }
         return Optional.of(toDataSourceVO(entity));
+    }
+
+    private RmqDataSource selectByDsKey(String key) {
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        return dataSourceMapper.selectOne(new QueryWrapper<RmqDataSource>()
+                .eq("ds_key", key)
+                .last("LIMIT 1"));
     }
 
     private DataSourceVO toDataSourceVO(RmqDataSource entity) {

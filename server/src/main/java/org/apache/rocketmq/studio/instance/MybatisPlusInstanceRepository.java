@@ -86,7 +86,10 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     @Override
-    public Optional<InstanceVO> findById(String id) {
+    public Optional<InstanceVO> findById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
         RmqInstance entity = instanceMapper.selectById(id);
         if (entity == null) {
             return Optional.empty();
@@ -111,25 +114,26 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     @Transactional
     public InstanceVO save(InstanceVO instance) {
         RmqInstance entity = toEntity(instance);
-        if (instanceMapper.selectById(entity.getId()) != null) {
+        if (entity.getId() != null && instanceMapper.selectById(entity.getId()) != null) {
             if (instanceMapper.updateById(entity) == 0) {
                 throw new BusinessException(409,
                         "Instance update was not applied: " + entity.getId());
             }
         } else {
             instanceMapper.insert(entity);
+            instance.setId(entity.getId());
         }
         return instance;
     }
 
     @Override
-    public boolean deleteById(String id) {
-        return instanceMapper.deleteById(id) > 0;
+    public boolean deleteById(Long id) {
+        return id != null && instanceMapper.deleteById(id) > 0;
     }
 
     @Override
-    public boolean existsByCredentialId(String credentialId) {
-        if (credentialId == null || credentialId.isBlank()) {
+    public boolean existsByCredentialId(Long credentialId) {
+        if (credentialId == null) {
             return false;
         }
         return instanceMapper.selectCount(
@@ -137,13 +141,13 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     @Override
-    public long countTopicsByInstance(String instanceId) {
+    public long countTopicsByInstance(Long instanceId) {
         return topicMapper.selectCount(
                 new QueryWrapper<RmqTopic>().eq("instance_id", instanceId));
     }
 
     @Override
-    public long countGroupsByInstance(String instanceId) {
+    public long countGroupsByInstance(Long instanceId) {
         return groupMapper.selectCount(
                 new QueryWrapper<RmqGroup>().eq("instance_id", instanceId));
     }
@@ -161,12 +165,12 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
                 .regionId(entity.getRegionId())
                 .build();
         vo.setId(entity.getId());
-        vo.setCreatedAt(entity.getCreatedAt());
-        vo.setUpdatedAt(entity.getUpdatedAt());
+        vo.setGmtCreate(entity.getGmtCreate());
+        vo.setGmtModified(entity.getGmtModified());
         return vo;
     }
 
-    private InstanceType parseType(String instanceId, String type) {
+    private InstanceType parseType(Long instanceId, String type) {
         try {
             return InstanceType.valueOf(type);
         } catch (IllegalArgumentException | NullPointerException ex) {
@@ -174,7 +178,7 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         }
     }
 
-    private InstanceVendor parseVendor(String instanceId, String vendor) {
+    private InstanceVendor parseVendor(Long instanceId, String vendor) {
         try {
             return InstanceVendor.valueOf(vendor);
         } catch (IllegalArgumentException | NullPointerException ex) {
@@ -182,7 +186,7 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         }
     }
 
-    private BusinessException invalidPersistedValue(String instanceId, String field, String value) {
+    private BusinessException invalidPersistedValue(Long instanceId, String field, String value) {
         return new BusinessException(500, "Invalid persisted instance " + field
                 + " for instance " + instanceId + ": " + value);
     }
@@ -199,8 +203,8 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         entity.setCredentialId(vo.getCredentialId());
         entity.setAdminCredentialRef(vo.getAdminCredentialRef());
         entity.setRegionId(vo.getRegionId());
-        entity.setCreatedAt(vo.getCreatedAt());
-        entity.setUpdatedAt(vo.getUpdatedAt());
+        entity.setGmtCreate(vo.getGmtCreate());
+        entity.setGmtModified(vo.getGmtModified());
         return entity;
     }
 }

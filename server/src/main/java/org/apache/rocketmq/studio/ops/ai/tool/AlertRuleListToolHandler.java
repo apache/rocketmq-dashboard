@@ -70,7 +70,7 @@ public class AlertRuleListToolHandler implements ToolHandler {
 
     private static Map<String, Object> safeProjection(AlertRuleVO rule) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", blankIfNull(rule.getId()));
+        result.put("id", rule.getId());
         result.put("name", require(rule.getName(), "name"));
         result.put("metric", require(rule.getMetric(), "metric"));
         result.put("operator", blankIfNull(rule.getOperator()));

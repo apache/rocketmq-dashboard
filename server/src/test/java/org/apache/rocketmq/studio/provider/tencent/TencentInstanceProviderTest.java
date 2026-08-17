@@ -80,10 +80,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TencentInstanceProviderTest {
 
-    private static final String STUDIO_INSTANCE_ID = "inst-1";
+    private static final String STUDIO_INSTANCE_ID = "7";
+    private static final Long STUDIO_INSTANCE_PK = 7L;
     private static final String CLOUD_INSTANCE_ID = "rmq-abc";
     private static final String REGION = "ap-chengdu";
-    private static final String CREDENTIAL_ID = "cred-1";
+    private static final Long CREDENTIAL_ID = 1L;
 
     @Mock
     private TencentClientFactory clientFactory;
@@ -106,7 +107,7 @@ class TencentInstanceProviderTest {
                 .regionId(REGION)
                 .credentialId(CREDENTIAL_ID)
                 .build()));
-        lenient().when(clientFactory.call(anyString(), anyString(), any())).thenAnswer(invocation -> {
+        lenient().when(clientFactory.call(any(Long.class), anyString(), any())).thenAnswer(invocation -> {
             TencentClientFactory.TencentCall<Object> action = invocation.getArgument(2);
             return action.execute(client);
         });
@@ -170,11 +171,11 @@ class TencentInstanceProviderTest {
         assertThat(topics.get(0).getType()).isEqualTo(TopicType.FIFO);
         assertThat(topics.get(0).getWriteQueues()).isEqualTo(4);
         assertThat(topics.get(0).getReadQueues()).isEqualTo(4);
-        assertThat(topics.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
-        assertThat(topics.get(0).getCreatedAt())
+        assertThat(topics.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
+        assertThat(topics.get(0).getGmtCreate())
                 .isEqualTo(java.time.Instant.ofEpochMilli(1600000000000L)
                         .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
-        assertThat(topics.get(0).getUpdatedAt())
+        assertThat(topics.get(0).getGmtModified())
                 .isEqualTo(java.time.Instant.ofEpochMilli(1600000100000L)
                         .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
     }
@@ -247,7 +248,7 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getTopic()).isEqualTo("orders");
         assertThat(captor.getValue().getTopicType()).isEqualTo("NORMAL");
         assertThat(captor.getValue().getQueueNum()).isEqualTo(12L);
-        assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
     }
 
     @Test
@@ -448,9 +449,9 @@ class TencentInstanceProviderTest {
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getName()).isEqualTo("GID_orders");
-        assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(groups.get(0).getRetryMaxTimes()).isEqualTo(16);
-        assertThat(groups.get(0).getCreatedAt()).isNotNull();
+        assertThat(groups.get(0).getGmtCreate()).isNotNull();
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
         assertThat(groups.get(0).getInstances()).isNotNull().isEmpty();
     }
@@ -469,7 +470,7 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
         assertThat(captor.getValue().getConsumerGroup()).isEqualTo("GID_new");
         assertThat(captor.getValue().getMaxRetryTimes()).isEqualTo(20L);
-        assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(created.getRetryMaxTimes()).isEqualTo(20);
     }
 

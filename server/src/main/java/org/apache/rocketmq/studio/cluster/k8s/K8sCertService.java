@@ -24,12 +24,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
+import java.security.cert.CertificateFactory;
+import java.security.cert.CertificateParsingException;
+import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -66,25 +72,34 @@ public class K8sCertService {
         log.info("Creating K8s certificate: {}", command.getName());
 
         LocalDateTime now = LocalDateTime.now(clock);
+        LocalDateTime notBefore = now;
         LocalDateTime notAfter = now.plusYears(1);
+        String issuer = command.getIssuer();
+        List<String> san = command.getSan();
+        if (command.getCertPem() != null && !command.getCertPem().isBlank()) {
+            X509Certificate parsed = parseCertificate(command.getCertPem());
+            notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneId.systemDefault());
+            notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneId.systemDefault());
+            issuer = parsed.getIssuerX500Principal().getName();
+            san = extractSubjectAlternativeNames(parsed);
+        }
 
         K8sCertVO cert = K8sCertVO.builder()
                 .name(command.getName())
-                .namespace(command.getNamespace())
                 .cluster(command.getCluster())
                 .type(CertType.valueOf(command.getType()))
-                .issuer(command.getIssuer())
-                .notBefore(now)
+                .issuer(issuer)
+                .notBefore(notBefore)
                 .notAfter(notAfter)
                 .status(CertStatus.valid)
-                .daysRemaining((int) ChronoUnit.DAYS.between(now, notAfter))
-                .san(command.getSan())
+                .san(san)
+                .certPem(command.getCertPem())
+                .keyPem(command.getKeyPem())
                 .build();
-        cert.setId(UUID.randomUUID().toString());
-        cert.setCreatedAt(now);
-        cert.setUpdatedAt(now);
+        cert.setGmtCreate(now);
+        cert.setGmtModified(now);
 
-        K8sCertVO saved = k8sCertRepository.save(cert);
+        K8sCertVO saved = k8sCertRepository.save(refreshExpirationState(cert, now));
         auditCertificate("CREATE_K8S_CERTIFICATE", saved);
         log.info("K8s certificate created: {} (id={})", saved.getName(), saved.getId());
         return saved;
@@ -98,14 +113,10 @@ public class K8sCertService {
 
         K8sCertVO updated = copyOf(existing);
         String name = normalizeOptionalIdentity(command.getName(), "name");
-        String namespace = normalizeOptionalIdentity(command.getNamespace(), "namespace");
         String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster");
         String issuer = normalizeOptionalIdentity(command.getIssuer(), "issuer");
         if (name != null) {
             updated.setName(name);
-        }
-        if (namespace != null) {
-            updated.setNamespace(namespace);
         }
         if (cluster != null) {
             updated.setCluster(cluster);
@@ -120,7 +131,7 @@ public class K8sCertService {
             updated.setSan(command.getSan());
         }
         LocalDateTime now = LocalDateTime.now(clock);
-        updated.setUpdatedAt(now);
+        updated.setGmtModified(now);
 
         K8sCertVO saved = k8sCertRepository.save(refreshExpirationState(updated, now));
         auditCertificate("UPDATE_K8S_CERTIFICATE", saved);
@@ -142,7 +153,7 @@ public class K8sCertService {
         renewed.setNotAfter(notAfter);
         renewed.setStatus(CertStatus.valid);
         renewed.setDaysRemaining((int) ChronoUnit.DAYS.between(now, notAfter));
-        renewed.setUpdatedAt(now);
+        renewed.setGmtModified(now);
 
         K8sCertVO saved = k8sCertRepository.save(renewed);
         auditCertificate("RENEW_K8S_CERTIFICATE", saved);
@@ -158,7 +169,7 @@ public class K8sCertService {
         if (!k8sCertRepository.deleteById(command.getId())) {
             throw new BusinessException(404, "Certificate not found: " + command.getId());
         }
-        recordAudit("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", command.getId(), null,
+        recordAudit("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", String.valueOf(command.getId()), null,
                 null);
         log.info("K8s certificate deleted: {}", command.getId());
     }
@@ -202,7 +213,6 @@ public class K8sCertService {
     private K8sCertVO copyOf(K8sCertVO cert) {
         K8sCertVO copy = K8sCertVO.builder()
                 .name(cert.getName())
-                .namespace(cert.getNamespace())
                 .cluster(cert.getCluster())
                 .type(cert.getType())
                 .issuer(cert.getIssuer())
@@ -211,17 +221,49 @@ public class K8sCertService {
                 .status(cert.getStatus())
                 .daysRemaining(cert.getDaysRemaining())
                 .san(cert.getSan())
+                .certPem(cert.getCertPem())
+                .keyPem(cert.getKeyPem())
                 .build();
         copy.setId(cert.getId());
-        copy.setCreatedAt(cert.getCreatedAt());
-        copy.setUpdatedAt(cert.getUpdatedAt());
+        copy.setGmtCreate(cert.getGmtCreate());
+        copy.setGmtModified(cert.getGmtModified());
         return copy;
     }
 
     private void auditCertificate(String operation, K8sCertVO certificate) {
-        recordAudit(operation, "K8S_CERTIFICATE", certificate.getId(), null,
-                "name=" + certificate.getName() + ", namespace=" + certificate.getNamespace()
-                        + ", cluster=" + certificate.getCluster());
+        recordAudit(operation, "K8S_CERTIFICATE", String.valueOf(certificate.getId()), null,
+                "name=" + certificate.getName() + ", cluster=" + certificate.getCluster());
+    }
+
+    private X509Certificate parseCertificate(String certPem) {
+        String base64 = certPem
+                .replace("-----BEGIN CERTIFICATE-----", "")
+                .replace("-----END CERTIFICATE-----", "")
+                .replaceAll("\\s", "");
+        try {
+            CertificateFactory factory = CertificateFactory.getInstance("X.509");
+            return (X509Certificate) factory.generateCertificate(
+                    new ByteArrayInputStream(Base64.getDecoder().decode(base64)));
+        } catch (Exception exception) {
+            throw new BusinessException(400, "Invalid certificate content, expected a PEM encoded X.509 certificate");
+        }
+    }
+
+    private List<String> extractSubjectAlternativeNames(X509Certificate certificate) {
+        try {
+            Collection<List<?>> names = certificate.getSubjectAlternativeNames();
+            if (names == null) {
+                return List.of();
+            }
+            return names.stream()
+                    .filter(entry -> entry.size() >= 2 && entry.get(1) instanceof String)
+                    .map(entry -> (String) entry.get(1))
+                    .collect(Collectors.toList());
+        } catch (CertificateParsingException exception) {
+            log.warn("Failed to parse SANs of certificate {}: {}", certificate.getSubjectX500Principal(),
+                    exception.getMessage());
+            return List.of();
+        }
     }
 
     private void recordAudit(String operation, String resourceType, String resourceName,

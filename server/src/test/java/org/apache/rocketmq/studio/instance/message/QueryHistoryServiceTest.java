@@ -66,7 +66,7 @@ class QueryHistoryServiceTest {
         RmqMessageQuery query = captor.getValue();
         assertThat(query.getClusterId()).isEqualTo("cluster-a");
         assertThat(query.getQueriedBy()).isEqualTo("alice");
-        assertThat(query.getQueriedAt()).isEqualTo(LocalDateTime.of(2026, 8, 5, 12, 0));
+        assertThat(query.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 8, 5, 12, 0));
     }
 
     @Test
@@ -91,8 +91,8 @@ class QueryHistoryServiceTest {
         ArgumentCaptor<Wrapper<RmqTraceQuery>> traceCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(messageQueryMapper).delete(messageCaptor.capture());
         verify(traceQueryMapper).delete(traceCaptor.capture());
-        assertThat(messageCaptor.getValue().getCustomSqlSegment()).contains("queried_at");
-        assertThat(traceCaptor.getValue().getCustomSqlSegment()).contains("queried_at");
+        assertThat(messageCaptor.getValue().getCustomSqlSegment()).contains("gmt_create");
+        assertThat(traceCaptor.getValue().getCustomSqlSegment()).contains("gmt_create");
     }
 
     @Test
@@ -115,7 +115,7 @@ class QueryHistoryServiceTest {
         entity.setResultCount(3);
         entity.setClusterId("cluster-a");
         entity.setQueriedBy("alice");
-        entity.setQueriedAt(LocalDateTime.of(2026, 8, 5, 12, 0));
+        entity.setGmtCreate(LocalDateTime.of(2026, 8, 5, 12, 0));
         when(messageQueryMapper.selectPage(any(Page.class), any(Wrapper.class)))
                 .thenAnswer(invocation -> {
                     Page<RmqMessageQuery> result = invocation.getArgument(0);
@@ -137,9 +137,9 @@ class QueryHistoryServiceTest {
     @Test
     void summarizesBothHistoryStreams() {
         RmqMessageQuery message = new RmqMessageQuery();
-        message.setQueriedAt(LocalDateTime.of(2026, 8, 5, 10, 0));
+        message.setGmtCreate(LocalDateTime.of(2026, 8, 5, 10, 0));
         RmqTraceQuery trace = new RmqTraceQuery();
-        trace.setQueriedAt(LocalDateTime.of(2026, 8, 5, 12, 0));
+        trace.setGmtCreate(LocalDateTime.of(2026, 8, 5, 12, 0));
         when(messageQueryMapper.selectCount(any())).thenReturn(7L);
         when(traceQueryMapper.selectCount(any())).thenReturn(4L);
         when(messageQueryMapper.selectOne(any())).thenReturn(message);

@@ -18,12 +18,15 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -54,14 +57,20 @@ class ApacheInstanceProviderTest {
 
     @Test
     void countTopicsShouldDelegateToRepositoryTest() {
-        when(instanceRepository.countTopicsByInstance("inst-1")).thenReturn(3L);
+        InstanceVO instance = InstanceVO.builder().name("inst-1").build();
+        instance.setId(1L);
+        when(instanceRepository.findByIdentifier("inst-1")).thenReturn(Optional.of(instance));
+        when(instanceRepository.countTopicsByInstance(1L)).thenReturn(3L);
 
         assertThat(provider.countTopics("inst-1")).isEqualTo(3);
     }
 
     @Test
     void countGroupsShouldDelegateToRepositoryTest() {
-        when(instanceRepository.countGroupsByInstance("inst-1")).thenReturn(2L);
+        InstanceVO instance = InstanceVO.builder().name("inst-1").build();
+        instance.setId(1L);
+        when(instanceRepository.findByIdentifier("inst-1")).thenReturn(Optional.of(instance));
+        when(instanceRepository.countGroupsByInstance(1L)).thenReturn(2L);
 
         assertThat(provider.countGroups("inst-1")).isEqualTo(2);
     }

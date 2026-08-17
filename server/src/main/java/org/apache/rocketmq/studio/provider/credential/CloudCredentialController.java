@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.EntityIds;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -64,12 +65,12 @@ public class CloudCredentialController {
 
     @PostMapping("/delete")
     public Result<Void> deleteCredential(@Valid @RequestBody DeleteRequestDTO request) {
-        credentialService.delete(request.getId());
+        credentialService.delete(EntityIds.parseId(request.getId()));
         return Result.ok();
     }
 
     @GetMapping("/{id}/credentials")
-    public ResponseEntity<Result<CloudCredentialVO>> getCredentialSecrets(@PathVariable String id) {
+    public ResponseEntity<Result<CloudCredentialVO>> getCredentialSecrets(@PathVariable Long id) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(Result.ok(credentialService.reveal(id)));

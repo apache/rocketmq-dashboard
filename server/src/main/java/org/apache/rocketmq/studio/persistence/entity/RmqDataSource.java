@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.persistence.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -26,12 +27,14 @@ import java.time.LocalDateTime;
 @TableName("rmq_data_source")
 public class RmqDataSource {
 
-    @TableId
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
     private String dsKey;
 
     private String json;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

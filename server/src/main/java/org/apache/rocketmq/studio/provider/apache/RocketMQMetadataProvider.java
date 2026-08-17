@@ -128,7 +128,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private TopicVO toTopicVO(RmqTopic entity) {
         TopicVO vo = new TopicVO();
-        vo.setId(entity.getName());
+        vo.setId(entity.getId());
         vo.setName(entity.getName());
         vo.setClusterId(entity.getClusterId());
         vo.setInstanceId(entity.getInstanceId());
@@ -137,8 +137,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         vo.setWriteQueues(entity.getWriteQueueNums() == null ? 0 : entity.getWriteQueueNums());
         vo.setPerm(parseTopicPerm(entity.getPerm()));
         vo.setRemark(entity.getRemark());
-        vo.setCreatedAt(entity.getCreatedAt());
-        vo.setUpdatedAt(entity.getUpdatedAt());
+        vo.setGmtCreate(entity.getGmtCreate());
+        vo.setGmtModified(entity.getGmtModified());
         return vo;
     }
 
@@ -181,7 +181,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         List<ConsumerGroupVO> result = new ArrayList<>();
         for (RmqGroup entity : groupMapper.selectList(query)) {
             ConsumerGroupVO vo = new ConsumerGroupVO();
-            vo.setId(entity.getName());
+            vo.setId(entity.getId());
             vo.setName(entity.getName());
             vo.setClusterId(entity.getClusterId());
             vo.setInstanceId(entity.getInstanceId());
@@ -192,8 +192,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             // (web detail, AI rmq.group.list) never see a null subscriptionMode.
             vo.setSubscriptionMode(parseSubscriptionMode(entity.getMessageModel()));
             vo.setRetryMaxTimes(entity.getMaxRetry() == null ? 0 : entity.getMaxRetry());
-            vo.setCreatedAt(entity.getCreatedAt());
-            vo.setUpdatedAt(entity.getUpdatedAt());
+            vo.setGmtCreate(entity.getGmtCreate());
+            vo.setGmtModified(entity.getGmtModified());
 
             // Live connection info (online instances, lag) is intentionally NOT fetched
             // during list operations to avoid N+1 admin API calls. It is loaded on

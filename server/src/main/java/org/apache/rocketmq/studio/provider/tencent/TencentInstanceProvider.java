@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
+import org.apache.rocketmq.studio.common.util.InstanceIds;
 import com.tencentcloudapi.trocket.v20230308.models.ConsumeGroupItem;
 import com.tencentcloudapi.trocket.v20230308.models.CreateConsumerGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.CreateTopicRequest;
@@ -222,8 +223,8 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (response == null) {
                 return;
             }
-            topic.setCreatedAt(toLocalDateTime(response.getCreatedTime()));
-            topic.setUpdatedAt(toLocalDateTime(response.getLastUpdateTime()));
+            topic.setGmtCreate(toLocalDateTime(response.getCreatedTime()));
+            topic.setGmtModified(toLocalDateTime(response.getLastUpdateTime()));
         } catch (BusinessException ignored) {
             // A single topic detail lookup failure should not fail the whole list.
         }
@@ -249,12 +250,12 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setQueueNum(queueNum(topic));
         request.setRemark(topic.getRemark());
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.CreateTopic(request));
-        topic.setInstanceId(instanceId);
+        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
         topic.setPerm(defaultPerm(topic.getPerm()));
         topic.setWriteQueues(queueNum(topic).intValue());
         topic.setReadQueues(queueNum(topic).intValue());
-        topic.setCreatedAt(LocalDateTime.now());
-        topic.setUpdatedAt(LocalDateTime.now());
+        topic.setGmtCreate(LocalDateTime.now());
+        topic.setGmtModified(LocalDateTime.now());
         return topic;
     }
 
@@ -272,13 +273,13 @@ public class TencentInstanceProvider implements InstanceProvider {
             request.setQueueNum(requestedQueueNum);
         }
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.ModifyTopic(request));
-        topic.setInstanceId(instanceId);
+        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
         topic.setPerm(defaultPerm(topic.getPerm()));
         if (requestedQueueNum != null) {
             topic.setWriteQueues(requestedQueueNum.intValue());
             topic.setReadQueues(requestedQueueNum.intValue());
         }
-        topic.setUpdatedAt(LocalDateTime.now());
+        topic.setGmtModified(LocalDateTime.now());
         return topic;
     }
 
@@ -378,7 +379,7 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (response == null) {
                 return;
             }
-            group.setCreatedAt(toLocalDateTime(response.getCreatedTime()));
+            group.setGmtCreate(toLocalDateTime(response.getCreatedTime()));
             if (StringUtils.hasText(response.getConsumeModel())) {
                 group.setConsumeType(toConsumeType(response.getConsumeModel()));
             }
@@ -398,11 +399,11 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setConsumeEnable(true);
         request.setConsumeMessageOrderly(isOrderly(group));
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.CreateConsumerGroup(request));
-        group.setInstanceId(instanceId);
+        group.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
         group.setRetryMaxTimes(retryMaxTimes(group));
         group.setSubscribedTopics(java.util.List.of());
-        group.setCreatedAt(LocalDateTime.now());
-        group.setUpdatedAt(LocalDateTime.now());
+        group.setGmtCreate(LocalDateTime.now());
+        group.setGmtModified(LocalDateTime.now());
         return group;
     }
 
@@ -798,7 +799,7 @@ public class TencentInstanceProvider implements InstanceProvider {
         InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
-                || !StringUtils.hasText(instance.getCredentialId())) {
+                || instance.getCredentialId() == null) {
             throw new BusinessException(400, "Instance " + instanceId + " is missing Tencent Cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
@@ -807,7 +808,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     private static TopicVO toTopic(TopicItem item, String instanceId) {
         TopicVO topic = new TopicVO();
         topic.setName(item.getTopic());
-        topic.setInstanceId(instanceId);
+        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
         topic.setType(toTopicType(item.getTopicType()));
         topic.setWriteQueues(toInteger(item.getQueueNum()));
         topic.setReadQueues(toInteger(item.getQueueNum()));
@@ -834,7 +835,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     private static ConsumerGroupVO toConsumerGroup(ConsumeGroupItem item, String instanceId) {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName(item.getConsumerGroup());
-        group.setInstanceId(instanceId);
+        group.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
         group.setClusterId(item.getClusterIdV4());
         group.setNamespace(item.getNamespaceV4());
         group.setConsumeType(toConsumeType(item.getConsumeMessageOrderly()));
@@ -1031,6 +1032,6 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
     }
 
-    private record Context(String cloudInstanceId, String regionId, String credentialId) {
+    private record Context(String cloudInstanceId, String regionId, Long credentialId) {
     }
 }

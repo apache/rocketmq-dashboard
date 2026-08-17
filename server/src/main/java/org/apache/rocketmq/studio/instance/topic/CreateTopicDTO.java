@@ -36,7 +36,7 @@ public class CreateTopicDTO {
     private TopicPerm perm;
     private String remark;
 
-    private String instanceId;
+    private Long instanceId;
 
     public TopicVO toTopicVO() {
         TopicVO topic = new TopicVO();

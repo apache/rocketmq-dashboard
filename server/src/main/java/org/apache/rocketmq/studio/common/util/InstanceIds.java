@@ -14,29 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.acl;
+package org.apache.rocketmq.studio.common.util;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+/** Helpers for numeric instance identifiers crossing the String API boundary. */
+public final class InstanceIds {
 
-import java.time.LocalDateTime;
-import java.util.List;
+    private InstanceIds() {
+    }
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AclRuleVO {
-    private Long id;
-    private String principal;
-    private String resource;
-    private String resourceType;
-    private String resourcePattern;
-    private List<String> actions;
-    private String decision;
-    private String scope;
-    private String aclVersion;
-    private LocalDateTime gmtCreate;
+    public static Long parseLongOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    public static String asString(Long value) {
+        return value == null ? null : String.valueOf(value);
+    }
 }

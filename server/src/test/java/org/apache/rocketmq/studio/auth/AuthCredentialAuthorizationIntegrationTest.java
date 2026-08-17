@@ -85,7 +85,7 @@ class AuthCredentialAuthorizationIntegrationTest {
 
     @Test
     void shouldRejectCloudCredentialPathWithMatrixParameterForReader() throws Exception {
-        mockMvc.perform(get("/api/cloud-credentials;probe=1/credential-1/credentials")
+        mockMvc.perform(get("/api/cloud-credentials;probe=1/12/credentials")
                         .header(HttpHeaders.AUTHORIZATION, AUTHORIZATION))
                 .andExpect(status().isForbidden());
 
@@ -99,11 +99,11 @@ class AuthCredentialAuthorizationIntegrationTest {
         mockMvc.perform(get("/api/acl/users/user-1/credentials;probe=1")
                         .header(HttpHeaders.AUTHORIZATION, AUTHORIZATION))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/api/cloud-credentials;probe=1/credential-1/credentials")
+        mockMvc.perform(get("/api/cloud-credentials;probe=1/12/credentials")
                         .header(HttpHeaders.AUTHORIZATION, AUTHORIZATION))
                 .andExpect(status().isOk());
 
         verify(aclService).getUserCredentials(eq("user-1"), isNull());
-        verify(cloudCredentialService).reveal("credential-1");
+        verify(cloudCredentialService).reveal(12L);
     }
 }

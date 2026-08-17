@@ -66,5 +66,5 @@ public class PlainAccessConfigVO {
     /** Per-group permission entries, e.g. "cg-order-*=SUB". */
     private List<String> groupPerms;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 }

@@ -106,7 +106,7 @@ class RocketMQAdminClientImplTest {
 
         ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
 
-        assertThat(group.getId()).isEqualTo("orders");
+        assertThat(group.getName()).isEqualTo("orders");
         assertThat(group.getOnlineInstances()).isZero();
     }
 
@@ -250,18 +250,18 @@ class RocketMQAdminClientImplTest {
         when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
         when(topicMapper.selectOne(any())).thenReturn(null);
         doNothing().when(selectedAdmin).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
-        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("1"), any()))
                 .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
                         .apply(selectedAdmin));
 
         TopicVO topic = new TopicVO();
         topic.setName("topicA");
-        topic.setInstanceId("instance-a");
+        topic.setInstanceId(1L);
 
         adminClient.createTopic(topic);
         adminClient.updateTopic(topic);
 
-        verify(runtimeAdminClientResolver, times(2)).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(runtimeAdminClientResolver, times(2)).execute(org.mockito.ArgumentMatchers.eq("1"), any());
         verify(selectedAdmin, times(2)).createAndUpdateTopicConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
         verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
@@ -363,7 +363,7 @@ class RocketMQAdminClientImplTest {
         when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
         when(groupMapper.selectOne(any())).thenReturn(null);
         doNothing().when(selectedAdmin).createAndUpdateSubscriptionGroupConfig(anyString(), any());
-        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("1"), any()))
                 .thenAnswer(invocation -> {
                     MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
                     return action.apply(selectedAdmin);
@@ -371,11 +371,11 @@ class RocketMQAdminClientImplTest {
 
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("cg-orders");
-        group.setInstanceId("instance-a");
+        group.setInstanceId(1L);
 
         adminClient.createConsumerGroup(group);
 
-        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("1"), any());
         verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any());
         verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
@@ -428,6 +428,11 @@ class RocketMQAdminClientImplTest {
         ClusterInfo clusterInfo = clusterInfoWithMaster();
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
         when(topicMapper.selectOne(any())).thenReturn(null);
+        when(topicMapper.insert(any(RmqTopic.class))).thenAnswer(invocation -> {
+            RmqTopic inserted = invocation.getArgument(0);
+            inserted.setId(1L);
+            return 1;
+        });
         doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
         doThrow(new RuntimeException("audit db down")).when(auditService)
                 .record(anyString(), anyString(), anyString(), anyString());
@@ -435,7 +440,7 @@ class RocketMQAdminClientImplTest {
         TopicVO topic = new TopicVO();
         topic.setName("topicA");
 
-        assertThat(adminClient.createTopic(topic).getId()).isEqualTo("topicA");
+        assertThat(adminClient.createTopic(topic).getId()).isEqualTo(1L);
         verify(auditService).record("CREATE_TOPIC", "topicA", "queues=8/8", "SUCCESS");
     }
 

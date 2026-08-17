@@ -38,12 +38,12 @@ public class TencentCatalogController {
     private final TencentCatalogService catalogService;
 
     @GetMapping("/regions")
-    public Result<List<CloudRegionVO>> listRegions(@RequestParam String credentialId) {
+    public Result<List<CloudRegionVO>> listRegions(@RequestParam Long credentialId) {
         return Result.ok(catalogService.listRegions(credentialId));
     }
 
     @GetMapping("/instances")
-    public Result<List<CloudInstanceOptionVO>> listInstances(@RequestParam String credentialId,
+    public Result<List<CloudInstanceOptionVO>> listInstances(@RequestParam Long credentialId,
                                                              @RequestParam String regionId,
                                                              @RequestParam(required = false) String search) {
         return Result.ok(catalogService.listCloudInstances(credentialId, regionId, search));

@@ -16,15 +16,15 @@
  */
 package org.apache.rocketmq.studio.instance;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 
 @Data
 public class UpdateInstanceDTO {
 
-    @NotBlank(message = "instance id is required")
-    private String id;
+    @NotNull(message = "instance id is required")
+    private Long id;
 
     private String name;
 

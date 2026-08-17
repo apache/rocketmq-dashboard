@@ -35,7 +35,7 @@ public class CreateInstanceDTO {
 
     private String cloudInstanceId;
 
-    private String credentialId;
+    private Long credentialId;
 
     private String adminCredentialRef;
 

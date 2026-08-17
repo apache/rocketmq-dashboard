@@ -24,7 +24,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("rmq_trace_query")
+@TableName("rmq_instance_trace")
 public class RmqTraceQuery {
 
     @TableId(type = IdType.AUTO)
@@ -42,5 +42,7 @@ public class RmqTraceQuery {
 
     private String queriedBy;
 
-    private LocalDateTime queriedAt;
+    private LocalDateTime gmtCreate;
+
+    private LocalDateTime gmtModified;
 }

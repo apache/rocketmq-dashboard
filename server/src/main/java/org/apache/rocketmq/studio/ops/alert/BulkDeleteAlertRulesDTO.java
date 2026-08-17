@@ -16,7 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -27,5 +27,5 @@ import java.util.List;
 public class BulkDeleteAlertRulesDTO {
     @NotEmpty(message = "ids are required")
     @Size(max = 100, message = "at most 100 rule ids are allowed")
-    private List<@NotBlank(message = "rule id must not be blank") String> ids;
+    private List<@NotNull(message = "rule id is required") Long> ids;
 }

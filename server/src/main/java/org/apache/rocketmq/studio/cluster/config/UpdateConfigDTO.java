@@ -29,6 +29,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UpdateConfigDTO {
+    /** Runtime cluster identifier (cluster name); not a database primary key. */
     @NotBlank(message = "id is required")
     private String id;
 

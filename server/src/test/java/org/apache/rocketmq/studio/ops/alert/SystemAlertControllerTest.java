@@ -53,7 +53,7 @@ class SystemAlertControllerTest {
     @Test
     void listAlertsShouldReturnSystemAlerts() throws Exception {
         SystemAlertVO alert = SystemAlertVO.builder()
-                .id("alert-1")
+                .id(1L)
                 .level(AlertLevel.error)
                 .title("Broker Down")
                 .acknowledged(false)
@@ -63,7 +63,7 @@ class SystemAlertControllerTest {
         mockMvc.perform(get("/api/system-alerts").param("level", "error"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].id").value("alert-1"))
+                .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].level").value("error"))
                 .andExpect(jsonPath("$.data[0].acknowledged").value(false));
 
@@ -73,22 +73,22 @@ class SystemAlertControllerTest {
     @Test
     void acknowledgeAlertShouldPassValidatedRequest() throws Exception {
         SystemAlertVO acknowledged = SystemAlertVO.builder()
-                .id("alert-1")
+                .id(1L)
                 .level(AlertLevel.warning)
                 .title("High Lag")
                 .acknowledged(true)
                 .build();
-        when(alertService.acknowledgeAlert("alert-1")).thenReturn(acknowledged);
+        when(alertService.acknowledgeAlert(1L)).thenReturn(acknowledged);
 
         mockMvc.perform(post("/api/system-alerts/acknowledge")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "alert-1"))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", 1))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("alert-1"))
+                .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.acknowledged").value(true));
 
-        verify(alertService).acknowledgeAlert("alert-1");
+        verify(alertService).acknowledgeAlert(1L);
     }
 
     @Test
@@ -107,7 +107,7 @@ class SystemAlertControllerTest {
     void acknowledgeAlertShouldRejectBlankId() throws Exception {
         mockMvc.perform(post("/api/system-alerts/acknowledge")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", " "))))
+                        .content(objectMapper.writeValueAsString(java.util.Collections.singletonMap("id", null))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("id is required"));

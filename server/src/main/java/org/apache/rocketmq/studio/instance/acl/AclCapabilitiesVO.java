@@ -24,7 +24,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
  * Describes whether ACL operations are backed by the selected instance.
  */
 public record AclCapabilitiesVO(
-        String instanceId,
+        Long instanceId,
         InstanceVendor vendor,
         InstanceType instanceType,
         String stateSource,

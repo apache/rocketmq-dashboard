@@ -28,7 +28,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AlertRuleVO {
-    private String id;
+    private Long id;
     private String name;
     private String metric;
     private String operator;

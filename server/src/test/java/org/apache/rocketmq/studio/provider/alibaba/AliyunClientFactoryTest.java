@@ -50,7 +50,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AliyunClientFactoryTest {
 
-    private static final String CREDENTIAL_ID = "cred-1";
+    private static final Long CREDENTIAL_ID = 1L;
     private static final String REGION = "cn-hangzhou";
 
     @Mock
@@ -89,9 +89,9 @@ class AliyunClientFactoryTest {
 
     @Test
     void clientShouldThrow404WhenCredentialMissingTest() {
-        when(credentialRepository.findById("missing")).thenReturn(Optional.empty());
+        when(credentialRepository.findById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> factory.client("missing", REGION))
+        assertThatThrownBy(() -> factory.client(999L, REGION))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo(404);
@@ -104,7 +104,7 @@ class AliyunClientFactoryTest {
         AtomicInteger created = new AtomicInteger();
         factory = new AliyunClientFactory(credentialRepository) {
             @Override
-            protected AsyncClient createClient(String credentialId, String region) {
+            protected AsyncClient createClient(Long credentialId, String region) {
                 return created.getAndIncrement() == 0 ? first : second;
             }
         };
@@ -120,7 +120,7 @@ class AliyunClientFactoryTest {
     void callShouldThrow504OnTimeoutTest() {
         factory.setCallTimeoutSeconds(1L);
         AliyunClientFactory spy = Mockito.spy(factory);
-        doReturn(asyncClient).when(spy).client(anyString(), anyString());
+        doReturn(asyncClient).when(spy).client(any(Long.class), anyString());
         CompletableFuture<Object> future = new CompletableFuture<>();
 
         assertThatThrownBy(() -> spy.call(CREDENTIAL_ID, REGION,
@@ -134,7 +134,7 @@ class AliyunClientFactoryTest {
     @Test
     void callShouldCancelFutureAndPreserveInterruptTest() throws Exception {
         AliyunClientFactory spy = Mockito.spy(factory);
-        doReturn(asyncClient).when(spy).client(anyString(), anyString());
+        doReturn(asyncClient).when(spy).client(any(Long.class), anyString());
         CompletableFuture<Object> future = new CompletableFuture<>();
         CountDownLatch waiting = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -167,7 +167,7 @@ class AliyunClientFactoryTest {
     @Test
     void callShouldMapServer404ToBusinessExceptionTest() {
         AliyunClientFactory spy = Mockito.spy(factory);
-        doReturn(asyncClient).when(spy).client(anyString(), anyString());
+        doReturn(asyncClient).when(spy).client(any(Long.class), anyString());
         PopServerException error = new PopServerException("instance not found");
         error.setStatusCode(404);
         error.setErrCode("Instance.NotFound");
@@ -187,7 +187,7 @@ class AliyunClientFactoryTest {
     @Test
     void callShouldMapInvalidAccessKeyTo422Test() {
         AliyunClientFactory spy = Mockito.spy(factory);
-        doReturn(asyncClient).when(spy).client(anyString(), anyString());
+        doReturn(asyncClient).when(spy).client(any(Long.class), anyString());
         PopServerException error = new PopServerException("bad key");
         error.setStatusCode(403);
         error.setErrCode("InvalidAccessKeyId");
@@ -204,7 +204,7 @@ class AliyunClientFactoryTest {
     @Test
     void callShouldMapGenericFailureTo502Test() {
         AliyunClientFactory spy = Mockito.spy(factory);
-        doReturn(asyncClient).when(spy).client(anyString(), anyString());
+        doReturn(asyncClient).when(spy).client(any(Long.class), anyString());
         when(asyncClient.listRegions(any(ListRegionsRequest.class)))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("boom")));
 
@@ -221,7 +221,7 @@ class AliyunClientFactoryTest {
     @Test
     void callShouldReturnSuccessfulBodyTest() {
         AliyunClientFactory spy = Mockito.spy(factory);
-        doReturn(asyncClient).when(spy).client(anyString(), anyString());
+        doReturn(asyncClient).when(spy).client(any(Long.class), anyString());
         ListRegionsResponse response = ListRegionsResponse.create().toBuilder()
                 .statusCode(200)
                 .body(ListRegionsResponseBody.builder().success(true).build())

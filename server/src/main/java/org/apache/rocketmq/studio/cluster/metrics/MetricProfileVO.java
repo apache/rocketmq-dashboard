@@ -28,6 +28,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MetricProfileVO {
+    /** Metric profile identifier; not a database primary key. */
     private String id;
     private String name;
     private String description;

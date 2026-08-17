@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.InstanceIds;
 import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -61,13 +62,15 @@ public class MetadataService {
 
     public TopicVO createTopic(TopicVO topic) {
         requireTopic(topic);
-        return resolve(topic.getInstanceId()).createTopic(topic.getInstanceId(), topic);
+        String instanceId = InstanceIds.asString(topic.getInstanceId());
+        return resolve(instanceId).createTopic(instanceId, topic);
     }
 
 
     public TopicVO updateTopic(TopicVO topic) {
         requireTopic(topic);
-        return resolve(topic.getInstanceId()).updateTopic(topic.getInstanceId(), topic);
+        String instanceId = InstanceIds.asString(topic.getInstanceId());
+        return resolve(instanceId).updateTopic(instanceId, topic);
     }
 
 
@@ -172,7 +175,7 @@ public class MetadataService {
 
 
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
-        String instanceId = group == null ? null : group.getInstanceId();
+        String instanceId = InstanceIds.asString(group == null ? null : group.getInstanceId());
         return resolve(instanceId).createConsumerGroup(instanceId, group);
     }
 

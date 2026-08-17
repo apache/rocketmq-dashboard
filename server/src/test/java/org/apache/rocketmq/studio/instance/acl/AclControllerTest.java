@@ -65,14 +65,14 @@ class AclControllerTest {
     @Test
     void capabilitiesShouldReturnApacheRemoteReadState() throws Exception {
         when(aclService.capabilities("instance-1"))
-                .thenReturn(new AclCapabilitiesVO("instance-1",
+                .thenReturn(new AclCapabilitiesVO(1L,
                         org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.APACHE,
                         org.apache.rocketmq.studio.common.domain.enums.InstanceType.DIRECT,
                         "APACHE_ACL2", true, false));
 
         mockMvc.perform(get("/api/acl/capabilities").param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.instanceId").value("instance-1"))
+                .andExpect(jsonPath("$.data.instanceId").value(1))
                 .andExpect(jsonPath("$.data.stateSource").value("APACHE_ACL2"))
                 .andExpect(jsonPath("$.data.remoteReadSupported").value(true))
                 .andExpect(jsonPath("$.data.remoteWriteSupported").value(false));
@@ -99,8 +99,8 @@ class AclControllerTest {
                 .resourceType("TOPIC")
                 .decision("ALLOW")
                 .build();
-        rule.setId("rule-1");
-        rule.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        rule.setId(1L);
+        rule.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
 
         when(aclService.listRules(isNull(), isNull(), isNull())).thenReturn(List.of(rule));
 
@@ -108,7 +108,7 @@ class AclControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].id").value("rule-1"))
+                .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].principal").value("user1"))
                 .andExpect(jsonPath("$.data[0].decision").value("ALLOW"));
     }
@@ -141,8 +141,8 @@ class AclControllerTest {
                 .resourceType("TOPIC")
                 .decision("ALLOW")
                 .build();
-        created.setId("new-rule-id");
-        created.setCreatedAt(LocalDateTime.of(2026, 7, 8, 12, 0));
+        created.setId(2L);
+        created.setGmtCreate(LocalDateTime.of(2026, 7, 8, 12, 0));
 
         when(aclService.createRule(any(AclRuleVO.class), isNull())).thenReturn(created);
 
@@ -151,7 +151,7 @@ class AclControllerTest {
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("new-rule-id"))
+                .andExpect(jsonPath("$.data.id").value(2))
                 .andExpect(jsonPath("$.data.principal").value("user1"));
     }
 
@@ -170,7 +170,7 @@ class AclControllerTest {
     @Test
     void updateRuleShouldReturnUpdatedRule() throws Exception {
         AclRuleVO input = AclRuleVO.builder()
-                .id("rule-1")
+                .id(1L)
                 .principal("user1")
                 .resource("topic-1")
                 .resourceType("TOPIC")
@@ -184,27 +184,27 @@ class AclControllerTest {
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("rule-1"))
+                .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.decision").value("DENY"));
     }
 
     @Test
     void updateRuleShouldReturnNotFoundForUnknownId() throws Exception {
         AclRuleVO input = AclRuleVO.builder()
-                .id("missing-rule")
+                .id(999L)
                 .principal("user1")
                 .resource("topic-1")
                 .decision("DENY")
                 .build();
         when(aclService.updateRule(any(AclRuleVO.class), isNull()))
-                .thenThrow(new BusinessException(404, "ACL rule not found: missing-rule"));
+                .thenThrow(new BusinessException(404, "ACL rule not found: 999"));
 
         mockMvc.perform(post("/api/acl/rules/update")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404))
-                .andExpect(jsonPath("$.message").value("ACL rule not found: missing-rule"));
+                .andExpect(jsonPath("$.message").value("ACL rule not found: 999"));
     }
 
     @Test
@@ -223,12 +223,12 @@ class AclControllerTest {
     void deleteRuleShouldPassValidatedRequest() throws Exception {
         mockMvc.perform(post("/api/acl/rules/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "rule-1"))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", "1"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(aclService).deleteRule(eq("rule-1"), isNull());
+        verify(aclService).deleteRule(eq("1"), isNull());
     }
 
     @Test
@@ -251,8 +251,8 @@ class AclControllerTest {
                 .secretKey("secr****7654")
                 .admin(true)
                 .build();
-        user.setId("user-1");
-        user.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        user.setId(1L);
+        user.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
 
         when(aclService.listUsers(isNull())).thenReturn(List.of(user));
 
@@ -260,7 +260,7 @@ class AclControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].id").value("user-1"))
+                .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].username").value("admin"))
                 .andExpect(jsonPath("$.data[0].accessKey").value("acce****3456"))
                 .andExpect(jsonPath("$.data[0].secretKey").value("secr****7654"))
@@ -270,13 +270,13 @@ class AclControllerTest {
     @Test
     void getUserCredentialsShouldDisableResponseCaching() throws Exception {
         AclUserVO credentials = AclUserVO.builder()
-                .id("user-1")
+                .id(1L)
                 .accessKey("access-key")
                 .secretKey("secret-key")
                 .build();
-        when(aclService.getUserCredentials(eq("user-1"), isNull())).thenReturn(credentials);
+        when(aclService.getUserCredentials(eq("1"), isNull())).thenReturn(credentials);
 
-        mockMvc.perform(get("/api/acl/users/user-1/credentials"))
+        mockMvc.perform(get("/api/acl/users/1/credentials"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
     }
@@ -284,7 +284,7 @@ class AclControllerTest {
     @Test
     void createUserShouldReturnGeneratedCredentials() throws Exception {
         AclUserVO created = AclUserVO.builder()
-                .id("user-1")
+                .id(1L)
                 .username("new-user")
                 .accessKey("access-key-123456")
                 .secretKey("secret-key-987654")
@@ -333,11 +333,11 @@ class AclControllerTest {
     @Test
     void updateUserShouldReturnMaskedUpdatedUser() throws Exception {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId("user-1");
+        input.setId(1L);
         input.setUsername("admin");
         input.setAdmin(false);
         AclUserVO updated = AclUserVO.builder()
-                .id("user-1")
+                .id(1L)
                 .username("admin")
                 .accessKey("acce****3456")
                 .secretKey("secr****7654")
@@ -351,7 +351,7 @@ class AclControllerTest {
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("user-1"))
+                .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.accessKey").value("acce****3456"))
                 .andExpect(jsonPath("$.data.secretKey").value("secr****7654"))
                 .andExpect(jsonPath("$.data.admin").value(false));
@@ -373,12 +373,12 @@ class AclControllerTest {
     void deleteUserShouldPassValidatedRequest() throws Exception {
         mockMvc.perform(post("/api/acl/users/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "user-1"))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", "1"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(aclService).deleteUser(eq("user-1"), isNull());
+        verify(aclService).deleteUser(eq("1"), isNull());
     }
 
     @Test

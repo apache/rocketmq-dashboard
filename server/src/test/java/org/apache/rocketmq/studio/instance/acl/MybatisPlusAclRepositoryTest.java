@@ -60,13 +60,13 @@ class MybatisPlusAclRepositoryTest {
     @Test
     void replaceRuleShouldReturnEmptyWhenConcurrentDeleteWins() {
         RmqAclRule existing = new RmqAclRule();
-        existing.setId("rule-a");
-        existing.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
-        when(ruleMapper.selectById("rule-a")).thenReturn(existing);
+        existing.setId(1L);
+        existing.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(ruleMapper.selectById(1L)).thenReturn(existing);
         when(ruleMapper.updateById(any(RmqAclRule.class))).thenReturn(0);
 
         AclRuleVO replacement = AclRuleVO.builder()
-                .id("rule-a")
+                .id(1L)
                 .principal("svc-a")
                 .resource("orders")
                 .build();
@@ -79,7 +79,12 @@ class MybatisPlusAclRepositoryTest {
         when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
         when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
-        when(ruleMapper.insert(any(RmqAclRule.class))).thenReturn(1);
+        java.util.concurrent.atomic.AtomicLong ruleSequence = new java.util.concurrent.atomic.AtomicLong();
+        when(ruleMapper.insert(any(RmqAclRule.class))).thenAnswer(invocation -> {
+            RmqAclRule inserted = invocation.getArgument(0);
+            inserted.setId(ruleSequence.incrementAndGet());
+            return 1;
+        });
 
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("svc-x")
@@ -96,12 +101,13 @@ class MybatisPlusAclRepositoryTest {
         verify(ruleMapper, times(6)).insert(captor.capture());
         List<RmqAclRule> rules = captor.getAllValues();
 
-        // Every permission gets a distinct primary key so no entry overwrites another.
+        // Every permission gets a distinct auto-increment primary key so no entry
+        // overwrites another.
         assertThat(rules).extracting(RmqAclRule::getId)
-                .containsExactly("plain-svc-x-dt", "plain-svc-x-dg",
-                        "plain-svc-x-t-0", "plain-svc-x-t-1",
-                        "plain-svc-x-g-0", "plain-svc-x-g-1")
+                .containsExactly(1L, 2L, 3L, 4L, 5L, 6L)
                 .doesNotHaveDuplicates();
+        assertThat(rules).extracting(RmqAclRule::getResourcePattern).containsExactly(
+                "DEFAULT_TOPIC", "DEFAULT_GROUP", "LITERAL", "LITERAL", "LITERAL", "LITERAL");
         assertThat(rules).extracting(RmqAclRule::getResource).containsExactly(
                 "*", "*", "order-*", "payment-*", "cg-order", "cg-payment");
     }
@@ -145,7 +151,7 @@ class MybatisPlusAclRepositoryTest {
 
     @Test
     void updateWithBlankSecretShouldKeepStoredSecret() {
-        RmqAclUser existing = userEntity("plain-svc-x", "svc-x",
+        RmqAclUser existing = userEntity(1L, "svc-x",
                 CredentialUtils.encodeBase64("kept-secret-value"));
         when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(existing);
         when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
@@ -208,7 +214,7 @@ class MybatisPlusAclRepositoryTest {
 
     @Test
     void updateShouldExplicitlyClearBlankWhiteRemoteAddress() {
-        RmqAclUser existing = userEntity("plain-svc-x", "svc-x",
+        RmqAclUser existing = userEntity(1L, "svc-x",
                 CredentialUtils.encodeBase64("kept-secret-value"));
         existing.setWhiteRemoteAddress("10.0.1.0/24");
         when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(existing);
@@ -234,7 +240,7 @@ class MybatisPlusAclRepositoryTest {
     @Test
     void examineShouldMaskAccountSecrets() {
         String plaintext = "supersecret-abcdef";
-        RmqAclUser user = userEntity("plain-svc-x", "svc-x",
+        RmqAclUser user = userEntity(1L, "svc-x",
                 CredentialUtils.encodeBase64(plaintext));
         when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(user));
         when(ruleMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
@@ -249,12 +255,12 @@ class MybatisPlusAclRepositoryTest {
 
     @Test
     void examineShouldScopeAccountsToRequestedCluster() {
-        RmqAclUser boundHere = userEntity("plain-a", "svc-a",
+        RmqAclUser boundHere = userEntity(2L, "svc-a",
                 CredentialUtils.encodeBase64("secret-a-value"));
         boundHere.setClusters("cluster-a,cluster-b");
-        RmqAclUser global = userEntity("plain-g", "svc-g",
+        RmqAclUser global = userEntity(3L, "svc-g",
                 CredentialUtils.encodeBase64("secret-g-value"));
-        RmqAclUser boundElsewhere = userEntity("plain-e", "svc-e",
+        RmqAclUser boundElsewhere = userEntity(4L, "svc-e",
                 CredentialUtils.encodeBase64("secret-e-value"));
         boundElsewhere.setClusters("cluster-c");
         when(userMapper.selectList(any(QueryWrapper.class)))
@@ -271,14 +277,14 @@ class MybatisPlusAclRepositoryTest {
         assertThat(config.isAclEnabled()).isTrue();
     }
 
-    private static RmqAclUser userEntity(String id, String accessKey, String encodedSecret) {
+    private static RmqAclUser userEntity(Long id, String accessKey, String encodedSecret) {
         RmqAclUser entity = new RmqAclUser();
         entity.setId(id);
         entity.setUsername(accessKey);
         entity.setAccessKey(accessKey);
         entity.setSecretKey(encodedSecret);
         entity.setAdmin(false);
-        entity.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        entity.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
         return entity;
     }
 }

@@ -47,7 +47,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -182,7 +181,6 @@ public class SettingsService {
             throw new BusinessException(400, "Data source request is required");
         }
         log.info("Creating data source: {}", dataSource.getName());
-        dataSource.setKey(UUID.randomUUID().toString());
         validateDataSourceUrl(dataSource.getUrl());
         DataSourceVO saved = settingsRepository.saveDataSource(dataSource);
         recordDataSourceAudit("CREATE_DATA_SOURCE", saved);

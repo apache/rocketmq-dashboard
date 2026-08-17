@@ -405,8 +405,8 @@ class ToolGatewayServiceTest {
     @Test
     void executesAlertRuleListThroughADataMinimizingProjection() {
         when(alertService.listRules()).thenReturn(List.of(
-                alertRule("rule-1", "High Lag", "rocketmq_consumer_lag_messages", true),
-                alertRule("rule-2", "Broker Down", "up", false)));
+                alertRule(1L, "High Lag", "rocketmq_consumer_lag_messages", true),
+                alertRule(2L, "Broker Down", "up", false)));
 
         Object output = gateway.execute("rmq.alert.rule.list", Map.of(
                 "cluster", "cluster-v5",
@@ -414,7 +414,7 @@ class ToolGatewayServiceTest {
                 "enabled", true));
 
         assertThat(output).isEqualTo(List.of(Map.of(
-                "id", "rule-1",
+                "id", 1L,
                 "name", "High Lag",
                 "metric", "rocketmq_consumer_lag_messages",
                 "operator", ">",
@@ -676,7 +676,7 @@ class ToolGatewayServiceTest {
         return group;
     }
 
-    private static AlertRuleVO alertRule(String id, String name, String metric, boolean enabled) {
+    private static AlertRuleVO alertRule(Long id, String name, String metric, boolean enabled) {
         return AlertRuleVO.builder()
                 .id(id)
                 .name(name)

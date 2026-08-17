@@ -45,7 +45,9 @@ public class OperationAuditService {
         audit.setResult(result);
         audit.setErrorMessage(errorMessage);
         audit.setOperator(AuthenticatedUserContext.currentUsernameOrSystem());
-        audit.setOperatedAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        audit.setGmtCreate(now);
+        audit.setGmtModified(now);
         auditMapper.insert(audit);
         log.debug("Audit recorded: {} {} {}", operation, resourceType, resourceName);
     }

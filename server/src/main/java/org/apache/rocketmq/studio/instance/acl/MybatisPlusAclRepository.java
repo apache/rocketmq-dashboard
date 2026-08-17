@@ -61,10 +61,11 @@ public class MybatisPlusAclRepository implements AclRepository {
     @Override
     public AclRuleVO saveRule(AclRuleVO rule) {
         RmqAclRule entity = toRuleEntity(rule);
-        if (ruleMapper.selectById(entity.getId()) != null) {
+        if (entity.getId() != null && ruleMapper.selectById(entity.getId()) != null) {
             ruleMapper.updateById(entity);
         } else {
             ruleMapper.insert(entity);
+            rule.setId(entity.getId());
         }
         return rule;
     }
@@ -76,17 +77,17 @@ public class MybatisPlusAclRepository implements AclRepository {
             return Optional.empty();
         }
         RmqAclRule entity = toRuleEntity(rule);
-        entity.setCreatedAt(existing.getCreatedAt());
+        entity.setGmtCreate(existing.getGmtCreate());
         if (ruleMapper.updateById(entity) == 0) {
             return Optional.empty();
         }
-        rule.setCreatedAt(existing.getCreatedAt());
+        rule.setGmtCreate(existing.getGmtCreate());
         return Optional.of(rule);
     }
 
     @Override
-    public boolean deleteRule(String id) {
-        return ruleMapper.deleteById(id) > 0;
+    public boolean deleteRule(Long id) {
+        return id != null && ruleMapper.deleteById(id) > 0;
     }
 
     @Override
@@ -97,7 +98,10 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
-    public Optional<AclUserVO> findUserById(String id) {
+    public Optional<AclUserVO> findUserById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
         RmqAclUser entity = userMapper.selectById(id);
         return Optional.ofNullable(entity).map(MybatisPlusAclRepository::toUserVO);
     }
@@ -105,10 +109,11 @@ public class MybatisPlusAclRepository implements AclRepository {
     @Override
     public AclUserVO saveUser(AclUserVO user) {
         RmqAclUser entity = toUserEntity(user);
-        if (userMapper.selectById(entity.getId()) != null) {
+        if (entity.getId() != null && userMapper.selectById(entity.getId()) != null) {
             userMapper.updateById(entity);
         } else {
             userMapper.insert(entity);
+            user.setId(entity.getId());
         }
         return user;
     }
@@ -120,15 +125,15 @@ public class MybatisPlusAclRepository implements AclRepository {
             return Optional.empty();
         }
         RmqAclUser entity = toUserEntity(user);
-        entity.setCreatedAt(existing.getCreatedAt());
+        entity.setGmtCreate(existing.getGmtCreate());
         userMapper.updateById(entity);
-        user.setCreatedAt(existing.getCreatedAt());
+        user.setGmtCreate(existing.getGmtCreate());
         return Optional.of(user);
     }
 
     @Override
-    public boolean deleteUser(String id) {
-        return userMapper.deleteById(id) > 0;
+    public boolean deleteUser(Long id) {
+        return id != null && userMapper.deleteById(id) > 0;
     }
 
     /**
@@ -173,10 +178,9 @@ public class MybatisPlusAclRepository implements AclRepository {
         RmqAclUser entity = new RmqAclUser();
         if (existing != null) {
             entity.setId(existing.getId());
-            entity.setCreatedAt(existing.getCreatedAt());
+            entity.setGmtCreate(existing.getGmtCreate());
         } else {
-            entity.setId("plain-" + config.getAccessKey());
-            entity.setCreatedAt(LocalDateTime.now());
+            entity.setGmtCreate(LocalDateTime.now());
         }
         entity.setUsername(config.getAccessKey());
         entity.setAccessKey(config.getAccessKey());
@@ -189,7 +193,7 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setAdmin(config.isAdmin());
         entity.setClusters(null);
         entity.setWhiteRemoteAddress(normalizeWhiteRemoteAddress(config.getWhiteRemoteAddress()));
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setGmtModified(LocalDateTime.now());
         if (existing != null) {
             userMapper.updateById(entity);
             if (entity.getWhiteRemoteAddress() == null) {
@@ -216,7 +220,7 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .defaultGroupPerm(config.getDefaultGroupPerm())
                 .topicPerms(config.getTopicPerms() == null ? null : new ArrayList<>(config.getTopicPerms()))
                 .groupPerms(config.getGroupPerms() == null ? null : new ArrayList<>(config.getGroupPerms()))
-                .createdAt(entity.getCreatedAt())
+                .gmtCreate(entity.getGmtCreate())
                 .build();
     }
 
@@ -231,32 +235,29 @@ public class MybatisPlusAclRepository implements AclRepository {
     private void upsertPlainAccessRules(PlainAccessConfigVO config) {
         ruleMapper.delete(new QueryWrapper<RmqAclRule>()
                 .eq("principal", config.getAccessKey())
-                .eq("acl_version", "2.0")
-                .likeRight("id", "plain-" + config.getAccessKey() + "-"));
+                .eq("acl_version", "2.0"));
         List<RmqAclRule> rules = new ArrayList<>();
         if (config.getDefaultTopicPerm() != null) {
-            rules.add(plainRule(config.getAccessKey(), "*", "Cluster", config.getDefaultTopicPerm(), "dt"));
+            rules.add(plainRule(config.getAccessKey(), "*", "Cluster", config.getDefaultTopicPerm(),
+                    "DEFAULT_TOPIC"));
         }
         if (config.getDefaultGroupPerm() != null) {
-            rules.add(plainRule(config.getAccessKey(), "*", "Cluster", config.getDefaultGroupPerm(), "dg"));
+            rules.add(plainRule(config.getAccessKey(), "*", "Cluster", config.getDefaultGroupPerm(),
+                    "DEFAULT_GROUP"));
         }
         if (config.getTopicPerms() != null) {
-            int index = 0;
             for (String entry : config.getTopicPerms()) {
                 String[] parts = splitPerm(entry);
                 if (parts != null) {
-                    rules.add(plainRule(config.getAccessKey(), parts[0], "Topic", parts[1], "t-" + index));
-                    index++;
+                    rules.add(plainRule(config.getAccessKey(), parts[0], "Topic", parts[1], "LITERAL"));
                 }
             }
         }
         if (config.getGroupPerms() != null) {
-            int index = 0;
             for (String entry : config.getGroupPerms()) {
                 String[] parts = splitPerm(entry);
                 if (parts != null) {
-                    rules.add(plainRule(config.getAccessKey(), parts[0], "Group", parts[1], "g-" + index));
-                    index++;
+                    rules.add(plainRule(config.getAccessKey(), parts[0], "Group", parts[1], "LITERAL"));
                 }
             }
         }
@@ -266,19 +267,18 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     private RmqAclRule plainRule(String principal, String resource, String resourceType,
-                                 String actions, String idSuffix) {
+                                 String actions, String resourcePattern) {
         RmqAclRule rule = new RmqAclRule();
-        rule.setId("plain-" + principal + "-" + idSuffix);
         rule.setPrincipal(principal);
         rule.setResource(resource);
         rule.setResourceType(resourceType);
-        rule.setResourcePattern("LITERAL");
+        rule.setResourcePattern(resourcePattern);
         rule.setActions(actions);
         rule.setDecision("ALLOW");
         rule.setScope("*");
         rule.setAclVersion("2.0");
-        rule.setCreatedAt(LocalDateTime.now());
-        rule.setUpdatedAt(LocalDateTime.now());
+        rule.setGmtCreate(LocalDateTime.now());
+        rule.setGmtModified(LocalDateTime.now());
         return rule;
     }
 
@@ -295,9 +295,9 @@ public class MybatisPlusAclRepository implements AclRepository {
             } else if ("Group".equals(rule.getResourceType())) {
                 groupPerms.add(rule.getResource() + "=" + actions);
             } else if ("Cluster".equals(rule.getResourceType()) && "*".equals(rule.getResource())) {
-                if (rule.getId() != null && rule.getId().endsWith("-dt")) {
+                if ("DEFAULT_TOPIC".equals(rule.getResourcePattern())) {
                     defaultTopicPerm = actions;
-                } else if (rule.getId() != null && rule.getId().endsWith("-dg")) {
+                } else if ("DEFAULT_GROUP".equals(rule.getResourcePattern())) {
                     defaultGroupPerm = actions;
                 }
             }
@@ -313,7 +313,7 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .defaultGroupPerm(defaultGroupPerm)
                 .topicPerms(topicPerms)
                 .groupPerms(groupPerms)
-                .createdAt(user.getCreatedAt())
+                .gmtCreate(user.getGmtCreate())
                 .build();
     }
 
@@ -341,7 +341,7 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .decision(entity.getDecision())
                 .scope(entity.getScope())
                 .aclVersion(entity.getAclVersion())
-                .createdAt(entity.getCreatedAt())
+                .gmtCreate(entity.getGmtCreate())
                 .build();
     }
 
@@ -356,8 +356,8 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setDecision(rule.getDecision());
         entity.setScope(rule.getScope());
         entity.setAclVersion(rule.getAclVersion());
-        entity.setCreatedAt(rule.getCreatedAt());
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setGmtCreate(rule.getGmtCreate());
+        entity.setGmtModified(LocalDateTime.now());
         return entity;
     }
 
@@ -370,7 +370,7 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .admin(Boolean.TRUE.equals(entity.getAdmin()))
                 .clusters(splitCsv(entity.getClusters()))
                 .whiteRemoteAddress(entity.getWhiteRemoteAddress())
-                .createdAt(entity.getCreatedAt())
+                .gmtCreate(entity.getGmtCreate())
                 .build();
     }
 
@@ -382,8 +382,8 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setSecretKey(CredentialUtils.encodeBase64(user.getSecretKey()));
         entity.setAdmin(user.isAdmin());
         entity.setClusters(user.getClusters() == null ? null : String.join(",", user.getClusters()));
-        entity.setCreatedAt(user.getCreatedAt());
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setGmtCreate(user.getGmtCreate());
+        entity.setGmtModified(LocalDateTime.now());
         return entity;
     }
 

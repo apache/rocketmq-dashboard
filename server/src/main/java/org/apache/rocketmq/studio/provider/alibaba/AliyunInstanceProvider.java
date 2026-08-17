@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.alibaba;
 
+import org.apache.rocketmq.studio.common.util.InstanceIds;
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateConsumerGroupRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateTopicRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.DeleteConsumerGroupRequest;
@@ -182,9 +183,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .remark(topic.getRemark())
                 .build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createTopic(request));
-        topic.setInstanceId(instanceId);
-        topic.setCreatedAt(java.time.LocalDateTime.now());
-        topic.setUpdatedAt(java.time.LocalDateTime.now());
+        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        topic.setGmtCreate(java.time.LocalDateTime.now());
+        topic.setGmtModified(java.time.LocalDateTime.now());
         return topic;
     }
 
@@ -200,7 +201,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .remark(topic.getRemark())
                 .build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.updateTopic(request));
-        topic.setInstanceId(instanceId);
+        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
         return topic;
     }
 
@@ -293,12 +294,12 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .consumeRetryPolicy(retryPolicy.build())
                 .build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createConsumerGroup(request));
-        group.setInstanceId(instanceId);
+        group.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
         group.setDeliveryOrderType(deliveryOrderType);
         group.setRetryMaxTimes(maxRetryTimes);
         group.setSubscribedTopics(java.util.List.of());
-        group.setCreatedAt(java.time.LocalDateTime.now());
-        group.setUpdatedAt(java.time.LocalDateTime.now());
+        group.setGmtCreate(java.time.LocalDateTime.now());
+        group.setGmtModified(java.time.LocalDateTime.now());
         return group;
     }
 
@@ -461,7 +462,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
         InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
-                || !StringUtils.hasText(instance.getCredentialId())) {
+                || instance.getCredentialId() == null) {
             throw new BusinessException(400, "Instance " + instanceId + " is missing Aliyun cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
@@ -474,6 +475,6 @@ public class AliyunInstanceProvider implements InstanceProvider {
         return vo.getType() != null && vo.getType().name().equalsIgnoreCase(type.trim());
     }
 
-    private record Context(String cloudInstanceId, String regionId, String credentialId) {
+    private record Context(String cloudInstanceId, String regionId, Long credentialId) {
     }
 }

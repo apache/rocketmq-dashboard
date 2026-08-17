@@ -28,7 +28,7 @@ public class UpdateTopicDTO {
     private String name;
     private String namespace;
     private String clusterId;
-    private String instanceId;
+    private Long instanceId;
     private TopicType type;
     @PositiveOrZero(message = "writeQueues must be zero or positive")
     private Integer writeQueues;
