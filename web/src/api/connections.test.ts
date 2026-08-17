@@ -52,7 +52,7 @@ describe('client connections API', () => {
         clusterId: 'production-cluster',
         type: 'Producer',
       });
-      return [200, { code: 200, data: [connection] }];
+      return [200, { code: 200, data: { items: [connection], total: 1, page: 1, size: 20 } }];
     });
 
     await expect(
@@ -61,6 +61,6 @@ describe('client connections API', () => {
         clusterId: 'production-cluster',
         type: 'Producer',
       }),
-    ).resolves.toEqual([connection]);
+    ).resolves.toEqual({ items: [connection], total: 1, page: 1, size: 20 });
   });
 });

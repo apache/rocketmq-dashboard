@@ -17,13 +17,12 @@
 package org.apache.rocketmq.studio.cluster.client;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/clients")
@@ -33,10 +32,12 @@ public class ClientController {
     private final ClientService clientService;
 
     @GetMapping
-    public Result<List<ClientConnectionVO>> listConnections(
+    public Result<PageResult<ClientConnectionVO>> listConnections(
             @RequestParam String instanceId,
             @RequestParam(required = false) String clusterId,
-            @RequestParam(required = false) String type) {
-        return Result.ok(clientService.listConnections(instanceId, clusterId, type));
+            @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(clientService.listConnections(instanceId, clusterId, type, page, pageSize));
     }
 }

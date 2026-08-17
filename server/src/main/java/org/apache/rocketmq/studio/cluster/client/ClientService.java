@@ -18,10 +18,12 @@ package org.apache.rocketmq.studio.cluster.client;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Slf4j
@@ -31,9 +33,28 @@ public class ClientService {
 
     private final ClientProvider clientProvider;
 
-    public List<ClientConnectionVO> listConnections(String instanceId, String clusterId, String type) {
-        log.info("Listing client connections, instanceId={}, clusterId={}, type={}", instanceId, clusterId, type);
-        return clientProvider.findConnections(requireInstanceId(instanceId), normalizeFilter(clusterId), normalizeFilter(type));
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final Comparator<ClientConnectionVO> CONNECTION_ORDER = Comparator
+            .comparing(ClientConnectionVO::getClusterName, Comparator.nullsFirst(String::compareTo))
+            .thenComparing(connection -> connection.getType() == null ? null : connection.getType().name(),
+                    Comparator.nullsFirst(String::compareTo))
+            .thenComparing(ClientConnectionVO::getGroupOrTopic, Comparator.nullsFirst(String::compareTo))
+            .thenComparing(ClientConnectionVO::getClientId, Comparator.nullsFirst(String::compareTo))
+            .thenComparing(ClientConnectionVO::getAddress, Comparator.nullsFirst(String::compareTo));
+
+    public PageResult<ClientConnectionVO> listConnections(String instanceId, String clusterId, String type,
+                                                           int page, int pageSize) {
+        validatePage(page, pageSize);
+        log.info("Listing client connections, instanceId={}, clusterId={}, type={}, page={}, pageSize={}",
+                instanceId, clusterId, type, page, pageSize);
+        List<ClientConnectionVO> connections = clientProvider.findConnections(
+                        requireInstanceId(instanceId), normalizeFilter(clusterId), normalizeFilter(type)).stream()
+                .sorted(CONNECTION_ORDER)
+                .toList();
+        int total = connections.size();
+        int from = Math.min((page - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
+        return PageResult.of(connections.subList(from, to), total, page, pageSize);
     }
 
     private String requireInstanceId(String instanceId) {
@@ -45,5 +66,14 @@ public class ClientService {
 
     private String normalizeFilter(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void validatePage(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than 0");
+        }
+        if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(400, "pageSize must be between 1 and " + MAX_PAGE_SIZE);
+        }
     }
 }

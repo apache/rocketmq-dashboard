@@ -18,9 +18,18 @@ export interface ClientConnectionQuery {
   instanceId: string;
   clusterId?: string;
   type?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ClientConnectionPage {
+  items: ClientConnection[];
+  total: number;
+  page: number;
+  size: number;
 }
 
 export async function listConnections(params?: ClientConnectionQuery) {
-  const res = await client.get<{ data: ClientConnection[] }>('/clients', { params });
+  const res = await client.get<{ data: ClientConnectionPage }>('/clients', { params });
   return res.data.data;
 }

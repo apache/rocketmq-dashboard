@@ -83,6 +83,8 @@ const connections: ClientConnection[] = [
   },
 ];
 
+const pageOf = (items: ClientConnection[]) => ({ items, total: items.length, page: 1, size: 20 });
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -100,7 +102,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  vi.mocked(connectionsService.listConnections).mockResolvedValue([connection]);
+  vi.mocked(connectionsService.listConnections).mockResolvedValue(pageOf([connection]));
 });
 
 afterEach(() => {
@@ -119,11 +121,11 @@ describe('Clients page', () => {
     renderWithProviders(<ClientsPage />);
 
     await screen.findByText('order-svc-0@10.0.1.12:49152');
-    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 'instance-1' });
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 'instance-1', page: 1, pageSize: 20 });
   });
 
   it('summarizes connection types, protocols, and language versions', async () => {
-    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(pageOf(connections));
     renderWithProviders(<ClientsPage />);
 
     await waitFor(() => {
@@ -144,7 +146,10 @@ describe('Clients page', () => {
 
   it('updates statistics when the selected cluster changes', async () => {
     const user = userEvent.setup();
-    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    vi.mocked(connectionsService.listConnections).mockImplementation(async (query) => {
+      const items = query.clusterId ? connections.filter((connection) => connection.clusterName === query.clusterId) : connections;
+      return pageOf(items);
+    });
     renderWithProviders(<ClientsPage />);
 
     await screen.findByText('audit-svc-0@10.0.2.10:49154');
@@ -174,7 +179,7 @@ describe('Clients page', () => {
 
   it('keeps cluster statistics stable when text search narrows the table', async () => {
     const user = userEvent.setup();
-    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(pageOf(connections));
     renderWithProviders(<ClientsPage />);
 
     await screen.findByText('audit-svc-0@10.0.2.10:49154');
@@ -194,7 +199,7 @@ describe('Clients page', () => {
   });
 
   it('renders empty distributions when no connections are available', async () => {
-    vi.mocked(connectionsService.listConnections).mockResolvedValue([]);
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(pageOf([]));
     renderWithProviders(<ClientsPage />);
 
     expect(
@@ -225,7 +230,7 @@ describe('Clients page', () => {
   it('retries the current instance connection query after a runtime failure', async () => {
     vi.mocked(connectionsService.listConnections)
       .mockRejectedValueOnce(new Error('Client connection provider is not configured'))
-      .mockResolvedValueOnce([connection]);
+      .mockResolvedValueOnce(pageOf([connection]));
     const user = userEvent.setup();
     renderWithProviders(<ClientsPage />);
 
@@ -239,7 +244,7 @@ describe('Clients page', () => {
     expect(await screen.findByText('order-svc-0@10.0.1.12:49152')).toBeInTheDocument();
     expect(connectionsService.listConnections).toHaveBeenCalledTimes(2);
     expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
-      instanceId: 'instance-1',
+      instanceId: 'instance-1', page: 1, pageSize: 20,
     });
   });
 
@@ -270,7 +275,7 @@ describe('Clients page', () => {
     ]);
     vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
       query?.instanceId === 'instance-1'
-        ? Promise.resolve([connection])
+        ? Promise.resolve(pageOf([connection]))
         : Promise.reject(new Error('Instance 2 is unavailable')),
     );
     const user = userEvent.setup();
@@ -311,7 +316,7 @@ describe('Clients page', () => {
 
     await user.click(screen.getByRole('button', { name: /重\s*试/ }));
     await screen.findByText('order-svc-0@10.0.1.12:49152');
-    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 'instance-1' });
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 'instance-1', page: 1, pageSize: 20 });
   });
 
   it('opens a client detail dialog from the connection table', async () => {

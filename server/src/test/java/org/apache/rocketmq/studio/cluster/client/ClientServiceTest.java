@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.client;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -48,9 +49,10 @@ class ClientServiceTest {
                 .build();
         when(clientProvider.findConnections("instance-1", "production-cluster", "Producer")).thenReturn(List.of(connection));
 
-        List<ClientConnectionVO> result = clientService.listConnections(" instance-1 ", " production-cluster ", " Producer ");
+        PageResult<ClientConnectionVO> result = clientService.listConnections(
+                " instance-1 ", " production-cluster ", " Producer ", 1, 20);
 
-        assertThat(result).containsExactly(connection);
+        assertThat(result.getItems()).containsExactly(connection);
         verify(clientProvider).findConnections("instance-1", "production-cluster", "Producer");
     }
 
@@ -58,18 +60,34 @@ class ClientServiceTest {
     void listConnectionsShouldTreatBlankOptionalFiltersAsUnspecified() {
         when(clientProvider.findConnections("instance-1", null, null)).thenReturn(List.of());
 
-        List<ClientConnectionVO> result = clientService.listConnections("instance-1", " ", "\t");
+        PageResult<ClientConnectionVO> result = clientService.listConnections("instance-1", " ", "\t", 1, 20);
 
-        assertThat(result).isEmpty();
+        assertThat(result.getItems()).isEmpty();
         verify(clientProvider).findConnections("instance-1", null, null);
     }
 
     @Test
     void listConnectionsShouldRejectBlankInstanceIdBeforeQueryingProvider() {
-        assertThatThrownBy(() -> clientService.listConnections(" ", null, null))
+        assertThatThrownBy(() -> clientService.listConnections(" ", null, null, 1, 20))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("instanceId is required");
 
         verifyNoInteractions(clientProvider);
+    }
+
+    @Test
+    void listConnectionsShouldSortAndPageConnections() {
+        ClientConnectionVO later = ClientConnectionVO.builder()
+                .clusterName("cluster-b").type(org.apache.rocketmq.studio.common.domain.enums.ClientType.Consumer)
+                .groupOrTopic("group-b").clientId("client-b").address("10.0.0.2").build();
+        ClientConnectionVO first = ClientConnectionVO.builder()
+                .clusterName("cluster-a").type(org.apache.rocketmq.studio.common.domain.enums.ClientType.Producer)
+                .groupOrTopic("group-a").clientId("client-a").address("10.0.0.1").build();
+        when(clientProvider.findConnections("instance-1", null, null)).thenReturn(List.of(later, first));
+
+        PageResult<ClientConnectionVO> result = clientService.listConnections("instance-1", null, null, 1, 1);
+
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getItems()).containsExactly(first);
     }
 }

@@ -31,11 +31,11 @@ describe('connectionsService mock connections', () => {
       clusterId: 'ns-prod',
       type: 'Consumer',
     });
-    const originalClientId = connections[0].clientId;
-    const originalAddress = connections[0].address;
+    const originalClientId = connections.items[0].clientId;
+    const originalAddress = connections.items[0].address;
 
-    connections[0].clientId = 'mutated-client';
-    connections[0].address = '127.0.0.1:8081';
+    connections.items[0].clientId = 'mutated-client';
+    connections.items[0].address = '127.0.0.1:8081';
 
     const fresh = await listConnections({
       instanceId: 'instance-1',
@@ -43,10 +43,10 @@ describe('connectionsService mock connections', () => {
       type: 'Consumer',
     });
 
-    expect(fresh[0].clientId).toBe(originalClientId);
-    expect(fresh[0].address).toBe(originalAddress);
-    expect(fresh[0]).not.toBe(connections[0]);
-    expect(fresh.every((connection) => connection.clusterName === 'ns-prod')).toBe(true);
-    expect(fresh.every((connection) => connection.type === 'Consumer')).toBe(true);
+    expect(fresh.items[0].clientId).toBe(originalClientId);
+    expect(fresh.items[0].address).toBe(originalAddress);
+    expect(fresh.items[0]).not.toBe(connections.items[0]);
+    expect(fresh.items.every((connection) => connection.clusterName === 'ns-prod')).toBe(true);
+    expect(fresh.items.every((connection) => connection.type === 'Consumer')).toBe(true);
   });
 });

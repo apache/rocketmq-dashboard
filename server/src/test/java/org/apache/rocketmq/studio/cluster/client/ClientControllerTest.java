@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.client;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -69,27 +70,29 @@ class ClientControllerTest {
                 .connectedAt(LocalDateTime.of(2026, 1, 1, 12, 5))
                 .clusterName("production-cluster")
                 .build();
-        when(clientService.listConnections("instance-1", null, null)).thenReturn(List.of(grpcClient, remotingClient));
+        when(clientService.listConnections("instance-1", null, null, 1, 20))
+                .thenReturn(PageResult.of(List.of(grpcClient, remotingClient), 2, 1, 20));
 
         mockMvc.perform(get("/api/clients").param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].clientId").value("grpc-client-001"))
-                .andExpect(jsonPath("$.data[0].type").value("Consumer"))
-                .andExpect(jsonPath("$.data[0].protocol").value("gRPC"))
-                .andExpect(jsonPath("$.data[0].language").value("Java"))
-                .andExpect(jsonPath("$.data[0].version").value("5.1.0"))
-                .andExpect(jsonPath("$.data[1].clientId").value("remoting-client-001"))
-                .andExpect(jsonPath("$.data[1].type").value("Producer"))
-                .andExpect(jsonPath("$.data[1].protocol").value("Remoting"));
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.items[0].clientId").value("grpc-client-001"))
+                .andExpect(jsonPath("$.data.items[0].type").value("Consumer"))
+                .andExpect(jsonPath("$.data.items[0].protocol").value("gRPC"))
+                .andExpect(jsonPath("$.data.items[0].language").value("Java"))
+                .andExpect(jsonPath("$.data.items[0].version").value("5.1.0"))
+                .andExpect(jsonPath("$.data.items[1].clientId").value("remoting-client-001"))
+                .andExpect(jsonPath("$.data.items[1].type").value("Producer"))
+                .andExpect(jsonPath("$.data.items[1].protocol").value("Remoting"));
 
-        verify(clientService).listConnections("instance-1", null, null);
+        verify(clientService).listConnections("instance-1", null, null, 1, 20);
     }
 
     @Test
     void listConnectionsShouldPassClusterAndTypeFilters() throws Exception {
-        when(clientService.listConnections("instance-1", "production-cluster", "Consumer")).thenReturn(List.of());
+        when(clientService.listConnections("instance-1", "production-cluster", "Consumer", 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
 
         mockMvc.perform(get("/api/clients")
                         .param("instanceId", "instance-1")
@@ -97,9 +100,9 @@ class ClientControllerTest {
                         .param("type", "Consumer"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data").isEmpty());
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items").isEmpty());
 
-        verify(clientService).listConnections("instance-1", "production-cluster", "Consumer");
+        verify(clientService).listConnections("instance-1", "production-cluster", "Consumer", 1, 20);
     }
 }

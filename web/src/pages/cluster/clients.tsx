@@ -107,6 +107,9 @@ const ClientsPage = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const [connections, setConnections] = useState<ClientConnection[]>([]);
+  const [totalConnections, setTotalConnections] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -120,6 +123,8 @@ const ClientsPage = () => {
   const handleInstanceChange = (instanceId: string) => {
     setSelectedInstanceId(instanceId);
     setConnections([]);
+    setTotalConnections(0);
+    setPage(1);
     setClusterFilter('ALL');
     setSelectedConnection(null);
     setLoadError(null);
@@ -160,10 +165,16 @@ const ClientsPage = () => {
       };
     }
 
-    void listConnections({ instanceId: selectedInstanceId })
-      .then((nextConnections) => {
+    void listConnections({
+      instanceId: selectedInstanceId,
+      clusterId: clusterFilter === 'ALL' ? undefined : clusterFilter,
+      page,
+      pageSize,
+    })
+      .then((result) => {
         if (!cancelled) {
-          setConnections(nextConnections);
+          setConnections(result.items);
+          setTotalConnections(result.total);
           setLoadError(null);
         }
       })
@@ -182,7 +193,7 @@ const ClientsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [connectionLoadKey, selectedInstanceId]);
+  }, [clusterFilter, connectionLoadKey, page, pageSize, selectedInstanceId]);
 
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {
@@ -379,7 +390,7 @@ const ClientsPage = () => {
       {/* ─── Header ─── */}
       <PageHeader
         title={t('clients.title')}
-        subtitle={`${t('clients.title')} — ${filtered.length} connections`}
+        subtitle={`${t('clients.title')} — ${totalConnections} connections`}
       />
 
       {loadError && (
@@ -426,7 +437,10 @@ const ClientsPage = () => {
           <Select
             aria-label={t('clients.cluster')}
             value={clusterFilter}
-            onChange={setClusterFilter}
+            onChange={(value) => {
+              setClusterFilter(value);
+              setPage(1);
+            }}
             style={{ width: 180 }}
             options={clusterOptions}
           />
@@ -514,9 +528,16 @@ const ClientsPage = () => {
           loading={loading}
           scroll={{ x: 1320 }}
           pagination={{
-            pageSize: 20,
+            current: page,
+            pageSize,
+            total: totalConnections,
             showSizeChanger: true,
+            pageSizeOptions: [20, 50, 100],
             showTotal: (total) => `${t('common.total')} ${total}`,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
           }}
           size="small"
         />
