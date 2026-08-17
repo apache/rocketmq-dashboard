@@ -18,9 +18,14 @@ package org.apache.rocketmq.studio.ops.alert;
 
 
 import java.util.List;
+import java.util.Optional;
 
 public interface AlertRepository {
     List<AlertRuleVO> findAllRules();
+
+    Optional<AlertRuleVO> findRuleById(String id);
+
+    List<AlertRuleVO> findRulesByIds(List<String> ids);
 
     AlertRuleVO saveRule(AlertRuleVO rule);
 
@@ -29,6 +34,8 @@ public interface AlertRepository {
     boolean deleteRule(String id);
 
     List<SystemAlertVO> findAlerts(String level);
+
+    Optional<SystemAlertVO> findAlertById(String id);
 
     boolean acknowledgeAlert(SystemAlertVO alert);
 
