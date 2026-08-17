@@ -24,9 +24,9 @@ public interface K8sCertRepository {
 
     List<K8sCertVO> findAll();
 
-    Optional<K8sCertVO> findById(String id);
+    Optional<K8sCertVO> findById(Long id);
 
     K8sCertVO save(K8sCertVO cert);
 
-    boolean deleteById(String id);
+    boolean deleteById(Long id);
 }

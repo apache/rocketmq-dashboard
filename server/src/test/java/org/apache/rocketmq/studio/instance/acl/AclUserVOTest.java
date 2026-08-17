@@ -27,7 +27,7 @@ class AclUserVOTest {
     @Test
     void toStringShouldNotExposeCredentials() {
         AclUserVO user = AclUserVO.builder()
-            .id("user-1")
+            .id(1L)
             .username("ops-admin")
             .accessKey("plain-access-key")
             .secretKey("plain-secret-key")

@@ -274,7 +274,12 @@ class SettingsServiceTest {
         DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
                 .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    DataSourceVO dataSource = invocation.getArgument(0);
+                    // Repository contract: the ds key is generated from the auto-increment id.
+                    dataSource.setKey("ds-1");
+                    return dataSource;
+                });
 
         DataSourceVO result = settingsService.createDataSource(input);
 
@@ -290,7 +295,12 @@ class SettingsServiceTest {
         DataSourceVO input = DataSourceVO.builder().key("existing-key").name("New DS")
                 .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    DataSourceVO dataSource = invocation.getArgument(0);
+                    // Repository contract: a client-provided key is replaced by the generated one.
+                    dataSource.setKey("ds-1");
+                    return dataSource;
+                });
 
         DataSourceVO result = settingsService.createDataSource(input);
 

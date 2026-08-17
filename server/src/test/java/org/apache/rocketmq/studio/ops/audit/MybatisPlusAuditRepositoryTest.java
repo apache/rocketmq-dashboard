@@ -59,7 +59,7 @@ class MybatisPlusAuditRepositoryTest {
         entity.setDetail("delete requested");
         entity.setResult("FAILED");
         entity.setErrorMessage("denied");
-        entity.setOperatedAt(LocalDateTime.of(2026, 8, 4, 10, 15));
+        entity.setGmtCreate(LocalDateTime.of(2026, 8, 4, 10, 15));
         Page<RmqOperationAudit> mapperPage = new Page<RmqOperationAudit>(2, 25)
                 .setRecords(List.of(entity))
                 .setTotal(126);
@@ -75,7 +75,7 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(pageCaptor.getValue().getSize()).isEqualTo(25);
         assertThat(result.getTotal()).isEqualTo(126);
         AuditRecordVO record = result.getItems().get(0);
-        assertThat(record.getId()).isEqualTo("42");
+        assertThat(record.getId()).isEqualTo(42L);
         assertThat(record.getResourceType()).isEqualTo("TOPIC");
         assertThat(record.getClusterId()).isEqualTo("prod-cn");
         assertThat(record.getErrorMessage()).isEqualTo("denied");

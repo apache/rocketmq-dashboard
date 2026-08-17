@@ -55,7 +55,10 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     }
 
     @Override
-    public Optional<K8sCertVO> findById(String id) {
+    public Optional<K8sCertVO> findById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
         return Optional.ofNullable(certMapper.selectById(id)).map(this::toVO);
     }
 
@@ -76,15 +79,14 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     }
 
     @Override
-    public boolean deleteById(String id) {
-        return certMapper.deleteById(id) > 0;
+    public boolean deleteById(Long id) {
+        return id != null && certMapper.deleteById(id) > 0;
     }
 
     private K8sCertVO toVO(RmqK8sCertificate entity) {
         K8sCertVO vo = new K8sCertVO();
         vo.setId(entity.getId());
         vo.setName(entity.getName());
-        vo.setNamespace(entity.getNamespace());
         vo.setCluster(entity.getCluster());
         vo.setType(parseCertType(entity.getId(), entity.getCertType()));
         vo.setIssuer(entity.getIssuer());
@@ -93,8 +95,10 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         vo.setStatus(parseCertStatus(entity.getId(), entity.getStatus()));
         vo.setDaysRemaining(entity.getDaysRemaining() == null ? 0 : entity.getDaysRemaining());
         vo.setSan(parseSan(entity.getId(), entity.getSan()));
-        vo.setCreatedAt(entity.getCreatedAt());
-        vo.setUpdatedAt(entity.getUpdatedAt());
+        vo.setCertPem(entity.getCertPem());
+        vo.setKeyPem(entity.getKeyPem());
+        vo.setGmtCreate(entity.getGmtCreate());
+        vo.setGmtModified(entity.getGmtModified());
         return vo;
     }
 
@@ -102,7 +106,6 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         RmqK8sCertificate entity = new RmqK8sCertificate();
         entity.setId(cert.getId());
         entity.setName(cert.getName());
-        entity.setNamespace(cert.getNamespace());
         entity.setCluster(cert.getCluster());
         entity.setCertType(cert.getType() == null ? null : cert.getType().name());
         entity.setIssuer(cert.getIssuer());
@@ -111,12 +114,14 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         entity.setStatus(cert.getStatus() == null ? null : cert.getStatus().name());
         entity.setDaysRemaining(cert.getDaysRemaining());
         entity.setSan(writeSan(cert.getSan()));
-        entity.setCreatedAt(cert.getCreatedAt());
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setCertPem(cert.getCertPem());
+        entity.setKeyPem(cert.getKeyPem());
+        entity.setGmtCreate(cert.getGmtCreate());
+        entity.setGmtModified(LocalDateTime.now());
         return entity;
     }
 
-    private CertType parseCertType(String certificateId, String value) {
+    private CertType parseCertType(Long certificateId, String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
@@ -129,7 +134,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         throw invalidPersistedValue(certificateId, "type", value);
     }
 
-    private CertStatus parseCertStatus(String certificateId, String value) {
+    private CertStatus parseCertStatus(Long certificateId, String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
@@ -140,7 +145,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         }
     }
 
-    private List<String> parseSan(String certificateId, String json) {
+    private List<String> parseSan(Long certificateId, String json) {
         if (!StringUtils.hasText(json)) {
             return List.of();
         }
@@ -156,7 +161,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         }
     }
 
-    private BusinessException invalidPersistedValue(String certificateId, String field, String value) {
+    private BusinessException invalidPersistedValue(Long certificateId, String field, String value) {
         return new BusinessException(500, "Invalid persisted certificate " + field
                 + " for certificate " + certificateId + ": " + value);
     }

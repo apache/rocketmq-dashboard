@@ -30,7 +30,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AclUserVO {
-    private String id;
+    private Long id;
     private String username;
     @ToString.Exclude
     private String accessKey;
@@ -44,5 +44,5 @@ public class AclUserVO {
     private Boolean permWrite;
     /** IP whitelist pattern for plain access accounts; empty means no restriction. */
     private String whiteRemoteAddress;
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 }

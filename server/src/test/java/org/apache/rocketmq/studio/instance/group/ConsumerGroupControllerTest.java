@@ -63,7 +63,7 @@ class ConsumerGroupControllerTest {
     @Test
     void createConsumerGroupShouldPassValidatedRequest() throws Exception {
         Map<String, Object> body = Map.of(
-                "instanceId", "instance-a",
+                "instanceId", 7,
                 "name", "cg-orders",
                 "clusterId", "cluster-a",
                 "retryMaxTimes", 8,
@@ -88,7 +88,7 @@ class ConsumerGroupControllerTest {
         verify(metadataService).createConsumerGroup(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("cg-orders");
         assertThat(captor.getValue().getClusterId()).isEqualTo("cluster-a");
-        assertThat(captor.getValue().getInstanceId()).isEqualTo("instance-a");
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(7L);
         assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
     }
 
@@ -112,7 +112,7 @@ class ConsumerGroupControllerTest {
     @Test
     void createConsumerGroupShouldRejectNegativeRetryMaxTimes() throws Exception {
         Map<String, Object> body = Map.of(
-                "instanceId", "instance-a",
+                "instanceId", 7,
                 "name", "cg-orders",
                 "retryMaxTimes", -1
         );

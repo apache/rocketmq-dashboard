@@ -31,28 +31,36 @@ public interface InstanceRepository {
 
     List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
 
-    Optional<InstanceVO> findById(String id);
+    Optional<InstanceVO> findById(Long id);
 
     Optional<InstanceVO> findByName(String name);
 
     /**
      * Resolves an instance by the external instance identifier: matches the unique name
-     * first, falling back to the internal primary key for legacy references.
+     * first, falling back to the numeric primary key for references that carry the id.
      */
     default Optional<InstanceVO> findByIdentifier(String identifier) {
         if (identifier == null || identifier.isBlank()) {
             return Optional.empty();
         }
-        return findByName(identifier).or(() -> findById(identifier));
+        Optional<InstanceVO> byName = findByName(identifier);
+        if (byName.isPresent()) {
+            return byName;
+        }
+        try {
+            return findById(Long.parseLong(identifier.trim()));
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
     }
 
     InstanceVO save(InstanceVO instance);
 
-    boolean deleteById(String id);
+    boolean deleteById(Long id);
 
-    boolean existsByCredentialId(String credentialId);
+    boolean existsByCredentialId(Long credentialId);
 
-    long countTopicsByInstance(String instanceId);
+    long countTopicsByInstance(Long instanceId);
 
-    long countGroupsByInstance(String instanceId);
+    long countGroupsByInstance(Long instanceId);
 }

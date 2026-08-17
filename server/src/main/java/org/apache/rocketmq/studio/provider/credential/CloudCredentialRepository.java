@@ -25,11 +25,11 @@ public interface CloudCredentialRepository {
 
     List<CloudCredentialVO> findAll();
 
-    Optional<CloudCredentialVO> findById(String id);
+    Optional<CloudCredentialVO> findById(Long id);
 
     Optional<CloudCredentialVO> findByVendorAndAccessKey(InstanceVendor vendor, String accessKey);
 
     CloudCredentialVO save(CloudCredentialVO credential);
 
-    boolean deleteById(String id);
+    boolean deleteById(Long id);
 }

@@ -75,7 +75,9 @@ public class QueryHistoryService {
         query.setResultCount(resultCount);
         query.setClusterId(clusterId);
         query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
-        query.setQueriedAt(LocalDateTime.now(clock));
+        LocalDateTime now = LocalDateTime.now(clock);
+        query.setGmtCreate(now);
+        query.setGmtModified(now);
         messageQueryMapper.insert(query);
         log.debug("Message query recorded: clusterId={} type={} topic={}", clusterId, queryType, topic);
     }
@@ -88,7 +90,9 @@ public class QueryHistoryService {
         query.setConsumerCount(consumerCount);
         query.setClusterId(clusterId);
         query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
-        query.setQueriedAt(LocalDateTime.now(clock));
+        LocalDateTime now = LocalDateTime.now(clock);
+        query.setGmtCreate(now);
+        query.setGmtModified(now);
         traceQueryMapper.insert(query);
         log.debug("Trace query recorded: clusterId={} msgId={} topic={}", clusterId, msgId, topic);
     }
@@ -104,7 +108,7 @@ public class QueryHistoryService {
                         .or().like("msg_id", pattern)
                         .or().like("message_key", pattern)
                         .or().like("queried_by", pattern))
-                .orderByDesc("queried_at", "id");
+                .orderByDesc("gmt_create", "id");
         Page<RmqMessageQuery> result = messageQueryMapper.selectPage(new Page<>(page, pageSize), query);
         List<MessageQueryHistoryVO> items = result.getRecords().stream()
                 .map(QueryHistoryService::toMessageHistory).toList();
@@ -120,7 +124,7 @@ public class QueryHistoryService {
                         .like("topic", pattern)
                         .or().like("msg_id", pattern)
                         .or().like("queried_by", pattern))
-                .orderByDesc("queried_at", "id");
+                .orderByDesc("gmt_create", "id");
         Page<RmqTraceQuery> result = traceQueryMapper.selectPage(new Page<>(page, pageSize), query);
         List<TraceQueryHistoryVO> items = result.getRecords().stream()
                 .map(QueryHistoryService::toTraceHistory).toList();
@@ -137,14 +141,14 @@ public class QueryHistoryService {
         RmqMessageQuery latestMessage = messageQueryMapper.selectOne(
                 new QueryWrapper<RmqMessageQuery>()
                         .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
-                        .orderByDesc("queried_at", "id").last("LIMIT 1"));
+                        .orderByDesc("gmt_create", "id").last("LIMIT 1"));
         RmqTraceQuery latestTrace = traceQueryMapper.selectOne(
                 new QueryWrapper<RmqTraceQuery>()
                         .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
-                        .orderByDesc("queried_at", "id").last("LIMIT 1"));
+                        .orderByDesc("gmt_create", "id").last("LIMIT 1"));
         LocalDateTime latest = latestOf(
-                latestMessage == null ? null : latestMessage.getQueriedAt(),
-                latestTrace == null ? null : latestTrace.getQueriedAt());
+                latestMessage == null ? null : latestMessage.getGmtCreate(),
+                latestTrace == null ? null : latestTrace.getGmtCreate());
         return QueryHistorySummaryVO.builder()
                 .messageQueries(messageCount)
                 .traceQueries(traceCount)
@@ -167,7 +171,7 @@ public class QueryHistoryService {
     private void deleteExpiredMessageQueries(LocalDateTime cutoff) {
         try {
             int deleted = messageQueryMapper.delete(Wrappers.<RmqMessageQuery>query()
-                    .lt("queried_at", cutoff));
+                    .lt("gmt_create", cutoff));
             log.debug("Purged {} expired message query records", deleted);
         } catch (RuntimeException e) {
             log.warn("Failed to purge expired message query records: {}", e.getMessage());
@@ -177,7 +181,7 @@ public class QueryHistoryService {
     private void deleteExpiredTraceQueries(LocalDateTime cutoff) {
         try {
             int deleted = traceQueryMapper.delete(Wrappers.<RmqTraceQuery>query()
-                    .lt("queried_at", cutoff));
+                    .lt("gmt_create", cutoff));
             log.debug("Purged {} expired trace query records", deleted);
         } catch (RuntimeException e) {
             log.warn("Failed to purge expired trace query records: {}", e.getMessage());
@@ -197,7 +201,7 @@ public class QueryHistoryService {
                 .startTime(query.getStartTime()).endTime(query.getEndTime())
                 .resultCount(query.getResultCount() == null ? 0 : query.getResultCount())
                 .clusterId(query.getClusterId()).queriedBy(query.getQueriedBy())
-                .queriedAt(query.getQueriedAt()).build();
+                .queriedAt(query.getGmtCreate()).build();
     }
 
     private static TraceQueryHistoryVO toTraceHistory(RmqTraceQuery query) {
@@ -206,7 +210,7 @@ public class QueryHistoryService {
                 .nodeCount(query.getNodeCount() == null ? 0 : query.getNodeCount())
                 .consumerCount(query.getConsumerCount() == null ? 0 : query.getConsumerCount())
                 .clusterId(query.getClusterId()).queriedBy(query.getQueriedBy())
-                .queriedAt(query.getQueriedAt()).build();
+                .queriedAt(query.getGmtCreate()).build();
     }
 
     /**

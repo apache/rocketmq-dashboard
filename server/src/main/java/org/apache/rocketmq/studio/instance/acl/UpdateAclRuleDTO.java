@@ -17,14 +17,15 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
 
 @Data
 public class UpdateAclRuleDTO {
-    @NotBlank(message = "id is required")
-    private String id;
+    @NotNull(message = "id is required")
+    private Long id;
     @NotBlank(message = "principal is required")
     private String principal;
     @NotBlank(message = "resource is required")

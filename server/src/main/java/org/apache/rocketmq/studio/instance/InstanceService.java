@@ -75,8 +75,8 @@ public class InstanceService {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         try {
             InstanceProvider provider = providerRegistry.forVendor(vendor);
-            instance.setTopicCount(provider.countTopics(instance.getId()));
-            instance.setConsumerGroupCount(provider.countGroups(instance.getId()));
+            instance.setTopicCount(provider.countTopics(String.valueOf(instance.getId())));
+            instance.setConsumerGroupCount(provider.countGroups(String.valueOf(instance.getId())));
             instance.setResourceCountsAvailable(true);
         } catch (RuntimeException ex) {
             instance.setResourceCountsAvailable(false);
@@ -96,16 +96,15 @@ public class InstanceService {
         }
 
         requireUniqueInstanceName(instance.getName(), null);
-        instance.setId(instance.getName());
-        instance.setCreatedAt(LocalDateTime.now());
-        instance.setUpdatedAt(LocalDateTime.now());
+        instance.setGmtCreate(LocalDateTime.now());
+        instance.setGmtModified(LocalDateTime.now());
         InstanceVO saved = instanceRepository.save(instance);
-        recordAudit("CREATE_INSTANCE", "INSTANCE", saved.getId(), null,
+        recordAudit("CREATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
     }
 
-    private void requireUniqueInstanceName(String name, String excludeId) {
+    private void requireUniqueInstanceName(String name, Long excludeId) {
         if (!StringUtils.hasText(name)) {
             return;
         }
@@ -136,7 +135,7 @@ public class InstanceService {
         if (instance.getEndpoint() != null && !instance.getEndpoint().isBlank()) {
             throw new BusinessException(400, "Commercial instances must be selected from the cloud catalog, endpoint cannot be set manually");
         }
-        if (!StringUtils.hasText(instance.getCredentialId()) || !StringUtils.hasText(instance.getCloudInstanceId())
+        if (instance.getCredentialId() == null || !StringUtils.hasText(instance.getCloudInstanceId())
                 || !StringUtils.hasText(instance.getRegionId())) {
             throw new BusinessException(400,
                     "credentialId, cloudInstanceId and regionId are required for " + vendor + " instances");
@@ -218,7 +217,7 @@ public class InstanceService {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
 
-        if (instance.getId() == null || instance.getId().isBlank()) {
+        if (instance.getId() == null) {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
@@ -251,19 +250,19 @@ public class InstanceService {
         if (!cloudInstance && instance.getAdminCredentialRef() != null) {
             updated.setAdminCredentialRef(normalizeCredentialRef(instance.getAdminCredentialRef()));
         }
-        updated.setUpdatedAt(LocalDateTime.now());
+        updated.setGmtModified(LocalDateTime.now());
 
         InstanceVO saved = instanceRepository.save(updated);
         releaseApacheClientIfChanged(existing, saved);
-        recordAudit("UPDATE_INSTANCE", "INSTANCE", saved.getId(), null,
+        recordAudit("UPDATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
     }
 
-    public void deleteInstance(String id) {
+    public void deleteInstance(Long id) {
         log.info("Deleting instance: {}", id);
 
-        if (id == null || id.isBlank()) {
+        if (id == null) {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
@@ -272,8 +271,8 @@ public class InstanceService {
 
         InstanceProvider provider = providerRegistry.forVendor(
                 existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor());
-        int topicCount = provider.countTopics(id);
-        int consumerGroupCount = provider.countGroups(id);
+        int topicCount = provider.countTopics(String.valueOf(id));
+        int consumerGroupCount = provider.countGroups(String.valueOf(id));
         if (topicCount > 0 || consumerGroupCount > 0) {
             throw new BusinessException(409, String.format(
                     "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
@@ -283,7 +282,7 @@ public class InstanceService {
             throw new BusinessException(404, "InstanceVO not found: " + id);
         }
         releaseApacheEndpointIfUnused(existing, null);
-        recordAudit("DELETE_INSTANCE", "INSTANCE", id, null,
+        recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing));
     }
 
@@ -313,8 +312,8 @@ public class InstanceService {
                 .consumerGroupCount(instance.getConsumerGroupCount())
                 .build();
         copy.setId(instance.getId());
-        copy.setCreatedAt(instance.getCreatedAt());
-        copy.setUpdatedAt(instance.getUpdatedAt());
+        copy.setGmtCreate(instance.getGmtCreate());
+        copy.setGmtModified(instance.getGmtModified());
         return copy;
     }
 
@@ -340,7 +339,7 @@ public class InstanceService {
         releaseEndpointIfUnused(existing.getEndpoint(), saved.getEndpoint(), existing.getId());
     }
 
-    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, String excludedInstanceId) {
+    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, Long excludedInstanceId) {
         String oldEndpoint = normalizeEndpoint(previousEndpoint);
         if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))) {
             return;

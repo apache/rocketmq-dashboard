@@ -27,14 +27,14 @@ class RmqSettingsTest {
     @Test
     void toStringShouldNotExposePersistedSettingsJson() {
         RmqSettings settings = new RmqSettings();
-        settings.setId("settings");
+        settings.setId(1L);
         settings.setJson("{\"apiKey\":\"sk-secret\",\"model\":\"gpt-4o\"}");
-        settings.setUpdatedAt(LocalDateTime.of(2026, 8, 3, 12, 0));
+        settings.setGmtModified(LocalDateTime.of(2026, 8, 3, 12, 0));
 
         String text = settings.toString();
 
-        assertThat(text).contains("id=settings");
-        assertThat(text).contains("updatedAt=2026-08-03T12:00");
+        assertThat(text).contains("id=1");
+        assertThat(text).contains("gmtModified=2026-08-03T12:00");
         assertThat(text).doesNotContain("json");
         assertThat(text).doesNotContain("sk-secret");
     }

@@ -27,8 +27,8 @@ import java.time.LocalDateTime;
 @TableName("rmq_nameserver")
 public class RmqNameserver {
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
     private String name;
 
@@ -40,7 +40,7 @@ public class RmqNameserver {
 
     private String description;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

@@ -29,7 +29,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SystemAlertVO {
-    private String id;
+    private Long id;
     private AlertLevel level;
     private String title;
     private String description;

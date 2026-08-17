@@ -42,12 +42,12 @@ class CloudCredentialControllerTest {
     @Test
     void getCredentialSecretsShouldDisableResponseCaching() throws Exception {
         CloudCredentialVO credentials = new CloudCredentialVO();
-        credentials.setId("credential-1");
+        credentials.setId(1L);
         credentials.setAccessKey("access-key");
         credentials.setSecretKey("secret-key");
-        when(credentialService.reveal("credential-1")).thenReturn(credentials);
+        when(credentialService.reveal(1L)).thenReturn(credentials);
 
-        mockMvc.perform(get("/api/cloud-credentials/credential-1/credentials"))
+        mockMvc.perform(get("/api/cloud-credentials/1/credentials"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
     }

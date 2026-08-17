@@ -28,7 +28,7 @@ public class TopicVO extends BaseEntity {
     private String name;
     private String namespace;
     private String clusterId;
-    private String instanceId;
+    private Long instanceId;
     private TopicType type;
     private int writeQueues;
     private int readQueues;

@@ -71,7 +71,7 @@ public class ClusterRepositoryImpl implements ClusterRepository {
         store.computeIfPresent(clusterId, (id, cluster) -> {
             ClusterVO updated = defensiveCopy(cluster);
             updated.setConfig(config);
-            updated.setUpdatedAt(LocalDateTime.now());
+            updated.setGmtModified(LocalDateTime.now());
             log.info("Config updated for cluster: {}", clusterId);
             return updated;
         });
@@ -100,8 +100,8 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .tpsHistory(cluster.getTpsHistory() == null ? null : new ArrayList<>(cluster.getTpsHistory()))
                 .build();
         copy.setId(cluster.getId());
-        copy.setCreatedAt(cluster.getCreatedAt());
-        copy.setUpdatedAt(cluster.getUpdatedAt());
+        copy.setGmtCreate(cluster.getGmtCreate());
+        copy.setGmtModified(cluster.getGmtModified());
         return copy;
     }
 
@@ -189,8 +189,8 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .tpsHistory(List.of(1200, 1350, 1100, 1450, 1280, 1500, 1380, 1420, 1300, 1550))
                 .build();
         cluster1.setId("cluster-001");
-        cluster1.setCreatedAt(LocalDateTime.now().minusDays(30));
-        cluster1.setUpdatedAt(LocalDateTime.now());
+        cluster1.setGmtCreate(LocalDateTime.now().minusDays(30));
+        cluster1.setGmtModified(LocalDateTime.now());
 
         ClusterVO cluster2 = ClusterVO.builder()
                 .name("rmq-cluster-staging")
@@ -242,8 +242,8 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .tpsHistory(List.of(320, 280, 350, 310, 290, 340, 300, 330, 310, 350))
                 .build();
         cluster2.setId("cluster-002");
-        cluster2.setCreatedAt(LocalDateTime.now().minusDays(15));
-        cluster2.setUpdatedAt(LocalDateTime.now().minusHours(3));
+        cluster2.setGmtCreate(LocalDateTime.now().minusDays(15));
+        cluster2.setGmtModified(LocalDateTime.now().minusHours(3));
 
         store.put(cluster1.getId(), cluster1);
         store.put(cluster2.getId(), cluster2);

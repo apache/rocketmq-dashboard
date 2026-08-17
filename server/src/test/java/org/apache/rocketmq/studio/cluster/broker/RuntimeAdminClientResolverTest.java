@@ -53,7 +53,7 @@ class RuntimeAdminClientResolverTest {
     @Test
     void resolvesTrimmedEndpointFromSelectedInstance() {
         InstanceVO instance = InstanceVO.builder().endpoint(" namesrv-a:9876 ").build();
-        instance.setId("instance-a");
+        instance.setId(1L);
         when(instanceRepository.findByIdentifier("instance-a")).thenReturn(Optional.of(instance));
 
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
@@ -97,17 +97,17 @@ class RuntimeAdminClientResolverTest {
                 .vendor(InstanceVendor.ALIYUN)
                 .endpoint("cloud-endpoint:9876")
                 .build();
-        instance.setId("cloud-instance");
+        instance.setId(2L);
         when(instanceRepository.findByIdentifier("cloud-instance")).thenReturn(Optional.of(instance));
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
                 new MqAdminProperties());
 
         assertThatThrownBy(() -> resolver.resolveEndpoint("cloud-instance"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Runtime AdminClient only supports Apache instances: cloud-instance");
+                .hasMessage("Runtime AdminClient only supports Apache instances: 2");
         assertThatThrownBy(() -> resolver.execute(instance, admin -> "unused"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Runtime AdminClient only supports Apache instances: cloud-instance");
+                .hasMessage("Runtime AdminClient only supports Apache instances: 2");
         verifyNoInteractions(adminFactory);
     }
 
@@ -117,7 +117,7 @@ class RuntimeAdminClientResolverTest {
                 .endpoint("namesrv-b:9876")
                 .adminCredentialRef(" production-admin ")
                 .build();
-        instance.setId("instance-b");
+        instance.setId(3L);
         MqAdminProperties properties = new MqAdminProperties();
         MqAdminProperties.Credential credential = new MqAdminProperties.Credential();
         credential.setAccessKey("admin-ak");
@@ -153,7 +153,7 @@ class RuntimeAdminClientResolverTest {
         properties.getCredentials().put("incomplete", incomplete);
         InstanceVO instance = InstanceVO.builder().endpoint("namesrv-b:9876")
                 .adminCredentialRef("missing").build();
-        instance.setId("instance-b");
+        instance.setId(3L);
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
                 properties);

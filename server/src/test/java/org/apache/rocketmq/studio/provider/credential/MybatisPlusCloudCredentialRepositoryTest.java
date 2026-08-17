@@ -46,22 +46,22 @@ class MybatisPlusCloudCredentialRepositoryTest {
     @Test
     void saveShouldReportALostConcurrentUpdate() {
         CloudCredentialVO credential = new CloudCredentialVO();
-        credential.setId("cred-1");
+        credential.setId(1L);
         credential.setVendor(InstanceVendor.ALIYUN);
-        when(credentialMapper.selectById("cred-1")).thenReturn(entity("cred-1", "ALIYUN"));
+        when(credentialMapper.selectById(1L)).thenReturn(entity(1L, "cred-1", "ALIYUN"));
         when(credentialMapper.updateById(any(RmqCloudCredential.class))).thenReturn(0);
 
         assertThatThrownBy(() -> repository.save(credential))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Cloud credential update was not applied: cred-1")
+                .hasMessage("Cloud credential update was not applied: 1")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
     }
 
     @Test
     void findByIdShouldMapValidPersistedVendor() {
-        when(credentialMapper.selectById("cred-valid")).thenReturn(entity("cred-valid", "ALIYUN"));
+        when(credentialMapper.selectById(2L)).thenReturn(entity(2L, "cred-valid", "ALIYUN"));
 
-        Optional<CloudCredentialVO> result = repository.findById("cred-valid");
+        Optional<CloudCredentialVO> result = repository.findById(2L);
 
         assertThat(result).isPresent();
         assertThat(result.orElseThrow().getVendor()).isEqualTo(InstanceVendor.ALIYUN);
@@ -69,18 +69,18 @@ class MybatisPlusCloudCredentialRepositoryTest {
 
     @Test
     void findByIdShouldRejectInvalidPersistedVendor() {
-        when(credentialMapper.selectById("cred-invalid")).thenReturn(entity("cred-invalid", "UNKNOWN"));
+        when(credentialMapper.selectById(3L)).thenReturn(entity(3L, "cred-invalid", "UNKNOWN"));
 
-        assertThatThrownBy(() -> repository.findById("cred-invalid"))
+        assertThatThrownBy(() -> repository.findById(3L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Invalid persisted cloud credential vendor")
-                .hasMessageContaining("cred-invalid");
+                .hasMessageContaining("3");
     }
 
-    private RmqCloudCredential entity(String id, String vendor) {
+    private RmqCloudCredential entity(Long id, String name, String vendor) {
         RmqCloudCredential entity = new RmqCloudCredential();
         entity.setId(id);
-        entity.setName(id);
+        entity.setName(name);
         entity.setVendor(vendor);
         entity.setAccessKey("access-key");
         entity.setSecretKey("c2VjcmV0");

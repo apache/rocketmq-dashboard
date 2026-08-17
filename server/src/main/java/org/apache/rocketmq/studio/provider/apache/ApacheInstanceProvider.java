@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.util.InstanceIds;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -54,12 +55,17 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public int countTopics(String instanceId) {
-        return (int) instanceRepository.countTopicsByInstance(instanceId);
+        // The instance_id foreign key is numeric; resolve the external identifier first.
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(instance -> (int) instanceRepository.countTopicsByInstance(instance.getId()))
+                .orElse(0);
     }
 
     @Override
     public int countGroups(String instanceId) {
-        return (int) instanceRepository.countGroupsByInstance(instanceId);
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(instance -> (int) instanceRepository.countGroupsByInstance(instance.getId()))
+                .orElse(0);
     }
 
     @Override
@@ -135,10 +141,10 @@ public class ApacheInstanceProvider implements InstanceProvider {
         return messageProvider.getMessageTrace(instanceId, msgId, topic);
     }
 
-    private boolean matchesInstance(String topicInstanceId, String instanceId) {
+    private boolean matchesInstance(Long topicInstanceId, String instanceId) {
         if (instanceId == null || instanceId.isBlank()) {
             return true;
         }
-        return Objects.equals(topicInstanceId, instanceId);
+        return Objects.equals(InstanceIds.asString(topicInstanceId), instanceId);
     }
 }

@@ -363,7 +363,7 @@ class RocketMQDashboardProviderTest {
                 .type(InstanceType.DIRECT)
                 .endpoint("namesrv-direct:9876")
                 .build();
-        instance.setId("instance-direct");
+        instance.setId(1L);
         when(resolver.resolveInstance("instance-direct")).thenReturn(instance);
         when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));

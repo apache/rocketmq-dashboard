@@ -135,8 +135,8 @@ public class TencentAclService {
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.CreateRole(request));
         // The created role is not returned by the API; reconstruct from the known inputs.
+        // Tencent roles have no database row; the role name lives in username, id stays null.
         return AclUserVO.builder()
-                .id(user.getUsername())
                 .username(user.getUsername())
                 .accessKey(null)
                 .secretKey(null)
@@ -144,7 +144,7 @@ public class TencentAclService {
                 .permRead(user.getPermRead() == null || user.getPermRead())
                 .permWrite(user.getPermWrite() == null || user.getPermWrite())
                 .clusters(context.cloudInstanceId() == null ? List.of() : List.of(context.cloudInstanceId()))
-                .createdAt(LocalDateTime.now())
+                .gmtCreate(LocalDateTime.now())
                 .build();
     }
 
@@ -161,7 +161,6 @@ public class TencentAclService {
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.ModifyRole(request));
         return AclUserVO.builder()
-                .id(user.getUsername())
                 .username(user.getUsername())
                 .accessKey(null)
                 .secretKey(null)
@@ -169,7 +168,7 @@ public class TencentAclService {
                 .permRead(user.getPermRead() == null || user.getPermRead())
                 .permWrite(user.getPermWrite() == null || user.getPermWrite())
                 .clusters(context.cloudInstanceId() == null ? List.of() : List.of(context.cloudInstanceId()))
-                .createdAt(user.getCreatedAt())
+                .gmtCreate(user.getGmtCreate())
                 .build();
     }
 
@@ -241,7 +240,6 @@ public class TencentAclService {
             actions.add("SUB");
         }
         return AclRuleVO.builder()
-                .id(principal)
                 .principal(principal)
                 .resource(RESOURCE)
                 .resourceType(RESOURCE_TYPE)
@@ -268,10 +266,10 @@ public class TencentAclService {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findById(instanceId)
+        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
-                || !StringUtils.hasText(instance.getCredentialId())) {
+                || instance.getCredentialId() == null) {
             throw new BusinessException(400, "Instance " + instanceId + " is missing Tencent Cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
@@ -279,7 +277,6 @@ public class TencentAclService {
 
     private static AclUserVO toUser(RoleItem role, String cloudInstanceId) {
         return AclUserVO.builder()
-                .id(role.getRoleName())
                 .username(role.getRoleName())
                 .accessKey(role.getAccessKey())
                 .secretKey(role.getSecretKey())
@@ -288,7 +285,7 @@ public class TencentAclService {
                 .permWrite(role.getPermWrite())
                 .clusters(cloudInstanceId == null ? List.of() : List.of(cloudInstanceId))
                 .whiteRemoteAddress(null)
-                .createdAt(toLocalDateTime(role.getCreatedTime()))
+                .gmtCreate(toLocalDateTime(role.getCreatedTime()))
                 .build();
     }
 
@@ -301,7 +298,6 @@ public class TencentAclService {
             actions.add("SUB");
         }
         return AclRuleVO.builder()
-                .id(role.getRoleName())
                 .principal(role.getRoleName())
                 .resource(RESOURCE)
                 .resourceType(RESOURCE_TYPE)
@@ -310,7 +306,7 @@ public class TencentAclService {
                 .decision(DECISION)
                 .scope(SCOPE)
                 .aclVersion(ACL_VERSION)
-                .createdAt(toLocalDateTime(role.getCreatedTime()))
+                .gmtCreate(toLocalDateTime(role.getCreatedTime()))
                 .build();
     }
 
@@ -322,6 +318,6 @@ public class TencentAclService {
         return Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
     }
 
-    private record Context(String cloudInstanceId, String regionId, String credentialId) {
+    private record Context(String cloudInstanceId, String regionId, Long credentialId) {
     }
 }

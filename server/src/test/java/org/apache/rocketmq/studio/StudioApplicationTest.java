@@ -73,7 +73,6 @@ class StudioApplicationTest {
                 .endpoint("127.0.0.1:9876")
                 .adminCredentialRef("production-admin")
                 .build();
-        instance.setId("acl-admin-ref-roundtrip");
 
         instanceRepository.save(instance);
 

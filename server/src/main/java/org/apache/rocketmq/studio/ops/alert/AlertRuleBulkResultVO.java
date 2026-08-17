@@ -25,7 +25,7 @@ import java.util.Map;
 @Data
 @Builder
 public class AlertRuleBulkResultVO {
-    private List<String> succeededIds;
-    private Map<String, String> failures;
+    private List<Long> succeededIds;
+    private Map<Long, String> failures;
     private List<AlertRuleVO> updatedRules;
 }

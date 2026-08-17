@@ -68,7 +68,6 @@ class K8sCertServiceTest {
         k8sCertService = new K8sCertService(k8sCertRepository, operationAuditService, CLOCK);
         sampleCert = K8sCertVO.builder()
                 .name("rocketmq-tls")
-                .namespace("mq-system")
                 .cluster("prod-cluster")
                 .type(CertType.TLS)
                 .issuer("letsencrypt")
@@ -78,9 +77,9 @@ class K8sCertServiceTest {
                 .daysRemaining(180)
                 .san(Arrays.asList("rocketmq.example.com", "*.rocketmq.example.com"))
                 .build();
-        sampleCert.setId("cert-1");
-        sampleCert.setCreatedAt(LocalDateTime.of(2024, 12, 1, 0, 0));
-        sampleCert.setUpdatedAt(LocalDateTime.of(2025, 1, 2, 0, 0));
+        sampleCert.setId(1L);
+        sampleCert.setGmtCreate(LocalDateTime.of(2024, 12, 1, 0, 0));
+        sampleCert.setGmtModified(LocalDateTime.of(2025, 1, 2, 0, 0));
     }
 
     @Test
@@ -90,7 +89,7 @@ class K8sCertServiceTest {
                 .type(CertType.mTLS)
                 .status(CertStatus.expiring)
                 .build();
-        secondCert.setId("cert-2");
+        secondCert.setId(2L);
 
         when(k8sCertRepository.findAll()).thenReturn(Arrays.asList(sampleCert, secondCert));
 
@@ -119,11 +118,11 @@ class K8sCertServiceTest {
         sampleCert.setNotAfter(now.minusDays(1));
         sampleCert.setStatus(CertStatus.valid);
         sampleCert.setDaysRemaining(180);
-        K8sCertVO expiresNowCert = copyWithExpiry("cert-expires-now", now,
+        K8sCertVO expiresNowCert = copyWithExpiry(3L, now,
                 CertStatus.valid, 180);
-        K8sCertVO expiringCert = copyWithExpiry("cert-expiring", now.plusDays(30),
+        K8sCertVO expiringCert = copyWithExpiry(4L, now.plusDays(30),
                 CertStatus.expired, -1);
-        K8sCertVO validCert = copyWithExpiry("cert-valid", now.plusDays(31),
+        K8sCertVO validCert = copyWithExpiry(5L, now.plusDays(31),
                 CertStatus.expired, -1);
         when(k8sCertRepository.findAll())
                 .thenReturn(List.of(sampleCert, expiresNowCert, expiringCert, validCert));
@@ -146,7 +145,6 @@ class K8sCertServiceTest {
     void createCertShouldCreateAndSaveCert() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .name("new-tls-cert")
-                .namespace("default")
                 .cluster("test-cluster")
                 .type("TLS")
                 .issuer("vault")
@@ -156,7 +154,7 @@ class K8sCertServiceTest {
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> {
             K8sCertVO cert = invocation.getArgument(0);
             if (cert.getId() == null) {
-                cert.setId("generated-id");
+                cert.setId(100L);
             }
             return cert;
         });
@@ -165,7 +163,6 @@ class K8sCertServiceTest {
         LocalDateTime now = LocalDateTime.now(CLOCK);
 
         assertThat(result.getName()).isEqualTo("new-tls-cert");
-        assertThat(result.getNamespace()).isEqualTo("default");
         assertThat(result.getCluster()).isEqualTo("test-cluster");
         assertThat(result.getType()).isEqualTo(CertType.TLS);
         assertThat(result.getIssuer()).isEqualTo("vault");
@@ -174,11 +171,11 @@ class K8sCertServiceTest {
         assertThat(result.getNotBefore()).isEqualTo(now);
         assertThat(result.getNotAfter()).isEqualTo(now.plusYears(1));
         assertThat(result.getDaysRemaining()).isEqualTo(365);
-        assertThat(result.getCreatedAt()).isEqualTo(now);
-        assertThat(result.getUpdatedAt()).isEqualTo(now);
+        assertThat(result.getGmtCreate()).isEqualTo(now);
+        assertThat(result.getGmtModified()).isEqualTo(now);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
         verify(operationAuditService).record(eq("CREATE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
-                eq(result.getId()), eq(null), eq("name=new-tls-cert, namespace=default, cluster=test-cluster"),
+                eq("100"), eq(null), eq("name=new-tls-cert, cluster=test-cluster"),
                 eq("SUCCESS"), eq(null));
     }
 
@@ -208,7 +205,6 @@ class K8sCertServiceTest {
     void createCertShouldSetCorrectValidityPeriod() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .name("validity-test")
-                .namespace("default")
                 .cluster("test-cluster")
                 .type("TLS")
                 .issuer("test-issuer")
@@ -228,13 +224,12 @@ class K8sCertServiceTest {
 
     @Test
     void updateCertShouldUpdateFieldsWhenFound() {
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         UpdateCertDTO command = UpdateCertDTO.builder()
-                .id("cert-1")
+                .id(1L)
                 .name("updated-name")
-                .namespace("new-namespace")
                 .cluster("new-cluster")
                 .type("mTLS")
                 .issuer("new-issuer")
@@ -244,21 +239,20 @@ class K8sCertServiceTest {
         K8sCertVO result = k8sCertService.updateCert(command);
 
         assertThat(result.getName()).isEqualTo("updated-name");
-        assertThat(result.getNamespace()).isEqualTo("new-namespace");
         assertThat(result.getCluster()).isEqualTo("new-cluster");
         assertThat(result.getType()).isEqualTo(CertType.mTLS);
         assertThat(result.getIssuer()).isEqualTo("new-issuer");
         assertThat(result.getSan()).containsExactly("new.example.com");
-        assertThat(result.getId()).isEqualTo("cert-1");
-        assertThat(result.getCreatedAt()).isEqualTo(LocalDateTime.of(2024, 12, 1, 0, 0));
-        assertThat(result.getUpdatedAt()).isEqualTo(LocalDateTime.now(CLOCK));
+        assertThat(result.getId()).isEqualTo(1L);
+        assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2024, 12, 1, 0, 0));
+        assertThat(result.getGmtModified()).isEqualTo(LocalDateTime.now(CLOCK));
         assertThat(result).isNotSameAs(sampleCert);
         assertThat(sampleCert.getName()).isEqualTo("rocketmq-tls");
         assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
-        assertThat(sampleCert.getUpdatedAt()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
+        assertThat(sampleCert.getGmtModified()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
         verify(k8sCertRepository).save(any(K8sCertVO.class));
         verify(operationAuditService).record(eq("UPDATE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
-                eq("cert-1"), eq(null), eq("name=updated-name, namespace=new-namespace, cluster=new-cluster"),
+                eq("1"), eq(null), eq("name=updated-name, cluster=new-cluster"),
                 eq("SUCCESS"), eq(null));
     }
 
@@ -268,10 +262,10 @@ class K8sCertServiceTest {
         sampleCert.setNotAfter(now.minusDays(1));
         sampleCert.setStatus(CertStatus.valid);
         sampleCert.setDaysRemaining(180);
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         UpdateCertDTO command = UpdateCertDTO.builder()
-                .id("cert-1")
+                .id(1L)
                 .name("updated-expired-cert")
                 .build();
 
@@ -286,18 +280,17 @@ class K8sCertServiceTest {
 
     @Test
     void updateCertShouldPreserveExistingFieldsWhenCommandFieldsAreNull() {
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         UpdateCertDTO command = UpdateCertDTO.builder()
-                .id("cert-1")
+                .id(1L)
                 .name("only-name-changed")
                 .build();
 
         K8sCertVO result = k8sCertService.updateCert(command);
 
         assertThat(result.getName()).isEqualTo("only-name-changed");
-        assertThat(result.getNamespace()).isEqualTo("mq-system");
         assertThat(result.getCluster()).isEqualTo("prod-cluster");
         assertThat(result.getType()).isEqualTo(CertType.TLS);
         assertThat(result.getIssuer()).isEqualTo("letsencrypt");
@@ -305,15 +298,14 @@ class K8sCertServiceTest {
 
     @Test
     void updateCertShouldRejectBlankIdentityFields() {
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
         List<Map.Entry<String, Consumer<UpdateCertDTO>>> invalidUpdates = List.of(
                 Map.entry("name", command -> command.setName(" ")),
-                Map.entry("namespace", command -> command.setNamespace("\t")),
                 Map.entry("cluster", command -> command.setCluster("\n")),
                 Map.entry("issuer", command -> command.setIssuer("  ")));
 
         for (Map.Entry<String, Consumer<UpdateCertDTO>> invalidUpdate : invalidUpdates) {
-            UpdateCertDTO command = UpdateCertDTO.builder().id("cert-1").build();
+            UpdateCertDTO command = UpdateCertDTO.builder().id(1L).build();
             invalidUpdate.getValue().accept(command);
 
             assertThatThrownBy(() -> k8sCertService.updateCert(command))
@@ -327,25 +319,25 @@ class K8sCertServiceTest {
 
     @Test
     void updateCertShouldThrowWhenNotFound() {
-        when(k8sCertRepository.findById("nonexistent")).thenReturn(Optional.empty());
+        when(k8sCertRepository.findById(999L)).thenReturn(Optional.empty());
 
         UpdateCertDTO command = UpdateCertDTO.builder()
-                .id("nonexistent")
+                .id(999L)
                 .name("wont-work")
                 .build();
 
         assertThatThrownBy(() -> k8sCertService.updateCert(command))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Certificate not found: nonexistent")
+                .hasMessageContaining("Certificate not found: 999")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
 
     @Test
     void updateCertShouldNotMutateStoredCertWhenSaveFails() {
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenThrow(new IllegalStateException("save failed"));
         UpdateCertDTO command = UpdateCertDTO.builder()
-                .id("cert-1")
+                .id(1L)
                 .name("should-not-persist")
                 .type("mTLS")
                 .build();
@@ -356,7 +348,7 @@ class K8sCertServiceTest {
 
         assertThat(sampleCert.getName()).isEqualTo("rocketmq-tls");
         assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
-        assertThat(sampleCert.getUpdatedAt()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
+        assertThat(sampleCert.getGmtModified()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
     }
 
     @Test
@@ -366,10 +358,10 @@ class K8sCertServiceTest {
         LocalDateTime originalNotBefore = sampleCert.getNotBefore();
         LocalDateTime originalNotAfter = sampleCert.getNotAfter();
 
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        RenewCertDTO command = RenewCertDTO.builder().id("cert-1").build();
+        RenewCertDTO command = RenewCertDTO.builder().id(1L).build();
 
         K8sCertVO result = k8sCertService.renewCert(command);
         LocalDateTime now = LocalDateTime.now(CLOCK);
@@ -378,9 +370,9 @@ class K8sCertServiceTest {
         assertThat(result.getDaysRemaining()).isEqualTo(365);
         assertThat(result.getNotBefore()).isEqualTo(now);
         assertThat(result.getNotAfter()).isEqualTo(now.plusYears(1));
-        assertThat(result.getUpdatedAt()).isEqualTo(now);
-        assertThat(result.getId()).isEqualTo("cert-1");
-        assertThat(result.getCreatedAt()).isEqualTo(sampleCert.getCreatedAt());
+        assertThat(result.getGmtModified()).isEqualTo(now);
+        assertThat(result.getId()).isEqualTo(1L);
+        assertThat(result.getGmtCreate()).isEqualTo(sampleCert.getGmtCreate());
         assertThat(result).isNotSameAs(sampleCert);
         assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.expired);
         assertThat(sampleCert.getDaysRemaining()).isZero();
@@ -388,7 +380,7 @@ class K8sCertServiceTest {
         assertThat(sampleCert.getNotAfter()).isEqualTo(originalNotAfter);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
         verify(operationAuditService).record(eq("RENEW_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
-                eq("cert-1"), eq(null), eq("name=rocketmq-tls, namespace=mq-system, cluster=prod-cluster"),
+                eq("1"), eq(null), eq("name=rocketmq-tls, cluster=prod-cluster"),
                 eq("SUCCESS"), eq(null));
     }
 
@@ -399,10 +391,10 @@ class K8sCertServiceTest {
         LocalDateTime originalNotBefore = sampleCert.getNotBefore();
         LocalDateTime originalNotAfter = sampleCert.getNotAfter();
 
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenThrow(new IllegalStateException("save failed"));
 
-        RenewCertDTO command = RenewCertDTO.builder().id("cert-1").build();
+        RenewCertDTO command = RenewCertDTO.builder().id(1L).build();
 
         assertThatThrownBy(() -> k8sCertService.renewCert(command))
                 .isInstanceOf(IllegalStateException.class)
@@ -412,64 +404,63 @@ class K8sCertServiceTest {
         assertThat(sampleCert.getDaysRemaining()).isZero();
         assertThat(sampleCert.getNotBefore()).isEqualTo(originalNotBefore);
         assertThat(sampleCert.getNotAfter()).isEqualTo(originalNotAfter);
-        assertThat(sampleCert.getUpdatedAt()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
+        assertThat(sampleCert.getGmtModified()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
     }
 
     @Test
     void renewCertShouldThrowWhenNotFound() {
-        when(k8sCertRepository.findById("nonexistent")).thenReturn(Optional.empty());
+        when(k8sCertRepository.findById(999L)).thenReturn(Optional.empty());
 
-        RenewCertDTO command = RenewCertDTO.builder().id("nonexistent").build();
+        RenewCertDTO command = RenewCertDTO.builder().id(999L).build();
 
         assertThatThrownBy(() -> k8sCertService.renewCert(command))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Certificate not found: nonexistent");
+                .hasMessageContaining("Certificate not found: 999");
     }
 
     @Test
     void deleteCertShouldDeleteWhenFound() {
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
-        when(k8sCertRepository.deleteById("cert-1")).thenReturn(true);
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.deleteById(1L)).thenReturn(true);
 
-        DeleteCertDTO command = DeleteCertDTO.builder().id("cert-1").build();
+        DeleteCertDTO command = DeleteCertDTO.builder().id(1L).build();
 
         k8sCertService.deleteCert(command);
 
-        verify(k8sCertRepository).deleteById("cert-1");
+        verify(k8sCertRepository).deleteById(1L);
         verify(operationAuditService).record(eq("DELETE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
-                eq("cert-1"), eq(null), eq(null), eq("SUCCESS"), eq(null));
+                eq("1"), eq(null), eq(null), eq("SUCCESS"), eq(null));
     }
 
     @Test
     void deleteCertShouldRejectConcurrentRemoval() {
-        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
-        when(k8sCertRepository.deleteById("cert-1")).thenReturn(false);
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.deleteById(1L)).thenReturn(false);
 
-        DeleteCertDTO command = DeleteCertDTO.builder().id("cert-1").build();
+        DeleteCertDTO command = DeleteCertDTO.builder().id(1L).build();
 
         assertThatThrownBy(() -> k8sCertService.deleteCert(command))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Certificate not found: cert-1")
+                .hasMessage("Certificate not found: 1")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
         verifyNoInteractions(operationAuditService);
     }
 
     @Test
     void deleteCertShouldThrowWhenNotFound() {
-        when(k8sCertRepository.findById("nonexistent")).thenReturn(Optional.empty());
+        when(k8sCertRepository.findById(999L)).thenReturn(Optional.empty());
 
-        DeleteCertDTO command = DeleteCertDTO.builder().id("nonexistent").build();
+        DeleteCertDTO command = DeleteCertDTO.builder().id(999L).build();
 
         assertThatThrownBy(() -> k8sCertService.deleteCert(command))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Certificate not found: nonexistent");
+                .hasMessageContaining("Certificate not found: 999");
     }
 
-    private K8sCertVO copyWithExpiry(String id, LocalDateTime notAfter, CertStatus status,
+    private K8sCertVO copyWithExpiry(Long id, LocalDateTime notAfter, CertStatus status,
                                      int daysRemaining) {
         K8sCertVO cert = K8sCertVO.builder()
                 .name(sampleCert.getName())
-                .namespace(sampleCert.getNamespace())
                 .cluster(sampleCert.getCluster())
                 .type(sampleCert.getType())
                 .issuer(sampleCert.getIssuer())
@@ -480,8 +471,8 @@ class K8sCertServiceTest {
                 .san(sampleCert.getSan())
                 .build();
         cert.setId(id);
-        cert.setCreatedAt(sampleCert.getCreatedAt());
-        cert.setUpdatedAt(sampleCert.getUpdatedAt());
+        cert.setGmtCreate(sampleCert.getGmtCreate());
+        cert.setGmtModified(sampleCert.getGmtModified());
         return cert;
     }
 }

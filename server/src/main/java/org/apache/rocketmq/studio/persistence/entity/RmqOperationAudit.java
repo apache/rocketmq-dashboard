@@ -46,5 +46,7 @@ public class RmqOperationAudit {
 
     private String operator;
 
-    private LocalDateTime operatedAt;
+    private LocalDateTime gmtCreate;
+
+    private LocalDateTime gmtModified;
 }

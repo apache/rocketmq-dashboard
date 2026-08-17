@@ -24,7 +24,7 @@ import java.util.List;
 
 @Data
 public class AlertRuleRequestDTO {
-    private String id;
+    private Long id;
     @NotBlank(message = "name is required")
     private String name;
     private String metric;
