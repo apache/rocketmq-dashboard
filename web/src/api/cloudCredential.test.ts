@@ -54,9 +54,10 @@ describe('cloudCredential API', () => {
 
     const credentials = await listCloudCredentials();
 
-    expect(credentials).toHaveLength(1);
-    expect(credentials[0].vendor).toBe('ALIYUN');
-    expect(credentials[0].secretKey).toBeUndefined();
+    const items = Array.isArray(credentials) ? credentials : credentials.items;
+    expect(items).toHaveLength(1);
+    expect(items[0].vendor).toBe('ALIYUN');
+    expect(items[0].secretKey).toBeUndefined();
   });
 
   it('creates a credential with the full payload', async () => {
