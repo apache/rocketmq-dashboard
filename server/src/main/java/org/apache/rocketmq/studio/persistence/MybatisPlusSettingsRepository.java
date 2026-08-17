@@ -30,6 +30,7 @@ import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -101,7 +102,18 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                 entity.setJson(json);
                 entity.setGmtCreate(LocalDateTime.now());
                 entity.setGmtModified(LocalDateTime.now());
-                settingsMapper.insert(entity);
+                try {
+                    settingsMapper.insert(entity);
+                } catch (DuplicateKeyException duplicateKey) {
+                    // Another Studio replica initialized the singleton row concurrently.
+                    RmqSettings concurrent = findSingletonSettings();
+                    if (concurrent == null) {
+                        throw duplicateKey;
+                    }
+                    concurrent.setJson(json);
+                    concurrent.setGmtModified(LocalDateTime.now());
+                    settingsMapper.updateById(concurrent);
+                }
             } else {
                 entity.setJson(json);
                 entity.setGmtModified(LocalDateTime.now());
