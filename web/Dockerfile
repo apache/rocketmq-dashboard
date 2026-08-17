@@ -4,7 +4,7 @@ ARG VITE_GIT_COMMIT
 ENV VITE_GIT_COMMIT=${VITE_GIT_COMMIT}
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --registry=https://registry.npmmirror.com
 COPY . .
 RUN npm run build
 

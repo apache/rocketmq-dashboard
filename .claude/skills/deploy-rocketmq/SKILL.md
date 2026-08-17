@@ -17,7 +17,7 @@ description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 stu
 | B. 单机部署开源 RocketMQ | 在目标机器部署纯净开源集群（nameserver + 双 broker + proxy），不带测试挂具 |
 | C. 单机部署 RocketMQ 测试客户端 | 在目标机器部署模式 B 集群 + producer/consumer 1 TPS 轨迹挂具，供 Studio 调试 |
 
-> ⚠️ `deploy/deploy.sh` 是旧的 podman 时代脚本，与当前 docker compose 流程不一致，**不要使用**。
+> ⚠️ 模式 A 可用 `deploy/deploy.sh` 一键执行；模式 B/C 无脚本，按手动步骤执行。
 
 ## 通用前置条件（目标机器）
 
@@ -37,6 +37,10 @@ description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 stu
 ---
 
 ## 模式 A：部署 Studio 到目标机器
+
+> 🚀 **一键脚本**：`deploy/deploy.sh [all|server|web]` 已实现本模式全流程
+> （打包 → 传输 → 目标机构建 → compose 启动 → actuator/health 验证），
+> `deploy/.env` 配置 `REMOTE_HOST` 等。后续部署优先用脚本；以下手动步骤用于首次初始化与排障。
 
 ### 核心原则
 
@@ -344,6 +348,15 @@ docker compose exec nameserver sh bin/mqadmin queryMsgByKey \
         export PATH=/opt/apache-maven-3.9.16/bin:$PATH
         mvn -B -ntp -s /maven-cache/settings.xml -Dmaven.repo.local=/maven-cache/repository package -DskipTests'
     ```
+  - 也可基于本地已有 dragonwell 镜像 + 宿主机 Maven 分发包自制包装镜像
+    （`FROM alibabadragonwell/dragonwell:21` + `COPY apache-maven-* /opt/maven` +
+    symlink `mvn`），再在 `deploy/.env` 配 `MAVEN_IMAGE=<包装镜像>` 供 deploy.sh 使用。
+- **Maven 容器产物属主为 root**：maven 容器默认 root 运行，写出的 `server/target/`
+  文件归 root，后续 deploy.sh 的 `rm -rf` 会 Permission denied。deploy.sh 已加
+  `--user $(id -u):$(id -g)` 规避；手动跑 maven 容器时也要带该参数。
+- **web 构建 `npm ci` 卡死 / `tsc: not found`**：国内机器连不上
+  `registry.npmjs.org`（实测 HTTP 000，npmmirror 可达）。web Dockerfile 已改为
+  `npm ci --registry=https://registry.npmmirror.com`；旧版 Dockerfile 手动补该参数。
 - **Maven 分发包下载慢**：`archive.apache.org` 国内常只有几 KB/s；改从
   `https://mirrors.aliyun.com/apache/maven/maven-3/<版本>/binaries/apache-maven-<版本>-bin.tar.gz`
   下载（阿里源实测 10MB/s+；如 3.9.16 即 `maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz`）。
