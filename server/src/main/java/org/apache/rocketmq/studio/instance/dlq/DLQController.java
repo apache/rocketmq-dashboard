@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.dlq;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +28,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/dlq")
@@ -37,8 +37,10 @@ public class DLQController {
     private final DLQService dlqService;
 
     @GetMapping
-    public Result<List<DLQGroupVO>> listDLQGroups(@RequestParam String instanceId) {
-        return Result.ok(dlqService.listDLQGroups(instanceId));
+    public Result<PageResult<DLQGroupVO>> listDLQGroups(@RequestParam String instanceId,
+            @RequestParam(required = false) String search, @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(dlqService.listDLQGroups(instanceId, search, page, pageSize));
     }
 
     @PostMapping("/resend")

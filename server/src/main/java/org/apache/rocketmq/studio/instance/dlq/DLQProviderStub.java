@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.dlq;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -34,6 +35,7 @@ public class DLQProviderStub implements DLQProvider {
                 instanceId);
         throw unsupported();
     }
+    @Override public PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize) { throw unsupported(); }
 
     @Override
     public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,

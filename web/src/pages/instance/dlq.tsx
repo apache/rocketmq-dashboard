@@ -106,6 +106,9 @@ const DLQPage = () => {
   const { t } = useLang();
   const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
   const [groups, setGroups] = useState<DLQGroup[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [search, setSearch] = useState('');
@@ -164,13 +167,16 @@ const DLQPage = () => {
       };
     }
 
-    void listDLQGroups(selectedInstanceId)
-      .then((nextGroups) => {
+    void listDLQGroups(selectedInstanceId, search || undefined, page, pageSize)
+      .then((rawResult) => {
         if (!cancelled) {
-          setGroups(nextGroups);
+          const result = Array.isArray(rawResult)
+            ? { items: rawResult, total: rawResult.length, page, size: pageSize }
+            : rawResult;
+          setGroups(result.items); setTotal(result.total);
           setLoadError(null);
           const availableGroups = new Set(
-            nextGroups.filter((group) => group.messageCount > 0).map((group) => group.groupName),
+            result.items.filter((group) => group.messageCount > 0).map((group) => group.groupName),
           );
           setSelectedGroupNames((selected) =>
             selected.filter((groupName) => availableGroups.has(groupName)),
@@ -187,17 +193,10 @@ const DLQPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, selectedInstanceId]);
+  }, [refreshKey, selectedInstanceId, search, page, pageSize]);
 
   /* ─── Filtering ─── */
-  const filtered = useMemo(() => {
-    if (!search) return groups;
-    return groups.filter(
-      (g) =>
-        g.groupName.toLowerCase().includes(search.toLowerCase()) ||
-        g.dlqTopic.toLowerCase().includes(search.toLowerCase()),
-    );
-  }, [groups, search]);
+  const filtered = groups;
 
   const selectedGroups = useMemo(() => {
     const selected = new Set(selectedGroupNames);
@@ -396,7 +395,7 @@ const DLQPage = () => {
             allowClear
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onSearch={setSearch}
+            onSearch={(value) => { setSearch(value); setPage(1); }}
             style={{ width: 320 }}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
@@ -431,9 +430,11 @@ const DLQPage = () => {
             }),
           }}
           pagination={{
-            pageSize: 20,
+            current: page, pageSize, total,
             showSizeChanger: true,
+            pageSizeOptions: [20, 50, 100],
             showTotal: (total) => `共 ${total} 个 Group`,
+            onChange: (nextPage, nextPageSize) => { setPage(nextPage); setPageSize(nextPageSize); setSelectedGroupNames([]); },
           }}
           size="small"
         />
