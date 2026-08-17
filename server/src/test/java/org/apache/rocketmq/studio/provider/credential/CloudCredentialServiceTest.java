@@ -28,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.util.List;
 import java.util.Optional;
@@ -103,6 +104,21 @@ class CloudCredentialServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("already exists");
         verify(credentialRepository, never()).save(any());
+    }
+
+    @Test
+    void createShouldTranslateConcurrentDuplicateKeyToConflict() {
+        CloudCredentialVO request = new CloudCredentialVO();
+        request.setName("race");
+        request.setVendor(InstanceVendor.ALIYUN);
+        request.setAccessKey("LTAI5tRaceKey00000000001");
+        request.setSecretKey("sk");
+        when(credentialRepository.findByVendorAndAccessKey(InstanceVendor.ALIYUN, request.getAccessKey()))
+                .thenReturn(Optional.empty());
+        when(credentialRepository.save(any())).thenThrow(new DuplicateKeyException("duplicate"));
+
+        assertThatThrownBy(() -> service.create(request)).isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
     }
 
     @Test
