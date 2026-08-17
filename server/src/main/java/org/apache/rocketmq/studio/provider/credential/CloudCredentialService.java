@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -71,7 +72,13 @@ public class CloudCredentialService {
         log.info("Creating cloud credential name={}, vendor={}", credential.getName(), credential.getVendor());
         credential.setGmtCreate(LocalDateTime.now());
         credential.setGmtModified(LocalDateTime.now());
-        CloudCredentialVO saved = credentialRepository.save(credential);
+        CloudCredentialVO saved;
+        try {
+            saved = credentialRepository.save(credential);
+        } catch (DuplicateKeyException exception) {
+            throw new BusinessException(409, "Cloud credential already exists for vendor "
+                    + credential.getVendor() + " and accessKey " + CredentialUtils.mask(credential.getAccessKey()));
+        }
         recordAudit("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(saved.getId()), null,
                 credentialAuditDetail(saved));
         return maskAccessKey(saved);
