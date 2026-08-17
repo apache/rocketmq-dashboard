@@ -34,6 +34,9 @@ export const useEngineStore = create<EngineState>()(
     }),
     {
       name: 'rocketmq-studio-agent-engine',
+      // Bumped to reset stale persisted engines so Claude Code is the default selection.
+      version: 1,
+      migrate: (persisted) => ({ ...(persisted as EngineState), engine: 'claude-code' }),
     },
   ),
 );

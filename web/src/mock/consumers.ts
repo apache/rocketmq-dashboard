@@ -29,7 +29,7 @@ export interface ConsumerInstance {
 export interface ConsumerGroup {
   name: string;
   namespace: string;
-  instanceId: string;
+  instanceId: number;
   clusterId: string;
   subscriptionMode: 'Push' | 'Pop';
   consumeType: 'CLUSTERING' | 'BROADCASTING';
@@ -39,8 +39,8 @@ export interface ConsumerGroup {
   subscriptionDataType: 'NORMAL' | 'FIFO' | 'DELAY' | 'TRANSACTION';
   deliveryOrderType?: 'PARTITON_ORDER' | 'MESSAGES_ORDER';
   retryMaxTimes: number;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
   delaySeconds: number;
   instances: ConsumerInstance[];
 }
@@ -66,7 +66,7 @@ export interface SubscriptionEntry {
 export const mockConsumerGroups: ConsumerGroup[] = [
   {
     name: 'cg-order-notify',
-    instanceId: 'instance-proxy-1',
+    instanceId: 3,
     namespace: 'trade',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -76,8 +76,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['order-create', 'order-status-change', 'payment-callback'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
-    createdAt: '2026-03-15 10:30:00',
-    updatedAt: '2026-06-28 15:20:00',
+    gmtCreate: '2026-03-15 10:30:00',
+    gmtModified: '2026-06-28 15:20:00',
     delaySeconds: 245,
     instances: [
       {
@@ -132,7 +132,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-payment-callback',
-    instanceId: 'instance-proxy-1',
+    instanceId: 3,
     namespace: 'trade',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -142,8 +142,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['payment-callback', 'refund-event'],
     subscriptionDataType: 'TRANSACTION',
     retryMaxTimes: 8,
-    createdAt: '2026-02-20 14:15:00',
-    updatedAt: '2026-06-15 10:45:00',
+    gmtCreate: '2026-02-20 14:15:00',
+    gmtModified: '2026-06-15 10:45:00',
     delaySeconds: 50,
     instances: [
       {
@@ -182,7 +182,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-user-activity',
-    instanceId: 'instance-proxy-3',
+    instanceId: 5,
     namespace: 'user',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -192,8 +192,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['user-activity-log', 'user-profile-change'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
-    createdAt: '2026-01-10 09:00:00',
-    updatedAt: '2026-05-20 16:30:00',
+    gmtCreate: '2026-01-10 09:00:00',
+    gmtModified: '2026-05-20 16:30:00',
     delaySeconds: 3725,
     instances: [
       {
@@ -224,7 +224,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-inventory-sync',
-    instanceId: 'instance-proxy-1',
+    instanceId: 3,
     namespace: 'supply',
     clusterId: 'sh-prod',
     subscriptionMode: 'Push',
@@ -235,8 +235,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscriptionDataType: 'FIFO',
     deliveryOrderType: 'PARTITON_ORDER',
     retryMaxTimes: 3,
-    createdAt: '2026-04-05 11:20:00',
-    updatedAt: '2026-06-30 08:10:00',
+    gmtCreate: '2026-04-05 11:20:00',
+    gmtModified: '2026-06-30 08:10:00',
     delaySeconds: 720,
     instances: [
       {
@@ -259,7 +259,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-log-collector',
-    instanceId: 'instance-direct-2',
+    instanceId: 2,
     namespace: 'infra',
     clusterId: 'hz-prod',
     subscriptionMode: 'Pop',
@@ -269,8 +269,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['app-log', 'access-log', 'error-log'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 5,
-    createdAt: '2026-05-12 16:00:00',
-    updatedAt: '2026-07-01 12:00:00',
+    gmtCreate: '2026-05-12 16:00:00',
+    gmtModified: '2026-07-01 12:00:00',
     delaySeconds: 1850,
     instances: [
       {
@@ -341,7 +341,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-notification-push',
-    instanceId: 'instance-proxy-2',
+    instanceId: 4,
     namespace: 'message',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -351,8 +351,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['notification-push', 'sms-gateway'],
     subscriptionDataType: 'DELAY',
     retryMaxTimes: 8,
-    createdAt: '2026-03-28 08:45:00',
-    updatedAt: '2026-06-22 14:30:00',
+    gmtCreate: '2026-03-28 08:45:00',
+    gmtModified: '2026-06-22 14:30:00',
     delaySeconds: 8,
     instances: [
       {
@@ -383,7 +383,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-ai-task-worker',
-    instanceId: 'instance-proxy-3',
+    instanceId: 5,
     namespace: 'ai',
     clusterId: 'hz-prod',
     subscriptionMode: 'Pop',
@@ -393,8 +393,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['ai-task-dispatch', 'model-inference-request'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 3,
-    createdAt: '2026-06-01 13:30:00',
-    updatedAt: '2026-07-01 09:15:00',
+    gmtCreate: '2026-06-01 13:30:00',
+    gmtModified: '2026-07-01 09:15:00',
     delaySeconds: 4800,
     instances: [
       {
@@ -433,7 +433,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-metrics-aggregator',
-    instanceId: 'instance-direct-1',
+    instanceId: 1,
     namespace: 'infra',
     clusterId: 'sh-prod',
     subscriptionMode: 'Push',
@@ -443,8 +443,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['metrics-raw', 'trace-span'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
-    createdAt: '2026-02-08 07:00:00',
-    updatedAt: '2026-06-10 11:45:00',
+    gmtCreate: '2026-02-08 07:00:00',
+    gmtModified: '2026-06-10 11:45:00',
     delaySeconds: 82500,
     instances: [
       {
@@ -467,7 +467,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-risk-control',
-    instanceId: 'instance-direct-2',
+    instanceId: 2,
     namespace: 'risk',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -477,8 +477,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['transaction-event', 'login-event', 'payment-callback'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 8,
-    createdAt: '2025-11-20 10:00:00',
-    updatedAt: '2026-06-05 17:20:00',
+    gmtCreate: '2025-11-20 10:00:00',
+    gmtModified: '2026-06-05 17:20:00',
     delaySeconds: 1520,
     instances: [
       {
@@ -525,7 +525,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-data-sync',
-    instanceId: 'instance-proxy-2',
+    instanceId: 4,
     namespace: 'data',
     clusterId: 'sh-prod',
     subscriptionMode: 'Push',
@@ -536,8 +536,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscriptionDataType: 'FIFO',
     deliveryOrderType: 'PARTITON_ORDER',
     retryMaxTimes: 5,
-    createdAt: '2025-09-15 08:30:00',
-    updatedAt: '2026-06-28 20:00:00',
+    gmtCreate: '2025-09-15 08:30:00',
+    gmtModified: '2026-06-28 20:00:00',
     delaySeconds: 12600,
     instances: [
       {

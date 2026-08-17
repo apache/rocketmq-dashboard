@@ -22,7 +22,7 @@ export interface AlertRuleData {
 }
 
 export interface AlertRule {
-  id?: string;
+  id?: number;
   name: string;
   metric?: string;
   operator?: string;
@@ -64,11 +64,11 @@ export async function updateAlertRule(data: AlertRuleRequest): Promise<AlertRule
   return res.data.data;
 }
 
-export async function toggleAlertRule(id: string, enabled: boolean): Promise<AlertRule> {
+export async function toggleAlertRule(id: number, enabled: boolean): Promise<AlertRule> {
   const res = await client.post<{ data: AlertRule }>('/alert-rules/toggle', { id, enabled });
   return res.data.data;
 }
 
-export async function deleteAlertRule(id: string): Promise<void> {
+export async function deleteAlertRule(id: number): Promise<void> {
   await client.post('/alert-rules/delete', { id });
 }

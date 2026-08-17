@@ -131,7 +131,7 @@ describe('Ops API - Alert Rules', () => {
   it('lists alert rules', async () => {
     const rules = [
       {
-        id: '1',
+        id: 1,
         name: 'HighCPU',
         metric: 'cpu',
         operator: '>',
@@ -159,42 +159,42 @@ describe('Ops API - Alert Rules', () => {
   it('updates an alert rule', async () => {
     mock.onPost('/alert-rules/update').reply((config) => {
       const body = JSON.parse(config.data);
-      expect(body.id).toBe('1');
+      expect(body.id).toBe(1);
       expect(body.threshold).toBe(95);
       return [200, { code: 200 }];
     });
-    await updateAlertRule({ id: '1', threshold: 95 } as never);
+    await updateAlertRule({ id: 1, threshold: 95 } as never);
   });
 
   it('toggles an alert rule', async () => {
     mock.onPost('/alert-rules/toggle').reply((config) => {
       const body = JSON.parse(config.data);
-      expect(body.id).toBe('1');
+      expect(body.id).toBe(1);
       expect(body.enabled).toBe(false);
       return [200, { code: 200 }];
     });
-    await toggleAlertRule('1', false);
+    await toggleAlertRule(1, false);
   });
 
   it('deletes an alert rule', async () => {
     mock.onPost('/alert-rules/delete').reply((config) => {
       const body = JSON.parse(config.data);
-      expect(body.id).toBe('1');
+      expect(body.id).toBe(1);
       return [200, { code: 200 }];
     });
-    await deleteAlertRule('1');
+    await deleteAlertRule(1);
   });
 
   it('submits bulk alert rule operations in one request', async () => {
-    const result = { succeededIds: ['1'], failures: { missing: 'not found' }, updatedRules: [] };
+    const result = { succeededIds: [1], failures: { '999': 'not found' }, updatedRules: [] };
     mock.onPost('/alert-rules/bulk-toggle').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ ids: ['1', 'missing'], enabled: false });
+      expect(JSON.parse(config.data)).toEqual({ ids: [1, 999], enabled: false });
       return [200, { code: 200, data: result }];
     });
     mock.onPost('/alert-rules/bulk-delete').reply(200, { code: 200, data: result });
 
-    await expect(bulkToggleAlertRules(['1', 'missing'], false)).resolves.toEqual(result);
-    await expect(bulkDeleteAlertRules(['1', 'missing'])).resolves.toEqual(result);
+    await expect(bulkToggleAlertRules([1, 999], false)).resolves.toEqual(result);
+    await expect(bulkDeleteAlertRules([1, 999])).resolves.toEqual(result);
   });
 });
 
@@ -213,7 +213,7 @@ describe('Ops API - System Alerts & Audit', () => {
       code: 200,
       data: [
         {
-          id: 'a1',
+          id: 1,
           level: 'critical',
           title: 'Disk Full',
           description: 'Disk usage > 95%',
@@ -228,10 +228,10 @@ describe('Ops API - System Alerts & Audit', () => {
 
   it('acknowledges an alert', async () => {
     mock.onPost('/system-alerts/acknowledge').reply((config) => {
-      expect(JSON.parse(config.data).id).toBe('a1');
+      expect(JSON.parse(config.data).id).toBe(1);
       return [200, { code: 200 }];
     });
-    await acknowledgeAlert('a1');
+    await acknowledgeAlert(1);
   });
 
   it('clears acknowledged alerts', async () => {
@@ -245,7 +245,7 @@ describe('Ops API - System Alerts & Audit', () => {
       data: {
         items: [
           {
-            id: 'r1',
+            id: 1,
             timestamp: '2026-01-01',
             operator: 'admin',
             operationType: 'CREATE',

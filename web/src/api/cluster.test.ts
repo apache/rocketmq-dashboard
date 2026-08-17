@@ -40,9 +40,8 @@ import type { K8sCertInfo } from './cluster';
 const mock = new MockAdapter(client);
 
 const cert: K8sCertInfo = {
-  id: 'cert-1',
+  id: 5,
   name: 'rocketmq-tls',
-  namespace: 'rocketmq',
   cluster: 'prod-cluster',
   type: 'TLS',
   issuer: 'kubernetes-ca',
@@ -195,14 +194,16 @@ describe('K8s certificate API', () => {
         },
       ],
     };
-    mock.onGet('/nameservers/config-diff', {
-      params: { clusterId: 'cluster-1', instanceId: 'instance-1' },
-    }).reply(200, {
-      code: 200,
-      data: result,
-    });
+    mock
+      .onGet('/nameservers/config-diff', {
+        params: { clusterId: 'cluster-1', instanceId: 3 },
+      })
+      .reply(200, {
+        code: 200,
+        data: result,
+      });
 
-    await expect(getNameServerConfigDiff('cluster-1', 'instance-1')).resolves.toEqual(result);
+    await expect(getNameServerConfigDiff('cluster-1', 3)).resolves.toEqual(result);
   });
 
   it('sends the proxy restart target', async () => {

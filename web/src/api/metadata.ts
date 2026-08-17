@@ -11,7 +11,7 @@ export interface Topic {
   namespace: string;
   type: string;
   clusterId: string;
-  instanceId?: string;
+  instanceId?: number;
   writeQueues: number;
   readQueues: number;
   perm: string;
@@ -19,13 +19,13 @@ export interface Topic {
   tps: number;
   consumerGroupCount: number;
   remark: string;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
 }
 
 export interface TopicQuery {
   clusterId?: string;
-  instanceId?: string;
+  instanceId?: number;
   type?: string;
   search?: string;
 }
@@ -59,7 +59,7 @@ export interface ConsumerGroup {
   name: string;
   namespace: string;
   clusterId: string;
-  instanceId?: string;
+  instanceId?: number;
   subscriptionMode: string;
   consumeType: string;
   onlineInstances: number;
@@ -68,8 +68,8 @@ export interface ConsumerGroup {
   subscriptionDataType: string;
   deliveryOrderType?: string;
   retryMaxTimes: number;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
   delaySeconds: number;
   instances: ConsumerInstance[];
 }
@@ -121,7 +121,7 @@ export interface SubscriptionEntry {
 }
 
 export interface ConsumerGroupQuery {
-  instanceId?: string;
+  instanceId?: number;
   clusterId?: string;
   search?: string;
 }
@@ -148,11 +148,11 @@ export async function updateTopic(data: Partial<Topic>) {
   return res.data.data;
 }
 
-export async function deleteTopic(name: string, instanceId?: string) {
+export async function deleteTopic(name: string, instanceId?: number) {
   await client.post('/topics/delete', { name, ...(instanceId ? { instanceId } : {}) });
 }
 
-export async function getTopicRoutes(name: string, instanceId?: string) {
+export async function getTopicRoutes(name: string, instanceId?: number) {
   const res = await client.get<{ data: BrokerRoute[] }>(
     `/topics/${encodeURIComponent(name)}/routes`,
     { params: instanceId ? { instanceId } : {} },
@@ -160,7 +160,7 @@ export async function getTopicRoutes(name: string, instanceId?: string) {
   return res.data.data;
 }
 
-export async function getTopicConsumers(name: string, instanceId?: string) {
+export async function getTopicConsumers(name: string, instanceId?: number) {
   const res = await client.get<{ data: ConsumerGroupInfo[] }>(
     `/topics/${encodeURIComponent(name)}/consumers`,
     { params: instanceId ? { instanceId } : {} },
@@ -170,7 +170,7 @@ export async function getTopicConsumers(name: string, instanceId?: string) {
 
 export async function getTopicConsumerPage(
   name: string,
-  instanceId: string | undefined,
+  instanceId: number | undefined,
   page: number,
   pageSize: number,
 ) {
@@ -183,7 +183,7 @@ export async function getTopicConsumerPage(
 
 export interface SendTopicMessageRequest {
   topic: string;
-  instanceId?: string;
+  instanceId?: number;
   tag?: string;
   key?: string;
   body: string;
@@ -207,7 +207,7 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery) {
   return res.data.data;
 }
 
-export async function getConsumerGroup(name: string, instanceId?: string) {
+export async function getConsumerGroup(name: string, instanceId?: number) {
   const res = await client.get<{ data: ConsumerGroupDetail }>(
     `/groups/${encodeURIComponent(name)}`,
     { params: instanceId ? { instanceId } : {} },
@@ -215,7 +215,7 @@ export async function getConsumerGroup(name: string, instanceId?: string) {
   return res.data.data;
 }
 
-export async function getConsumerProgress(name: string, instanceId?: string) {
+export async function getConsumerProgress(name: string, instanceId?: number) {
   const res = await client.get<{ data: QueueProgress[] }>(
     `/groups/${encodeURIComponent(name)}/progress`,
     { params: instanceId ? { instanceId } : {} },
@@ -223,7 +223,7 @@ export async function getConsumerProgress(name: string, instanceId?: string) {
   return res.data.data;
 }
 
-export async function getConsumerSubscriptions(name: string, instanceId?: string) {
+export async function getConsumerSubscriptions(name: string, instanceId?: number) {
   const res = await client.get<{ data: SubscriptionEntry[] }>(
     `/groups/${encodeURIComponent(name)}/subscriptions`,
     { params: instanceId ? { instanceId } : {} },
@@ -231,7 +231,7 @@ export async function getConsumerSubscriptions(name: string, instanceId?: string
   return res.data.data;
 }
 
-export async function getConsumerStack(name: string, clientId: string, instanceId?: string) {
+export async function getConsumerStack(name: string, clientId: string, instanceId?: number) {
   const res = await client.get<{ data: ConsumerStackTrace }>(
     `/groups/${encodeURIComponent(name)}/instances/${encodeURIComponent(clientId)}/stack`,
     { params: instanceId ? { instanceId } : {} },
@@ -244,13 +244,13 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>) {
   return res.data.data;
 }
 
-export async function deleteConsumerGroup(name: string, instanceId?: string) {
+export async function deleteConsumerGroup(name: string, instanceId?: number) {
   await client.post('/groups/delete', { name, ...(instanceId ? { instanceId } : {}) });
 }
 
 export interface ResetConsumerOffsetRequest {
   name: string;
-  instanceId?: string;
+  instanceId?: number;
   timestamp: number;
   topic: string;
 }

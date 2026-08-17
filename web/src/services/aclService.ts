@@ -20,7 +20,7 @@ const aclPlainAccessState = (mockUsers as unknown as AclUser[]).map((u): PlainAc
   defaultGroupPerm: 'DENY',
   topicPerms: u.admin ? ['*=ALL'] : [],
   groupPerms: u.admin ? ['*=ALL'] : [],
-  createdAt: u.createdAt,
+  gmtCreate: u.gmtCreate,
 }));
 
 function copyAclRule(rule: AclRule): AclRule {
@@ -51,7 +51,7 @@ export async function listAclRules(params?: AclRuleQuery): Promise<AclRule[]> {
 
 export async function listAclUsers(params?: {
   keyword?: string;
-  instanceId?: string;
+  instanceId?: number;
 }): Promise<AclUser[]> {
   if (isMockMode()) {
     let result = [...aclUsersState];
@@ -64,7 +64,7 @@ export async function listAclUsers(params?: {
   return aclApi.listAclUsers(params);
 }
 
-export async function getAclUserCredentials(id: string, instanceId?: string): Promise<AclUser> {
+export async function getAclUserCredentials(id: number, instanceId?: number): Promise<AclUser> {
   if (isMockMode()) {
     const user = aclUsersState.find((u) => u.id === id);
     if (!user) throw new Error(`ACL user not found: ${id}`);
@@ -74,11 +74,11 @@ export async function getAclUserCredentials(id: string, instanceId?: string): Pr
 }
 
 export async function createAclRule(
-  data: Partial<AclRule> & { instanceId?: string },
+  data: Partial<AclRule> & { instanceId?: number },
 ): Promise<AclRule> {
   if (isMockMode()) {
     const rule: AclRule = {
-      id: `acl-${Date.now()}`,
+      id: Date.now(),
       principal: '',
       resource: '',
       resourceType: '',
@@ -86,7 +86,7 @@ export async function createAclRule(
       decision: '',
       scope: '',
       aclVersion: '2.0',
-      createdAt: new Date().toISOString(),
+      gmtCreate: new Date().toISOString(),
       ...data,
       actions: [...(data.actions ?? [])],
     };
@@ -97,7 +97,7 @@ export async function createAclRule(
 }
 
 export async function updateAclRule(
-  data: Partial<AclRule> & { instanceId?: string },
+  data: Partial<AclRule> & { instanceId?: number },
 ): Promise<AclRule> {
   if (isMockMode()) {
     const idx = aclRulesState.findIndex((rule) => rule.id === data.id);
@@ -112,7 +112,7 @@ export async function updateAclRule(
   return aclApi.updateAclRule(data);
 }
 
-export async function deleteAclRule(id: string, instanceId?: string): Promise<void> {
+export async function deleteAclRule(id: number, instanceId?: number): Promise<void> {
   if (isMockMode()) {
     const idx = aclRulesState.findIndex((rule) => rule.id === id);
     if (idx >= 0) aclRulesState.splice(idx, 1);
@@ -122,16 +122,16 @@ export async function deleteAclRule(id: string, instanceId?: string): Promise<vo
 }
 
 export async function createAclUser(
-  data: Partial<AclUser> & { instanceId?: string },
+  data: Partial<AclUser> & { instanceId?: number },
 ): Promise<AclUser> {
   if (isMockMode()) {
     const user: AclUser = {
-      id: `user-${Date.now()}`,
+      id: Date.now(),
       username: '',
       accessKey: '',
       secretKey: '',
       admin: false,
-      createdAt: new Date().toISOString(),
+      gmtCreate: new Date().toISOString(),
       ...data,
       clusters: [...(data.clusters ?? [])],
     };
@@ -142,7 +142,7 @@ export async function createAclUser(
 }
 
 export async function updateAclUser(
-  data: Partial<AclUser> & { instanceId?: string },
+  data: Partial<AclUser> & { instanceId?: number },
 ): Promise<AclUser> {
   if (isMockMode()) {
     const idx = aclUsersState.findIndex((user) => user.id === data.id);
@@ -157,7 +157,7 @@ export async function updateAclUser(
   return aclApi.updateAclUser(data);
 }
 
-export async function deleteAclUser(id: string, instanceId?: string): Promise<void> {
+export async function deleteAclUser(id: number, instanceId?: number): Promise<void> {
   if (isMockMode()) {
     const idx = aclUsersState.findIndex((user) => user.id === id);
     if (idx >= 0) aclUsersState.splice(idx, 1);
@@ -216,7 +216,7 @@ export async function createAndUpdatePlainAccessConfig(
       defaultGroupPerm: data.defaultGroupPerm ?? existing?.defaultGroupPerm ?? 'DENY',
       topicPerms: [...(data.topicPerms ?? existing?.topicPerms ?? [])],
       groupPerms: [...(data.groupPerms ?? existing?.groupPerms ?? [])],
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      gmtCreate: existing?.gmtCreate ?? new Date().toISOString(),
     };
     if (existing) {
       Object.assign(existing, saved, { secretKey: storedSecret });

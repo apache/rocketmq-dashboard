@@ -29,6 +29,9 @@ export interface GeneralSettings {
   apiKeyConfigured: boolean;
   model: string;
   baseUrl: string;
+  dingtalkWebhook?: string;
+  emailRecipients?: string;
+  smsWebhook?: string;
 }
 
 export type GeneralSettingsUpdate = Omit<GeneralSettings, 'apiKeyConfigured'> & {

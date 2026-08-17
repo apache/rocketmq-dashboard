@@ -42,16 +42,13 @@ describe('instanceService mock instances', () => {
 
   it('filters mock instances with the same type and search semantics as the API', async () => {
     const byType = await listInstances({ type: 'DIRECT' });
-    expect(byType.map((instance) => instance.id)).toEqual([
-      'instance-direct-1',
-      'instance-direct-2',
-    ]);
+    expect(byType.map((instance) => instance.id)).toEqual([1, 2]);
 
     const byEndpoint = await listInstances({ search: '  10.0.2.21  ' });
-    expect(byEndpoint.map((instance) => instance.id)).toEqual(['instance-proxy-1']);
+    expect(byEndpoint.map((instance) => instance.id)).toEqual([3]);
 
     const combined = await listInstances({ type: 'DIRECT', search: 'instance-direct-2' });
-    expect(combined.map((instance) => instance.id)).toEqual(['instance-direct-2']);
+    expect(combined.map((instance) => instance.id)).toEqual([2]);
   });
 
   it('does not expose created or updated store records by reference', async () => {
@@ -86,9 +83,7 @@ describe('instanceService mock instances', () => {
   it('rejects deleting missing mock instances', async () => {
     const before = await listInstances();
 
-    await expect(deleteInstance('missing-instance')).rejects.toThrow(
-      'Instance not found: missing-instance',
-    );
+    await expect(deleteInstance(999999)).rejects.toThrow('Instance not found: 999999');
 
     await expect(listInstances()).resolves.toEqual(before);
   });

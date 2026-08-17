@@ -27,7 +27,7 @@ import { listConnections } from './connectionsService';
 describe('connectionsService mock connections', () => {
   it('returns defensive copies after applying filters', async () => {
     const connections = await listConnections({
-      instanceId: 'instance-1',
+      instanceId: 1,
       clusterId: 'ns-prod',
       type: 'Consumer',
     });
@@ -38,7 +38,7 @@ describe('connectionsService mock connections', () => {
     connections[0].address = '127.0.0.1:8081';
 
     const fresh = await listConnections({
-      instanceId: 'instance-1',
+      instanceId: 1,
       clusterId: 'ns-prod',
       type: 'Consumer',
     });

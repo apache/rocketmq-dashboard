@@ -22,15 +22,15 @@ import { createInstance, deleteInstance, listInstances, updateInstance } from '.
 
 const mock = new MockAdapter(client);
 const instance = {
-  id: 'instance-1',
+  id: 1,
   name: 'orders',
   type: 'PROXY' as const,
   endpoint: 'proxy:8080',
   remark: '',
   topicCount: 0,
   consumerGroupCount: 0,
-  createdAt: '2026-07-18T00:00:00Z',
-  updatedAt: '2026-07-18T00:00:00Z',
+  gmtCreate: '2026-07-18T00:00:00Z',
+  gmtModified: '2026-07-18T00:00:00Z',
 };
 
 describe('instance API', () => {

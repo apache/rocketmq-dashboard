@@ -39,9 +39,8 @@ export interface NameServerInfo {
 }
 
 export interface K8sCertInfo {
-  id: string;
+  id: number;
   name: string;
-  namespace: string;
   cluster: string;
   type: 'TLS' | 'mTLS' | 'ServiceAccount';
   issuer: string;
@@ -54,9 +53,8 @@ export interface K8sCertInfo {
 
 export const mockK8sCerts: K8sCertInfo[] = [
   {
-    id: 'cert-001',
+    id: 1,
     name: 'ca90643d13159433da1dadd826160b2c1',
-    namespace: 'kube-system',
     cluster: 'rocketmq-prod',
     type: 'TLS',
     issuer: 'kubernetes-ca',
@@ -67,9 +65,8 @@ export const mockK8sCerts: K8sCertInfo[] = [
     san: ['kubernetes', 'kubernetes.default', 'kubernetes.default.svc'],
   },
   {
-    id: 'cert-002',
+    id: 2,
     name: 'e7f3a8c291b04d56a1e2f4c6b8d0a9235',
-    namespace: 'kube-system',
     cluster: 'rocketmq-prod',
     type: 'mTLS',
     issuer: 'etcd-ca',
@@ -80,9 +77,8 @@ export const mockK8sCerts: K8sCertInfo[] = [
     san: ['etcd-0', 'etcd-1', 'etcd-2'],
   },
   {
-    id: 'cert-003',
+    id: 3,
     name: 'b2d4f6a8c0e2f4a6b8d0c2e4f6a8b0d2',
-    namespace: 'cert-manager',
     cluster: 'rocketmq-prod',
     type: 'TLS',
     issuer: 'letsencrypt-prod',
@@ -93,9 +89,8 @@ export const mockK8sCerts: K8sCertInfo[] = [
     san: ['*.rocketmq-prod.example.com', 'rocketmq-prod.example.com'],
   },
   {
-    id: 'cert-004',
+    id: 4,
     name: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6',
-    namespace: 'kube-system',
     cluster: 'rocketmq-pre',
     type: 'TLS',
     issuer: 'kubernetes-ca',
@@ -106,9 +101,8 @@ export const mockK8sCerts: K8sCertInfo[] = [
     san: ['kubernetes', 'kubernetes.default', 'kubernetes.default.svc'],
   },
   {
-    id: 'cert-005',
+    id: 5,
     name: 'f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4',
-    namespace: 'istio-system',
     cluster: 'rocketmq-pre',
     type: 'mTLS',
     issuer: 'istio-ca',
@@ -119,9 +113,8 @@ export const mockK8sCerts: K8sCertInfo[] = [
     san: ['*.rocketmq-pre.svc.cluster.local', 'istiod.istio-system.svc'],
   },
   {
-    id: 'cert-006',
+    id: 6,
     name: 'c0ffee1bad2bad3caffe4bad5coffee6bad7',
-    namespace: 'kube-system',
     cluster: 'rocketmq-prod',
     type: 'TLS',
     issuer: 'self-signed',
@@ -132,9 +125,8 @@ export const mockK8sCerts: K8sCertInfo[] = [
     san: ['kubernetes', 'localhost'],
   },
   {
-    id: 'cert-007',
+    id: 7,
     name: 'd3adb33fd3adb33fd3adb33fd3adb33f',
-    namespace: 'kube-system',
     cluster: 'rocketmq-pre',
     type: 'ServiceAccount',
     issuer: 'k8s-sa',
@@ -145,9 +137,8 @@ export const mockK8sCerts: K8sCertInfo[] = [
     san: ['system:serviceaccount:rocketmq:broker-sa'],
   },
   {
-    id: 'cert-008',
+    id: 8,
     name: '5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e',
-    namespace: 'kube-system',
     cluster: 'rocketmq-prod',
     type: 'mTLS',
     issuer: 'vault-pki',

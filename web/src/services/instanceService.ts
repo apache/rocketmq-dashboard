@@ -34,7 +34,7 @@ export async function listInstances(query: InstanceQuery = {}): Promise<Instance
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
     const instance: Instance = {
-      id: String(Date.now()),
+      id: Date.now(),
       ...data,
       name: data.name || '',
       type: data.type || 'PROXY',
@@ -43,8 +43,8 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
       remark: data.remark || '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      gmtCreate: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      gmtModified: new Date().toISOString().replace('T', ' ').slice(0, 19),
     };
     mockInstances.push(instance);
     return copyInstance(instance);
@@ -57,7 +57,7 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
     const idx = mockInstances.findIndex((i) => i.id === data.id);
     if (idx >= 0) {
       Object.assign(mockInstances[idx], data, {
-        updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        gmtModified: new Date().toISOString().replace('T', ' ').slice(0, 19),
       });
       return copyInstance(mockInstances[idx]);
     }
@@ -66,7 +66,7 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
   return instanceApi.updateInstance(data);
 }
 
-export async function deleteInstance(id: string): Promise<void> {
+export async function deleteInstance(id: number): Promise<void> {
   if (isMockMode()) {
     const idx = mockInstances.findIndex((i) => i.id === id);
     if (idx < 0) throw new Error(`Instance not found: ${id}`);
