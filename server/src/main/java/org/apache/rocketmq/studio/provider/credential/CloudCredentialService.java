@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.provider.credential;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -48,6 +50,11 @@ public class CloudCredentialService {
         return credentialRepository.findAll().stream()
                 .map(this::maskAccessKey)
                 .toList();
+    }
+    public PageResult<CloudCredentialVO> listMasked(InstanceVendor vendor, String search, int page, int pageSize) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) throw new BusinessException(400, "Invalid page or pageSize");
+        PageResult<CloudCredentialVO> result = credentialRepository.findPage(vendor, search, page, pageSize);
+        return PageResult.of(result.getItems().stream().map(this::maskAccessKey).toList(), result.getTotal(), page, pageSize);
     }
 
     public CloudCredentialVO create(CloudCredentialVO credential) {

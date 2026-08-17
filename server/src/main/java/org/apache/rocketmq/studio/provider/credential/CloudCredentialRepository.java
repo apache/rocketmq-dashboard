@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.credential;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,6 +25,7 @@ import java.util.Optional;
 public interface CloudCredentialRepository {
 
     List<CloudCredentialVO> findAll();
+    PageResult<CloudCredentialVO> findPage(InstanceVendor vendor, String search, int page, int pageSize);
 
     Optional<CloudCredentialVO> findById(String id);
 
