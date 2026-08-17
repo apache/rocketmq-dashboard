@@ -36,6 +36,7 @@ import {
   Col,
   Divider,
   Typography,
+  Spin,
   message,
   App,
 } from 'antd';
@@ -49,10 +50,12 @@ import {
   EyeOutlined,
   ImportOutlined,
   ExportOutlined,
+  SyncOutlined,
   PlusCircleOutlined,
   MinusCircleOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
@@ -122,8 +125,8 @@ const TOPIC_EXPORT_COLUMNS: Array<{ header: string; value: (topic: Topic) => unk
   { header: 'TPS', value: (topic) => topic.tps },
   { header: 'Consumer Groups', value: (topic) => topic.consumerGroupCount },
   { header: 'Remark', value: (topic) => topic.remark },
-  { header: 'Created At', value: (topic) => topic.createdAt },
-  { header: 'Updated At', value: (topic) => topic.updatedAt },
+  { header: 'Created At', value: (topic) => topic.gmtCreate },
+  { header: 'Updated At', value: (topic) => topic.gmtModified },
 ];
 
 const escapeCsvCell = (value: unknown) => {
@@ -307,6 +310,11 @@ const TopicPage = () => {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncChecking, setSyncChecking] = useState(false);
+  const [syncMissing, setSyncMissing] = useState<Topic[]>([]);
+  const [syncedTopics, setSyncedTopics] = useState<Set<string>>(() => new Set());
+  const [syncingKeys, setSyncingKeys] = useState<Set<string>>(() => new Set());
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -446,6 +454,68 @@ const TopicPage = () => {
   const getConsumerPage = (name: string): TopicConsumerPage =>
     consumersByTopic[name] ?? { items: [], total: 0, page: 1, pageSize: 20 };
 
+  // ─── Sync data: find topics without broker routes and sync them ──
+  const openSyncModal = async () => {
+    setSyncModalOpen(true);
+    setSyncChecking(true);
+    setSyncMissing([]);
+    setSyncedTopics(new Set());
+    try {
+      const results = await Promise.all(
+        topics.map(async (topic) => {
+          const instanceId = topic.instanceId || selectedInstanceId || undefined;
+          try {
+            return { topic, routes: await getTopicRoutes(topic.name, instanceId) };
+          } catch {
+            return { topic, routes: null as BrokerRoute[] | null };
+          }
+        }),
+      );
+      const checked = results.filter((r) => r.routes !== null);
+      if (checked.length < results.length) {
+        message.error('部分 Topic 路由校验失败，请稍后重试');
+      }
+      setRoutesByTopic((previous) => {
+        const next = { ...previous };
+        checked.forEach(({ topic, routes }) => {
+          next[topic.name] = routes as BrokerRoute[];
+        });
+        return next;
+      });
+      setSyncMissing(
+        checked.filter(({ routes }) => (routes as BrokerRoute[]).length === 0).map((r) => r.topic),
+      );
+    } finally {
+      setSyncChecking(false);
+    }
+  };
+
+  const syncTopicToBroker = async (topic: Topic) => {
+    const instanceId = topic.instanceId || selectedInstanceId || undefined;
+    setSyncingKeys((previous) => new Set(previous).add(topic.name));
+    try {
+      await createTopic({
+        name: topic.name,
+        type: topic.type,
+        writeQueues: topic.writeQueues,
+        readQueues: topic.readQueues,
+        instanceId,
+      });
+      const routes = await getTopicRoutes(topic.name, instanceId);
+      setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      setSyncedTopics((previous) => new Set(previous).add(topic.name));
+      message.success(`Topic「${topic.name}」已同步到 Broker`);
+    } catch {
+      message.error(`同步 Topic「${topic.name}」失败，请检查 Broker 状态后重试`);
+    } finally {
+      setSyncingKeys((previous) => {
+        const next = new Set(previous);
+        next.delete(topic.name);
+        return next;
+      });
+    }
+  };
+
   const handleAction = (key: string, topic: Topic) => {
     if (key === 'detail') {
       void openDetail(topic);
@@ -499,7 +569,7 @@ const TopicPage = () => {
       render: (remark: string) => (
         <Text
           type="secondary"
-          style={{ fontSize: 13, display: 'block' }}
+          style={{ fontSize: 14, display: 'block' }}
           ellipsis={{ tooltip: remark }}
         >
           {remark}
@@ -525,18 +595,18 @@ const TopicPage = () => {
     },
     {
       title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'gmtCreate',
+      key: 'gmtCreate',
       width: 170,
-      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
       title: '修改时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
+      dataIndex: 'gmtModified',
+      key: 'gmtModified',
       width: 170,
-      sorter: (a, b) => (a.updatedAt ?? '').localeCompare(b.updatedAt ?? ''),
+      sorter: (a, b) => (a.gmtModified ?? '').localeCompare(b.gmtModified ?? ''),
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
@@ -650,7 +720,7 @@ const TopicPage = () => {
         <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
         <Descriptions.Item label="消费者组数">{topic.consumerGroupCount}</Descriptions.Item>
         <Descriptions.Item label="创建时间" span={2}>
-          {formatDateTime(topic.createdAt)}
+          {formatDateTime(topic.gmtCreate)}
         </Descriptions.Item>
       </Descriptions>
     );
@@ -686,7 +756,7 @@ const TopicPage = () => {
               {/* Cluster tags */}
               <Space size={4} style={{ marginBottom: 16 }}>
                 {clusterType && (
-                  <Tag color={clusterType.color} style={{ fontSize: 11 }}>
+                  <Tag color={clusterType.color} style={{ fontSize: 14 }}>
                     {t(clusterType.labelKey)}
                   </Tag>
                 )}
@@ -695,7 +765,7 @@ const TopicPage = () => {
               {/* Key stats */}
               <Row gutter={16}>
                 <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
                     今日消息量
                   </Text>
                   <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
@@ -703,7 +773,7 @@ const TopicPage = () => {
                   </Text>
                 </Col>
                 <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
                     TPS
                   </Text>
                   <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
@@ -711,7 +781,7 @@ const TopicPage = () => {
                   </Text>
                 </Col>
                 <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
                     消费者组
                   </Text>
                   <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
@@ -898,15 +968,7 @@ const TopicPage = () => {
 
       {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: '12px 16px',
-            borderRadius: 8,
-            border: '1px solid var(--bolt-elements-border-color, #f0f0f0)',
-            background: 'var(--bolt-elements-bg-depth-2, #fafafa)',
-          }}
-        >
+        <InfoBanner>
           <Flex align="center" wrap="wrap" gap="8px 28px" style={{ fontSize: 14 }}>
             <span>
               <span style={{ color: '#8c8c8c', marginRight: 6 }}>当前实例</span>
@@ -940,7 +1002,7 @@ const TopicPage = () => {
               ? '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'
               : '接入点为 Proxy SLB 内网地址，gRPC/Remoting 客户端直接连接该地址收发消息。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'}
           </div>
-        </div>
+        </InfoBanner>
       )}
 
       {/* ── Filter bar ────────────────────────────────────────── */}
@@ -1071,6 +1133,15 @@ const TopicPage = () => {
           >
             导出
           </Button>
+          {!isCloudInstance && (
+            <Button
+              icon={<SyncOutlined />}
+              disabled={!hasSelectedInstance || topics.length === 0}
+              onClick={() => void openSyncModal()}
+            >
+              同步数据
+            </Button>
+          )}
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -1396,11 +1467,11 @@ const TopicPage = () => {
             <Input.TextArea
               rows={8}
               placeholder="JSON 格式消息体"
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
+              style={{ fontFamily: 'monospace', fontSize: 14 }}
             />
           </Form.Item>
           <Flex gap={12} style={{ marginTop: -8, marginBottom: 16 }}>
-            <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
+            <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
               快速填入:
             </Text>
             <Space size={4} wrap>
@@ -1410,7 +1481,7 @@ const TopicPage = () => {
                   type="text"
                   size="small"
                   onClick={() => sendForm.setFieldValue('body', gen.fn())}
-                  style={{ fontSize: 12, color: '#8c8c8c', height: 22, padding: '0 6px' }}
+                  style={{ fontSize: 14, color: '#8c8c8c', height: 22, padding: '0 6px' }}
                 >
                   {gen.label}
                 </Button>
@@ -1433,7 +1504,7 @@ const TopicPage = () => {
               ]}
             />
             {propsMode === 'text' && (
-              <Text type="secondary" style={{ fontSize: 12 }}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
                 支持 key=value，多个属性用换行或逗号分隔
               </Text>
             )}
@@ -1444,7 +1515,7 @@ const TopicPage = () => {
               <Input.TextArea
                 rows={5}
                 placeholder={'TAGS=tagA\nKEY1=value1, KEY2=value2'}
-                style={{ fontFamily: 'monospace', fontSize: 13 }}
+                style={{ fontFamily: 'monospace', fontSize: 14 }}
               />
             </Form.Item>
           ) : (
@@ -1479,6 +1550,77 @@ const TopicPage = () => {
             </Form.List>
           )}
         </Form>
+      </Modal>
+
+      <Modal
+        title="同步数据"
+        open={syncModalOpen}
+        onCancel={() => setSyncModalOpen(false)}
+        footer={<Button onClick={() => setSyncModalOpen(false)}>关闭</Button>}
+        width={680}
+        destroyOnHidden
+      >
+        {syncChecking ? (
+          <Flex justify="center" align="center" style={{ padding: 48 }}>
+            <Spin tip="正在校验 Topic 路由…">
+              <div style={{ width: 200 }} />
+            </Spin>
+          </Flex>
+        ) : syncMissing.length === 0 ? (
+          <div style={{ padding: '16px 0' }}>
+            <Text type="secondary">所有 Topic 在 Broker 上均有路由，无需同步。</Text>
+          </div>
+        ) : (
+          <>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+              以下 {syncMissing.length} 个 Topic 在 Broker 上找不到路由，可同步写入对应集群的
+              Broker（按元数据记录的队列数重建）。
+            </Text>
+            <Table<Topic>
+              dataSource={syncMissing}
+              rowKey="name"
+              size="small"
+              pagination={false}
+              columns={[
+                { title: 'Topic', dataIndex: 'name', key: 'name' },
+                {
+                  title: '写/读队列数',
+                  key: 'queues',
+                  width: 110,
+                  render: (_: unknown, topic: Topic) =>
+                    `${topic.writeQueues ?? '-'} / ${topic.readQueues ?? '-'}`,
+                },
+                {
+                  title: '状态',
+                  key: 'status',
+                  width: 100,
+                  render: (_: unknown, topic: Topic) =>
+                    syncedTopics.has(topic.name) ? (
+                      <Tag color="green">已同步</Tag>
+                    ) : (
+                      <Tag color="orange">缺失路由</Tag>
+                    ),
+                },
+                {
+                  title: '操作',
+                  key: 'action',
+                  width: 90,
+                  render: (_: unknown, topic: Topic) => (
+                    <Button
+                      size="small"
+                      type="link"
+                      loading={syncingKeys.has(topic.name)}
+                      disabled={syncedTopics.has(topic.name)}
+                      onClick={() => void syncTopicToBroker(topic)}
+                    >
+                      同步
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          </>
+        )}
       </Modal>
     </div>
   );

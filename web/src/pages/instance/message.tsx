@@ -242,9 +242,9 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
    MessagePage
    ═══════════════════════════════════════════ */
 type InstanceFilterProps = {
-  selectedInstanceId: string;
-  selectInstance: (instanceId: string) => void;
-  instanceOptions: { value: string; label: string }[];
+  selectedInstanceId: number | undefined;
+  selectInstance: (instanceId: number) => void;
+  instanceOptions: { value: number; label: string }[];
 };
 
 const MessagePage = () => {
@@ -503,7 +503,7 @@ const MessagePageContent = ({
       width: 170,
       sorter: (a, b) => a.topic.localeCompare(b.topic),
       render: (topic: string) => (
-        <Text strong style={{ fontSize: 13 }}>
+        <Text strong style={{ fontSize: 14 }}>
           {topic}
         </Text>
       ),
@@ -523,7 +523,7 @@ const MessagePageContent = ({
       width: 120,
       sorter: (a, b) => (a.key ?? '').localeCompare(b.key ?? ''),
       render: (key: string | null) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{key || '-'}</span>
+        <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{key || '-'}</span>
       ),
     },
     {
@@ -532,7 +532,7 @@ const MessagePageContent = ({
       key: 'msgId',
       sorter: (a, b) => a.msgId.localeCompare(b.msgId),
       render: (id: string) => (
-        <Paragraph copyable style={{ fontSize: 13, marginBottom: 0, fontFamily: 'monospace' }}>
+        <Paragraph copyable style={{ fontSize: 14, marginBottom: 0, fontFamily: 'monospace' }}>
           {id}
         </Paragraph>
       ),
@@ -544,7 +544,7 @@ const MessagePageContent = ({
       width: 185,
       sorter: (a, b) => new Date(a.storeTime).valueOf() - new Date(b.storeTime).valueOf(),
       render: (time: string) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 13, whiteSpace: 'nowrap' }}>
+        <span style={{ fontFamily: 'monospace', fontSize: 14, whiteSpace: 'nowrap' }}>
           {formatTimeMs(time)}
         </span>
       ),
@@ -633,7 +633,7 @@ const MessagePageContent = ({
         time === '-' ? (
           <span style={{ color: '#9CA3AF' }}>-</span>
         ) : (
-          <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{formatTimeMs(time)}</span>
+          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatTimeMs(time)}</span>
         ),
     },
     {
@@ -692,7 +692,7 @@ const MessagePageContent = ({
               padding: '12px 16px',
               borderRadius: 6,
               fontFamily: "'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace",
-              fontSize: 13,
+              fontSize: 14,
               lineHeight: 1.7,
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-all',
@@ -718,12 +718,12 @@ const MessagePageContent = ({
           items={traceData.nodes.map((node) => ({
             title: node.title,
             description: (
-              <div style={{ fontSize: 13 }}>
+              <div style={{ fontSize: 14 }}>
                 <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
                   {formatTimeMs(node.timestamp)}
                 </div>
                 <div style={{ marginTop: 2 }}>{node.description}</div>
-                <div style={{ color: '#9CA3AF', fontSize: 12 }}>耗时 {node.costTime}ms</div>
+                <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
               </div>
             ),
             status: node.status,
@@ -884,7 +884,7 @@ const MessagePageContent = ({
       )}
       <MessageQueryHistoryDrawer
         open={historyDrawerOpen}
-        clusterId={selectedInstanceId || undefined}
+        clusterId={selectedInstanceId !== undefined ? String(selectedInstanceId) : undefined}
         onClose={() => setHistoryDrawerOpen(false)}
       />
 

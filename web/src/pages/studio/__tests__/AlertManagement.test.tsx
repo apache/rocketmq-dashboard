@@ -42,7 +42,7 @@ vi.mock('../../../api/alertManagement', () => ({
 
 const alertRules = [
   {
-    id: 'rule-broker-down',
+    id: 1,
     name: 'BrokerDown',
     metric: 'up{job="rocketmq-broker"}',
     operator: '==',
@@ -53,7 +53,7 @@ const alertRules = [
     description: 'Broker unavailable - Broker has been unavailable for five minutes',
   },
   {
-    id: 'rule-consumer-lag',
+    id: 2,
     name: 'ConsumerLagHigh',
     metric: 'rocketmq_consumer_lag_messages',
     operator: '>',
@@ -140,7 +140,7 @@ describe('AlertManagementPage', () => {
     vi.mocked(exportAlertRulesYaml).mockResolvedValue({ rules: rulesYaml });
     vi.mocked(createAlertRule).mockImplementation(async (rule) => ({
       ...rule,
-      id: 'rule-new',
+      id: 3,
     }));
     vi.mocked(updateAlertRule).mockImplementation(async (rule) => rule);
     vi.mocked(toggleAlertRule).mockImplementation(async (id, enabled) => ({
@@ -230,7 +230,7 @@ describe('AlertManagementPage', () => {
     await user.click(within(brokerRow!).getByRole('switch'));
 
     await waitFor(() => {
-      expect(toggleAlertRule).toHaveBeenCalledWith('rule-broker-down', false);
+      expect(toggleAlertRule).toHaveBeenCalledWith(1, false);
     });
     expect(await screen.findByText('告警规则已更新')).toBeInTheDocument();
   });
@@ -292,7 +292,7 @@ describe('AlertManagementPage', () => {
     await waitFor(() => {
       expect(updateAlertRule).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: 'rule-broker-down',
+          id: 1,
           name: 'BrokerDown',
           metric: 'up{job="rocketmq-broker"}',
           operator: '==',
@@ -315,7 +315,7 @@ describe('AlertManagementPage', () => {
     await user.click(await screen.findByRole('button', { name: /OK|确/ }));
 
     await waitFor(() => {
-      expect(deleteAlertRule).toHaveBeenCalledWith('rule-broker-down');
+      expect(deleteAlertRule).toHaveBeenCalledWith(1);
     });
     expect(screen.queryByText('BrokerDown')).not.toBeInTheDocument();
   });

@@ -34,7 +34,7 @@ const PageHeader = ({ title, subtitle, extra, headingLevel = 1 }: PageHeaderProp
         {title}
       </Title>
       {subtitle && (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {subtitle}
         </Text>
       )}

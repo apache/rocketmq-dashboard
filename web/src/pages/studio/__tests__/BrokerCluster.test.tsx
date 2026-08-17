@@ -134,15 +134,15 @@ describe('BrokerCluster Page', () => {
     vi.clearAllMocks();
     vi.mocked(listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '10.0.1.20:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '',
-        updatedAt: '',
+        gmtCreate: '',
+        gmtModified: '',
       },
     ]);
     vi.mocked(listClusters).mockResolvedValue(clusterFixture);
@@ -170,7 +170,7 @@ describe('BrokerCluster Page', () => {
     expect(brokerA.length).toBeGreaterThan(0);
     expect(screen.getAllByText('broker-api-b').length).toBeGreaterThan(0);
     expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
-    expect(listClusters).toHaveBeenCalledWith('instance-1');
+    expect(listClusters).toHaveBeenCalledWith(1);
   });
 
   it('does not fall back to an unscoped cluster query when instance discovery fails', async () => {
@@ -233,9 +233,7 @@ describe('BrokerCluster Page', () => {
   });
 
   it('polls only while live refresh is enabled and the document is visible', async () => {
-    const visibilityState = vi
-      .spyOn(document, 'visibilityState', 'get')
-      .mockReturnValue('hidden');
+    const visibilityState = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     renderWithProviders(<BrokerCluster />);
 
     await screen.findByText('broker-api-a');

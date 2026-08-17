@@ -22,7 +22,7 @@ import { App } from 'antd';
 import type { DataSource } from '../../../api/settings';
 import { createDataSource, listDataSources, testDataSource } from '../../../api/settings';
 import { LangProvider } from '../../../i18n/LangContext';
-import { DataSourceTab } from '../index';
+import { DataSourceTab } from '../DataSourceTab';
 
 vi.mock('../../../api/settings', () => ({
   createDataSource: vi.fn(),

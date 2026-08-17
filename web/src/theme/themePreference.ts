@@ -15,16 +15,25 @@
  * limitations under the License.
  */
 
-export type ThemePreference = 'dark' | 'light';
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 export const THEME_STORAGE_KEY = 'rocketmq-studio-theme';
+export const COMPACT_STORAGE_KEY = 'rocketmq-studio-compact';
 
-export function getStoredThemePreference(): ThemePreference | null {
+export function getStoredThemeMode(): ThemeMode {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === 'dark' || stored === 'light' ? stored : null;
+    return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'system';
   } catch {
-    return null;
+    return 'system';
+  }
+}
+
+export function persistThemeMode(mode: ThemeMode): void {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, mode);
+  } catch {
+    // The active theme still changes when browser storage is unavailable.
   }
 }
 
@@ -32,10 +41,18 @@ export function getSystemDarkMode(): boolean {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 }
 
-export function persistThemePreference(darkMode: boolean): void {
+export function getStoredCompact(): boolean {
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, darkMode ? 'dark' : 'light');
+    return localStorage.getItem(COMPACT_STORAGE_KEY) === 'true';
   } catch {
-    // The active theme still changes when browser storage is unavailable.
+    return false;
+  }
+}
+
+export function persistCompact(compact: boolean): void {
+  try {
+    localStorage.setItem(COMPACT_STORAGE_KEY, String(compact));
+  } catch {
+    // Compact mode still toggles when browser storage is unavailable.
   }
 }

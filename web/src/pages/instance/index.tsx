@@ -30,12 +30,12 @@ import {
   Flex,
   Tabs,
   Typography,
-  Alert,
+  Tooltip,
   message,
 } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
@@ -110,7 +110,7 @@ const InstancePage = () => {
   const [vendor, setVendor] = useState<InstanceVendor>(DEFAULT_VENDOR);
   const [addForm] = Form.useForm();
   const addInstanceType = Form.useWatch<'PROXY' | 'DIRECT' | undefined>('type', addForm);
-  const addCredentialId = Form.useWatch<string | undefined>('credentialId', addForm);
+  const addCredentialId = Form.useWatch<number | undefined>('credentialId', addForm);
   const addRegionId = Form.useWatch<string | undefined>('regionId', addForm);
   const [credentials, setCredentials] = useState<CloudCredential[]>([]);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
@@ -380,6 +380,7 @@ const InstancePage = () => {
       dataIndex: 'name',
       key: 'name',
       width: 180,
+      onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (text: string) => (
         <Text strong style={{ fontSize: 14 }}>
@@ -392,9 +393,10 @@ const InstancePage = () => {
       dataIndex: 'remark',
       key: 'remark',
       width: 240,
+      onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
       render: (remark: string | null) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {remark || '-'}
         </Text>
       ),
@@ -404,6 +406,7 @@ const InstancePage = () => {
       dataIndex: 'vendor',
       key: 'vendor',
       width: 140,
+      align: 'center' as const,
       render: (value?: string) => {
         const option = VENDOR_OPTIONS.find((item) => item.key === (value || 'APACHE'));
         if (!option) {
@@ -412,7 +415,7 @@ const InstancePage = () => {
         return (
           <Space size={6}>
             <img src={option.logo} alt={option.label} style={{ height: 16 }} />
-            <Text style={{ fontSize: 13 }}>{option.label}</Text>
+            <Text style={{ fontSize: 14 }}>{option.label}</Text>
           </Space>
         );
       },
@@ -422,6 +425,7 @@ const InstancePage = () => {
       dataIndex: 'type',
       key: 'type',
       width: 130,
+      align: 'center' as const,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
         const t = typeLabel[type] || { text: type, color: 'default' };
@@ -450,24 +454,24 @@ const InstancePage = () => {
     },
     {
       title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'gmtCreate',
+      key: 'gmtCreate',
       width: 170,
-      sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
+      sorter: (a, b) => a.gmtCreate.localeCompare(b.gmtCreate),
       render: (d: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(d)}
         </Text>
       ),
     },
     {
       title: '修改时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
+      dataIndex: 'gmtModified',
+      key: 'gmtModified',
       width: 170,
-      sorter: (a, b) => a.updatedAt.localeCompare(b.updatedAt),
+      sorter: (a, b) => a.gmtModified.localeCompare(b.gmtModified),
       render: (d: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(d)}
         </Text>
       ),
@@ -522,7 +526,7 @@ const InstancePage = () => {
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('instance.title')}</h2>
-        <div style={{ marginTop: 6, fontSize: 13, color: '#9CA3AF' }}>
+        <div style={{ marginTop: 6, fontSize: 14, color: '#9CA3AF' }}>
           接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {instances.length} 个实例
         </div>
       </div>
@@ -576,7 +580,7 @@ const InstancePage = () => {
           size="small"
           onRow={(record) => ({
             style: { cursor: 'pointer' },
-            onClick: () => navigate(`/instance/${encodeURIComponent(record.name)}/topic`),
+            onClick: () => navigate(`/instance/${record.id}/topic`),
           })}
         />
       </Card>
@@ -613,7 +617,7 @@ const InstancePage = () => {
             ),
           }))}
         />
-        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
+        <Text type="secondary" style={{ display: 'block', fontSize: 14, marginBottom: 12 }}>
           {VENDOR_OPTIONS.find((option) => option.key === vendor)?.description}
         </Text>
         {cloudVendor ? (
@@ -714,7 +718,14 @@ const InstancePage = () => {
               />
             </Form.Item>
             <Form.Item
-              label="接入地址"
+              label={
+                <span>
+                  接入地址{' '}
+                  <Tooltip title="接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。">
+                    <QuestionCircleOutlined style={{ color: '#9CA3AF', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+              }
               name="endpoint"
               rules={[{ required: true, message: '请输入接入地址' }]}
               extra={
@@ -733,13 +744,6 @@ const InstancePage = () => {
                 }
               />
             </Form.Item>
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="接入地址为客户端访问入口"
-              description="接入地址会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。"
-            />
             <Form.Item
               label="管理凭据引用"
               name="adminCredentialRef"

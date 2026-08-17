@@ -34,7 +34,7 @@ const StatusBadge = ({ status, text, showDot = true }: StatusBadgeProps) => {
   return (
     <Space size={4} role="status" aria-label={label}>
       {showDot && <Badge color={config.dot} aria-hidden="true" />}
-      <Text style={{ color: config.color, fontSize: 13 }}>{label}</Text>
+      <Text style={{ color: config.color, fontSize: 14 }}>{label}</Text>
     </Space>
   );
 };

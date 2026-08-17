@@ -120,9 +120,9 @@ describe('MessagePage async request ownership', () => {
     vi.clearAllMocks();
     serviceMocks.getMessageTrace.mockResolvedValue(null);
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
-      selectedInstanceId: 'instance-a',
+      selectedInstanceId: 1,
       selectInstance: vi.fn(),
-      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+      instanceOptions: [{ value: 1, label: 'Instance A' }],
     });
     vi.spyOn(message, 'success').mockImplementation(vi.fn());
   });
@@ -151,16 +151,16 @@ describe('MessagePage async request ownership', () => {
 
   it('clears query results and message details when the selected instance changes', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-from-instance-a')]);
-    let currentInstanceId = 'instance-a';
-    const selectInstance = vi.fn((id: string) => {
+    let currentInstanceId = 1;
+    const selectInstance = vi.fn((id: number) => {
       currentInstanceId = id;
     });
     instanceFilterMocks.useInstanceFilter.mockImplementation(() => ({
       selectedInstanceId: currentInstanceId,
       selectInstance,
       instanceOptions: [
-        { value: 'instance-a', label: 'Instance A' },
-        { value: 'instance-b', label: 'Instance B' },
+        { value: 1, label: 'Instance A' },
+        { value: 2, label: 'Instance B' },
       ],
     }));
     const user = userEvent.setup();
@@ -181,7 +181,7 @@ describe('MessagePage async request ownership', () => {
       expect(screen.queryByText('message-from-instance-a')).not.toBeInTheDocument();
       expect(screen.queryByRole('dialog', { name: '消息详情' })).not.toBeInTheDocument();
     });
-    expect(selectInstance).toHaveBeenCalledWith('instance-b', expect.anything());
+    expect(selectInstance).toHaveBeenCalledWith(2, expect.anything());
   });
   it('surfaces unavailable message provider errors from query requests', async () => {
     serviceMocks.queryMessages.mockRejectedValue(

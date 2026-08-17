@@ -33,26 +33,26 @@ vi.mock('../../../services/messageService', () => ({
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([
     {
-      id: 'instance-1',
+      id: 1,
       name: 'instance-1',
       endpoint: 'namesrv-1:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
     {
-      id: 'instance-2',
+      id: 2,
       name: 'instance-2',
       endpoint: 'namesrv-2:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
   ]),
 }));
@@ -86,7 +86,7 @@ const renderWithProviders = (ui: React.ReactElement) =>
   render(
     <App>
       <LangProvider>
-        <MemoryRouter initialEntries={['/instance/instance-1/dlq']}>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={['/instance/1/dlq']}>{ui}</MemoryRouter>
       </LangProvider>
     </App>,
   );
@@ -137,7 +137,7 @@ describe('DLQ page', () => {
 
     expect(await screen.findByText('cg-order')).toBeInTheDocument();
     expect(screen.getByText('%DLQ%cg-order')).toBeInTheDocument();
-    expect(messageService.listDLQGroups).toHaveBeenCalledWith('instance-1');
+    expect(messageService.listDLQGroups).toHaveBeenCalledWith(1);
   });
 
   it('surfaces unavailable DLQ provider errors when loading groups', async () => {
@@ -340,7 +340,7 @@ describe('DLQ page', () => {
     );
 
     await waitFor(() => {
-      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-2');
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith(2);
     });
     await waitFor(() => {
       expect(screen.queryByRole('row', { name: /cg-order/ })).not.toBeInTheDocument();
@@ -381,9 +381,7 @@ describe('DLQ page', () => {
     if (!retryDialog) throw new Error('retry dialog not found');
     expect(within(retryDialog as HTMLElement).getByText('-cg-"payment"')).toBeInTheDocument();
 
-    await act(async () =>
-      resolveRetry({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }),
-    );
+    await act(async () => resolveRetry({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
 
     retryDialog = screen.getByText('重投死信消息').closest('.ant-modal');
     if (!retryDialog) throw new Error('retry dialog was closed by the stale request');

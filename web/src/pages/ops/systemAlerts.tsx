@@ -43,7 +43,7 @@ const SystemAlertsPage = () => {
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
-  const [acknowledgingIds, setAcknowledgingIds] = useState<Set<string>>(() => new Set());
+  const [acknowledgingIds, setAcknowledgingIds] = useState<Set<number>>(() => new Set());
   const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
@@ -72,7 +72,7 @@ const SystemAlertsPage = () => {
 
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
-  const handleAck = async (id: string) => {
+  const handleAck = async (id: number) => {
     setAcknowledgingIds((current) => new Set(current).add(id));
     try {
       await acknowledgeAlert(id);
@@ -170,7 +170,7 @@ const SystemAlertsPage = () => {
               >
                 <div style={{ flex: 1 }}>
                   <Flex align="center" gap={8}>
-                    <Text strong style={{ fontSize: 13 }}>
+                    <Text strong style={{ fontSize: 14 }}>
                       {alert.title}
                     </Text>
                     <Tag
@@ -183,17 +183,17 @@ const SystemAlertsPage = () => {
                               ? 'processing'
                               : 'default'
                       }
-                      style={{ fontSize: 11, lineHeight: '18px', padding: '0 6px' }}
+                      style={{ fontSize: 14, lineHeight: '18px', padding: '0 6px' }}
                     >
                       {cfg.label}
                     </Tag>
                   </Flex>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 14 }}>
                     {alert.description}
                   </Text>
                 </div>
                 <Flex align="center" gap={8} style={{ flexShrink: 0 }}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 14 }}>
                     {alert.time}
                   </Text>
                   {!alert.acknowledged && (

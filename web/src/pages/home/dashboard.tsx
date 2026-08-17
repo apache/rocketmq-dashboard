@@ -33,9 +33,9 @@ const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [dashboardInstanceId, setDashboardInstanceId] = useState<string>();
+  const [dashboardInstanceId, setDashboardInstanceId] = useState<number>();
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const dashboardRequestIdRef = useRef(0);
@@ -96,7 +96,7 @@ const DashboardPage = () => {
             placeholder="All configured instances"
             value={selectedInstanceId}
             onChange={setSelectedInstanceId}
-            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
             style={{ width: 220 }}
           />
           <Button onClick={() => void loadDashboard()} loading={loading}>
@@ -201,7 +201,7 @@ const DashboardPage = () => {
       title: t('common.version'),
       dataIndex: 'version',
       key: 'version',
-      render: (v: string) => <span style={{ fontSize: 13 }}>{v}</span>,
+      render: (v: string) => <span style={{ fontSize: 14 }}>{v}</span>,
     },
     {
       title: t('dashboard.broker'),
@@ -286,7 +286,7 @@ const DashboardPage = () => {
                 suffix={card.suffix}
                 valueStyle={{ fontSize: 28, fontWeight: 600 }}
               />
-              <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+              <Text type="secondary" style={{ fontSize: 14, marginTop: 4, display: 'block' }}>
                 {card.detail}
               </Text>
             </Card>

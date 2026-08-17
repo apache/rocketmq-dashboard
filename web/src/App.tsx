@@ -32,7 +32,6 @@ const ConsumerPage = lazy(() => import('./pages/instance/consumer'));
 const MessagePage = lazy(() => import('./pages/instance/message'));
 const AclPage = lazy(() => import('./pages/instance/acl'));
 const DlqPage = lazy(() => import('./pages/instance/dlq'));
-const ResourcePlanPage = lazy(() => import('./pages/instance/resourcePlan'));
 const ClusterPage = lazy(() => import('./pages/cluster'));
 const K8sCertsPage = lazy(() => import('./pages/cluster/certs'));
 const ClientsPage = lazy(() => import('./pages/cluster/clients'));
@@ -40,10 +39,8 @@ const DashboardOpsPage = lazy(() => import('./pages/home/dashboard'));
 const AlertsPage = lazy(() => import('./pages/ops/alerts'));
 const SystemAlertsPage = lazy(() => import('./pages/ops/systemAlerts'));
 const AuditPage = lazy(() => import('./pages/ops/audit'));
-const NameServerConfigDriftPage = lazy(() => import('./pages/ops/nameServerConfigDrift'));
 const AiPage = lazy(() => import('./pages/ai'));
 const SettingsPage = lazy(() => import('./pages/settings'));
-const LlmSettingsPage = lazy(() => import('./pages/studio/LlmSettings'));
 const ProxyPage = lazy(() => import('./pages/studio/Proxy'));
 const LiteTopicPage = lazy(() => import('./pages/studio/LiteTopic'));
 const GroupManagementPage = lazy(() => import('./pages/studio/GroupManagement'));
@@ -173,8 +170,6 @@ function App() {
             <Route path="instance/:instanceId/acl" element={<AclPage />} />
             <Route path="instance/dlq" element={<DlqPage />} />
             <Route path="instance/:instanceId/dlq" element={<DlqPage />} />
-            <Route path="instance/resource-plan" element={<ResourcePlanPage />} />
-            <Route path="instance/:instanceId/resource-plan" element={<ResourcePlanPage />} />
             <Route path="cluster" element={<ClusterPage />} />
             <Route path="cluster/certs" element={<K8sCertsPage />} />
             <Route path="cluster/clients" element={<ClientsPage />} />
@@ -183,10 +178,8 @@ function App() {
             <Route path="ops/alerts" element={<AlertsPage />} />
             <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
             <Route path="ops/audit" element={<AuditPage />} />
-            <Route path="ops/nameserver-config-drift" element={<NameServerConfigDriftPage />} />
             <Route path="ai" element={<AiPage />} />
             <Route path="settings" element={<SettingsPage />} />
-            <Route path="studio/llm-settings" element={<LlmSettingsPage />} />
             <Route path="studio/proxy" element={<ProxyPage />} />
             <Route path="studio/lite-topic" element={<LiteTopicPage />} />
             <Route path="studio/group-management" element={<GroupManagementPage />} />
@@ -195,7 +188,7 @@ function App() {
             <Route path="studio/alert-management" element={<Navigate to="/ops/alerts" replace />} />
             <Route path="studio/producer" element={<ProducerPage />} />
             <Route path="studio/ops" element={<OpsPage />} />
-            <Route path="ops/alert-rule-templates" element={<AlertRuleAssetsPage />} />
+            <Route path="instance/alerts" element={<AlertRuleAssetsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Route>

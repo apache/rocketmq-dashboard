@@ -19,13 +19,13 @@ import { Select } from 'antd';
 import type { CSSProperties } from 'react';
 
 export interface InstanceOption {
-  value: string;
+  value: number;
   label: string;
 }
 
 interface InstanceSelectProps {
-  value?: string;
-  onChange: (value: string, option?: unknown) => void;
+  value?: number;
+  onChange: (value: number, option?: unknown) => void;
   options: InstanceOption[];
   style?: CSSProperties;
   placeholder?: string;
@@ -47,11 +47,11 @@ export function InstanceSelect({
       showSearch
       allowClear
       placeholder={placeholder}
-      value={value || undefined}
+      value={value ?? undefined}
       onChange={(next, option) => {
         if (next === undefined || next === null) {
           const first = options[0]?.value;
-          if (first) {
+          if (first !== undefined) {
             onChange(first);
           }
           return;

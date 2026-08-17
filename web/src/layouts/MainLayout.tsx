@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Input, Modal, message } from 'antd';
+import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Modal, message } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   House,
@@ -30,16 +30,15 @@ import {
   ListDashes,
   UserGear,
   ChartBar,
-  ChartLine,
   Sun,
   Moon,
   ShieldCheck,
   TrashSimple,
   PlugsConnected,
   BellRinging,
+  Siren,
   Notebook,
   Warning,
-  GitDiff,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/useTheme';
@@ -62,6 +61,8 @@ const MainLayout = () => {
   const { darkMode, toggleTheme } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
   const useMock = useDataModeStore((state) => state.useMock);
@@ -101,10 +102,7 @@ const MainLayout = () => {
   }, []);
 
   const instanceScopedMatch = useMemo(
-    () =>
-      location.pathname.match(
-        /^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq|resource-plan)$/,
-      ),
+    () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/),
     [location.pathname],
   );
   const selectedMenuKey = instanceScopedMatch
@@ -129,11 +127,7 @@ const MainLayout = () => {
             label: t('nav.message'),
           },
           { key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') },
-          {
-            key: '/instance/resource-plan',
-            icon: <Notebook size={16} />,
-            label: t('nav.resourcePlan'),
-          },
+          { key: '/instance/alerts', icon: <Warning size={16} />, label: t('nav.alertRuleAssets') },
         ],
       },
       {
@@ -141,29 +135,22 @@ const MainLayout = () => {
         icon: <Monitor size={iconSize} weight="duotone" />,
         label: t('nav.clusterOps'),
         children: [
-          { key: '/ops/dashboard', icon: <ChartBar size={16} />, label: t('nav.dashboard') },
-          { key: '/ops/grafana', icon: <ChartLine size={16} />, label: t('nav.grafanaDashboards') },
           { key: '/cluster/certs', icon: <ShieldCheck size={16} />, label: t('nav.certs') },
           { key: '/cluster', icon: <Database size={16} />, label: t('nav.rocketmqCluster') },
           { key: '/cluster/clients', icon: <PlugsConnected size={16} />, label: t('nav.clients') },
           { key: '/ops/alerts', icon: <BellRinging size={16} />, label: t('nav.alertRules') },
           {
             key: '/ops/system-alerts',
-            icon: <BellRinging size={16} />,
+            icon: <Siren size={16} />,
             label: t('nav.alertEvents'),
           },
-          { key: '/ops/audit', icon: <Notebook size={16} />, label: t('nav.audit') },
-          {
-            key: '/ops/nameserver-config-drift',
-            icon: <GitDiff size={16} />,
-            label: t('nav.nameServerConfigDrift'),
-          },
-          {
-            key: '/ops/alert-rule-templates',
-            icon: <Warning size={16} />,
-            label: t('nav.alertRuleAssets'),
-          },
+          { key: '/ops/dashboard', icon: <ChartBar size={16} />, label: t('nav.dashboard') },
         ],
+      },
+      {
+        key: '/ops/audit',
+        icon: <Notebook size={iconSize} weight="duotone" />,
+        label: t('nav.audit'),
       },
       { key: '/ai', icon: <Sparkle size={iconSize} weight="duotone" />, label: t('nav.ai') },
       {
@@ -185,7 +172,7 @@ const MainLayout = () => {
       '/instance/message': t('nav.message'),
       '/instance/acl': t('nav.acl'),
       '/instance/dlq': t('nav.dlq'),
-      '/instance/resource-plan': t('nav.resourcePlan'),
+      '/instance/alerts': t('nav.alertRuleAssets'),
       '/cluster': t('nav.rocketmqCluster'),
       '/cluster/certs': t('nav.certs'),
       '/cluster/clients': t('nav.clients'),
@@ -194,8 +181,6 @@ const MainLayout = () => {
       '/ops/system-alerts': t('nav.alertEvents'),
       '/ops/alerts': t('nav.alertRules'),
       '/ops/audit': t('nav.audit'),
-      '/ops/nameserver-config-drift': t('nav.nameServerConfigDrift'),
-      '/ops/alert-rule-templates': t('nav.alertRuleAssets'),
       '/ai': t('nav.ai'),
       '/settings': t('nav.settings'),
     }),
@@ -289,7 +274,10 @@ const MainLayout = () => {
         <Sider
           theme={darkMode ? 'dark' : 'light'}
           collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
           width={220}
+          collapsedWidth={64}
           style={{
             background: siderBg,
             borderRight: `1px solid ${borderColor}`,
@@ -311,10 +299,12 @@ const MainLayout = () => {
               fontWeight: 600,
               color: logoColor,
               letterSpacing: '-0.01em',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
             }}
           >
             <span style={{ fontSize: 20 }}>🚀</span>
-            <span>RocketMQ Studio</span>
+            {!collapsed && <span>RocketMQ Studio</span>}
           </div>
 
           {/* Navigation Menu */}
@@ -344,7 +334,7 @@ const MainLayout = () => {
             }}
           >
             {/* Left: Breadcrumb */}
-            <Breadcrumb items={breadcrumbItems} style={{ fontSize: 13 }} />
+            <Breadcrumb items={breadcrumbItems} style={{ fontSize: 14 }} />
 
             {/* Right: Search + Lang + Theme + User */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -361,7 +351,7 @@ const MainLayout = () => {
                   borderRadius: 6,
                   border: `1px solid ${borderColor}`,
                   cursor: 'pointer',
-                  fontSize: 13,
+                  fontSize: 14,
                   color: '#9CA3AF',
                   minWidth: 160,
                   background: 'transparent',
@@ -373,7 +363,7 @@ const MainLayout = () => {
                 <span
                   style={{
                     marginLeft: 'auto',
-                    fontSize: 11,
+                    fontSize: 14,
                     padding: '1px 6px',
                     borderRadius: 4,
                     background: darkMode ? '#333' : '#f5f5f5',
@@ -387,9 +377,7 @@ const MainLayout = () => {
               {/* Data mode toggle */}
               <button
                 type="button"
-                aria-label={
-                  useMock ? t('layout.switchToRealData') : t('layout.switchToMockData')
-                }
+                aria-label={useMock ? t('layout.switchToRealData') : t('layout.switchToMockData')}
                 aria-pressed={useMock}
                 onClick={handleDataModeToggle}
                 style={{
@@ -400,7 +388,7 @@ const MainLayout = () => {
                   padding: '4px 10px',
                   borderRadius: 6,
                   border: `1px solid ${borderColor}`,
-                  fontSize: 12,
+                  fontSize: 14,
                   fontWeight: 500,
                   color: useMock ? '#d48806' : '#389e0d',
                   transition: 'all 0.2s',
@@ -436,7 +424,7 @@ const MainLayout = () => {
                   width: 28,
                   height: 28,
                   borderRadius: 6,
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: 600,
                   color: '#1677ff',
                   transition: 'background 0.2s',
@@ -445,9 +433,7 @@ const MainLayout = () => {
                   background: 'transparent',
                   font: 'inherit',
                 }}
-                title={
-                  lang === 'zh' ? t('layout.switchToEnglish') : t('layout.switchToChinese')
-                }
+                title={lang === 'zh' ? t('layout.switchToEnglish') : t('layout.switchToChinese')}
               >
                 {lang === 'zh' ? 'En' : '中'}
               </button>
@@ -474,9 +460,7 @@ const MainLayout = () => {
                   background: 'transparent',
                   font: 'inherit',
                 }}
-                title={
-                  darkMode ? t('layout.switchToLightTheme') : t('layout.switchToDarkTheme')
-                }
+                title={darkMode ? t('layout.switchToLightTheme') : t('layout.switchToDarkTheme')}
               >
                 {darkMode ? (
                   <Sun size={18} color="#9CA3AF" weight="fill" />
@@ -524,79 +508,158 @@ const MainLayout = () => {
         </Layout>
       </Layout>
 
-      {/* Search Modal */}
+      {/* Search Modal (command palette) */}
       <Modal
         open={searchOpen}
         onCancel={() => {
           setSearchOpen(false);
           setSearchText('');
+          setActiveIndex(0);
         }}
         footer={null}
         closable={false}
-        styles={{ body: { padding: 0 } }}
-        width={520}
-        centered
+        styles={{
+          body: { padding: 0 },
+          content: { padding: 0, overflow: 'hidden', borderRadius: 12 },
+        }}
+        width={600}
+        style={{ top: '12vh' }}
       >
-        <div style={{ padding: '16px 20px 8px' }}>
-          <Input
-            size="large"
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '14px 20px',
+            borderBottom: `1px solid ${borderColor}`,
+          }}
+        >
+          <MagnifyingGlass size={18} color="#9CA3AF" />
+          <input
             placeholder={t('common.searchPlaceholder')}
-            prefix={<MagnifyingGlass size={18} color="#9CA3AF" />}
             value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            onPressEnter={() => {
-              const firstResult = searchResults[0];
-              if (!firstResult) return;
-              navigate(firstResult.key);
-              setSearchOpen(false);
-              setSearchText('');
+            onChange={(e) => {
+              setSearchText(e.target.value);
+              setActiveIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActiveIndex((i) => Math.min(i + 1, Math.max(searchResults.length - 1, 0)));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActiveIndex((i) => Math.max(i - 1, 0));
+              } else if (e.key === 'Enter') {
+                const target = searchResults[Math.min(activeIndex, searchResults.length - 1)];
+                if (!target) return;
+                navigate(target.key as string);
+                setSearchOpen(false);
+                setSearchText('');
+                setActiveIndex(0);
+              }
             }}
             autoFocus
-            allowClear
-            style={{ fontSize: 16 }}
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: 16,
+              background: 'transparent',
+              color: 'inherit',
+            }}
           />
+          <span
+            style={{
+              fontSize: 14,
+              color: '#9CA3AF',
+              padding: '1px 6px',
+              borderRadius: 4,
+              background: darkMode ? '#333' : '#f5f5f5',
+              border: `1px solid ${borderColor}`,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            ESC
+          </span>
         </div>
-        <div style={{ maxHeight: 360, overflow: 'auto', padding: '8px 12px 12px' }}>
+        <div style={{ maxHeight: 380, overflow: 'auto', padding: 8 }}>
           {searchResults.length ? (
-            searchResults.map((item) => (
-              <button
-                type="button"
-                key={item.key}
-                onClick={() => {
-                  navigate(item.key as string);
-                  setSearchOpen(false);
-                  setSearchText('');
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  transition: 'background 0.15s',
-                  width: '100%',
-                  border: 0,
-                  background: 'transparent',
-                  color: 'inherit',
-                  textAlign: 'left',
-                  font: 'inherit',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = darkMode ? '#1a1a1a' : '#f5f5f5';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
-            ))
+            searchResults.map((item, index) => {
+              const active = index === activeIndex;
+              return (
+                <button
+                  type="button"
+                  key={item.key}
+                  ref={(el) => {
+                    if (el && active) el.scrollIntoView?.({ block: 'nearest' });
+                  }}
+                  onClick={() => {
+                    navigate(item.key as string);
+                    setSearchOpen(false);
+                    setSearchText('');
+                    setActiveIndex(0);
+                  }}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    width: '100%',
+                    border: 0,
+                    background: active ? (darkMode ? '#1f2937' : '#eff6ff') : 'transparent',
+                    color: 'inherit',
+                    textAlign: 'left',
+                    font: 'inherit',
+                  }}
+                >
+                  <span style={{ color: active ? '#1677ff' : '#9CA3AF', display: 'flex' }}>
+                    {item.icon}
+                  </span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {active && (
+                    <span
+                      aria-hidden
+                      style={{
+                        fontSize: 14,
+                        color: '#9CA3AF',
+                        padding: '0 6px',
+                        borderRadius: 4,
+                        background: darkMode ? '#333' : '#f5f5f5',
+                        border: `1px solid ${borderColor}`,
+                      }}
+                    >
+                      ↵
+                    </span>
+                  )}
+                </button>
+              );
+            })
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到匹配页面" />
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="未找到匹配页面"
+              style={{ padding: '24px 0' }}
+            />
           )}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: 16,
+            padding: '8px 20px',
+            borderTop: `1px solid ${borderColor}`,
+            fontSize: 14,
+            color: '#9CA3AF',
+            background: darkMode ? '#26262a' : '#fafafa',
+          }}
+        >
+          <span>↑↓ 切换</span>
+          <span>↵ 打开</span>
+          <span>ESC 关闭</span>
         </div>
       </Modal>
     </>

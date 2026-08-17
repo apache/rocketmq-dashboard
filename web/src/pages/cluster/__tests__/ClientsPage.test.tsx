@@ -32,15 +32,15 @@ vi.mock('../../../services/connectionsService', () => ({
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([
     {
-      id: 'instance-1',
+      id: 1,
       name: 'instance-1',
       endpoint: 'namesrv-1:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
   ]),
 }));
@@ -119,7 +119,7 @@ describe('Clients page', () => {
     renderWithProviders(<ClientsPage />);
 
     await screen.findByText('order-svc-0@10.0.1.12:49152');
-    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 'instance-1' });
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 1 });
   });
 
   it('summarizes connection types, protocols, and language versions', async () => {
@@ -239,37 +239,37 @@ describe('Clients page', () => {
     expect(await screen.findByText('order-svc-0@10.0.1.12:49152')).toBeInTheDocument();
     expect(connectionsService.listConnections).toHaveBeenCalledTimes(2);
     expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
-      instanceId: 'instance-1',
+      instanceId: 1,
     });
   });
 
   it('clears the previous instance data when the next instance connection request fails', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         endpoint: 'namesrv-1:9876',
         type: 'DIRECT',
         remark: '',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '',
-        updatedAt: '',
+        gmtCreate: '',
+        gmtModified: '',
       },
       {
-        id: 'instance-2',
+        id: 2,
         name: 'instance-2',
         endpoint: 'namesrv-2:9876',
         type: 'DIRECT',
         remark: '',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '',
-        updatedAt: '',
+        gmtCreate: '',
+        gmtModified: '',
       },
     ]);
     vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
-      query?.instanceId === 'instance-1'
+      query?.instanceId === 1
         ? Promise.resolve([connection])
         : Promise.reject(new Error('Instance 2 is unavailable')),
     );
@@ -292,15 +292,15 @@ describe('Clients page', () => {
       .mockRejectedValueOnce(new Error('Unable to load managed instances'))
       .mockResolvedValueOnce([
         {
-          id: 'instance-1',
+          id: 1,
           name: 'instance-1',
           endpoint: 'namesrv-1:9876',
           type: 'DIRECT',
           remark: '',
           topicCount: 0,
           consumerGroupCount: 0,
-          createdAt: '',
-          updatedAt: '',
+          gmtCreate: '',
+          gmtModified: '',
         },
       ]);
     const user = userEvent.setup();
@@ -311,7 +311,7 @@ describe('Clients page', () => {
 
     await user.click(screen.getByRole('button', { name: /重\s*试/ }));
     await screen.findByText('order-svc-0@10.0.1.12:49152');
-    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 'instance-1' });
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 1 });
   });
 
   it('opens a client detail dialog from the connection table', async () => {

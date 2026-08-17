@@ -252,12 +252,12 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
-        instanceIds: ['instance-a'],
+        instanceIds: ['1'],
       },
     ]);
     vi.mocked(queryByDataSource).mockResolvedValue(metricData);
 
-    renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+    renderWithProviders(<MetricsExplorer instanceId={1} />);
 
     await screen.findByRole('combobox', { name: '数据源' });
     await user.click(screen.getByRole('combobox', { name: '数据源' }));
@@ -270,7 +270,7 @@ describe('MetricsExplorer', () => {
     await waitFor(() =>
       expect(queryByDataSource).toHaveBeenCalledWith({
         key: 'ds-prom-1',
-        instanceId: 'instance-a',
+        instanceId: 1,
         query: {
           metric: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
           start: 1_799_996_400,
@@ -390,7 +390,7 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
-        instanceIds: ['instance-a'],
+        instanceIds: ['1'],
       },
       {
         key: 'ds-instance-b',
@@ -399,12 +399,12 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
-        instanceIds: ['instance-b'],
+        instanceIds: ['2'],
       },
     ]);
 
     const user = userEvent.setup();
-    renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+    renderWithProviders(<MetricsExplorer instanceId={1} />);
 
     await screen.findByRole('combobox', { name: '数据源' });
     await user.click(screen.getByRole('combobox', { name: '数据源' }));

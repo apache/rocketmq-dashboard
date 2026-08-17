@@ -64,8 +64,8 @@ const makeGroup = (overrides: Partial<ConsumerGroup>): ConsumerGroup => ({
   subscribedTopics: ['ORDER_TOPIC'],
   subscriptionDataType: 'NORMAL',
   retryMaxTimes: 16,
-  createdAt: '2025-03-15 10:30:00',
-  updatedAt: '2025-03-15 10:30:00',
+  gmtCreate: '2025-03-15 10:30:00',
+  gmtModified: '2025-03-15 10:30:00',
   delaySeconds: 12,
   instances: [],
   ...overrides,
@@ -220,9 +220,7 @@ describe('GroupManagement Page', () => {
   });
 
   it('polls only while auto refresh is enabled and the document is visible', async () => {
-    const visibilityState = vi
-      .spyOn(document, 'visibilityState', 'get')
-      .mockReturnValue('hidden');
+    const visibilityState = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     renderWithProviders(<GroupManagement />);
 
     await screen.findByText('order-consumer-group');
@@ -268,7 +266,7 @@ describe('GroupManagement Page', () => {
   });
   it('scopes global group detail diagnostics to the record instance', async () => {
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
-      makeGroup({ name: 'shared-group', instanceId: 'instance-b' }),
+      makeGroup({ name: 'shared-group', instanceId: 2 }),
     ]);
     const user = userEvent.setup();
     renderWithProviders(<GroupManagement />);
@@ -276,14 +274,8 @@ describe('GroupManagement Page', () => {
     await user.click(screen.getByText('详情'));
 
     await waitFor(() => {
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
-        'shared-group',
-        'instance-b',
-      );
-      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith(
-        'shared-group',
-        'instance-b',
-      );
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('shared-group', 2);
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('shared-group', 2);
     });
   });
 
@@ -303,8 +295,8 @@ describe('GroupManagement Page', () => {
 
   it('uses unique row keys for same-named groups from different instances', async () => {
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
-      makeGroup({ name: 'shared-group', instanceId: 'instance-a' }),
-      makeGroup({ name: 'shared-group', instanceId: 'instance-b' }),
+      makeGroup({ name: 'shared-group', instanceId: 1 }),
+      makeGroup({ name: 'shared-group', instanceId: 2 }),
     ]);
     const { container } = renderWithProviders(<GroupManagement />);
     await screen.findAllByText('shared-group');
@@ -312,8 +304,8 @@ describe('GroupManagement Page', () => {
     const rowKeys = Array.from(container.querySelectorAll('tbody tr[data-row-key]')).map((row) =>
       row.getAttribute('data-row-key'),
     );
-    expect(rowKeys).toContain('instance-a\0shared-group');
-    expect(rowKeys).toContain('instance-b\0shared-group');
+    expect(rowKeys).toContain('1\0shared-group');
+    expect(rowKeys).toContain('2\0shared-group');
     expect(new Set(rowKeys).size).toBe(rowKeys.length);
   });
 });

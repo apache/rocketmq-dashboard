@@ -134,8 +134,8 @@ const GROUP_EXPORT_COLUMNS: Array<{ header: string; value: (group: ConsumerGroup
   { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
   { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },
   { header: 'Subscribed Topics', value: (group) => (group.subscribedTopics ?? []).join(';') },
-  { header: 'Created At', value: (group) => group.createdAt },
-  { header: 'Updated At', value: (group) => group.updatedAt },
+  { header: 'Created At', value: (group) => group.gmtCreate },
+  { header: 'Updated At', value: (group) => group.gmtModified },
 ];
 
 const escapeCsvCell = (value: unknown) => {
@@ -181,8 +181,8 @@ const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
 
 // Shared helper exported alongside the page component; fast-refresh rule waived.
 // eslint-disable-next-line react-refresh/only-export-components
-export const diagnosticCacheKey = (instanceId: string, groupName: string) =>
-  `${instanceId}\u0000${groupName}`;
+export const diagnosticCacheKey = (instanceId: number | undefined, groupName: string) =>
+  `${instanceId ?? ''}\u0000${groupName}`;
 
 /* ═══════════════════════════════════════════
    ConsumerPage
@@ -540,24 +540,24 @@ const ConsumerPageContent = ({
     },
     {
       title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'gmtCreate',
+      key: 'gmtCreate',
       width: 170,
-      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(d)}
         </Text>
       ),
     },
     {
       title: '修改时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
+      dataIndex: 'gmtModified',
+      key: 'gmtModified',
       width: 170,
-      sorter: (a, b) => (a.updatedAt ?? '').localeCompare(b.updatedAt ?? ''),
+      sorter: (a, b) => (a.gmtModified ?? '').localeCompare(b.gmtModified ?? ''),
       render: (d: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(d)}
         </Text>
       ),
@@ -632,7 +632,7 @@ const ConsumerPageContent = ({
       key: 'topic',
       width: 200,
       render: (name: string) => (
-        <Text strong style={{ fontSize: 13 }}>
+        <Text strong style={{ fontSize: 14 }}>
           {name}
         </Text>
       ),
@@ -672,7 +672,7 @@ const ConsumerPageContent = ({
       key: 'expression',
       width: 260,
       render: (expr: string) => (
-        <Text code style={{ fontSize: 12 }}>
+        <Text code style={{ fontSize: 14 }}>
           {expr}
         </Text>
       ),
@@ -703,7 +703,7 @@ const ConsumerPageContent = ({
       key: 'clientId',
       width: 220,
       render: (id: string) => (
-        <Text copyable style={{ fontSize: 13 }}>
+        <Text copyable style={{ fontSize: 14 }}>
           {id}
         </Text>
       ),
@@ -724,7 +724,7 @@ const ConsumerPageContent = ({
       key: 'address',
       width: 180,
       render: (addr: string) => (
-        <Text code style={{ fontSize: 12 }}>
+        <Text code style={{ fontSize: 14 }}>
           {addr}
         </Text>
       ),
@@ -735,7 +735,7 @@ const ConsumerPageContent = ({
       key: 'lastHeartbeat',
       width: 170,
       render: (time: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(time)}
         </Text>
       ),
@@ -766,7 +766,7 @@ const ConsumerPageContent = ({
       key: 'broker',
       width: 160,
       render: (name: string) => (
-        <Text strong style={{ fontSize: 13 }}>
+        <Text strong style={{ fontSize: 14 }}>
           {name}
         </Text>
       ),
@@ -1124,7 +1124,7 @@ const ConsumerPageContent = ({
                       <Descriptions.Item label="创建时间" span={2}>
                         <Space size={4}>
                           <Clock size={13} color="#9CA3AF" />
-                          <Text type="secondary">{selectedGroup.createdAt}</Text>
+                          <Text type="secondary">{selectedGroup.gmtCreate}</Text>
                         </Space>
                       </Descriptions.Item>
                       <Descriptions.Item label="订阅 Topic" span={2}>
@@ -1354,7 +1354,7 @@ const ConsumerPageContent = ({
                     overflow: 'auto',
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
-                    fontSize: 12,
+                    fontSize: 14,
                     lineHeight: 1.6,
                   }}
                 >
@@ -1634,12 +1634,12 @@ const ConsumerPageContent = ({
                 border: '1px solid #ffd591',
               }}
             >
-              <Text type="warning" style={{ fontSize: 13 }}>
+              <Text type="warning" style={{ fontSize: 14 }}>
                 ⚠️ 此操作将影响消息消费进度，请谨慎操作。重置后消费者将从指定时间点开始重新消费。
               </Text>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                 目标 Group
               </Text>
               <Text strong style={{ fontSize: 14 }}>
@@ -1647,7 +1647,7 @@ const ConsumerPageContent = ({
               </Text>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
                 目标 Topic
               </Text>
               <Select
@@ -1668,7 +1668,7 @@ const ConsumerPageContent = ({
               />
             </div>
             <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
                 重置到以下时间点
               </Text>
               <DatePicker
@@ -1683,7 +1683,7 @@ const ConsumerPageContent = ({
               />
             </div>
             <div>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
                 快捷选择
               </Text>
               <Space wrap>

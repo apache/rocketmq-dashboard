@@ -70,7 +70,7 @@ const group: ConsumerGroup = {
   name: 'remote-cg',
   namespace: 'remote-ns',
   clusterId: 'cluster-a',
-  instanceId: 'instance-1',
+  instanceId: 1,
   subscriptionMode: 'Push',
   consumeType: 'CLUSTERING',
   onlineInstances: 1,
@@ -78,8 +78,8 @@ const group: ConsumerGroup = {
   subscribedTopics: ['remote-topic'],
   subscriptionDataType: 'NORMAL',
   retryMaxTimes: 16,
-  createdAt: '2026-07-23T00:00:00Z',
-  updatedAt: '2026-07-23T00:00:00Z',
+  gmtCreate: '2026-07-23T00:00:00Z',
+  gmtModified: '2026-07-23T00:00:00Z',
   delaySeconds: 3,
   instances: [],
 };
@@ -98,15 +98,15 @@ describe('Consumer page', () => {
     vi.clearAllMocks();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'PROXY',
         endpoint: '10.0.0.1:8080',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([group]);
@@ -122,8 +122,8 @@ describe('Consumer page', () => {
           delaySeconds: 0,
           instances: [],
           subscribedTopics: data.subscribedTopics ?? [],
-          createdAt: '2026-07-24T00:00:00Z',
-          updatedAt: '2026-07-24T00:00:00Z',
+          gmtCreate: '2026-07-24T00:00:00Z',
+          gmtModified: '2026-07-24T00:00:00Z',
         }) as ConsumerGroup,
     );
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
@@ -162,15 +162,15 @@ describe('Consumer page', () => {
     });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'PROXY',
         endpoint: '10.0.0.1:8080',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
   });
@@ -235,13 +235,10 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
-        'remote-cg',
-        'instance-1',
-      ),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 1),
     );
     await waitFor(() =>
-      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-1'),
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 1),
     );
     expect(consumerService.getConsumerGroup).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
@@ -250,33 +247,28 @@ describe('Consumer page', () => {
   it('passes the selected instance to group diagnostics', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        id: 'instance-a',
+        id: 2,
         name: 'instance-a',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-07-23T00:00:00Z',
-        updatedAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
+        gmtModified: '2026-07-23T00:00:00Z',
       },
     ]);
-    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
-      { ...group, instanceId: 'instance-a' },
-    ]);
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([{ ...group, instanceId: 2 }]);
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
-        'remote-cg',
-        'instance-a',
-      ),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 2),
     );
     await waitFor(() =>
-      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-a'),
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 2),
     );
   });
 
@@ -287,10 +279,7 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
-        'remote-cg',
-        'instance-1',
-      ),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 1),
     );
     const confirm = screen.getByRole('button', { name: '确认重置' });
     expect(confirm).toBeDisabled();
@@ -312,7 +301,7 @@ describe('Consumer page', () => {
       expect(consumerService.resetConsumerOffset).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'remote-cg',
-          instanceId: 'instance-1',
+          instanceId: 1,
           topic: 'remote-topic',
           timestamp: expect.any(Number),
         }),
@@ -323,40 +312,37 @@ describe('Consumer page', () => {
   it('reloads same-named group diagnostics after changing the selected instance', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        id: 'instance-a',
+        id: 2,
         name: 'instance-a',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-07-23T00:00:00Z',
-        updatedAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
+        gmtModified: '2026-07-23T00:00:00Z',
       },
       {
-        id: 'instance-b',
+        id: 3,
         name: 'instance-b',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.2:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-07-23T00:00:00Z',
-        updatedAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
+        gmtModified: '2026-07-23T00:00:00Z',
       },
     ]);
     vi.mocked(consumerService.listConsumerGroups).mockImplementation(async (params) => [
-      { ...group, instanceId: params?.instanceId ?? 'instance-a' },
+      { ...group, instanceId: params?.instanceId ?? 2 },
     ]);
     const user = userEvent.setup();
-    renderWithProviders(<ConsumerPage />, '/instance/instance-a/consumer');
+    renderWithProviders(<ConsumerPage />, '/instance/2/consumer');
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
-        'remote-cg',
-        'instance-a',
-      ),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 2),
     );
 
     await user.click(screen.getByText('instance-a'));
@@ -364,19 +350,16 @@ describe('Consumer page', () => {
       await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 'instance-b' }),
+      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 3 }),
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
-        'remote-cg',
-        'instance-b',
-      ),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 3),
     );
     await waitFor(() =>
-      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-b'),
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 3),
     );
   });
 
@@ -484,11 +467,7 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /线程栈/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerStack).toHaveBeenCalledWith(
-        'remote-cg',
-        'client-1',
-        'instance-1',
-      ),
+      expect(consumerService.getConsumerStack).toHaveBeenCalledWith('remote-cg', 'client-1', 1),
     );
     expect(await screen.findByText('消费者线程栈')).toBeInTheDocument();
     expect(screen.getByText('ConsumeMessageThread_1')).toBeInTheDocument();
@@ -598,8 +577,8 @@ describe('Consumer page', () => {
           delaySeconds: 0,
           instances: [],
           subscribedTopics: data.subscribedTopics ?? [],
-          createdAt: '2026-07-24T00:00:00Z',
-          updatedAt: '2026-07-24T00:00:00Z',
+          gmtCreate: '2026-07-24T00:00:00Z',
+          gmtModified: '2026-07-24T00:00:00Z',
         } as ConsumerGroup;
       },
     );
@@ -607,18 +586,18 @@ describe('Consumer page', () => {
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
-        id: 'instance-proxy-1',
+        id: 4,
         name: 'instance-proxy-1',
         remark: '',
         type: 'PROXY',
         endpoint: '10.0.2.21:8080',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
-    renderWithProviders(<ConsumerPage />, '/instance/instance-proxy-1/consumer');
+    renderWithProviders(<ConsumerPage />, '/instance/4/consumer');
 
     await screen.findByText(/共 0 个 Group/);
     const csv = [
@@ -641,7 +620,7 @@ describe('Consumer page', () => {
       retryMaxTimes: 16,
       subscriptionDataType: 'NORMAL',
       subscribedTopics: [],
-      instanceId: 'instance-proxy-1',
+      instanceId: 4,
     });
     expect(await screen.findByText('已导入 1 个 Group，1 个失败')).toBeInTheDocument();
     expect(screen.getByText('broker rejected group')).toBeInTheDocument();
