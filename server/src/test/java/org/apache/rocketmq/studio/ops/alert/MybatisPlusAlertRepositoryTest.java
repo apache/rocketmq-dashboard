@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
@@ -64,9 +65,12 @@ class MybatisPlusAlertRepositoryTest {
     void findAlertsShouldNormalizeStoredLevelValues() {
         RmqSystemAlert entity = new RmqSystemAlert();
         entity.setLevel(" WARNING ");
-        when(alertMapper.selectList(any())).thenReturn(List.of(entity));
+        Page<RmqSystemAlert> page = new Page<>(1, 20);
+        page.setRecords(List.of(entity));
+        page.setTotal(1);
+        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        assertThat(repository.findAlerts(null)).singleElement()
+        assertThat(repository.findAlerts(null, 1, 20).getItems()).singleElement()
                 .satisfies(alert -> assertThat(alert.getLevel()).isEqualTo(
                         org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning));
     }
@@ -110,17 +114,20 @@ class MybatisPlusAlertRepositoryTest {
 
     @Test
     void findAlertsShouldNormalizeLevelIndependentlyOfDefaultLocale() {
-        when(alertMapper.selectList(any())).thenReturn(List.of());
+        Page<RmqSystemAlert> page = new Page<>(1, 20);
+        page.setRecords(List.of());
+        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(page);
         Locale originalLocale = Locale.getDefault();
 
         try {
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
-            repository.findAlerts("INFO");
+            repository.findAlerts("INFO", 1, 20);
         } finally {
             Locale.setDefault(originalLocale);
         }
 
-        verify(alertMapper).selectList(argThat(MybatisPlusAlertRepositoryTest::hasInfoLevelParameter));
+        verify(alertMapper).selectPage(any(Page.class),
+                argThat(MybatisPlusAlertRepositoryTest::hasInfoLevelParameter));
     }
 
     private static boolean hasInfoLevelParameter(Wrapper<RmqSystemAlert> query) {

@@ -64,6 +64,12 @@ export interface AuditQuery {
   result?: string;
 }
 
+export interface SystemAlertQuery {
+  level?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 // ─── Alert Rules ────────────────────────────────────────────────
 export async function listAlertRules() {
   const res = await client.get<{ data: AlertRule[] }>('/alert-rules');
@@ -103,8 +109,8 @@ export async function bulkDeleteAlertRules(ids: string[]) {
 }
 
 // ─── System Alerts ──────────────────────────────────────────────
-export async function listSystemAlerts() {
-  const res = await client.get<{ data: SystemAlert[] }>('/system-alerts');
+export async function listSystemAlerts(params: SystemAlertQuery = {}) {
+  const res = await client.get<{ data: PageResult<SystemAlert> }>('/system-alerts', { params });
   return res.data.data;
 }
 
