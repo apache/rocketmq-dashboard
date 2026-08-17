@@ -230,7 +230,7 @@ const buildDuplicateNameMessages = (records: CsvRecord[]): Map<number, string> =
 
 export const validateTopicCsvImport = (
   records: CsvRecord[],
-  selectedInstanceId?: string,
+  selectedInstanceId?: number,
 ): ResourceImportValidation<Partial<Topic>> => {
   const duplicateMessages = buildDuplicateNameMessages(records);
   const rows: ResourceImportRow<Partial<Topic>>[] = [];
@@ -295,7 +295,7 @@ export const validateTopicCsvImport = (
 
 export const validateConsumerGroupCsvImport = (
   records: CsvRecord[],
-  selectedInstanceId?: string,
+  selectedInstanceId?: number,
 ): ResourceImportValidation<Partial<ConsumerGroup>> => {
   const duplicateMessages = buildDuplicateNameMessages(records);
   const rows: ResourceImportRow<Partial<ConsumerGroup>>[] = [];

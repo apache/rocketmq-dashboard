@@ -55,7 +55,7 @@ describe('ACL API contract', () => {
 
   it('returns records created by rule and user APIs', async () => {
     const rule = {
-      id: 'rule-1',
+      id: 11,
       principal: 'orders',
       resource: 'orders-*',
       resourceType: 'Topic',
@@ -64,16 +64,16 @@ describe('ACL API contract', () => {
       decision: 'ALLOW',
       scope: 'cluster',
       aclVersion: 2,
-      createdAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
     };
     const user = {
-      id: 'user-1',
+      id: 21,
       username: 'orders',
       accessKey: 'ak',
       secretKey: 'sk',
       admin: false,
       clusters: ['cluster-a'],
-      createdAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
     };
     mock.onPost('/acl/rules/create').reply(200, { code: 200, data: rule });
     mock.onPost('/acl/users/create').reply(200, { code: 200, data: user });
@@ -84,7 +84,7 @@ describe('ACL API contract', () => {
 
   it('uses backend update and delete endpoints for rules and users', async () => {
     const rule = {
-      id: 'rule-1',
+      id: 11,
       principal: 'orders',
       resource: 'orders-*',
       resourceType: 'Topic',
@@ -93,16 +93,16 @@ describe('ACL API contract', () => {
       decision: 'DENY',
       scope: 'cluster',
       aclVersion: 2,
-      createdAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
     };
     const user = {
-      id: 'user-1',
+      id: 21,
       username: 'orders',
       accessKey: 'ak',
       secretKey: 'sk',
       admin: true,
       clusters: ['cluster-a'],
-      createdAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
     };
     mock.onPost('/acl/rules/update').reply((config) => {
       expect(JSON.parse(config.data)).toMatchObject({ id: rule.id, decision: 'DENY' });

@@ -54,7 +54,7 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<C
 
 export async function getConsumerProgress(
   name: string,
-  instanceId?: string,
+  instanceId?: number,
 ): Promise<QueueProgress[]> {
   if (isMockMode()) {
     return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
@@ -64,7 +64,7 @@ export async function getConsumerProgress(
 
 export async function getConsumerGroup(
   name: string,
-  instanceId?: string,
+  instanceId?: number,
 ): Promise<ConsumerGroupDetail> {
   if (isMockMode()) {
     const group = mockConsumerGroups.find((item) => item.name === name);
@@ -76,7 +76,7 @@ export async function getConsumerGroup(
 
 export async function getConsumerSubscriptions(
   name: string,
-  instanceId?: string,
+  instanceId?: number,
 ): Promise<SubscriptionEntry[]> {
   if (isMockMode()) {
     return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
@@ -89,7 +89,7 @@ export async function getConsumerSubscriptions(
 export async function getConsumerStack(
   name: string,
   clientId: string,
-  instanceId?: string,
+  instanceId?: number,
 ): Promise<ConsumerStackTrace> {
   if (isMockMode()) {
     return {
@@ -117,8 +117,8 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
       subscribedTopics: data.subscribedTopics ?? [],
       subscriptionDataType: data.subscriptionDataType ?? 'NORMAL',
       retryMaxTimes: data.retryMaxTimes ?? 16,
-      createdAt: now,
-      updatedAt: now,
+      gmtCreate: now,
+      gmtModified: now,
       delaySeconds: 0,
       instances: [],
     } as ConsumerGroup;
@@ -128,7 +128,7 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
   return metadataApi.createConsumerGroup(data);
 }
 
-export async function deleteConsumerGroup(name: string, instanceId?: string): Promise<void> {
+export async function deleteConsumerGroup(name: string, instanceId?: number): Promise<void> {
   if (isMockMode()) {
     const idx = consumerGroupsState.findIndex((group) => group.name === name);
     if (idx >= 0) consumerGroupsState.splice(idx, 1);
@@ -151,7 +151,7 @@ export interface BatchDeleteConsumerGroupsResult {
 // failing group cannot silently abort the whole batch.
 export async function batchDeleteConsumerGroups(
   names: string[],
-  instanceId?: string,
+  instanceId?: number,
 ): Promise<BatchDeleteConsumerGroupsResult> {
   const result: BatchDeleteConsumerGroupsResult = { deleted: [], failed: [] };
   for (const name of names) {

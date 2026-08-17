@@ -17,7 +17,7 @@
 
 export const mockAuditRecords = [
   {
-    id: 'audit-001',
+    id: 1,
     timestamp: '2026-07-03 09:45:12',
     operator: 'admin',
     operationType: 'CREATE_TOPIC',
@@ -29,7 +29,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-002',
+    id: 2,
     timestamp: '2026-07-03 09:32:08',
     operator: 'ops-zhang',
     operationType: 'UPDATE_GROUP',
@@ -41,7 +41,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-003',
+    id: 3,
     timestamp: '2026-07-03 08:17:55',
     operator: 'ops-li',
     operationType: 'RESET_OFFSET',
@@ -53,7 +53,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-004',
+    id: 4,
     timestamp: '2026-07-03 07:58:33',
     operator: 'admin',
     operationType: 'DELETE_TOPIC',
@@ -65,7 +65,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-005',
+    id: 5,
     timestamp: '2026-07-03 07:22:19',
     operator: 'ops-wang',
     operationType: 'UPDATE_ACL',
@@ -77,7 +77,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-006',
+    id: 6,
     timestamp: '2026-07-02 22:45:01',
     operator: 'system',
     operationType: 'RESTART_BROKER',
@@ -90,7 +90,7 @@ export const mockAuditRecords = [
     errorMessage: 'Broker did not become ready before the timeout',
   },
   {
-    id: 'audit-007',
+    id: 7,
     timestamp: '2026-07-02 20:11:47',
     operator: 'ops-zhang',
     operationType: 'UPDATE_BROKER_CONFIG',
@@ -102,7 +102,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-008',
+    id: 8,
     timestamp: '2026-07-02 18:33:28',
     operator: 'ops-li',
     operationType: 'CREATE_TOPIC',
@@ -114,7 +114,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-009',
+    id: 9,
     timestamp: '2026-07-02 16:05:14',
     operator: 'admin',
     operationType: 'DELETE_GROUP',
@@ -126,7 +126,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-010',
+    id: 10,
     timestamp: '2026-07-02 14:28:56',
     operator: 'ops-wang',
     operationType: 'UPDATE_ACL',
@@ -138,7 +138,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-011',
+    id: 11,
     timestamp: '2026-07-02 11:52:09',
     operator: 'ops-zhang',
     operationType: 'RESET_OFFSET',
@@ -151,7 +151,7 @@ export const mockAuditRecords = [
     errorMessage: 'Consumer group is not online',
   },
   {
-    id: 'audit-012',
+    id: 12,
     timestamp: '2026-07-02 10:15:42',
     operator: 'system',
     operationType: 'RESTART_BROKER',
@@ -163,7 +163,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-013',
+    id: 13,
     timestamp: '2026-07-01 23:41:18',
     operator: 'ops-li',
     operationType: 'CREATE_TOPIC',
@@ -175,7 +175,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-014',
+    id: 14,
     timestamp: '2026-07-01 19:08:35',
     operator: 'admin',
     operationType: 'UPDATE_CLUSTER_CONFIG',
@@ -187,7 +187,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-015',
+    id: 15,
     timestamp: '2026-07-01 15:27:50',
     operator: 'ops-wang',
     operationType: 'DELETE_TOPIC',
@@ -200,7 +200,7 @@ export const mockAuditRecords = [
     errorMessage: 'Topic still has active producers',
   },
   {
-    id: 'audit-016',
+    id: 16,
     timestamp: '2026-07-01 13:55:23',
     operator: 'ops-zhang',
     operationType: 'UPDATE_ACL',
@@ -212,7 +212,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-017',
+    id: 17,
     timestamp: '2026-07-01 10:33:07',
     operator: 'ops-li',
     operationType: 'DELETE_GROUP',
@@ -224,7 +224,7 @@ export const mockAuditRecords = [
     result: 'SUCCESS' as const,
   },
   {
-    id: 'audit-018',
+    id: 18,
     timestamp: '2026-07-01 08:19:44',
     operator: 'system',
     operationType: 'RESTART_BROKER',

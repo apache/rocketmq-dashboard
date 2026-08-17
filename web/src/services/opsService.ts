@@ -104,7 +104,7 @@ export async function listAlertRules(): Promise<AlertRule[]> {
 export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRule> {
   if (isMockMode()) {
     const rule: AlertRule = {
-      id: `alert-${Date.now()}`,
+      id: Date.now(),
       name: '',
       metric: '',
       operator: '>',
@@ -134,7 +134,7 @@ export async function updateAlertRule(data: AlertRule): Promise<AlertRule> {
   return opsApi.updateAlertRule(data);
 }
 
-export async function toggleAlertRule(id: string, enabled: boolean): Promise<AlertRule> {
+export async function toggleAlertRule(id: number, enabled: boolean): Promise<AlertRule> {
   if (isMockMode()) {
     const rule = alertRulesState.find((item) => item.id === id);
     if (!rule) throw new Error(`Alert rule not found: ${id}`);
@@ -144,7 +144,7 @@ export async function toggleAlertRule(id: string, enabled: boolean): Promise<Ale
   return opsApi.toggleAlertRule(id, enabled);
 }
 
-export async function deleteAlertRule(id: string): Promise<void> {
+export async function deleteAlertRule(id: number): Promise<void> {
   if (isMockMode()) {
     const idx = alertRulesState.findIndex((rule) => rule.id === id);
     if (idx >= 0) alertRulesState.splice(idx, 1);
@@ -154,17 +154,17 @@ export async function deleteAlertRule(id: string): Promise<void> {
 }
 
 export async function bulkToggleAlertRules(
-  ids: string[],
+  ids: number[],
   enabled: boolean,
 ): Promise<AlertRuleBulkResult> {
   if (!isMockMode()) return opsApi.bulkToggleAlertRules(ids, enabled);
-  const succeededIds: string[] = [];
+  const succeededIds: number[] = [];
   const failures: Record<string, string> = {};
   const updatedRules: AlertRule[] = [];
   for (const id of [...new Set(ids)]) {
     const rule = alertRulesState.find((item) => item.id === id);
     if (!rule) {
-      failures[id] = 'Alert rule not found';
+      failures[String(id)] = 'Alert rule not found';
       continue;
     }
     rule.enabled = enabled;
@@ -174,14 +174,14 @@ export async function bulkToggleAlertRules(
   return { succeededIds, failures, updatedRules };
 }
 
-export async function bulkDeleteAlertRules(ids: string[]): Promise<AlertRuleBulkResult> {
+export async function bulkDeleteAlertRules(ids: number[]): Promise<AlertRuleBulkResult> {
   if (!isMockMode()) return opsApi.bulkDeleteAlertRules(ids);
-  const succeededIds: string[] = [];
+  const succeededIds: number[] = [];
   const failures: Record<string, string> = {};
   for (const id of [...new Set(ids)]) {
     const index = alertRulesState.findIndex((item) => item.id === id);
     if (index < 0) {
-      failures[id] = 'Alert rule not found';
+      failures[String(id)] = 'Alert rule not found';
       continue;
     }
     alertRulesState.splice(index, 1);
@@ -195,7 +195,7 @@ export async function listSystemAlerts(): Promise<SystemAlert[]> {
   return opsApi.listSystemAlerts();
 }
 
-export async function acknowledgeAlert(id: string): Promise<void> {
+export async function acknowledgeAlert(id: number): Promise<void> {
   if (isMockMode()) {
     const a = mockSystemAlerts.find((a: Record<string, unknown>) => a.id === id);
     if (a) (a as Record<string, unknown>).acknowledged = true;

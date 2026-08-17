@@ -87,17 +87,15 @@ describe('ops service mock data', () => {
     const before = await listAlertRules();
     const missingRule = {
       ...before[0],
-      id: 'missing-alert-rule',
+      id: 999999,
       name: 'missing rule',
     };
 
-    await expect(updateAlertRule(missingRule)).rejects.toThrow(
-      'Alert rule not found: missing-alert-rule',
-    );
+    await expect(updateAlertRule(missingRule)).rejects.toThrow('Alert rule not found: 999999');
 
     const after = await listAlertRules();
     expect(after.map((rule) => rule.id)).toEqual(before.map((rule) => rule.id));
-    expect(after.find((rule) => rule.id === 'missing-alert-rule')).toBeUndefined();
+    expect(after.find((rule) => rule.id === 999999)).toBeUndefined();
   });
 
   it('returns copied system alert rows', async () => {
@@ -133,7 +131,7 @@ describe('ops service mock data', () => {
 
   it('searches records safely when optional text fields are missing', async () => {
     const record = {
-      id: 'audit-null-safe',
+      id: 90001,
       timestamp: '2026-07-26 10:00:00',
       operator: null,
       operationType: 'DIAGNOSE',
@@ -149,12 +147,12 @@ describe('ops service mock data', () => {
 
     const result = await listAuditRecords({ search: 'grpc client', pageSize: 100 });
 
-    expect(result.items.map((item) => item.id)).toContain('audit-null-safe');
+    expect(result.items.map((item) => item.id)).toContain(90001);
   });
 
   it('derives filter options and applies resource and cluster filters', async () => {
     const matching = {
-      id: 'audit-filter-match',
+      id: 90002,
       timestamp: '2026-08-01 10:00:00',
       operator: 'admin',
       operationType: 'RESET_OFFSET',
@@ -167,7 +165,7 @@ describe('ops service mock data', () => {
     } as AuditRecord;
     const otherCluster = {
       ...matching,
-      id: 'audit-filter-other-cluster',
+      id: 90003,
       clusterId: 'prod-other',
     };
     insertedRecords.push(matching, otherCluster);
@@ -184,12 +182,12 @@ describe('ops service mock data', () => {
     expect(options.resourceTypes).toContain('CONSUMER_GROUP');
     expect(options.clusterIds).toEqual(expect.arrayContaining(['prod-filter', 'prod-other']));
     expect(options.results).toContain('PARTIAL');
-    expect(result.items.map((record) => record.id)).toEqual(['audit-filter-match']);
+    expect(result.items.map((record) => record.id)).toEqual([90002]);
   });
 
   it('exports filtered audit records as escaped CSV', async () => {
     const record = {
-      id: 'audit-csv-export',
+      id: 90004,
       timestamp: '2026-08-01 10:00:00',
       operator: '=admin',
       operationType: 'DELETE',

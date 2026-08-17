@@ -6,7 +6,7 @@
 import client from './client';
 import type { CloudInstanceOption, CloudRegion } from './aliyunCatalog';
 
-export async function listTencentRegions(credentialId: string) {
+export async function listTencentRegions(credentialId: number) {
   const res = await client.get<{ data: CloudRegion[] }>('/cloud/tencent/regions', {
     params: { credentialId },
   });
@@ -14,7 +14,7 @@ export async function listTencentRegions(credentialId: string) {
 }
 
 export async function listTencentInstances(
-  credentialId: string,
+  credentialId: number,
   regionId: string,
   search?: string,
 ) {

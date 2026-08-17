@@ -21,21 +21,21 @@ import client from './client';
 export type InstanceVendor = 'APACHE' | 'ALIYUN' | 'TENCENT';
 
 export interface Instance {
-  id: string;
+  id: number;
   name: string;
   remark: string | null;
   type: 'PROXY' | 'DIRECT';
   endpoint: string;
   vendor?: InstanceVendor;
   cloudInstanceId?: string;
-  credentialId?: string;
+  credentialId?: number;
   adminCredentialRef?: string;
   regionId?: string;
   topicCount: number;
   consumerGroupCount: number;
   resourceCountsAvailable?: boolean;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
 }
 
 export interface CreateInstanceRequest {
@@ -45,13 +45,13 @@ export interface CreateInstanceRequest {
   remark?: string;
   vendor?: InstanceVendor;
   cloudInstanceId?: string;
-  credentialId?: string;
+  credentialId?: number;
   adminCredentialRef?: string;
   regionId?: string;
 }
 
 export interface UpdateInstanceRequest {
-  id: string;
+  id: number;
   name?: string;
   type?: 'PROXY' | 'DIRECT';
   endpoint?: string;
@@ -85,6 +85,6 @@ export async function updateInstance(data: UpdateInstanceRequest) {
   return res.data.data;
 }
 
-export async function deleteInstance(id: string) {
+export async function deleteInstance(id: number) {
   await client.post('/instances/delete', { id });
 }

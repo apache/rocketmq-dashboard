@@ -29,7 +29,7 @@ import type { AlertRule } from './ops';
 
 const mock = new MockAdapter(client);
 const rule: AlertRule = {
-  id: 'rule-1',
+  id: 7,
   name: 'Disk usage',
   metric: '磁盘使用率',
   operator: '>',

@@ -40,8 +40,8 @@ export async function createTopic(data: Partial<Topic>): Promise<Topic> {
 
     const topic = {
       ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      gmtCreate: new Date().toISOString(),
+      gmtModified: new Date().toISOString(),
       messageCount: 0,
       tps: 0,
       consumerGroupCount: 0,
@@ -56,13 +56,13 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
   if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === data.name);
     if (idx < 0) throw new Error(`Topic not found: ${data.name}`);
-    Object.assign(mockTopics[idx], data, { updatedAt: new Date().toISOString() });
+    Object.assign(mockTopics[idx], data, { gmtModified: new Date().toISOString() });
     return cloneTopic(mockTopics[idx] as unknown as Topic);
   }
   return metadataApi.updateTopic(data);
 }
 
-export async function deleteTopic(name: string, instanceId?: string): Promise<void> {
+export async function deleteTopic(name: string, instanceId?: number): Promise<void> {
   if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === name);
     if (idx >= 0) mockTopics.splice(idx, 1);
@@ -79,7 +79,7 @@ export interface BatchDeleteTopicsResult {
 // Batch delete: attempt every selected topic and report partial failures.
 export async function batchDeleteTopics(
   names: string[],
-  instanceId?: string,
+  instanceId?: number,
 ): Promise<BatchDeleteTopicsResult> {
   const result: BatchDeleteTopicsResult = { deleted: [], failed: [] };
   for (const name of names) {
@@ -93,14 +93,14 @@ export async function batchDeleteTopics(
   return result;
 }
 
-export async function getTopicRoutes(name: string, instanceId?: string): Promise<BrokerRoute[]> {
+export async function getTopicRoutes(name: string, instanceId?: number): Promise<BrokerRoute[]> {
   if (isMockMode()) return cloneRoutes((topicRoutes[name] as unknown as BrokerRoute[]) ?? []);
   return metadataApi.getTopicRoutes(name, instanceId);
 }
 
 export async function getTopicConsumers(
   name: string,
-  instanceId?: string,
+  instanceId?: number,
 ): Promise<ConsumerGroupInfo[]> {
   if (isMockMode())
     return cloneConsumers((topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? []);
@@ -109,7 +109,7 @@ export async function getTopicConsumers(
 
 export async function getTopicConsumerPage(
   name: string,
-  instanceId: string | undefined,
+  instanceId: number | undefined,
   page: number,
   pageSize: number,
 ): Promise<TopicConsumerPage> {

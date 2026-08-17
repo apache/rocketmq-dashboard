@@ -18,7 +18,7 @@
 export interface Topic {
   name: string;
   namespace: string;
-  instanceId: string;
+  instanceId: number;
   type: 'NORMAL' | 'FIFO' | 'DELAY' | 'TRANSACTION' | 'LITE';
   clusterId: string;
   writeQueues: number;
@@ -28,15 +28,15 @@ export interface Topic {
   tps: number;
   consumerGroupCount: number;
   remark: string;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
 }
 
 export const topics: Topic[] = [
   // NORMAL topics (4)
   {
     name: 'order-create',
-    instanceId: 'instance-proxy-1',
+    instanceId: 3,
     namespace: 'trade',
     type: 'NORMAL',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -47,12 +47,12 @@ export const topics: Topic[] = [
     tps: 1280,
     consumerGroupCount: 8,
     remark: '订单创建事件通知',
-    createdAt: '2024-03-15T08:30:00Z',
-    updatedAt: '2024-03-15T10:15:00Z',
+    gmtCreate: '2024-03-15T08:30:00Z',
+    gmtModified: '2024-03-15T10:15:00Z',
   },
   {
     name: 'user-activity-log',
-    instanceId: 'instance-proxy-3',
+    instanceId: 5,
     namespace: 'user',
     type: 'NORMAL',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -63,12 +63,12 @@ export const topics: Topic[] = [
     tps: 3450,
     consumerGroupCount: 5,
     remark: '用户行为日志同步',
-    createdAt: '2024-01-20T10:00:00Z',
-    updatedAt: '2024-01-20T14:30:00Z',
+    gmtCreate: '2024-01-20T10:00:00Z',
+    gmtModified: '2024-01-20T14:30:00Z',
   },
   {
     name: 'system-log',
-    instanceId: 'instance-direct-2',
+    instanceId: 2,
     namespace: 'message',
     type: 'NORMAL',
     clusterId: 'rmq-cn-v4-prod-02',
@@ -79,12 +79,12 @@ export const topics: Topic[] = [
     tps: 8620,
     consumerGroupCount: 3,
     remark: '系统日志收集与分发',
-    createdAt: '2023-11-05T14:20:00Z',
-    updatedAt: '2023-11-06T09:45:00Z',
+    gmtCreate: '2023-11-05T14:20:00Z',
+    gmtModified: '2023-11-06T09:45:00Z',
   },
   {
     name: 'notification-email',
-    instanceId: 'instance-proxy-2',
+    instanceId: 4,
     namespace: 'message',
     type: 'NORMAL',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -95,14 +95,14 @@ export const topics: Topic[] = [
     tps: 215,
     consumerGroupCount: 2,
     remark: '邮件通知触发',
-    createdAt: '2024-06-10T09:15:00Z',
-    updatedAt: '2024-06-10T11:20:00Z',
+    gmtCreate: '2024-06-10T09:15:00Z',
+    gmtModified: '2024-06-10T11:20:00Z',
   },
 
   // FIFO topics (2)
   {
     name: 'inventory-sync',
-    instanceId: 'instance-proxy-1',
+    instanceId: 3,
     namespace: 'supply',
     type: 'FIFO',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -113,12 +113,12 @@ export const topics: Topic[] = [
     tps: 680,
     consumerGroupCount: 4,
     remark: '库存同步顺序消息',
-    createdAt: '2024-04-22T11:00:00Z',
-    updatedAt: '2024-04-22T15:30:00Z',
+    gmtCreate: '2024-04-22T11:00:00Z',
+    gmtModified: '2024-04-22T15:30:00Z',
   },
   {
     name: 'payment-sequence',
-    instanceId: 'instance-proxy-1',
+    instanceId: 3,
     namespace: 'trade',
     type: 'FIFO',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -129,14 +129,14 @@ export const topics: Topic[] = [
     tps: 320,
     consumerGroupCount: 6,
     remark: '支付流程顺序处理',
-    createdAt: '2024-05-18T16:30:00Z',
-    updatedAt: '2024-05-19T08:45:00Z',
+    gmtCreate: '2024-05-18T16:30:00Z',
+    gmtModified: '2024-05-19T08:45:00Z',
   },
 
   // DELAY topics (2)
   {
     name: 'notification-push',
-    instanceId: 'instance-proxy-2',
+    instanceId: 4,
     namespace: 'message',
     type: 'DELAY',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -147,12 +147,12 @@ export const topics: Topic[] = [
     tps: 1540,
     consumerGroupCount: 3,
     remark: '延迟推送通知调度',
-    createdAt: '2024-02-14T13:45:00Z',
-    updatedAt: '2024-02-14T16:20:00Z',
+    gmtCreate: '2024-02-14T13:45:00Z',
+    gmtModified: '2024-02-14T16:20:00Z',
   },
   {
     name: 'scheduled-task',
-    instanceId: 'instance-direct-1',
+    instanceId: 1,
     namespace: 'supply',
     type: 'DELAY',
     clusterId: 'rmq-cn-v4-prod-02',
@@ -163,14 +163,14 @@ export const topics: Topic[] = [
     tps: 56,
     consumerGroupCount: 2,
     remark: '定时任务触发器',
-    createdAt: '2024-07-01T08:00:00Z',
-    updatedAt: '2024-07-01T10:30:00Z',
+    gmtCreate: '2024-07-01T08:00:00Z',
+    gmtModified: '2024-07-01T10:30:00Z',
   },
 
   // TRANSACTION topics (2)
   {
     name: 'payment-callback',
-    instanceId: 'instance-direct-1',
+    instanceId: 1,
     namespace: 'trade',
     type: 'TRANSACTION',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -181,12 +181,12 @@ export const topics: Topic[] = [
     tps: 420,
     consumerGroupCount: 5,
     remark: '支付回调事务处理',
-    createdAt: '2024-03-28T10:30:00Z',
-    updatedAt: '2024-03-28T14:15:00Z',
+    gmtCreate: '2024-03-28T10:30:00Z',
+    gmtModified: '2024-03-28T14:15:00Z',
   },
   {
     name: 'order-confirm',
-    instanceId: 'instance-proxy-1',
+    instanceId: 3,
     namespace: 'trade',
     type: 'TRANSACTION',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -197,14 +197,14 @@ export const topics: Topic[] = [
     tps: 360,
     consumerGroupCount: 4,
     remark: '订单确认事务消息',
-    createdAt: '2024-04-05T15:20:00Z',
-    updatedAt: '2024-04-05T18:40:00Z',
+    gmtCreate: '2024-04-05T15:20:00Z',
+    gmtModified: '2024-04-05T18:40:00Z',
   },
 
   // LITE topics (2)
   {
     name: 'chat-session',
-    instanceId: 'instance-proxy-2',
+    instanceId: 4,
     namespace: 'ai',
     type: 'LITE',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -215,12 +215,12 @@ export const topics: Topic[] = [
     tps: 6200,
     consumerGroupCount: 1,
     remark: 'AI 对话会话消息分发',
-    createdAt: '2025-01-10T09:00:00Z',
-    updatedAt: '2025-01-10T11:30:00Z',
+    gmtCreate: '2025-01-10T09:00:00Z',
+    gmtModified: '2025-01-10T11:30:00Z',
   },
   {
     name: 'ai-task-dispatch',
-    instanceId: 'instance-proxy-3',
+    instanceId: 5,
     namespace: 'ai',
     type: 'LITE',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -231,8 +231,8 @@ export const topics: Topic[] = [
     tps: 2380,
     consumerGroupCount: 2,
     remark: 'AI 任务调度与状态同步',
-    createdAt: '2025-02-20T14:00:00Z',
-    updatedAt: '2025-02-20T16:45:00Z',
+    gmtCreate: '2025-02-20T14:00:00Z',
+    gmtModified: '2025-02-20T16:45:00Z',
   },
 ];
 

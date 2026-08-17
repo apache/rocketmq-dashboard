@@ -99,9 +99,8 @@ export interface ClusterProbeResult {
 }
 
 export interface K8sCertInfo {
-  id: string;
+  id: number;
   name: string;
-  namespace: string;
   cluster: string;
   type: string;
   issuer: string;
@@ -110,6 +109,8 @@ export interface K8sCertInfo {
   status: string;
   daysRemaining: number;
   san: string[];
+  certPem?: string;
+  keyPem?: string;
 }
 
 export interface NameServerConfigValue {
@@ -135,7 +136,7 @@ export interface NameServerConfigDiffResult {
 }
 
 // ─── Cluster ────────────────────────────────────────────────────
-export async function listClusters(instanceId?: string) {
+export async function listClusters(instanceId?: number) {
   const res = await client.get<{ data: ClusterInfo[] }>('/clusters', {
     params: instanceId ? { instanceId } : undefined,
   });
@@ -149,7 +150,7 @@ export async function testClusterConnection(namesrvAddr: string) {
   return res.data.data;
 }
 
-export async function getCluster(id: string, instanceId?: string) {
+export async function getCluster(id: string, instanceId?: number) {
   const res = await client.get<{ data: ClusterInfo }>(`/clusters/${pathSegment(id)}`, {
     params: instanceId ? { instanceId } : undefined,
   });
@@ -157,7 +158,7 @@ export async function getCluster(id: string, instanceId?: string) {
 }
 
 export async function updateClusterConfig(
-  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+  data: { id: string; instanceId?: number } & Partial<ClusterConfig>,
 ) {
   const res = await client.post<{ data: ClusterConfigUpdateResult }>(
     '/clusters/config/update',
@@ -202,7 +203,7 @@ export async function updateNameServer(data: {
   await client.post('/nameservers/update', data);
 }
 
-export async function getNameServerConfigDiff(clusterId: string, instanceId?: string) {
+export async function getNameServerConfigDiff(clusterId: string, instanceId?: number) {
   const res = await client.get<{ data: NameServerConfigDiffResult }>('/nameservers/config-diff', {
     params: { clusterId, ...(instanceId ? { instanceId } : {}) },
   });
@@ -230,11 +231,11 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>) {
   return res.data.data;
 }
 
-export async function renewK8sCert(id: string) {
+export async function renewK8sCert(id: number) {
   const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', { id });
   return res.data.data;
 }
 
-export async function deleteK8sCert(id: string) {
+export async function deleteK8sCert(id: number) {
   await client.post('/k8s-certs/delete', { id });
 }

@@ -120,8 +120,8 @@ describe('consumer service mock data', () => {
     try {
       metadataApi.getConsumerGroup.mockResolvedValue(detail);
 
-      await expect(getConsumerGroup('cg-orders', 'instance-a')).resolves.toEqual(detail);
-      expect(metadataApi.getConsumerGroup).toHaveBeenCalledWith('cg-orders', 'instance-a');
+      await expect(getConsumerGroup('cg-orders', 1)).resolves.toEqual(detail);
+      expect(metadataApi.getConsumerGroup).toHaveBeenCalledWith('cg-orders', 1);
     } finally {
       mode.mock = true;
     }

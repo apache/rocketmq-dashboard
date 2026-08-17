@@ -7,13 +7,13 @@ import client from './client';
 import type { InstanceVendor } from './instance';
 
 export interface CloudCredential {
-  id: string;
+  id: number;
   name: string;
   vendor: InstanceVendor;
   accessKey: string;
   secretKey?: string;
   remark?: string;
-  createdAt: string;
+  gmtCreate: string;
 }
 
 export async function listCloudCredentials() {

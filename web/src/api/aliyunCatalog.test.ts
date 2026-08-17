@@ -39,14 +39,14 @@ describe('aliyunCatalog API', () => {
       data: [{ regionId: 'cn-hangzhou', regionName: '华东1（杭州）' }],
     });
 
-    const regions = await listAliyunRegions('cred-1');
+    const regions = await listAliyunRegions(9);
 
     expect(regions[0].regionId).toBe('cn-hangzhou');
   });
 
   it('lists cloud instances with credential and region params', async () => {
     mock.onGet('/cloud/aliyun/instances').reply((config) => {
-      expect(config.params).toMatchObject({ credentialId: 'cred-1', regionId: 'cn-hangzhou' });
+      expect(config.params).toMatchObject({ credentialId: 9, regionId: 'cn-hangzhou' });
       return [
         200,
         {
@@ -63,7 +63,7 @@ describe('aliyunCatalog API', () => {
       ];
     });
 
-    const instances = await listAliyunInstances('cred-1', 'cn-hangzhou');
+    const instances = await listAliyunInstances(9, 'cn-hangzhou');
 
     expect(instances[0].instanceId).toBe('rmq-cn-xxx');
   });
