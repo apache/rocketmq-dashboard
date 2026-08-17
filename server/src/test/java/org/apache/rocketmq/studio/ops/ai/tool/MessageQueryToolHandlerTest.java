@@ -85,4 +85,49 @@ class MessageQueryToolHandlerTest {
         verify(messageService)
                 .queryMessages(eq("instance-a"), any(), any(), any(), any(), eq(1000L), eq(2000L));
     }
+
+    @Test
+    void executeShouldRejectTimestampAboveLongRangeInsteadOfSilentlyWrapping() {
+        java.math.BigInteger overflow =
+                java.math.BigInteger.valueOf(Long.MAX_VALUE).add(java.math.BigInteger.ONE);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> handler.execute(Map.of(
+                                "cluster", "instance-a", "topic", "TopicA", "startTime", overflow)))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("epoch-milliseconds");
+    }
+
+    @Test
+    void executeShouldRejectNonFiniteTimestampInsteadOfWrapping() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> handler.execute(Map.of(
+                                "cluster", "instance-a", "topic", "TopicA",
+                                "startTime", Double.POSITIVE_INFINITY)))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("epoch-milliseconds");
+    }
+
+    @Test
+    void executeShouldRejectNonNumericTimestamp() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> handler.execute(Map.of(
+                                "cluster", "instance-a", "topic", "TopicA",
+                                "startTime", "not-a-number")))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("epoch-milliseconds");
+    }
+
+    @Test
+    void executeShouldConvertInBigIntegerTimestampExactly() {
+        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA",
+                "startTime", java.math.BigInteger.valueOf(123456789L)));
+
+        verify(messageService)
+                .queryMessages(eq("instance-a"), any(), any(), any(), any(),
+                        eq(123456789L), any());
+    }
 }

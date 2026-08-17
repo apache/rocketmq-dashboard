@@ -16,11 +16,13 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.math.BigInteger;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -76,9 +78,40 @@ public class MessageQueryToolHandler implements ToolHandler {
             return null;
         }
         if (value instanceof Number number) {
-            return number.longValue();
+            return toEpochMillis(number);
         }
-        return Long.parseLong(value.toString());
+        try {
+            return Long.parseLong(value.toString().trim());
+        } catch (NumberFormatException ex) {
+            throw new BusinessException(
+                    400, "startTime and endTime must be integer epoch-milliseconds");
+        }
+    }
+
+    /**
+     * Convert a caller-supplied numeric timestamp to epoch-milliseconds without silent
+     * overflow. Jackson may deliver out-of-range values as {@link BigInteger} (or as a
+     * floating-point number); {@code Number.longValue()} would silently wrap these into a
+     * nonsense, possibly negative, timestamp. Reject values that do not fit instead.
+     */
+    private static long toEpochMillis(Number number) {
+        if (number instanceof BigInteger bigInteger) {
+            try {
+                return bigInteger.longValueExact();
+            } catch (ArithmeticException ex) {
+                throw new BusinessException(
+                        400, "startTime and endTime must fit in a 64-bit epoch-milliseconds value");
+            }
+        }
+        if (number instanceof Double || number instanceof Float) {
+            double doubleValue = number.doubleValue();
+            if (!Double.isFinite(doubleValue) || doubleValue > Long.MAX_VALUE
+                    || doubleValue < Long.MIN_VALUE) {
+                throw new BusinessException(
+                        400, "startTime and endTime must fit in a 64-bit epoch-milliseconds value");
+            }
+        }
+        return number.longValue();
     }
 
     private static String require(String value, String field) {
