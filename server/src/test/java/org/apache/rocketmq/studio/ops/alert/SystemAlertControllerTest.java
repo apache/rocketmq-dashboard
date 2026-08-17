@@ -58,16 +58,17 @@ class SystemAlertControllerTest {
                 .title("Broker Down")
                 .acknowledged(false)
                 .build();
-        when(alertService.listAlerts("error")).thenReturn(List.of(alert));
+        when(alertService.listAlerts("error", 1, 20)).thenReturn(
+                org.apache.rocketmq.studio.common.domain.PageResult.of(List.of(alert), 1, 1, 20));
 
         mockMvc.perform(get("/api/system-alerts").param("level", "error"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].level").value("error"))
-                .andExpect(jsonPath("$.data[0].acknowledged").value(false));
+                .andExpect(jsonPath("$.data.items[0].id").value(1))
+                .andExpect(jsonPath("$.data.items[0].level").value("error"))
+                .andExpect(jsonPath("$.data.items[0].acknowledged").value(false));
 
-        verify(alertService).listAlerts("error");
+        verify(alertService).listAlerts("error", 1, 20);
     }
 
     @Test

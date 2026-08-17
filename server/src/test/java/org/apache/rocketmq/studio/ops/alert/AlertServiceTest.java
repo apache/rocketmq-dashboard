@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -581,7 +582,7 @@ class AlertServiceTest {
     @Test
     void toggleRuleShouldEnableRule() {
         AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        when(alertRepository.findRuleById("1")).thenReturn(Optional.of(existing));
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.toggleRule(1L, true);
@@ -595,7 +596,7 @@ class AlertServiceTest {
     @Test
     void toggleRuleShouldDisableRule() {
         AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").enabled(true).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        when(alertRepository.findRuleById("1")).thenReturn(Optional.of(existing));
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.toggleRule(1L, false);
@@ -610,12 +611,12 @@ class AlertServiceTest {
                 .hasMessage("Alert rule ID is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
-        verify(alertRepository, never()).findAllRules();
+        verify(alertRepository, never()).findRuleById(any());
     }
 
     @Test
     void toggleRuleShouldIgnorePersistedRulesWithNullIds() {
-        when(alertRepository.findAllRules()).thenReturn(List.of(AlertRuleVO.builder().name("corrupt").build()));
+        when(alertRepository.findRuleById("999")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> alertService.toggleRule(999L, true))
                 .isInstanceOf(BusinessException.class)
@@ -624,7 +625,7 @@ class AlertServiceTest {
 
     @Test
     void toggleRuleShouldThrowWhenRuleNotFound() {
-        when(alertRepository.findAllRules()).thenReturn(Collections.emptyList());
+        when(alertRepository.findRuleById("999")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> alertService.toggleRule(999L, true))
                 .isInstanceOf(BusinessException.class)
@@ -664,7 +665,7 @@ class AlertServiceTest {
     @Test
     void bulkToggleShouldDeduplicateIdsAndReportMissingRules() {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("High CPU").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.findRulesByIds(List.of("1", "999"))).thenReturn(List.of(rule));
         when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(true);
 
         AlertRuleBulkResultVO result = alertService.bulkToggleRules(
@@ -680,7 +681,7 @@ class AlertServiceTest {
     @Test
     void bulkToggleShouldReportRulesDeletedConcurrentlyInsteadOfRecreatingThem() {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("High CPU").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.findRulesByIds(List.of("1"))).thenReturn(List.of(rule));
         when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(false);
 
         AlertRuleBulkResultVO result = alertService.bulkToggleRules(List.of(1L), true);
@@ -714,34 +715,39 @@ class AlertServiceTest {
                 .title("Broker Down").acknowledged(false).build();
         SystemAlertVO alert2 = SystemAlertVO.builder().id(2L).level(AlertLevel.error)
                 .title("High Latency").acknowledged(false).build();
-        when(alertRepository.findAlerts("error")).thenReturn(Arrays.asList(alert1, alert2));
+        when(alertRepository.findAlerts("error", 1, 20))
+                .thenReturn(org.apache.rocketmq.studio.common.domain.PageResult.of(
+                        Arrays.asList(alert1, alert2), 2, 1, 20));
 
-        List<SystemAlertVO> result = alertService.listAlerts("error");
+        org.apache.rocketmq.studio.common.domain.PageResult<SystemAlertVO> result =
+                alertService.listAlerts("error", 1, 20);
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getLevel()).isEqualTo(AlertLevel.error);
-        assertThat(result.get(0).getTitle()).isEqualTo("Broker Down");
-        verify(alertRepository).findAlerts("error");
+        assertThat(result.getItems()).hasSize(2);
+        assertThat(result.getItems().get(0).getLevel()).isEqualTo(AlertLevel.error);
+        assertThat(result.getItems().get(0).getTitle()).isEqualTo("Broker Down");
+        verify(alertRepository).findAlerts("error", 1, 20);
     }
 
     @Test
     void listAlertsShouldReturnAllAlertsWhenLevelIsNull() {
         SystemAlertVO alert = SystemAlertVO.builder().id(1L).level(AlertLevel.warning)
                 .title("Slow Consumer").build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(alert));
+        when(alertRepository.findAlerts(null, 1, 20))
+                .thenReturn(org.apache.rocketmq.studio.common.domain.PageResult.of(List.of(alert), 1, 1, 20));
 
-        List<SystemAlertVO> result = alertService.listAlerts(null);
+        org.apache.rocketmq.studio.common.domain.PageResult<SystemAlertVO> result =
+                alertService.listAlerts(null, 1, 20);
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getLevel()).isEqualTo(AlertLevel.warning);
-        verify(alertRepository).findAlerts(null);
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getLevel()).isEqualTo(AlertLevel.warning);
+        verify(alertRepository).findAlerts(null, 1, 20);
     }
 
     @Test
     void acknowledgeAlertShouldSetAcknowledgedTrue() {
         SystemAlertVO existing = SystemAlertVO.builder().id(1L).level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
+        when(alertRepository.findAlertById("1")).thenReturn(Optional.of(existing));
         when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(true);
 
         SystemAlertVO result = alertService.acknowledgeAlert(1L);
@@ -759,12 +765,12 @@ class AlertServiceTest {
                 .hasMessage("System alert ID is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
-        verify(alertRepository, never()).findAlerts(any());
+        verify(alertRepository, never()).findAlertById(any());
     }
 
     @Test
     void acknowledgeAlertShouldIgnorePersistedAlertsWithNullIds() {
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(SystemAlertVO.builder().title("corrupt").build()));
+        when(alertRepository.findAlertById("999")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(999L))
                 .isInstanceOf(BusinessException.class)
@@ -773,7 +779,7 @@ class AlertServiceTest {
 
     @Test
     void acknowledgeAlertShouldThrowWhenAlertNotFound() {
-        when(alertRepository.findAlerts(null)).thenReturn(Collections.emptyList());
+        when(alertRepository.findAlertById("999")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(999L))
                 .isInstanceOf(BusinessException.class)
@@ -784,7 +790,7 @@ class AlertServiceTest {
     void acknowledgeAlertShouldRejectConcurrentRemoval() {
         SystemAlertVO existing = SystemAlertVO.builder().id(1L).level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
+        when(alertRepository.findAlertById("1")).thenReturn(Optional.of(existing));
         when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(false);
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(1L))
