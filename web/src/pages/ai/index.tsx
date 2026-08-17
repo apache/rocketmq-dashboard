@@ -215,7 +215,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
           style={{
             marginBottom: 12,
             borderRadius: 6,
-            fontSize: 12,
+            fontSize: 14,
             background: '#f9f0ff',
             borderColor: '#d3adf7',
           }}
@@ -252,7 +252,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
               >
                 <Statistic
                   title={
-                    <Text type="secondary" style={{ fontSize: 12 }}>
+                    <Text type="secondary" style={{ fontSize: 14 }}>
                       {s.title}
                     </Text>
                   }
@@ -284,7 +284,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
             style={{
               cursor: 'pointer',
               color: '#722ed1',
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: 500,
               userSelect: 'none',
             }}
@@ -298,7 +298,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
               background: '#f9f0ff',
               border: '1px solid #efdbff',
               borderRadius: 8,
-              fontSize: 12,
+              fontSize: 14,
               lineHeight: 1.7,
               color: '#595959',
               whiteSpace: 'pre-wrap',
@@ -342,7 +342,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
               animation: 'dotPulse 1.4s infinite ease-in-out 0.4s',
             }}
           />
-          <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+          <Text type="secondary" style={{ fontSize: 14, marginLeft: 8 }}>
             正在思考…
           </Text>
         </Flex>
@@ -384,6 +384,7 @@ const AiPage = () => {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [settingsHintDismissed, setSettingsHintDismissed] = useState(false);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -713,6 +714,22 @@ const AiPage = () => {
 
   return (
     <Flex vertical style={{ height: '100%', minHeight: 0, padding: 24, overflow: 'hidden' }}>
+      {!settingsHintDismissed && (
+        <Alert
+          type="info"
+          showIcon
+          closable
+          banner
+          onClose={() => setSettingsHintDismissed(true)}
+          style={{ marginBottom: 12, borderRadius: 8 }}
+          message={
+            <span>
+              模型服务与执行引擎可在 <a onClick={() => navigate('/settings')}>设置 → AI 助手</a>{' '}
+              中配置
+            </span>
+          }
+        />
+      )}
       {/* Chat Area */}
       <div
         className="w-full scrollbar-hide"
@@ -738,7 +755,7 @@ const AiPage = () => {
       <div className="w-full" style={{ flexShrink: 0, padding: '0 24px 4px' }}>
         {/* Quick Actions */}
         <Flex align="center" gap={8} style={{ marginBottom: 12 }} wrap="wrap">
-          <Text type="secondary" style={{ fontSize: 13, flexShrink: 0 }}>
+          <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
             {t('ai.commonCommands')}
           </Text>
           {quickActions.map((action) => (
@@ -748,7 +765,7 @@ const AiPage = () => {
                 cursor: 'pointer',
                 borderRadius: 6,
                 padding: '2px 10px',
-                fontSize: 13,
+                fontSize: 14,
                 userSelect: 'none',
                 transition: 'all 0.2s',
               }}
@@ -766,9 +783,9 @@ const AiPage = () => {
             showIcon
             style={{ marginBottom: 12 }}
             message="AI 助手未启用"
-            description="请先在 Studio LLM Settings 中配置并启用 LLM Provider，启用前不会发送请求或返回 stub 回复。"
+            description="请先在 设置 → AI 助手 中配置并启用模型服务，启用前不会发送请求或返回 stub 回复。"
             action={
-              <Button size="small" onClick={() => navigate('/studio/llm-settings')}>
+              <Button size="small" onClick={() => navigate('/settings')}>
                 去配置
               </Button>
             }

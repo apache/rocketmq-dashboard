@@ -33,7 +33,6 @@ import {
   Badge,
   Typography,
   Flex,
-  Alert,
   message,
 } from 'antd';
 import {
@@ -48,6 +47,7 @@ import {
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import {
@@ -84,7 +84,7 @@ const normalizeRule = (rule: AclRule): AclRule => ({
   // Normalize to a string so version filters and tag coloring work whether the backend
   // returns a number (2.0) or a string ("2.0").
   aclVersion: String(rule.aclVersion ?? '2.0'),
-  createdAt: rule.createdAt ?? null,
+  gmtCreate: rule.gmtCreate ?? null,
 });
 
 const normalizeUser = (user: AclUser): AclUser => ({
@@ -94,7 +94,7 @@ const normalizeUser = (user: AclUser): AclUser => ({
   secretKey: user.secretKey ?? '',
   admin: user.admin ?? false,
   clusters: user.clusters ?? [],
-  createdAt: user.createdAt ?? null,
+  gmtCreate: user.gmtCreate ?? null,
 });
 
 const isFormValidationError = (error: unknown) =>
@@ -132,11 +132,11 @@ const AclPage = () => {
   const [userForm] = Form.useForm();
 
   // Secret key reveal
-  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
-  const [adminUpdatingIds, setAdminUpdatingIds] = useState<Set<string>>(() => new Set());
-  const adminUpdateInFlightRef = useRef<Set<string>>(new Set());
+  const [revealedKeys, setRevealedKeys] = useState<Set<number>>(new Set());
+  const [adminUpdatingIds, setAdminUpdatingIds] = useState<Set<number>>(() => new Set());
+  const adminUpdateInFlightRef = useRef<Set<number>>(new Set());
   const [credentialsByUser, setCredentialsByUser] = useState<
-    Record<string, { accessKey: string; secretKey: string }>
+    Record<number, { accessKey: string; secretKey: string }>
   >({});
 
   // Cluster ACL config (examineBrokerClusterAclConfig)
@@ -265,7 +265,7 @@ const AclPage = () => {
     }
   };
 
-  const handleDeleteRule = async (id: string) => {
+  const handleDeleteRule = async (id: number) => {
     try {
       await deleteAclRule(id, selectedInstanceId);
       setRules((prev) => prev.filter((r) => r.id !== id));
@@ -276,7 +276,7 @@ const AclPage = () => {
   };
 
   /* ─── User helpers ─── */
-  const toggleRevealKey = async (userId: string) => {
+  const toggleRevealKey = async (userId: number) => {
     const revealing = !revealedKeys.has(userId);
     setRevealedKeys((prev) => {
       const next = new Set(prev);
@@ -358,7 +358,7 @@ const AclPage = () => {
     }
   };
 
-  const handleDeleteUser = async (id: string) => {
+  const handleDeleteUser = async (id: number) => {
     try {
       await deleteAclUser(id, selectedInstanceId);
       setUsers((prev) => prev.filter((u) => u.id !== id));
@@ -500,7 +500,7 @@ const AclPage = () => {
           {isAdmin(text) && (
             <Badge
               count={t('acl.adminBadge')}
-              style={{ backgroundColor: '#722ed1', fontSize: 11 }}
+              style={{ backgroundColor: '#722ed1', fontSize: 14 }}
             />
           )}
         </Space>
@@ -516,7 +516,7 @@ const AclPage = () => {
           <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{record.resource}</span>
           <Tag
             color={record.resourcePattern === 'LITERAL' ? 'blue' : 'green'}
-            style={{ fontSize: 11, lineHeight: '18px' }}
+            style={{ fontSize: 14, lineHeight: '18px' }}
           >
             {record.resourcePattern}
           </Tag>
@@ -531,7 +531,7 @@ const AclPage = () => {
       render: (actions: AclRule['actions']) => (
         <Space size={4} wrap>
           {actions.map((action) => (
-            <Tag key={action} color={actionTagColor[action]} style={{ fontSize: 11 }}>
+            <Tag key={action} color={actionTagColor[action]} style={{ fontSize: 14 }}>
               {actionLabel[action] ?? action}
             </Tag>
           ))}
@@ -567,19 +567,19 @@ const AclPage = () => {
       width: 100,
       sorter: (a, b) => a.scope.localeCompare(b.scope),
       render: (scope: string) => (
-        <span style={{ fontSize: 13 }}>
+        <span style={{ fontSize: 14 }}>
           {scope === 'cluster' ? t('acl.cluster') : t('acl.namespace')}
         </span>
       ),
     },
     {
       title: t('acl.createdAt'),
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'gmtCreate',
+      key: 'gmtCreate',
       width: 160,
-      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (iso?: string | null) => (
-        <span style={{ fontSize: 13, color: '#8c8c8c' }}>{formatDate(iso)}</span>
+        <span style={{ fontSize: 14, color: '#8c8c8c' }}>{formatDate(iso)}</span>
       ),
     },
     {
@@ -634,7 +634,7 @@ const AclPage = () => {
           {record.admin && (
             <Badge
               count={t('acl.adminBadge')}
-              style={{ backgroundColor: '#722ed1', fontSize: 11 }}
+              style={{ backgroundColor: '#722ed1', fontSize: 14 }}
             />
           )}
         </Space>
@@ -653,7 +653,7 @@ const AclPage = () => {
           <Space size={8}>
             <Typography.Text
               copyable={{ text: fullAccessKey }}
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
+              style={{ fontFamily: 'monospace', fontSize: 14 }}
             >
               {revealed ? fullAccessKey : text}
             </Typography.Text>
@@ -673,7 +673,7 @@ const AclPage = () => {
           <Space size={8}>
             <Typography.Text
               copyable={revealed && secret ? { text: secret } : false}
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
+              style={{ fontFamily: 'monospace', fontSize: 14 }}
             >
               {revealed ? (secret ?? '加载中…') : '••••••••••••'}
             </Typography.Text>
@@ -712,7 +712,7 @@ const AclPage = () => {
       render: (clusters: string[]) => (
         <Space size={4} wrap>
           {clusters.map((c) => (
-            <Tag key={c} color="processing" style={{ fontSize: 11 }}>
+            <Tag key={c} color="processing" style={{ fontSize: 14 }}>
               {c}
             </Tag>
           ))}
@@ -721,12 +721,12 @@ const AclPage = () => {
     },
     {
       title: t('acl.createdAt'),
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'gmtCreate',
+      key: 'gmtCreate',
       width: 160,
-      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (iso?: string | null) => (
-        <span style={{ fontSize: 13, color: '#8c8c8c' }}>{formatDate(iso)}</span>
+        <span style={{ fontSize: 14, color: '#8c8c8c' }}>{formatDate(iso)}</span>
       ),
     },
     {
@@ -818,7 +818,7 @@ const AclPage = () => {
       render: (perms: string[]) => (
         <Space size={4} wrap>
           {(perms ?? []).map((p) => (
-            <Tag key={p} color="blue" style={{ fontSize: 11 }}>
+            <Tag key={p} color="blue" style={{ fontSize: 14 }}>
               {p}
             </Tag>
           ))}
@@ -833,7 +833,7 @@ const AclPage = () => {
       render: (perms: string[]) => (
         <Space size={4} wrap>
           {(perms ?? []).map((p) => (
-            <Tag key={p} color="green" style={{ fontSize: 11 }}>
+            <Tag key={p} color="green" style={{ fontSize: 14 }}>
               {p}
             </Tag>
           ))}
@@ -876,13 +876,10 @@ const AclPage = () => {
         }
       />
 
-      <Alert
+      <InfoBanner
         data-testid="acl-local-metadata-notice"
-        type="warning"
-        showIcon
-        message={t('acl.localMetadataNotice')}
+        title={t('acl.localMetadataNotice')}
         description={t('acl.localMetadataDescription')}
-        style={{ marginBottom: 16 }}
       />
 
       <Card variant="borderless" styles={{ body: { padding: 0 } }}>
@@ -1054,25 +1051,25 @@ const AclPage = () => {
                       >
                         <Tag
                           color={clusterConfig.aclEnabled ? 'green' : 'default'}
-                          style={{ fontSize: 13, padding: '4px 10px' }}
+                          style={{ fontSize: 14, padding: '4px 10px' }}
                         >
                           {clusterConfig.aclEnabled ? t('acl.aclEnabled') : t('acl.aclDisabled')}
                         </Tag>
-                        <Tag color="geekblue" style={{ fontSize: 13, padding: '4px 10px' }}>
+                        <Tag color="geekblue" style={{ fontSize: 14, padding: '4px 10px' }}>
                           {clusterConfig.aclVersion}
                         </Tag>
-                        <Tag style={{ fontSize: 13, padding: '4px 10px' }}>
+                        <Tag style={{ fontSize: 14, padding: '4px 10px' }}>
                           {t('acl.accountCount')}: {clusterConfig.accountCount}
                         </Tag>
                       </div>
 
-                      <div style={{ marginBottom: 12, color: '#8c8c8c', fontSize: 13 }}>
+                      <div style={{ marginBottom: 12, color: '#8c8c8c', fontSize: 14 }}>
                         {t('acl.globalWhitelist')}:{' '}
                         {clusterConfig.globalWhiteRemoteAddresses.length === 0 ? (
                           <span>-</span>
                         ) : (
                           clusterConfig.globalWhiteRemoteAddresses.map((ip) => (
-                            <Tag key={ip} color="cyan" style={{ fontSize: 11 }}>
+                            <Tag key={ip} color="cyan" style={{ fontSize: 14 }}>
                               {ip}
                             </Tag>
                           ))
@@ -1235,7 +1232,7 @@ const AclPage = () => {
               tokenSeparators={[',']}
               allowClear
               options={instances.map((instance) => ({
-                value: instance.cloudInstanceId ?? instance.id,
+                value: instance.cloudInstanceId ?? String(instance.id),
                 label: instance.name,
               }))}
             />

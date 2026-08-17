@@ -108,7 +108,7 @@ const ClientsPage = () => {
   const { token } = theme.useToken();
   const [connections, setConnections] = useState<ClientConnection[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState('');
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
@@ -117,7 +117,7 @@ const ClientsPage = () => {
   const [instanceLoadKey, setInstanceLoadKey] = useState(0);
   const [connectionLoadKey, setConnectionLoadKey] = useState(0);
 
-  const handleInstanceChange = (instanceId: string) => {
+  const handleInstanceChange = (instanceId: number) => {
     setSelectedInstanceId(instanceId);
     setConnections([]);
     setClusterFilter('ALL');
@@ -133,13 +133,13 @@ const ClientsPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.name || '');
+        setSelectedInstanceId((current) => current ?? nextInstances[0]?.id);
         setLoadError(null);
       })
       .catch((error) => {
         if (cancelled) return;
         setInstances([]);
-        setSelectedInstanceId('');
+        setSelectedInstanceId(undefined);
         setConnections([]);
         setLoadError(getLoadErrorMessage(error));
       })
@@ -247,7 +247,7 @@ const ClientsPage = () => {
         .map((option) => ({ text: option.label, value: option.value })),
       onFilter: (value, record) => record.clusterName === value,
       render: (name: string) => (
-        <Tag color="blue" style={{ fontSize: 12 }}>
+        <Tag color="blue" style={{ fontSize: 14 }}>
           {name}
         </Tag>
       ),
@@ -261,7 +261,7 @@ const ClientsPage = () => {
         <Text
           copyable
           style={{
-            fontSize: 13,
+            fontSize: 14,
             fontFamily: 'monospace',
             whiteSpace: 'nowrap',
           }}
@@ -282,7 +282,7 @@ const ClientsPage = () => {
       onFilter: (value, record) => record.type === value,
       render: (type: string) => {
         const cfg = typeConfig[type] ?? { label: type };
-        return <Text style={{ fontSize: 13 }}>{cfg.label}</Text>;
+        return <Text style={{ fontSize: 14 }}>{cfg.label}</Text>;
       },
     },
     {
@@ -291,7 +291,7 @@ const ClientsPage = () => {
       key: 'groupOrTopic',
       width: 180,
       render: (name: string) => (
-        <Text strong style={{ fontSize: 13 }}>
+        <Text strong style={{ fontSize: 14 }}>
           {name}
         </Text>
       ),
@@ -317,7 +317,7 @@ const ClientsPage = () => {
       key: 'address',
       width: 180,
       render: (addr: string) => (
-        <Text style={{ fontSize: 13, fontFamily: 'monospace' }}>{addr}</Text>
+        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{addr}</Text>
       ),
     },
     {
@@ -348,7 +348,7 @@ const ClientsPage = () => {
       width: 170,
       sorter: (a, b) => (a.connectedAt ?? '').localeCompare(b.connectedAt ?? ''),
       render: (d?: string | null) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {d ? formatDateTime(d) : '-'}
         </Text>
       ),
@@ -417,11 +417,11 @@ const ClientsPage = () => {
         <Space size={12} wrap>
           <Select
             aria-label="Instance"
-            value={selectedInstanceId || undefined}
+            value={selectedInstanceId}
             onChange={handleInstanceChange}
             placeholder="Select instance"
             style={{ width: 180 }}
-            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
           />
           <Select
             aria-label={t('clients.cluster')}

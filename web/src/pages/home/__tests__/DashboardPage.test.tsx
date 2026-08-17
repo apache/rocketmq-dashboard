@@ -94,26 +94,26 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(instanceService.listInstances).mockResolvedValue([
     {
-      id: 'instance-a',
+      id: 1,
       name: 'instance-a',
       endpoint: 'a:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
     {
-      id: 'instance-b',
+      id: 2,
       name: 'instance-b',
       endpoint: 'b:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
   ]);
 });
@@ -133,7 +133,7 @@ describe('DashboardPage', () => {
     await user.click(
       await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
     );
-    await waitFor(() => expect(dashboardService.getDashboard).toHaveBeenCalledWith('instance-a'));
+    await waitFor(() => expect(dashboardService.getDashboard).toHaveBeenCalledWith(1));
 
     expect(screen.queryByText('initial-cluster')).not.toBeInTheDocument();
     instanceA.resolve(dashboard('instance-a-cluster'));
@@ -189,6 +189,6 @@ describe('DashboardPage', () => {
     );
     await user.click(screen.getByText('查看全部'));
 
-    expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=instance-b');
+    expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=2');
   });
 });

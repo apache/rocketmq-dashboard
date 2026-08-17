@@ -261,7 +261,7 @@ const GroupManagementPage = () => {
       dataIndex: 'expression',
       key: 'expression',
       render: (text: string) => (
-        <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
+        <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 4, fontSize: 14 }}>
           {text}
         </code>
       ),
@@ -361,7 +361,7 @@ const GroupManagementPage = () => {
                     <Row gutter={16} style={{ marginBottom: 20 }}>
                       <Col span={8}>
                         <Card variant="borderless" style={{ background: '#f6ffed' }}>
-                          <div style={{ color: '#666', fontSize: 12 }}>
+                          <div style={{ color: '#666', fontSize: 14 }}>
                             {t('groupMgmt.onlineInstances')}
                           </div>
                           <div style={{ fontSize: 24, fontWeight: 600 }}>
@@ -379,7 +379,7 @@ const GroupManagementPage = () => {
                       </Col>
                       <Col span={8}>
                         <Card variant="borderless" style={{ background: '#fff2f0' }}>
-                          <div style={{ color: '#666', fontSize: 12 }}>
+                          <div style={{ color: '#666', fontSize: 14 }}>
                             {t('groupMgmt.totalDiff')}
                           </div>
                           <div style={{ fontSize: 24, fontWeight: 600, color: '#ff4d4f' }}>
@@ -389,7 +389,7 @@ const GroupManagementPage = () => {
                       </Col>
                       <Col span={8}>
                         <Card variant="borderless" style={{ background: '#f0f5ff' }}>
-                          <div style={{ color: '#666', fontSize: 12 }}>
+                          <div style={{ color: '#666', fontSize: 14 }}>
                             {t('groupMgmt.subscribedTopics')}
                           </div>
                           <div style={{ fontSize: 24, fontWeight: 600 }}>
@@ -425,7 +425,7 @@ const GroupManagementPage = () => {
                         {selectedGroup.retryMaxTimes}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('groupMgmt.createdAt')}>
-                        {selectedGroup.createdAt}
+                        {selectedGroup.gmtCreate}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('groupMgmt.subscribedTopics')} span={2}>
                         {(selectedGroup.subscribedTopics ?? []).join(', ')}

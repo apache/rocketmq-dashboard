@@ -67,6 +67,7 @@ import {
   updateNameServer,
 } from '../../services/clusterService';
 import { listInstances } from '../../services/instanceService';
+import { isMockMode } from '../../services/dataMode';
 import type { Instance } from '../../api/instance';
 
 const { Text } = Typography;
@@ -87,10 +88,15 @@ const compareText = (left: string | null | undefined, right: string | null | und
 const ClusterPage = () => {
   const { t } = useLang();
   const [searchParams] = useSearchParams();
-  const requestedInstanceId = searchParams.get('instanceId') ?? '';
+  const requestedInstanceIdParam = searchParams.get('instanceId');
+  const parsedRequestedInstanceId =
+    requestedInstanceIdParam === null ? NaN : Number(requestedInstanceIdParam);
+  const requestedInstanceId = Number.isNaN(parsedRequestedInstanceId)
+    ? undefined
+    : parsedRequestedInstanceId;
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState('');
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined);
   const [instanceLoadError, setInstanceLoadError] = useState<string | null>(null);
   const [instanceLoadKey, setInstanceLoadKey] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -158,7 +164,7 @@ const ClusterPage = () => {
     Promise.resolve(),
   );
   const tRef = useRef(t);
-  const selectedInstanceIdRef = useRef('');
+  const selectedInstanceIdRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,10 +174,10 @@ const ClusterPage = () => {
         const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
         setInstances(apacheInstances);
         const initialInstanceId = apacheInstances.some(
-          (instance) => instance.name === requestedInstanceId,
+          (instance) => instance.id === requestedInstanceId,
         )
           ? requestedInstanceId
-          : (apacheInstances[0]?.name ?? '');
+          : apacheInstances[0]?.id;
         selectedInstanceIdRef.current = initialInstanceId;
         setSelectedInstanceId(initialInstanceId);
         setInstanceLoadError(null);
@@ -179,9 +185,9 @@ const ClusterPage = () => {
       })
       .catch(() => {
         if (cancelled) return;
-        selectedInstanceIdRef.current = '';
+        selectedInstanceIdRef.current = undefined;
         setInstances([]);
-        setSelectedInstanceId('');
+        setSelectedInstanceId(undefined);
         setClusters([]);
         setSelectedProxy(null);
         setInstanceLoadError(tRef.current('common.fetchDataFailed'));
@@ -206,7 +212,7 @@ const ClusterPage = () => {
       clearRefreshTimer();
       if (!mountedRef.current) return Promise.resolve();
 
-      if (!selectedInstanceIdRef.current) {
+      if (!selectedInstanceIdRef.current && !isMockMode()) {
         setClusters([]);
         setLoading(false);
         return Promise.resolve();
@@ -228,7 +234,7 @@ const ClusterPage = () => {
 
         while (currentSource && mountedRef.current) {
           try {
-            const nextClusters = await listClusters(selectedInstanceIdRef.current || undefined);
+            const nextClusters = await listClusters(selectedInstanceIdRef.current);
             if (!mountedRef.current) return;
             setClusters(nextClusters);
             setSelectedProxy((current) => {
@@ -415,7 +421,7 @@ const ClusterPage = () => {
         width: 160,
         sorter: (a, b) => a.clusterName.localeCompare(b.clusterName),
         render: (name: string) => (
-          <Text strong style={{ fontSize: 13 }}>
+          <Text strong style={{ fontSize: 14 }}>
             {name}
           </Text>
         ),
@@ -427,7 +433,7 @@ const ClusterPage = () => {
         width: 170,
         sorter: (a, b) => a.name.localeCompare(b.name),
         render: (name: string) => (
-          <Text strong style={{ fontSize: 13 }}>
+          <Text strong style={{ fontSize: 14 }}>
             {name}
           </Text>
         ),
@@ -455,7 +461,7 @@ const ClusterPage = () => {
         width: 80,
         align: 'right',
         sorter: (a, b) => (a.version || '').localeCompare(b.version || ''),
-        render: (v?: string | null) => <span style={{ fontSize: 13 }}>{v || '-'}</span>,
+        render: (v?: string | null) => <span style={{ fontSize: 14 }}>{v || '-'}</span>,
       },
       {
         title: t('cluster.diskUsage'),
@@ -478,7 +484,7 @@ const ClusterPage = () => {
         width: 170,
         align: 'right',
         sorter: (a, b) => compareText(a.addr, b.addr),
-        render: (addr: string | null) => <span style={{ fontSize: 13 }}>{safeText(addr)}</span>,
+        render: (addr: string | null) => <span style={{ fontSize: 14 }}>{safeText(addr)}</span>,
       },
       {
         title: 'TPS In',
@@ -581,7 +587,7 @@ const ClusterPage = () => {
                   };
                   const result = await updateClusterConfig({
                     id: selectedCluster.id,
-                    instanceId: selectedInstanceIdRef.current || undefined,
+                    instanceId: selectedInstanceIdRef.current,
                     ...nextConfig,
                   });
                   if (result.status === 'SUCCESS') {
@@ -677,7 +683,7 @@ const ClusterPage = () => {
         key: 'addr',
         sorter: (a, b) => compareText(a.addr, b.addr),
         render: (addr: string | null) => (
-          <Text code style={{ fontSize: 12 }}>
+          <Text code style={{ fontSize: 14 }}>
             {safeText(addr)}
           </Text>
         ),
@@ -740,7 +746,7 @@ const ClusterPage = () => {
         key: 'nsClusterName',
         width: 180,
         render: (name: string) => (
-          <Text strong style={{ fontSize: 13 }}>
+          <Text strong style={{ fontSize: 14 }}>
             {name}
           </Text>
         ),
@@ -783,7 +789,7 @@ const ClusterPage = () => {
         <Flex justify="space-between" style={{ marginBottom: 16 }}>
           <Space>
             <Select
-              value={selectedInstanceId || undefined}
+              value={selectedInstanceId}
               onChange={(instanceId) => {
                 selectedInstanceIdRef.current = instanceId;
                 setSelectedInstanceId(instanceId);
@@ -792,7 +798,7 @@ const ClusterPage = () => {
               placeholder="Select instance"
               style={{ width: 180 }}
               options={instances.map((instance) => ({
-                value: instance.name,
+                value: instance.id,
                 label: instance.name,
               }))}
             />
@@ -873,7 +879,7 @@ const ClusterPage = () => {
         width: 160,
         sorter: (a, b) => a.clusterName.localeCompare(b.clusterName),
         render: (name: string) => (
-          <Text strong style={{ fontSize: 13 }}>
+          <Text strong style={{ fontSize: 14 }}>
             {name}
           </Text>
         ),
@@ -885,7 +891,7 @@ const ClusterPage = () => {
         width: 200,
         sorter: (a, b) => compareText(a.addr, b.addr),
         render: (addr: string | null) => (
-          <Text code style={{ fontSize: 12 }}>
+          <Text code style={{ fontSize: 14 }}>
             {safeText(addr)}
           </Text>
         ),
@@ -1046,7 +1052,7 @@ const ClusterPage = () => {
                   }}
                 />
               )}
-              <Text type={refreshFailed ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+              <Text type={refreshFailed ? 'danger' : 'secondary'} style={{ fontSize: 14 }}>
                 {refreshFailed
                   ? t('common.refreshFailed')
                   : autoRefresh

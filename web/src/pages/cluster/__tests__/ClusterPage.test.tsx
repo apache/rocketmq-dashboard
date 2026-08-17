@@ -151,7 +151,7 @@ describe('Cluster page', () => {
   it('uses a valid instanceId from the route instead of the default instance', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
-        id: 'instance-a',
+        id: 1,
         name: 'instance-a',
         type: 'DIRECT',
         vendor: 'APACHE',
@@ -159,11 +159,11 @@ describe('Cluster page', () => {
         remark: '',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
       {
-        id: 'instance-b',
+        id: 2,
         name: 'instance-b',
         type: 'DIRECT',
         vendor: 'APACHE',
@@ -171,21 +171,21 @@ describe('Cluster page', () => {
         remark: '',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
-    renderWithRoute(<ClusterPage />, '/cluster?instanceId=instance-b');
+    renderWithRoute(<ClusterPage />, '/cluster?instanceId=2');
 
     await screen.findByText('rocketmq-prod');
 
-    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith('instance-b');
+    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith(2);
   });
 
   beforeEach(() => {
     instanceServiceMocks.listInstances.mockReset().mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 10,
         name: 'instance-1',
         endpoint: 'namesrv-1:9876',
         type: 'DIRECT',
@@ -193,8 +193,8 @@ describe('Cluster page', () => {
         remark: '',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '',
-        updatedAt: '',
+        gmtCreate: '',
+        gmtModified: '',
       },
     ]);
     clusterServiceMocks.createNameServer.mockReset().mockResolvedValue(undefined);
@@ -224,7 +224,7 @@ describe('Cluster page', () => {
       .mockRejectedValueOnce(new Error('managed instances unavailable'))
       .mockResolvedValueOnce([
         {
-          id: 'instance-1',
+          id: 10,
           name: 'instance-1',
           endpoint: 'namesrv-1:9876',
           type: 'DIRECT',
@@ -232,8 +232,8 @@ describe('Cluster page', () => {
           remark: '',
           topicCount: 0,
           consumerGroupCount: 0,
-          createdAt: '',
-          updatedAt: '',
+          gmtCreate: '',
+          gmtModified: '',
         },
       ]);
     const user = userEvent.setup();
@@ -244,7 +244,7 @@ describe('Cluster page', () => {
 
     await user.click(within(alert).getByRole('button', { name: /重\s*试/ }));
     expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
-    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith('instance-1');
+    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith(10);
   });
 
   it('opens proxy detail dialog from the proxy table', async () => {

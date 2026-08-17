@@ -85,15 +85,15 @@ describe('ProducerPage', () => {
     vi.clearAllMocks();
     vi.mocked(listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
     ]);
     vi.mocked(fetchTopicList).mockResolvedValue(['order-events', 'payment-events']);
@@ -105,7 +105,7 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => {
-      expect(fetchTopicList).toHaveBeenCalledWith('instance-1');
+      expect(fetchTopicList).toHaveBeenCalledWith(1);
     });
   });
 
@@ -157,11 +157,7 @@ describe('ProducerPage', () => {
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
     await waitFor(() => {
-      expect(queryProducerConnection).toHaveBeenCalledWith(
-        'instance-1',
-        'order-events',
-        'order-producer',
-      );
+      expect(queryProducerConnection).toHaveBeenCalledWith(1, 'order-events', 'order-producer');
     });
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
     expect(await screen.findByText('生产者连接健康')).toBeInTheDocument();
@@ -250,37 +246,33 @@ describe('ProducerPage', () => {
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
     await waitFor(() => {
-      expect(queryProducerConnection).toHaveBeenCalledWith(
-        'instance-1',
-        'order-events',
-        'manual-producer',
-      );
+      expect(queryProducerConnection).toHaveBeenCalledWith(1, 'order-events', 'manual-producer');
     });
   });
 
   it('clears stale producer query state before loading a new instance', async () => {
     vi.mocked(listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
       {
-        id: 'instance-2',
+        id: 2,
         name: 'instance-2',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.2:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
     ]);
     vi.mocked(fetchTopicList).mockResolvedValueOnce(['order-events']).mockResolvedValueOnce([]);
@@ -297,7 +289,7 @@ describe('ProducerPage', () => {
     const user = userEvent.setup();
     const { container } = renderWithProviders(<ProducerPage />);
 
-    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith('instance-1'));
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith(1));
     const [instanceSelect, topicSelect, groupInput] = screen.getAllByRole('combobox');
     fireEvent.mouseDown(topicSelect.parentElement!);
     await user.click(
@@ -314,7 +306,7 @@ describe('ProducerPage', () => {
       }),
     );
 
-    await waitFor(() => expect(fetchTopicList).toHaveBeenLastCalledWith('instance-2'));
+    await waitFor(() => expect(fetchTopicList).toHaveBeenLastCalledWith(2));
     // scope to the page container: antd keeps closed dropdown portals in document.body
     expect(within(container).queryByText('producer-1')).not.toBeInTheDocument();
     expect(within(container).queryByText('order-events')).not.toBeInTheDocument();

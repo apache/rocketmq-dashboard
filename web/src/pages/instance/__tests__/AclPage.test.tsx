@@ -71,7 +71,7 @@ describe('ACL page', () => {
     vi.clearAllMocks();
     vi.mocked(aclService.listAclRules).mockResolvedValue([
       {
-        id: 'rule-remote',
+        id: 1,
         principal: 'remote-user',
         resource: 'remote-topic',
         resourceType: 'Topic',
@@ -80,18 +80,18 @@ describe('ACL page', () => {
         decision: 'ALLOW',
         scope: 'cluster',
         aclVersion: 2,
-        createdAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
       },
     ]);
     vi.mocked(aclService.listAclUsers).mockResolvedValue([
       {
-        id: 'user-remote',
+        id: 11,
         username: 'remote-admin',
         accessKey: 'acce****3456',
         secretKey: 'secr****7654',
         admin: true,
         clusters: ['cluster-a'],
-        createdAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
       },
     ]);
   });
@@ -145,7 +145,7 @@ describe('ACL page', () => {
     const user = userEvent.setup();
     vi.mocked(aclService.listAclRules).mockResolvedValue([
       {
-        id: 'rule-without-time',
+        id: 2,
         principal: 'no-time-rule',
         resource: 'topic-a',
         resourceType: 'Topic',
@@ -154,18 +154,18 @@ describe('ACL page', () => {
         decision: 'ALLOW',
         scope: 'cluster',
         aclVersion: 2,
-        createdAt: null,
+        gmtCreate: null,
       },
     ]);
     vi.mocked(aclService.listAclUsers).mockResolvedValue([
       {
-        id: 'user-without-time',
+        id: 12,
         username: 'no-time-user',
         accessKey: 'acce****3456',
         secretKey: 'secr****7654',
         admin: false,
         clusters: [],
-        createdAt: null,
+        gmtCreate: null,
       },
     ]);
     renderWithProviders(<AclPage />);
@@ -182,13 +182,13 @@ describe('ACL page', () => {
   it('does not submit masked credentials when editing a user', async () => {
     const user = userEvent.setup();
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
-      id: 'user-remote',
+      id: 11,
       username: 'remote-admin',
       accessKey: 'acce****3456',
       secretKey: 'secr****7654',
       admin: true,
       clusters: ['cluster-a'],
-      createdAt: '2026-07-23T00:00:00Z',
+      gmtCreate: '2026-07-23T00:00:00Z',
     });
     renderWithProviders(<AclPage />);
 
@@ -204,11 +204,11 @@ describe('ACL page', () => {
     await waitFor(() => expect(aclService.updateAclUser).toHaveBeenCalledTimes(1));
     const payload = vi.mocked(aclService.updateAclUser).mock.calls[0][0];
     expect(payload).toEqual({
-      id: 'user-remote',
+      id: 11,
       username: 'remote-admin',
       admin: true,
       clusters: ['cluster-a'],
-      instanceId: '',
+      instanceId: undefined,
     });
     expect(payload).not.toHaveProperty('accessKey');
     expect(payload).not.toHaveProperty('secretKey');
@@ -232,13 +232,13 @@ describe('ACL page', () => {
   it('does not submit masked credentials when toggling admin', async () => {
     const user = userEvent.setup();
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
-      id: 'user-remote',
+      id: 11,
       username: 'remote-admin',
       accessKey: 'acce****3456',
       secretKey: 'secr****7654',
       admin: false,
       clusters: ['cluster-a'],
-      createdAt: '2026-07-23T00:00:00Z',
+      gmtCreate: '2026-07-23T00:00:00Z',
     });
     renderWithProviders(<AclPage />);
 
@@ -249,11 +249,11 @@ describe('ACL page', () => {
     await waitFor(() => expect(aclService.updateAclUser).toHaveBeenCalledTimes(1));
     const payload = vi.mocked(aclService.updateAclUser).mock.calls[0][0];
     expect(payload).toEqual({
-      id: 'user-remote',
+      id: 11,
       username: 'remote-admin',
       admin: false,
       clusters: ['cluster-a'],
-      instanceId: '',
+      instanceId: undefined,
     });
     expect(payload).not.toHaveProperty('accessKey');
     expect(payload).not.toHaveProperty('secretKey');
@@ -262,13 +262,13 @@ describe('ACL page', () => {
   it('creates a user with the selected cluster scope', async () => {
     const user = userEvent.setup();
     vi.mocked(aclService.createAclUser).mockResolvedValue({
-      id: 'user-created',
+      id: 13,
       username: 'orders-service',
       accessKey: 'acce****3456',
       secretKey: 'secr****7654',
       admin: false,
       clusters: ['cluster-a', 'cluster-b'],
-      createdAt: '2026-08-01T00:00:00Z',
+      gmtCreate: '2026-08-01T00:00:00Z',
     });
     renderWithProviders(<AclPage />);
 
@@ -290,20 +290,20 @@ describe('ACL page', () => {
       username: 'orders-service',
       admin: false,
       clusters: ['cluster-a', 'cluster-b'],
-      instanceId: '',
+      instanceId: undefined,
     });
   });
 
   it('replaces the cluster scope of an existing user', async () => {
     const user = userEvent.setup();
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
-      id: 'user-remote',
+      id: 11,
       username: 'remote-admin',
       accessKey: 'acce****3456',
       secretKey: 'secr****7654',
       admin: true,
       clusters: ['cluster-b'],
-      createdAt: '2026-07-23T00:00:00Z',
+      gmtCreate: '2026-07-23T00:00:00Z',
     });
     renderWithProviders(<AclPage />);
 
@@ -319,11 +319,11 @@ describe('ACL page', () => {
 
     await waitFor(() => expect(aclService.updateAclUser).toHaveBeenCalledTimes(1));
     expect(aclService.updateAclUser).toHaveBeenCalledWith({
-      id: 'user-remote',
+      id: 11,
       username: 'remote-admin',
       admin: true,
       clusters: ['cluster-b'],
-      instanceId: '',
+      instanceId: undefined,
     });
   });
 
@@ -375,7 +375,7 @@ describe('ACL page', () => {
       defaultGroupPerm: 'DENY',
       topicPerms: [],
       groupPerms: [],
-      createdAt: '2026-08-01T00:00:00Z',
+      gmtCreate: '2026-08-01T00:00:00Z',
     });
     renderWithProviders(<AclPage />);
 

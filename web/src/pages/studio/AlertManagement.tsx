@@ -61,8 +61,8 @@ const { TextArea } = Input;
 
 // ─── Types ────────────────────────────────────────────────────────
 interface AlertRule {
-  key: string;
-  id?: string;
+  key: string | number;
+  id?: number;
   index: number;
   alert: string;
   group: string;
@@ -561,7 +561,7 @@ const AlertManagementPage: React.FC = () => {
         <Tooltip title={text}>
           <code
             style={{
-              fontSize: 12,
+              fontSize: 14,
               opacity: record.enabled ? 1 : 0.5,
               background: '#f5f5f5',
               padding: '2px 6px',

@@ -209,16 +209,20 @@ const AuditPage: React.FC = () => {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       width: 180,
+      sorter: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      defaultSortOrder: 'descend',
     },
     {
       title: t('audit.operator'),
       dataIndex: 'operator',
       width: 130,
+      sorter: (a, b) => (a.operator ?? '').localeCompare(b.operator ?? ''),
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
       width: 190,
+      sorter: (a, b) => (a.operationType ?? '').localeCompare(b.operationType ?? ''),
       render: (type: string) => <Tag>{formatFilterLabel(type)}</Tag>,
     },
     {
@@ -226,12 +230,14 @@ const AuditPage: React.FC = () => {
       dataIndex: 'resourceType',
       width: 120,
       ellipsis: true,
+      sorter: (a, b) => (a.resourceType ?? '').localeCompare(b.resourceType ?? ''),
     },
     {
       title: t('audit.cluster'),
       dataIndex: 'clusterId',
       width: 140,
       ellipsis: true,
+      sorter: (a, b) => (a.clusterId ?? '').localeCompare(b.clusterId ?? ''),
     },
     {
       title: t('audit.target'),
@@ -248,6 +254,7 @@ const AuditPage: React.FC = () => {
       title: t('audit.result'),
       dataIndex: 'result',
       width: 80,
+      sorter: (a, b) => (a.result ?? '').localeCompare(b.result ?? ''),
       render: (result: string) => (
         <Tag color={resultColor(result)}>{formatFilterLabel(result)}</Tag>
       ),

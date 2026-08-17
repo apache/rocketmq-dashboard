@@ -25,13 +25,18 @@ import { useTheme } from './theme/useTheme';
 
 const StudioApp = () => {
   const { lang } = useLang();
-  const { darkMode } = useTheme();
+  const { darkMode, compact } = useTheme();
+
+  const algorithms = [darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm];
+  if (compact) {
+    algorithms.push(theme.compactAlgorithm);
+  }
 
   return (
     <ConfigProvider
       locale={lang === 'zh' ? zhCN : enUS}
       theme={{
-        algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        algorithm: algorithms,
         token: {
           colorPrimary: '#1677ff',
           borderRadius: 8,

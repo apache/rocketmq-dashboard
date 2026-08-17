@@ -252,7 +252,7 @@ export const GrafanaDashboardList: React.FC = () => {
                 background: '#f5f5f5',
                 padding: 16,
                 borderRadius: 6,
-                fontSize: 12,
+                fontSize: 14,
               }}
             >
               {viewContent}

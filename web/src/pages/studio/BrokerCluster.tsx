@@ -20,6 +20,7 @@ import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Sel
 import { ArrowClockwise, Cloud, ChartBar, PlugsConnected } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import { listClusters } from '../../services/clusterService';
+import { isMockMode } from '../../services/dataMode';
 import type { ClusterInfo } from '../../api/cluster';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
@@ -150,7 +151,7 @@ const BrokerClusterPage = () => {
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState('');
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined);
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
@@ -163,7 +164,7 @@ const BrokerClusterPage = () => {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (!selectedInstanceId) {
+    if (!selectedInstanceId && !isMockMode()) {
       clearData();
       return;
     }
@@ -192,7 +193,7 @@ const BrokerClusterPage = () => {
       .then((nextInstances) => {
         if (!active) return;
         setInstances(nextInstances);
-        setSelectedInstanceId(nextInstances[0]?.name ?? '');
+        setSelectedInstanceId(nextInstances[0]?.id);
       })
       .catch(() => {
         if (!active) return;
@@ -251,7 +252,7 @@ const BrokerClusterPage = () => {
           style={{ width: 80, margin: 0 }}
           strokeColor={color}
         />
-        <span style={{ fontSize: 12, color, fontWeight: 500 }}>{percent}%</span>
+        <span style={{ fontSize: 14, color, fontWeight: 500 }}>{percent}%</span>
       </div>
     );
   };
@@ -290,7 +291,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -347,7 +348,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -392,7 +393,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -409,7 +410,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -452,11 +453,11 @@ const BrokerClusterPage = () => {
         <Space size="middle">
           <Select
             aria-label="选择实例"
-            value={selectedInstanceId || undefined}
+            value={selectedInstanceId}
             onChange={setSelectedInstanceId}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
-            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
           />
           <Switch
             checked={autoRefresh}
@@ -472,7 +473,10 @@ const BrokerClusterPage = () => {
       </div>
 
       <Spin spinning={loading} tip={t('common.loading')}>
-        <Card variant="borderless" style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+        <Card
+          variant="borderless"
+          style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
+        >
           <Tabs
             activeKey={activeTab}
             onChange={setActiveTab}

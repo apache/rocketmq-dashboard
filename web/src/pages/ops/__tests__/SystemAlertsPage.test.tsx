@@ -49,7 +49,7 @@ describe('SystemAlertsPage', () => {
     vi.clearAllMocks();
     vi.mocked(listSystemAlerts).mockResolvedValue([
       {
-        id: 'alert-a',
+        id: 1,
         level: 'error',
         title: 'Broker unavailable',
         description: 'broker a',
@@ -57,7 +57,7 @@ describe('SystemAlertsPage', () => {
         acknowledged: false,
       },
       {
-        id: 'alert-b',
+        id: 2,
         level: 'warning',
         title: 'Consumer lag',
         description: 'consumer b',
@@ -70,7 +70,7 @@ describe('SystemAlertsPage', () => {
   it('renders an alert with an unknown backend level', async () => {
     vi.mocked(listSystemAlerts).mockResolvedValue([
       {
-        id: 'alert-critical',
+        id: 3,
         level: 'critical',
         title: 'Critical broker condition',
         description: 'A newer backend emitted this level',
@@ -89,7 +89,7 @@ describe('SystemAlertsPage', () => {
   it('filters backend alert levels case-insensitively', async () => {
     vi.mocked(listSystemAlerts).mockResolvedValue([
       {
-        id: 'alert-error',
+        id: 4,
         level: 'Error',
         title: 'Mixed-case error',
         description: 'error',
@@ -97,7 +97,7 @@ describe('SystemAlertsPage', () => {
         acknowledged: false,
       },
       {
-        id: 'alert-warning',
+        id: 5,
         level: 'WARNING',
         title: 'Mixed-case warning',
         description: 'warning',
@@ -126,8 +126,8 @@ describe('SystemAlertsPage', () => {
     await user.click(acknowledgeButtons[1]);
 
     await waitFor(() => {
-      expect(acknowledgeAlert).toHaveBeenCalledWith('alert-a');
-      expect(acknowledgeAlert).toHaveBeenCalledWith('alert-b');
+      expect(acknowledgeAlert).toHaveBeenCalledWith(1);
+      expect(acknowledgeAlert).toHaveBeenCalledWith(2);
       expect(acknowledgeButtons[0]).toHaveClass('ant-btn-loading');
       expect(acknowledgeButtons[1]).toHaveClass('ant-btn-loading');
     });

@@ -69,7 +69,7 @@ describe('Audit page', () => {
     vi.mocked(opsService.listAuditRecords).mockResolvedValue({
       items: [
         {
-          id: 'audit-1',
+          id: 1,
           timestamp: '2026-08-01 10:00:00',
           operator: 'admin',
           operationType: 'DELETE_TOPIC',
@@ -174,7 +174,7 @@ describe('Audit page', () => {
       .mockResolvedValueOnce({
         items: [
           {
-            id: 'audit-1',
+            id: 2,
             timestamp: '2026-08-01 10:00:00',
             operator: 'admin',
             operationType: 'DELETE_TOPIC',

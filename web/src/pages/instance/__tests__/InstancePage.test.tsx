@@ -65,7 +65,7 @@ beforeAll(() => {
 });
 
 const instance = (
-  id: string,
+  id: number,
   name: string,
   type: Instance['type'] = 'PROXY',
   remark: Instance['remark'] = '',
@@ -77,8 +77,8 @@ const instance = (
   endpoint: `${name}:8080`,
   topicCount: 1,
   consumerGroupCount: 1,
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-01-01T00:00:00Z',
+  gmtCreate: '2026-01-01T00:00:00Z',
+  gmtModified: '2026-01-01T00:00:00Z',
 });
 
 const renderPage = () =>
@@ -109,8 +109,8 @@ describe('InstancePage', () => {
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([]);
     vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
     vi.mocked(instanceService.listInstances).mockResolvedValue([
-      instance('proxy-1', 'production-proxy'),
-      instance('direct-1', 'development-direct', 'DIRECT'),
+      instance(1, 'production-proxy'),
+      instance(2, 'development-direct', 'DIRECT'),
     ]);
   });
 
@@ -150,12 +150,12 @@ describe('InstancePage', () => {
   it('keeps unavailable resource counts after available values in both sort directions', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        ...instance('unavailable', 'unavailable-instance'),
+        ...instance(3, 'unavailable-instance'),
         topicCount: 0,
         resourceCountsAvailable: false,
       },
-      { ...instance('zero', 'zero-instance'), topicCount: 0 },
-      { ...instance('many', 'many-instance'), topicCount: 10 },
+      { ...instance(4, 'zero-instance'), topicCount: 0 },
+      { ...instance(5, 'many-instance'), topicCount: 10 },
     ]);
     const { container } = renderPage();
 
@@ -187,7 +187,7 @@ describe('InstancePage', () => {
       resolveLatestSearch = resolve;
     });
     vi.mocked(instanceService.listInstances)
-      .mockResolvedValueOnce([instance('initial', 'initial-instance')])
+      .mockResolvedValueOnce([instance(6, 'initial-instance')])
       .mockReturnValueOnce(oldSearch)
       .mockReturnValueOnce(latestSearch);
     renderPage();
@@ -208,10 +208,10 @@ describe('InstancePage', () => {
       { timeout: 1000 },
     );
 
-    await act(async () => resolveLatestSearch([instance('latest', 'latest-instance')]));
+    await act(async () => resolveLatestSearch([instance(7, 'latest-instance')]));
     expect(await screen.findByText('latest-instance')).toBeInTheDocument();
 
-    await act(async () => resolveOldSearch([instance('old', 'old-instance')]));
+    await act(async () => resolveOldSearch([instance(8, 'old-instance')]));
     expect(screen.queryByText('old-instance')).not.toBeInTheDocument();
     expect(screen.getByText('latest-instance')).toBeInTheDocument();
   });
@@ -242,7 +242,7 @@ describe('InstancePage', () => {
 
   it('reloads the current filters after creating an instance', async () => {
     const user = userEvent.setup();
-    vi.mocked(instanceService.createInstance).mockResolvedValue(instance('created', 'new-proxy'));
+    vi.mocked(instanceService.createInstance).mockResolvedValue(instance(9, 'new-proxy'));
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
@@ -289,7 +289,7 @@ describe('InstancePage', () => {
 
     const proxyName = await screen.findByText('production-proxy');
     await user.click(within(proxyName.closest('tr')!).getByRole('button', { name: /删除/ }));
-    await waitFor(() => expect(instanceService.deleteInstance).toHaveBeenCalledWith('proxy-1'));
+    await waitFor(() => expect(instanceService.deleteInstance).toHaveBeenCalledWith(1));
 
     const typeSelect = screen.getByRole('combobox');
     fireEvent.mouseDown(typeSelect.parentElement!);
@@ -330,18 +330,18 @@ describe('InstancePage', () => {
     const latestRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
       {
-        id: 'cred-old',
+        id: 101,
         name: 'old-account',
         vendor: 'ALIYUN',
         accessKey: 'LTAI-old',
-        createdAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
       },
       {
-        id: 'cred-latest',
+        id: 102,
         name: 'latest-account',
         vendor: 'ALIYUN',
         accessKey: 'LTAI-latest',
-        createdAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
       },
     ]);
     vi.mocked(aliyunCatalogApi.listAliyunRegions)
@@ -360,17 +360,13 @@ describe('InstancePage', () => {
     await user.click(
       await screen.findByText(/old-account/, { selector: '.ant-select-item-option-content' }),
     );
-    await waitFor(() =>
-      expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith('cred-old'),
-    );
+    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith(101));
 
     fireEvent.mouseDown(credentialSelect.parentElement!);
     await user.click(
       await screen.findByText(/latest-account/, { selector: '.ant-select-item-option-content' }),
     );
-    await waitFor(() =>
-      expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith('cred-latest'),
-    );
+    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith(102));
 
     await act(async () =>
       latestRegions.resolve([{ regionId: 'cn-shanghai', regionName: 'Shanghai' }]),
@@ -401,11 +397,11 @@ describe('InstancePage', () => {
       >();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
       {
-        id: 'cred-1',
+        id: 103,
         name: 'cloud-account',
         vendor: 'ALIYUN',
         accessKey: 'LTAI-one',
-        createdAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
       },
     ]);
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([
@@ -428,14 +424,14 @@ describe('InstancePage', () => {
     await user.click(
       await screen.findByText(/cloud-account/, { selector: '.ant-select-item-option-content' }),
     );
-    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith('cred-1'));
+    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith(103));
 
     fireEvent.mouseDown(selects[1].parentElement!);
     await user.click(
       await screen.findByText(/Beijing/, { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith('cred-1', 'cn-beijing'),
+      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith(103, 'cn-beijing'),
     );
 
     fireEvent.mouseDown(selects[1].parentElement!);
@@ -443,7 +439,7 @@ describe('InstancePage', () => {
       await screen.findByText(/Shanghai/, { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith('cred-1', 'cn-shanghai'),
+      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith(103, 'cn-shanghai'),
     );
 
     await act(async () =>
@@ -481,18 +477,18 @@ describe('InstancePage', () => {
     const pendingRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
       {
-        id: 'cred-aliyun',
+        id: 104,
         name: 'aliyun-account',
         vendor: 'ALIYUN',
         accessKey: 'LTAI-one',
-        createdAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
       },
       {
-        id: 'cred-tencent',
+        id: 105,
         name: 'tencent-account',
         vendor: 'TENCENT',
         accessKey: 'AKID-one',
-        createdAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
       },
     ]);
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockReturnValue(pendingRegions.promise);
@@ -509,9 +505,7 @@ describe('InstancePage', () => {
     await user.click(
       await screen.findByText(/aliyun-account/, { selector: '.ant-select-item-option-content' }),
     );
-    await waitFor(() =>
-      expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith('cred-aliyun'),
-    );
+    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith(104));
     await waitFor(() =>
       expect(within(dialog).getAllByRole('combobox')[1].closest('.ant-select')).toHaveClass(
         'ant-select-loading',
@@ -542,18 +536,18 @@ describe('InstancePage', () => {
       >();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
       {
-        id: 'cred-aliyun',
+        id: 104,
         name: 'aliyun-account',
         vendor: 'ALIYUN',
         accessKey: 'LTAI-one',
-        createdAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
       },
       {
-        id: 'cred-tencent',
+        id: 105,
         name: 'tencent-account',
         vendor: 'TENCENT',
         accessKey: 'AKID-one',
-        createdAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
       },
     ]);
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([
@@ -579,10 +573,7 @@ describe('InstancePage', () => {
       await screen.findByText(/Beijing/, { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith(
-        'cred-aliyun',
-        'cn-beijing',
-      ),
+      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith(104, 'cn-beijing'),
     );
     await waitFor(() =>
       expect(selects[2].closest('.ant-select')).toHaveClass('ant-select-loading'),
@@ -614,8 +605,8 @@ describe('InstancePage', () => {
   it('sorts and renders instances without remarks', async () => {
     const user = userEvent.setup();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
-      instance('no-remark', 'instance-without-remark', 'PROXY', null),
-      instance('with-remark', 'instance-with-remark', 'PROXY', 'production'),
+      instance(10, 'instance-without-remark', 'PROXY', null),
+      instance(11, 'instance-with-remark', 'PROXY', 'production'),
     ]);
     renderPage();
 

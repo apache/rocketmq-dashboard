@@ -58,7 +58,7 @@ const ProducerPage = () => {
     null,
   );
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState('');
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const { t } = useLang();
   const { message } = App.useApp();
@@ -72,7 +72,7 @@ const ProducerPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.name || '');
+        setSelectedInstanceId((current) => current ?? nextInstances[0]?.id);
       })
       .catch(() => {
         if (!cancelled) {
@@ -85,7 +85,7 @@ const ProducerPage = () => {
     };
   }, []);
 
-  const handleInstanceChange = (instanceId: string) => {
+  const handleInstanceChange = (instanceId: number) => {
     queryRequestIdRef.current += 1;
     setSelectedInstanceId(instanceId);
     setTopicList([]);
@@ -245,12 +245,12 @@ const ProducerPage = () => {
           <Form.Item label="INSTANCE">
             <Select
               aria-label="Instance"
-              value={selectedInstanceId || undefined}
+              value={selectedInstanceId}
               onChange={handleInstanceChange}
               placeholder="Select instance"
               style={{ width: 220 }}
               options={instances.map((instance) => ({
-                value: instance.name,
+                value: instance.id,
                 label: instance.name,
               }))}
             />
@@ -340,13 +340,13 @@ const ProducerPage = () => {
             </Flex>
             <Flex gap={16} wrap>
               <div>
-                <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 6 }}>
+                <div style={{ color: '#8c8c8c', fontSize: 14, marginBottom: 6 }}>
                   {t('producer.languageDistribution')}
                 </div>
                 {renderDistribution(connectionSummary.languages)}
               </div>
               <div>
-                <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 6 }}>
+                <div style={{ color: '#8c8c8c', fontSize: 14, marginBottom: 6 }}>
                   {t('producer.versionDistribution')}
                 </div>
                 {renderDistribution(connectionSummary.versions)}

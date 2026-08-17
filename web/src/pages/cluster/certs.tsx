@@ -16,11 +16,27 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Table, Tag, Input, Select, Flex, Space, Typography, Card, Alert, message } from 'antd';
+import {
+  Table,
+  Tag,
+  Input,
+  Select,
+  Flex,
+  Space,
+  Typography,
+  Card,
+  Button,
+  Modal,
+  Form,
+  Popconfirm,
+  message,
+} from 'antd';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
-import { listK8sCerts } from '../../services/clusterService';
+import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
@@ -28,12 +44,23 @@ const { Text } = Typography;
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message ? error.message : '请求失败，请稍后重试';
 
+interface CreateCertFormValues {
+  name: string;
+  cluster: string;
+  type: string;
+  certPem?: string;
+  keyPem?: string;
+}
+
 const K8sCertsPage = () => {
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
-  const [certNamespaceFilter, setCertNamespaceFilter] = useState<string>('');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [createForm] = Form.useForm<CreateCertFormValues>();
 
   useEffect(() => {
     let active = true;
@@ -53,26 +80,61 @@ const K8sCertsPage = () => {
   }, []);
 
   const normalizedCertSearch = certSearch.trim().toLowerCase();
-  const namespaceOptions = Array.from(new Set(certs.map((cert) => cert.namespace)))
-    .sort((a, b) => a.localeCompare(b))
-    .map((namespace) => ({ value: namespace, label: namespace }));
   const filteredCerts = certs.filter((cert) => {
     const matchSearch =
       !normalizedCertSearch ||
-      [cert.name, cert.cluster, cert.namespace, ...(cert.san ?? [])].some((value) =>
-        value.toLowerCase().includes(normalizedCertSearch),
-      );
+      [cert.name, cert.cluster].some((value) => value.toLowerCase().includes(normalizedCertSearch));
     const matchType = !certTypeFilter || cert.type === certTypeFilter;
-    const matchNamespace = !certNamespaceFilter || cert.namespace === certNamespaceFilter;
-    return matchSearch && matchType && matchNamespace;
+    return matchSearch && matchType;
   });
+
+  const handleCreate = async () => {
+    let values: CreateCertFormValues;
+    try {
+      values = await createForm.validateFields();
+    } catch {
+      return;
+    }
+    setCreating(true);
+    try {
+      const created = await createK8sCert({
+        name: values.name.trim(),
+        cluster: values.cluster.trim(),
+        type: values.type,
+        certPem: values.certPem?.trim() || undefined,
+        keyPem: values.keyPem?.trim() || undefined,
+      });
+      setCerts((previous) => [...previous, created]);
+      message.success(`证书「${created.name}」已添加`);
+      setCreateModalOpen(false);
+      createForm.resetFields();
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = async (cert: K8sCertInfo) => {
+    setDeletingId(cert.id);
+    try {
+      await deleteK8sCert(cert.id);
+      setCerts((previous) => previous.filter((item) => item.id !== cert.id));
+      message.success(`证书「${cert.name}」已删除`);
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const certColumns: ColumnsType<K8sCertInfo> = [
     {
       title: 'K8s 集群名称',
       dataIndex: 'cluster',
       key: 'cluster',
-      width: 160,
+      width: 260,
+      ellipsis: true,
       sorter: (a, b) => a.cluster.localeCompare(b.cluster),
       render: (name: string) => <Text strong>{name}</Text>,
     },
@@ -80,41 +142,17 @@ const K8sCertsPage = () => {
       title: '证书名称',
       dataIndex: 'name',
       key: 'name',
-      width: 280,
+      width: 240,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 13 }}>{name}</Text>
+        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{name}</Text>
       ),
-    },
-    {
-      title: '命名空间',
-      dataIndex: 'namespace',
-      key: 'namespace',
-      width: 150,
-      sorter: (a, b) => a.namespace.localeCompare(b.namespace),
-      render: (namespace: string) => <Text code>{namespace}</Text>,
-    },
-    {
-      title: 'SAN',
-      dataIndex: 'san',
-      key: 'san',
-      width: 260,
-      render: (san: string[] | null) =>
-        san?.length ? (
-          <Flex wrap gap={4}>
-            {san.map((value) => (
-              <Tag key={value}>{value}</Tag>
-            ))}
-          </Flex>
-        ) : (
-          <Text type="secondary">-</Text>
-        ),
     },
     {
       title: '类型',
       dataIndex: 'type',
       key: 'type',
-      width: 130,
+      width: 110,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
         const colorMap: Record<string, string> = {
@@ -129,8 +167,9 @@ const K8sCertsPage = () => {
       title: '签发者',
       dataIndex: 'issuer',
       key: 'issuer',
-      width: 130,
+      width: 180,
       sorter: (a, b) => a.issuer.localeCompare(b.issuer),
+      ellipsis: true,
     },
     {
       title: '到期时间',
@@ -139,7 +178,7 @@ const K8sCertsPage = () => {
       width: 170,
       sorter: (a, b) => new Date(a.notAfter).getTime() - new Date(b.notAfter).getTime(),
       render: (iso: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(iso)}
         </Text>
       ),
@@ -177,34 +216,49 @@ const K8sCertsPage = () => {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
+    {
+      title: '操作',
+      key: 'action',
+      width: 90,
+      fixed: 'right',
+      render: (_: unknown, cert: K8sCertInfo) => (
+        <Popconfirm
+          title={`确定要删除证书「${cert.name}」吗？`}
+          onConfirm={() => void handleDelete(cert)}
+          okText="删除"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+        >
+          <Button
+            type="link"
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            loading={deletingId === cert.id}
+          >
+            删除
+          </Button>
+        </Popconfirm>
+      ),
+    },
   ];
 
   return (
     <div style={{ padding: 24 }}>
       <PageHeader title="K8s 证书管理" subtitle={`共 ${filteredCerts.length} 个证书`} />
-      <Alert
+      <InfoBanner
         data-testid="k8s-cert-local-metadata-notice"
-        type="warning"
-        showIcon
-        message="当前证书记录仅保存为 Studio 本地元数据"
+        title="当前证书记录仅保存为 Studio 本地元数据"
         description="创建、续期和删除操作尚不会应用到 Kubernetes 集群或 cert-manager。请在集群侧管理实际证书，直到 Kubernetes Provider 接入完成。"
-        style={{ marginBottom: 16 }}
       />
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>
           <Input.Search
-            placeholder="搜索证书名称、集群、命名空间或 SAN"
+            placeholder="搜索证书名称或集群"
             allowClear
             onSearch={setCertSearch}
             onChange={(e) => !e.target.value && setCertSearch('')}
             style={{ width: 320 }}
-          />
-          <Select
-            aria-label="按命名空间筛选"
-            value={certNamespaceFilter}
-            onChange={setCertNamespaceFilter}
-            style={{ width: 180 }}
-            options={[{ value: '', label: '全部命名空间' }, ...namespaceOptions]}
           />
           <Select
             value={certTypeFilter}
@@ -218,6 +272,9 @@ const K8sCertsPage = () => {
             ]}
           />
         </Space>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+          新增证书
+        </Button>
       </Flex>
       <Card styles={{ body: { padding: 0 } }}>
         <Table
@@ -227,9 +284,69 @@ const K8sCertsPage = () => {
           loading={loading}
           pagination={{ pageSize: 20 }}
           size="small"
-          scroll={{ x: 1750 }}
+          scroll={{ x: 1400 }}
         />
       </Card>
+
+      <Modal
+        title="新增证书"
+        open={createModalOpen}
+        onCancel={() => {
+          setCreateModalOpen(false);
+          createForm.resetFields();
+        }}
+        onOk={() => void handleCreate()}
+        confirmLoading={creating}
+        okText="添加"
+        cancelText="取消"
+        width={640}
+        destroyOnHidden
+      >
+        <Form form={createForm} layout="vertical" preserve={false}>
+          <Form.Item
+            label="证书名称"
+            name="name"
+            rules={[{ required: true, message: '请输入证书名称' }]}
+          >
+            <Input placeholder="例如：kubernetes-admin-client" />
+          </Form.Item>
+          <Form.Item
+            label="K8s 集群名称"
+            name="cluster"
+            rules={[{ required: true, message: '请输入集群名称' }]}
+          >
+            <Input placeholder="例如：kubernetes（120.26.99.191:6443）" />
+          </Form.Item>
+          <Form.Item label="类型" name="type" initialValue="TLS">
+            <Select
+              virtual={false}
+              options={[
+                { value: 'TLS', label: 'TLS' },
+                { value: 'mTLS', label: 'mTLS' },
+                { value: 'ServiceAccount', label: 'ServiceAccount' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            label="证书内容（PEM）"
+            name="certPem"
+            extra="粘贴 PEM 格式证书，签发者、有效期与 SAN 将自动解析；留空时有效期按一年占位"
+          >
+            <Input.TextArea
+              rows={6}
+              placeholder="-----BEGIN CERTIFICATE-----..."
+              style={{ fontFamily: 'monospace' }}
+            />
+          </Form.Item>
+          <Form.Item label="私钥内容（PEM）" name="keyPem" extra="仅保存，不会在页面展示或返回">
+            <Input.TextArea
+              rows={6}
+              placeholder="-----BEGIN PRIVATE KEY-----..."
+              style={{ fontFamily: 'monospace' }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

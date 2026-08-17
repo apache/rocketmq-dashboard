@@ -152,7 +152,7 @@ const AlertsPage = () => {
   };
 
   const handleBulkToggle = async (enabled: boolean) => {
-    const targetIds = selectedRuleIds.map(String);
+    const targetIds = selectedRuleIds.map(Number);
     if (targetIds.length === 0 || isActionRunning) return;
 
     setBulkAction(enabled ? 'enable' : 'disable');
@@ -165,7 +165,7 @@ const AlertsPage = () => {
         setRules((previous) => previous.map((rule) => updatedRules.get(rule.id) ?? rule));
       }
 
-      setSelectedRuleIds(failedIds);
+      setSelectedRuleIds(failedIds.map(Number));
 
       if (failedIds.length === 0) {
         message.success(
@@ -199,7 +199,7 @@ const AlertsPage = () => {
   };
 
   const handleBulkDelete = () => {
-    const targetIds = selectedRuleIds.map(String);
+    const targetIds = selectedRuleIds.map(Number);
     if (targetIds.length === 0 || isActionRunning) return;
     Modal.confirm({
       title: t('alerts.bulkDeleteConfirm', { count: targetIds.length }),
@@ -211,7 +211,7 @@ const AlertsPage = () => {
           const succeeded = new Set(result.succeededIds);
           const failedIds = Object.keys(result.failures);
           setRules((previous) => previous.filter((rule) => !succeeded.has(rule.id)));
-          setSelectedRuleIds(failedIds);
+          setSelectedRuleIds(failedIds.map(Number));
           if (failedIds.length === 0) message.success(t('alerts.bulkDeleteSuccess'));
           else
             message.warning(
@@ -239,18 +239,22 @@ const AlertsPage = () => {
     {
       title: t('alerts.ruleName'),
       dataIndex: 'name',
+      sorter: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
     },
     {
       title: t('alerts.metric'),
       dataIndex: 'metric',
+      sorter: (a, b) => (a.metric ?? '').localeCompare(b.metric ?? ''),
     },
     {
       title: t('alerts.threshold'),
+      sorter: (a, b) => (a.threshold ?? 0) - (b.threshold ?? 0),
       render: (_, record) => `${record.operator} ${record.threshold}${record.thresholdUnit}`,
     },
     {
       title: t('alerts.duration'),
       dataIndex: 'duration',
+      sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
     },
     {
       title: t('alerts.channels'),
@@ -266,6 +270,7 @@ const AlertsPage = () => {
     },
     {
       title: t('common.status'),
+      sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
       render: (_, record) => (
         <Switch
           checked={record.enabled}
@@ -277,6 +282,7 @@ const AlertsPage = () => {
     },
     {
       title: t('alerts.lastTriggered'),
+      sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
       render: (_, record) =>
         record.lastTriggered ? (
           record.lastTriggered
@@ -356,19 +362,19 @@ const AlertsPage = () => {
         extra={
           <Flex gap={16}>
             <Flex align="center" gap={4}>
-              <span style={{ fontSize: 12, color: '#999' }}>{t('alerts.totalRules')}</span>
+              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.totalRules')}</span>
               <span style={{ fontSize: 18, fontWeight: 600, color: '#3b82f6' }}>
                 {rules.length}
               </span>
             </Flex>
             <Flex align="center" gap={4}>
-              <span style={{ fontSize: 12, color: '#999' }}>{t('alerts.enabled')}</span>
+              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.enabled')}</span>
               <span style={{ fontSize: 18, fontWeight: 600, color: '#14b8a6' }}>
                 {enabledCount}
               </span>
             </Flex>
             <Flex align="center" gap={4}>
-              <span style={{ fontSize: 12, color: '#999' }}>{t('alerts.triggered24h')}</span>
+              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.triggered24h')}</span>
               <span style={{ fontSize: 18, fontWeight: 600, color: '#8b5cf6' }}>
                 {triggered24h}
               </span>
