@@ -22,12 +22,15 @@ import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -91,5 +94,39 @@ public class GlobalExceptionHandler {
     public Result<?> handleException(Exception ex) {
         log.error("Unexpected exception", ex);
         return Result.error(500, "Internal Server Error");
+    }
+
+    /**
+     * Spring MVC throws {@link NoResourceFoundException} for unmatched routes. Without an
+     * explicit handler it would fall through to the generic catch-all and be reported as
+     * HTTP 500 instead of the correct 404.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<?> handleNoResourceFoundException(NoResourceFoundException ex) {
+        log.warn("Resource not found: {}", ex.getMessage());
+        return Result.error(HttpStatus.NOT_FOUND.value(), ex.getMessage());
+    }
+
+    /**
+     * Requests with an unsupported HTTP method must be reported as 405, not 500.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+    public Result<?> handleHttpRequestMethodNotSupportedException(
+            HttpRequestMethodNotSupportedException ex) {
+        log.warn("Method not allowed: {}", ex.getMessage());
+        return Result.error(HttpStatus.METHOD_NOT_ALLOWED.value(), ex.getMessage());
+    }
+
+    /**
+     * Requests with an unsupported content type must be reported as 415, not 500.
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    @ResponseStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+    public Result<?> handleHttpMediaTypeNotSupportedException(
+            HttpMediaTypeNotSupportedException ex) {
+        log.warn("Unsupported media type: {}", ex.getMessage());
+        return Result.error(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(), ex.getMessage());
     }
 }
