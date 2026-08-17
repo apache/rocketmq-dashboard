@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
@@ -67,6 +68,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
         return metadataProvider.listTopics(null, type, search).stream()
                 .filter(topic -> matchesInstance(topic.getInstanceId(), instanceId))
                 .toList();
+    }
+
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search, int page, int pageSize) {
+        return metadataProvider.listTopicsPage(instanceId, null, type, search, page, pageSize);
     }
 
     @Override

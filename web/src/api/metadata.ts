@@ -138,6 +138,11 @@ export async function listTopics(params?: TopicQuery) {
   return res.data.data;
 }
 
+export async function listTopicsPage(params: TopicQuery & { page?: number; pageSize?: number }) {
+  const res = await client.get<{ data: { items: Topic[]; total: number; page: number; size: number } }>('/topics/page', { params });
+  return res.data.data;
+}
+
 export async function createTopic(data: Partial<Topic>) {
   const res = await client.post<{ data: Topic }>('/topics/create', data);
   return res.data.data;

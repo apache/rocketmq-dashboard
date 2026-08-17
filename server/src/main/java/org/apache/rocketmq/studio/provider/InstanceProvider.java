@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 
 import java.util.List;
 
@@ -42,6 +43,13 @@ public interface InstanceProvider {
     int countGroups(String instanceId);
 
     List<TopicVO> listTopics(String instanceId, String type, String search);
+
+    default PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search, int page, int pageSize) {
+        List<TopicVO> topics = listTopics(instanceId, type, search);
+        int from = Math.min((page - 1) * pageSize, topics.size());
+        int to = Math.min(from + pageSize, topics.size());
+        return PageResult.of(topics.subList(from, to), topics.size(), page, pageSize);
+    }
 
     TopicVO createTopic(String instanceId, TopicVO topic);
 

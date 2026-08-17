@@ -31,6 +31,10 @@ export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
   return metadataApi.listTopics(params);
 }
 
+export async function listTopicsPage(params: TopicQuery & { page?: number; pageSize?: number }) {
+  return metadataApi.listTopicsPage(params);
+}
+
 export async function createTopic(data: Partial<Topic>): Promise<Topic> {
   if (isMockMode()) {
     const duplicate = mockTopics.some(

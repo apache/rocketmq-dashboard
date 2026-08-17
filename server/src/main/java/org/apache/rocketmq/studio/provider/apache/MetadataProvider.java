@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -28,6 +29,15 @@ import java.util.List;
 
 public interface MetadataProvider {
     List<TopicVO> listTopics(String clusterId, String type, String search);
+    default PageResult<TopicVO> listTopicsPage(String clusterId, String type, String search, int page, int pageSize) {
+        List<TopicVO> topics = listTopics(clusterId, type, search);
+        int from = Math.min((page - 1) * pageSize, topics.size());
+        int to = Math.min(from + pageSize, topics.size());
+        return PageResult.of(topics.subList(from, to), topics.size(), page, pageSize);
+    }
+    default PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type, String search, int page, int pageSize) {
+        return listTopicsPage(clusterId, type, search, page, pageSize);
+    }
     List<ConsumerGroupVO> listConsumerGroups(String clusterId, String search);
 
     default List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {

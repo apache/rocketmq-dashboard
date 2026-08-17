@@ -63,7 +63,7 @@ import {
   deleteTopic,
   getTopicConsumerPage,
   getTopicRoutes,
-  listTopics,
+  listTopicsPage,
   sendTopicMessage,
 } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
@@ -295,6 +295,7 @@ const TopicPage = () => {
 
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [totalTopics, setTotalTopics] = useState(0);
   const [loading, setLoading] = useState(false);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
   const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
@@ -344,9 +345,9 @@ const TopicPage = () => {
     const requestId = ++topicRequestIdRef.current;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void listTopics({ instanceId: selectedInstanceId })
-        .then((nextTopics) => {
-          if (requestId === topicRequestIdRef.current) setTopics(nextTopics);
+      void listTopicsPage({ instanceId: selectedInstanceId, page: tablePage, pageSize: tablePageSize, type: typeFilter || undefined, search: searchText || undefined })
+        .then((result) => {
+          if (requestId === topicRequestIdRef.current) { setTopics(result.items); setTotalTopics(result.total); }
         })
         .catch(() => {
           if (requestId === topicRequestIdRef.current)
@@ -360,7 +361,7 @@ const TopicPage = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId]);
+  }, [selectedInstanceId, tablePage, tablePageSize, typeFilter, searchText]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -1097,6 +1098,7 @@ const TopicPage = () => {
             pagination={{
               current: currentTablePage,
               pageSize: tablePageSize,
+              total: totalTopics,
               showSizeChanger: true,
               showTotal: (t) => `共 ${t} 条`,
               onChange: (page, pageSize) => {

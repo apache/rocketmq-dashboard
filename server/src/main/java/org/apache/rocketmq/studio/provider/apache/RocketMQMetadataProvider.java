@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
@@ -124,6 +126,19 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             result.add(toTopicVO(entity));
         }
         return result;
+    }
+
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type, String search, int page, int pageSize) {
+        LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
+                .eq(StringUtils.hasText(instanceId), RmqTopic::getInstanceId, instanceId)
+                .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
+                .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
+                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .notLikeRight(RmqTopic::getName, "RMQ_SYS_")
+                .orderByAsc(RmqTopic::getName, RmqTopic::getId);
+        Page<RmqTopic> result = topicMapper.selectPage(new Page<>(page, pageSize), query);
+        return PageResult.of(result.getRecords().stream().map(this::toTopicVO).toList(), result.getTotal(), page, pageSize);
     }
 
     private TopicVO toTopicVO(RmqTopic entity) {
