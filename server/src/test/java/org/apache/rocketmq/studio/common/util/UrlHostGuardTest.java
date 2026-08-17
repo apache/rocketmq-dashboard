@@ -40,4 +40,27 @@ class UrlHostGuardTest {
 
         assertThat(UrlHostGuard.areAllowed(new InetAddress[]{first, second}, false)).isTrue();
     }
+
+    @Test
+    void areAllowedShouldRejectIpv6UniqueLocalAddresses() throws Exception {
+        // fc00::/7 unique-local addresses are not classified as link/site-local by the JDK
+        // and would otherwise pass the guard; fd00:ec2::254 is the AWS EC2 IMDS IPv6 endpoint.
+        InetAddress ula = InetAddress.getByName("fd00:ec2::254");
+        InetAddress ulaFc = InetAddress.getByName("fc00::1");
+
+        assertThat(UrlHostGuard.areAllowed(new InetAddress[]{ula}, false)).isFalse();
+        assertThat(UrlHostGuard.areAllowed(new InetAddress[]{ulaFc}, false)).isFalse();
+    }
+
+    @Test
+    void areAllowedShouldStillAcceptGlobalIpv6Addresses() throws Exception {
+        InetAddress globalIpv6 = InetAddress.getByName("2606:4700:4700::1111");
+
+        assertThat(UrlHostGuard.areAllowed(new InetAddress[]{globalIpv6}, false)).isTrue();
+    }
+
+    @Test
+    void isAllowedHostShouldRejectIpv6UlaLiteralEvenWhenLoopbackIsAllowed() {
+        assertThat(UrlHostGuard.isAllowedHost("fd00:ec2::254", true)).isFalse();
+    }
 }

@@ -112,7 +112,7 @@ public final class UrlHostGuard {
         }
         for (InetAddress address : addresses) {
             if (address == null || address.isAnyLocalAddress() || address.isLinkLocalAddress()
-                    || address.isMulticastAddress()) {
+                    || address.isMulticastAddress() || isUniqueLocalAddress(address)) {
                 return false;
             }
             if (address.isLoopbackAddress() && !allowLoopback) {
@@ -120,5 +120,19 @@ public final class UrlHostGuard {
             }
         }
         return true;
+    }
+
+    /**
+     * Whether the address is an IPv6 unique-local address (fc00::/7). Java's
+     * {@link InetAddress} does not classify these as link-local or site-local, so they would
+     * otherwise pass the guard; notably {@code fd00:ec2::254} is the AWS EC2 IMDS IPv6
+     * metadata endpoint and must not be reachable.
+     */
+    private static boolean isUniqueLocalAddress(InetAddress address) {
+        if (!(address instanceof java.net.Inet6Address)) {
+            return false;
+        }
+        byte[] bytes = address.getAddress();
+        return bytes.length == 16 && (bytes[0] & 0xFE) == 0xFC;
     }
 }
