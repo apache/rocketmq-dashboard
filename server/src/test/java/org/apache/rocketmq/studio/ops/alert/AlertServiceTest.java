@@ -121,51 +121,6 @@ class AlertServiceTest {
     }
 
     @Test
-    void exportPrometheusRulesYamlShouldExportOnlySelectedEnabledRules() {
-        AlertRuleVO selected = AlertRuleVO.builder()
-                .id("rule-selected")
-                .name("Selected Proxy Alert")
-                .metric("rocketmq_proxy_up")
-                .operator("==")
-                .threshold(0)
-                .enabled(true)
-                .build();
-        AlertRuleVO unselected = AlertRuleVO.builder()
-                .id("rule-unselected")
-                .name("Unselected Consumer Alert")
-                .metric("rocketmq_consumer_lag_messages")
-                .operator(">")
-                .threshold(1000)
-                .enabled(true)
-                .build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(selected, unselected));
-
-        String result = alertService.exportPrometheusRulesYaml(List.of("rule-selected"));
-
-        assertThat(result)
-                .contains("SelectedProxyAlert")
-                .contains("rocketmq-proxy.rules")
-                .contains("team: proxy")
-                .doesNotContain("UnselectedConsumerAlert");
-    }
-
-    @Test
-    void exportPrometheusRulesYamlShouldRejectUnavailableSelectedRules() {
-        AlertRuleVO disabled = AlertRuleVO.builder()
-                .id("rule-disabled")
-                .name("Disabled Alert")
-                .metric("rocketmq_proxy_up")
-                .enabled(false)
-                .build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(disabled));
-
-        assertThatThrownBy(() -> alertService.exportPrometheusRulesYaml(List.of("rule-disabled")))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Selected alert rules are unavailable or disabled")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
-    }
-
-    @Test
     void exportPrometheusRulesYamlShouldEmitSingleGroupForSameTeamRules() {
         AlertRuleVO first = AlertRuleVO.builder()
                 .name("Lag Alert A")

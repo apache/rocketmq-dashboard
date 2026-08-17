@@ -18,7 +18,6 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
@@ -31,7 +30,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -65,35 +63,11 @@ class MybatisPlusAlertRepositoryTest {
     void findAlertsShouldNormalizeStoredLevelValues() {
         RmqSystemAlert entity = new RmqSystemAlert();
         entity.setLevel(" WARNING ");
-        Page<RmqSystemAlert> page = new Page<>(1, 20);
-        page.setRecords(List.of(entity));
-        page.setTotal(1);
-        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(alertMapper.selectList(any())).thenReturn(List.of(entity));
 
-        assertThat(repository.findAlerts(null, 1, 20).getItems()).singleElement()
+        assertThat(repository.findAlerts(null)).singleElement()
                 .satisfies(alert -> assertThat(alert.getLevel()).isEqualTo(
                         org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning));
-    }
-
-    @Test
-    void findAlertByIdShouldMapOnlyTheRequestedAlert() {
-        RmqSystemAlert entity = new RmqSystemAlert();
-        entity.setId("alert-1");
-        entity.setLevel("error");
-        when(alertMapper.selectById("alert-1")).thenReturn(entity);
-
-        Optional<SystemAlertVO> result = repository.findAlertById("alert-1");
-
-        assertThat(result).map(SystemAlertVO::getId).contains("alert-1");
-        verify(alertMapper).selectById("alert-1");
-        verify(alertMapper, never()).selectList(any());
-    }
-
-    @Test
-    void findRulesByIdsShouldSkipDatabaseLookupForAnEmptySelection() {
-        assertThat(repository.findRulesByIds(List.of())).isEmpty();
-
-        verify(ruleMapper, never()).selectBatchIds(any());
     }
 
     @Test
@@ -114,20 +88,17 @@ class MybatisPlusAlertRepositoryTest {
 
     @Test
     void findAlertsShouldNormalizeLevelIndependentlyOfDefaultLocale() {
-        Page<RmqSystemAlert> page = new Page<>(1, 20);
-        page.setRecords(List.of());
-        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(alertMapper.selectList(any())).thenReturn(List.of());
         Locale originalLocale = Locale.getDefault();
 
         try {
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
-            repository.findAlerts("INFO", 1, 20);
+            repository.findAlerts("INFO");
         } finally {
             Locale.setDefault(originalLocale);
         }
 
-        verify(alertMapper).selectPage(any(Page.class),
-                argThat(MybatisPlusAlertRepositoryTest::hasInfoLevelParameter));
+        verify(alertMapper).selectList(argThat(MybatisPlusAlertRepositoryTest::hasInfoLevelParameter));
     }
 
     private static boolean hasInfoLevelParameter(Wrapper<RmqSystemAlert> query) {
