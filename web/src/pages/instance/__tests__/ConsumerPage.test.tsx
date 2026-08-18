@@ -35,7 +35,7 @@ vi.mock('../../../services/consumerService', () => ({
   getConsumerProgress: vi.fn(),
   getConsumerStack: vi.fn(),
   getConsumerSubscriptions: vi.fn(),
-  listConsumerGroups: vi.fn(),
+  listConsumerGroupPage: vi.fn(),
   resetConsumerOffset: vi.fn(),
 }));
 const instanceServiceMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
@@ -84,6 +84,17 @@ const group: ConsumerGroup = {
   instances: [],
 };
 
+const groupPage = (
+  items: ConsumerGroup[],
+  overrides: Partial<{ total: number; page: number; size: number }> = {},
+) => ({
+  items,
+  total: items.length,
+  page: 1,
+  size: 20,
+  ...overrides,
+});
+
 const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/consumer') =>
   render(
     <App>
@@ -109,7 +120,7 @@ describe('Consumer page', () => {
         gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
-    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([group]);
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
     vi.mocked(consumerService.createConsumerGroup).mockImplementation(
       async (data: Partial<ConsumerGroup>) =>
         ({
@@ -180,7 +191,13 @@ describe('Consumer page', () => {
 
     expect(await screen.findByText('remote-cg')).toBeInTheDocument();
     expect(screen.getByText('Push')).toBeInTheDocument();
-    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
+    expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(1);
+    expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith({
+      instanceId: 'instance-1',
+      page: 1,
+      pageSize: 20,
+      search: undefined,
+    });
   });
 
   it('downloads the currently filtered consumer groups when exporting', async () => {
@@ -191,7 +208,7 @@ describe('Consumer page', () => {
       exportedBlob = blob as Blob;
       return 'blob:consumer-group-export';
     });
-    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+    const exportGroups = [
       {
         ...group,
         name: 'orders-cg',
@@ -204,7 +221,17 @@ describe('Consumer page', () => {
         namespace: '=formula-risk',
         subscribedTopics: ['users-topic'],
       },
-    ]);
+    ];
+    vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) => {
+      const filtered = params?.search
+        ? exportGroups.filter((item) => item.name.includes(params.search ?? ''))
+        : exportGroups;
+      return groupPage(filtered, {
+        total: filtered.length,
+        page: params?.page ?? 1,
+        size: params?.pageSize ?? 20,
+      });
+    });
     renderWithProviders(<ConsumerPage />);
 
     expect(await screen.findByText('orders-cg')).toBeInTheDocument();
@@ -261,9 +288,9 @@ describe('Consumer page', () => {
         gmtModified: '2026-07-23T00:00:00Z',
       },
     ]);
-    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
-      { ...group, instanceId: 'instance-a' },
-    ]);
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([{ ...group, instanceId: 'instance-a' }]),
+    );
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
 
@@ -345,9 +372,12 @@ describe('Consumer page', () => {
         gmtModified: '2026-07-23T00:00:00Z',
       },
     ]);
-    vi.mocked(consumerService.listConsumerGroups).mockImplementation(async (params) => [
-      { ...group, instanceId: params?.instanceId ?? 'instance-a' },
-    ]);
+    vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) =>
+      groupPage([{ ...group, instanceId: params?.instanceId ?? 'instance-a' }], {
+        page: params?.page ?? 1,
+        size: params?.pageSize ?? 20,
+      }),
+    );
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />, '/instance/instance-a/consumer');
 
@@ -364,7 +394,12 @@ describe('Consumer page', () => {
       await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 'instance-b' }),
+      expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith({
+        instanceId: 'instance-b',
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+      }),
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -421,29 +456,31 @@ describe('Consumer page', () => {
           resolveSecond = resolve;
         }),
       );
-    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
-      {
-        ...group,
-        instances: [
-          {
-            clientId: 'client-1',
-            protocol: 'Remoting',
-            address: '10.0.0.1:1',
-            subscribedTopics: [],
-            lastHeartbeat: '',
-            topicLag: {},
-          },
-          {
-            clientId: 'client-2',
-            protocol: 'Remoting',
-            address: '10.0.0.2:2',
-            subscribedTopics: [],
-            lastHeartbeat: '',
-            topicLag: {},
-          },
-        ],
-      },
-    ]);
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          instances: [
+            {
+              clientId: 'client-1',
+              protocol: 'Remoting',
+              address: '10.0.0.1:1',
+              subscribedTopics: [],
+              lastHeartbeat: '',
+              topicLag: {},
+            },
+            {
+              clientId: 'client-2',
+              protocol: 'Remoting',
+              address: '10.0.0.2:2',
+              subscribedTopics: [],
+              lastHeartbeat: '',
+              topicLag: {},
+            },
+          ],
+        },
+      ]),
+    );
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
 
@@ -461,21 +498,23 @@ describe('Consumer page', () => {
   });
 
   it('loads a consumer client stack trace from the selected instance', async () => {
-    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
-      {
-        ...group,
-        instances: [
-          {
-            clientId: 'client-1',
-            protocol: 'Remoting',
-            address: '10.0.0.1:39210',
-            subscribedTopics: ['remote-topic'],
-            lastHeartbeat: '2026-07-23T00:00:00Z',
-            topicLag: {},
-          },
-        ],
-      },
-    ]);
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          instances: [
+            {
+              clientId: 'client-1',
+              protocol: 'Remoting',
+              address: '10.0.0.1:39210',
+              subscribedTopics: ['remote-topic'],
+              lastHeartbeat: '2026-07-23T00:00:00Z',
+              topicLag: {},
+            },
+          ],
+        },
+      ]),
+    );
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
 
@@ -583,7 +622,7 @@ describe('Consumer page', () => {
   });
 
   it('keeps per-row state when consumer group CSV import partially fails', async () => {
-    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([]);
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([]));
     vi.mocked(consumerService.createConsumerGroup).mockImplementation(
       async (data: Partial<ConsumerGroup>) => {
         if (data.name === 'cg-fail') throw new Error('broker rejected group');
@@ -656,7 +695,7 @@ describe('Consumer page', () => {
     renderWithProviders(<ConsumerPage />);
 
     expect(await screen.findByText('选择实例')).toBeInTheDocument();
-    expect(consumerService.listConsumerGroups).not.toHaveBeenCalled();
+    expect(consumerService.listConsumerGroupPage).not.toHaveBeenCalled();
     expect(document.querySelector('.ant-spin-spinning')).toBeNull();
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '创建 Group' })).toBeDisabled();

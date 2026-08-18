@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.group;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 
 import org.apache.rocketmq.studio.common.domain.Result;
@@ -46,6 +47,16 @@ public class ConsumerGroupController {
             @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String search) {
         return Result.ok(metadataService.listConsumerGroups(instanceId, clusterId, search));
+    }
+
+    @GetMapping("/page")
+    public Result<PageResult<ConsumerGroupVO>> listConsumerGroupsPage(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String clusterId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(metadataService.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize));
     }
 
     @GetMapping("/{name}")
