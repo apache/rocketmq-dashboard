@@ -271,6 +271,36 @@ class MetricsServiceTest {
     }
 
     @Test
+    void queryShouldRejectInvalidPrometheusDurationCombinations() {
+        for (String step : List.of("1s1h", "1m1m", "1ms1s", "1.5h")) {
+            MetricQueryDTO query = MetricQueryDTO.builder()
+                    .metric("rocketmq_messages_in_total")
+                    .start(1700000000L)
+                    .end(1700003600L)
+                    .step(step)
+                    .build();
+
+            assertBadRequest(query, "Metric query step is invalid");
+        }
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldAcceptOrderedPrometheusDurationCombinations() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1h30m15s500ms")
+                .build();
+        when(metricsSource.query(query)).thenReturn(emptyMetricData());
+
+        metricsService.query(query);
+
+        verify(metricsSource).query(query);
+    }
+
+    @Test
     void queryShouldRejectTooManySamples() {
         MetricQueryDTO query = MetricQueryDTO.builder()
                 .metric("rocketmq_messages_in_total")
