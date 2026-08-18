@@ -114,6 +114,7 @@ describe('AuthGate', () => {
     renderGate();
 
     expect(await screen.findByText('protected content')).toBeInTheDocument();
+    expect(useAuthStore.getState()).toMatchObject({ user: null, userId: null, admin: null });
   });
 
   it('allows protected routes for an authenticated session', async () => {
