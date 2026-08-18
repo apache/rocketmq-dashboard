@@ -32,6 +32,7 @@ import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
@@ -126,6 +127,37 @@ class RocketMQDLQProviderTest {
             assertThat(group.isStatsAvailable()).isTrue();
             assertThat(group.getStatus()).isEqualTo("EMPTY");
         });
+    }
+
+    @Test
+    void listDLQGroupsShouldPageAndFilterGroupsTest() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-c",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "order-b",
+                "normal-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        when(adminExt.examineTopicStats(anyString())).thenReturn(new TopicStatsTable());
+
+        PageResult<DLQGroupVO> firstPage = provider.listDLQGroups("instance-a", null, 1, 2);
+
+        assertThat(firstPage.getTotal()).isEqualTo(3);
+        assertThat(firstPage.getPage()).isEqualTo(1);
+        assertThat(firstPage.getSize()).isEqualTo(2);
+        assertThat(firstPage.getItems()).extracting(DLQGroupVO::getGroupName)
+                .containsExactly("group-a", "group-c");
+
+        PageResult<DLQGroupVO> secondPage = provider.listDLQGroups("instance-a", null, 2, 2);
+
+        assertThat(secondPage.getItems()).extracting(DLQGroupVO::getGroupName)
+                .containsExactly("order-b");
+
+        PageResult<DLQGroupVO> filtered = provider.listDLQGroups("instance-a", "order", 1, 20);
+
+        assertThat(filtered.getTotal()).isEqualTo(1);
+        assertThat(filtered.getItems()).extracting(DLQGroupVO::getGroupName)
+                .containsExactly("order-b");
     }
 
 

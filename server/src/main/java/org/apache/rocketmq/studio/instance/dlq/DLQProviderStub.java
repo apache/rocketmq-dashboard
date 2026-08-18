@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.dlq;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -32,6 +33,13 @@ public class DLQProviderStub implements DLQProvider {
     public List<DLQGroupVO> listDLQGroups(String instanceId) {
         log.warn("DLQProviderStub.listDLQGroups called but no real DLQ provider is configured. instanceId={}",
                 instanceId);
+        throw unsupported();
+    }
+
+    @Override
+    public PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize) {
+        log.warn("DLQProviderStub.listDLQGroups(paged) called but no real DLQ provider is configured. "
+                + "instanceId={}, page={}, pageSize={}", instanceId, page, pageSize);
         throw unsupported();
     }
 

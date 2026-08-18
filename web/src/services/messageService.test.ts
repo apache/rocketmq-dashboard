@@ -66,12 +66,25 @@ describe('message service mock data', () => {
 
   it('returns copied DLQ group rows', async () => {
     const first = await listDLQGroups('instance-1');
-    expect(first[0].groupName).toBe('cg-order-processor');
+    expect(first.items[0].groupName).toBe('cg-order-processor');
+    expect(first.total).toBeGreaterThanOrEqual(1);
 
-    first[0].groupName = 'mutated-group';
+    first.items[0].groupName = 'mutated-group';
 
     const second = await listDLQGroups('instance-1');
-    expect(second[0].groupName).toBe('cg-order-processor');
-    expect(second[0]).not.toBe(first[0]);
+    expect(second.items[0].groupName).toBe('cg-order-processor');
+    expect(second.items[0]).not.toBe(first.items[0]);
+  });
+
+  it('filters and pages mock DLQ groups', async () => {
+    const filtered = await listDLQGroups('instance-1', 'order', 1, 20);
+    expect(filtered.items.every((group) => group.groupName.includes('order'))).toBe(true);
+    expect(filtered.total).toBe(filtered.items.length);
+    expect(filtered.page).toBe(1);
+    expect(filtered.size).toBe(20);
+
+    const all = await listDLQGroups('instance-1', undefined, 1, 1);
+    expect(all.items).toHaveLength(1);
+    expect(all.total).toBeGreaterThanOrEqual(1);
   });
 });

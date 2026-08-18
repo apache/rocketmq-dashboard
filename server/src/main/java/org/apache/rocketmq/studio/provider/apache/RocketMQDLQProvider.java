@@ -32,7 +32,9 @@ import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
@@ -52,6 +54,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -77,15 +80,21 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     @Override
     public List<DLQGroupVO> listDLQGroups(String instanceId) {
-        return runtimeAdminClientResolver.execute(instanceId, this::listDLQGroups);
+        return listDLQGroups(instanceId, null, 1, Integer.MAX_VALUE).getItems();
     }
 
-    private List<DLQGroupVO> listDLQGroups(MQAdminExt adminExt) throws Exception {
-        Set<String> topics;
-        TopicList topicList = adminExt.fetchAllTopicList();
-        topics = topicList == null ? Collections.emptySet() : topicList.getTopicList();
+    @Override
+    public PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                admin -> listDLQGroups(admin, search, page, pageSize));
+    }
 
-        List<DLQGroupVO> groups = new ArrayList<>();
+    private PageResult<DLQGroupVO> listDLQGroups(MQAdminExt adminExt, String search, int page, int pageSize)
+            throws Exception {
+        TopicList topicList = adminExt.fetchAllTopicList();
+        Set<String> topics = topicList == null ? Collections.emptySet() : topicList.getTopicList();
+
+        List<String> dlqTopics = new ArrayList<>();
         for (String topic : topics) {
             if (topic == null || !topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
                 continue;
@@ -94,9 +103,19 @@ public class RocketMQDLQProvider implements DLQProvider {
             if (!StringUtils.hasText(groupName)) {
                 continue;
             }
-            groups.add(buildDLQGroup(adminExt, groupName, topic));
+            if (search == null || groupName.contains(search) || topic.contains(search)) {
+                dlqTopics.add(topic);
+            }
         }
-        return groups;
+        dlqTopics.sort(Comparator.naturalOrder());
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, dlqTopics.size());
+        int to = (int) Math.min(offset + pageSize, dlqTopics.size());
+        List<DLQGroupVO> groups = dlqTopics.subList(from, to).stream()
+                .map(topic -> buildDLQGroup(adminExt,
+                        topic.substring(MixAll.DLQ_GROUP_TOPIC_PREFIX.length()), topic))
+                .toList();
+        return PageResult.of(groups, dlqTopics.size(), page, pageSize);
     }
 
     private DLQGroupVO buildDLQGroup(MQAdminExt adminExt, String groupName, String dlqTopic) {

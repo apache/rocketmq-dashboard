@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,8 +32,19 @@ import java.util.List;
 @Slf4j
 public class DLQService {
 
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final DLQProvider dlqProvider;
     private final InstanceProviderRegistry providerRegistry;
+
+    public PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize) {
+        requireApacheInstance(instanceId);
+        if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(400, "Invalid page or pageSize");
+        }
+        return dlqProvider.listDLQGroups(instanceId,
+                StringUtils.hasText(search) ? search.trim() : null, page, pageSize);
+    }
 
     public List<DLQGroupVO> listDLQGroups(String instanceId) {
         requireApacheInstance(instanceId);

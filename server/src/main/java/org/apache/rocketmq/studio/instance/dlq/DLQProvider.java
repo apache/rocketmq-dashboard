@@ -18,9 +18,13 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 
 import java.util.List;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 
 public interface DLQProvider {
     List<DLQGroupVO> listDLQGroups(String instanceId);
+
+    PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize);
+
     DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                      String targetTopic);
     List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,

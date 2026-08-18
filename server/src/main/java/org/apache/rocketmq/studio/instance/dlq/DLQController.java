@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
@@ -43,8 +44,11 @@ public class DLQController {
     private final ObjectMapper objectMapper;
 
     @GetMapping
-    public Result<List<DLQGroupVO>> listDLQGroups(@RequestParam String instanceId) {
-        return Result.ok(dlqService.listDLQGroups(instanceId));
+    public Result<PageResult<DLQGroupVO>> listDLQGroups(@RequestParam String instanceId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(dlqService.listDLQGroups(instanceId, search, page, pageSize));
     }
 
     @PostMapping("/resend")

@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.dlq;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -157,6 +158,32 @@ class DLQServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("endTime must not be earlier than startTime")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void listDLQGroupsShouldDelegatePagedQueryWithTrimmedSearch() {
+        PageResult<DLQGroupVO> page = PageResult.of(List.of(), 0, 2, 50);
+        when(dlqProvider.listDLQGroups("instance-1", "order", 2, 50)).thenReturn(page);
+
+        PageResult<DLQGroupVO> result = dlqService.listDLQGroups("instance-1", " order ", 2, 50);
+
+        assertThat(result).isSameAs(page);
+        verify(dlqProvider).listDLQGroups("instance-1", "order", 2, 50);
+    }
+
+    @Test
+    void listDLQGroupsShouldRejectInvalidPagination() {
+        assertThatThrownBy(() -> dlqService.listDLQGroups("instance-1", null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid page or pageSize");
+        assertThatThrownBy(() -> dlqService.listDLQGroups("instance-1", null, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid page or pageSize");
+        assertThatThrownBy(() -> dlqService.listDLQGroups("instance-1", null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid page or pageSize");
 
         verifyNoInteractions(dlqProvider);
     }
