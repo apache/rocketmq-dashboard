@@ -28,9 +28,12 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthInterceptorTest {
@@ -97,6 +100,33 @@ class AuthInterceptorTest {
 
         assertThat(AuthenticatedUserContext.currentUsernameOrSystem())
                 .isEqualTo(AuthenticatedUserContext.SYSTEM_ACTOR);
+    }
+
+    @Test
+    void shouldResolveAuthenticatedUserOnlyOncePerRequest() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthService authService = mock(AuthService.class);
+        LoginVO.UserInfo user = LoginVO.UserInfo.builder()
+                .userId(1L)
+                .username("admin")
+                .admin(true)
+                .build();
+        when(authService.getAuthenticatedUser("Bearer session-token"))
+                .thenReturn(Optional.of(user));
+        when(authService.isAuthenticated("Bearer session-token")).thenReturn(true);
+        when(authService.isAdmin("Bearer session-token")).thenReturn(true);
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService, settingsRepository());
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/ops/updateUseTLS", "session-token");
+
+        boolean allowed = interceptor.preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+        verify(authService).getAuthenticatedUser("Bearer session-token");
+        verify(authService, never()).isAuthenticated("Bearer session-token");
+        verify(authService, never()).isAdmin("Bearer session-token");
     }
 
     @Test

@@ -32,6 +32,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Optional;
+
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -107,13 +109,14 @@ class AuthCorsIntegrationTest {
                         .header(HttpHeaders.ORIGIN, FRONTEND_ORIGIN))
                 .andExpect(status().isUnauthorized());
 
-        verify(authService).isAuthenticated(null);
+        verify(authService).getAuthenticatedUser(null);
     }
+
     @Test
     void shouldRejectNonAdminMutationBeforeControllerExecution() throws Exception {
         String authorization = "Bearer reader-token";
-        when(authService.isAuthenticated(authorization)).thenReturn(true);
-        when(authService.isAdmin(authorization)).thenReturn(false);
+        when(authService.getAuthenticatedUser(authorization)).thenReturn(Optional.of(
+                LoginVO.UserInfo.builder().userId(1L).username("reader").admin(false).build()));
 
         mockMvc.perform(post("/api/instances/create")
                         .header(HttpHeaders.AUTHORIZATION, authorization)
