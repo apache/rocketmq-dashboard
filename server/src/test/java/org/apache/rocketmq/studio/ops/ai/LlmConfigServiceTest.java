@@ -29,11 +29,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -187,6 +189,7 @@ class LlmConfigServiceTest {
         assertThat(saved.getBaseUrl()).isEqualTo("https://api.deepseek.com/v1");
         assertThat(saved.getMaxTokens()).isEqualTo(8192);
         assertThat(saved.getTemperature()).isEqualTo(0.2);
+        when(settingsService.getGeneralSettings()).thenReturn(saved);
         assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("deepseek");
         assertThat(llmConfigService.getConfig().getMaxTokens()).isEqualTo(8192);
         assertThat(llmConfigService.getConfig().getTemperature()).isEqualTo(0.2);
@@ -240,6 +243,36 @@ class LlmConfigServiceTest {
 
         assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("openai");
         assertThat(llmConfigService.getConfig().getModel()).isEqualTo("gpt-4o");
+    }
+
+    @Test
+    void getConfigShouldReflectGeneralSettingsSavedAfterLlmConfiguration() {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("deepseek")
+                .apiKey("sk-deepseek")
+                .apiBase("https://api.deepseek.com/v1")
+                .model("deepseek-chat")
+                .maxTokens(8192)
+                .temperature(0.2)
+                .enabled(true)
+                .build());
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .llmProvider("ollama")
+                .llmEngine("http")
+                .apiKey("")
+                .model("llama3")
+                .baseUrl("http://localhost:11434/v1")
+                .maxTokens(4096)
+                .temperature(0.7)
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.getProvider()).isEqualTo("ollama");
+        assertThat(config.getEngine()).isEqualTo("http");
+        assertThat(config.getModel()).isEqualTo("llama3");
+        assertThat(config.getMaxTokens()).isEqualTo(4096);
+        assertThat(config.getTemperature()).isEqualTo(0.7);
     }
 
     @Test
@@ -503,6 +536,13 @@ class LlmConfigServiceTest {
 
     @Test
     void listModelsShouldUseSavedProvider() {
+        AtomicReference<GeneralSettingsVO> persisted = new AtomicReference<>(settingsService.getGeneralSettings());
+        when(settingsService.getGeneralSettings()).thenAnswer(invocation -> persisted.get());
+        doAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return null;
+        }).when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
+
         llmConfigService.saveConfig(LlmConfigVO.builder()
                 .provider("tongyi")
                 .apiKey("dashscope-key")
@@ -552,6 +592,13 @@ class LlmConfigServiceTest {
 
     @Test
     void listModelsShouldNotBlockConcurrentConfigReadsOrWrites() throws Exception {
+        AtomicReference<GeneralSettingsVO> persisted = new AtomicReference<>(settingsService.getGeneralSettings());
+        when(settingsService.getGeneralSettings()).thenAnswer(invocation -> persisted.get());
+        doAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return null;
+        }).when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
+
         CountDownLatch listingStarted = new CountDownLatch(1);
         CountDownLatch releaseListing = new CountDownLatch(1);
         when(llmClient.supports(any())).thenReturn(true);

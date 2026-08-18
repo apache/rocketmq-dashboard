@@ -77,12 +77,8 @@ public class LlmConfigService {
     private final OpenAiCompatibleLlmClient llmClient;
     private final AgentProviderRegistry agentProviders;
     private final LlmProperties llmProperties;
-    private LlmConfigVO overrides;
-
     public synchronized LlmConfigVO getConfig() {
-        LlmConfigVO config = overrides != null
-                ? copy(overrides)
-                : fromGeneralSettings(settingsService.getGeneralSettings());
+        LlmConfigVO config = fromGeneralSettings(settingsService.getGeneralSettings());
         String token = envToken();
         if (!!StringUtils.hasText(token)) {
             config.setApiKey(token.trim());
@@ -120,9 +116,7 @@ public class LlmConfigService {
                 .maxTokens(normalized.getMaxTokens())
                 .temperature(normalized.getTemperature())
                 .build();
-        LlmConfigVO nextOverrides = copy(normalized);
         settingsService.saveGeneralSettings(updated);
-        overrides = nextOverrides;
     }
 
     public LlmOperationResultVO testConfig(LlmConfigVO config) {
@@ -270,10 +264,6 @@ public class LlmConfigService {
                 .apiVersion(defaultString(config == null ? null : config.getApiVersion(), "2024-02-15-preview"))
                 .awsRegion(defaultString(config == null ? null : config.getAwsRegion(), "us-east-1"))
                 .build();
-    }
-
-    private LlmConfigVO copy(LlmConfigVO config) {
-        return normalize(config);
     }
 
     private LlmConfigVO normalizeWithStoredApiKey(LlmConfigVO config) {

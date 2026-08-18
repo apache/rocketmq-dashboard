@@ -136,11 +136,14 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldPreserveProviderSpecificLlmFieldsWhenOmitted() {
+    void saveGeneralSettingsShouldPreserveLlmFieldsWhenOmitted() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .llmEngine("qoder")
                 .deploymentName("production-gpt")
                 .apiVersion("2024-06-01")
                 .awsRegion("eu-west-1")
+                .maxTokens(8192)
+                .temperature(0.2)
                 .build();
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .theme("light")
@@ -149,9 +152,12 @@ class SettingsServiceTest {
 
         settingsService.saveGeneralSettings(update);
 
+        assertThat(update.getLlmEngine()).isEqualTo("qoder");
         assertThat(update.getDeploymentName()).isEqualTo("production-gpt");
         assertThat(update.getApiVersion()).isEqualTo("2024-06-01");
         assertThat(update.getAwsRegion()).isEqualTo("eu-west-1");
+        assertThat(update.getMaxTokens()).isEqualTo(8192);
+        assertThat(update.getTemperature()).isEqualTo(0.2);
     }
 
     @Test
