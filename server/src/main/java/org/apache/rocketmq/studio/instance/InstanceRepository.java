@@ -60,7 +60,7 @@ public interface InstanceRepository {
 
     boolean existsByCredentialId(Long credentialId);
 
-    long countTopicsByInstance(Long instanceId);
+    long countTopicsByInstance(String instanceId);
 
-    long countGroupsByInstance(Long instanceId);
+    long countGroupsByInstance(String instanceId);
 }

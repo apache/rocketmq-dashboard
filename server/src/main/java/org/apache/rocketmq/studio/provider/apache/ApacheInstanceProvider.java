@@ -34,7 +34,6 @@ import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -68,24 +67,21 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public int countTopics(String instanceId) {
-        // The instance_id foreign key is numeric; resolve the external identifier first.
         return instanceRepository.findByIdentifier(instanceId)
-                .map(instance -> (int) instanceRepository.countTopicsByInstance(instance.getId()))
+                .map(instance -> (int) instanceRepository.countTopicsByInstance(instance.getName()))
                 .orElse(0);
     }
 
     @Override
     public int countGroups(String instanceId) {
         return instanceRepository.findByIdentifier(instanceId)
-                .map(instance -> (int) instanceRepository.countGroupsByInstance(instance.getId()))
+                .map(instance -> (int) instanceRepository.countGroupsByInstance(instance.getName()))
                 .orElse(0);
     }
 
     @Override
     public List<TopicVO> listTopics(String instanceId, String type, String search) {
-        return metadataProvider.listTopics(null, type, search).stream()
-                .filter(topic -> matchesInstance(topic.getInstanceId(), instanceId))
-                .toList();
+        return metadataProvider.listTopics(instanceId, null, type, search);
     }
 
     @Override
@@ -158,12 +154,5 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return messageProvider.getMessageTrace(instanceId, msgId, topic);
-    }
-
-    private boolean matchesInstance(String topicInstanceId, String instanceId) {
-        if (instanceId == null || instanceId.isBlank()) {
-            return true;
-        }
-        return Objects.equals(topicInstanceId, instanceId);
     }
 }

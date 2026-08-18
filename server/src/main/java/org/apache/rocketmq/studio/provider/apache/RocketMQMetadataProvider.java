@@ -116,7 +116,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<TopicVO> listTopics(String clusterId, String type, String search) {
+        return listTopics(null, clusterId, type, search);
+    }
+
+    @Override
+    public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
+                .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
@@ -136,7 +142,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
             String search, int page, int pageSize) {
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(StringUtils.hasText(instanceId), RmqTopic::getInstanceId, instanceId)
+                .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
@@ -195,7 +201,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(StringUtils.hasText(instanceId), RmqGroup::getInstanceId, instanceId)
+                .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName);
@@ -223,6 +229,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             result.add(vo);
         }
         return result;
+    }
+
+    private String normalizeMetadataScope(String instanceId) {
+        return StringUtils.hasText(instanceId) ? instanceId.trim() : "";
     }
 
     private ConsumeType parseConsumeType(String messageModel) {

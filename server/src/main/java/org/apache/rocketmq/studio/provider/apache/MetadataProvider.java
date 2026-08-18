@@ -31,6 +31,10 @@ import java.util.List;
 public interface MetadataProvider {
     List<TopicVO> listTopics(String clusterId, String type, String search);
 
+    default List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
+        return listTopics(clusterId, type, search);
+    }
+
     default PageResult<TopicVO> listTopicsPage(String clusterId, String type, String search,
             int page, int pageSize) {
         List<TopicVO> topics = listTopics(clusterId, type, search);

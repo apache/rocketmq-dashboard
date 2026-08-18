@@ -200,7 +200,7 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
-    void createTopicScopesLookupToCluster() throws Exception {
+    void createTopicScopesLookupToClusterAndLegacyInstanceScope() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         ClusterInfo clusterInfo = new ClusterInfo();
         Map<String, Set<String>> clusterAddrTable = new HashMap<>();
@@ -224,7 +224,7 @@ class RocketMQAdminClientImplTest {
                 ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper, times(2)).selectOne(captor.capture());
         for (LambdaQueryWrapper<RmqTopic> wrapper : captor.getAllValues()) {
-            assertThat(wrapper.getSqlSegment()).contains("cluster_id");
+            assertThat(wrapper.getSqlSegment()).contains("cluster_id", "instance_id");
         }
     }
 
@@ -359,7 +359,7 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
-    void topicDeleteUsesSelectedInstanceAndScopesMetadataToCluster() throws Exception {
+    void topicDeleteUsesSelectedInstanceAndScopesMetadataToClusterAndInstance() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
@@ -374,7 +374,7 @@ class RocketMQAdminClientImplTest {
 
         ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper).delete(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "instance_id", "name");
         verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
         verify(selectedAdmin).deleteTopicInNameServer(Set.of("10.0.0.2:9876"), "cluster-1", "orders");
     }
@@ -422,6 +422,9 @@ class RocketMQAdminClientImplTest {
         verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any());
         verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).selectOne(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "instance_id", "name");
     }
 
     @Test
@@ -448,7 +451,7 @@ class RocketMQAdminClientImplTest {
         verify(adminExt, never()).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).delete(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "instance_id", "name");
     }
 
     @Test

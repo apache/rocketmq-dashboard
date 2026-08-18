@@ -152,13 +152,13 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     @Override
-    public long countTopicsByInstance(Long instanceId) {
+    public long countTopicsByInstance(String instanceId) {
         return topicMapper.selectCount(
                 new QueryWrapper<RmqTopic>().eq("instance_id", instanceId));
     }
 
     @Override
-    public long countGroupsByInstance(Long instanceId) {
+    public long countGroupsByInstance(String instanceId) {
         return groupMapper.selectCount(
                 new QueryWrapper<RmqGroup>().eq("instance_id", instanceId));
     }
