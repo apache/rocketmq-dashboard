@@ -26,3 +26,24 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   anchor.remove();
   URL.revokeObjectURL(url);
 };
+
+export interface CsvColumn<T> {
+  header: string;
+  value: (row: T) => unknown;
+}
+
+export const escapeCsvCell = (value: unknown) => {
+  const text = value == null ? '' : String(value);
+  const formulaSafeText = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
+  return `"${formulaSafeText.replace(/"/g, '""')}"`;
+};
+
+export const buildCsv = <T>(columns: CsvColumn<T>[], rows: T[]) =>
+  [
+    columns.map((column) => escapeCsvCell(column.header)).join(','),
+    ...rows.map((row) => columns.map((column) => escapeCsvCell(column.value(row))).join(',')),
+  ].join('\n');
+
+export const downloadCsv = (filename: string, csv: string) => {
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename);
+};

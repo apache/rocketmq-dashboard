@@ -29,7 +29,7 @@ import {
   Table,
   Tag,
 } from 'antd';
-import { MagnifyingGlass } from '@phosphor-icons/react';
+import { DownloadSimple, MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import {
   fetchProducerGroups,
@@ -42,12 +42,33 @@ import {
 } from '../../api/producer';
 import type { Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const readinessConfig: Record<ProducerReadiness, { color: string; type: 'success' | 'warning' }> = {
   READY: { color: 'success', type: 'success' },
   WARNING: { color: 'warning', type: 'warning' },
   UNAVAILABLE: { color: 'error', type: 'warning' },
 };
+
+interface ProducerConnectionExportRow extends ProducerConnection {
+  instanceId: string;
+  topic?: string;
+  producerGroup?: string;
+  readiness?: ProducerReadiness;
+  warnings: string;
+}
+
+const PRODUCER_CONNECTION_EXPORT_COLUMNS: CsvColumn<ProducerConnectionExportRow>[] = [
+  { header: 'Instance ID', value: (connection) => connection.instanceId },
+  { header: 'Topic', value: (connection) => connection.topic },
+  { header: 'Producer Group', value: (connection) => connection.producerGroup },
+  { header: 'Readiness', value: (connection) => connection.readiness },
+  { header: 'Warnings', value: (connection) => connection.warnings },
+  { header: 'Client ID', value: (connection) => connection.clientId },
+  { header: 'Address', value: (connection) => connection.clientAddr },
+  { header: 'Language', value: (connection) => connection.language },
+  { header: 'Version', value: (connection) => connection.versionDesc },
+];
 
 const ProducerPage = () => {
   const [form] = Form.useForm();
@@ -224,6 +245,24 @@ const ProducerPage = () => {
       </Flex>
     );
 
+  const handleExport = () => {
+    const { selectedTopic, producerGroup } = form.getFieldsValue([
+      'selectedTopic',
+      'producerGroup',
+    ]) as { selectedTopic?: string; producerGroup?: string };
+    const warnings = connectionSummary?.warnings.join(';') ?? '';
+    const rows = connectionList.map((connection) => ({
+      ...connection,
+      instanceId: selectedInstanceId ?? '',
+      topic: selectedTopic,
+      producerGroup,
+      readiness: connectionSummary?.readiness,
+      warnings,
+    }));
+    const filename = `rocketmq-producer-connections-${new Date().toISOString().slice(0, 10)}.csv`;
+    const csv = buildCsv(PRODUCER_CONNECTION_EXPORT_COLUMNS, rows);
+    downloadCsv(filename, csv);
+  };
   return (
     <div style={{ padding: 0 }}>
       <div
@@ -296,6 +335,15 @@ const ProducerPage = () => {
           </Form.Item>
         </Form>
 
+        <Flex justify="flex-end" style={{ marginBottom: 16 }}>
+          <Button
+            icon={<DownloadSimple size={16} />}
+            disabled={connectionList.length === 0}
+            onClick={handleExport}
+          >
+            {t('common.export')}
+          </Button>
+        </Flex>
         {connectionSummary && (
           <div style={{ marginBottom: 20 }}>
             <Alert

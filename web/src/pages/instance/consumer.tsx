@@ -86,6 +86,7 @@ import {
   validateConsumerGroupCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -121,7 +122,7 @@ const formatDelay = (totalSeconds: number): string => {
   return parts.length > 0 ? parts.join('') : '0秒';
 };
 
-const GROUP_EXPORT_COLUMNS: Array<{ header: string; value: (group: ConsumerGroup) => unknown }> = [
+const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
   { header: 'Name', value: (group) => group.name },
   { header: 'Namespace', value: (group) => group.namespace },
   { header: 'Cluster ID', value: (group) => group.clusterId },
@@ -138,32 +139,7 @@ const GROUP_EXPORT_COLUMNS: Array<{ header: string; value: (group: ConsumerGroup
   { header: 'Updated At', value: (group) => group.gmtModified },
 ];
 
-const escapeCsvCell = (value: unknown) => {
-  const text = value == null ? '' : String(value);
-  const formulaSafeText = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
-  return `"${formulaSafeText.replace(/"/g, '""')}"`;
-};
-
-const buildConsumerGroupCsv = (groups: ConsumerGroup[]) =>
-  [
-    GROUP_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.header)).join(','),
-    ...groups.map((group) =>
-      GROUP_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.value(group))).join(','),
-    ),
-  ].join('\n');
-
-const downloadCsv = (filename: string, csv: string) => {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-};
+const buildConsumerGroupCsv = (groups: ConsumerGroup[]) => buildCsv(GROUP_EXPORT_COLUMNS, groups);
 
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
 

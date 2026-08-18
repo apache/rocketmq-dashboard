@@ -16,7 +16,25 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { downloadBlob } from './download';
+import { buildCsv, downloadBlob } from './download';
+describe('buildCsv', () => {
+  it('escapes quotes, empty values, and spreadsheet formulas', () => {
+    const csv = buildCsv(
+      [
+        { header: 'Name', value: (row: { name: string }) => row.name },
+        { header: 'Remark', value: (row: { remark?: string | null }) => row.remark },
+      ],
+      [
+        { name: '=SUM(A1:A2)', remark: 'hello, "mq"' },
+        { name: '\nline-feed', remark: null },
+      ],
+    );
+
+    expect(csv).toBe(
+      ['"Name","Remark"', '"\'=SUM(A1:A2)","hello, ""mq"""', '"\'\nline-feed",""'].join('\n'),
+    );
+  });
+});
 
 describe('downloadBlob', () => {
   afterEach(() => {

@@ -39,7 +39,7 @@ import { useLang } from '../../i18n/LangContext';
 import type { DLQGroup } from '../../api/message';
 import { listDLQGroups, resendDLQ } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
-import { downloadBlob } from '../../utils/download';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -77,26 +77,17 @@ const formatDateTime = (iso?: string | null): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
-const escapeCSVValue = (value: string) => {
-  const safeValue = /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
-  return `"${safeValue.replace(/"/g, '""')}"`;
-};
+const DLQ_EXPORT_COLUMNS: CsvColumn<DLQGroup>[] = [
+  { header: 'Group Name', value: (group) => group.groupName },
+  { header: 'DLQ Topic', value: (group) => group.dlqTopic },
+  { header: 'Message Count', value: (group) => group.messageCount },
+  { header: 'Retry Count', value: (group) => group.retryCount },
+  { header: 'Status', value: (group) => group.status },
+  { header: 'Last Enqueue Time', value: (group) => group.lastEnqueueTime },
+];
 
 const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
-  const rows = [
-    ['Group Name', 'DLQ Topic', 'Message Count', 'Retry Count', 'Status', 'Last Enqueue Time'],
-    ...groups.map((group) => [
-      group.groupName,
-      group.dlqTopic,
-      String(group.messageCount),
-      String(group.retryCount),
-      group.status,
-      group.lastEnqueueTime || '',
-    ]),
-  ];
-  const csv = rows.map((row) => row.map(escapeCSVValue).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  downloadBlob(blob, filename);
+  downloadCsv(filename, buildCsv(DLQ_EXPORT_COLUMNS, groups));
 };
 
 /* ═══════════════════════════════════════════
