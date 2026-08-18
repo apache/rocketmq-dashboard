@@ -67,13 +67,11 @@ const remoteApi = {
 
 
         const csrfToken = await remoteApi.getCsrfToken();
-        console.log(csrfToken)
         if (!csrfToken) {
             console.warn('CSRF Token not found');
         }else{
             headers["X-XSRF-TOKEN"] = csrfToken;
         }
-        console.log(csrfToken)
 
 
         try {
@@ -92,14 +90,12 @@ const remoteApi = {
 
             if(response.status == 403){
                 window.localStorage.removeItem("csrfToken");
-                console.log(111)
                 await remoteApi.getCsrfToken()
             }
             return response;
         } catch (error) {
             console.error('fetch error:', error);
             window.localStorage.removeItem("csrfToken");
-            console.log(111)
             await remoteApi.getCsrfToken()
         }
     },
