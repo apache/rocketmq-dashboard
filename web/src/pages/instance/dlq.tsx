@@ -205,7 +205,7 @@ const DLQPage = () => {
   }, [groups, selectedGroupNames]);
 
   /* ─── Handlers ─── */
-  const handleInstanceChange = (instanceId: number) => {
+  const handleInstanceChange = (instanceId: string) => {
     retryRequestIdRef.current += 1;
     setRetrySubmitting(false);
     selectInstance(instanceId);

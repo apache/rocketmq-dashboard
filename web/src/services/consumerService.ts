@@ -39,6 +39,12 @@ function copySubscription(subscription: SubscriptionEntry): SubscriptionEntry {
   return { ...subscription };
 }
 
+const normalizeConsumerGroup = <T extends ConsumerGroup>(group: T): T => ({
+  ...group,
+  subscribedTopics: group.subscribedTopics ?? [],
+  instances: group.instances ?? [],
+});
+
 export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<ConsumerGroup[]> {
   if (isMockMode()) {
     let result = [...consumerGroupsState];
@@ -49,12 +55,12 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<C
     }
     return result.map(copyConsumerGroup);
   }
-  return metadataApi.listConsumerGroups(params);
+  return (await metadataApi.listConsumerGroups(params)).map(normalizeConsumerGroup);
 }
 
 export async function getConsumerProgress(
   name: string,
-  instanceId?: number,
+  instanceId?: string,
 ): Promise<QueueProgress[]> {
   if (isMockMode()) {
     return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
@@ -64,19 +70,19 @@ export async function getConsumerProgress(
 
 export async function getConsumerGroup(
   name: string,
-  instanceId?: number,
+  instanceId?: string,
 ): Promise<ConsumerGroupDetail> {
   if (isMockMode()) {
     const group = mockConsumerGroups.find((item) => item.name === name);
     if (!group) throw new Error(`Consumer group not found: ${name}`);
     return copyConsumerGroup(group as unknown as ConsumerGroupDetail) as ConsumerGroupDetail;
   }
-  return metadataApi.getConsumerGroup(name, instanceId);
+  return normalizeConsumerGroup(await metadataApi.getConsumerGroup(name, instanceId));
 }
 
 export async function getConsumerSubscriptions(
   name: string,
-  instanceId?: number,
+  instanceId?: string,
 ): Promise<SubscriptionEntry[]> {
   if (isMockMode()) {
     return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
@@ -89,7 +95,7 @@ export async function getConsumerSubscriptions(
 export async function getConsumerStack(
   name: string,
   clientId: string,
-  instanceId?: number,
+  instanceId?: string,
 ): Promise<ConsumerStackTrace> {
   if (isMockMode()) {
     return {
@@ -128,7 +134,7 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
   return metadataApi.createConsumerGroup(data);
 }
 
-export async function deleteConsumerGroup(name: string, instanceId?: number): Promise<void> {
+export async function deleteConsumerGroup(name: string, instanceId?: string): Promise<void> {
   if (isMockMode()) {
     const idx = consumerGroupsState.findIndex((group) => group.name === name);
     if (idx >= 0) consumerGroupsState.splice(idx, 1);
@@ -151,7 +157,7 @@ export interface BatchDeleteConsumerGroupsResult {
 // failing group cannot silently abort the whole batch.
 export async function batchDeleteConsumerGroups(
   names: string[],
-  instanceId?: number,
+  instanceId?: string,
 ): Promise<BatchDeleteConsumerGroupsResult> {
   const result: BatchDeleteConsumerGroupsResult = { deleted: [], failed: [] };
   for (const name of names) {

@@ -28,7 +28,7 @@ public class UpdateTopicDTO {
     private String name;
     private String namespace;
     private String clusterId;
-    private Long instanceId;
+    private String instanceId;
     private TopicType type;
     @PositiveOrZero(message = "writeQueues must be zero or positive")
     private Integer writeQueues;
@@ -42,7 +42,6 @@ public class UpdateTopicDTO {
         topic.setName(name);
         topic.setNamespace(namespace);
         topic.setClusterId(clusterId);
-        topic.setInstanceId(instanceId);
         topic.setType(type);
         if (writeQueues != null) {
             topic.setWriteQueues(writeQueues);

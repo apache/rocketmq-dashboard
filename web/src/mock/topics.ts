@@ -18,7 +18,7 @@
 export interface Topic {
   name: string;
   namespace: string;
-  instanceId: number;
+  instanceId: string;
   type: 'NORMAL' | 'FIFO' | 'DELAY' | 'TRANSACTION' | 'LITE';
   clusterId: string;
   writeQueues: number;
@@ -36,7 +36,7 @@ export const topics: Topic[] = [
   // NORMAL topics (4)
   {
     name: 'order-create',
-    instanceId: 3,
+    instanceId: 'instance-proxy-1',
     namespace: 'trade',
     type: 'NORMAL',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -52,7 +52,7 @@ export const topics: Topic[] = [
   },
   {
     name: 'user-activity-log',
-    instanceId: 5,
+    instanceId: 'instance-proxy-3',
     namespace: 'user',
     type: 'NORMAL',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -68,7 +68,7 @@ export const topics: Topic[] = [
   },
   {
     name: 'system-log',
-    instanceId: 2,
+    instanceId: 'instance-direct-2',
     namespace: 'message',
     type: 'NORMAL',
     clusterId: 'rmq-cn-v4-prod-02',
@@ -84,7 +84,7 @@ export const topics: Topic[] = [
   },
   {
     name: 'notification-email',
-    instanceId: 4,
+    instanceId: 'instance-proxy-2',
     namespace: 'message',
     type: 'NORMAL',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -102,7 +102,7 @@ export const topics: Topic[] = [
   // FIFO topics (2)
   {
     name: 'inventory-sync',
-    instanceId: 3,
+    instanceId: 'instance-proxy-1',
     namespace: 'supply',
     type: 'FIFO',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -118,7 +118,7 @@ export const topics: Topic[] = [
   },
   {
     name: 'payment-sequence',
-    instanceId: 3,
+    instanceId: 'instance-proxy-1',
     namespace: 'trade',
     type: 'FIFO',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -136,7 +136,7 @@ export const topics: Topic[] = [
   // DELAY topics (2)
   {
     name: 'notification-push',
-    instanceId: 4,
+    instanceId: 'instance-proxy-2',
     namespace: 'message',
     type: 'DELAY',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -152,7 +152,7 @@ export const topics: Topic[] = [
   },
   {
     name: 'scheduled-task',
-    instanceId: 1,
+    instanceId: 'instance-direct-1',
     namespace: 'supply',
     type: 'DELAY',
     clusterId: 'rmq-cn-v4-prod-02',
@@ -170,7 +170,7 @@ export const topics: Topic[] = [
   // TRANSACTION topics (2)
   {
     name: 'payment-callback',
-    instanceId: 1,
+    instanceId: 'instance-direct-1',
     namespace: 'trade',
     type: 'TRANSACTION',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -186,7 +186,7 @@ export const topics: Topic[] = [
   },
   {
     name: 'order-confirm',
-    instanceId: 3,
+    instanceId: 'instance-proxy-1',
     namespace: 'trade',
     type: 'TRANSACTION',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -204,7 +204,7 @@ export const topics: Topic[] = [
   // LITE topics (2)
   {
     name: 'chat-session',
-    instanceId: 4,
+    instanceId: 'instance-proxy-2',
     namespace: 'ai',
     type: 'LITE',
     clusterId: 'rmq-cn-v5-prod-01',
@@ -220,7 +220,7 @@ export const topics: Topic[] = [
   },
   {
     name: 'ai-task-dispatch',
-    instanceId: 5,
+    instanceId: 'instance-proxy-3',
     namespace: 'ai',
     type: 'LITE',
     clusterId: 'rmq-cn-v5-prod-01',

@@ -27,7 +27,7 @@ import {
 
 const { mode, metadataApi } = vi.hoisted(() => ({
   mode: { mock: true },
-  metadataApi: { getConsumerGroup: vi.fn() },
+  metadataApi: { getConsumerGroup: vi.fn(), listConsumerGroups: vi.fn() },
 }));
 
 vi.mock('./dataMode', () => ({ isMockMode: () => mode.mock }));
@@ -120,8 +120,25 @@ describe('consumer service mock data', () => {
     try {
       metadataApi.getConsumerGroup.mockResolvedValue(detail);
 
-      await expect(getConsumerGroup('cg-orders', 1)).resolves.toEqual(detail);
-      expect(metadataApi.getConsumerGroup).toHaveBeenCalledWith('cg-orders', 1);
+      await expect(getConsumerGroup('cg-orders', 'instance-1')).resolves.toEqual(detail);
+      expect(metadataApi.getConsumerGroup).toHaveBeenCalledWith('cg-orders', 'instance-1');
+    } finally {
+      mode.mock = true;
+    }
+  });
+
+  it('normalizes null subscribedTopics and instances from the backend', async () => {
+    mode.mock = false;
+    const rawGroup = { name: 'cg-nulls', subscribedTopics: null, instances: null };
+    metadataApi.listConsumerGroups.mockResolvedValue([rawGroup]);
+    metadataApi.getConsumerGroup.mockResolvedValue(rawGroup);
+    try {
+      const groups = await listConsumerGroups();
+      expect(groups[0].subscribedTopics).toEqual([]);
+      expect(groups[0].instances).toEqual([]);
+      const detail = await getConsumerGroup('cg-nulls');
+      expect(detail.subscribedTopics).toEqual([]);
+      expect(detail.instances).toEqual([]);
     } finally {
       mode.mock = true;
     }

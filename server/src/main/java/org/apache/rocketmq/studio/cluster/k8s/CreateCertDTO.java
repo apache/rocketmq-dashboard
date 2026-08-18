@@ -30,8 +30,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateCertDTO {
-    @NotBlank(message = "name is required")
-    private String name;
+    @NotBlank(message = "k8sId is required")
+    private String k8sId;
     @NotBlank(message = "cluster is required")
     private String cluster;
     @NotBlank(message = "type is required")

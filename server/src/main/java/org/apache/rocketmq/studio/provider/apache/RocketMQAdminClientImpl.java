@@ -30,7 +30,6 @@ import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfi
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.common.util.InstanceIds;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -137,7 +136,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int writeQueues = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
-        return executeForInstance(InstanceIds.asString(topic.getInstanceId()), admin -> {
+        return executeForInstance(topic.getInstanceId(), admin -> {
             try {
                 String clusterName = getClusterName(admin);
                 // Match on the (cluster_id, name) key: the same topic name can exist in several
@@ -216,7 +215,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     public TopicVO updateTopic(TopicVO topic) {
         String topicName = topic.getName();
 
-        return executeForInstance(InstanceIds.asString(topic.getInstanceId()), admin -> {
+        return executeForInstance(topic.getInstanceId(), admin -> {
             try {
                 // Match on the (cluster_id, name) key to avoid ambiguity when several clusters share
                 // the same topic name (a name-only lookup would throw TooManyResultsException).
@@ -392,7 +391,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     @Override
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
         if (group != null && group.getInstanceId() != null) {
-            return runtimeAdminClientResolver.execute(InstanceIds.asString(group.getInstanceId()),
+            return runtimeAdminClientResolver.execute(group.getInstanceId(),
                     admin -> createConsumerGroup(admin, group));
         }
         return adminFactory.execute(namesrvAddr(), null, admin -> createConsumerGroup(admin, group));

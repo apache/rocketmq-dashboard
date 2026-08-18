@@ -34,6 +34,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -64,7 +66,13 @@ public class InstanceService {
             instances = instanceRepository.findAll();
         }
         instances.forEach(this::fillCounts);
-        return instances;
+        List<InstanceVO> sorted = new ArrayList<>(instances);
+        sorted.sort(Comparator
+                .comparing((InstanceVO instance) ->
+                        instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE ? 0 : 1)
+                .thenComparing(instance -> instance.getVendor() == null ? "" : instance.getVendor().name())
+                .thenComparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER));
+        return sorted;
     }
 
     /**
@@ -113,6 +121,30 @@ public class InstanceService {
                 throw new BusinessException(400, "Instance name already exists: " + name);
             }
         });
+    }
+
+    /**
+     * Resolves the external instance identifier (globally unique instance name, with a
+     * numeric primary-key fallback) to the internal database id.
+     */
+    public Long resolveInstanceId(String instanceId) {
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(InstanceVO::getId)
+                .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+    }
+
+    /**
+     * Normalizes any accepted identifier (instance name or legacy numeric id) to the
+     * canonical instance ID (the globally unique instance name). Unknown values pass
+     * through unchanged.
+     */
+    public String normalizeIdentifier(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            return instanceId;
+        }
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(InstanceVO::getName)
+                .orElse(instanceId);
     }
 
     private void createApacheInstance(InstanceVO instance) {

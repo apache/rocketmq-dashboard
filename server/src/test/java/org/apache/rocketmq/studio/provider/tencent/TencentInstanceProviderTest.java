@@ -81,7 +81,7 @@ import static org.mockito.Mockito.when;
 class TencentInstanceProviderTest {
 
     private static final String STUDIO_INSTANCE_ID = "7";
-    private static final Long STUDIO_INSTANCE_PK = 7L;
+    private static final String STUDIO_INSTANCE_PK = STUDIO_INSTANCE_ID;
     private static final String CLOUD_INSTANCE_ID = "rmq-abc";
     private static final String REGION = "ap-chengdu";
     private static final Long CREDENTIAL_ID = 1L;

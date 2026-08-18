@@ -53,7 +53,9 @@ describe('instance API', () => {
     await expect(
       createInstance({ name: instance.name, type: instance.type, endpoint: instance.endpoint }),
     ).resolves.toEqual(instance);
-    await expect(updateInstance({ id: instance.id, remark: 'updated' })).resolves.toEqual(instance);
+    await expect(updateInstance({ instanceId: instance.name, remark: 'updated' })).resolves.toEqual(
+      instance,
+    );
   });
 
   it('sends normalized instance filters', async () => {
@@ -76,12 +78,12 @@ describe('instance API', () => {
     await expect(listInstances({ search: '   ' })).resolves.toEqual([instance]);
   });
 
-  it('sends the instance id when deleting', async () => {
+  it('sends the instance ID when deleting', async () => {
     mock.onPost('/instances/delete').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ id: instance.id });
+      expect(JSON.parse(config.data)).toEqual({ id: instance.name });
       return [200, { code: 200, data: null }];
     });
 
-    await expect(deleteInstance(instance.id)).resolves.toBeUndefined();
+    await expect(deleteInstance(instance.name)).resolves.toBeUndefined();
   });
 });

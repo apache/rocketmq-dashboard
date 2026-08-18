@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.provider.alibaba;
 
-import org.apache.rocketmq.studio.common.util.InstanceIds;
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateConsumerGroupRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateTopicRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.DeleteConsumerGroupRequest;
@@ -183,7 +182,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .remark(topic.getRemark())
                 .build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createTopic(request));
-        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        topic.setInstanceId(instanceId);
         topic.setGmtCreate(java.time.LocalDateTime.now());
         topic.setGmtModified(java.time.LocalDateTime.now());
         return topic;
@@ -201,7 +200,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .remark(topic.getRemark())
                 .build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.updateTopic(request));
-        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        topic.setInstanceId(instanceId);
         return topic;
     }
 
@@ -294,7 +293,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .consumeRetryPolicy(retryPolicy.build())
                 .build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createConsumerGroup(request));
-        group.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        group.setInstanceId(instanceId);
         group.setDeliveryOrderType(deliveryOrderType);
         group.setRetryMaxTimes(maxRetryTimes);
         group.setSubscribedTopics(java.util.List.of());

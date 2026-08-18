@@ -56,6 +56,9 @@ class MetadataServiceTest {
     @Mock
     private InstanceProvider apacheProvider;
 
+    @Mock
+    private org.apache.rocketmq.studio.instance.InstanceRepository instanceRepository;
+
     @InjectMocks
     private MetadataService metadataService;
 
@@ -63,6 +66,8 @@ class MetadataServiceTest {
     void routeBlankInstanceIdsToApacheProvider() {
         lenient().when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(apacheProvider);
         lenient().when(apacheProvider.vendor()).thenReturn(InstanceVendor.APACHE);
+        lenient().when(instanceRepository.findByIdentifier(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(java.util.Optional.empty());
     }
 
     @Test

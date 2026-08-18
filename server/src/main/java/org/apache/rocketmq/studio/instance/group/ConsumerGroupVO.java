@@ -22,6 +22,7 @@ import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -30,15 +31,15 @@ public class ConsumerGroupVO extends BaseEntity {
     private String name;
     private String namespace;
     private String clusterId;
-    private Long instanceId;
+    private String instanceId;
     private SubscriptionMode subscriptionMode;
     private ConsumeType consumeType;
     private int onlineInstances;
     private long totalLag;
-    private List<String> subscribedTopics;
+    private List<String> subscribedTopics = new ArrayList<>();
     private String subscriptionDataType;
     private String deliveryOrderType;
     private int retryMaxTimes;
     private int delaySeconds;
-    private List<ConsumerInstanceVO> instances;
+    private List<ConsumerInstanceVO> instances = new ArrayList<>();
 }

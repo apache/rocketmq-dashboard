@@ -277,6 +277,40 @@ describe('InstancePage', () => {
     expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
   });
 
+  it('updates instance type and endpoint through the edit dialog', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.updateInstance).mockResolvedValue(
+      instance(1, 'production-proxy', 'DIRECT'),
+    );
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /production-proxy/ });
+    await user.click(within(row).getByRole('button', { name: /编\s*辑/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    const typeSelect = within(dialog).getByRole('combobox');
+    fireEvent.mouseDown(typeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
+    );
+
+    const endpointInput = within(dialog).getByLabelText('接入地址');
+    await user.clear(endpointInput);
+    await user.type(endpointInput, 'namesrv-new:9876');
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() =>
+      expect(instanceService.updateInstance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instanceId: 'production-proxy',
+          type: 'DIRECT',
+          endpoint: 'namesrv-new:9876',
+        }),
+      ),
+    );
+  });
+
   it('reloads the latest filters after a pending instance deletion completes', async () => {
     const user = userEvent.setup();
     const pendingDelete = deferred<void>();
@@ -289,7 +323,9 @@ describe('InstancePage', () => {
 
     const proxyName = await screen.findByText('production-proxy');
     await user.click(within(proxyName.closest('tr')!).getByRole('button', { name: /删除/ }));
-    await waitFor(() => expect(instanceService.deleteInstance).toHaveBeenCalledWith(1));
+    await waitFor(() =>
+      expect(instanceService.deleteInstance).toHaveBeenCalledWith('production-proxy'),
+    );
 
     const typeSelect = screen.getByRole('combobox');
     fireEvent.mouseDown(typeSelect.parentElement!);

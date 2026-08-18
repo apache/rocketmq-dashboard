@@ -62,7 +62,7 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
   return metadataApi.updateTopic(data);
 }
 
-export async function deleteTopic(name: string, instanceId?: number): Promise<void> {
+export async function deleteTopic(name: string, instanceId?: string): Promise<void> {
   if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === name);
     if (idx >= 0) mockTopics.splice(idx, 1);
@@ -79,7 +79,7 @@ export interface BatchDeleteTopicsResult {
 // Batch delete: attempt every selected topic and report partial failures.
 export async function batchDeleteTopics(
   names: string[],
-  instanceId?: number,
+  instanceId?: string,
 ): Promise<BatchDeleteTopicsResult> {
   const result: BatchDeleteTopicsResult = { deleted: [], failed: [] };
   for (const name of names) {
@@ -93,14 +93,14 @@ export async function batchDeleteTopics(
   return result;
 }
 
-export async function getTopicRoutes(name: string, instanceId?: number): Promise<BrokerRoute[]> {
+export async function getTopicRoutes(name: string, instanceId?: string): Promise<BrokerRoute[]> {
   if (isMockMode()) return cloneRoutes((topicRoutes[name] as unknown as BrokerRoute[]) ?? []);
   return metadataApi.getTopicRoutes(name, instanceId);
 }
 
 export async function getTopicConsumers(
   name: string,
-  instanceId?: number,
+  instanceId?: string,
 ): Promise<ConsumerGroupInfo[]> {
   if (isMockMode())
     return cloneConsumers((topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? []);
@@ -109,7 +109,7 @@ export async function getTopicConsumers(
 
 export async function getTopicConsumerPage(
   name: string,
-  instanceId: number | undefined,
+  instanceId: string | undefined,
   page: number,
   pageSize: number,
 ): Promise<TopicConsumerPage> {

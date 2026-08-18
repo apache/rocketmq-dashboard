@@ -32,7 +32,7 @@ public class RmqGroup {
 
     private String clusterId;
 
-    private Long instanceId;
+    private String instanceId;
 
     private String name;
 

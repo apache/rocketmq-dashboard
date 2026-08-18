@@ -90,6 +90,24 @@ class InstanceServiceTest {
     }
 
     @Test
+    void listInstancesShouldSortApacheFirstThenCloudVendorsAlphabeticallyTest() {
+        List<InstanceVO> instances = List.of(
+                InstanceVO.builder().name("z-aliyun").vendor(InstanceVendor.ALIYUN).build(),
+                InstanceVO.builder().name("b-apache").vendor(InstanceVendor.APACHE).build(),
+                InstanceVO.builder().name("a-tencent").vendor(InstanceVendor.TENCENT).build(),
+                InstanceVO.builder().name("a-apache").build(),
+                InstanceVO.builder().name("a-aliyun").vendor(InstanceVendor.ALIYUN).build()
+        );
+        when(instanceRepository.findAll()).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        List<InstanceVO> result = instanceService.listInstances(null, null);
+
+        assertThat(result).extracting(InstanceVO::getName)
+                .containsExactly("a-apache", "b-apache", "a-aliyun", "z-aliyun", "a-tencent");
+    }
+
+    @Test
     void listInstancesMarksCloudCountsUnavailableWhenProviderFails() {
         InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
         instance.setId(1L);

@@ -50,7 +50,7 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
 
 export async function getMessageTrace(
   msgId: string,
-  instanceId?: number,
+  instanceId?: string,
   topic?: string,
 ): Promise<TraceRecord | null> {
   if (isMockMode()) {
@@ -60,13 +60,13 @@ export async function getMessageTrace(
   return messageApi.getMessageTrace(msgId, instanceId, topic);
 }
 
-export async function listDLQGroups(instanceId: number): Promise<DLQGroup[]> {
+export async function listDLQGroups(instanceId: string): Promise<DLQGroup[]> {
   if (isMockMode()) return (mockDLQGroups as unknown as DLQGroup[]).map(cloneDLQGroup);
   return messageApi.listDLQGroups(instanceId);
 }
 
 export async function resendDLQ(data: {
-  instanceId: number;
+  instanceId: string;
   groupName: string;
   startTime: number;
   endTime: number;

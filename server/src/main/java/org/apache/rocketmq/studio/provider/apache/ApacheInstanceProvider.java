@@ -17,7 +17,6 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
-import org.apache.rocketmq.studio.common.util.InstanceIds;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -141,10 +140,10 @@ public class ApacheInstanceProvider implements InstanceProvider {
         return messageProvider.getMessageTrace(instanceId, msgId, topic);
     }
 
-    private boolean matchesInstance(Long topicInstanceId, String instanceId) {
+    private boolean matchesInstance(String topicInstanceId, String instanceId) {
         if (instanceId == null || instanceId.isBlank()) {
             return true;
         }
-        return Objects.equals(InstanceIds.asString(topicInstanceId), instanceId);
+        return Objects.equals(topicInstanceId, instanceId);
     }
 }

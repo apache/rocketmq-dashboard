@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.provider.alibaba;
 
-import org.apache.rocketmq.studio.common.util.InstanceIds;
 import com.aliyun.sdk.service.rocketmq20220801.models.DataTopicLagMapValue;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetInstanceResponseBody;
@@ -114,7 +113,7 @@ final class AliyunConverters {
     static TopicVO toTopicVO(ListTopicsResponseBody.List data, String studioInstanceId) {
         TopicVO vo = new TopicVO();
         vo.setName(data.getTopicName());
-        vo.setInstanceId(InstanceIds.parseLongOrNull(studioInstanceId));
+        vo.setInstanceId(studioInstanceId);
         vo.setType(toTopicType(data.getMessageType()));
         vo.setRemark(data.getRemark());
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
@@ -153,7 +152,7 @@ final class AliyunConverters {
     static ConsumerGroupVO toConsumerGroupVO(ListConsumerGroupsResponseBody.List data, String studioInstanceId) {
         ConsumerGroupVO vo = new ConsumerGroupVO();
         vo.setName(data.getConsumerGroupId());
-        vo.setInstanceId(InstanceIds.parseLongOrNull(studioInstanceId));
+        vo.setInstanceId(studioInstanceId);
         vo.setConsumeType(toConsumeType(data.getMessageModel()));
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
         vo.setGmtModified(parseDateTime(data.getUpdateTime()));

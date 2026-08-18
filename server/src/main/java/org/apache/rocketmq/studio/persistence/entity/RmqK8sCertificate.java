@@ -30,7 +30,7 @@ public class RmqK8sCertificate {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String name;
+    private String k8sId;
 
     private String cluster;
 

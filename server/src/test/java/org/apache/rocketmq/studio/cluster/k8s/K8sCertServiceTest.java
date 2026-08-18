@@ -67,7 +67,7 @@ class K8sCertServiceTest {
     void setUp() {
         k8sCertService = new K8sCertService(k8sCertRepository, operationAuditService, CLOCK);
         sampleCert = K8sCertVO.builder()
-                .name("rocketmq-tls")
+                .k8sId("rocketmq-tls")
                 .cluster("prod-cluster")
                 .type(CertType.TLS)
                 .issuer("letsencrypt")
@@ -85,7 +85,7 @@ class K8sCertServiceTest {
     @Test
     void listCertsShouldReturnAllCerts() {
         K8sCertVO secondCert = K8sCertVO.builder()
-                .name("broker-mtls")
+                .k8sId("broker-mtls")
                 .type(CertType.mTLS)
                 .status(CertStatus.expiring)
                 .build();
@@ -96,9 +96,9 @@ class K8sCertServiceTest {
         List<K8sCertVO> result = k8sCertService.listCerts();
 
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).getName()).isEqualTo("rocketmq-tls");
+        assertThat(result.get(0).getK8sId()).isEqualTo("rocketmq-tls");
         assertThat(result.get(0).getType()).isEqualTo(CertType.TLS);
-        assertThat(result.get(1).getName()).isEqualTo("broker-mtls");
+        assertThat(result.get(1).getK8sId()).isEqualTo("broker-mtls");
         assertThat(result.get(1).getType()).isEqualTo(CertType.mTLS);
         verify(k8sCertRepository).findAll();
     }
@@ -144,7 +144,7 @@ class K8sCertServiceTest {
     @Test
     void createCertShouldCreateAndSaveCert() {
         CreateCertDTO command = CreateCertDTO.builder()
-                .name("new-tls-cert")
+                .k8sId("new-tls-cert")
                 .cluster("test-cluster")
                 .type("TLS")
                 .issuer("vault")
@@ -162,7 +162,7 @@ class K8sCertServiceTest {
         K8sCertVO result = k8sCertService.createCert(command);
         LocalDateTime now = LocalDateTime.now(CLOCK);
 
-        assertThat(result.getName()).isEqualTo("new-tls-cert");
+        assertThat(result.getK8sId()).isEqualTo("new-tls-cert");
         assertThat(result.getCluster()).isEqualTo("test-cluster");
         assertThat(result.getType()).isEqualTo(CertType.TLS);
         assertThat(result.getIssuer()).isEqualTo("vault");
@@ -175,7 +175,7 @@ class K8sCertServiceTest {
         assertThat(result.getGmtModified()).isEqualTo(now);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
         verify(operationAuditService).record(eq("CREATE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
-                eq("100"), eq(null), eq("name=new-tls-cert, cluster=test-cluster"),
+                eq("100"), eq(null), eq("k8sId=new-tls-cert, cluster=test-cluster"),
                 eq("SUCCESS"), eq(null));
     }
 
@@ -204,7 +204,7 @@ class K8sCertServiceTest {
     @Test
     void createCertShouldSetCorrectValidityPeriod() {
         CreateCertDTO command = CreateCertDTO.builder()
-                .name("validity-test")
+                .k8sId("validity-test")
                 .cluster("test-cluster")
                 .type("TLS")
                 .issuer("test-issuer")
@@ -229,7 +229,7 @@ class K8sCertServiceTest {
 
         UpdateCertDTO command = UpdateCertDTO.builder()
                 .id(1L)
-                .name("updated-name")
+                .k8sId("updated-name")
                 .cluster("new-cluster")
                 .type("mTLS")
                 .issuer("new-issuer")
@@ -238,7 +238,7 @@ class K8sCertServiceTest {
 
         K8sCertVO result = k8sCertService.updateCert(command);
 
-        assertThat(result.getName()).isEqualTo("updated-name");
+        assertThat(result.getK8sId()).isEqualTo("updated-name");
         assertThat(result.getCluster()).isEqualTo("new-cluster");
         assertThat(result.getType()).isEqualTo(CertType.mTLS);
         assertThat(result.getIssuer()).isEqualTo("new-issuer");
@@ -247,12 +247,12 @@ class K8sCertServiceTest {
         assertThat(result.getGmtCreate()).isEqualTo(LocalDateTime.of(2024, 12, 1, 0, 0));
         assertThat(result.getGmtModified()).isEqualTo(LocalDateTime.now(CLOCK));
         assertThat(result).isNotSameAs(sampleCert);
-        assertThat(sampleCert.getName()).isEqualTo("rocketmq-tls");
+        assertThat(sampleCert.getK8sId()).isEqualTo("rocketmq-tls");
         assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
         assertThat(sampleCert.getGmtModified()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
         verify(k8sCertRepository).save(any(K8sCertVO.class));
         verify(operationAuditService).record(eq("UPDATE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
-                eq("1"), eq(null), eq("name=updated-name, cluster=new-cluster"),
+                eq("1"), eq(null), eq("k8sId=updated-name, cluster=new-cluster"),
                 eq("SUCCESS"), eq(null));
     }
 
@@ -266,7 +266,7 @@ class K8sCertServiceTest {
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         UpdateCertDTO command = UpdateCertDTO.builder()
                 .id(1L)
-                .name("updated-expired-cert")
+                .k8sId("updated-expired-cert")
                 .build();
 
         K8sCertVO result = k8sCertService.updateCert(command);
@@ -285,12 +285,12 @@ class K8sCertServiceTest {
 
         UpdateCertDTO command = UpdateCertDTO.builder()
                 .id(1L)
-                .name("only-name-changed")
+                .k8sId("only-name-changed")
                 .build();
 
         K8sCertVO result = k8sCertService.updateCert(command);
 
-        assertThat(result.getName()).isEqualTo("only-name-changed");
+        assertThat(result.getK8sId()).isEqualTo("only-name-changed");
         assertThat(result.getCluster()).isEqualTo("prod-cluster");
         assertThat(result.getType()).isEqualTo(CertType.TLS);
         assertThat(result.getIssuer()).isEqualTo("letsencrypt");
@@ -300,7 +300,7 @@ class K8sCertServiceTest {
     void updateCertShouldRejectBlankIdentityFields() {
         when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
         List<Map.Entry<String, Consumer<UpdateCertDTO>>> invalidUpdates = List.of(
-                Map.entry("name", command -> command.setName(" ")),
+                Map.entry("k8sId", command -> command.setK8sId(" ")),
                 Map.entry("cluster", command -> command.setCluster("\n")),
                 Map.entry("issuer", command -> command.setIssuer("  ")));
 
@@ -323,7 +323,7 @@ class K8sCertServiceTest {
 
         UpdateCertDTO command = UpdateCertDTO.builder()
                 .id(999L)
-                .name("wont-work")
+                .k8sId("wont-work")
                 .build();
 
         assertThatThrownBy(() -> k8sCertService.updateCert(command))
@@ -338,7 +338,7 @@ class K8sCertServiceTest {
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenThrow(new IllegalStateException("save failed"));
         UpdateCertDTO command = UpdateCertDTO.builder()
                 .id(1L)
-                .name("should-not-persist")
+                .k8sId("should-not-persist")
                 .type("mTLS")
                 .build();
 
@@ -346,7 +346,7 @@ class K8sCertServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("save failed");
 
-        assertThat(sampleCert.getName()).isEqualTo("rocketmq-tls");
+        assertThat(sampleCert.getK8sId()).isEqualTo("rocketmq-tls");
         assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
         assertThat(sampleCert.getGmtModified()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
     }
@@ -380,7 +380,7 @@ class K8sCertServiceTest {
         assertThat(sampleCert.getNotAfter()).isEqualTo(originalNotAfter);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
         verify(operationAuditService).record(eq("RENEW_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
-                eq("1"), eq(null), eq("name=rocketmq-tls, cluster=prod-cluster"),
+                eq("1"), eq(null), eq("k8sId=rocketmq-tls, cluster=prod-cluster"),
                 eq("SUCCESS"), eq(null));
     }
 
@@ -460,7 +460,7 @@ class K8sCertServiceTest {
     private K8sCertVO copyWithExpiry(Long id, LocalDateTime notAfter, CertStatus status,
                                      int daysRemaining) {
         K8sCertVO cert = K8sCertVO.builder()
-                .name(sampleCert.getName())
+                .k8sId(sampleCert.getK8sId())
                 .cluster(sampleCert.getCluster())
                 .type(sampleCert.getType())
                 .issuer(sampleCert.getIssuer())

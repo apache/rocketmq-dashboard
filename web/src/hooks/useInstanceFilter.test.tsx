@@ -57,7 +57,7 @@ describe('useInstanceFilter', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('/instance/7/topic|7')).toBeInTheDocument();
+      expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
     });
   });
 });

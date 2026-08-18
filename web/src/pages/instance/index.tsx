@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Table,
   Card,
@@ -121,6 +121,7 @@ const InstancePage = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
+  const editInstanceType = Form.useWatch<'PROXY' | 'DIRECT' | undefined>('type', editForm);
   const [submitting, setSubmitting] = useState(false);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
@@ -343,12 +344,14 @@ const InstancePage = () => {
       const values = await editForm.validateFields();
       setSubmitting(true);
       const updated = await updateInstance({
-        id: editingInstance.id,
+        instanceId: editingInstance.name,
+        type: values.type,
+        endpoint: values.endpoint,
         remark: values.remark || '',
         adminCredentialRef: values.adminCredentialRef,
       });
       await loadInstances();
-      message.success(`实例「${updated.name}」备注已更新`);
+      message.success(`实例「${updated.name}」已更新`);
       setEditModalOpen(false);
       editForm.resetFields();
     } catch (error) {
@@ -364,7 +367,7 @@ const InstancePage = () => {
 
   const handleDelete = async (instance: Instance) => {
     try {
-      await deleteInstance(instance.id);
+      await deleteInstance(instance.name);
       await loadInstances();
       message.success('已删除');
     } catch {
@@ -393,13 +396,21 @@ const InstancePage = () => {
       dataIndex: 'remark',
       key: 'remark',
       width: 240,
+      ellipsis: { showTitle: false },
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
-      render: (remark: string | null) => (
-        <Text type="secondary" style={{ fontSize: 14 }}>
-          {remark || '-'}
-        </Text>
-      ),
+      render: (remark: string | null) =>
+        remark ? (
+          <Tooltip title={remark}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              {remark}
+            </Text>
+          </Tooltip>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 14 }}>
+            -
+          </Text>
+        ),
     },
     {
       title: '厂商',
@@ -489,6 +500,8 @@ const InstancePage = () => {
             onClick={() => {
               setEditingInstance(record);
               editForm.setFieldsValue({
+                type: record.type,
+                endpoint: record.endpoint,
                 remark: record.remark,
                 adminCredentialRef: record.adminCredentialRef,
               });
@@ -580,7 +593,7 @@ const InstancePage = () => {
           size="small"
           onRow={(record) => ({
             style: { cursor: 'pointer' },
-            onClick: () => navigate(`/instance/${record.id}/topic`),
+            onClick: () => navigate(`/instance/${encodeURIComponent(record.name)}/topic`),
           })}
         />
       </Card>
@@ -626,12 +639,27 @@ const InstancePage = () => {
               label="云凭据"
               name="credentialId"
               rules={[{ required: true, message: '请选择云凭据' }]}
-              extra={`凭据为${vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，由后端录入`}
+              extra={
+                <span>
+                  凭据为{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，
+                  <Link to="/settings?tab=credential">前往「设置 - 云凭据管理」添加</Link>
+                </span>
+              }
             >
               <Select
                 placeholder="选择已录入的 AK/SK 凭据"
                 loading={credentialsLoading}
                 onChange={handleCredentialChange}
+                notFoundContent={
+                  credentialsLoading ? (
+                    '加载中…'
+                  ) : (
+                    <span>
+                      暂无{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}凭据，
+                      <Link to="/settings?tab=credential">去设置中添加</Link>
+                    </span>
+                  )
+                }
                 options={credentials.map((item) => ({
                   value: item.id,
                   label: `${item.name}（${item.accessKey}）`,
@@ -776,18 +804,44 @@ const InstancePage = () => {
           <Form.Item label="实例 ID">
             <Input value={editingInstance?.name} disabled />
           </Form.Item>
-          <Form.Item label="接入方式">
+          <Form.Item
+            label="接入方式"
+            name="type"
+            rules={[{ required: true, message: '请选择接入方式' }]}
+          >
             <Select
-              value={editingInstance?.type}
-              disabled
               options={[
                 { value: 'PROXY', label: 'Proxy 模式' },
                 { value: 'DIRECT', label: 'Direct 模式' },
               ]}
             />
           </Form.Item>
-          <Form.Item label="接入地址">
-            <Input value={editingInstance?.endpoint} disabled />
+          <Form.Item
+            label={
+              <span>
+                接入地址{' '}
+                <Tooltip title="接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。">
+                  <QuestionCircleOutlined style={{ color: '#9CA3AF', cursor: 'help' }} />
+                </Tooltip>
+              </span>
+            }
+            name="endpoint"
+            rules={[{ required: true, message: '请输入接入地址' }]}
+            extra={
+              editInstanceType === 'DIRECT'
+                ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
+                : editInstanceType === 'PROXY'
+                  ? 'Proxy 模式请填写 Proxy SLB 内网地址（如 proxy.mq.svc:8080）'
+                  : '请先选择接入方式'
+            }
+          >
+            <Input
+              placeholder={
+                editInstanceType === 'DIRECT'
+                  ? '例：namesrv.mq.svc.cluster.local:9876'
+                  : '例：proxy.mq.svc.cluster.local:8080'
+              }
+            />
           </Form.Item>
           {editingInstance?.vendor === 'APACHE' && (
             <Form.Item

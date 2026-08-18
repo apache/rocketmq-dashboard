@@ -36,11 +36,10 @@ public class CreateTopicDTO {
     private TopicPerm perm;
     private String remark;
 
-    private Long instanceId;
+    private String instanceId;
 
     public TopicVO toTopicVO() {
         TopicVO topic = new TopicVO();
-        topic.setInstanceId(instanceId);
         topic.setName(name);
         topic.setNamespace(namespace);
         topic.setClusterId(clusterId);

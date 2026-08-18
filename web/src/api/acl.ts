@@ -17,13 +17,13 @@ export interface AclRule {
 export interface AclRuleQuery {
   clusterId?: string;
   principal?: string;
-  instanceId?: number;
+  instanceId?: string;
 }
 
 // Users list query
 interface AclUserQuery {
   keyword?: string;
-  instanceId?: number;
+  instanceId?: string;
 }
 
 export interface AclUser {
@@ -43,17 +43,17 @@ export async function listAclRules(params?: AclRuleQuery) {
   return res.data.data;
 }
 
-export async function createAclRule(data: Partial<AclRule> & { instanceId?: number }) {
+export async function createAclRule(data: Partial<AclRule> & { instanceId?: string }) {
   const res = await client.post<{ data: AclRule }>('/acl/rules/create', data);
   return res.data.data;
 }
 
-export async function updateAclRule(data: Partial<AclRule> & { instanceId?: number }) {
+export async function updateAclRule(data: Partial<AclRule> & { instanceId?: string }) {
   const res = await client.post<{ data: AclRule }>('/acl/rules/update', data);
   return res.data.data;
 }
 
-export async function deleteAclRule(id: number, instanceId?: number) {
+export async function deleteAclRule(id: number, instanceId?: string) {
   await client.post('/acl/rules/delete', { id, instanceId });
 }
 
@@ -62,7 +62,7 @@ export async function listAclUsers(params?: AclUserQuery) {
   return res.data.data;
 }
 
-export async function getAclUserCredentials(id: number, instanceId?: number) {
+export async function getAclUserCredentials(id: number, instanceId?: string) {
   const res = await client.get<{ data: AclUser }>(
     `/acl/users/${encodeURIComponent(id)}/credentials`,
     { params: { instanceId } },
@@ -70,17 +70,17 @@ export async function getAclUserCredentials(id: number, instanceId?: number) {
   return res.data.data;
 }
 
-export async function createAclUser(data: Partial<AclUser> & { instanceId?: number }) {
+export async function createAclUser(data: Partial<AclUser> & { instanceId?: string }) {
   const res = await client.post<{ data: AclUser }>('/acl/users/create', data);
   return res.data.data;
 }
 
-export async function updateAclUser(data: Partial<AclUser> & { instanceId?: number }) {
+export async function updateAclUser(data: Partial<AclUser> & { instanceId?: string }) {
   const res = await client.post<{ data: AclUser }>('/acl/users/update', data);
   return res.data.data;
 }
 
-export async function deleteAclUser(id: number, instanceId?: number) {
+export async function deleteAclUser(id: number, instanceId?: string) {
   await client.post('/acl/users/delete', { id, instanceId });
 }
 

@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
-import org.apache.rocketmq.studio.common.util.InstanceIds;
 import com.tencentcloudapi.trocket.v20230308.models.ConsumeGroupItem;
 import com.tencentcloudapi.trocket.v20230308.models.CreateConsumerGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.CreateTopicRequest;
@@ -250,7 +249,7 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setQueueNum(queueNum(topic));
         request.setRemark(topic.getRemark());
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.CreateTopic(request));
-        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        topic.setInstanceId(instanceId);
         topic.setPerm(defaultPerm(topic.getPerm()));
         topic.setWriteQueues(queueNum(topic).intValue());
         topic.setReadQueues(queueNum(topic).intValue());
@@ -273,7 +272,7 @@ public class TencentInstanceProvider implements InstanceProvider {
             request.setQueueNum(requestedQueueNum);
         }
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.ModifyTopic(request));
-        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        topic.setInstanceId(instanceId);
         topic.setPerm(defaultPerm(topic.getPerm()));
         if (requestedQueueNum != null) {
             topic.setWriteQueues(requestedQueueNum.intValue());
@@ -399,7 +398,7 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setConsumeEnable(true);
         request.setConsumeMessageOrderly(isOrderly(group));
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.CreateConsumerGroup(request));
-        group.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        group.setInstanceId(instanceId);
         group.setRetryMaxTimes(retryMaxTimes(group));
         group.setSubscribedTopics(java.util.List.of());
         group.setGmtCreate(LocalDateTime.now());
@@ -808,7 +807,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     private static TopicVO toTopic(TopicItem item, String instanceId) {
         TopicVO topic = new TopicVO();
         topic.setName(item.getTopic());
-        topic.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        topic.setInstanceId(instanceId);
         topic.setType(toTopicType(item.getTopicType()));
         topic.setWriteQueues(toInteger(item.getQueueNum()));
         topic.setReadQueues(toInteger(item.getQueueNum()));
@@ -835,7 +834,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     private static ConsumerGroupVO toConsumerGroup(ConsumeGroupItem item, String instanceId) {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName(item.getConsumerGroup());
-        group.setInstanceId(InstanceIds.parseLongOrNull(instanceId));
+        group.setInstanceId(instanceId);
         group.setClusterId(item.getClusterIdV4());
         group.setNamespace(item.getNamespaceV4());
         group.setConsumeType(toConsumeType(item.getConsumeMessageOrderly()));

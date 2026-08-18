@@ -54,9 +54,10 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
 
 export async function updateInstance(data: UpdateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
-    const idx = mockInstances.findIndex((i) => i.id === data.id);
+    const { instanceId, ...changes } = data;
+    const idx = mockInstances.findIndex((i) => i.name === instanceId);
     if (idx >= 0) {
-      Object.assign(mockInstances[idx], data, {
+      Object.assign(mockInstances[idx], changes, {
         gmtModified: new Date().toISOString().replace('T', ' ').slice(0, 19),
       });
       return copyInstance(mockInstances[idx]);
@@ -66,12 +67,12 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
   return instanceApi.updateInstance(data);
 }
 
-export async function deleteInstance(id: number): Promise<void> {
+export async function deleteInstance(instanceId: string): Promise<void> {
   if (isMockMode()) {
-    const idx = mockInstances.findIndex((i) => i.id === id);
-    if (idx < 0) throw new Error(`Instance not found: ${id}`);
+    const idx = mockInstances.findIndex((i) => i.name === instanceId);
+    if (idx < 0) throw new Error(`Instance not found: ${instanceId}`);
     mockInstances.splice(idx, 1);
     return;
   }
-  return instanceApi.deleteInstance(id);
+  return instanceApi.deleteInstance(instanceId);
 }

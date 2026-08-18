@@ -20,7 +20,6 @@ import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.common.util.InstanceIds;
 import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -42,6 +41,22 @@ public class MetadataService {
     private final MetadataProvider metadataProvider;
     private final AdminClient adminClient;
     private final InstanceProviderRegistry providerRegistry;
+    private final org.apache.rocketmq.studio.instance.InstanceRepository instanceRepository;
+
+    /**
+     * External callers address instances by their globally unique instance ID (name);
+     * internal storage keys rows by the numeric primary key. Resolve the identifier
+     * before any DB-backed lookup; unknown identifiers pass through unchanged so the
+     * downstream 404/empty semantics stay intact.
+     */
+    String normalizeInstanceId(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            return instanceId;
+        }
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(org.apache.rocketmq.studio.instance.InstanceVO::getName)
+                .orElse(instanceId);
+    }
 
     // ── TopicVO ───────────────────────────────────────────────────────
 
@@ -51,6 +66,7 @@ public class MetadataService {
     }
 
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
+        instanceId = normalizeInstanceId(instanceId);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
             // legacy cluster-scoped read kept for AI tool handlers
             return metadataProvider.listTopics(
@@ -62,14 +78,14 @@ public class MetadataService {
 
     public TopicVO createTopic(TopicVO topic) {
         requireTopic(topic);
-        String instanceId = InstanceIds.asString(topic.getInstanceId());
+        String instanceId = topic.getInstanceId();
         return resolve(instanceId).createTopic(instanceId, topic);
     }
 
 
     public TopicVO updateTopic(TopicVO topic) {
         requireTopic(topic);
-        String instanceId = InstanceIds.asString(topic.getInstanceId());
+        String instanceId = topic.getInstanceId();
         return resolve(instanceId).updateTopic(instanceId, topic);
     }
 
@@ -79,6 +95,7 @@ public class MetadataService {
     }
 
     public void deleteTopic(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
         resolve(instanceId).deleteTopic(instanceId, name);
     }
 
@@ -88,6 +105,7 @@ public class MetadataService {
     }
 
     public List<BrokerRouteVO> getTopicRoutes(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
         String topicName = requireName(name, "topic name");
         if (resolve(instanceId).vendor() != InstanceVendor.APACHE) {
             // broker routing does not apply to serverless cloud instances
@@ -102,11 +120,13 @@ public class MetadataService {
     }
 
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
         String topicName = requireName(name, "topic name");
         return resolve(instanceId).getTopicConsumers(instanceId, topicName);
     }
 
     public TopicConsumerPageVO getTopicConsumersPage(String instanceId, String name, int page, int pageSize) {
+        instanceId = normalizeInstanceId(instanceId);
         String topicName = requireName(name, "topic name");
         if (page < 1) {
             throw new BusinessException(400, "page must be greater than zero");
@@ -134,6 +154,7 @@ public class MetadataService {
     }
 
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
+        instanceId = normalizeInstanceId(instanceId);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
             return metadataProvider.listConsumerGroups(normalizeFilter(clusterId), normalizeFilter(search));
         }
@@ -146,6 +167,7 @@ public class MetadataService {
     }
 
     public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
         if (resolve(instanceId).vendor() != InstanceVendor.APACHE) {
             throw new BusinessException(501, "Consumer group detail is not supported for cloud instances");
@@ -159,6 +181,7 @@ public class MetadataService {
     }
 
     public List<QueueProgressVO> getGroupProgress(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
         return resolve(instanceId).getGroupProgress(instanceId, groupName);
     }
@@ -169,13 +192,14 @@ public class MetadataService {
     }
 
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
         return resolve(instanceId).getGroupSubscriptions(instanceId, groupName);
     }
 
 
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
-        String instanceId = InstanceIds.asString(group == null ? null : group.getInstanceId());
+        String instanceId = group == null ? null : group.getInstanceId();
         return resolve(instanceId).createConsumerGroup(instanceId, group);
     }
 
@@ -185,6 +209,7 @@ public class MetadataService {
     }
 
     public void deleteConsumerGroup(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
         resolve(instanceId).deleteConsumerGroup(instanceId, name);
     }
 
@@ -194,6 +219,7 @@ public class MetadataService {
     }
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
+        instanceId = normalizeInstanceId(instanceId);
         resolve(instanceId).resetOffset(instanceId, name, timestamp, topic);
     }
 

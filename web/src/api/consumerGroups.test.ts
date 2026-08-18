@@ -68,7 +68,7 @@ describe('consumer groups API contract', () => {
 
   it('encodes consumer group names and passes instance context for runtime queries', async () => {
     const groupName = '%RETRY%cg-order';
-    const instanceId = 1;
+    const instanceId = 'instance-1';
     mock.onGet('/groups/%25RETRY%25cg-order').reply(200, { code: 200, data: group });
     mock.onGet('/groups/%25RETRY%25cg-order/progress').reply(200, { code: 200, data: [] });
     mock.onGet('/groups/%25RETRY%25cg-order/subscriptions').reply(200, { code: 200, data: [] });
@@ -84,7 +84,7 @@ describe('consumer groups API contract', () => {
   it('unwraps detail records and sends numeric reset timestamps', async () => {
     const reset = {
       name: group.name,
-      instanceId: 1,
+      instanceId: 'instance-1',
       topic: 'orders',
       timestamp: 1784246400000,
     };
@@ -100,10 +100,10 @@ describe('consumer groups API contract', () => {
 
   it('includes selected instance context when deleting a consumer group', async () => {
     mock.onPost('/groups/delete').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ name: group.name, instanceId: 1 });
+      expect(JSON.parse(config.data)).toEqual({ name: group.name, instanceId: 'instance-1' });
       return [200, { code: 200, data: null }];
     });
 
-    await expect(deleteConsumerGroup(group.name, 1)).resolves.toBeUndefined();
+    await expect(deleteConsumerGroup(group.name, 'instance-1')).resolves.toBeUndefined();
   });
 });

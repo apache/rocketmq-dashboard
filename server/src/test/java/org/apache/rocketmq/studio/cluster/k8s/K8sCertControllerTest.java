@@ -66,11 +66,11 @@ class K8sCertControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].name").value("rocketmq-tls"))
+                .andExpect(jsonPath("$.data[0].k8sId").value("rocketmq-tls"))
                 .andExpect(jsonPath("$.data[0].type").value("TLS"))
                 .andExpect(jsonPath("$.data[0].status").value("valid"))
                 .andExpect(jsonPath("$.data[1].id").value(2))
-                .andExpect(jsonPath("$.data[1].name").value("broker-mtls"));
+                .andExpect(jsonPath("$.data[1].k8sId").value("broker-mtls"));
     }
 
     @Test
@@ -93,7 +93,7 @@ class K8sCertControllerTest {
         when(k8sCertService.createCert(any(CreateCertDTO.class))).thenReturn(createdCert);
 
         CreateCertDTO command = CreateCertDTO.builder()
-                .name("new-cert")
+                .k8sId("new-cert")
                 .cluster("test-cluster")
                 .type("TLS")
                 .issuer("vault")
@@ -106,7 +106,7 @@ class K8sCertControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value(3))
-                .andExpect(jsonPath("$.data.name").value("new-cert"))
+                .andExpect(jsonPath("$.data.k8sId").value("new-cert"))
                 .andExpect(jsonPath("$.data.cluster").value("test-cluster"))
                 .andExpect(jsonPath("$.data.type").value("TLS"))
                 .andExpect(jsonPath("$.data.status").value("valid"))
@@ -120,7 +120,7 @@ class K8sCertControllerTest {
 
         String json = """
                 {
-                    "name": "minimal-cert",
+                    "k8sId": "minimal-cert",
                     "cluster": "test",
                     "type": "TLS",
                     "issuer": "test-issuer"
@@ -169,7 +169,7 @@ class K8sCertControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("name is required"));
+                .andExpect(jsonPath("$.message").value("k8sId is required"));
 
         verifyNoInteractions(k8sCertService);
     }
@@ -180,7 +180,7 @@ class K8sCertControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                    "name": "new-cert",
+                                    "k8sId": "new-cert",
                                     "cluster": "test-cluster",
                                     "type": "PEM",
                                     "issuer": "vault"
@@ -199,7 +199,7 @@ class K8sCertControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                    "name": "updated-cert"
+                                    "k8sId": "updated-cert"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -239,7 +239,7 @@ class K8sCertControllerTest {
 
     private K8sCertVO buildCert(Long id, String name, CertType type, CertStatus status) {
         K8sCertVO cert = K8sCertVO.builder()
-                .name(name)
+                .k8sId(name)
                 .cluster("prod-cluster")
                 .type(type)
                 .issuer("letsencrypt")

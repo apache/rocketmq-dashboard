@@ -58,7 +58,7 @@ const ProducerPage = () => {
     null,
   );
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const { t } = useLang();
   const { message } = App.useApp();
@@ -72,7 +72,7 @@ const ProducerPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        setSelectedInstanceId((current) => current ?? nextInstances[0]?.id);
+        setSelectedInstanceId((current) => current ?? nextInstances[0]?.name);
       })
       .catch(() => {
         if (!cancelled) {
@@ -85,7 +85,7 @@ const ProducerPage = () => {
     };
   }, []);
 
-  const handleInstanceChange = (instanceId: number) => {
+  const handleInstanceChange = (instanceId: string) => {
     queryRequestIdRef.current += 1;
     setSelectedInstanceId(instanceId);
     setTopicList([]);
@@ -250,7 +250,7 @@ const ProducerPage = () => {
               placeholder="Select instance"
               style={{ width: 220 }}
               options={instances.map((instance) => ({
-                value: instance.id,
+                value: instance.name,
                 label: instance.name,
               }))}
             />

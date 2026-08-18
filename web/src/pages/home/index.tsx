@@ -227,6 +227,7 @@ const HomePage = () => {
           className="pointer-events-none absolute inset-0 overflow-hidden"
           style={{ animation: '8s ease-in-out infinite oneday-bg-drift' }}
         >
+          {/* Top-left blue orb */}
           <div
             aria-hidden="true"
             className="absolute"
@@ -243,6 +244,58 @@ const HomePage = () => {
               willChange: 'transform, opacity',
             }}
           />
+          {/* Bottom-right violet orb */}
+          <div
+            aria-hidden="true"
+            className="absolute"
+            style={{
+              bottom: '-18%',
+              right: '-10%',
+              width: '48%',
+              height: '48%',
+              background:
+                'radial-gradient(circle at 70% 70%, rgb(221, 214, 254) 0%, rgb(233, 213, 255) 40%, transparent 68%)',
+              opacity: 0.4,
+              filter: 'blur(90px)',
+              animation: '10s ease-in-out infinite oneday-orb-drift-b',
+              willChange: 'transform, opacity',
+            }}
+          />
+          {/* Top-right warm accent */}
+          <div
+            aria-hidden="true"
+            className="absolute"
+            style={{
+              top: '-8%',
+              right: '5%',
+              width: '30%',
+              height: '30%',
+              background:
+                'radial-gradient(circle at 60% 40%, rgb(254, 215, 170) 0%, transparent 60%)',
+              opacity: 0.3,
+              filter: 'blur(70px)',
+              animation: '12s ease-in-out infinite oneday-orb-drift-c',
+              willChange: 'transform, opacity',
+            }}
+          />
+          {/* Center-bottom subtle blue-green */}
+          <div
+            aria-hidden="true"
+            className="absolute"
+            style={{
+              bottom: '10%',
+              left: '20%',
+              width: '35%',
+              height: '28%',
+              background:
+                'radial-gradient(ellipse at 50% 80%, rgb(153, 246, 228) 0%, transparent 60%)',
+              opacity: 0.2,
+              filter: 'blur(80px)',
+              animation: '14s ease-in-out infinite oneday-orb-drift-a',
+              willChange: 'transform, opacity',
+            }}
+          />
+          {/* Noise texture overlay */}
           <div
             aria-hidden="true"
             className="absolute inset-0"

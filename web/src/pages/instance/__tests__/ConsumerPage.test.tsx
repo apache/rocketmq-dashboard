@@ -70,7 +70,7 @@ const group: ConsumerGroup = {
   name: 'remote-cg',
   namespace: 'remote-ns',
   clusterId: 'cluster-a',
-  instanceId: 1,
+  instanceId: 'instance-1',
   subscriptionMode: 'Push',
   consumeType: 'CLUSTERING',
   onlineInstances: 1,
@@ -235,10 +235,13 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 1),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-1',
+      ),
     );
     await waitFor(() =>
-      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 1),
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-1'),
     );
     expect(consumerService.getConsumerGroup).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
@@ -258,17 +261,22 @@ describe('Consumer page', () => {
         gmtModified: '2026-07-23T00:00:00Z',
       },
     ]);
-    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([{ ...group, instanceId: 2 }]);
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      { ...group, instanceId: 'instance-a' },
+    ]);
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 2),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-a',
+      ),
     );
     await waitFor(() =>
-      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 2),
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-a'),
     );
   });
 
@@ -279,7 +287,10 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 1),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-1',
+      ),
     );
     const confirm = screen.getByRole('button', { name: '确认重置' });
     expect(confirm).toBeDisabled();
@@ -301,7 +312,7 @@ describe('Consumer page', () => {
       expect(consumerService.resetConsumerOffset).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'remote-cg',
-          instanceId: 1,
+          instanceId: 'instance-1',
           topic: 'remote-topic',
           timestamp: expect.any(Number),
         }),
@@ -335,14 +346,17 @@ describe('Consumer page', () => {
       },
     ]);
     vi.mocked(consumerService.listConsumerGroups).mockImplementation(async (params) => [
-      { ...group, instanceId: params?.instanceId ?? 2 },
+      { ...group, instanceId: params?.instanceId ?? 'instance-a' },
     ]);
     const user = userEvent.setup();
-    renderWithProviders(<ConsumerPage />, '/instance/2/consumer');
+    renderWithProviders(<ConsumerPage />, '/instance/instance-a/consumer');
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 2),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-a',
+      ),
     );
 
     await user.click(screen.getByText('instance-a'));
@@ -350,16 +364,19 @@ describe('Consumer page', () => {
       await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 3 }),
+      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 'instance-b' }),
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 3),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-b',
+      ),
     );
     await waitFor(() =>
-      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 3),
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-b'),
     );
   });
 
@@ -467,7 +484,11 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /线程栈/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerStack).toHaveBeenCalledWith('remote-cg', 'client-1', 1),
+      expect(consumerService.getConsumerStack).toHaveBeenCalledWith(
+        'remote-cg',
+        'client-1',
+        'instance-1',
+      ),
     );
     expect(await screen.findByText('消费者线程栈')).toBeInTheDocument();
     expect(screen.getByText('ConsumeMessageThread_1')).toBeInTheDocument();
@@ -597,7 +618,7 @@ describe('Consumer page', () => {
         gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
-    renderWithProviders(<ConsumerPage />, '/instance/4/consumer');
+    renderWithProviders(<ConsumerPage />, '/instance/instance-proxy-1/consumer');
 
     await screen.findByText(/共 0 个 Group/);
     const csv = [
@@ -620,7 +641,7 @@ describe('Consumer page', () => {
       retryMaxTimes: 16,
       subscriptionDataType: 'NORMAL',
       subscribedTopics: [],
-      instanceId: 4,
+      instanceId: 'instance-proxy-1',
     });
     expect(await screen.findByText('已导入 1 个 Group，1 个失败')).toBeInTheDocument();
     expect(screen.getByText('broker rejected group')).toBeInTheDocument();

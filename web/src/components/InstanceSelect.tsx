@@ -19,13 +19,13 @@ import { Select } from 'antd';
 import type { CSSProperties } from 'react';
 
 export interface InstanceOption {
-  value: number;
+  value: string;
   label: string;
 }
 
 interface InstanceSelectProps {
-  value?: number;
-  onChange: (value: number, option?: unknown) => void;
+  value?: string;
+  onChange: (value: string, option?: unknown) => void;
   options: InstanceOption[];
   style?: CSSProperties;
   placeholder?: string;

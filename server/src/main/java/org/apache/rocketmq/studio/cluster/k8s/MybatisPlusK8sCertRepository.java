@@ -49,7 +49,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
 
     @Override
     public List<K8sCertVO> findAll() {
-        return certMapper.selectList(new QueryWrapper<RmqK8sCertificate>().orderByAsc("name")).stream()
+        return certMapper.selectList(new QueryWrapper<RmqK8sCertificate>().orderByAsc("k8s_id")).stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
     }
@@ -86,7 +86,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     private K8sCertVO toVO(RmqK8sCertificate entity) {
         K8sCertVO vo = new K8sCertVO();
         vo.setId(entity.getId());
-        vo.setName(entity.getName());
+        vo.setK8sId(entity.getK8sId());
         vo.setCluster(entity.getCluster());
         vo.setType(parseCertType(entity.getId(), entity.getCertType()));
         vo.setIssuer(entity.getIssuer());
@@ -105,7 +105,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     private RmqK8sCertificate toEntity(K8sCertVO cert) {
         RmqK8sCertificate entity = new RmqK8sCertificate();
         entity.setId(cert.getId());
-        entity.setName(cert.getName());
+        entity.setK8sId(cert.getK8sId());
         entity.setCluster(cert.getCluster());
         entity.setCertType(cert.getType() == null ? null : cert.getType().name());
         entity.setIssuer(cert.getIssuer());

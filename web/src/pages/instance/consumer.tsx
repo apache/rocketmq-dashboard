@@ -181,7 +181,7 @@ const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
 
 // Shared helper exported alongside the page component; fast-refresh rule waived.
 // eslint-disable-next-line react-refresh/only-export-components
-export const diagnosticCacheKey = (instanceId: number | undefined, groupName: string) =>
+export const diagnosticCacheKey = (instanceId: string | undefined, groupName: string) =>
   `${instanceId ?? ''}\u0000${groupName}`;
 
 /* ═══════════════════════════════════════════
@@ -1071,7 +1071,7 @@ const ConsumerPageContent = ({
                         >
                           <Statistic
                             title="订阅 Topic 数"
-                            value={selectedGroup.subscribedTopics.length}
+                            value={(selectedGroup.subscribedTopics ?? []).length}
                             prefix={<ListBullets size={18} color="#1677ff" />}
                             valueStyle={{ color: '#1677ff' }}
                           />
@@ -1129,7 +1129,7 @@ const ConsumerPageContent = ({
                       </Descriptions.Item>
                       <Descriptions.Item label="订阅 Topic" span={2}>
                         <Space size={4} wrap>
-                          {selectedGroup.subscribedTopics.map((t) => (
+                          {(selectedGroup.subscribedTopics ?? []).map((t) => (
                             <Tag key={t} color="blue">
                               {t}
                             </Tag>
@@ -1214,13 +1214,13 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <Users size={14} />
-                    <span>在线实例 ({selectedGroup.instances.length})</span>
+                    <span>在线实例 ({(selectedGroup.instances ?? []).length})</span>
                   </Space>
                 ),
                 children: (
                   <Table
                     columns={instanceColumns}
-                    dataSource={selectedGroup.instances}
+                    dataSource={selectedGroup.instances ?? []}
                     rowKey="clientId"
                     pagination={false}
                     size="small"

@@ -105,7 +105,7 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => {
-      expect(fetchTopicList).toHaveBeenCalledWith(1);
+      expect(fetchTopicList).toHaveBeenCalledWith('instance-1');
     });
   });
 
@@ -157,7 +157,11 @@ describe('ProducerPage', () => {
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
     await waitFor(() => {
-      expect(queryProducerConnection).toHaveBeenCalledWith(1, 'order-events', 'order-producer');
+      expect(queryProducerConnection).toHaveBeenCalledWith(
+        'instance-1',
+        'order-events',
+        'order-producer',
+      );
     });
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
     expect(await screen.findByText('生产者连接健康')).toBeInTheDocument();
@@ -246,7 +250,11 @@ describe('ProducerPage', () => {
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
     await waitFor(() => {
-      expect(queryProducerConnection).toHaveBeenCalledWith(1, 'order-events', 'manual-producer');
+      expect(queryProducerConnection).toHaveBeenCalledWith(
+        'instance-1',
+        'order-events',
+        'manual-producer',
+      );
     });
   });
 
@@ -289,7 +297,7 @@ describe('ProducerPage', () => {
     const user = userEvent.setup();
     const { container } = renderWithProviders(<ProducerPage />);
 
-    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith('instance-1'));
     const [instanceSelect, topicSelect, groupInput] = screen.getAllByRole('combobox');
     fireEvent.mouseDown(topicSelect.parentElement!);
     await user.click(
@@ -306,7 +314,7 @@ describe('ProducerPage', () => {
       }),
     );
 
-    await waitFor(() => expect(fetchTopicList).toHaveBeenLastCalledWith(2));
+    await waitFor(() => expect(fetchTopicList).toHaveBeenLastCalledWith('instance-2'));
     // scope to the page container: antd keeps closed dropdown portals in document.body
     expect(within(container).queryByText('producer-1')).not.toBeInTheDocument();
     expect(within(container).queryByText('order-events')).not.toBeInTheDocument();

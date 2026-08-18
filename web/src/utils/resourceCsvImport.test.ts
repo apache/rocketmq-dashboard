@@ -57,13 +57,13 @@ describe('resourceCsvImport', () => {
 
   it('round-trips formula-safe apostrophes from exported cells', () => {
     const records = parseCsvTable('"Name","Remark"\n"\'-topic","\'=keep-original"');
-    const validation = validateTopicCsvImport(records, 1);
+    const validation = validateTopicCsvImport(records, 'instance-1');
 
     expect(validation.errors).toEqual([]);
     expect(validation.rows[0].payload).toMatchObject({
       name: '-topic',
       remark: '=keep-original',
-      instanceId: 1,
+      instanceId: 'instance-1',
     });
   });
 
@@ -94,7 +94,7 @@ describe('resourceCsvImport', () => {
         '"cg-orders","Push","CLUSTERING","16","FIFO","PARTITON_ORDER","ignored-cluster"',
       ].join('\n'),
     );
-    const validation = validateConsumerGroupCsvImport(records, 2);
+    const validation = validateConsumerGroupCsvImport(records, 'instance-2');
 
     expect(validation.errors).toEqual([]);
     expect(validation.rows[0].payload).toEqual({
@@ -105,7 +105,7 @@ describe('resourceCsvImport', () => {
       subscriptionDataType: 'FIFO',
       deliveryOrderType: 'PARTITON_ORDER',
       subscribedTopics: [],
-      instanceId: 2,
+      instanceId: 'instance-2',
     });
   });
 });

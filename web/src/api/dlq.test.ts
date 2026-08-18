@@ -43,14 +43,16 @@ describe('DLQ API', () => {
   });
 
   it('loads and unwraps DLQ groups', async () => {
-    mock.onGet('/dlq', { params: { instanceId: 1 } }).reply(200, { code: 200, data: [group] });
+    mock
+      .onGet('/dlq', { params: { instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: [group] });
 
-    await expect(listDLQGroups(1)).resolves.toEqual([group]);
+    await expect(listDLQGroups('instance-1')).resolves.toEqual([group]);
   });
 
   it('sends epoch milliseconds for the resend time range', async () => {
     const payload = {
-      instanceId: 1,
+      instanceId: 'instance-1',
       groupName: group.groupName,
       startTime: 1784246400000,
       endTime: 1784332800000,
