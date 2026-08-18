@@ -33,6 +33,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -296,6 +297,39 @@ class InstanceServiceTest {
                 argThat(detail -> detail.equals("name=new-instance, vendor=APACHE, type=PROXY_CLUSTER")
                         && !detail.contains("10.0.1.1:8080")),
                 eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void createInstanceShouldReturnConflictWhenNameAlreadyExists() {
+        InstanceVO input = InstanceVO.builder().name("production").type(InstanceType.PROXY)
+                .endpoint("namesrv:9876").build();
+        InstanceVO existing = InstanceVO.builder().name("production").build();
+        existing.setId(1L);
+        when(instanceRepository.findByName("production")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> instanceService.createInstance(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance name already exists: production")
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(409));
+
+        verify(instanceRepository, never()).save(any());
+    }
+
+    @Test
+    void createInstanceShouldReturnConflictWhenConcurrentInsertWins() {
+        InstanceVO input = InstanceVO.builder().name("production").type(InstanceType.PROXY)
+                .endpoint("namesrv:9876").build();
+        when(instanceRepository.save(any(InstanceVO.class)))
+                .thenThrow(new DuplicateKeyException("uk_instance_name"));
+
+        assertThatThrownBy(() -> instanceService.createInstance(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance name already exists: production")
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(409));
+
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test
