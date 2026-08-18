@@ -17,31 +17,19 @@
 
 package org.apache.rocketmq.dashboard.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.apache.rocketmq.remoting.protocol.body.UserInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.Assert;
+import org.junit.Test;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class UserInfoDto {
+public class UserInfoDtoTest {
 
-    private String username;
+    @Test
+    public void passwordIsNeverSerialized() throws Exception {
+        UserInfoDto user = new UserInfoDto("operator", "sensitive-password", "normal", "enabled");
 
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-    private String password;
+        String json = new ObjectMapper().writeValueAsString(user);
 
-    private String userType;
-
-    private String userStatus;
-
-    public UserInfoDto setUserInfo(UserInfo userInfo) {
-        this.username = userInfo.getUsername();
-        this.password = userInfo.getPassword();
-        this.userType = userInfo.getUserType();
-        this.userStatus = userInfo.getUserStatus();
-        return this;
+        Assert.assertFalse(json.contains("password"));
+        Assert.assertFalse(json.contains("sensitive-password"));
     }
 }
