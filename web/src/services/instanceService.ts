@@ -5,6 +5,7 @@ import type {
   CreateInstanceRequest,
   InstanceQuery,
   UpdateInstanceRequest,
+  InstanceCapabilities,
 } from '../api/instance';
 import { mockInstances } from '../mock/instances';
 
@@ -14,11 +15,33 @@ function copyInstance(instance: Instance): Instance {
   return { ...instance };
 }
 
+function matchesType(instance: Instance, type?: Instance['type']) {
+  if (!type) return true;
+  return type === 'PROXY' ? instance.type !== 'DIRECT' : instance.type === type;
+}
+
+const APACHE_CAPABILITIES: InstanceCapabilities['capabilities'] = [
+  'TOPIC_MANAGEMENT',
+  'CONSUMER_GROUP_MANAGEMENT',
+  'MESSAGE_QUERY',
+  'MESSAGE_TRACE',
+  'ACL_MANAGEMENT',
+  'DLQ_MANAGEMENT',
+];
+
+const CLOUD_CAPABILITIES: InstanceCapabilities['capabilities'] = [
+  'TOPIC_MANAGEMENT',
+  'CONSUMER_GROUP_MANAGEMENT',
+  'MESSAGE_QUERY',
+  'MESSAGE_TRACE',
+  'ACL_MANAGEMENT',
+];
+
 export async function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
   if (isMockMode()) {
     const search = query.search?.trim().toLowerCase();
     return mockInstances
-      .filter((instance) => !query.type || instance.type === query.type)
+      .filter((instance) => matchesType(instance, query.type))
       .filter(
         (instance) =>
           !search ||
@@ -31,20 +54,40 @@ export async function listInstances(query: InstanceQuery = {}): Promise<Instance
   return instanceApi.listInstances(query);
 }
 
+export async function getInstanceCapabilities(instanceId: string): Promise<InstanceCapabilities> {
+  if (!isMockMode()) {
+    return instanceApi.getInstanceCapabilities(instanceId);
+  }
+  const instance = mockInstances.find((candidate) => candidate.name === instanceId);
+  if (!instance) throw new Error(`Instance not found: ${instanceId}`);
+  const vendor = instance.vendor ?? 'APACHE';
+  return {
+    instanceId: instance.name,
+    vendor,
+    accessType: instance.type,
+    capabilities: [...(vendor === 'APACHE' ? APACHE_CAPABILITIES : CLOUD_CAPABILITIES)],
+  };
+}
+
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
+    const cloudManaged = data.vendor === 'ALIYUN' || data.vendor === 'TENCENT';
     const instance: Instance = {
-      id: String(Date.now()),
+      id: Date.now(),
       ...data,
       name: data.name || '',
-      type: data.type || 'PROXY',
+      type: cloudManaged
+        ? 'PROXY'
+        : data.type === 'PROXY'
+          ? 'PROXY_CLUSTER'
+          : data.type || 'PROXY_CLUSTER',
       endpoint: data.endpoint || '',
       vendor: data.vendor || 'APACHE',
       remark: data.remark || '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      gmtCreate: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      gmtModified: new Date().toISOString().replace('T', ' ').slice(0, 19),
     };
     mockInstances.push(instance);
     return copyInstance(instance);
@@ -54,10 +97,11 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
 
 export async function updateInstance(data: UpdateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
-    const idx = mockInstances.findIndex((i) => i.id === data.id);
+    const { instanceId, ...changes } = data;
+    const idx = mockInstances.findIndex((i) => i.name === instanceId);
     if (idx >= 0) {
-      Object.assign(mockInstances[idx], data, {
-        updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      Object.assign(mockInstances[idx], changes, {
+        gmtModified: new Date().toISOString().replace('T', ' ').slice(0, 19),
       });
       return copyInstance(mockInstances[idx]);
     }
@@ -66,12 +110,12 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
   return instanceApi.updateInstance(data);
 }
 
-export async function deleteInstance(id: string): Promise<void> {
+export async function deleteInstance(instanceId: string): Promise<void> {
   if (isMockMode()) {
-    const idx = mockInstances.findIndex((i) => i.id === id);
-    if (idx < 0) throw new Error(`Instance not found: ${id}`);
+    const idx = mockInstances.findIndex((i) => i.name === instanceId);
+    if (idx < 0) throw new Error(`Instance not found: ${instanceId}`);
     mockInstances.splice(idx, 1);
     return;
   }
-  return instanceApi.deleteInstance(id);
+  return instanceApi.deleteInstance(instanceId);
 }

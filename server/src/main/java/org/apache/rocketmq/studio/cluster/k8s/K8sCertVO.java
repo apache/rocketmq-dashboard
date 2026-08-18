@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.k8s;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.rocketmq.studio.common.domain.BaseEntity;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
@@ -34,8 +35,7 @@ import java.util.List;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class K8sCertVO extends BaseEntity {
-    private String name;
-    private String namespace;
+    private String k8sId;
     private String cluster;
     private CertType type;
     private String issuer;
@@ -44,4 +44,8 @@ public class K8sCertVO extends BaseEntity {
     private CertStatus status;
     private int daysRemaining;
     private List<String> san;
+    private String certPem;
+    // The private key is persisted but never serialized into API responses.
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private String keyPem;
 }

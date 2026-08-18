@@ -440,7 +440,7 @@ const LiteTopicPage: React.FC = () => {
         <Row gutter={24}>
           <Col span={8}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
+              <div style={{ fontSize: 14, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
                 {t('liteTopic.topicUsage')}
               </div>
               <Progress
@@ -454,14 +454,14 @@ const LiteTopicPage: React.FC = () => {
                       : '#1677ff'
                 }
               />
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginTop: 4 }}>
                 {quota.currentTopicCount} / {quota.maxTopicCount}
               </div>
             </div>
           </Col>
           <Col span={8}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
+              <div style={{ fontSize: 14, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
                 {t('liteTopic.sessionUsage')}
               </div>
               <Progress
@@ -475,14 +475,14 @@ const LiteTopicPage: React.FC = () => {
                       : '#1677ff'
                 }
               />
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginTop: 4 }}>
                 {quota.currentSessionCount} / {quota.maxSessionCount}
               </div>
             </div>
           </Col>
           <Col span={8}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
+              <div style={{ fontSize: 14, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
                 {t('liteTopic.creationRate')}
               </div>
               <Progress
@@ -496,7 +496,7 @@ const LiteTopicPage: React.FC = () => {
                       : '#1677ff'
                 }
               />
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginTop: 4 }}>
                 {quota.currentCreationRate} / {quota.maxCreationRate}
               </div>
             </div>
@@ -542,13 +542,13 @@ const LiteTopicPage: React.FC = () => {
       <div>
         <Descriptions column={2} bordered size="small">
           <Descriptions.Item label={t('liteTopic.sessionId')} span={2}>
-            <code style={{ fontSize: 12 }}>{sessionData.sessionId}</code>
+            <code style={{ fontSize: 14 }}>{sessionData.sessionId}</code>
           </Descriptions.Item>
           <Descriptions.Item label={t('liteTopic.clientId')}>
             {sessionData.clientId || '-'}
           </Descriptions.Item>
           <Descriptions.Item label={t('liteTopic.clientAddress')}>
-            <code style={{ fontSize: 12 }}>{sessionData.clientAddress || '-'}</code>
+            <code style={{ fontSize: 14 }}>{sessionData.clientAddress || '-'}</code>
           </Descriptions.Item>
           <Descriptions.Item label={t('liteTopic.parentTopic')}>
             {sessionData.parentTopic || '-'}
@@ -595,7 +595,7 @@ const LiteTopicPage: React.FC = () => {
               variant="borderless"
               style={{ background: '#f6ffed', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.totalMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700 }}>{sessionData.totalMessages ?? 0}</div>
@@ -606,7 +606,7 @@ const LiteTopicPage: React.FC = () => {
               variant="borderless"
               style={{ background: '#f6ffed', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.consumedMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700 }}>
@@ -619,7 +619,7 @@ const LiteTopicPage: React.FC = () => {
               variant="borderless"
               style={{ background: '#fffbe6', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.pendingMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700, color: '#fa8c16' }}>

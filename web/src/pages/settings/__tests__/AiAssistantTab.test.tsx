@@ -20,7 +20,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
-import LlmSettingsPage from '../LlmSettings';
+import { AiAssistantTab } from '../AiAssistantTab';
 
 const llmApiMocks = vi.hoisted(() => ({
   getLlmConfig: vi.fn(),
@@ -51,12 +51,12 @@ const renderPage = () =>
   render(
     <App>
       <LangProvider>
-        <LlmSettingsPage />
+        <AiAssistantTab />
       </LangProvider>
     </App>,
   );
 
-describe('LlmSettingsPage', () => {
+describe('AiAssistantTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     llmApiMocks.getLlmConfig.mockResolvedValue({
@@ -122,6 +122,27 @@ describe('LlmSettingsPage', () => {
       apiVersion: '2024-02-15-preview',
     });
     expect(llmApiMocks.saveLlmConfig.mock.calls[0][0].awsRegion).toBeUndefined();
+  });
+
+  it('refreshes the remote model list after saving an API key', async () => {
+    const user = userEvent.setup();
+    llmApiMocks.getLlmModels
+      .mockResolvedValueOnce({ status: 0, data: [{ id: 'qwen3.8-max' }] })
+      .mockResolvedValueOnce({
+        status: 0,
+        data: [{ id: 'qwen3.8-max' }, { id: 'qwen-plus-latest' }],
+      });
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.type(screen.getByLabelText('API Key'), 'sk-new-key');
+    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(llmApiMocks.getLlmModels).toHaveBeenCalledTimes(2));
+    await user.click(screen.getAllByRole('combobox')[2]);
+    expect(
+      await screen.findByText('qwen-plus-latest', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
   });
 
   it('ignores a connection result after the tested configuration changes', async () => {

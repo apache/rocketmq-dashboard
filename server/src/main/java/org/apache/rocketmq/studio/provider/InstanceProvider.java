@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.provider;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -27,6 +29,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Unified instance-scoped operations SPI. Every method takes the Studio instance id as its
@@ -37,11 +40,25 @@ public interface InstanceProvider {
 
     InstanceVendor vendor();
 
+    default Set<InstanceCapability> capabilities() {
+        return Set.of();
+    }
+
     int countTopics(String instanceId);
 
     int countGroups(String instanceId);
 
     List<TopicVO> listTopics(String instanceId, String type, String search);
+
+    default PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search,
+            int page, int pageSize) {
+        List<TopicVO> topics = listTopics(instanceId, type, search);
+        int total = topics.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(topics.subList(from, to), total, page, pageSize);
+    }
 
     TopicVO createTopic(String instanceId, TopicVO topic);
 
@@ -58,8 +75,9 @@ public interface InstanceProvider {
     default TopicConsumerPageVO getTopicConsumersPage(String instanceId, String topicName, int page, int pageSize) {
         List<TopicConsumerVO> consumers = getTopicConsumers(instanceId, topicName);
         int total = consumers.size();
-        int from = Math.min((page - 1) * pageSize, total);
-        int to = Math.min(from + pageSize, total);
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
         return TopicConsumerPageVO.builder()
                 .items(consumers.subList(from, to))
                 .total(total)

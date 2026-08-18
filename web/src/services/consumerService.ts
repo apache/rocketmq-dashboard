@@ -39,6 +39,12 @@ function copySubscription(subscription: SubscriptionEntry): SubscriptionEntry {
   return { ...subscription };
 }
 
+const normalizeConsumerGroup = <T extends ConsumerGroup>(group: T): T => ({
+  ...group,
+  subscribedTopics: group.subscribedTopics ?? [],
+  instances: group.instances ?? [],
+});
+
 export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<ConsumerGroup[]> {
   if (isMockMode()) {
     let result = [...consumerGroupsState];
@@ -49,7 +55,7 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<C
     }
     return result.map(copyConsumerGroup);
   }
-  return metadataApi.listConsumerGroups(params);
+  return (await metadataApi.listConsumerGroups(params)).map(normalizeConsumerGroup);
 }
 
 export async function getConsumerProgress(
@@ -71,7 +77,7 @@ export async function getConsumerGroup(
     if (!group) throw new Error(`Consumer group not found: ${name}`);
     return copyConsumerGroup(group as unknown as ConsumerGroupDetail) as ConsumerGroupDetail;
   }
-  return metadataApi.getConsumerGroup(name, instanceId);
+  return normalizeConsumerGroup(await metadataApi.getConsumerGroup(name, instanceId));
 }
 
 export async function getConsumerSubscriptions(
@@ -117,8 +123,8 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
       subscribedTopics: data.subscribedTopics ?? [],
       subscriptionDataType: data.subscriptionDataType ?? 'NORMAL',
       retryMaxTimes: data.retryMaxTimes ?? 16,
-      createdAt: now,
-      updatedAt: now,
+      gmtCreate: now,
+      gmtModified: now,
       delaySeconds: 0,
       instances: [],
     } as ConsumerGroup;

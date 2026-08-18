@@ -39,7 +39,7 @@ class SensitiveRequestToStringTest {
         createCredential.setSecretKey("cloud-secret-key");
 
         UpdateCloudCredentialDTO updateCredential = new UpdateCloudCredentialDTO();
-        updateCredential.setId("credential-1");
+        updateCredential.setId(1L);
         updateCredential.setSecretKey("rotated-cloud-secret");
 
         UpsertPlainAccessConfigDTO plainAccess = new UpsertPlainAccessConfigDTO();
@@ -58,7 +58,7 @@ class SensitiveRequestToStringTest {
                 .contains("name=production")
                 .doesNotContain("cloud-access-key", "cloud-secret-key");
         assertThat(updateCredential.toString())
-                .contains("id=credential-1")
+                .contains("id=1")
                 .doesNotContain("rotated-cloud-secret");
         assertThat(plainAccess.toString())
                 .doesNotContain("rocketmq-access-key", "rocketmq-secret-key");

@@ -224,6 +224,16 @@ describe('MetricsExplorer', () => {
     expect(screen.getByRole('button', { name: '刷新指标' })).toBeInTheDocument();
   });
 
+  it('shows the actionable message returned by the metrics API', async () => {
+    vi.mocked(queryMetrics).mockRejectedValue({
+      response: { data: { message: 'Prometheus base URL is not configured' } },
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('Prometheus base URL is not configured')).toBeInTheDocument();
+  });
+
   it('shows an empty state when Prometheus returns no scalar samples', async () => {
     vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: [] });
 
@@ -242,12 +252,12 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
-        instanceIds: ['instance-a'],
+        instanceIds: ['instance-1'],
       },
     ]);
     vi.mocked(queryByDataSource).mockResolvedValue(metricData);
 
-    renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+    renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
 
     await screen.findByRole('combobox', { name: '数据源' });
     await user.click(screen.getByRole('combobox', { name: '数据源' }));
@@ -260,7 +270,7 @@ describe('MetricsExplorer', () => {
     await waitFor(() =>
       expect(queryByDataSource).toHaveBeenCalledWith({
         key: 'ds-prom-1',
-        instanceId: 'instance-a',
+        instanceId: 'instance-1',
         query: {
           metric: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
           start: 1_799_996_400,
@@ -380,7 +390,7 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
-        instanceIds: ['instance-a'],
+        instanceIds: ['instance-1'],
       },
       {
         key: 'ds-instance-b',
@@ -389,12 +399,12 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
-        instanceIds: ['instance-b'],
+        instanceIds: ['instance-2'],
       },
     ]);
 
     const user = userEvent.setup();
-    renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+    renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
 
     await screen.findByRole('combobox', { name: '数据源' });
     await user.click(screen.getByRole('combobox', { name: '数据源' }));

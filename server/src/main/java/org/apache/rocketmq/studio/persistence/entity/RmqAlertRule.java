@@ -27,8 +27,8 @@ import java.time.LocalDateTime;
 @TableName("rmq_alert_rule")
 public class RmqAlertRule {
 
-    @TableId(type = IdType.INPUT)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
     private String name;
 
@@ -56,7 +56,7 @@ public class RmqAlertRule {
 
     private String severity;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

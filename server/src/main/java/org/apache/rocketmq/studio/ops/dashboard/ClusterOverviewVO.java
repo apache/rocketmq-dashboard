@@ -31,6 +31,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ClusterOverviewVO {
+    /** Runtime cluster identifier (cluster name); not a database primary key. */
     private String id;
     private String name;
     private ClusterType type;

@@ -26,11 +26,11 @@ public interface AlertRepository {
 
     boolean replaceRule(AlertRuleVO rule);
 
-    boolean deleteRule(String id);
+    boolean deleteRule(Long id);
 
     List<SystemAlertVO> findAlerts(String level);
 
-    SystemAlertVO saveAlert(SystemAlertVO alert);
+    boolean acknowledgeAlert(SystemAlertVO alert);
 
     int deleteAcknowledgedAlerts();
 }

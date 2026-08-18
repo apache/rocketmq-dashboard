@@ -24,7 +24,12 @@ import useAuthStore from '../stores/authStore';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import MainLayout from './MainLayout';
 
+const instanceServiceMocks = vi.hoisted(() => ({
+  getInstanceCapabilities: vi.fn(),
+}));
+
 vi.mock('../api/auth', () => ({ logout: vi.fn() }));
+vi.mock('../services/instanceService', () => instanceServiceMocks);
 
 vi.mock('antd', async () => {
   const React = await import('react');
@@ -38,8 +43,28 @@ vi.mock('antd', async () => {
 
   return {
     Layout,
-    Menu: () => null,
-    Breadcrumb: () => null,
+    Menu: ({
+      items,
+    }: {
+      items?: Array<{ key: string; label: React.ReactNode; children?: unknown[] }>;
+    }) => {
+      const renderItems = (entries: typeof items): React.ReactNode[] =>
+        (entries ?? []).flatMap((item) => [
+          React.createElement('span', { key: `${item.key}-label` }, item.label),
+          ...renderItems(item.children as typeof items),
+        ]);
+      return React.createElement('nav', null, renderItems(items));
+    },
+    Breadcrumb: ({ items }: { items: Array<{ key: string; title: React.ReactNode }> }) =>
+      React.createElement(
+        'div',
+        null,
+        React.createElement(
+          'nav',
+          null,
+          items.map((item) => React.createElement(React.Fragment, { key: item.key }, item.title)),
+        ),
+      ),
     Avatar: () => React.createElement('span', null, 'avatar'),
     Dropdown: ({ children, menu }: { children?: React.ReactNode; menu: DropdownMenu }) =>
       React.createElement(
@@ -66,8 +91,22 @@ vi.mock('antd', async () => {
 
 describe('MainLayout authentication navigation', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.mocked(logout).mockReset().mockResolvedValue(undefined);
-    useAuthStore.getState().login('test-token', 'admin', true);
+    useAuthStore.getState().login('admin', 7, true);
+    instanceServiceMocks.getInstanceCapabilities.mockReset().mockResolvedValue({
+      instanceId: 'apache-1',
+      vendor: 'APACHE',
+      accessType: 'DIRECT',
+      capabilities: [
+        'TOPIC_MANAGEMENT',
+        'CONSUMER_GROUP_MANAGEMENT',
+        'MESSAGE_QUERY',
+        'MESSAGE_TRACE',
+        'ACL_MANAGEMENT',
+        'DLQ_MANAGEMENT',
+      ],
+    });
   });
 
   it('replaces a protected route with the login page after logout', async () => {
@@ -94,5 +133,97 @@ describe('MainLayout authentication navigation', () => {
     expect(screen.queryByText('protected home')).not.toBeInTheDocument();
     expect(logout).toHaveBeenCalledOnce();
     expect(localStorage.getItem('token')).toBeNull();
+  });
+
+  it('exposes global layout commands as localized semantic buttons', () => {
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route index element={<div>protected home</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    expect(screen.getByRole('button', { name: '返回首页' })).toBeInTheDocument();
+    const searchButton = screen.getByRole('button', { name: '打开导航搜索' });
+    expect(searchButton).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '切换到模拟数据' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.getByRole('button', { name: '切换到英语' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '切换到深色主题' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.getByRole('button', { name: '打开用户菜单' })).toBeInTheDocument();
+
+    fireEvent.click(searchButton);
+    expect(screen.getByRole('button', { name: '首页' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '切换到英语' }));
+    expect(screen.getByRole('button', { name: 'Switch to Chinese' })).toBeInTheDocument();
+  });
+
+  it('hides unsupported instance navigation after capabilities load', async () => {
+    instanceServiceMocks.getInstanceCapabilities.mockResolvedValue({
+      instanceId: 'cloud-1',
+      vendor: 'ALIYUN',
+      accessType: 'PROXY',
+      capabilities: ['TOPIC_MANAGEMENT'],
+    });
+
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/instance/cloud-1/topic']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route path="instance/:instanceId/topic" element={<div>cloud topic</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith('cloud-1'),
+    );
+    await waitFor(() => expect(screen.getByText('Topic 管理')).toBeInTheDocument());
+    expect(screen.queryByText('死信队列')).not.toBeInTheDocument();
+    expect(screen.queryByText('ACL 管理')).not.toBeInTheDocument();
+    expect(screen.queryByText('Group 管理')).not.toBeInTheDocument();
+    expect(screen.queryByText('消息查询')).not.toBeInTheDocument();
+  });
+
+  it('keeps navigation available when capability discovery fails', async () => {
+    instanceServiceMocks.getInstanceCapabilities.mockRejectedValue(new Error('unavailable'));
+
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/instance/apache-1/topic']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route path="instance/:instanceId/topic" element={<div>apache topic</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith('apache-1'),
+    );
+    expect(screen.getByText('ACL 管理')).toBeInTheDocument();
+    expect(screen.getByText('死信队列')).toBeInTheDocument();
   });
 });

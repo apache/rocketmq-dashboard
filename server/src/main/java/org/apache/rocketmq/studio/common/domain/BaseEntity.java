@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 
 @Data
 public abstract class BaseEntity {
-    private String id;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Long id;
+    private LocalDateTime gmtCreate;
+    private LocalDateTime gmtModified;
 }

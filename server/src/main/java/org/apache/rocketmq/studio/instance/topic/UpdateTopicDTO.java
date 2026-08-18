@@ -42,7 +42,6 @@ public class UpdateTopicDTO {
         topic.setName(name);
         topic.setNamespace(namespace);
         topic.setClusterId(clusterId);
-        topic.setInstanceId(instanceId);
         topic.setType(type);
         if (writeQueues != null) {
             topic.setWriteQueues(writeQueues);

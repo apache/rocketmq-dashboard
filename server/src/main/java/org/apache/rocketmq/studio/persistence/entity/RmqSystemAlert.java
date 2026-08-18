@@ -27,8 +27,8 @@ import java.time.LocalDateTime;
 @TableName("rmq_system_alert")
 public class RmqSystemAlert {
 
-    @TableId(type = IdType.INPUT)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
     private String level;
 
@@ -40,7 +40,7 @@ public class RmqSystemAlert {
 
     private Boolean acknowledged;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

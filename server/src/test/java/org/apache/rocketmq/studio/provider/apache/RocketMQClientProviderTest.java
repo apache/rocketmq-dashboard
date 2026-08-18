@@ -66,14 +66,52 @@ class RocketMQClientProviderTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @Mock
+    private MqAdminExtFactory adminFactory;
+
     private RocketMQClientProvider provider;
 
     @BeforeEach
     void setUp() {
-        provider = new RocketMQClientProvider(runtimeAdminClientResolver);
+        provider = new RocketMQClientProvider(runtimeAdminClientResolver, adminFactory);
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>
                         getArgument(1).apply(adminExt));
+        lenient().when(adminFactory.execute(anyString(), any(), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>
+                                getArgument(2).apply(adminExt));
+    }
+
+    @Test
+    void findConnectionsAtShouldUseNameserverScopedAdminClientTest() throws Exception {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(null);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+
+        List<ClientConnectionVO> result = provider.findConnectionsAt("10.0.1.31:9876", null, null);
+
+        assertThat(result).isEmpty();
+        verify(adminFactory).execute(eq("10.0.1.31:9876"), any(), any(MqAdminExtFactory.AdminAction.class));
+        verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
+    }
+
+    @Test
+    void connectionVersionShouldBeResolvedFromMQVersionCodeTest() throws Exception {
+        Map<String, String> clusters = new HashMap<>();
+        clusters.put("10.0.0.11:10911", "cluster-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(clusters));
+        Map<String, List<ProducerInfo>> data = new HashMap<>();
+        data.put("pg-order", List.of(new ProducerInfo(
+                "client-1", "10.0.0.21:49152", LanguageCode.JAVA, 500, 1000L)));
+        ProducerTableInfo producerTable = new ProducerTableInfo(data);
+        when(adminExt.getAllProducerInfo("10.0.0.11:10911")).thenReturn(producerTable);
+
+        List<ClientConnectionVO> connections = provider.findConnectionsAt("10.0.1.31:9876", null, "Producer");
+
+        assertThat(connections).hasSize(1);
+        assertThat(connections.get(0).getVersion())
+                .isEqualTo(org.apache.rocketmq.common.MQVersion.getVersionDesc(500));
     }
 
     @Test
@@ -113,6 +151,25 @@ class RocketMQClientProviderTest {
                 .extracting(ClientConnectionVO::getGroupOrTopic)
                 .containsExactlyInAnyOrder("pg-order", "pg-payment");
         verify(adminExt, never()).examineProducerConnectionInfo(anyString(), anyString());
+    }
+
+    @Test
+    void producerScanPreservesIdenticalConnectionsAcrossClusters() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
+                "127.0.0.1:10911", "cluster-a",
+                "127.0.0.2:10911", "cluster-b")));
+        ProducerInfo shared = producerInfo("producer-client", "10.0.0.1:1000");
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of("pg-order", List.of(shared))));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of("pg-order", List.of(shared))));
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", null, "Producer");
+
+        assertThat(connections).hasSize(2);
+        assertThat(connections)
+                .extracting(ClientConnectionVO::getClusterName)
+                .containsExactlyInAnyOrder("cluster-a", "cluster-b");
     }
 
     @Test
@@ -327,6 +384,18 @@ class RocketMQClientProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query consumer connections from all groups")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void consumerScanWithOnlySystemGroupsReturnsEmptyInsteadOf502() throws Exception {
+        SubscriptionGroupWrapper wrapper = subscriptionGroups("%RETRY%group-a", "%DLQ%group-b");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
+
+        assertThat(connections).isEmpty();
+        verify(adminExt, never()).examineConsumerConnectionInfo(anyString());
     }
 
     @Test

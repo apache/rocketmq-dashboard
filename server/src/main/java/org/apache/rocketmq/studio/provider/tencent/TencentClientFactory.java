@@ -46,17 +46,23 @@ public class TencentClientFactory {
     private final CloudCredentialRepository credentialRepository;
     private final Map<String, TrocketClient> clients = new ConcurrentHashMap<>();
 
-    public TrocketClient client(String credentialId, String region) {
+    public TrocketClient client(Long credentialId, String region) {
         String key = cacheKey(credentialId, region);
-        return clients.computeIfAbsent(key, ignored -> createClient(credentialId, region));
+        TrocketClient cached = clients.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
+            return clients.computeIfAbsent(key, ignored -> createClient(credentialId, region));
+        }
     }
 
-    public void invalidateCredential(String credentialId) {
+    public synchronized void invalidateCredential(Long credentialId) {
         String prefix = credentialId + "#";
         clients.keySet().removeIf(key -> key.startsWith(prefix));
     }
 
-    public <T> T call(String credentialId, String region, TencentCall<T> action) {
+    public <T> T call(Long credentialId, String region, TencentCall<T> action) {
         try {
             return action.execute(client(credentialId, region));
         } catch (TencentCloudSDKException ex) {
@@ -69,11 +75,11 @@ public class TencentClientFactory {
         }
     }
 
-    static String cacheKey(String credentialId, String region) {
+    static String cacheKey(Long credentialId, String region) {
         return credentialId + "#" + region;
     }
 
-    protected TrocketClient createClient(String credentialId, String region) {
+    protected TrocketClient createClient(Long credentialId, String region) {
         CloudCredentialVO credential = credentialRepository.findById(credentialId)
                 .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + credentialId));
         Credential sdkCredential = new Credential(credential.getAccessKey(), credential.getSecretKey());

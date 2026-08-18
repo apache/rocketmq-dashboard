@@ -41,7 +41,6 @@ public class CreateConsumerGroupDTO {
 
     public ConsumerGroupVO toConsumerGroupVO() {
         ConsumerGroupVO group = new ConsumerGroupVO();
-        group.setInstanceId(instanceId);
         group.setName(name);
         group.setNamespace(namespace);
         group.setClusterId(clusterId);

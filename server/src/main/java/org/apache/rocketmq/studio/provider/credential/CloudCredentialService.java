@@ -30,7 +30,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -70,17 +69,16 @@ public class CloudCredentialService {
                                     + " and accessKey " + CredentialUtils.mask(credential.getAccessKey()));
                 });
         log.info("Creating cloud credential name={}, vendor={}", credential.getName(), credential.getVendor());
-        credential.setId(UUID.randomUUID().toString());
-        credential.setCreatedAt(LocalDateTime.now());
-        credential.setUpdatedAt(LocalDateTime.now());
+        credential.setGmtCreate(LocalDateTime.now());
+        credential.setGmtModified(LocalDateTime.now());
         CloudCredentialVO saved = credentialRepository.save(credential);
-        recordAudit("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
+        recordAudit("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(saved.getId()), null,
                 credentialAuditDetail(saved));
         return maskAccessKey(saved);
     }
 
     public CloudCredentialVO update(UpdateCloudCredentialDTO request) {
-        if (request == null || !StringUtils.hasText(request.getId())) {
+        if (request == null || request.getId() == null) {
             throw new BusinessException(400, "Cloud credential id is required");
         }
         log.info("Updating cloud credential id={}", request.getId());
@@ -98,16 +96,16 @@ public class CloudCredentialService {
         if (request.getRemark() != null) {
             existing.setRemark(request.getRemark());
         }
-        existing.setUpdatedAt(LocalDateTime.now());
+        existing.setGmtModified(LocalDateTime.now());
         CloudCredentialVO saved = credentialRepository.save(existing);
         invalidateCloudClients(saved);
-        recordAudit("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
+        recordAudit("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(saved.getId()), null,
                 credentialAuditDetail(saved));
         return maskAccessKey(saved);
     }
 
-    public void delete(String id) {
-        if (!StringUtils.hasText(id)) {
+    public void delete(Long id) {
+        if (id == null) {
             throw new BusinessException(400, "Cloud credential id is required");
         }
         log.info("Deleting cloud credential id={}", id);
@@ -120,12 +118,12 @@ public class CloudCredentialService {
             throw new BusinessException(404, "Cloud credential not found: " + id);
         }
         invalidateCloudClients(existing);
-        recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", id, null,
+        recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(id), null,
                 credentialAuditDetail(existing));
     }
 
-    public CloudCredentialVO reveal(String id) {
-        if (!StringUtils.hasText(id)) {
+    public CloudCredentialVO reveal(Long id) {
+        if (id == null) {
             throw new BusinessException(400, "Cloud credential id is required");
         }
         return credentialRepository.findById(id)
@@ -140,8 +138,8 @@ public class CloudCredentialService {
         masked.setAccessKey(CredentialUtils.mask(credential.getAccessKey()));
         masked.setSecretKey(null);
         masked.setRemark(credential.getRemark());
-        masked.setCreatedAt(credential.getCreatedAt());
-        masked.setUpdatedAt(credential.getUpdatedAt());
+        masked.setGmtCreate(credential.getGmtCreate());
+        masked.setGmtModified(credential.getGmtModified());
         return masked;
     }
 

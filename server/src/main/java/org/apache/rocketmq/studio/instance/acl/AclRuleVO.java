@@ -29,7 +29,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AclRuleVO {
-    private String id;
+    private Long id;
     private String principal;
     private String resource;
     private String resourceType;
@@ -38,5 +38,5 @@ public class AclRuleVO {
     private String decision;
     private String scope;
     private String aclVersion;
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 }

@@ -65,6 +65,13 @@ export interface DLQGroup {
   statsAvailable?: boolean;
 }
 
+export interface DLQGroupPage {
+  items: DLQGroup[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 export interface DLQResendResult {
   matched: number;
   resent: number;
@@ -92,8 +99,10 @@ export async function getMessageTrace(msgId: string, instanceId?: string, topic?
 }
 
 // ─── DLQ ────────────────────────────────────────────────────────
-export async function listDLQGroups(instanceId: string) {
-  const res = await client.get<{ data: DLQGroup[] }>('/dlq', { params: { instanceId } });
+export async function listDLQGroups(instanceId: string, search?: string, page = 1, pageSize = 20) {
+  const res = await client.get<{ data: DLQGroupPage }>('/dlq', {
+    params: { instanceId, search, page, pageSize },
+  });
   return res.data.data;
 }
 
@@ -106,4 +115,15 @@ export async function resendDLQ(data: {
 }): Promise<DLQResendResult> {
   const res = await client.post<{ data: DLQResendResult }>('/dlq/resend', data);
   return res.data.data;
+}
+
+export async function exportDLQMessages(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  maxCount?: number;
+}): Promise<Blob> {
+  const res = await client.get<Blob>('/dlq/export', { params, responseType: 'blob' });
+  return res.data;
 }

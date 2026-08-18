@@ -428,6 +428,12 @@ public class OpenAiCompatibleLlmClient {
     private String parseDelta(String body) {
         try {
             JsonNode root = objectMapper.readTree(body);
+            String errorMessage = root.path("error").path("message").asText();
+            if (StringUtils.hasText(errorMessage)) {
+                throw new LlmGatewayException(502, "llm.provider.stream_error",
+                        "LLM provider stream failed: " + errorMessage,
+                        "Check the provider credentials, model name, and account quota.");
+            }
             return root.path("choices").path(0).path("delta").path("content").asText("");
         } catch (JsonProcessingException exception) {
             throw new LlmGatewayException(502, "llm.provider.malformed_stream_event",

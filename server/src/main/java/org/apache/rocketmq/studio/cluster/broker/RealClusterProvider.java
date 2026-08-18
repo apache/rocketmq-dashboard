@@ -64,6 +64,14 @@ public class RealClusterProvider implements ClusterProvider {
     }
 
     @Override
+    public List<ClusterVO> discoverClustersAt(String namesrvAddr) {
+        if (namesrvAddr == null || namesrvAddr.isBlank()) {
+            return List.of();
+        }
+        return describeClusters(namesrvAddr);
+    }
+
+    @Override
     public ClusterVO refreshClusterDetail(String clusterId) {
         if (clusterId == null || clusterId.isBlank()) {
             throw new BusinessException(400, "Cluster ID is required");
@@ -101,6 +109,9 @@ public class RealClusterProvider implements ClusterProvider {
     }
 
     private List<ClusterVO> toClusterVOs(String namesrvAddr, ClusterInfo clusterInfo) {
+        if (clusterInfo == null) {
+            return List.of();
+        }
         Map<String, BrokerData> brokerAddrTable =
                 clusterInfo.getBrokerAddrTable() == null ? Map.of() : clusterInfo.getBrokerAddrTable();
         Map<String, Set<String>> clusterAddrTable =

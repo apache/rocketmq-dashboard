@@ -47,11 +47,11 @@ export function InstanceSelect({
       showSearch
       allowClear
       placeholder={placeholder}
-      value={value || undefined}
+      value={value ?? undefined}
       onChange={(next, option) => {
         if (next === undefined || next === null) {
           const first = options[0]?.value;
-          if (first) {
+          if (first !== undefined) {
             onChange(first);
           }
           return;

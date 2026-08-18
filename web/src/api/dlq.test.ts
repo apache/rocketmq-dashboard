@@ -43,11 +43,14 @@ describe('DLQ API', () => {
   });
 
   it('loads and unwraps DLQ groups', async () => {
-    mock
-      .onGet('/dlq', { params: { instanceId: 'instance-1' } })
-      .reply(200, { code: 200, data: [group] });
+    const pageData = { items: [group], total: 1, page: 1, size: 20 };
+    mock.onGet('/dlq').reply((config) =>
+      config.params?.instanceId === 'instance-1'
+        ? [200, { code: 200, data: pageData }]
+        : [404, {}],
+    );
 
-    await expect(listDLQGroups('instance-1')).resolves.toEqual([group]);
+    await expect(listDLQGroups('instance-1')).resolves.toEqual(pageData);
   });
 
   it('sends epoch milliseconds for the resend time range', async () => {

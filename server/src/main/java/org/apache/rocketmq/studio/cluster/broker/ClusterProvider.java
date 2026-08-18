@@ -27,6 +27,10 @@ public interface ClusterProvider {
         return discoverClusters();
     }
 
+    default List<ClusterVO> discoverClustersAt(String namesrvAddr) {
+        return List.of();
+    }
+
     ClusterVO refreshClusterDetail(String clusterId);
 
     default ClusterVO refreshClusterDetail(String clusterId, String instanceId) {

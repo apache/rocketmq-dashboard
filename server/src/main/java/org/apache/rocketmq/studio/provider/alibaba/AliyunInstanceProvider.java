@@ -57,11 +57,14 @@ import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Aliyun RocketMQ 5.x implementation of the instance-scoped operations SPI, backed by the
@@ -87,6 +90,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
     @Override
     public InstanceVendor vendor() {
         return InstanceVendor.ALIYUN;
+    }
+
+    @Override
+    public Set<InstanceCapability> capabilities() {
+        return Set.of(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT);
     }
 
     @Override
@@ -182,8 +195,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createTopic(request));
         topic.setInstanceId(instanceId);
-        topic.setCreatedAt(java.time.LocalDateTime.now());
-        topic.setUpdatedAt(java.time.LocalDateTime.now());
+        topic.setGmtCreate(java.time.LocalDateTime.now());
+        topic.setGmtModified(java.time.LocalDateTime.now());
         return topic;
     }
 
@@ -296,8 +309,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
         group.setDeliveryOrderType(deliveryOrderType);
         group.setRetryMaxTimes(maxRetryTimes);
         group.setSubscribedTopics(java.util.List.of());
-        group.setCreatedAt(java.time.LocalDateTime.now());
-        group.setUpdatedAt(java.time.LocalDateTime.now());
+        group.setGmtCreate(java.time.LocalDateTime.now());
+        group.setGmtModified(java.time.LocalDateTime.now());
         return group;
     }
 
@@ -441,9 +454,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetTraceResponseBody body = response == null ? null : response.getBody();
         GetTraceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
-            throw new BusinessException(404, "Message trace not found: " + msgId);
+            return emptyTraceRecord();
         }
         return AliyunConverters.toTraceRecord(data);
+    }
+
+    private static TraceRecordVO emptyTraceRecord() {
+        return TraceRecordVO.builder()
+                .nodes(Collections.emptyList())
+                .consumerStatus(Collections.emptyList())
+                .build();
     }
 
     private Context resolve(String instanceId) {
@@ -453,7 +473,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
         InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
-                || !StringUtils.hasText(instance.getCredentialId())) {
+                || instance.getCredentialId() == null) {
             throw new BusinessException(400, "Instance " + instanceId + " is missing Aliyun cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
@@ -466,6 +486,6 @@ public class AliyunInstanceProvider implements InstanceProvider {
         return vo.getType() != null && vo.getType().name().equalsIgnoreCase(type.trim());
     }
 
-    private record Context(String cloudInstanceId, String regionId, String credentialId) {
+    private record Context(String cloudInstanceId, String regionId, Long credentialId) {
     }
 }

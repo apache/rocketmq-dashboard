@@ -22,7 +22,9 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
@@ -31,6 +33,7 @@ import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -85,7 +88,6 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 }
                 var qd = routeData.getQueueDatas().get(0);
                 TopicVO vo = new TopicVO();
-                vo.setId(name);
                 vo.setName(name);
                 vo.setWriteQueues(qd.getWriteQueueNums());
                 vo.setReadQueues(qd.getReadQueueNums());
@@ -108,7 +110,6 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private ConsumerGroupVO getConsumerGroup(MQAdminExt admin, String name) {
         ConsumerGroupVO vo = new ConsumerGroupVO();
-        vo.setId(name);
         vo.setName(name);
         try {
             var conn = admin.examineConsumerConnectionInfo(name);
@@ -160,6 +161,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
+                applyTopicType(topicConfig, topic.getType());
 
                 for (String addr : brokerAddrs) {
                     admin.createAndUpdateTopicConfig(addr, topicConfig);
@@ -176,12 +178,16 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     entity = new RmqTopic();
                     entity.setName(topicName);
                     entity.setClusterId(clusterName);
-                    entity.setCreatedAt(LocalDateTime.now());
+                    entity.setGmtCreate(LocalDateTime.now());
                 }
-                if (StringUtils.hasText(topic.getInstanceId())) {
+                if (topic.getInstanceId() != null) {
                     entity.setInstanceId(topic.getInstanceId());
                 }
-                entity.setTopicType(topic.getType() != null ? topic.getType().name() : "NORMAL");
+                if (topic.getType() != null) {
+                    entity.setTopicType(topic.getType().name());
+                } else if (isNew) {
+                    entity.setTopicType(TopicType.NORMAL.name());
+                }
                 entity.setReadQueueNums(readQueues);
                 entity.setWriteQueueNums(writeQueues);
                 entity.setPerm(topicConfig.getPerm());
@@ -189,7 +195,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     entity.setRemark(topic.getRemark());
                 }
                 entity.setStatus("ACTIVE");
-                entity.setUpdatedAt(LocalDateTime.now());
+                entity.setGmtModified(LocalDateTime.now());
                 if (isNew) {
                     topicMapper.insert(entity);
                 } else {
@@ -199,7 +205,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 recordAudit("CREATE_TOPIC", topicName,
                         "queues=" + writeQueues + "/" + readQueues, "SUCCESS");
 
-                topic.setId(topicName);
+                topic.setId(entity.getId());
                 topic.setClusterId(clusterName);
                 topic.setWriteQueues(writeQueues);
                 topic.setReadQueues(readQueues);
@@ -217,8 +223,6 @@ public class RocketMQAdminClientImpl implements AdminClient {
     @Override
     public TopicVO updateTopic(TopicVO topic) {
         String topicName = topic.getName();
-        int writeQueues = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
-        int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
         return executeForInstance(topic.getInstanceId(), admin -> {
             try {
@@ -229,6 +233,17 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         new LambdaQueryWrapper<RmqTopic>()
                                 .eq(RmqTopic::getClusterId, clusterName)
                                 .eq(RmqTopic::getName, topicName));
+                // Preserve the existing queue counts when the update request does not change them,
+                // matching the perm semantics below; defaulting to 8 would silently resize the
+                // topic on partial updates (e.g. perm or remark only).
+                int writeQueues = existing != null && existing.getWriteQueueNums() != null
+                                && existing.getWriteQueueNums() > 0
+                        ? existing.getWriteQueueNums()
+                        : topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
+                int readQueues = existing != null && existing.getReadQueueNums() != null
+                                && existing.getReadQueueNums() > 0
+                        ? existing.getReadQueueNums()
+                        : topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
                 TopicPerm effectivePerm = topic.getPerm() != null
                         ? topic.getPerm()
                         : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
@@ -242,6 +257,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
+                applyTopicType(topicConfig, topic.getType());
 
                 for (String addr : brokerAddrs) {
                     admin.createAndUpdateTopicConfig(addr, topicConfig);
@@ -258,14 +274,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     if (StringUtils.hasText(topic.getRemark())) {
                         existing.setRemark(topic.getRemark());
                     }
-                    existing.setUpdatedAt(LocalDateTime.now());
+                    existing.setGmtModified(LocalDateTime.now());
                     topicMapper.updateById(existing);
                 }
 
                 recordAudit("UPDATE_TOPIC", topicName,
                         "queues=" + writeQueues + "/" + readQueues, "SUCCESS");
 
-                topic.setId(topicName);
+                topic.setId(existing == null ? null : existing.getId());
                 topic.setClusterId(clusterName);
                 topic.setWriteQueues(writeQueues);
                 topic.setReadQueues(readQueues);
@@ -278,6 +294,15 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw classifyBrokerFailure(e, "update topic");
             }
         });
+    }
+
+    private void applyTopicType(TopicConfig topicConfig, TopicType topicType) {
+        if (topicType == null) {
+            return;
+        }
+        topicConfig.setAttributes(Map.of(
+                "+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(),
+                topicType.name()));
     }
 
     @Override
@@ -336,8 +361,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
         }
 
         String namesrvAddr = namesrvAddr(request.getInstanceId());
+        RPCHook credentialHook = credentialHook(request.getInstanceId());
 
-        DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup());
+        DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup(), credentialHook);
         producer.setNamesrvAddr(namesrvAddr);
         producer.setSendMsgTimeout(5000);
 
@@ -386,7 +412,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
-        if (group != null && StringUtils.hasText(group.getInstanceId())) {
+        if (group != null && group.getInstanceId() != null) {
             return runtimeAdminClientResolver.execute(group.getInstanceId(),
                     admin -> createConsumerGroup(admin, group));
         }
@@ -424,16 +450,16 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 entity = new RmqGroup();
                 entity.setName(groupName);
                 entity.setClusterId(groupClusterName);
-                entity.setCreatedAt(LocalDateTime.now());
+                entity.setGmtCreate(LocalDateTime.now());
             }
-            if (StringUtils.hasText(group.getInstanceId())) {
+            if (group.getInstanceId() != null) {
                 entity.setInstanceId(group.getInstanceId());
             }
             entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
             entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");
             entity.setMaxRetry(config.getRetryMaxTimes());
             entity.setStatus("ACTIVE");
-            entity.setUpdatedAt(LocalDateTime.now());
+            entity.setGmtModified(LocalDateTime.now());
             if (isNewGroup) {
                 groupMapper.insert(entity);
             } else {
@@ -443,7 +469,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             recordAudit("CREATE_GROUP", groupName,
                     "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
 
-            group.setId(groupName);
+            group.setId(entity.getId());
             group.setClusterId(groupClusterName);
             return group;
         } catch (BusinessException e) {
@@ -572,6 +598,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
                 : namesrvAddr();
+    }
+
+    private RPCHook credentialHook(String instanceId) {
+        return StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.resolveCredentialHook(instanceId)
+                : null;
     }
 
     private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {

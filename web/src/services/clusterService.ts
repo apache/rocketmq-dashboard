@@ -7,6 +7,7 @@ import type {
   ClusterProbeResult,
   K8sCertInfo,
   NameServerConfigDiffResult,
+  NameserverRegistryEntry,
 } from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
 
@@ -39,6 +40,40 @@ export async function listClusters(instanceId?: string): Promise<ClusterInfo[]> 
     return clusters.map(copyCluster);
   }
   return clusterApi.listClusters(instanceId);
+}
+
+export async function listRegistryClusters(): Promise<ClusterInfo[]> {
+  if (isMockMode()) {
+    return clusters.map(copyCluster);
+  }
+  return clusterApi.listRegistryClusters();
+}
+
+export async function listNameserverRegistry(): Promise<NameserverRegistryEntry[]> {
+  return clusterApi.listNameserverRegistry();
+}
+
+export async function createNameserverRegistry(data: {
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  description?: string;
+}): Promise<NameserverRegistryEntry> {
+  return clusterApi.createNameserverRegistry(data);
+}
+
+export async function updateNameserverRegistry(data: {
+  id: number;
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  description?: string;
+}): Promise<NameserverRegistryEntry> {
+  return clusterApi.updateNameserverRegistry(data);
+}
+
+export async function deleteNameserverRegistry(id: number): Promise<void> {
+  await clusterApi.deleteNameserverRegistry(id);
 }
 
 export async function testClusterConnection(namesrvAddr: string): Promise<ClusterProbeResult> {
@@ -116,9 +151,8 @@ export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
     const notAfter = new Date(now);
     notAfter.setFullYear(notAfter.getFullYear() + 1);
     const cert: K8sCertInfo = {
-      id: `cert-${Date.now()}`,
-      name: data.name ?? '',
-      namespace: data.namespace ?? '',
+      id: Date.now(),
+      k8sId: data.k8sId ?? '',
       cluster: data.cluster ?? '',
       type: data.type ?? 'TLS',
       issuer: data.issuer ?? '',
@@ -144,7 +178,7 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
   return clusterApi.updateK8sCert(data);
 }
 
-export async function renewK8sCert(id: string): Promise<K8sCertInfo> {
+export async function renewK8sCert(id: number): Promise<K8sCertInfo> {
   if (isMockMode()) {
     const existing = mockCertStore.find((cert) => cert.id === id);
     if (!existing) throw new Error(`Certificate not found: ${id}`);
@@ -162,7 +196,7 @@ export async function renewK8sCert(id: string): Promise<K8sCertInfo> {
   return clusterApi.renewK8sCert(id);
 }
 
-export async function deleteK8sCert(id: string): Promise<void> {
+export async function deleteK8sCert(id: number): Promise<void> {
   if (isMockMode()) {
     const index = mockCertStore.findIndex((cert) => cert.id === id);
     if (index < 0) throw new Error(`Certificate not found: ${id}`);

@@ -47,6 +47,11 @@ public class GeneralSettingsVO {
     private String deploymentName;
     private String apiVersion;
     private String awsRegion;
+    private Integer maxTokens;
+    private Double temperature;
+    private String dingtalkWebhook;
+    private String emailRecipients;
+    private String smsWebhook;
 
     @JsonProperty(value = "apiKeyConfigured", access = JsonProperty.Access.READ_ONLY)
     public boolean isApiKeyConfigured() {

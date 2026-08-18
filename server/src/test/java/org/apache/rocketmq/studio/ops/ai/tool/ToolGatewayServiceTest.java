@@ -29,6 +29,7 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.ops.ai.AiToolVO;
@@ -60,6 +61,7 @@ class ToolGatewayServiceTest {
     private ToolCatalog catalog;
     private ClusterService clusterService;
     private DashboardService dashboardService;
+    private MessageService messageService;
     private MetadataService metadataService;
     private AlertService alertService;
     private NameServerConfigDiffService nameServerConfigDiffService;
@@ -71,6 +73,8 @@ class ToolGatewayServiceTest {
     private ConsumerGroupListToolHandler consumerGroupListHandler;
     private AlertRuleListToolHandler alertRuleListHandler;
     private NameServerConfigDiffToolHandler nameServerConfigDiffHandler;
+    private MessageQueryToolHandler messageQueryHandler;
+    private MessageTraceToolHandler messageTraceHandler;
     private ToolGatewayService gateway;
 
     @BeforeEach
@@ -78,6 +82,7 @@ class ToolGatewayServiceTest {
         catalog = canonicalCatalog();
         clusterService = mock(ClusterService.class);
         dashboardService = mock(DashboardService.class);
+        messageService = mock(MessageService.class);
         metadataService = mock(MetadataService.class);
         alertService = mock(AlertService.class);
         nameServerConfigDiffService = mock(NameServerConfigDiffService.class);
@@ -90,6 +95,8 @@ class ToolGatewayServiceTest {
         alertRuleListHandler = new AlertRuleListToolHandler(alertService);
         nameServerConfigDiffHandler = new NameServerConfigDiffToolHandler(
                 nameServerConfigDiffService);
+        messageQueryHandler = new MessageQueryToolHandler(messageService);
+        messageTraceHandler = new MessageTraceToolHandler(messageService);
         gateway = gateway(
                 catalog,
                 clusterListHandler,
@@ -98,7 +105,9 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler);
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler);
     }
 
     @Test
@@ -121,8 +130,19 @@ class ToolGatewayServiceTest {
                         "rmq.dashboard.summary",
                         "rmq.topic.list",
                         "rmq.group.list",
+                        "rmq.message.query",
+                        "rmq.message.trace",
                         "rmq.alert.rule.list",
                         "rmq.nameserver.config.diff");
+    }
+
+    @Test
+    void discoveryWithClusterOfUnknownTypeOnlyExposesGlobalTools() {
+        when(clusterService.getCluster("unknown")).thenReturn(cluster("unknown", null));
+
+        assertThat(gateway.discover("unknown"))
+                .extracting(AiToolVO::getName)
+                .containsExactly("rmq.cluster.list");
     }
 
     @Test
@@ -394,8 +414,8 @@ class ToolGatewayServiceTest {
     @Test
     void executesAlertRuleListThroughADataMinimizingProjection() {
         when(alertService.listRules()).thenReturn(List.of(
-                alertRule("rule-1", "High Lag", "rocketmq_consumer_lag_messages", true),
-                alertRule("rule-2", "Broker Down", "up", false)));
+                alertRule(1L, "High Lag", "rocketmq_consumer_lag_messages", true),
+                alertRule(2L, "Broker Down", "up", false)));
 
         Object output = gateway.execute("rmq.alert.rule.list", Map.of(
                 "cluster", "cluster-v5",
@@ -403,7 +423,7 @@ class ToolGatewayServiceTest {
                 "enabled", true));
 
         assertThat(output).isEqualTo(List.of(Map.of(
-                "id", "rule-1",
+                "id", 1L,
                 "name", "High Lag",
                 "metric", "rocketmq_consumer_lag_messages",
                 "operator", ">",
@@ -481,7 +501,9 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler);
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler);
 
         assertThatThrownBy(() -> l2Gateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(BusinessException.class)
@@ -533,7 +555,9 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler))
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input schema")
                 .hasMessageContaining("rmq.cluster.list");
@@ -559,7 +583,9 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler))
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input schema")
                 .hasMessageContaining("rmq.cluster.list");
@@ -586,7 +612,9 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler);
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler);
 
         assertThatThrownBy(() -> invalidGateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(IllegalStateException.class)
@@ -657,7 +685,7 @@ class ToolGatewayServiceTest {
         return group;
     }
 
-    private static AlertRuleVO alertRule(String id, String name, String metric, boolean enabled) {
+    private static AlertRuleVO alertRule(Long id, String name, String metric, boolean enabled) {
         return AlertRuleVO.builder()
                 .id(id)
                 .name(name)

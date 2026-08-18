@@ -18,19 +18,26 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createInstance, deleteInstance, listInstances, updateInstance } from './instance';
+import {
+  createInstance,
+  deleteInstance,
+  getInstanceCapabilities,
+  listInstances,
+  supportsApacheRuntime,
+  updateInstance,
+} from './instance';
 
 const mock = new MockAdapter(client);
 const instance = {
-  id: 'instance-1',
+  id: 1,
   name: 'orders',
   type: 'PROXY' as const,
   endpoint: 'proxy:8080',
   remark: '',
   topicCount: 0,
   consumerGroupCount: 0,
-  createdAt: '2026-07-18T00:00:00Z',
-  updatedAt: '2026-07-18T00:00:00Z',
+  gmtCreate: '2026-07-18T00:00:00Z',
+  gmtModified: '2026-07-18T00:00:00Z',
 };
 
 describe('instance API', () => {
@@ -53,7 +60,9 @@ describe('instance API', () => {
     await expect(
       createInstance({ name: instance.name, type: instance.type, endpoint: instance.endpoint }),
     ).resolves.toEqual(instance);
-    await expect(updateInstance({ id: instance.id, remark: 'updated' })).resolves.toEqual(instance);
+    await expect(updateInstance({ instanceId: instance.name, remark: 'updated' })).resolves.toEqual(
+      instance,
+    );
   });
 
   it('sends normalized instance filters', async () => {
@@ -76,12 +85,34 @@ describe('instance API', () => {
     await expect(listInstances({ search: '   ' })).resolves.toEqual([instance]);
   });
 
-  it('sends the instance id when deleting', async () => {
+  it('sends the instance ID when deleting', async () => {
     mock.onPost('/instances/delete').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ id: instance.id });
+      expect(JSON.parse(config.data)).toEqual({ id: instance.name });
       return [200, { code: 200, data: null }];
     });
 
-    await expect(deleteInstance(instance.id)).resolves.toBeUndefined();
+    await expect(deleteInstance(instance.name)).resolves.toBeUndefined();
+  });
+
+  it('loads the capability contract for an encoded instance id', async () => {
+    const capabilities = {
+      instanceId: 'instance/proxy',
+      vendor: 'APACHE' as const,
+      accessType: 'PROXY' as const,
+      capabilities: ['TOPIC_MANAGEMENT', 'DLQ_MANAGEMENT'] as const,
+    };
+    mock.onGet('/instances/instance%2Fproxy/capabilities').reply(200, {
+      code: 200,
+      data: capabilities,
+    });
+
+    await expect(getInstanceCapabilities('instance/proxy')).resolves.toEqual(capabilities);
+  });
+
+  it('identifies instances supported by Apache MQAdmin runtime APIs', () => {
+    expect(supportsApacheRuntime({ vendor: 'APACHE' })).toBe(true);
+    expect(supportsApacheRuntime({})).toBe(true);
+    expect(supportsApacheRuntime({ vendor: 'ALIYUN' })).toBe(false);
+    expect(supportsApacheRuntime({ vendor: 'TENCENT' })).toBe(false);
   });
 });

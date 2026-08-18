@@ -19,7 +19,9 @@ package org.apache.rocketmq.studio.instance;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -55,12 +57,15 @@ class InstanceControllerTest {
     @MockBean
     private InstanceService instanceService;
 
+    @MockBean
+    private InstanceCapabilityService instanceCapabilityService;
+
     @Autowired
     private ObjectMapper objectMapper;
 
     @Test
     void listInstancesShouldReturnAllInstances() throws Exception {
-        InstanceVO inst = buildInstance("inst-1", "production-proxy", InstanceType.PROXY, "10.0.1.1:8080");
+        InstanceVO inst = buildInstance(1L, "production-proxy", InstanceType.PROXY, "10.0.1.1:8080");
 
         when(instanceService.listInstances(isNull(), isNull())).thenReturn(List.of(inst));
 
@@ -68,7 +73,7 @@ class InstanceControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].id").value("inst-1"))
+                .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].name").value("production-proxy"))
                 .andExpect(jsonPath("$.data[0].type").value("PROXY"))
                 .andExpect(jsonPath("$.data[0].endpoint").value("10.0.1.1:8080"));
@@ -76,7 +81,7 @@ class InstanceControllerTest {
 
     @Test
     void listInstancesShouldFilterByType() throws Exception {
-        InstanceVO inst = buildInstance("inst-1", "proxy-1", InstanceType.PROXY, "10.0.1.1:8080");
+        InstanceVO inst = buildInstance(1L, "proxy-1", InstanceType.PROXY, "10.0.1.1:8080");
 
         when(instanceService.listInstances(eq(InstanceType.PROXY), isNull())).thenReturn(List.of(inst));
 
@@ -91,7 +96,7 @@ class InstanceControllerTest {
 
     @Test
     void listInstancesShouldFilterBySearch() throws Exception {
-        InstanceVO inst = buildInstance("inst-1", "production", InstanceType.PROXY, "10.0.1.1:8080");
+        InstanceVO inst = buildInstance(1L, "production", InstanceType.PROXY, "10.0.1.1:8080");
 
         when(instanceService.listInstances(isNull(), eq("prod"))).thenReturn(List.of(inst));
 
@@ -101,6 +106,26 @@ class InstanceControllerTest {
                 .andExpect(jsonPath("$.data[0].name").value("production"));
 
         verify(instanceService).listInstances(isNull(), eq("prod"));
+    }
+
+    @Test
+    void getCapabilitiesShouldResolveStringInstanceIdAndReturnContractTest() throws Exception {
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
+        when(instanceCapabilityService.getCapabilities(1L)).thenReturn(new InstanceCapabilitiesVO(
+                "instance-1",
+                InstanceVendor.APACHE,
+                InstanceType.DIRECT,
+                List.of(InstanceCapability.TOPIC_MANAGEMENT, InstanceCapability.DLQ_MANAGEMENT)));
+
+        mockMvc.perform(get("/api/instances/instance-1/capabilities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.instanceId").value("instance-1"))
+                .andExpect(jsonPath("$.data.vendor").value("APACHE"))
+                .andExpect(jsonPath("$.data.accessType").value("DIRECT"))
+                .andExpect(jsonPath("$.data.capabilities[0]").value("TOPIC_MANAGEMENT"))
+                .andExpect(jsonPath("$.data.capabilities[1]").value("DLQ_MANAGEMENT"));
+
+        verify(instanceService).resolveInstanceId("instance-1");
     }
 
     @Test
@@ -118,9 +143,9 @@ class InstanceControllerTest {
                 .topicCount(0)
                 .consumerGroupCount(0)
                 .build();
-        created.setId("new-id");
-        created.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
-        created.setUpdatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        created.setId(2L);
+        created.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        created.setGmtModified(LocalDateTime.of(2026, 1, 1, 0, 0));
 
         when(instanceService.createInstance(any(InstanceVO.class))).thenReturn(created);
 
@@ -129,7 +154,7 @@ class InstanceControllerTest {
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("new-id"))
+                .andExpect(jsonPath("$.data.id").value(2))
                 .andExpect(jsonPath("$.data.name").value("new-instance"))
                 .andExpect(jsonPath("$.data.endpoint").value("10.0.2.1:8080"))
                 .andExpect(jsonPath("$.data.type").value("DIRECT"));
@@ -149,28 +174,26 @@ class InstanceControllerTest {
 
     @Test
     void updateInstanceShouldReturnUpdatedInstance() throws Exception {
-        InstanceVO update = InstanceVO.builder()
-                .name("updated-name")
-                .build();
-        update.setId("inst-1");
-
         InstanceVO updated = InstanceVO.builder()
                 .name("updated-name")
                 .endpoint("10.0.1.1:8080")
                 .type(InstanceType.PROXY)
                 .build();
-        updated.setId("inst-1");
-        updated.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
-        updated.setUpdatedAt(LocalDateTime.of(2026, 7, 8, 12, 0));
+        updated.setId(1L);
+        updated.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        updated.setGmtModified(LocalDateTime.of(2026, 7, 8, 12, 0));
 
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
         when(instanceService.updateInstance(any(InstanceVO.class))).thenReturn(updated);
 
         mockMvc.perform(post("/api/instances/update")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(update)))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "instanceId", "instance-1",
+                                "name", "updated-name"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("inst-1"))
+                .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.name").value("updated-name"));
     }
 
@@ -188,9 +211,10 @@ class InstanceControllerTest {
 
     @Test
     void deleteInstanceShouldReturnSuccess() throws Exception {
-        doNothing().when(instanceService).deleteInstance("inst-1");
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
+        doNothing().when(instanceService).deleteInstance(1L);
 
-        Map<String, String> body = Map.of("id", "inst-1");
+        Map<String, String> body = Map.of("id", "instance-1");
 
         mockMvc.perform(post("/api/instances/delete")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -199,24 +223,25 @@ class InstanceControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(instanceService).deleteInstance("inst-1");
+        verify(instanceService).deleteInstance(1L);
     }
 
     @Test
     void deleteInstanceShouldReturnConflictWhenManagedResourcesExist() throws Exception {
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
         doThrow(new BusinessException(409,
                 "Cannot delete instance with managed resources: topics=2, consumerGroups=1"))
-                .when(instanceService).deleteInstance("inst-1");
+                .when(instanceService).deleteInstance(1L);
 
         mockMvc.perform(post("/api/instances/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "inst-1"))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", "instance-1"))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.message")
                         .value("Cannot delete instance with managed resources: topics=2, consumerGroups=1"));
 
-        verify(instanceService).deleteInstance("inst-1");
+        verify(instanceService).deleteInstance(1L);
     }
 
     @Test
@@ -243,7 +268,7 @@ class InstanceControllerTest {
         verifyNoInteractions(instanceService);
     }
 
-    private InstanceVO buildInstance(String id, String name, InstanceType type, String endpoint) {
+    private InstanceVO buildInstance(Long id, String name, InstanceType type, String endpoint) {
         InstanceVO instance = InstanceVO.builder()
                 .name(name)
                 .type(type)
@@ -252,8 +277,8 @@ class InstanceControllerTest {
                 .consumerGroupCount(5)
                 .build();
         instance.setId(id);
-        instance.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
-        instance.setUpdatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        instance.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        instance.setGmtModified(LocalDateTime.of(2026, 1, 1, 0, 0));
         return instance;
     }
 }

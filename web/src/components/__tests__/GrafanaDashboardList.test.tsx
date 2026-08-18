@@ -100,6 +100,30 @@ describe('GrafanaDashboardList', () => {
     expect(screen.getByText('RocketMQ Broker')).toBeInTheDocument();
   });
 
+  it('keeps a failed list request visible and recovers when retried', async () => {
+    vi.mocked(listGrafanaDashboards)
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(dashboards);
+    const user = userEvent.setup();
+
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    const retryButton = await screen.findByRole('button', { name: /Retry|重试/ });
+    expect(listGrafanaDashboards).toHaveBeenCalledTimes(1);
+
+    await user.click(retryButton);
+
+    expect(await screen.findByText('RocketMQ Cluster Overview')).toBeInTheDocument();
+    expect(listGrafanaDashboards).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /Retry|重试/ })).not.toBeInTheDocument();
+  });
+
   it('opens the view modal and renders the dashboard JSON', async () => {
     const user = userEvent.setup();
     render(

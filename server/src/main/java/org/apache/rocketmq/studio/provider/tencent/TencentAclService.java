@@ -135,8 +135,8 @@ public class TencentAclService {
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.CreateRole(request));
         // The created role is not returned by the API; reconstruct from the known inputs.
+        // Tencent roles have no database row; the role name lives in username, id stays null.
         return AclUserVO.builder()
-                .id(user.getUsername())
                 .username(user.getUsername())
                 .accessKey(null)
                 .secretKey(null)
@@ -144,33 +144,65 @@ public class TencentAclService {
                 .permRead(user.getPermRead() == null || user.getPermRead())
                 .permWrite(user.getPermWrite() == null || user.getPermWrite())
                 .clusters(context.cloudInstanceId() == null ? List.of() : List.of(context.cloudInstanceId()))
-                .createdAt(LocalDateTime.now())
+                .gmtCreate(LocalDateTime.now())
                 .build();
     }
 
     public AclUserVO updateUser(String instanceId, AclUserVO user) {
         Context context = resolve(instanceId);
-        if (!StringUtils.hasText(user.getUsername())) {
+        // Tencent roles have no database row; username is the stable role-name source (id is the
+        // numeric ACL-user primary key and stays null for Tencent roles).
+        String roleName = user.getUsername();
+        if (!StringUtils.hasText(roleName)) {
             throw new BusinessException(400, "ACL username is required");
         }
+        RoleItem existing = user.getPermRead() == null || user.getPermWrite() == null
+                ? findRole(context, roleName) : null;
+        boolean permRead = user.getPermRead() == null
+                ? Boolean.TRUE.equals(existing.getPermRead()) : user.getPermRead();
+        boolean permWrite = user.getPermWrite() == null
+                ? Boolean.TRUE.equals(existing.getPermWrite()) : user.getPermWrite();
         ModifyRoleRequest request = new ModifyRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
-        request.setRole(user.getUsername());
-        request.setPermRead(user.getPermRead() == null || user.getPermRead());
-        request.setPermWrite(user.getPermWrite() == null || user.getPermWrite());
+        request.setRole(roleName);
+        request.setPermRead(permRead);
+        request.setPermWrite(permWrite);
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.ModifyRole(request));
         return AclUserVO.builder()
-                .id(user.getUsername())
-                .username(user.getUsername())
+                .username(roleName)
                 .accessKey(null)
                 .secretKey(null)
                 .admin(false)
-                .permRead(user.getPermRead() == null || user.getPermRead())
-                .permWrite(user.getPermWrite() == null || user.getPermWrite())
+                .permRead(permRead)
+                .permWrite(permWrite)
                 .clusters(context.cloudInstanceId() == null ? List.of() : List.of(context.cloudInstanceId()))
-                .createdAt(user.getCreatedAt())
+                .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    private RoleItem findRole(Context context, String roleName) {
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeRoleListRequest request = new DescribeRoleListRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setOffset((long) page * PAGE_SIZE);
+            request.setLimit((long) PAGE_SIZE);
+            DescribeRoleListResponse response = clientFactory.call(context.credentialId(),
+                    context.regionId(), client -> client.DescribeRoleList(request));
+            RoleItem[] data = response == null ? null : response.getData();
+            if (data == null || data.length == 0) {
+                break;
+            }
+            for (RoleItem role : data) {
+                if (role != null && roleName.equals(role.getRoleName())) {
+                    return role;
+                }
+            }
+            if (data.length < PAGE_SIZE) {
+                break;
+            }
+        }
+        throw new BusinessException(404, "ACL user not found: " + roleName);
     }
 
     public void deleteUser(String instanceId, String username) {
@@ -241,7 +273,6 @@ public class TencentAclService {
             actions.add("SUB");
         }
         return AclRuleVO.builder()
-                .id(principal)
                 .principal(principal)
                 .resource(RESOURCE)
                 .resourceType(RESOURCE_TYPE)
@@ -268,10 +299,10 @@ public class TencentAclService {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findById(instanceId)
+        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
-                || !StringUtils.hasText(instance.getCredentialId())) {
+                || instance.getCredentialId() == null) {
             throw new BusinessException(400, "Instance " + instanceId + " is missing Tencent Cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
@@ -279,7 +310,6 @@ public class TencentAclService {
 
     private static AclUserVO toUser(RoleItem role, String cloudInstanceId) {
         return AclUserVO.builder()
-                .id(role.getRoleName())
                 .username(role.getRoleName())
                 .accessKey(role.getAccessKey())
                 .secretKey(role.getSecretKey())
@@ -288,7 +318,7 @@ public class TencentAclService {
                 .permWrite(role.getPermWrite())
                 .clusters(cloudInstanceId == null ? List.of() : List.of(cloudInstanceId))
                 .whiteRemoteAddress(null)
-                .createdAt(toLocalDateTime(role.getCreatedTime()))
+                .gmtCreate(toLocalDateTime(role.getCreatedTime()))
                 .build();
     }
 
@@ -301,7 +331,6 @@ public class TencentAclService {
             actions.add("SUB");
         }
         return AclRuleVO.builder()
-                .id(role.getRoleName())
                 .principal(role.getRoleName())
                 .resource(RESOURCE)
                 .resourceType(RESOURCE_TYPE)
@@ -310,7 +339,7 @@ public class TencentAclService {
                 .decision(DECISION)
                 .scope(SCOPE)
                 .aclVersion(ACL_VERSION)
-                .createdAt(toLocalDateTime(role.getCreatedTime()))
+                .gmtCreate(toLocalDateTime(role.getCreatedTime()))
                 .build();
     }
 
@@ -322,6 +351,6 @@ public class TencentAclService {
         return Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDateTime();
     }
 
-    private record Context(String cloudInstanceId, String regionId, String credentialId) {
+    private record Context(String cloudInstanceId, String regionId, Long credentialId) {
     }
 }

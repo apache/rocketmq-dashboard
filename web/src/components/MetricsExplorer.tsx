@@ -230,6 +230,25 @@ interface DataSourceCredentials extends AuthFormValues {
   key: string;
 }
 
+const getQueryErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error !== 'object' || error === null || !('response' in error)) {
+    return fallback;
+  }
+
+  const response = error.response;
+  if (typeof response !== 'object' || response === null || !('data' in response)) {
+    return fallback;
+  }
+
+  const data = response.data;
+  if (typeof data !== 'object' || data === null || !('message' in data)) {
+    return fallback;
+  }
+
+  const message = data.message;
+  return typeof message === 'string' && message.trim() ? message : fallback;
+};
+
 const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
   const normalized = auth.trim().toLowerCase();
   if (normalized === 'basic' || normalized === 'basic auth') return 'basic';
@@ -239,6 +258,7 @@ const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
 
 const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const { lang } = useLang();
+  const queryErrorFallback = lang === 'zh' ? 'Prometheus 查询失败' : 'Prometheus query failed';
   const copy =
     lang === 'zh'
       ? {
@@ -248,7 +268,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           range: '时间范围',
           refresh: '刷新指标',
           profileError: '指标模板加载失败',
-          queryError: 'Prometheus 查询失败',
+          queryError: queryErrorFallback,
           noProfiles: '暂无指标模板',
           noSamples: '暂无标量数据',
           defaultDataSource: '默认数据源',
@@ -268,7 +288,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           range: 'Time range',
           refresh: 'Refresh metrics',
           profileError: 'Failed to load metric profiles',
-          queryError: 'Prometheus query failed',
+          queryError: queryErrorFallback,
           noProfiles: 'No metric profiles',
           noSamples: 'No scalar samples',
           defaultDataSource: 'Default source',
@@ -291,7 +311,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [queryLoading, setQueryLoading] = useState(false);
   const [profileError, setProfileError] = useState(false);
-  const [queryError, setQueryError] = useState(false);
+  const [queryError, setQueryError] = useState<string | null>(null);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [dataSourceKey, setDataSourceKey] = useState('');
   const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
@@ -333,7 +353,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         step: range.step,
       };
       setQueryLoading(true);
-      setQueryError(false);
+      setQueryError(null);
       try {
         const currentDataSourceKey = dataSourceKeyRef.current;
         const credentials =
@@ -353,16 +373,16 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             })
           : await queryMetrics(query);
         if (currentRequest === requestId.current) setData(result);
-      } catch {
+      } catch (error) {
         if (currentRequest === requestId.current) {
           setData(null);
-          setQueryError(true);
+          setQueryError(getQueryErrorMessage(error, queryErrorFallback));
         }
       } finally {
         if (currentRequest === requestId.current) setQueryLoading(false);
       }
     },
-    [instanceId],
+    [instanceId, queryErrorFallback],
   );
 
   useEffect(() => {
@@ -470,6 +490,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   useEffect(() => {
     if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
       window.setTimeout(() => {
+        // Keep the ref in sync with the state; queries read the ref, so a stale key would
+        // keep hitting the de-registered data source while the UI shows the default.
+        dataSourceKeyRef.current = '';
         setDataSourceKey('');
         setData(null);
       }, 0);
@@ -563,7 +586,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       ) : profiles.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.noProfiles} />
       ) : queryError ? (
-        <Alert type="error" showIcon message={copy.queryError} />
+        <Alert type="error" showIcon message={queryError} />
       ) : queryLoading && !data ? (
         <Skeleton active paragraph={{ rows: 5 }} />
       ) : data && selectedMetric ? (

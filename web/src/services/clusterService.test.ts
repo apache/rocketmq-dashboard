@@ -146,8 +146,7 @@ describe('clusterService mock clusters', () => {
   it('copies certificate SAN arrays before writing them into the mock store', async () => {
     const san = ['proxy.example.com'];
     const created = await createK8sCert({
-      name: 'cert-copy-test',
-      namespace: 'rocketmq',
+      k8sId: 'cert-copy-test',
       cluster: 'cluster-prod',
       san,
     });

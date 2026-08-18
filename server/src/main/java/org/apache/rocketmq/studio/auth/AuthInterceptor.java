@@ -22,7 +22,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -36,6 +35,7 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     private static final Set<String> READER_POST_PATHS = Set.of(
             "/api/auth/logout",
+            "/api/auth/password",
             "/api/ai/chat",
             "/api/metrics/query",
             "/api/metrics/query/datasource");
@@ -54,13 +54,13 @@ public class AuthInterceptor implements HandlerInterceptor {
             // enforcement, matching the documented AuthWebConfig behaviour.
             return true;
         }
-        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        String authorization = AuthCookie.authorization(request, authProperties);
         if (!authService.isAuthenticated(authorization)) {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
             return false;
         }
         authService.getAuthenticatedUser(authorization)
-                .ifPresent(user -> AuthenticatedUserContext.setUsername(user.getUsername()));
+                .ifPresent(user -> AuthenticatedUserContext.setUser(user.getUserId(), user.getUsername()));
         if (requiresAdmin(request, requestPath(request)) && !authService.isAdmin(authorization)) {
             writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
             return false;
@@ -102,6 +102,7 @@ public class AuthInterceptor implements HandlerInterceptor {
     private boolean isAdminOnlyGetPath(String path) {
         String normalizedPath = normalizePath(stripPathParameters(path));
         return "/api/llm/models".equals(normalizedPath)
+                || "/api/studio-users".equals(normalizedPath)
                 || isCloudCatalogPath(normalizedPath)
                 || "/api/acl/remote/rules".equals(normalizedPath)
                 || isCredentialRevealPath(normalizedPath, "/api/acl/users/")
@@ -155,6 +156,8 @@ public class AuthInterceptor implements HandlerInterceptor {
         path = normalizePath(path);
         return path.equals("/api/auth/login")
                 || path.equals("/api/auth/status")
+                || path.equals("/livez")
+                || path.equals("/readyz")
                 || path.startsWith("/api-docs")
                 || path.startsWith("/swagger-ui")
                 || path.startsWith("/actuator/health");

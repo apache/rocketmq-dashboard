@@ -38,6 +38,7 @@ public class ConsumerGroupController {
 
     private final MetadataService metadataService;
     private final ConsumerDiagnosticsService consumerDiagnosticsService;
+    private final org.apache.rocketmq.studio.instance.InstanceService instanceService;
 
     @GetMapping
     public Result<List<ConsumerGroupVO>> listConsumerGroups(
@@ -78,7 +79,9 @@ public class ConsumerGroupController {
 
     @PostMapping("/create")
     public Result<ConsumerGroupVO> createConsumerGroup(@Valid @RequestBody CreateConsumerGroupDTO group) {
-        return Result.ok(metadataService.createConsumerGroup(group.toConsumerGroupVO()));
+        ConsumerGroupVO vo = group.toConsumerGroupVO();
+        vo.setInstanceId(instanceService.normalizeIdentifier(group.getInstanceId()));
+        return Result.ok(metadataService.createConsumerGroup(vo));
     }
 
     @PostMapping("/delete")

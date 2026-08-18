@@ -61,6 +61,7 @@ import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +80,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
 
@@ -124,6 +126,16 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public Set<InstanceCapability> capabilities() {
+        return Set.of(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT);
+    }
+
+    @Override
     public int countTopics(String instanceId) {
         Context context = resolve(instanceId);
         DescribeTopicListRequest request = new DescribeTopicListRequest();
@@ -132,18 +144,22 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setLimit(1L);
         DescribeTopicListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.DescribeTopicList(request));
-        if (response == null || response.getData() == null || response.getData().length == 0) {
+        if (response == null) {
             return 0;
         }
-        // Use the response total count if available; otherwise fall back to full scan
+        // TotalCount is independent of the current page contents and remains authoritative
+        // when Tencent returns an empty Data array for the minimal count request.
         Long total = response.getTotalCount();
-        if (total == null) {
-            return listTopics(instanceId, null, null, false).size();
+        if (total != null) {
+            if (total <= 0L) {
+                return 0;
+            }
+            return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : total.intValue();
         }
-        if (total <= 0L) {
+        if (response.getData() == null || response.getData().length == 0) {
             return 0;
         }
-        return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : total.intValue();
+        return listTopics(instanceId, null, null, false).size();
     }
 
     @Override
@@ -218,8 +234,8 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (response == null) {
                 return;
             }
-            topic.setCreatedAt(toLocalDateTime(response.getCreatedTime()));
-            topic.setUpdatedAt(toLocalDateTime(response.getLastUpdateTime()));
+            topic.setGmtCreate(toLocalDateTime(response.getCreatedTime()));
+            topic.setGmtModified(toLocalDateTime(response.getLastUpdateTime()));
         } catch (BusinessException ignored) {
             // A single topic detail lookup failure should not fail the whole list.
         }
@@ -249,8 +265,8 @@ public class TencentInstanceProvider implements InstanceProvider {
         topic.setPerm(defaultPerm(topic.getPerm()));
         topic.setWriteQueues(queueNum(topic).intValue());
         topic.setReadQueues(queueNum(topic).intValue());
-        topic.setCreatedAt(LocalDateTime.now());
-        topic.setUpdatedAt(LocalDateTime.now());
+        topic.setGmtCreate(LocalDateTime.now());
+        topic.setGmtModified(LocalDateTime.now());
         return topic;
     }
 
@@ -274,7 +290,7 @@ public class TencentInstanceProvider implements InstanceProvider {
             topic.setWriteQueues(requestedQueueNum.intValue());
             topic.setReadQueues(requestedQueueNum.intValue());
         }
-        topic.setUpdatedAt(LocalDateTime.now());
+        topic.setGmtModified(LocalDateTime.now());
         return topic;
     }
 
@@ -374,7 +390,7 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (response == null) {
                 return;
             }
-            group.setCreatedAt(toLocalDateTime(response.getCreatedTime()));
+            group.setGmtCreate(toLocalDateTime(response.getCreatedTime()));
             if (StringUtils.hasText(response.getConsumeModel())) {
                 group.setConsumeType(toConsumeType(response.getConsumeModel()));
             }
@@ -397,8 +413,8 @@ public class TencentInstanceProvider implements InstanceProvider {
         group.setInstanceId(instanceId);
         group.setRetryMaxTimes(retryMaxTimes(group));
         group.setSubscribedTopics(java.util.List.of());
-        group.setCreatedAt(LocalDateTime.now());
-        group.setUpdatedAt(LocalDateTime.now());
+        group.setGmtCreate(LocalDateTime.now());
+        group.setGmtModified(LocalDateTime.now());
         return group;
     }
 
@@ -794,7 +810,7 @@ public class TencentInstanceProvider implements InstanceProvider {
         InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
-                || !StringUtils.hasText(instance.getCredentialId())) {
+                || instance.getCredentialId() == null) {
             throw new BusinessException(400, "Instance " + instanceId + " is missing Tencent Cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
@@ -1027,6 +1043,6 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
     }
 
-    private record Context(String cloudInstanceId, String regionId, String credentialId) {
+    private record Context(String cloudInstanceId, String regionId, Long credentialId) {
     }
 }

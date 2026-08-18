@@ -34,7 +34,6 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
@@ -163,14 +162,24 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     if (topicConfig == null || topicConfig.getTopicConfigTable() == null) {
                         markCountUnavailable(topicCountsUnavailableClusters, clusterName);
                     } else {
-                        Set<String> clusterTopics = topicsByCluster.computeIfAbsent(
-                                clusterName, ignored -> new HashSet<>());
-                        topicConfig.getTopicConfigTable().keySet().stream()
-                                .filter(topic -> !isSystemTopic(topic))
-                                .forEach(topic -> {
-                                    allTopics.add(topic);
-                                    clusterTopics.add(topic);
-                                });
+                        // A broker's self-named stats topic (e.g. "broker-a") is not a user topic;
+                        // pass the owning cluster's broker names so SystemTopicFilter can rule it out.
+                        Set<String> owningBrokerNames = clusterName == null
+                                ? Set.of()
+                                : clusterAddrTable.getOrDefault(clusterName, Set.of());
+                        for (String topic : topicConfig.getTopicConfigTable().keySet()) {
+                            if (isSystemTopic(topic, owningBrokerNames)) {
+                                continue;
+                            }
+                            allTopics.add(topic);
+                            // A broker outside every cluster (registration/unregistration race)
+                            // has no cluster name; count it globally but not per-cluster, matching
+                            // the consumer group path below.
+                            if (clusterName != null) {
+                                topicsByCluster.computeIfAbsent(clusterName, ignored -> new HashSet<>())
+                                        .add(topic);
+                            }
+                        }
                     }
                 } catch (Exception e) {
                     markCountUnavailable(topicCountsUnavailableClusters, clusterName);
@@ -310,8 +319,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
     }
 
     private ClusterType clusterTypeFor(InstanceVO instance) {
-        return instance.getType() == InstanceType.DIRECT
-                ? ClusterType.V4_DIRECT : ClusterType.V5_PROXY_CLUSTER;
+        return switch (instance.getType()) {
+            case DIRECT -> ClusterType.V4_DIRECT;
+            case PROXY_LOCAL -> ClusterType.V5_PROXY_LOCAL;
+            case PROXY, PROXY_CLUSTER -> ClusterType.V5_PROXY_CLUSTER;
+        };
     }
 
     private DashboardDataVO emptyDashboard() {
@@ -357,6 +369,10 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
     private boolean isSystemTopic(String topic) {
         return SystemTopicFilter.isSystem(topic);
+    }
+
+    private boolean isSystemTopic(String topic, Set<String> brokerNames) {
+        return SystemTopicFilter.isSystem(topic, brokerNames);
     }
 
     private boolean isSystemGroup(String group) {

@@ -65,7 +65,7 @@ class CloudCredentialServiceTest {
     @Test
     void listShouldMaskAccessKeyAndHideSecretTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
-        stored.setId("cred-1");
+        stored.setId(1L);
         stored.setName("aliyun-test");
         stored.setVendor(InstanceVendor.ALIYUN);
         stored.setAccessKey("LTAI5tUnitTestKey000000001");
@@ -127,15 +127,21 @@ class CloudCredentialServiceTest {
         request.setSecretKey("sk-value");
         when(credentialRepository.findByVendorAndAccessKey(any(), any())).thenReturn(Optional.empty());
         when(credentialRepository.save(any(CloudCredentialVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    CloudCredentialVO saved = invocation.getArgument(0);
+                    if (saved.getId() == null) {
+                        saved.setId(1L);
+                    }
+                    return saved;
+                });
 
         CloudCredentialVO created = service.create(request);
 
-        assertThat(created.getId()).isNotBlank();
+        assertThat(created.getId()).isNotNull();
         assertThat(created.getAccessKey()).isEqualTo("LTAI****0001");
         assertThat(created.getSecretKey()).isNull();
         verify(operationAuditService).record(eq("CREATE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
-                eq(created.getId()), eq(null), argThat(detail -> detail.equals("name=ok, vendor=ALIYUN")
+                eq("1"), eq(null), argThat(detail -> detail.equals("name=ok, vendor=ALIYUN")
                         && !detail.contains("LTAI5tGoodKey00000000001") && !detail.contains("sk-value")),
                 eq("SUCCESS"), eq(null));
     }
@@ -143,11 +149,11 @@ class CloudCredentialServiceTest {
     @Test
     void deleteShouldRejectWhenReferencedByInstanceTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
-        stored.setId("cred-1");
-        when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
-        when(instanceRepository.existsByCredentialId("cred-1")).thenReturn(true);
+        stored.setId(1L);
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
+        when(instanceRepository.existsByCredentialId(1L)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.delete("cred-1"))
+        assertThatThrownBy(() -> service.delete(1L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("referenced");
         verify(credentialRepository, never()).deleteById(any());
@@ -156,54 +162,54 @@ class CloudCredentialServiceTest {
     @Test
     void updateShouldInvalidateAliyunClientsAfterSavingCredentialTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
-        stored.setId("cred-1");
+        stored.setId(1L);
         stored.setVendor(InstanceVendor.ALIYUN);
         stored.setAccessKey("LTAI5tUpdateKey000000001");
         stored.setSecretKey("old-secret");
-        when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
         when(credentialRepository.save(any(CloudCredentialVO.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
-        request.setId("cred-1");
+        request.setId(1L);
         request.setSecretKey("new-secret");
 
         service.update(request);
 
-        verify(aliyunClientFactory).invalidateCredential("cred-1");
+        verify(aliyunClientFactory).invalidateCredential(1L);
         verify(operationAuditService).record(eq("UPDATE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
-                eq("cred-1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
+                eq("1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
     }
 
     @Test
     void deleteShouldInvalidateAliyunClientsAfterRemovingCredentialTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
-        stored.setId("cred-1");
+        stored.setId(1L);
         stored.setVendor(InstanceVendor.ALIYUN);
-        when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
-        when(instanceRepository.existsByCredentialId("cred-1")).thenReturn(false);
-        when(credentialRepository.deleteById("cred-1")).thenReturn(true);
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
+        when(instanceRepository.existsByCredentialId(1L)).thenReturn(false);
+        when(credentialRepository.deleteById(1L)).thenReturn(true);
 
-        service.delete("cred-1");
+        service.delete(1L);
 
-        verify(credentialRepository).deleteById("cred-1");
-        verify(aliyunClientFactory).invalidateCredential("cred-1");
+        verify(credentialRepository).deleteById(1L);
+        verify(aliyunClientFactory).invalidateCredential(1L);
         verify(operationAuditService).record(eq("DELETE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
-                eq("cred-1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
+                eq("1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
     }
 
     @Test
     void deleteShouldRejectConcurrentRemovalBeforeInvalidatingClientsTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
-        stored.setId("cred-1");
+        stored.setId(1L);
         stored.setVendor(InstanceVendor.ALIYUN);
-        when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
-        when(instanceRepository.existsByCredentialId("cred-1")).thenReturn(false);
-        when(credentialRepository.deleteById("cred-1")).thenReturn(false);
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
+        when(instanceRepository.existsByCredentialId(1L)).thenReturn(false);
+        when(credentialRepository.deleteById(1L)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.delete("cred-1"))
+        assertThatThrownBy(() -> service.delete(1L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Cloud credential not found: cred-1");
+                .hasMessage("Cloud credential not found: 1");
 
         verify(aliyunClientFactory, never()).invalidateCredential(any());
     }
@@ -211,13 +217,13 @@ class CloudCredentialServiceTest {
     @Test
     void revealShouldReturnUnmaskedCredentialTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
-        stored.setId("cred-1");
+        stored.setId(1L);
         stored.setVendor(InstanceVendor.ALIYUN);
         stored.setAccessKey("LTAI5tRevealKey000000001");
         stored.setSecretKey("plain-secret");
-        when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
 
-        CloudCredentialVO revealed = service.reveal("cred-1");
+        CloudCredentialVO revealed = service.reveal(1L);
 
         assertThat(revealed.getAccessKey()).isEqualTo("LTAI5tRevealKey000000001");
         assertThat(revealed.getSecretKey()).isEqualTo("plain-secret");

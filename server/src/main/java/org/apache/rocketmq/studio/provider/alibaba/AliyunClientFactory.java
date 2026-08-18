@@ -59,7 +59,7 @@ public class AliyunClientFactory {
     private final Map<String, AsyncClient> clients = new ConcurrentHashMap<>();
     private long callTimeoutSeconds = DEFAULT_CALL_TIMEOUT_SECONDS;
 
-    public AsyncClient client(String credentialId, String region) {
+    public AsyncClient client(Long credentialId, String region) {
         String key = cacheKey(credentialId, region);
         return clients.computeIfAbsent(key, ignored -> createClient(credentialId, region));
     }
@@ -67,7 +67,7 @@ public class AliyunClientFactory {
     /**
      * Releases all clients created with a credential so the next call observes rotated secrets.
      */
-    public void invalidateCredential(String credentialId) {
+    public void invalidateCredential(Long credentialId) {
         String prefix = credentialId + "#";
         clients.entrySet().removeIf(entry -> {
             if (!entry.getKey().startsWith(prefix)) {
@@ -81,7 +81,7 @@ public class AliyunClientFactory {
     /**
      * Executes an SDK call with a bounded wait and unified exception mapping.
      */
-    public <T> T call(String credentialId, String region, Function<AsyncClient, CompletableFuture<T>> action) {
+    public <T> T call(Long credentialId, String region, Function<AsyncClient, CompletableFuture<T>> action) {
         AsyncClient client = client(credentialId, region);
         CompletableFuture<T> future;
         try {
@@ -114,7 +114,7 @@ public class AliyunClientFactory {
         this.callTimeoutSeconds = callTimeoutSeconds;
     }
 
-    static String cacheKey(String credentialId, String region) {
+    static String cacheKey(Long credentialId, String region) {
         return credentialId + "#" + region;
     }
 
@@ -122,7 +122,7 @@ public class AliyunClientFactory {
         return "rocketmq." + region + ".aliyuncs.com";
     }
 
-    protected AsyncClient createClient(String credentialId, String region) {
+    protected AsyncClient createClient(Long credentialId, String region) {
         CloudCredentialVO credential = credentialRepository.findById(credentialId)
                 .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + credentialId));
         StaticCredentialProvider credentialProvider = StaticCredentialProvider.create(

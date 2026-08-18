@@ -17,7 +17,8 @@
 
 import axios from 'axios';
 import { message } from 'antd';
-import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
+import { clearAuthSession } from '../stores/authStorage';
+import { clearAiChatHistories } from '../stores/aiChatHistoryStore';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
@@ -62,19 +63,8 @@ function isPublicAuthRequest(url?: string): boolean {
 const client = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
+  withCredentials: true,
 });
-
-// Request interceptor: attach Authorization header
-client.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
 
 // Response interceptor: check business code and handle 401
 client.interceptors.response.use(
@@ -88,6 +78,7 @@ client.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
+      clearAiChatHistories();
       clearAuthSession();
       window.location.href = '/';
     }

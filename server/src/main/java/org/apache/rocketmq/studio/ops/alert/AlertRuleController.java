@@ -53,7 +53,7 @@ public class AlertRuleController {
     @PostMapping("/update")
     public Result<AlertRuleVO> updateRule(@Valid @RequestBody(required = false) AlertRuleRequestDTO rule) {
         AlertRuleRequestDTO request = requireAlertRule(rule);
-        if (request.getId() == null || request.getId().isBlank()) {
+        if (request.getId() == null) {
             throw new BusinessException(400, "id is required");
         }
         return Result.ok(alertService.updateRule(request.toAlertRuleVO()));

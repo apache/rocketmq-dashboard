@@ -16,15 +16,15 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
 
 @Data
 public class UpdateAclUserDTO {
-    @NotBlank(message = "id is required")
-    private String id;
+    @NotNull(message = "id is required")
+    private Long id;
     private String username;
     /**
      * Null when the admin flag was not part of the partial update, in which case the existing

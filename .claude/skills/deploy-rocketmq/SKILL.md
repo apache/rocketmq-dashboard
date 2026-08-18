@@ -1,11 +1,11 @@
 ---
 name: deploy-rocketmq
-description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 studio、把 studio 部署到远程机器/测试机、更新远程 studio、单机部署开源 rocketmq、远程部署 rocketmq 集群、单机部署 rocketmq 测试客户端、部署 studio 测试集群 时触发。
+description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 studio、把 studio 部署到远程机器/测试机、更新远程 studio、单机部署开源 rocketmq、远程部署 rocketmq 集群、单机部署 rocketmq 测试客户端、部署 studio 测试集群、部署负载挂具、给 K8s 集群上消费负载、制造消费延迟 inflight 时触发。
 ---
 
 # 部署 RocketMQ Studio / 开源 RocketMQ
 
-三种部署模式，全部遵循同一条主线：
+四种部署模式，全部遵循同一条主线：
 
 > **本地把源码打成 tar.gz → 复制到目标机器 → 在目标机器上构建镜像并启动。**
 > 构建统一在目标机执行，复用目标机本地缓存（Maven `~/.m2`、docker 层缓存），
@@ -16,8 +16,9 @@ description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 stu
 | A. Studio 部署到目标机器 | 把本项目（server + web + mysql）部署到一台远程 Linux 机器，浏览器访问 |
 | B. 单机部署开源 RocketMQ | 在目标机器部署纯净开源集群（nameserver + 双 broker + proxy），不带测试挂具 |
 | C. 单机部署 RocketMQ 测试客户端 | 在目标机器部署模式 B 集群 + producer/consumer 1 TPS 轨迹挂具，供 Studio 调试 |
+| D. K8s 集群负载挂具 | 对 K8s 上的 RocketMQ 集群，用 docker compose 在同 VPC 机器跑单容器负载（4 种 topic 类型 × remoting/grpc 双协议消费 + 可控消费延迟），供 Studio 观测消费延迟/inflight |
 
-> ⚠️ `deploy/deploy.sh` 是旧的 podman 时代脚本，与当前 docker compose 流程不一致，**不要使用**。
+> ⚠️ 模式 A 可用 `deploy/deploy.sh` 一键执行；模式 B/C/D 无脚本，按手动步骤执行。
 
 ## 通用前置条件（目标机器）
 
@@ -37,6 +38,10 @@ description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 stu
 ---
 
 ## 模式 A：部署 Studio 到目标机器
+
+> 🚀 **一键脚本**：`deploy/deploy.sh [all|server|web]` 已实现本模式全流程
+> （打包 → 传输 → 目标机构建 → compose 启动 → actuator/health 验证），
+> `deploy/.env` 配置 `REMOTE_HOST` 等。后续部署优先用脚本；以下手动步骤用于首次初始化与排障。
 
 ### 核心原则
 
@@ -267,6 +272,189 @@ $SSH 'cd /opt/rocketmq/rocketmq && docker compose down -v'
 
 ---
 
+## 模式 D：K8s 集群负载挂具（4 种 topic 类型 × 双协议消费）
+
+对部署在 K8s 上的 RocketMQ 集群（如社区 Helm chart 部署的 rocketmq1/rocketmq2），
+在与集群**同 VPC** 的机器上用 docker compose 跑一个负载容器：
+
+- producer 每秒向 4 种类型 topic（NORMAL / FIFO / DELAY / TRANSACTION）各发 1 条
+- 每个 topic 挂 1 个 remoting push 消费者 + 1 个 gRPC simple 消费者，共 **8 个消费者**
+- 每条消息消费时固定 sleep `CONSUME_DELAY_MS`（默认 15s）才返回 success，
+  使管控（Studio）能看到稳定的消费延迟与 inflight（稳态积压 ≈ TPS × 延迟秒数/组）
+
+源码在 terrances 仓库 `project/rocketmq-loadgen/`（不放进 apache 仓库），
+本地 `mvn package` 出 fat jar 后传到目标机器构建镜像。
+
+### 1. 为 proxy 创建内网 SLB（关键知识点）
+
+社区 Helm chart 的 Service 全部硬编码 headless（`clusterIP: None`），集群外机器
+只能直连 Pod IP，而 **Pod IP 在 pod 重建后会变**。稳定做法是给 proxy 建一个
+**内网 SLB**（LoadBalancer Service）：
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: <release>-proxy-slb          # 如 rocketmq1-proxy-slb
+  namespace: <namespace>
+  annotations:
+    # 强制内网 SLB，禁止公网暴露（测试集群纪律：No public SLB）
+    service.beta.kubernetes.io/alibaba-cloud-loadbalancer-address-type: "intranet"
+spec:
+  type: LoadBalancer
+  selector:                          # 与 chart proxy Service 的 selector 一致
+    app.kubernetes.io/instance: <release>
+    app.kubernetes.io/name: proxy
+  ports:
+  - { name: remoting, port: 8080, targetPort: 8080, protocol: TCP }
+  - { name: grpc,     port: 8081, targetPort: 8081, protocol: TCP }
+```
+
+```bash
+kubectl apply -f proxy-slb.yaml
+# 等待 EXTERNAL-IP 分配（约 10~30s）
+kubectl -n <ns> get svc <release>-proxy-slb -w
+```
+
+要点：
+
+- SLB IP 属 VPC 内网地址，同 VPC 机器（含 docker bridge 内容器）直接可达；
+  用 `(exec 3<>/dev/tcp/<slb-ip>/8081)` 验证连通。
+- endpoints 由 CCM 自动跟随 proxy pod 重建，客户端端点**永不失效**——这是
+  选 SLB 而不是 Pod IP 的原因。
+- SLB TCP 监听默认空闲超时 900s，覆盖 gRPC/pop 长轮询，无需额外配置。
+- 客户端经 SLB 只连 proxy 即可，**不需要 nameserver/broker 直达**（见步骤 3 原理）。
+
+**nameserver 也要挂 SLB（按需）**：负载挂具本身只需 proxy SLB，但以下场景需要
+nameserver 的集群外接入点：Studio/其他 remoting 客户端直连 nameserver、
+mqadmin 从集群外管理。同样套上面的模板，selector 换成
+`app.kubernetes.io/name: nameserver`、端口 9876：
+
+```yaml
+metadata:
+  name: <release>-nameserver-slb
+  # annotation 同上（intranet）
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: <release>
+    app.kubernetes.io/name: nameserver
+  ports:
+  - { name: nameserver, port: 9876, targetPort: 9876, protocol: TCP }
+```
+
+验证：集群内任意容器 `./mqadmin clusterList -n <ns-slb-ip>:9876` 能列出 broker
+即转发正常。注意 nameserver SLB 只解决「拿路由」，remoting 客户端拿到路由后仍
+直连 broker 地址（broker 注册的是 pod IP）——集群外 remoting 全链路收发建议走
+proxy SLB（proxy 会把自己应答为 broker 地址）；nameserver SLB 适合只读路由/
+探测类场景。
+
+已实测落地的 SLB（2026-08-17，ACK 集群）：
+
+| Service | namespace | 内网 IP | 端口 |
+|---------|-----------|---------|------|
+| rocketmq1-proxy-slb | rocketmq1 | 10.0.2.11 | 8080 remoting / 8081 gRPC |
+| rocketmq1-nameserver-slb | rocketmq1 | 10.0.1.31 | 9876 |
+| rocketmq2-nameserver-slb | rocketmq2 | 10.0.1.32 | 9876 |
+
+### 2. 创建四种类型的 topic
+
+在集群内任一容器执行（官方镜像 workdir 已在 `bin/`，直接 `./mqadmin`；
+集群名按实际，chart 默认 `DefaultCluster`）：
+
+```bash
+NS=$(kubectl -n <ns> get pod -l app.kubernetes.io/name=nameserver -o jsonpath='{.items[0].metadata.name}')
+for t in "studio-normal NORMAL" "studio-fifo FIFO" "studio-delay DELAY" "studio-transaction TRANSACTION"; do
+  set -- $t
+  kubectl -n <ns> exec $NS -- ./mqadmin updateTopic -n localhost:9876 \
+    -c DefaultCluster -t $1 -r 4 -w 4 -a "+message.type=$2"
+done
+```
+
+`-a "+message.type=..."` 必带：proxy 对 gRPC 与 remoting 链路都做 topic 消息
+类型校验，类型不匹配发送直接报
+`TopicMessageType validate failed, the expected type is X, but actual type is Y`。
+
+### 3. 打包部署负载容器
+
+```bash
+cd project/rocketmq-loadgen
+mvn -B -ntp package                       # 产出 target/rocketmq-loadgen.jar（~120M fat jar）
+tar czf /tmp/rocketmq-loadgen.tar.gz pom.xml Dockerfile docker-compose.yml target/rocketmq-loadgen.jar
+scp /tmp/rocketmq-loadgen.tar.gz <user>@<host>:/tmp/
+$SSH 'rm -rf /opt/rocketmq-loadgen && mkdir -p /opt/rocketmq-loadgen && \
+  tar xzf /tmp/rocketmq-loadgen.tar.gz -C /opt/rocketmq-loadgen && \
+  printf "REMOTING_ADDR=<slb-ip>:8080\nGRPC_ADDR=<slb-ip>:8081\nTOPIC_PREFIX=studio\nSEND_INTERVAL_MS=1000\nCONSUME_DELAY_MS=15000\n" \
+    > /opt/rocketmq-loadgen/.env'
+$SSH 'cd /opt/rocketmq-loadgen && docker compose up -d --build'
+```
+
+环境变量（compose 自动读同目录 `.env`）：
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `REMOTING_ADDR` | 必填 | proxy remoting 端点 `<slb-ip>:8080`，remoting producer/consumer 的 namesrvAddr |
+| `GRPC_ADDR` | 必填 | proxy gRPC 端点 `<slb-ip>:8081`，gRPC SimpleConsumer 的 endpoints |
+| `TOPIC_PREFIX` | `studio` | topic 前缀，得到 `<前缀>-{normal,fifo,delay,transaction}` |
+| `SEND_INTERVAL_MS` | `1000` | 每 topic 发送间隔（每轮 4 条） |
+| `CONSUME_DELAY_MS` | `15000` | 每条消息消费耗时，制造延迟与 inflight |
+
+运行镜像基于 `alibabadragonwell/dragonwell:21`；依赖 rocketmq-client 5.5.0
+（remoting）+ rocketmq-client-java 5.2.x（gRPC，内部已 shade grpc/netty，与
+remoting 客户端共存无冲突），maven-shade 打 fat jar。
+
+**原理**：remoting 客户端把 `namesrvAddr` 直接指向 proxy 的 8080——proxy 兼容
+nameserver 路由协议，会把 broker 地址应答为自身，收发全部经 proxy 转发，因此
+无需 nameserver/broker 对客户端网络可达。gRPC 客户端天然以 proxy 8081 为接入点。
+两种协议都只依赖 proxy → 一个 SLB 两个端口搞定。
+
+### 4. 验证
+
+```bash
+# 发送：每秒 4 条（每类型 1 条）SEND_OK
+$SSH 'docker logs rmq-loadgen | grep "send #" | tail -8'
+# 消费：8 路（[remoting|grpc][normal|fifo|delay|transaction]）均有 consumed 日志
+$SSH 'docker logs rmq-loadgen | grep consumed | awk "{print \$1,\$2}" | sort | uniq -c'
+
+# broker 侧稳态积压（inflight）：Accumulation ≈ TPS × CONSUME_DELAY_MS/1000
+kubectl -n <ns> exec $NS -- ./mqadmin statsAll -n localhost:9876 -t studio-normal
+```
+
+通过标准：4 种类型全部 `SEND_OK`；8 个消费者组持续 `consumed delay=15000ms`；
+`statsAll` 每组 Accumulation 稳定在 ~15（= 1 TPS × 15s），In/Out TPS 均 ≈ 1.00。
+
+### 5. 已知坑（实测 2026-08-17，5.5.0 chart 集群）
+
+- **FIFO 消息必须带分片键**：proxy 按消息属性推断类型，FIFO 依赖
+  `MessageConst.PROPERTY_SHARDING_KEY`（值为 `__SHARDINGKEY`）。这是系统属性，
+  `Message.putUserProperty` 会拒绝，须 `msg.getProperties().put(...)` 直接写。
+  不带时发 FIFO topic 报 `expected type is FIFO, but actual type is NORMAL`。
+- **gRPC SimpleConsumer 必须并行消费 + 背压**：串行 sleep 后 ack 吞吐只有
+  `1/CONSUME_DELAY_MS`，会无限积压；且单条处理时间超过 `receive` 第二参
+  invisibleDuration 时报 `INVALID_RECEIPT_HANDLE`。挂具用 20 线程池并行
+  sleep+ack，invisibleDuration 取 120s；**还要限制在途量 ≤ 线程数**
+  （pending 计数器背压），否则积压追赶时排队等待也会让 handle 过期。
+- **client-java 5.x builder 命名是 `set*`**：`setEndpoints` / `setRequestTimeout`
+  （文档示例的 `with*` 是早期/其他版本写法）。
+- **走 proxy 的消费是 pop 消费**：不产生 `%RETRY%<group>` topic，
+  `mqadmin consumerProgress` / `consumerConnection` 会报
+  `No topic route info ... %RETRY%...`，**改用 `statsAll -t <topic>` 看积压**。
+- **扩容 broker 后 topic 不会自动补建**：`-c DefaultCluster` 集群级建 topic
+  只覆盖当时已注册的 broker，后注册的新 broker 无 topic、无流量。扩容后需对
+  新 broker 用 `-b <podIP>:10911` 逐个补建（或直接重新集群级建一次），
+  再用 `topicRoute -t <topic>` 确认路由覆盖所有 broker（2026-08-18 实测）。
+- transaction topic 发送必须走 `TransactionMQProducer.sendMessageInTransaction`
+  （半消息 + COMMIT），普通 send 会被类型校验拒绝。
+
+### 6. 清理
+
+```bash
+$SSH 'cd /opt/rocketmq-loadgen && docker compose down'
+kubectl -n <ns> delete svc <release>-proxy-slb <release>-nameserver-slb   # 不再需要外部接入点时
+```
+
+---
+
 ## 常用查询命令（mqadmin）
 
 以下命令均已实测可用，在任意集群容器内执行（示例用 nameserver）。远程执行时
@@ -344,6 +532,15 @@ docker compose exec nameserver sh bin/mqadmin queryMsgByKey \
         export PATH=/opt/apache-maven-3.9.16/bin:$PATH
         mvn -B -ntp -s /maven-cache/settings.xml -Dmaven.repo.local=/maven-cache/repository package -DskipTests'
     ```
+  - 也可基于本地已有 dragonwell 镜像 + 宿主机 Maven 分发包自制包装镜像
+    （`FROM alibabadragonwell/dragonwell:21` + `COPY apache-maven-* /opt/maven` +
+    symlink `mvn`），再在 `deploy/.env` 配 `MAVEN_IMAGE=<包装镜像>` 供 deploy.sh 使用。
+- **Maven 容器产物属主为 root**：maven 容器默认 root 运行，写出的 `server/target/`
+  文件归 root，后续 deploy.sh 的 `rm -rf` 会 Permission denied。deploy.sh 已加
+  `--user $(id -u):$(id -g)` 规避；手动跑 maven 容器时也要带该参数。
+- **web 构建 `npm ci` 卡死 / `tsc: not found`**：国内机器连不上
+  `registry.npmjs.org`（实测 HTTP 000，npmmirror 可达）。web Dockerfile 已改为
+  `npm ci --registry=https://registry.npmmirror.com`；旧版 Dockerfile 手动补该参数。
 - **Maven 分发包下载慢**：`archive.apache.org` 国内常只有几 KB/s；改从
   `https://mirrors.aliyun.com/apache/maven/maven-3/<版本>/binaries/apache-maven-<版本>-bin.tar.gz`
   下载（阿里源实测 10MB/s+；如 3.9.16 即 `maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz`）。

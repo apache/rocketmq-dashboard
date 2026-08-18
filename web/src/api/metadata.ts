@@ -19,8 +19,8 @@ export interface Topic {
   tps: number;
   consumerGroupCount: number;
   remark: string;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
 }
 
 export interface TopicQuery {
@@ -68,8 +68,8 @@ export interface ConsumerGroup {
   subscriptionDataType: string;
   deliveryOrderType?: string;
   retryMaxTimes: number;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
   delaySeconds: number;
   instances: ConsumerInstance[];
 }
@@ -136,6 +136,18 @@ export interface ResetConsumerOffsetRequest {
 // ─── Topic API ──────────────────────────────────────────────────
 export async function listTopics(params?: TopicQuery) {
   const res = await client.get<{ data: Topic[] }>('/topics', { params });
+  return res.data.data;
+}
+
+export interface TopicPage {
+  items: Topic[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export async function listTopicsPage(params?: TopicQuery & { page?: number; pageSize?: number }) {
+  const res = await client.get<{ data: TopicPage }>('/topics/page', { params });
   return res.data.data;
 }
 

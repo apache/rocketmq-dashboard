@@ -3,6 +3,7 @@ import * as metadataApi from '../api/metadata';
 import type {
   Topic,
   TopicQuery,
+  TopicPage,
   BrokerRoute,
   ConsumerGroupInfo,
   TopicConsumerPage,
@@ -16,19 +17,41 @@ const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] => routes.map((route)
 const cloneConsumers = (consumers: ConsumerGroupInfo[]): ConsumerGroupInfo[] =>
   consumers.map((consumer) => ({ ...consumer }));
 
+function filterMockTopics(params?: TopicQuery): Topic[] {
+  let result = [...mockTopics];
+  if (params?.search) {
+    const keyword = params.search.trim().toLowerCase();
+    if (keyword) result = result.filter((topic) => topic.name.toLowerCase().includes(keyword));
+  }
+  if (params?.type) result = result.filter((t) => t.type === params.type);
+  if (params?.clusterId) result = result.filter((t) => t.clusterId === params.clusterId);
+  if (params?.instanceId) result = result.filter((t) => t.instanceId === params.instanceId);
+  return (result as unknown as Topic[]).map(cloneTopic);
+}
+
 export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
   if (isMockMode()) {
-    let result = [...mockTopics];
-    if (params?.search) {
-      const keyword = params.search.trim().toLowerCase();
-      if (keyword) result = result.filter((topic) => topic.name.toLowerCase().includes(keyword));
-    }
-    if (params?.type) result = result.filter((t) => t.type === params.type);
-    if (params?.clusterId) result = result.filter((t) => t.clusterId === params.clusterId);
-    if (params?.instanceId) result = result.filter((t) => t.instanceId === params.instanceId);
-    return (result as unknown as Topic[]).map(cloneTopic);
+    return filterMockTopics(params);
   }
   return metadataApi.listTopics(params);
+}
+
+export async function listTopicsPage(
+  params?: TopicQuery & { page?: number; pageSize?: number },
+): Promise<TopicPage> {
+  if (isMockMode()) {
+    const filtered = filterMockTopics(params);
+    const page = Math.max(params?.page ?? 1, 1);
+    const pageSize = Math.min(Math.max(params?.pageSize ?? 20, 1), 100);
+    const from = Math.min((page - 1) * pageSize, filtered.length);
+    return {
+      items: filtered.slice(from, from + pageSize),
+      total: filtered.length,
+      page,
+      size: pageSize,
+    };
+  }
+  return metadataApi.listTopicsPage(params);
 }
 
 export async function createTopic(data: Partial<Topic>): Promise<Topic> {
@@ -40,8 +63,8 @@ export async function createTopic(data: Partial<Topic>): Promise<Topic> {
 
     const topic = {
       ...data,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      gmtCreate: new Date().toISOString(),
+      gmtModified: new Date().toISOString(),
       messageCount: 0,
       tps: 0,
       consumerGroupCount: 0,
@@ -56,7 +79,7 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
   if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === data.name);
     if (idx < 0) throw new Error(`Topic not found: ${data.name}`);
-    Object.assign(mockTopics[idx], data, { updatedAt: new Date().toISOString() });
+    Object.assign(mockTopics[idx], data, { gmtModified: new Date().toISOString() });
     return cloneTopic(mockTopics[idx] as unknown as Topic);
   }
   return metadataApi.updateTopic(data);

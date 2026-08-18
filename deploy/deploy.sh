@@ -1,28 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─── RocketMQ Studio 一键部署脚本 ───
+# ─── RocketMQ Studio 一键部署脚本（模式 A：部署 Studio 到目标机器）───
+# 主线: 本地打包源码 → 复制到目标机 → 目标机构建镜像（复用 ~/.m2 与 docker 缓存）→ docker compose up
 # 用法:
 #   ./deploy/deploy.sh           # 部署 server + web
 #   ./deploy/deploy.sh server    # 仅部署 server
 #   ./deploy/deploy.sh web       # 仅部署 web
+# 配置: deploy/.env 中设置 REMOTE_HOST / REMOTE_USER / REMOTE_PATH / PUBLIC_PORT
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# ─── 颜色输出 ───
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+log()  { echo -e "✅ $*"; }
+info() { echo -e "🚀 $*"; }
+warn() { echo -e "⚠️  $*"; }
+err()  { echo -e "❌ $*" >&2; exit 1; }
 
-log()  { echo -e "${GREEN}[✓]${NC} $*"; }
-info() { echo -e "${CYAN}[→]${NC} $*"; }
-warn() { echo -e "${YELLOW}[!]${NC} $*"; }
-err()  { echo -e "${RED}[✗]${NC} $*"; exit 1; }
-
-# 加载配置
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
   set -a
   # shellcheck disable=SC1091
@@ -33,184 +27,122 @@ fi
 [[ -n "${REMOTE_HOST:-}" ]] || err "REMOTE_HOST 未配置，请在 deploy/.env 中设置"
 REMOTE="${REMOTE_USER:-root}@$REMOTE_HOST"
 REMOTE_PATH="${REMOTE_PATH:-/opt/rocketmq-studio}"
-NETWORK="${PODMAN_NETWORK:-rocketmq-studio}"
-TMP_DIR="/tmp/rocketmq-studio-deploy"
-MAVEN_IMAGE="${MAVEN_IMAGE:-maven:3.9.9-eclipse-temurin-21}"
-MAVEN_CACHE_DIR="${MAVEN_CACHE_DIR:-$HOME/.m2}"
+PUBLIC_PORT="${PUBLIC_PORT:-6789}"
+MAVEN_IMAGE="${MAVEN_IMAGE:-maven:3.9.16-eclipse-temurin-21}"
+SRC_TAR="/tmp/rocketmq-studio-src.tar.gz"
 
 TARGET="${1:-all}"  # all | server | web
+case "$TARGET" in
+  all|server|web) ;;
+  *) err "用法: $0 [all|server|web]" ;;
+esac
 
-# ─── 前置检查 ───
+run_remote() { ssh "$REMOTE" "$@"; }
+
 check_prereqs() {
-  info "检查前置条件..."
-  command -v docker >/dev/null 2>&1 || err "docker 未安装"
-  command -v ssh    >/dev/null 2>&1 || err "ssh 未安装"
-  command -v scp    >/dev/null 2>&1 || err "scp 未安装"
+  info "🔎 检查前置条件..."
+  for c in tar scp ssh; do command -v "$c" >/dev/null 2>&1 || err "本地缺少 $c"; done
   ssh -o ConnectTimeout=5 -o BatchMode=yes "$REMOTE" "echo ok" >/dev/null 2>&1 \
     || err "无法 SSH 连接到 $REMOTE（请确认免密登录已配置）"
+  run_remote 'command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1' \
+    || err "目标机缺少 docker 或 docker compose"
+  run_remote "test -f $REMOTE_PATH/.env" \
+    || err "目标机缺少 $REMOTE_PATH/.env（首次部署请按 SKILL.md 模式 A 步骤 1 初始化）"
   log "前置条件通过"
 }
 
-# ─── 构建镜像 ───
+package_source() {
+  info "📦 本地打包源码..."
+  tar czf "$SRC_TAR" -C "$PROJECT_DIR" \
+    --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
+    server web deploy
+  log "打包完成 ($(du -h "$SRC_TAR" | cut -f1))"
+}
+
+upload_source() {
+  info "📤 传输源码到 $REMOTE:$REMOTE_PATH ..."
+  run_remote "mkdir -p $REMOTE_PATH"
+  scp -q "$SRC_TAR" "$REMOTE:$REMOTE_PATH/"
+  run_remote "cd $REMOTE_PATH && rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR")"
+  run_remote 'docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net'
+  log "源码就位，rocketmq_net 网络就绪"
+}
+
 build_server() {
-  info "在 Maven 容器中构建 server（复用宿主机缓存: $MAVEN_CACHE_DIR）..."
-  mkdir -p "$MAVEN_CACHE_DIR"
-
-  local maven_settings=()
-  if [[ -f "$MAVEN_CACHE_DIR/settings.xml" ]]; then
-    maven_settings=(-s /maven-cache/settings.xml)
+  info "🏗️  目标机编译后端 JAR（复用 ~/.m2 缓存）..."
+  local settings_flag=""
+  if run_remote 'test -f ~/.m2/settings.xml'; then
+    settings_flag="-s /maven-cache/settings.xml"
+  else
+    warn "目标机无 ~/.m2/settings.xml（国内机器请先配置 Maven 阿里源，见 SKILL.md 步骤 2）"
   fi
-
-  docker run --rm \
-    --user "$(id -u):$(id -g)" \
-    -e HOME=/tmp \
-    -v "$PROJECT_DIR/server:/app" \
-    -v "$MAVEN_CACHE_DIR:/maven-cache" \
-    -w /app \
-    "$MAVEN_IMAGE" \
-    mvn -B -ntp "${maven_settings[@]}" \
-      -Dmaven.repo.local=/maven-cache/repository \
-      package -DskipTests
-
-  info "构建 rocketmq-server 镜像..."
-  docker build \
-    --target runtime-prebuilt \
-    -t rocketmq-server:latest \
-    "$PROJECT_DIR/server"
+  run_remote "cd $REMOTE_PATH && docker run --rm -e HOME=/tmp \
+    --user \$(id -u):\$(id -g) \
+    -v \$PWD/server:/app -v \$HOME/.m2:/maven-cache -w /app \
+    $MAVEN_IMAGE \
+    mvn -B -ntp $settings_flag -Dmaven.repo.local=/maven-cache/repository package -DskipTests"
+  info "🏗️  构建 rocketmq-server 镜像（runtime-prebuilt）..."
+  run_remote "cd $REMOTE_PATH && docker build --target runtime-prebuilt -t rocketmq-server:latest server/"
   log "rocketmq-server 镜像构建完成"
 }
 
 build_web() {
-  info "构建 rocketmq-web 镜像..."
-  docker build -t rocketmq-web:latest "$PROJECT_DIR/web"
+  local commit
+  commit="$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo dev)"
+  info "🏗️  构建 rocketmq-web 镜像（VITE_GIT_COMMIT=$commit）..."
+  run_remote "cd $REMOTE_PATH && docker build --build-arg VITE_GIT_COMMIT=$commit -t rocketmq-web:latest web/"
   log "rocketmq-web 镜像构建完成"
 }
 
-# ─── 导出 & 传输 ───
-transfer_images() {
-  mkdir -p "$TMP_DIR"
-  local images=()
-
-  if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
-    images+=("rocketmq-server:latest")
-  fi
-  if [[ "$TARGET" == "all" || "$TARGET" == "web" ]]; then
-    images+=("rocketmq-web:latest")
-  fi
-
-  local tarball="$TMP_DIR/rocketmq-studio-images.tar.gz"
-  info "导出镜像: ${images[*]}"
-  docker save "${images[@]}" | gzip > "$tarball"
-  log "镜像导出完成 ($(du -h "$tarball" | cut -f1))"
-
-  info "传输到 $REMOTE:$REMOTE_PATH ..."
-  ssh "$REMOTE" "mkdir -p $REMOTE_PATH"
-  scp "$tarball" "$REMOTE:$REMOTE_PATH/"
-  log "传输完成"
-
-  # 同步部署配置文件
-  info "同步部署配置..."
-  scp "$SCRIPT_DIR/docker-compose.yml" "$REMOTE:$REMOTE_PATH/"
-  scp "$SCRIPT_DIR/nginx.conf"         "$REMOTE:$REMOTE_PATH/"
-  log "配置同步完成"
+start_services() {
+  local services=()
+  [[ "$TARGET" == "all" || "$TARGET" == "server" ]] && services+=("rocketmq-server")
+  [[ "$TARGET" == "all" || "$TARGET" == "web" ]] && services+=("rocketmq-web")
+  info "▶️  启动容器: ${services[*]} ..."
+  run_remote "cd $REMOTE_PATH && docker compose --env-file .env -f deploy/docker-compose.yml up -d ${services[*]}"
+  log "容器已启动"
 }
 
-# ─── 远程加载 & 启动 ───
-deploy_remote() {
-  local tarball="$REMOTE_PATH/rocketmq-studio-images.tar.gz"
-
-  info "远程加载镜像..."
-  ssh "$REMOTE" "gunzip -c $tarball | podman load"
-  log "镜像加载完成"
-
-  # 确保网络存在
-  ssh "$REMOTE" "podman network exists $NETWORK 2>/dev/null || podman network create $NETWORK"
-
-  if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
-    info "重启 rocketmq-server..."
-    # Backend port is only exposed inside the podman network; the edge nginx proxies /api/.
-    ssh "$REMOTE" "
-      podman rm -f rocketmq-server 2>/dev/null || true
-      podman run -d \
-        --name rocketmq-server \
-        --network $NETWORK \
-        --restart unless-stopped \
-        -e STUDIO_AUTH_LOGIN_REQUIRED=\"${STUDIO_AUTH_LOGIN_REQUIRED:-true}\" \
-        -e STUDIO_AUTH_ADMIN_USERNAME=\"${STUDIO_AUTH_ADMIN_USERNAME:-}\" \
-        -e STUDIO_AUTH_ADMIN_PASSWORD=\"${STUDIO_AUTH_ADMIN_PASSWORD:-}\" \
-        -e STUDIO_METRICS_PROMETHEUS_BASE_URL=\"${STUDIO_METRICS_PROMETHEUS_BASE_URL:-}\" \
-        -e STUDIO_METRICS_PROMETHEUS_USERNAME=\"${STUDIO_METRICS_PROMETHEUS_USERNAME:-}\" \
-        -e STUDIO_METRICS_PROMETHEUS_PASSWORD=\"${STUDIO_METRICS_PROMETHEUS_PASSWORD:-}\" \
-        -e STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN=\"${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:-}\" \
-        rocketmq-server:latest
-    "
-    log "rocketmq-server 已启动"
-  fi
-
-  if [[ "$TARGET" == "all" || "$TARGET" == "web" ]]; then
-    info "重启 rocketmq-web..."
-    ssh "$REMOTE" "
-      podman rm -f rocketmq-web 2>/dev/null || true
-      podman run -d \
-        --name rocketmq-web \
-        --network $NETWORK \
-        --restart unless-stopped \
-        -p ${PUBLIC_PORT:-6789}:80 \
-        rocketmq-web:latest
-    "
-    log "rocketmq-web 已启动"
-  fi
-}
-
-# ─── 验证 ───
 verify() {
-  info "验证部署..."
-  sleep 3
-
-  local status
-  status=$(ssh "$REMOTE" "podman ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'" 2>&1)
-  echo "$status"
-
-  echo ""
-  local http_code
-  http_code=$(ssh "$REMOTE" "curl -sf -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:${PUBLIC_PORT:-6789}" 2>/dev/null || echo "000")
-  if [[ "$http_code" == "200" ]]; then
-    log "前端响应正常 (HTTP $http_code)"
-  else
-    warn "前端返回 HTTP $http_code"
+  info "🔍 验证部署..."
+  if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
+    local i ok=""
+    for i in $(seq 1 30); do
+      if run_remote 'docker exec rocketmq-server curl -fsS http://localhost:8888/actuator/health' 2>/dev/null | grep -q '"UP"'; then
+        ok="yes"; break
+      fi
+      sleep 5
+    done
+    [[ -n "$ok" ]] || err "server 健康检查未通过（docker logs rocketmq-server 查看原因）"
+    log "后端 actuator/health = UP"
   fi
-
-  echo ""
-  log "部署完成 → http://${REMOTE_HOST}:${PUBLIC_PORT:-6789}"
+  if [[ "$TARGET" == "all" || "$TARGET" == "web" ]]; then
+    local i code=""
+    for i in $(seq 1 12); do
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$REMOTE_HOST:$PUBLIC_PORT/" 2>/dev/null || true)
+      [[ "$code" == "200" ]] && break
+      sleep 5
+    done
+    [[ "$code" == "200" ]] && log "前端响应正常 (HTTP $code)" || warn "前端返回 HTTP $code"
+  fi
+  log "🎉 部署完成 → http://$REMOTE_HOST:$PUBLIC_PORT/"
 }
 
-# ─── 清理临时文件 ───
-cleanup() {
-  rm -rf "$TMP_DIR"
-}
+cleanup() { rm -f "$SRC_TAR"; }
+trap cleanup EXIT
 
-# ─── 主流程 ───
 main() {
   echo "═══════════════════════════════════════════"
-  echo "  RocketMQ Studio 部署"
+  echo "  🚢 RocketMQ Studio 部署"
   echo "  目标: $TARGET | 远程: $REMOTE:$REMOTE_PATH"
   echo "═══════════════════════════════════════════"
-  echo ""
-
   check_prereqs
-
-  case "$TARGET" in
-    server) build_server ;;
-    web)    build_web ;;
-    all)    build_server && build_web ;;
-    *)      err "用法: $0 [all|server|web]" ;;
-  esac
-
-  transfer_images
-  deploy_remote
+  package_source
+  upload_source
+  [[ "$TARGET" == "all" || "$TARGET" == "server" ]] && build_server
+  [[ "$TARGET" == "all" || "$TARGET" == "web" ]] && build_web
+  start_services
   verify
-  cleanup
 }
 
-trap cleanup EXIT
 main

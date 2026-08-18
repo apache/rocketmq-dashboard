@@ -16,10 +16,16 @@
  */
 package org.apache.rocketmq.studio.instance.dlq;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,10 +41,14 @@ import java.util.List;
 public class DLQController {
 
     private final DLQService dlqService;
+    private final ObjectMapper objectMapper;
 
     @GetMapping
-    public Result<List<DLQGroupVO>> listDLQGroups(@RequestParam String instanceId) {
-        return Result.ok(dlqService.listDLQGroups(instanceId));
+    public Result<PageResult<DLQGroupVO>> listDLQGroups(@RequestParam String instanceId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(dlqService.listDLQGroups(instanceId, search, page, pageSize));
     }
 
     @PostMapping("/resend")
@@ -46,6 +56,27 @@ public class DLQController {
         requireRequest(request);
         return Result.ok(dlqService.resendMessages(request.getInstanceId(), request.getGroupName(),
                 request.getStartTime(), request.getEndTime(), request.getTargetTopic()));
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportDLQMessages(@RequestParam String instanceId,
+                                                    @RequestParam String groupName,
+                                                    @RequestParam(required = false) Long startTime,
+                                                    @RequestParam(required = false) Long endTime,
+                                                    @RequestParam(required = false) Integer maxCount) {
+        List<DLQMessageVO> messages = dlqService.exportMessages(
+                instanceId, groupName, startTime, endTime, maxCount);
+        byte[] body;
+        try {
+            body = objectMapper.writeValueAsBytes(messages);
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(500, "Failed to serialize DLQ export");
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"dlq-" + groupName + ".json\"")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
     }
 
     private void requireRequest(DLQResendRequestDTO request) {

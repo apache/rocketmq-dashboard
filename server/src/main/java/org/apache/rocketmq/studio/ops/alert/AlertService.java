@@ -30,7 +30,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -96,8 +95,11 @@ public class AlertService {
         if (rule == null) {
             throw new BusinessException(400, "Alert rule request is required");
         }
+        if (!hasText(rule.getName())) {
+            throw new BusinessException(400, "Alert rule name is required");
+        }
+        rule.setName(rule.getName().trim());
         log.info("Creating alert rule: {}", rule.getName());
-        rule.setId(UUID.randomUUID().toString());
         AlertRuleVO saved = alertRepository.saveRule(rule);
         auditRule("CREATE_ALERT_RULE", saved, null);
         return saved;
@@ -108,7 +110,11 @@ public class AlertService {
         if (rule == null) {
             throw new BusinessException(400, "Alert rule request is required");
         }
-        String id = rule.getId();
+        if (!hasText(rule.getName())) {
+            throw new BusinessException(400, "Alert rule name is required");
+        }
+        rule.setName(rule.getName().trim());
+        Long id = rule.getId();
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
         if (!alertRepository.replaceRule(rule)) {
@@ -119,7 +125,7 @@ public class AlertService {
     }
 
 
-    public AlertRuleVO toggleRule(String id, boolean enabled) {
+    public AlertRuleVO toggleRule(Long id, boolean enabled) {
         log.info("Toggling alert rule id={}, enabled={}", id, enabled);
         validateRuleId(id);
         List<AlertRuleVO> rules = alertRepository.findAllRules();
@@ -134,25 +140,25 @@ public class AlertService {
     }
 
 
-    public void deleteRule(String id) {
+    public void deleteRule(Long id) {
         log.info("Deleting alert rule id={}", id);
         validateRuleId(id);
         if (!alertRepository.deleteRule(id)) {
             throw ruleNotFound(id);
         }
-        recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", id, null, null);
+        recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, null);
     }
 
-    public AlertRuleBulkResultVO bulkToggleRules(List<String> ids, boolean enabled) {
-        List<String> normalizedIds = normalizeBulkIds(ids);
-        Map<String, AlertRuleVO> rulesById = new LinkedHashMap<>();
+    public AlertRuleBulkResultVO bulkToggleRules(List<Long> ids, boolean enabled) {
+        List<Long> normalizedIds = normalizeBulkIds(ids);
+        Map<Long, AlertRuleVO> rulesById = new LinkedHashMap<>();
         for (AlertRuleVO rule : alertRepository.findAllRules()) {
             rulesById.put(rule.getId(), rule);
         }
-        List<String> succeeded = new ArrayList<>();
-        Map<String, String> failures = new LinkedHashMap<>();
+        List<Long> succeeded = new ArrayList<>();
+        Map<Long, String> failures = new LinkedHashMap<>();
         List<AlertRuleVO> updated = new ArrayList<>();
-        for (String id : normalizedIds) {
+        for (Long id : normalizedIds) {
             AlertRuleVO rule = rulesById.get(id);
             if (rule == null) {
                 failures.put(id, "Alert rule not found");
@@ -177,17 +183,17 @@ public class AlertService {
                 .succeededIds(succeeded).failures(failures).updatedRules(updated).build();
     }
 
-    public AlertRuleBulkResultVO bulkDeleteRules(List<String> ids) {
-        List<String> normalizedIds = normalizeBulkIds(ids);
-        List<String> succeeded = new ArrayList<>();
-        Map<String, String> failures = new LinkedHashMap<>();
-        for (String id : normalizedIds) {
+    public AlertRuleBulkResultVO bulkDeleteRules(List<Long> ids) {
+        List<Long> normalizedIds = normalizeBulkIds(ids);
+        List<Long> succeeded = new ArrayList<>();
+        Map<Long, String> failures = new LinkedHashMap<>();
+        for (Long id : normalizedIds) {
             try {
                 if (!alertRepository.deleteRule(id)) {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", id, null, "bulk=true");
+                recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, "bulk=true");
                 succeeded.add(id);
             } catch (RuntimeException failure) {
                 failures.put(id, failure.getMessage() == null ? "Delete failed" : failure.getMessage());
@@ -197,17 +203,16 @@ public class AlertService {
                 .succeededIds(succeeded).failures(failures).updatedRules(List.of()).build();
     }
 
-    private List<String> normalizeBulkIds(List<String> ids) {
+    private List<Long> normalizeBulkIds(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             throw new BusinessException(400, "ids are required");
         }
-        Set<String> seen = new HashSet<>();
-        List<String> normalized = new ArrayList<>();
-        for (String id : ids) {
+        Set<Long> seen = new HashSet<>();
+        List<Long> normalized = new ArrayList<>();
+        for (Long id : ids) {
             validateRuleId(id);
-            String trimmed = id.trim();
-            if (seen.add(trimmed)) {
-                normalized.add(trimmed);
+            if (seen.add(id)) {
+                normalized.add(id);
             }
         }
         return normalized;
@@ -220,9 +225,9 @@ public class AlertService {
     }
 
 
-    public SystemAlertVO acknowledgeAlert(String id) {
+    public SystemAlertVO acknowledgeAlert(Long id) {
         log.info("Acknowledging system alert id={}", id);
-        if (id == null || id.isBlank()) {
+        if (id == null) {
             throw new BusinessException(400, "System alert ID is required");
         }
         List<SystemAlertVO> alerts = alertRepository.findAlerts(null);
@@ -231,10 +236,12 @@ public class AlertService {
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
-        SystemAlertVO saved = alertRepository.saveAlert(alert);
-        recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", saved.getId(), null,
+        if (!alertRepository.acknowledgeAlert(alert)) {
+            throw new BusinessException(404, "System alert not found: " + id);
+        }
+        recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", String.valueOf(alert.getId()), null,
                 "acknowledged=true");
-        return saved;
+        return alert;
     }
 
 
@@ -332,7 +339,7 @@ public class AlertService {
 
     private void auditRule(String operation, AlertRuleVO rule, String detail) {
         String auditDetail = detail == null ? "name=" + rule.getName() : detail;
-        recordAudit(operation, "ALERT_RULE", rule.getId(), null,
+        recordAudit(operation, "ALERT_RULE", String.valueOf(rule.getId()), null,
                 auditDetail);
     }
 
@@ -431,13 +438,13 @@ public class AlertService {
         return value != null && !value.trim().isEmpty();
     }
 
-    private void validateRuleId(String id) {
-        if (id == null || id.isBlank()) {
+    private void validateRuleId(Long id) {
+        if (id == null) {
             throw new BusinessException(400, "Alert rule ID is required");
         }
     }
 
-    private BusinessException ruleNotFound(String id) {
+    private BusinessException ruleNotFound(Long id) {
         return new BusinessException(404, "Alert rule not found: " + id);
     }
 

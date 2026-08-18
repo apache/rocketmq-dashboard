@@ -54,7 +54,7 @@ class AlertRuleControllerTest {
     @Test
     void listRulesShouldReturnRules() throws Exception {
         AlertRuleVO rule = AlertRuleVO.builder()
-                .id("rule-1")
+                .id(1L)
                 .name("High Lag")
                 .metric("rocketmq_consumer_lag_messages")
                 .enabled(true)
@@ -64,7 +64,7 @@ class AlertRuleControllerTest {
         mockMvc.perform(get("/api/alert-rules"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].id").value("rule-1"))
+                .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].enabled").value(true));
     }
 
@@ -86,7 +86,7 @@ class AlertRuleControllerTest {
                 .enabled(true)
                 .build();
         AlertRuleVO created = AlertRuleVO.builder()
-                .id("rule-1")
+                .id(1L)
                 .name("High Lag")
                 .metric("rocketmq_consumer_lag_messages")
                 .enabled(true)
@@ -97,7 +97,7 @@ class AlertRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value("rule-1"))
+                .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.name").value("High Lag"));
     }
 
@@ -176,21 +176,21 @@ class AlertRuleControllerTest {
     @Test
     void toggleRuleShouldPassValidatedRequest() throws Exception {
         AlertRuleVO toggled = AlertRuleVO.builder()
-                .id("rule-1")
+                .id(1L)
                 .name("High Lag")
                 .enabled(false)
                 .build();
-        when(alertService.toggleRule("rule-1", false)).thenReturn(toggled);
+        when(alertService.toggleRule(1L, false)).thenReturn(toggled);
 
         mockMvc.perform(post("/api/alert-rules/toggle")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "rule-1", "enabled", false))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", 1, "enabled", false))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("rule-1"))
+                .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.enabled").value(false));
 
-        verify(alertService).toggleRule(eq("rule-1"), eq(false));
+        verify(alertService).toggleRule(eq(1L), eq(false));
     }
 
     @Test
@@ -209,7 +209,7 @@ class AlertRuleControllerTest {
     void toggleRuleShouldRejectMissingEnabled() throws Exception {
         mockMvc.perform(post("/api/alert-rules/toggle")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "rule-1"))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", 1))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("enabled is required"));
@@ -221,7 +221,7 @@ class AlertRuleControllerTest {
     void toggleRuleShouldRejectInvalidEnabledType() throws Exception {
         mockMvc.perform(post("/api/alert-rules/toggle")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "rule-1", "enabled", "invalid"))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", 1, "enabled", "invalid"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("Invalid request body"));
@@ -233,19 +233,19 @@ class AlertRuleControllerTest {
     void deleteRuleShouldPassValidatedRequest() throws Exception {
         mockMvc.perform(post("/api/alert-rules/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "rule-1"))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", 1))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(alertService).deleteRule("rule-1");
+        verify(alertService).deleteRule(1L);
     }
 
     @Test
     void deleteRuleShouldRejectBlankId() throws Exception {
         mockMvc.perform(post("/api/alert-rules/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", " "))))
+                        .content(objectMapper.writeValueAsString(java.util.Collections.singletonMap("id", null))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("id is required"));
@@ -255,19 +255,19 @@ class AlertRuleControllerTest {
 
     @Test
     void bulkToggleShouldReturnPartialResults() throws Exception {
-        AlertRuleVO updated = AlertRuleVO.builder().id("rule-1").enabled(false).build();
-        when(alertService.bulkToggleRules(List.of("rule-1", "missing"), false))
+        AlertRuleVO updated = AlertRuleVO.builder().id(1L).enabled(false).build();
+        when(alertService.bulkToggleRules(List.of(1L, 999L), false))
                 .thenReturn(AlertRuleBulkResultVO.builder()
-                        .succeededIds(List.of("rule-1"))
-                        .failures(Map.of("missing", "Alert rule not found"))
+                        .succeededIds(List.of(1L))
+                        .failures(Map.of(999L, "Alert rule not found"))
                         .updatedRules(List.of(updated)).build());
 
         mockMvc.perform(post("/api/alert-rules/bulk-toggle")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ids\":[\"rule-1\",\"missing\"],\"enabled\":false}"))
+                        .content("{\"ids\":[1,999],\"enabled\":false}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.succeededIds[0]").value("rule-1"))
-                .andExpect(jsonPath("$.data.failures.missing").value("Alert rule not found"))
+                .andExpect(jsonPath("$.data.succeededIds[0]").value(1))
+                .andExpect(jsonPath("$.data.failures['999']").value("Alert rule not found"))
                 .andExpect(jsonPath("$.data.updatedRules[0].enabled").value(false));
     }
 

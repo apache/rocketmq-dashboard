@@ -35,7 +35,7 @@ describe('message API', () => {
 
   it('sends the backend-supported query fields with epoch timestamps', async () => {
     const params = {
-      instanceId: 'instance-a',
+      instanceId: 'instance-1',
       topic: 'orders',
       tag: 'created',
       key: 'order-1',
@@ -108,10 +108,10 @@ describe('message API', () => {
       ],
     };
     mock
-      .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-a', topic: 'orders' } })
+      .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-1', topic: 'orders' } })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('msg-1', 'instance-a', 'orders')).resolves.toEqual(trace);
+    await expect(getMessageTrace('msg-1', 'instance-1', 'orders')).resolves.toEqual(trace);
   });
 
   it('encodes message IDs before requesting trace records', async () => {
@@ -121,11 +121,11 @@ describe('message API', () => {
     };
     mock
       .onGet('/messages/AC1E0A64%2F0000%202A9F%3A1/trace', {
-        params: { instanceId: 'instance-a', topic: 'orders' },
+        params: { instanceId: 'instance-1', topic: 'orders' },
       })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-a', 'orders')).resolves.toEqual(
+    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual(
       trace,
     );
   });

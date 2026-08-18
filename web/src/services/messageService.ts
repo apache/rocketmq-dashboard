@@ -6,6 +6,7 @@ import type {
   MessageRecord,
   TraceRecord,
   DLQGroup,
+  DLQGroupPage,
   DLQResendResult,
 } from '../api/message';
 import { mockMessages, mockMessageTraces } from '../mock/messages';
@@ -60,9 +61,26 @@ export async function getMessageTrace(
   return messageApi.getMessageTrace(msgId, instanceId, topic);
 }
 
-export async function listDLQGroups(instanceId: string): Promise<DLQGroup[]> {
-  if (isMockMode()) return (mockDLQGroups as unknown as DLQGroup[]).map(cloneDLQGroup);
-  return messageApi.listDLQGroups(instanceId);
+export async function listDLQGroups(
+  instanceId: string,
+  search?: string,
+  page = 1,
+  pageSize = 20,
+): Promise<DLQGroupPage> {
+  if (isMockMode()) {
+    const groups = (mockDLQGroups as unknown as DLQGroup[]).filter(
+      (group) =>
+        !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
+    );
+    const from = Math.min((page - 1) * pageSize, groups.length);
+    return {
+      items: groups.slice(from, from + pageSize).map(cloneDLQGroup),
+      total: groups.length,
+      page,
+      size: pageSize,
+    };
+  }
+  return messageApi.listDLQGroups(instanceId, search, page, pageSize);
 }
 
 export async function resendDLQ(data: {
@@ -74,4 +92,15 @@ export async function resendDLQ(data: {
 }): Promise<DLQResendResult> {
   if (isMockMode()) return { matched: 0, resent: 0, failed: 0, outcome: 'SUCCESS' };
   return messageApi.resendDLQ(data);
+}
+
+export async function exportDLQMessages(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  maxCount?: number;
+}): Promise<Blob> {
+  if (isMockMode()) return new Blob(['[]'], { type: 'application/json' });
+  return messageApi.exportDLQMessages(params);
 }

@@ -81,6 +81,23 @@ describe('AlertRuleAssetList', () => {
     expect(screen.getByText('rocketmq-consumer-lag-high')).toBeInTheDocument();
   });
 
+  it('keeps a failed list request visible and recovers when retried', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets)
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(sampleAssets);
+
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const retryButton = await screen.findByRole('button', { name: /Retry|重试/ });
+    expect(alertRuleAssetService.listAlertRuleAssets).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(retryButton);
+
+    expect(await screen.findByText('rocketmq-broker-down')).toBeInTheDocument();
+    expect(alertRuleAssetService.listAlertRuleAssets).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /Retry|重试/ })).not.toBeInTheDocument();
+  });
+
   it('opens a modal with yaml content when View is clicked', async () => {
     vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
     vi.mocked(alertRuleAssetService.getAlertRuleAsset).mockResolvedValue(

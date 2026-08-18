@@ -2,7 +2,7 @@ import client from './client';
 
 // Matches mock/alerts.ts (inferred from data)
 export interface AlertRule {
-  id: string;
+  id: number;
   name: string;
   metric: string;
   operator: string;
@@ -16,14 +16,14 @@ export interface AlertRule {
 }
 
 export interface AlertRuleBulkResult {
-  succeededIds: string[];
+  succeededIds: number[];
   failures: Record<string, string>;
   updatedRules: AlertRule[];
 }
 
 // Matches mock/dashboard.ts systemAlerts
 export interface SystemAlert {
-  id: string;
+  id: number;
   level: string;
   title: string;
   description: string;
@@ -33,7 +33,7 @@ export interface SystemAlert {
 
 // Matches mock/audit.ts (inferred from data)
 export interface AuditRecord {
-  id: string;
+  id: number;
   timestamp: string;
   operator: string;
   operationType: string;
@@ -80,16 +80,16 @@ export async function updateAlertRule(data: AlertRule) {
   return res.data.data;
 }
 
-export async function toggleAlertRule(id: string, enabled: boolean) {
+export async function toggleAlertRule(id: number, enabled: boolean) {
   const res = await client.post<{ data: AlertRule }>('/alert-rules/toggle', { id, enabled });
   return res.data.data;
 }
 
-export async function deleteAlertRule(id: string) {
+export async function deleteAlertRule(id: number) {
   await client.post('/alert-rules/delete', { id });
 }
 
-export async function bulkToggleAlertRules(ids: string[], enabled: boolean) {
+export async function bulkToggleAlertRules(ids: number[], enabled: boolean) {
   const res = await client.post<{ data: AlertRuleBulkResult }>('/alert-rules/bulk-toggle', {
     ids,
     enabled,
@@ -97,7 +97,7 @@ export async function bulkToggleAlertRules(ids: string[], enabled: boolean) {
   return res.data.data;
 }
 
-export async function bulkDeleteAlertRules(ids: string[]) {
+export async function bulkDeleteAlertRules(ids: number[]) {
   const res = await client.post<{ data: AlertRuleBulkResult }>('/alert-rules/bulk-delete', { ids });
   return res.data.data;
 }
@@ -108,7 +108,7 @@ export async function listSystemAlerts() {
   return res.data.data;
 }
 
-export async function acknowledgeAlert(id: string) {
+export async function acknowledgeAlert(id: number) {
   await client.post('/system-alerts/acknowledge', { id });
 }
 

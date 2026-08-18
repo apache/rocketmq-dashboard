@@ -17,25 +17,38 @@
 
 package org.apache.rocketmq.studio.cluster.proxy;
 
+import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
+
+
+
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.IOException;
 import java.time.Duration;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -48,21 +61,56 @@ public class ProxyAddressService {
 
     private static final String RELOAD_PATH = "/admin/reloadConfig";
 
+    /** Default connect timeout for a single topology probe, in milliseconds. */
+    private static final int HEALTH_PROBE_TIMEOUT_MILLIS = 2_000;
+
+    /**
+     * Overall time budget for one topology build. Serial probing would cost up to
+     * {@code 2 x HEALTH_PROBE_TIMEOUT_MILLIS} per DOWN node, so with many unreachable
+     * nodes the endpoint could exceed the frontend's request timeout. Probing runs in
+     * parallel and, once the budget elapses, unfinished probes are reported as
+     * unreachable (DOWN/PARTIAL) instead of failing the whole endpoint.
+     */
+    private static final long TOPOLOGY_TOTAL_TIMEOUT_MILLIS = 10_000L;
+
+    /** Bounded pool for the I/O-bound TCP probes; probes queue beyond this share the budget. */
+    private static final int PROBE_EXECUTOR_THREADS = 8;
+
     private final Set<String> proxyAddrs = new LinkedHashSet<>(List.of("127.0.0.1:8081"));
     private String currentProxyAddr = "127.0.0.1:8081";
     private final RestTemplate restTemplate;
+    private final ProxyHealthProbe healthProbe;
+    private final ExecutorService probeExecutor;
+    private final long topologyTotalTimeoutMillis;
 
-    public ProxyAddressService() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory() {
-            @Override
-            protected void prepareConnection(java.net.HttpURLConnection connection, String httpMethod) throws IOException {
-                super.prepareConnection(connection, httpMethod);
-                connection.setInstanceFollowRedirects(false);
-            }
-        };
+    @Autowired
+    public ProxyAddressService(ProxyHealthProbe healthProbe) {
+        this(healthProbe, defaultProbeExecutor(), TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
+    }
+
+    ProxyAddressService(ProxyHealthProbe healthProbe, ExecutorService probeExecutor,
+                        long topologyTotalTimeoutMillis) {
+        this.healthProbe = healthProbe;
+        this.probeExecutor = probeExecutor;
+        this.topologyTotalTimeoutMillis = topologyTotalTimeoutMillis;
+        NoRedirectClientHttpRequestFactory factory = new NoRedirectClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(3));
         factory.setReadTimeout(Duration.ofSeconds(3));
         this.restTemplate = new RestTemplate(factory);
+    }
+
+    private static ExecutorService defaultProbeExecutor() {
+        AtomicInteger threadIndex = new AtomicInteger();
+        return Executors.newFixedThreadPool(PROBE_EXECUTOR_THREADS, runnable -> {
+            Thread thread = new Thread(runnable, "proxy-health-probe-" + threadIndex.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    @PreDestroy
+    public void shutdownProbeExecutor() {
+        probeExecutor.shutdownNow();
     }
 
     public synchronized ProxyHomeVO getHomePage() {
@@ -70,6 +118,119 @@ public class ProxyAddressService {
                 .proxyAddrList(new ArrayList<>(proxyAddrs))
                 .currentProxyAddr(currentProxyAddr)
                 .build();
+    }
+
+    /**
+     * Builds the proxy topology/health view: every registered proxy address is probed over
+     * TCP on its gRPC port (and the derived remoting port) so the console can show live
+     * UP/PARTIAL/DOWN status instead of an address list with no runtime signal.
+     *
+     * <p>All probes run in parallel on a bounded executor and the whole view is capped by
+     * {@link #topologyTotalTimeoutMillis}: probes that do not finish in time are reported as
+     * unreachable, so a few DOWN nodes can never stall the endpoint past its budget.
+     */
+    public List<ProxyTopologyVO> buildTopology() {
+        List<String> addrs;
+        synchronized (this) {
+            addrs = new ArrayList<>(proxyAddrs);
+        }
+        List<ProbeTask> tasks = new ArrayList<>();
+        for (String addr : addrs) {
+            Matcher matcher = PROXY_ADDR_PATTERN.matcher(addr);
+            if (!matcher.matches()) {
+                log.warn("Skipping malformed proxy address in topology: {}", addr);
+                continue;
+            }
+            String host = matcher.group(1);
+            int grpcPort = Integer.parseInt(matcher.group(2));
+            Integer remotingPort = deriveRemotingPort(grpcPort);
+            tasks.add(new ProbeTask(addr, grpcPort, remotingPort,
+                    probeAsync(host, grpcPort),
+                    remotingPort != null ? probeAsync(host, remotingPort) : null));
+        }
+        awaitProbes(tasks);
+        return tasks.stream().map(this::toTopologyVO).toList();
+    }
+
+    private ProxyTopologyVO toTopologyVO(ProbeTask task) {
+        ProxyHealthProbe.ProbeResult grpc = awaitProbe(task.grpcProbe());
+        ProxyHealthProbe.ProbeResult remoting = task.remotingProbe() != null
+                ? awaitProbe(task.remotingProbe())
+                : ProxyHealthProbe.ProbeResult.unreachable();
+        boolean grpcReachable = grpc.reachable();
+        boolean remotingReachable = task.remotingPort() != null && remoting.reachable();
+        String status = grpcReachable ? "UP"
+                : (remotingReachable ? "PARTIAL" : "DOWN");
+        return ProxyTopologyVO.builder()
+                .proxyAddr(task.proxyAddr())
+                .status(status)
+                .grpcPort(task.grpcPort())
+                .remotingPort(task.remotingPort())
+                .grpcReachable(grpcReachable)
+                .remotingReachable(remotingReachable)
+                .latencyMs(grpcReachable ? grpc.latencyMs() : -1L)
+                .build();
+    }
+
+    private CompletableFuture<ProxyHealthProbe.ProbeResult> probeAsync(String host, int port) {
+        try {
+            return CompletableFuture.supplyAsync(
+                    () -> healthProbe.probe(host, port, HEALTH_PROBE_TIMEOUT_MILLIS), probeExecutor);
+        } catch (RejectedExecutionException ex) {
+            return CompletableFuture.completedFuture(ProxyHealthProbe.ProbeResult.unreachable());
+        }
+    }
+
+    private void awaitProbes(List<ProbeTask> tasks) {
+        if (tasks.isEmpty()) {
+            return;
+        }
+        CompletableFuture<?>[] futures = tasks.stream()
+                .flatMap(task -> task.remotingProbe() == null
+                        ? Stream.of(task.grpcProbe())
+                        : Stream.of(task.grpcProbe(), task.remotingProbe()))
+                .toArray(CompletableFuture[]::new);
+        try {
+            CompletableFuture.allOf(futures).get(topologyTotalTimeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException ex) {
+            log.warn("Proxy topology probing exceeded the {} ms budget; unfinished probes are"
+                    + " reported as unreachable", topologyTotalTimeoutMillis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            log.warn("Proxy topology probing was interrupted");
+        } catch (ExecutionException ex) {
+            log.warn("Proxy topology probe failed: {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * Reads a finished probe outcome; a probe that is still running (budget exceeded), failed,
+     * or was rejected degrades to unreachable instead of propagating an error.
+     */
+    private ProxyHealthProbe.ProbeResult awaitProbe(CompletableFuture<ProxyHealthProbe.ProbeResult> future) {
+        if (future.isDone() && !future.isCompletedExceptionally()) {
+            return future.join();
+        }
+        future.cancel(true);
+        return ProxyHealthProbe.ProbeResult.unreachable();
+    }
+
+    /** In-flight probe pair for one registered proxy address. */
+    private record ProbeTask(String proxyAddr, int grpcPort, Integer remotingPort,
+                             CompletableFuture<ProxyHealthProbe.ProbeResult> grpcProbe,
+                             CompletableFuture<ProxyHealthProbe.ProbeResult> remotingProbe) {
+    }
+
+    /**
+     * Derives the counterpart port using the RocketMQ 5.0 default layout (remoting
+     * {@code 8080} / gRPC {@code 8081}). Non-standard ports yield {@code null} because the
+     * pairing cannot be assumed for custom port mappings.
+     */
+    private Integer deriveRemotingPort(int grpcPort) {
+        if (grpcPort == 8081) {
+            return 8080;
+        }
+        return grpcPort == 8080 ? 8081 : null;
     }
 
     public synchronized void addProxyAddr(String newProxyAddr) {

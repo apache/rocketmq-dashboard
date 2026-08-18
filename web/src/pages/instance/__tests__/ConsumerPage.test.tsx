@@ -78,8 +78,8 @@ const group: ConsumerGroup = {
   subscribedTopics: ['remote-topic'],
   subscriptionDataType: 'NORMAL',
   retryMaxTimes: 16,
-  createdAt: '2026-07-23T00:00:00Z',
-  updatedAt: '2026-07-23T00:00:00Z',
+  gmtCreate: '2026-07-23T00:00:00Z',
+  gmtModified: '2026-07-23T00:00:00Z',
   delaySeconds: 3,
   instances: [],
 };
@@ -98,15 +98,15 @@ describe('Consumer page', () => {
     vi.clearAllMocks();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'PROXY',
         endpoint: '10.0.0.1:8080',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([group]);
@@ -122,8 +122,8 @@ describe('Consumer page', () => {
           delaySeconds: 0,
           instances: [],
           subscribedTopics: data.subscribedTopics ?? [],
-          createdAt: '2026-07-24T00:00:00Z',
-          updatedAt: '2026-07-24T00:00:00Z',
+          gmtCreate: '2026-07-24T00:00:00Z',
+          gmtModified: '2026-07-24T00:00:00Z',
         }) as ConsumerGroup,
     );
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
@@ -162,15 +162,15 @@ describe('Consumer page', () => {
     });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'PROXY',
         endpoint: '10.0.0.1:8080',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
   });
@@ -250,15 +250,15 @@ describe('Consumer page', () => {
   it('passes the selected instance to group diagnostics', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        id: 'instance-a',
+        id: 2,
         name: 'instance-a',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-07-23T00:00:00Z',
-        updatedAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
+        gmtModified: '2026-07-23T00:00:00Z',
       },
     ]);
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
@@ -323,26 +323,26 @@ describe('Consumer page', () => {
   it('reloads same-named group diagnostics after changing the selected instance', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
-        id: 'instance-a',
+        id: 2,
         name: 'instance-a',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-07-23T00:00:00Z',
-        updatedAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
+        gmtModified: '2026-07-23T00:00:00Z',
       },
       {
-        id: 'instance-b',
+        id: 3,
         name: 'instance-b',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.2:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-07-23T00:00:00Z',
-        updatedAt: '2026-07-23T00:00:00Z',
+        gmtCreate: '2026-07-23T00:00:00Z',
+        gmtModified: '2026-07-23T00:00:00Z',
       },
     ]);
     vi.mocked(consumerService.listConsumerGroups).mockImplementation(async (params) => [
@@ -598,8 +598,8 @@ describe('Consumer page', () => {
           delaySeconds: 0,
           instances: [],
           subscribedTopics: data.subscribedTopics ?? [],
-          createdAt: '2026-07-24T00:00:00Z',
-          updatedAt: '2026-07-24T00:00:00Z',
+          gmtCreate: '2026-07-24T00:00:00Z',
+          gmtModified: '2026-07-24T00:00:00Z',
         } as ConsumerGroup;
       },
     );
@@ -607,15 +607,15 @@ describe('Consumer page', () => {
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
-        id: 'instance-proxy-1',
+        id: 4,
         name: 'instance-proxy-1',
         remark: '',
         type: 'PROXY',
         endpoint: '10.0.2.21:8080',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
     renderWithProviders(<ConsumerPage />, '/instance/instance-proxy-1/consumer');

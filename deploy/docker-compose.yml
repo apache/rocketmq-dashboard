@@ -5,6 +5,10 @@ services:
     image: mysql:8.0
     container_name: rocketmq-studio-mysql
     restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --init-connect=SET NAMES utf8mb4
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-studio123}
@@ -56,7 +60,7 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8888/actuator/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8888/readyz"]
       interval: 10s
       timeout: 5s
       retries: 30

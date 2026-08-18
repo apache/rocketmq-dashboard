@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAuthStatus } from './api/auth';
 import { AuthGate, LazyRouteOutlet } from './App';
 import { LangProvider } from './i18n/LangContext';
+import useAuthStore from './stores/authStore';
 
 vi.mock('./api/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api/auth')>();
@@ -90,6 +91,7 @@ describe('AuthGate', () => {
     dataModeMocks.isMockMode.mockReturnValue(false);
     localStorage.setItem('token', 'stale-token');
     localStorage.setItem('rocketmq-studio-user', 'admin');
+    useAuthStore.setState({ user: 'admin', userId: 99, admin: false });
   });
 
   afterEach(() => {
@@ -115,11 +117,16 @@ describe('AuthGate', () => {
   });
 
   it('allows protected routes for an authenticated session', async () => {
-    mockedGetAuthStatus.mockResolvedValue({ loginRequired: true, authenticated: true });
+    mockedGetAuthStatus.mockResolvedValue({
+      loginRequired: true,
+      authenticated: true,
+      user: { userId: 7, username: 'studio-admin', admin: true },
+    });
 
     renderGate();
 
     expect(await screen.findByText('protected content')).toBeInTheDocument();
+    expect(useAuthStore.getState()).toMatchObject({ user: 'studio-admin', userId: 7, admin: true });
   });
 
   it('clears an invalid session and redirects to login', async () => {

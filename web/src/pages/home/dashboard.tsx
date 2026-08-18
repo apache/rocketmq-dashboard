@@ -23,8 +23,8 @@ import MetricsExplorer from '../../components/MetricsExplorer';
 import { CLUSTER_TYPE_MAP } from '../../constants/theme';
 import { getDashboard } from '../../services/dashboardService';
 import type { DashboardData } from '../../api/metrics';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
 import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
@@ -68,7 +68,7 @@ const DashboardPage = () => {
     let cancelled = false;
     void listInstances()
       .then((nextInstances) => {
-        if (!cancelled) setInstances(nextInstances);
+        if (!cancelled) setInstances(nextInstances.filter(supportsApacheRuntime));
       })
       .catch(() => {
         if (!cancelled) setInstances([]);
@@ -201,7 +201,7 @@ const DashboardPage = () => {
       title: t('common.version'),
       dataIndex: 'version',
       key: 'version',
-      render: (v: string) => <span style={{ fontSize: 13 }}>{v}</span>,
+      render: (v: string) => <span style={{ fontSize: 14 }}>{v}</span>,
     },
     {
       title: t('dashboard.broker'),
@@ -286,7 +286,7 @@ const DashboardPage = () => {
                 suffix={card.suffix}
                 valueStyle={{ fontSize: 28, fontWeight: 600 }}
               />
-              <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+              <Text type="secondary" style={{ fontSize: 14, marginTop: 4, display: 'block' }}>
                 {card.detail}
               </Text>
             </Card>

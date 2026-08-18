@@ -37,9 +37,9 @@ import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import type { DLQGroup } from '../../api/message';
-import { listDLQGroups, resendDLQ } from '../../services/messageService';
+import { exportDLQMessages, listDLQGroups, resendDLQ } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
-import { downloadBlob } from '../../utils/download';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -77,26 +77,17 @@ const formatDateTime = (iso?: string | null): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
-const escapeCSVValue = (value: string) => {
-  const safeValue = /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
-  return `"${safeValue.replace(/"/g, '""')}"`;
-};
+const DLQ_EXPORT_COLUMNS: CsvColumn<DLQGroup>[] = [
+  { header: 'Group Name', value: (group) => group.groupName },
+  { header: 'DLQ Topic', value: (group) => group.dlqTopic },
+  { header: 'Message Count', value: (group) => group.messageCount },
+  { header: 'Retry Count', value: (group) => group.retryCount },
+  { header: 'Status', value: (group) => group.status },
+  { header: 'Last Enqueue Time', value: (group) => group.lastEnqueueTime },
+];
 
 const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
-  const rows = [
-    ['Group Name', 'DLQ Topic', 'Message Count', 'Retry Count', 'Status', 'Last Enqueue Time'],
-    ...groups.map((group) => [
-      group.groupName,
-      group.dlqTopic,
-      String(group.messageCount),
-      String(group.retryCount),
-      group.status,
-      group.lastEnqueueTime || '',
-    ]),
-  ];
-  const csv = rows.map((row) => row.map(escapeCSVValue).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  downloadBlob(blob, filename);
+  downloadCsv(filename, buildCsv(DLQ_EXPORT_COLUMNS, groups));
 };
 
 /* ═══════════════════════════════════════════
@@ -106,12 +97,22 @@ const DLQPage = () => {
   const { t } = useLang();
   const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
   const [groups, setGroups] = useState<DLQGroup[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [search, setSearch] = useState('');
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [retryGroup, setRetryGroup] = useState<DLQGroup | null>(null);
   const [retryRange, setRetryRange] = useState<[Dayjs, Dayjs]>([
+    dayjs().subtract(1, 'day'),
+    dayjs(),
+  ]);
+  // Time range applied to dead-letter message exports. Kept page-level and
+  // visible so users know exactly which window the export covers instead of
+  // silently falling back to the backend's last-hour default.
+  const [exportRange, setExportRange] = useState<[Dayjs, Dayjs]>([
     dayjs().subtract(1, 'day'),
     dayjs(),
   ]);
@@ -141,6 +142,8 @@ const DLQPage = () => {
   if (prevScopeKey !== scopeKey) {
     setPrevScopeKey(scopeKey);
     setGroups([]);
+    setTotal(0);
+    setPage(1);
     setSelectedGroupNames([]);
     setDetailGroup(null);
     setRetryModalOpen(false);
@@ -164,13 +167,14 @@ const DLQPage = () => {
       };
     }
 
-    void listDLQGroups(selectedInstanceId)
-      .then((nextGroups) => {
+    void listDLQGroups(selectedInstanceId, search || undefined, page, pageSize)
+      .then((result) => {
         if (!cancelled) {
-          setGroups(nextGroups);
+          setGroups(result.items);
+          setTotal(result.total);
           setLoadError(null);
           const availableGroups = new Set(
-            nextGroups.filter((group) => group.messageCount > 0).map((group) => group.groupName),
+            result.items.filter((group) => group.messageCount > 0).map((group) => group.groupName),
           );
           setSelectedGroupNames((selected) =>
             selected.filter((groupName) => availableGroups.has(groupName)),
@@ -187,17 +191,7 @@ const DLQPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, selectedInstanceId]);
-
-  /* ─── Filtering ─── */
-  const filtered = useMemo(() => {
-    if (!search) return groups;
-    return groups.filter(
-      (g) =>
-        g.groupName.toLowerCase().includes(search.toLowerCase()) ||
-        g.dlqTopic.toLowerCase().includes(search.toLowerCase()),
-    );
-  }, [groups, search]);
+  }, [refreshKey, selectedInstanceId, search, page, pageSize]);
 
   const selectedGroups = useMemo(() => {
     const selected = new Set(selectedGroupNames);
@@ -249,9 +243,7 @@ const DLQPage = () => {
       } else if (result.failed > 0) {
         message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
       } else {
-        message.success(
-          `重投完成：${groupName} → ${targetTopic}（${result.resent} 条）`,
-        );
+        message.success(`重投完成：${groupName} → ${targetTopic}（${result.resent} 条）`);
       }
       setRetryModalOpen(false);
       setRetryGroup(null);
@@ -267,9 +259,24 @@ const DLQPage = () => {
     }
   };
 
-  const handleExport = (group: DLQGroup) => {
-    exportDLQGroups([group], `${group.groupName}-dlq.csv`);
-    message.success(`已导出 ${group.groupName} 的死信队列摘要`);
+  const handleExport = async (group: DLQGroup) => {
+    try {
+      const blob = await exportDLQMessages({
+        instanceId: selectedInstanceId,
+        groupName: group.groupName,
+        startTime: exportRange[0].valueOf(),
+        endTime: exportRange[1].valueOf(),
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${group.groupName}-dlq-messages.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
+    } catch (error) {
+      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+    }
   };
 
   const handleBatchExport = () => {
@@ -297,7 +304,7 @@ const DLQPage = () => {
       key: 'dlqTopic',
       width: 240,
       render: (topic: string) => (
-        <Text style={{ fontSize: 13, fontFamily: 'monospace' }}>{topic}</Text>
+        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{topic}</Text>
       ),
     },
     {
@@ -333,7 +340,7 @@ const DLQPage = () => {
       width: 180,
       sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
       render: (time?: string | null) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(time)}
         </Text>
       ),
@@ -396,10 +403,29 @@ const DLQPage = () => {
             allowClear
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onSearch={setSearch}
+            onSearch={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
             style={{ width: 320 }}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
+          <Space size={8}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              导出时间范围
+            </Text>
+            <RangePicker
+              showTime
+              format="YYYY-MM-DD HH:mm:ss"
+              value={exportRange}
+              onChange={(vals) => {
+                if (vals && vals[0] && vals[1]) {
+                  setExportRange([vals[0], vals[1]]);
+                }
+              }}
+              style={{ width: 380 }}
+            />
+          </Space>
         </Space>
         <Button
           icon={<Download size={16} />}
@@ -419,7 +445,7 @@ const DLQPage = () => {
       <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
-          dataSource={filtered}
+          dataSource={groups}
           rowKey="groupName"
           loading={loading}
           rowSelection={{
@@ -431,9 +457,17 @@ const DLQPage = () => {
             }),
           }}
           pagination={{
-            pageSize: 20,
+            current: page,
+            pageSize,
+            total,
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 个 Group`,
+            pageSizeOptions: [20, 50, 100],
+            showTotal: (totalCount) => `共 ${totalCount} 个 Group`,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+              setSelectedGroupNames([]);
+            },
           }}
           size="small"
         />
@@ -477,13 +511,13 @@ const DLQPage = () => {
                 border: '1px solid #ffd591',
               }}
             >
-              <Text type="warning" style={{ fontSize: 13 }}>
+              <Text type="warning" style={{ fontSize: 14 }}>
                 ⚠️ 重投操作将把死信消息重新发送到指定 Topic，请确认目标 Topic 正确。
               </Text>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                 源 Group
               </Text>
               <Text strong style={{ fontSize: 14 }}>
@@ -492,7 +526,7 @@ const DLQPage = () => {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                 死信数量
               </Text>
               <Text strong style={{ fontSize: 14, color: '#fa8c16' }}>
@@ -501,7 +535,7 @@ const DLQPage = () => {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
                 重投时间范围
               </Text>
               <RangePicker
@@ -518,7 +552,7 @@ const DLQPage = () => {
             </div>
 
             <div>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
                 目标 Topic
               </Text>
               <Input
@@ -542,7 +576,7 @@ const DLQPage = () => {
         {detailGroup && (
           <div style={{ marginTop: 8 }}>
             <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                 Group 名称
               </Text>
               <Text strong copyable style={{ fontSize: 14, fontFamily: 'monospace' }}>
@@ -550,7 +584,7 @@ const DLQPage = () => {
               </Text>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                 DLQ Topic
               </Text>
               <Text copyable style={{ fontSize: 14, fontFamily: 'monospace' }}>
@@ -559,7 +593,7 @@ const DLQPage = () => {
             </div>
             <Flex gap={24} wrap="wrap">
               <div>
-                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                   死信数量
                 </Text>
                 <Text
@@ -572,13 +606,13 @@ const DLQPage = () => {
                 </Text>
               </div>
               <div>
-                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                   重试次数
                 </Text>
                 <Text>{detailGroup.retryCount.toLocaleString()}</Text>
               </div>
               <div>
-                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                   状态
                 </Text>
                 <Text>
@@ -587,7 +621,7 @@ const DLQPage = () => {
               </div>
             </Flex>
             <div style={{ marginTop: 16 }}>
-              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                 最近入队时间
               </Text>
               <Text style={{ fontFamily: 'monospace' }}>

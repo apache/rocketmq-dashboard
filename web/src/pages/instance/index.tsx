@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Table,
   Card,
@@ -30,12 +30,12 @@ import {
   Flex,
   Tabs,
   Typography,
-  Alert,
+  Tooltip,
   message,
 } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
@@ -65,7 +65,9 @@ const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
 
 /* ─── Helpers ─── */
 const typeLabel: Record<string, { text: string; color: string }> = {
-  PROXY: { text: 'Proxy 模式', color: 'blue' },
+  PROXY: { text: 'Proxy 模式（部署形态未标明）', color: 'blue' },
+  PROXY_LOCAL: { text: 'Proxy Local 模式', color: 'cyan' },
+  PROXY_CLUSTER: { text: 'Proxy Cluster 模式', color: 'blue' },
   DIRECT: { text: 'Direct 模式', color: 'orange' },
 };
 
@@ -109,8 +111,8 @@ const InstancePage = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [vendor, setVendor] = useState<InstanceVendor>(DEFAULT_VENDOR);
   const [addForm] = Form.useForm();
-  const addInstanceType = Form.useWatch<'PROXY' | 'DIRECT' | undefined>('type', addForm);
-  const addCredentialId = Form.useWatch<string | undefined>('credentialId', addForm);
+  const addInstanceType = Form.useWatch<Instance['type'] | undefined>('type', addForm);
+  const addCredentialId = Form.useWatch<number | undefined>('credentialId', addForm);
   const addRegionId = Form.useWatch<string | undefined>('regionId', addForm);
   const [credentials, setCredentials] = useState<CloudCredential[]>([]);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
@@ -121,9 +123,11 @@ const InstancePage = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
+  const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
   const [submitting, setSubmitting] = useState(false);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
+  const listQueryRef = useRef<InstanceQuery>({});
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -132,10 +136,7 @@ const InstancePage = () => {
 
   const loadInstances = useCallback(async () => {
     const requestId = ++requestIdRef.current;
-    const query: InstanceQuery = {
-      ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
-      ...(debouncedSearch ? { search: debouncedSearch } : {}),
-    };
+    const query = listQueryRef.current;
 
     setLoading(true);
     try {
@@ -152,16 +153,20 @@ const InstancePage = () => {
         setLoading(false);
       }
     }
-  }, [debouncedSearch, typeFilter]);
+  }, []);
 
   useEffect(() => {
+    listQueryRef.current = {
+      ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+    };
     const timer = window.setTimeout(() => void loadInstances(), 0);
 
     return () => {
       window.clearTimeout(timer);
       requestIdRef.current += 1;
     };
-  }, [loadInstances]);
+  }, [debouncedSearch, loadInstances, typeFilter]);
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
 
@@ -341,12 +346,14 @@ const InstancePage = () => {
       const values = await editForm.validateFields();
       setSubmitting(true);
       const updated = await updateInstance({
-        id: editingInstance.id,
+        instanceId: editingInstance.name,
+        type: values.type,
+        endpoint: values.endpoint,
         remark: values.remark || '',
         adminCredentialRef: values.adminCredentialRef,
       });
       await loadInstances();
-      message.success(`实例「${updated.name}」备注已更新`);
+      message.success(`实例「${updated.name}」已更新`);
       setEditModalOpen(false);
       editForm.resetFields();
     } catch (error) {
@@ -362,7 +369,7 @@ const InstancePage = () => {
 
   const handleDelete = async (instance: Instance) => {
     try {
-      await deleteInstance(instance.id);
+      await deleteInstance(instance.name);
       await loadInstances();
       message.success('已删除');
     } catch {
@@ -378,6 +385,7 @@ const InstancePage = () => {
       dataIndex: 'name',
       key: 'name',
       width: 180,
+      onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (text: string) => (
         <Text strong style={{ fontSize: 14 }}>
@@ -390,18 +398,28 @@ const InstancePage = () => {
       dataIndex: 'remark',
       key: 'remark',
       width: 240,
+      ellipsis: { showTitle: false },
+      onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
-      render: (remark: string | null) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          {remark || '-'}
-        </Text>
-      ),
+      render: (remark: string | null) =>
+        remark ? (
+          <Tooltip title={remark}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              {remark}
+            </Text>
+          </Tooltip>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 14 }}>
+            -
+          </Text>
+        ),
     },
     {
       title: '厂商',
       dataIndex: 'vendor',
       key: 'vendor',
       width: 140,
+      align: 'center' as const,
       render: (value?: string) => {
         const option = VENDOR_OPTIONS.find((item) => item.key === (value || 'APACHE'));
         if (!option) {
@@ -410,7 +428,7 @@ const InstancePage = () => {
         return (
           <Space size={6}>
             <img src={option.logo} alt={option.label} style={{ height: 16 }} />
-            <Text style={{ fontSize: 13 }}>{option.label}</Text>
+            <Text style={{ fontSize: 14 }}>{option.label}</Text>
           </Space>
         );
       },
@@ -420,6 +438,7 @@ const InstancePage = () => {
       dataIndex: 'type',
       key: 'type',
       width: 130,
+      align: 'center' as const,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
         const t = typeLabel[type] || { text: type, color: 'default' };
@@ -448,24 +467,24 @@ const InstancePage = () => {
     },
     {
       title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'gmtCreate',
+      key: 'gmtCreate',
       width: 170,
-      sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
+      sorter: (a, b) => a.gmtCreate.localeCompare(b.gmtCreate),
       render: (d: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(d)}
         </Text>
       ),
     },
     {
       title: '修改时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
+      dataIndex: 'gmtModified',
+      key: 'gmtModified',
       width: 170,
-      sorter: (a, b) => a.updatedAt.localeCompare(b.updatedAt),
+      sorter: (a, b) => a.gmtModified.localeCompare(b.gmtModified),
       render: (d: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(d)}
         </Text>
       ),
@@ -483,6 +502,8 @@ const InstancePage = () => {
             onClick={() => {
               setEditingInstance(record);
               editForm.setFieldsValue({
+                type: record.type,
+                endpoint: record.endpoint,
                 remark: record.remark,
                 adminCredentialRef: record.adminCredentialRef,
               });
@@ -520,7 +541,7 @@ const InstancePage = () => {
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('instance.title')}</h2>
-        <div style={{ marginTop: 6, fontSize: 13, color: '#9CA3AF' }}>
+        <div style={{ marginTop: 6, fontSize: 14, color: '#9CA3AF' }}>
           接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {instances.length} 个实例
         </div>
       </div>
@@ -548,7 +569,9 @@ const InstancePage = () => {
             style={{ width: 140 }}
             options={[
               { value: 'ALL', label: '全部架构' },
-              { value: 'PROXY', label: 'Proxy 模式' },
+              { value: 'PROXY', label: '全部 Proxy 模式' },
+              { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
+              { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
               { value: 'DIRECT', label: 'Direct 模式' },
             ]}
           />
@@ -611,7 +634,7 @@ const InstancePage = () => {
             ),
           }))}
         />
-        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
+        <Text type="secondary" style={{ display: 'block', fontSize: 14, marginBottom: 12 }}>
           {VENDOR_OPTIONS.find((option) => option.key === vendor)?.description}
         </Text>
         {cloudVendor ? (
@@ -620,12 +643,27 @@ const InstancePage = () => {
               label="云凭据"
               name="credentialId"
               rules={[{ required: true, message: '请选择云凭据' }]}
-              extra={`凭据为${vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，由后端录入`}
+              extra={
+                <span>
+                  凭据为{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，
+                  <Link to="/settings?tab=credential">前往「设置 - 云凭据管理」添加</Link>
+                </span>
+              }
             >
               <Select
                 placeholder="选择已录入的 AK/SK 凭据"
                 loading={credentialsLoading}
                 onChange={handleCredentialChange}
+                notFoundContent={
+                  credentialsLoading ? (
+                    '加载中…'
+                  ) : (
+                    <span>
+                      暂无{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}凭据，
+                      <Link to="/settings?tab=credential">去设置中添加</Link>
+                    </span>
+                  )
+                }
                 options={credentials.map((item) => ({
                   value: item.id,
                   label: `${item.name}（${item.accessKey}）`,
@@ -706,21 +744,31 @@ const InstancePage = () => {
               <Select
                 placeholder="选择接入方式"
                 options={[
-                  { value: 'PROXY', label: 'Proxy 模式' },
+                  { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
+                  { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
                   { value: 'DIRECT', label: 'Direct 模式' },
                 ]}
               />
             </Form.Item>
             <Form.Item
-              label="接入地址"
+              label={
+                <span>
+                  接入地址{' '}
+                  <Tooltip title="接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。">
+                    <QuestionCircleOutlined style={{ color: '#9CA3AF', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+              }
               name="endpoint"
               rules={[{ required: true, message: '请输入接入地址' }]}
               extra={
                 addInstanceType === 'DIRECT'
                   ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
-                  : addInstanceType === 'PROXY'
-                    ? 'Proxy 模式请填写 Proxy SLB 内网地址（如 proxy.mq.svc:8080）'
-                    : '请先选择接入方式'
+                  : addInstanceType === 'PROXY_LOCAL'
+                    ? 'Proxy Local 模式请填写与 Broker 同进程部署的 Proxy 接入地址（如 broker-proxy.mq.svc:8080）'
+                    : addInstanceType === 'PROXY_CLUSTER'
+                      ? 'Proxy Cluster 模式请填写独立 Proxy 集群的 SLB 内网地址（如 proxy.mq.svc:8080）'
+                      : '请先选择接入方式'
               }
             >
               <Input
@@ -731,13 +779,6 @@ const InstancePage = () => {
                 }
               />
             </Form.Item>
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="接入地址为客户端访问入口"
-              description="接入地址会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。"
-            />
             <Form.Item
               label="管理凭据引用"
               name="adminCredentialRef"
@@ -770,18 +811,46 @@ const InstancePage = () => {
           <Form.Item label="实例 ID">
             <Input value={editingInstance?.name} disabled />
           </Form.Item>
-          <Form.Item label="接入方式">
+          <Form.Item
+            label="接入方式"
+            name="type"
+            rules={[{ required: true, message: '请选择接入方式' }]}
+          >
             <Select
-              value={editingInstance?.type}
-              disabled
               options={[
-                { value: 'PROXY', label: 'Proxy 模式' },
+                { value: 'PROXY', label: 'Proxy 模式（部署形态未标明）' },
+                { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
+                { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
                 { value: 'DIRECT', label: 'Direct 模式' },
               ]}
             />
           </Form.Item>
-          <Form.Item label="接入地址">
-            <Input value={editingInstance?.endpoint} disabled />
+          <Form.Item
+            label={
+              <span>
+                接入地址{' '}
+                <Tooltip title="接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。">
+                  <QuestionCircleOutlined style={{ color: '#9CA3AF', cursor: 'help' }} />
+                </Tooltip>
+              </span>
+            }
+            name="endpoint"
+            rules={[{ required: true, message: '请输入接入地址' }]}
+            extra={
+              editInstanceType === 'DIRECT'
+                ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
+                : editInstanceType === 'PROXY'
+                  ? 'Proxy 模式请填写 Proxy SLB 内网地址（如 proxy.mq.svc:8080）'
+                  : '请先选择接入方式'
+            }
+          >
+            <Input
+              placeholder={
+                editInstanceType === 'DIRECT'
+                  ? '例：namesrv.mq.svc.cluster.local:9876'
+                  : '例：proxy.mq.svc.cluster.local:8080'
+              }
+            />
           </Form.Item>
           {editingInstance?.vendor === 'APACHE' && (
             <Form.Item

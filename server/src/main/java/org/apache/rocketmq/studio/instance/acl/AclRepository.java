@@ -31,15 +31,21 @@ public interface AclRepository {
      */
     Optional<AclRuleVO> replaceRule(AclRuleVO rule);
 
-    boolean deleteRule(String id);
+    boolean deleteRule(Long id);
 
     List<AclUserVO> findUsers();
 
-    Optional<AclUserVO> findUserById(String id);
+    Optional<AclUserVO> findUserById(Long id);
 
     AclUserVO saveUser(AclUserVO user);
 
-    boolean deleteUser(String id);
+    /**
+     * Replaces an existing user atomically without creating a missing user.
+     * Returns empty when the user no longer exists.
+     */
+    Optional<AclUserVO> replaceUser(AclUserVO user);
+
+    boolean deleteUser(Long id);
 
     /**
      * Examines the effective ACL configuration of a broker cluster: the enabled

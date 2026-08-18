@@ -21,7 +21,7 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DLQGroup, DLQResendResult } from '../../../api/message';
+import type { DLQGroup, DLQGroupPage, DLQResendResult } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as messageService from '../../../services/messageService';
 import DLQPage from '../dlq';
@@ -29,30 +29,31 @@ import DLQPage from '../dlq';
 vi.mock('../../../services/messageService', () => ({
   listDLQGroups: vi.fn(),
   resendDLQ: vi.fn(),
+  exportDLQMessages: vi.fn(),
 }));
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([
     {
-      id: 'instance-1',
+      id: 1,
       name: 'instance-1',
       endpoint: 'namesrv-1:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
     {
-      id: 'instance-2',
+      id: 2,
       name: 'instance-2',
       endpoint: 'namesrv-2:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
   ]),
 }));
@@ -81,6 +82,13 @@ const secondDlqGroup: DLQGroup = {
   retryCount: 1,
   status: 'ACTIVE',
 };
+
+const pageOf = (items: DLQGroup[]): DLQGroupPage => ({
+  items,
+  total: items.length,
+  page: 1,
+  size: 20,
+});
 
 const renderWithProviders = (ui: React.ReactElement) =>
   render(
@@ -124,7 +132,7 @@ describe('DLQ page', () => {
       value: revokeObjectURL,
     });
     clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    vi.mocked(messageService.listDLQGroups).mockResolvedValue([dlqGroup]);
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup]));
   });
 
   afterEach(() => {
@@ -137,7 +145,7 @@ describe('DLQ page', () => {
 
     expect(await screen.findByText('cg-order')).toBeInTheDocument();
     expect(screen.getByText('%DLQ%cg-order')).toBeInTheDocument();
-    expect(messageService.listDLQGroups).toHaveBeenCalledWith('instance-1');
+    expect(messageService.listDLQGroups).toHaveBeenCalledWith('instance-1', undefined, 1, 20);
   });
 
   it('surfaces unavailable DLQ provider errors when loading groups', async () => {
@@ -150,7 +158,7 @@ describe('DLQ page', () => {
   });
 
   it('does not present unavailable DLQ statistics as an empty queue', async () => {
-    vi.mocked(messageService.listDLQGroups).mockResolvedValue([unavailableDlqGroup]);
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([unavailableDlqGroup]));
     renderWithProviders(<DLQPage />);
 
     const row = (await screen.findByText('cg-order')).closest('tr');
@@ -163,10 +171,10 @@ describe('DLQ page', () => {
   });
 
   it('sorts DLQ rows with missing enqueue timestamps', async () => {
-    vi.mocked(messageService.listDLQGroups).mockResolvedValue([
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([
       dlqGroup,
       { ...secondDlqGroup, lastEnqueueTime: null },
-    ]);
+    ]));
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
@@ -189,22 +197,35 @@ describe('DLQ page', () => {
     expect(screen.getByText('ACTIVE')).toBeInTheDocument();
   });
 
-  it('exports the selected group summary as CSV', async () => {
+  it('exports the dead-letter messages of a group as JSON', async () => {
+    vi.mocked(messageService.exportDLQMessages).mockResolvedValue(
+      new Blob(['[{"msgId":"m1","topic":"%DLQ%cg-order","queueId":0,"offset":5}]'], {
+        type: 'application/json',
+      }),
+    );
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
     await user.click(screen.getByRole('button', { name: '导出' }));
 
+    expect(messageService.exportDLQMessages).toHaveBeenCalledTimes(1);
+    const exportParams = vi.mocked(messageService.exportDLQMessages).mock.calls[0][0];
+    expect(exportParams.instanceId).toBe('instance-1');
+    expect(exportParams.groupName).toBe('cg-order');
+    expect(typeof exportParams.startTime).toBe('number');
+    expect(typeof exportParams.endTime).toBe('number');
+    // Default export window is the last day, mirroring the visible range picker.
+    expect(exportParams.endTime! - exportParams.startTime!).toBeGreaterThan(23 * 3600_000);
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0][0] as Blob;
-    await expect(blob.text()).resolves.toContain('"cg-order","%DLQ%cg-order","7","3","ACTIVE"');
+    await expect(blob.text()).resolves.toContain('"msgId":"m1"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
 
   it('exports summaries for the selected groups in one CSV file', async () => {
-    vi.mocked(messageService.listDLQGroups).mockResolvedValue([dlqGroup, secondDlqGroup]);
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup, secondDlqGroup]));
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
@@ -228,20 +249,21 @@ describe('DLQ page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
 
-  it('neutralizes formulas hidden behind a leading line feed in CSV exports', async () => {
-    vi.mocked(messageService.listDLQGroups).mockResolvedValue([
+  it('neutralizes formulas hidden behind a leading line feed in CSV summary exports', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([
       {
         ...dlqGroup,
         groupName: '\n=1+1',
         dlqTopic: '%DLQ%formula',
       },
-    ]);
+    ]));
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
     const row = (await screen.findByText('%DLQ%formula')).closest('tr');
     if (!row) throw new Error('DLQ group row not found');
-    await user.click(within(row).getByRole('button', { name: '导出' }));
+    await user.click(within(row).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量导出/ }));
 
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     await expect(blob.text()).resolves.toContain('"\'\n=1+1","%DLQ%formula"');
@@ -249,8 +271,8 @@ describe('DLQ page', () => {
 
   it('clears a selected group when refreshed data shows no dead-letter messages', async () => {
     vi.mocked(messageService.listDLQGroups)
-      .mockResolvedValueOnce([dlqGroup])
-      .mockResolvedValueOnce([{ ...dlqGroup, messageCount: 0 }]);
+      .mockResolvedValueOnce(pageOf([dlqGroup]))
+      .mockResolvedValueOnce(pageOf([{ ...dlqGroup, messageCount: 0 }]));
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
@@ -316,12 +338,12 @@ describe('DLQ page', () => {
   });
 
   it('clears retry state before loading groups for a newly selected instance', async () => {
-    let resolveSecondInstance!: (groups: DLQGroup[]) => void;
+    let resolveSecondInstance!: (page: DLQGroupPage) => void;
     vi.mocked(messageService.listDLQGroups)
-      .mockResolvedValueOnce([dlqGroup])
+      .mockResolvedValueOnce(pageOf([dlqGroup]))
       .mockImplementationOnce(
         () =>
-          new Promise<DLQGroup[]>((resolve) => {
+          new Promise<DLQGroupPage>((resolve) => {
             resolveSecondInstance = resolve;
           }),
       );
@@ -340,13 +362,13 @@ describe('DLQ page', () => {
     );
 
     await waitFor(() => {
-      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-2');
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-2', undefined, 1, 20);
     });
     await waitFor(() => {
       expect(screen.queryByRole('row', { name: /cg-order/ })).not.toBeInTheDocument();
     });
 
-    resolveSecondInstance([secondDlqGroup]);
+    resolveSecondInstance(pageOf([secondDlqGroup]));
     expect(await screen.findByText('-cg-"payment"')).toBeInTheDocument();
   });
 
@@ -359,8 +381,8 @@ describe('DLQ page', () => {
         }),
     );
     vi.mocked(messageService.listDLQGroups)
-      .mockResolvedValueOnce([dlqGroup])
-      .mockResolvedValueOnce([secondDlqGroup]);
+      .mockResolvedValueOnce(pageOf([dlqGroup]))
+      .mockResolvedValueOnce(pageOf([secondDlqGroup]));
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
@@ -381,9 +403,7 @@ describe('DLQ page', () => {
     if (!retryDialog) throw new Error('retry dialog not found');
     expect(within(retryDialog as HTMLElement).getByText('-cg-"payment"')).toBeInTheDocument();
 
-    await act(async () =>
-      resolveRetry({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }),
-    );
+    await act(async () => resolveRetry({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
 
     retryDialog = screen.getByText('重投死信消息').closest('.ant-modal');
     if (!retryDialog) throw new Error('retry dialog was closed by the stale request');

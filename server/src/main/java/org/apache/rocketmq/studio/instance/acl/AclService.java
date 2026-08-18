@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.common.util.EntityIds;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -30,15 +31,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AclService {
+
+    private static final SecureRandom CREDENTIAL_RANDOM = new SecureRandom();
 
     private final AclRepository aclRepository;
     private final OperationAuditService operationAuditService;
@@ -81,8 +84,7 @@ public class AclService {
         if (!StringUtils.hasText(rule.getResource())) {
             throw new BusinessException(400, "ACL resource is required");
         }
-        rule.setId(UUID.randomUUID().toString());
-        rule.setCreatedAt(LocalDateTime.now());
+        rule.setGmtCreate(LocalDateTime.now());
         AclRuleVO saved = aclRepository.saveRule(rule);
         auditRule("CREATE_ACL_RULE", saved);
         return saved;
@@ -92,7 +94,7 @@ public class AclService {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.updateRule(instanceId, rule);
         }
-        if (!StringUtils.hasText(rule.getId())) {
+        if (rule.getId() == null) {
             throw new BusinessException(400, "ACL rule id is required");
         }
         log.info("Updating ACL rule id={}, principal={}", rule.getId(), rule.getPrincipal());
@@ -108,7 +110,7 @@ public class AclService {
             return;
         }
         log.info("Deleting ACL rule id={}", id);
-        if (!aclRepository.deleteRule(id)) {
+        if (!aclRepository.deleteRule(EntityIds.parseId(id))) {
             throw new BusinessException(404, "ACL rule not found: " + id);
         }
         recordAudit("DELETE_ACL_RULE", "ACL_RULE", id, null, null);
@@ -136,10 +138,9 @@ public class AclService {
         if (!StringUtils.hasText(user.getUsername())) {
             throw new BusinessException(400, "ACL username is required");
         }
-        user.setId(UUID.randomUUID().toString());
-        user.setAccessKey(UUID.randomUUID().toString().replace("-", ""));
-        user.setSecretKey(UUID.randomUUID().toString().replace("-", ""));
-        user.setCreatedAt(LocalDateTime.now());
+        user.setAccessKey(randomCredentialToken());
+        user.setSecretKey(randomCredentialToken());
+        user.setGmtCreate(LocalDateTime.now());
         AclUserVO saved = aclRepository.saveUser(user);
         auditUser("CREATE_ACL_USER", saved);
         return saved;
@@ -149,7 +150,7 @@ public class AclService {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.updateUser(instanceId, user.toAclUserVO());
         }
-        if (!StringUtils.hasText(user.getId())) {
+        if (user.getId() == null) {
             throw new BusinessException(400, "ACL user id is required");
         }
         log.info("Updating ACL user id={}, username={}", user.getId(), user.getUsername());
@@ -165,9 +166,10 @@ public class AclService {
                 .secretKey(existing.getSecretKey())
                 .admin(user.getAdmin() == null ? existing.isAdmin() : user.getAdmin())
                 .clusters(user.getClusters() == null ? existing.getClusters() : user.getClusters())
-                .createdAt(existing.getCreatedAt())
+                .gmtCreate(existing.getGmtCreate())
                 .build();
-        AclUserVO saved = aclRepository.saveUser(merged);
+        AclUserVO saved = aclRepository.replaceUser(merged)
+                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
         auditUser("UPDATE_ACL_USER", saved);
         return maskCredentials(saved);
     }
@@ -179,7 +181,7 @@ public class AclService {
             return;
         }
         log.info("Deleting ACL user id={}", id);
-        if (!aclRepository.deleteUser(id)) {
+        if (!aclRepository.deleteUser(EntityIds.parseId(id))) {
             throw new BusinessException(404, "ACL user not found: " + id);
         }
         recordAudit("DELETE_ACL_USER", "ACL_USER", id, null, null);
@@ -209,6 +211,17 @@ public class AclService {
         if (config == null || !StringUtils.hasText(config.getAccessKey())) {
             throw new BusinessException(400, "accessKey is required");
         }
+        if (config.getWhiteRemoteAddress() != null) {
+            String normalizedWhiteRemoteAddress = config.getWhiteRemoteAddress().trim();
+            config.setWhiteRemoteAddress(normalizedWhiteRemoteAddress.isEmpty()
+                    ? null : normalizedWhiteRemoteAddress);
+        }
+        if (StringUtils.hasText(config.getWhiteRemoteAddress())
+                && !PlainAclRemoteAddressValidator.isValid(config.getWhiteRemoteAddress())) {
+            throw new BusinessException(400,
+                    "whiteRemoteAddress is not a valid plain ACL address expression: "
+                            + config.getWhiteRemoteAddress());
+        }
         log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
         PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
         String auditDetail = "admin=" + saved.isAdmin()
@@ -231,7 +244,7 @@ public class AclService {
             throw new BusinessException(400, "ACL user id is required");
         }
         log.info("Revealing credentials for ACL user id={}", id);
-        return aclRepository.findUserById(id)
+        return aclRepository.findUserById(EntityIds.parseId(id))
                 .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
     }
 
@@ -299,18 +312,32 @@ public class AclService {
                 .permWrite(user.getPermWrite())
                 .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
                 .whiteRemoteAddress(user.getWhiteRemoteAddress())
-                .createdAt(user.getCreatedAt())
+                .gmtCreate(user.getGmtCreate())
                 .build();
     }
 
     private void auditRule(String operation, AclRuleVO rule) {
-        recordAudit(operation, "ACL_RULE", rule.getId(), null,
+        recordAudit(operation, "ACL_RULE", String.valueOf(rule.getId()), null,
                 "principal=" + rule.getPrincipal());
     }
 
     private void auditUser(String operation, AclUserVO user) {
-        recordAudit(operation, "ACL_USER", user.getId(), null,
+        recordAudit(operation, "ACL_USER", String.valueOf(user.getId()), null,
                 "username=" + user.getUsername() + ", admin=" + user.isAdmin());
+    }
+
+    /**
+     * Generates a random 32-char hex token for locally provisioned ACL credentials.
+     */
+    private static String randomCredentialToken() {
+        byte[] bytes = new byte[16];
+        CREDENTIAL_RANDOM.nextBytes(bytes);
+        StringBuilder token = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            token.append(Character.forDigit((value >> 4) & 0xF, 16));
+            token.append(Character.forDigit(value & 0xF, 16));
+        }
+        return token.toString();
     }
 
 

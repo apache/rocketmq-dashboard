@@ -40,9 +40,8 @@ import type { K8sCertInfo } from './cluster';
 const mock = new MockAdapter(client);
 
 const cert: K8sCertInfo = {
-  id: 'cert-1',
-  name: 'rocketmq-tls',
-  namespace: 'rocketmq',
+  id: 5,
+  k8sId: 'rocketmq-tls',
   cluster: 'prod-cluster',
   type: 'TLS',
   issuer: 'kubernetes-ca',
@@ -71,11 +70,13 @@ describe('K8s certificate API', () => {
 
   it('returns the certificate created by the backend', async () => {
     mock.onPost('/k8s-certs/create').reply((config) => {
-      expect(JSON.parse(config.data)).toMatchObject({ name: cert.name, cluster: cert.cluster });
+      expect(JSON.parse(config.data)).toMatchObject({ k8sId: cert.k8sId, cluster: cert.cluster });
       return [200, { code: 200, message: 'success', data: cert }];
     });
 
-    await expect(createK8sCert({ name: cert.name, cluster: cert.cluster })).resolves.toEqual(cert);
+    await expect(createK8sCert({ k8sId: cert.k8sId, cluster: cert.cluster })).resolves.toEqual(
+      cert,
+    );
   });
 
   it('returns the updated certificate and sends its id', async () => {
@@ -195,14 +196,16 @@ describe('K8s certificate API', () => {
         },
       ],
     };
-    mock.onGet('/nameservers/config-diff', {
-      params: { clusterId: 'cluster-1', instanceId: 'instance-1' },
-    }).reply(200, {
-      code: 200,
-      data: result,
-    });
+    mock
+      .onGet('/nameservers/config-diff', {
+        params: { clusterId: 'cluster-1', instanceId: 'instance-proxy-1' },
+      })
+      .reply(200, {
+        code: 200,
+        data: result,
+      });
 
-    await expect(getNameServerConfigDiff('cluster-1', 'instance-1')).resolves.toEqual(result);
+    await expect(getNameServerConfigDiff('cluster-1', 'instance-proxy-1')).resolves.toEqual(result);
   });
 
   it('sends the proxy restart target', async () => {

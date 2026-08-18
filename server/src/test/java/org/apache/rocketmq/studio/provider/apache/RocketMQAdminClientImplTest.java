@@ -21,6 +21,7 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -47,6 +48,7 @@ import org.mockito.MockedConstruction;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -54,12 +56,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
@@ -105,7 +110,7 @@ class RocketMQAdminClientImplTest {
 
         ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
 
-        assertThat(group.getId()).isEqualTo("orders");
+        assertThat(group.getName()).isEqualTo("orders");
         assertThat(group.getOnlineInstances()).isZero();
     }
 
@@ -165,6 +170,45 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void resetOffsetShouldRejectBlankTopicBeforeResolvingAdmin() {
+        assertThatThrownBy(() -> adminClient.resetOffset("instance-a", "cg-orders", 1784246400000L, " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required for offset reset")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(runtimeAdminClientResolver);
+        verify(adminFactory, never()).execute(anyString(), any(), any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void resetOffsetShouldPreserveStructuredResolverFailure() {
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("missing-instance"), any()))
+                .thenThrow(new BusinessException(404, "Instance not found: missing-instance"));
+
+        assertThatThrownBy(() -> adminClient.resetOffset(
+                "missing-instance", "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance not found: missing-instance")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(auditService).record("RESET_OFFSET", "cg-orders",
+                "Instance not found: missing-instance", "FAILED");
+    }
+
+    @Test
+    void resetOffsetShouldWrapUnexpectedAdminFailure() {
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> adminClient.resetOffset(
+                "instance-a", "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to reset offset: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(500));
+        verify(auditService).record("RESET_OFFSET", "cg-orders", "broker unavailable", "FAILED");
+    }
+
+    @Test
     void getConsumerGroupSurfacesAdminTimeout() throws Exception {
         when(adminExt.examineConsumerConnectionInfo("orders"))
                 .thenThrow(new RemotingTimeoutException("broker-0", 3_000));
@@ -214,24 +258,44 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void createTopicShouldOnlyWriteTargetClusterBrokersInMultiClusterTopology() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        ClusterInfo clusterInfo = clusterInfoWithTwoClusters();
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setClusterId("cluster-1");
+
+        adminClient.createTopic(topic);
+
+        verify(adminExt).createAndUpdateTopicConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
+        verify(adminExt, never()).createAndUpdateTopicConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.0.2:10911"), any(TopicConfig.class));
+    }
+
+    @Test
     void topicWritesUseSelectedInstanceAdmin() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
         when(topicMapper.selectOne(any())).thenReturn(null);
         doNothing().when(selectedAdmin).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
-        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any()))
                 .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
                         .apply(selectedAdmin));
 
         TopicVO topic = new TopicVO();
         topic.setName("topicA");
-        topic.setInstanceId("instance-a");
+        topic.setInstanceId("open-source-local");
 
         adminClient.createTopic(topic);
         adminClient.updateTopic(topic);
 
-        verify(runtimeAdminClientResolver, times(2)).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(runtimeAdminClientResolver, times(2)).execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any());
         verify(selectedAdmin, times(2)).createAndUpdateTopicConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
         verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
@@ -279,6 +343,72 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void topicWritesSendMessageTypeAttributeToBroker() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.FIFO);
+
+        adminClient.createTopic(topic);
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getAllValues()).allSatisfy(config ->
+                assertThat(config.getAttributes()).containsEntry("+message.type", TopicType.FIFO.name()));
+    }
+
+    @Test
+    void updateTopicWithoutTypePreservesExistingType() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setTopicType(TopicType.TRANSACTION.name());
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes()).doesNotContainKey("+message.type");
+        assertThat(existing.getTopicType()).isEqualTo(TopicType.TRANSACTION.name());
+    }
+
+    @Test
+    void updateTopicPreservesQueueCountsWhenNotSpecified() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setWriteQueueNums(16);
+        existing.setReadQueueNums(16);
+        // RocketMQ perm int: 6 = RW, 4 = RO, 2 = WO.
+        existing.setPerm(6);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setPerm(TopicPerm.RO);
+
+        adminClient.updateTopic(topic);
+
+        // Partial update (perm only) must not reset queues to the default of 8.
+        ArgumentCaptor<TopicConfig> topicConfigCaptor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), topicConfigCaptor.capture());
+        assertThat(topicConfigCaptor.getValue().getWriteQueueNums()).isEqualTo(16);
+        assertThat(topicConfigCaptor.getValue().getReadQueueNums()).isEqualTo(16);
+        assertThat(existing.getWriteQueueNums()).isEqualTo(16);
+        assertThat(existing.getReadQueueNums()).isEqualTo(16);
+    }
+
+    @Test
     void topicDeleteUsesSelectedInstanceAndScopesBrokersAndMetadataToCluster() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
@@ -319,6 +449,20 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void deleteTopicScopesBrokerDeletionToSelectedClusterOnly() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        doNothing().when(adminExt).deleteTopicInBroker(any(), anyString());
+        doNothing().when(adminExt).deleteTopicInNameServer(any(), anyString(), anyString());
+
+        adminClient.deleteTopic(null, "orders", "cluster-1");
+
+        verify(adminExt).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
+        verify(adminExt).deleteTopicInNameServer(Set.of("10.0.0.1:9876"), "cluster-1", "orders");
+        verify(topicMapper).delete(any());
+    }
+
+    @Test
     void createConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
@@ -331,7 +475,7 @@ class RocketMQAdminClientImplTest {
         when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
         when(groupMapper.selectOne(any())).thenReturn(null);
         doNothing().when(selectedAdmin).createAndUpdateSubscriptionGroupConfig(anyString(), any());
-        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any()))
                 .thenAnswer(invocation -> {
                     MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
                     return action.apply(selectedAdmin);
@@ -340,11 +484,11 @@ class RocketMQAdminClientImplTest {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("cg-orders");
         group.setClusterId("cluster-1");
-        group.setInstanceId("instance-a");
+        group.setInstanceId("open-source-local");
 
         adminClient.createConsumerGroup(group);
 
-        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any());
         verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any());
         verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
@@ -410,11 +554,30 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void deleteConsumerGroupScopesBrokerDeletionToSelectedClusterOnly() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        doNothing().when(adminExt).deleteSubscriptionGroup(anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean());
+
+        adminClient.deleteConsumerGroup(null, "cg-orders", "cluster-1");
+
+        verify(adminExt).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
+        verify(adminExt, never()).deleteSubscriptionGroup("10.0.0.2:10911", "cg-orders", true);
+        verify(groupMapper).delete(any());
+    }
+
+    @Test
     void createTopicSucceedsWhenAuditRecordingFails() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         ClusterInfo clusterInfo = clusterInfoWithMaster();
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
         when(topicMapper.selectOne(any())).thenReturn(null);
+        when(topicMapper.insert(any(RmqTopic.class))).thenAnswer(invocation -> {
+            RmqTopic inserted = invocation.getArgument(0);
+            inserted.setId(1L);
+            return 1;
+        });
         doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
         doThrow(new RuntimeException("audit db down")).when(auditService)
                 .record(anyString(), anyString(), anyString(), anyString());
@@ -422,7 +585,7 @@ class RocketMQAdminClientImplTest {
         TopicVO topic = new TopicVO();
         topic.setName("topicA");
 
-        assertThat(adminClient.createTopic(topic).getId()).isEqualTo("topicA");
+        assertThat(adminClient.createTopic(topic).getId()).isEqualTo(1L);
         verify(auditService).record("CREATE_TOPIC", "topicA", "queues=8/8", "SUCCESS");
     }
 
@@ -462,15 +625,16 @@ class RocketMQAdminClientImplTest {
         clusterAddrTable.put("cluster-2", new HashSet<>(List.of("broker-2")));
         clusterInfo.setClusterAddrTable(clusterAddrTable);
 
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
         BrokerData firstBroker = new BrokerData();
         firstBroker.setBrokerName("broker-1");
         firstBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
         BrokerData secondBroker = new BrokerData();
         secondBroker.setBrokerName("broker-2");
         secondBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
-        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of(
-                "broker-1", firstBroker,
-                "broker-2", secondBroker)));
+        brokerAddrTable.put("broker-1", firstBroker);
+        brokerAddrTable.put("broker-2", secondBroker);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
         return clusterInfo;
     }
 
@@ -537,8 +701,10 @@ class RocketMQAdminClientImplTest {
     @Test
     void sendMessageShouldAllowBodyAtMaximumSize() throws Exception {
         when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
+        List<List<?>> constructorArguments = new ArrayList<>();
         try (MockedConstruction<DefaultMQProducer> mockedProducers =
                      mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         constructorArguments.add(context.arguments());
                          doNothing().when(producer).start();
                          SendResult sendResult = new SendResult();
                          sendResult.setSendStatus(SendStatus.SEND_OK);
@@ -558,14 +724,21 @@ class RocketMQAdminClientImplTest {
             ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
             verify(producer).send(messageCaptor.capture());
             assertThat(messageCaptor.getValue().getBody()).hasSize(4 * 1024 * 1024);
+            assertThat(constructorArguments).singleElement();
+            assertThat(constructorArguments.get(0)).hasSize(2);
+            assertThat(constructorArguments.get(0).get(1)).isNull();
         }
     }
 
     @Test
-    void sendMessageUsesSelectedInstanceEndpoint() throws Exception {
+    void sendMessageUsesSelectedInstanceEndpointAndCredentialHook() throws Exception {
+        RPCHook credentialHook = mock(RPCHook.class);
+        List<List<?>> constructorArguments = new ArrayList<>();
         when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
+        when(runtimeAdminClientResolver.resolveCredentialHook("instance-a")).thenReturn(credentialHook);
         try (MockedConstruction<DefaultMQProducer> mockedProducers =
                      mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         constructorArguments.add(context.arguments());
                          doNothing().when(producer).start();
                          SendResult sendResult = new SendResult();
                          sendResult.setSendStatus(SendStatus.SEND_OK);
@@ -583,7 +756,11 @@ class RocketMQAdminClientImplTest {
 
             DefaultMQProducer producer = mockedProducers.constructed().getFirst();
             verify(producer).setNamesrvAddr("10.0.0.2:9876");
+            assertThat(constructorArguments).singleElement();
+            assertThat(constructorArguments.get(0)).hasSize(2);
+            assertThat(constructorArguments.get(0).get(1)).isSameAs(credentialHook);
         }
+        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
     }
 
     @Test

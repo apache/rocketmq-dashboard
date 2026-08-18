@@ -32,16 +32,17 @@ import {
   Typography,
   theme,
 } from 'antd';
-import { Eye, MagnifyingGlass } from '@phosphor-icons/react';
+import { DownloadSimple, Eye, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
-import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
+import { listRegistryClusters } from '../../services/clusterService';
+import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
@@ -68,6 +69,19 @@ const languageConfig: Record<string, { color: string; label: string }> = {
   NodeJS: { color: 'lime', label: 'Node.js' },
   PHP: { color: 'gold', label: 'PHP' },
 };
+
+const CLIENT_CONNECTION_EXPORT_COLUMNS: CsvColumn<ClientConnection>[] = [
+  { header: 'Cluster', value: (connection) => connection.clusterName },
+  { header: 'Client ID', value: (connection) => connection.clientId },
+  { header: 'Type', value: (connection) => connection.type },
+  { header: 'Group/Topic', value: (connection) => connection.groupOrTopic },
+  { header: 'Protocol', value: (connection) => connection.protocol },
+  { header: 'Address', value: (connection) => connection.address },
+  { header: 'Language', value: (connection) => connection.language },
+  { header: 'Version', value: (connection) => connection.version },
+  { header: 'Connected At', value: (connection) => connection.connectedAt },
+  { header: 'Partial', value: (connection) => (connection.partial ? 'true' : 'false') },
+];
 
 const countBy = (values: string[]) =>
   [
@@ -107,18 +121,29 @@ const ClientsPage = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const [connections, setConnections] = useState<ClientConnection[]>([]);
-  const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState('');
+  const [registryClusters, setRegistryClusters] = useState<ClusterInfo[]>([]);
+  const [selectedEndpoint, setSelectedEndpoint] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [instanceLoadKey, setInstanceLoadKey] = useState(0);
+  const [registryLoadKey, setRegistryLoadKey] = useState(0);
   const [connectionLoadKey, setConnectionLoadKey] = useState(0);
 
-  const handleInstanceChange = (instanceId: string) => {
-    setSelectedInstanceId(instanceId);
+  const selectedCluster = registryClusters.find((cluster) => cluster.endpoint === selectedEndpoint);
+
+  const nameserverOptions = useMemo(
+    () =>
+      registryClusters.map((cluster) => ({
+        value: cluster.endpoint,
+        label: `${cluster.name} (${cluster.endpoint})`,
+      })),
+    [registryClusters],
+  );
+
+  const handleNameserverChange = (endpoint: string) => {
+    setSelectedEndpoint(endpoint);
     setConnections([]);
     setClusterFilter('ALL');
     setSelectedConnection(null);
@@ -129,17 +154,22 @@ const ClientsPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    void listInstances()
-      .then((nextInstances) => {
+    void listRegistryClusters()
+      .then((nextClusters) => {
         if (cancelled) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.name || '');
+        setRegistryClusters(nextClusters);
+        setSelectedEndpoint((current) => {
+          if (current && nextClusters.some((cluster) => cluster.endpoint === current)) {
+            return current;
+          }
+          return nextClusters[0]?.endpoint;
+        });
         setLoadError(null);
       })
       .catch((error) => {
         if (cancelled) return;
-        setInstances([]);
-        setSelectedInstanceId('');
+        setRegistryClusters([]);
+        setSelectedEndpoint(undefined);
         setConnections([]);
         setLoadError(getLoadErrorMessage(error));
       })
@@ -150,17 +180,17 @@ const ClientsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [instanceLoadKey]);
+  }, [registryLoadKey]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!selectedInstanceId) {
+    if (!selectedEndpoint || !selectedCluster) {
       return () => {
         cancelled = true;
       };
     }
 
-    void listConnections({ instanceId: selectedInstanceId })
+    void listConnections({ namesrvAddr: selectedEndpoint })
       .then((nextConnections) => {
         if (!cancelled) {
           setConnections(nextConnections);
@@ -182,7 +212,7 @@ const ClientsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [connectionLoadKey, selectedInstanceId]);
+  }, [connectionLoadKey, selectedEndpoint, selectedCluster]);
 
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {
@@ -233,6 +263,12 @@ const ClientsPage = () => {
     );
   }, [clusterConnections, search]);
 
+  const handleExport = () => {
+    const filename = `rocketmq-client-connections-${new Date().toISOString().slice(0, 10)}.csv`;
+    const csv = buildCsv(CLIENT_CONNECTION_EXPORT_COLUMNS, filtered);
+    downloadCsv(filename, csv);
+  };
+
   /* ═══════════════════════════════════════════
      Table Columns (with built-in filters)
      ═══════════════════════════════════════════ */
@@ -246,22 +282,19 @@ const ClientsPage = () => {
         .filter((option) => option.value !== 'ALL')
         .map((option) => ({ text: option.label, value: option.value })),
       onFilter: (value, record) => record.clusterName === value,
-      render: (name: string) => (
-        <Tag color="blue" style={{ fontSize: 12 }}>
-          {name}
-        </Tag>
-      ),
+      render: (name: string) => <Text style={{ fontSize: 14 }}>{name}</Text>,
     },
     {
       title: t('clients.clientId'),
       dataIndex: 'clientId',
       key: 'clientId',
       width: 260,
+      ellipsis: true,
       render: (id: string) => (
         <Text
           copyable
           style={{
-            fontSize: 13,
+            fontSize: 14,
             fontFamily: 'monospace',
             whiteSpace: 'nowrap',
           }}
@@ -282,7 +315,7 @@ const ClientsPage = () => {
       onFilter: (value, record) => record.type === value,
       render: (type: string) => {
         const cfg = typeConfig[type] ?? { label: type };
-        return <Text style={{ fontSize: 13 }}>{cfg.label}</Text>;
+        return <Text style={{ fontSize: 14 }}>{cfg.label}</Text>;
       },
     },
     {
@@ -290,8 +323,9 @@ const ClientsPage = () => {
       dataIndex: 'groupOrTopic',
       key: 'groupOrTopic',
       width: 180,
+      ellipsis: true,
       render: (name: string) => (
-        <Text strong style={{ fontSize: 13 }}>
+        <Text strong style={{ fontSize: 14 }}>
           {name}
         </Text>
       ),
@@ -317,7 +351,7 @@ const ClientsPage = () => {
       key: 'address',
       width: 180,
       render: (addr: string) => (
-        <Text style={{ fontSize: 13, fontFamily: 'monospace' }}>{addr}</Text>
+        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{addr}</Text>
       ),
     },
     {
@@ -348,7 +382,7 @@ const ClientsPage = () => {
       width: 170,
       sorter: (a, b) => (a.connectedAt ?? '').localeCompare(b.connectedAt ?? ''),
       render: (d?: string | null) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {d ? formatDateTime(d) : '-'}
         </Text>
       ),
@@ -394,7 +428,7 @@ const ClientsPage = () => {
               onClick={() => {
                 setLoading(true);
                 setLoadError(null);
-                setInstanceLoadKey((key) => key + 1);
+                setRegistryLoadKey((key) => key + 1);
                 setConnectionLoadKey((key) => key + 1);
               }}
             >
@@ -416,12 +450,12 @@ const ClientsPage = () => {
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
         <Space size={12} wrap>
           <Select
-            aria-label="Instance"
-            value={selectedInstanceId || undefined}
-            onChange={handleInstanceChange}
-            placeholder="Select instance"
-            style={{ width: 180 }}
-            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
+            aria-label="NameServer"
+            value={selectedEndpoint}
+            onChange={handleNameserverChange}
+            placeholder={t('clients.selectNameserverPlaceholder')}
+            style={{ width: 240 }}
+            options={nameserverOptions}
           />
           <Select
             aria-label={t('clients.cluster')}
@@ -440,6 +474,13 @@ const ClientsPage = () => {
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
         </Space>
+        <Button
+          icon={<DownloadSimple size={16} />}
+          disabled={filtered.length === 0}
+          onClick={handleExport}
+        >
+          {t('common.export')}
+        </Button>
       </Flex>
 
       <Flex

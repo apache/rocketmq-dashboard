@@ -23,8 +23,8 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 @Data
 public class UpdateInstanceDTO {
 
-    @NotBlank(message = "instance id is required")
-    private String id;
+    @NotBlank(message = "instanceId is required")
+    private String instanceId;
 
     private String name;
 
@@ -37,14 +37,12 @@ public class UpdateInstanceDTO {
     private String adminCredentialRef;
 
     public InstanceVO toInstanceVO() {
-        InstanceVO vo = InstanceVO.builder()
+        return InstanceVO.builder()
                 .name(name)
                 .type(type)
                 .endpoint(endpoint)
                 .remark(remark)
                 .adminCredentialRef(adminCredentialRef)
                 .build();
-        vo.setId(id);
-        return vo;
     }
 }

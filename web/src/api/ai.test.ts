@@ -45,11 +45,6 @@ function streamResponse(chunks: string[], onCancel?: () => void): Response {
 describe('AI API', () => {
   beforeEach(() => {
     mock.reset();
-    vi.stubGlobal('localStorage', {
-      getItem: vi.fn().mockReturnValue('test-token'),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-    });
   });
 
   afterEach(() => {
@@ -58,10 +53,7 @@ describe('AI API', () => {
   });
 
   describe('chatStream (SSE)', () => {
-    it('continues without auth when browser storage is unavailable', async () => {
-      vi.mocked(localStorage.getItem).mockImplementation(() => {
-        throw new DOMException('storage disabled', 'SecurityError');
-      });
+    it('sends browser cookies without reading browser storage', async () => {
       const fetchMock = vi.fn().mockResolvedValue(streamResponse(['data: [DONE]\n\n']));
       vi.stubGlobal('fetch', fetchMock);
 
@@ -72,6 +64,7 @@ describe('AI API', () => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/ai/chat',
         expect.objectContaining({
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
         }),
       );

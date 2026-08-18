@@ -55,8 +55,8 @@ class K8sCertControllerTest {
 
     @Test
     void listCertsShouldReturnAllCerts() throws Exception {
-        K8sCertVO cert1 = buildCert("cert-1", "rocketmq-tls", CertType.TLS, CertStatus.valid);
-        K8sCertVO cert2 = buildCert("cert-2", "broker-mtls", CertType.mTLS, CertStatus.expiring);
+        K8sCertVO cert1 = buildCert(1L, "rocketmq-tls", CertType.TLS, CertStatus.valid);
+        K8sCertVO cert2 = buildCert(2L, "broker-mtls", CertType.mTLS, CertStatus.expiring);
         when(k8sCertService.listCerts()).thenReturn(Arrays.asList(cert1, cert2));
 
         mockMvc.perform(get("/api/k8s-certs"))
@@ -65,12 +65,12 @@ class K8sCertControllerTest {
                 .andExpect(jsonPath("$.message").value("success"))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].id").value("cert-1"))
-                .andExpect(jsonPath("$.data[0].name").value("rocketmq-tls"))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].k8sId").value("rocketmq-tls"))
                 .andExpect(jsonPath("$.data[0].type").value("TLS"))
                 .andExpect(jsonPath("$.data[0].status").value("valid"))
-                .andExpect(jsonPath("$.data[1].id").value("cert-2"))
-                .andExpect(jsonPath("$.data[1].name").value("broker-mtls"));
+                .andExpect(jsonPath("$.data[1].id").value(2))
+                .andExpect(jsonPath("$.data[1].k8sId").value("broker-mtls"));
     }
 
     @Test
@@ -86,16 +86,14 @@ class K8sCertControllerTest {
 
     @Test
     void createCertShouldReturnCreatedCert() throws Exception {
-        K8sCertVO createdCert = buildCert("cert-new", "new-cert", CertType.TLS, CertStatus.valid);
-        createdCert.setNamespace("default");
+        K8sCertVO createdCert = buildCert(3L, "new-cert", CertType.TLS, CertStatus.valid);
         createdCert.setCluster("test-cluster");
         createdCert.setIssuer("vault");
         createdCert.setSan(List.of("svc.example.com"));
         when(k8sCertService.createCert(any(CreateCertDTO.class))).thenReturn(createdCert);
 
         CreateCertDTO command = CreateCertDTO.builder()
-                .name("new-cert")
-                .namespace("default")
+                .k8sId("new-cert")
                 .cluster("test-cluster")
                 .type("TLS")
                 .issuer("vault")
@@ -107,9 +105,8 @@ class K8sCertControllerTest {
                         .content(objectMapper.writeValueAsString(command)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("cert-new"))
-                .andExpect(jsonPath("$.data.name").value("new-cert"))
-                .andExpect(jsonPath("$.data.namespace").value("default"))
+                .andExpect(jsonPath("$.data.id").value(3))
+                .andExpect(jsonPath("$.data.k8sId").value("new-cert"))
                 .andExpect(jsonPath("$.data.cluster").value("test-cluster"))
                 .andExpect(jsonPath("$.data.type").value("TLS"))
                 .andExpect(jsonPath("$.data.status").value("valid"))
@@ -118,13 +115,12 @@ class K8sCertControllerTest {
 
     @Test
     void createCertShouldAcceptMinimalCommand() throws Exception {
-        K8sCertVO createdCert = buildCert("cert-min", "minimal-cert", CertType.TLS, CertStatus.valid);
+        K8sCertVO createdCert = buildCert(4L, "minimal-cert", CertType.TLS, CertStatus.valid);
         when(k8sCertService.createCert(any(CreateCertDTO.class))).thenReturn(createdCert);
 
         String json = """
                 {
-                    "name": "minimal-cert",
-                    "namespace": "default",
+                    "k8sId": "minimal-cert",
                     "cluster": "test",
                     "type": "TLS",
                     "issuer": "test-issuer"
@@ -136,7 +132,7 @@ class K8sCertControllerTest {
                         .content(json))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("cert-min"));
+                .andExpect(jsonPath("$.data.id").value(4));
     }
 
     @Test
@@ -166,7 +162,6 @@ class K8sCertControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                    "namespace": "default",
                                     "cluster": "test-cluster",
                                     "type": "TLS",
                                     "issuer": "vault"
@@ -174,7 +169,7 @@ class K8sCertControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("name is required"));
+                .andExpect(jsonPath("$.message").value("k8sId is required"));
 
         verifyNoInteractions(k8sCertService);
     }
@@ -185,8 +180,7 @@ class K8sCertControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                    "name": "new-cert",
-                                    "namespace": "default",
+                                    "k8sId": "new-cert",
                                     "cluster": "test-cluster",
                                     "type": "PEM",
                                     "issuer": "vault"
@@ -205,7 +199,7 @@ class K8sCertControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                    "name": "updated-cert"
+                                    "k8sId": "updated-cert"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -216,12 +210,29 @@ class K8sCertControllerTest {
     }
 
     @Test
+    void updateCertShouldRejectUnsupportedType() throws Exception {
+        mockMvc.perform(post("/api/k8s-certs/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "id": 1,
+                                    "type": "PEM"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("type must be one of TLS, mTLS, ServiceAccount"));
+
+        verifyNoInteractions(k8sCertService);
+    }
+
+    @Test
     void renewCertShouldRejectBlankId() throws Exception {
         mockMvc.perform(post("/api/k8s-certs/renew")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                    "id": " "
+                                    "id": null
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -243,10 +254,9 @@ class K8sCertControllerTest {
         verifyNoInteractions(k8sCertService);
     }
 
-    private K8sCertVO buildCert(String id, String name, CertType type, CertStatus status) {
+    private K8sCertVO buildCert(Long id, String name, CertType type, CertStatus status) {
         K8sCertVO cert = K8sCertVO.builder()
-                .name(name)
-                .namespace("mq-system")
+                .k8sId(name)
                 .cluster("prod-cluster")
                 .type(type)
                 .issuer("letsencrypt")

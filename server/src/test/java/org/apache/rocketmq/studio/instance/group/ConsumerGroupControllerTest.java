@@ -58,12 +58,15 @@ class ConsumerGroupControllerTest {
     private MetadataService metadataService;
 
     @MockBean
+    private org.apache.rocketmq.studio.instance.InstanceService instanceService;
+
+    @MockBean
     private ConsumerDiagnosticsService consumerDiagnosticsService;
 
     @Test
     void createConsumerGroupShouldPassValidatedRequest() throws Exception {
         Map<String, Object> body = Map.of(
-                "instanceId", "instance-a",
+                "instanceId", 7,
                 "name", "cg-orders",
                 "clusterId", "cluster-a",
                 "retryMaxTimes", 8,
@@ -75,6 +78,7 @@ class ConsumerGroupControllerTest {
         created.setRetryMaxTimes(8);
 
         when(metadataService.createConsumerGroup(any(ConsumerGroupVO.class))).thenReturn(created);
+        when(instanceService.normalizeIdentifier("7")).thenReturn("rocketmq1");
 
         mockMvc.perform(post("/api/groups/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -88,7 +92,7 @@ class ConsumerGroupControllerTest {
         verify(metadataService).createConsumerGroup(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("cg-orders");
         assertThat(captor.getValue().getClusterId()).isEqualTo("cluster-a");
-        assertThat(captor.getValue().getInstanceId()).isEqualTo("instance-a");
+        assertThat(captor.getValue().getInstanceId()).isEqualTo("rocketmq1");
         assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
     }
 
@@ -112,7 +116,7 @@ class ConsumerGroupControllerTest {
     @Test
     void createConsumerGroupShouldRejectNegativeRetryMaxTimes() throws Exception {
         Map<String, Object> body = Map.of(
-                "instanceId", "instance-a",
+                "instanceId", 7,
                 "name", "cg-orders",
                 "retryMaxTimes", -1
         );

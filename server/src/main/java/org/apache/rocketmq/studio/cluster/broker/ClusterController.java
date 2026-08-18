@@ -47,6 +47,11 @@ public class ClusterController {
         return Result.ok(clusterService.listClusters(instanceId));
     }
 
+    @GetMapping("/registry")
+    public Result<List<ClusterVO>> listRegistryClusters() {
+        return Result.ok(clusterService.listRegistryClusters());
+    }
+
     @PostMapping("/test-connection")
     public Result<ClusterProbeResult> testConnection(@Valid @RequestBody TestConnectionDTO command) {
         return Result.ok(clusterConnectionService.testConnection(command));

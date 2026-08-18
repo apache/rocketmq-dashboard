@@ -15,14 +15,13 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listInstances } from '../services/instanceService';
 import type { Instance } from '../api/instance';
 
-const INSTANCE_SCOPED_PATH =
-  /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq|resource-plan)$/;
-const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq|resource-plan)$/;
+const INSTANCE_SCOPED_PATH = /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq)$/;
+const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq)$/;
 
 /**
  * 实例维度页面的公共筛选逻辑：从 /instance/:instanceId/<section> 路由解析当前实例，
@@ -39,13 +38,23 @@ export function useInstanceFilter() {
 
   const [instances, setInstances] = useState<Instance[]>([]);
 
+  // Keep the latest selected instance id in a ref so the instance *list* is only
+  // fetched when needed (section / navigation changes) and not re-fetched every
+  // time the user switches between instances — the list itself does not depend
+  // on the selection.
+  const routeInstanceIdRef = useRef(routeInstanceId);
+  useEffect(() => {
+    routeInstanceIdRef.current = routeInstanceId;
+  }, [routeInstanceId]);
+
   useEffect(() => {
     let cancelled = false;
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        const isKnownInstance = nextInstances.some((instance) => instance.name === routeInstanceId);
+        const selectedInstanceId = routeInstanceIdRef.current;
+        const isKnownInstance = nextInstances.some((instance) => instance.name === selectedInstanceId);
         if (nextInstances.length > 0 && !isKnownInstance) {
           navigate(`/instance/${encodeURIComponent(nextInstances[0].name)}/${section}`, {
             replace: true,
@@ -58,16 +67,16 @@ export function useInstanceFilter() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, routeInstanceId, section]);
+  }, [navigate, section]);
 
   const selectedInstanceId =
-    routeInstanceId && instances.some((instance) => instance.name === routeInstanceId)
+    routeInstanceId !== undefined && instances.some((instance) => instance.name === routeInstanceId)
       ? routeInstanceId
-      : (instances[0]?.name ?? '');
+      : instances[0]?.name;
   const selectedInstance = instances.find((instance) => instance.name === selectedInstanceId);
 
-  const selectInstance = (id: string) => {
-    navigate(`/instance/${encodeURIComponent(id)}/${section}`);
+  const selectInstance = (name: string) => {
+    navigate(`/instance/${encodeURIComponent(name)}/${section}`);
   };
 
   const instanceOptions = instances.map((instance) => ({

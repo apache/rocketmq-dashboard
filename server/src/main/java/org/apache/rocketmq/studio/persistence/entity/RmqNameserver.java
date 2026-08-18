@@ -27,20 +27,22 @@ import java.time.LocalDateTime;
 @TableName("rmq_nameserver")
 public class RmqNameserver {
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
     private String name;
 
     private String namesrvAddr;
 
-    private String clusterType;
+    private String k8sNamespace;
+
+    private String k8sId;
 
     private String status;
 
     private String description;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

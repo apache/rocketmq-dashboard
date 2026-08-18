@@ -17,10 +17,14 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
@@ -30,9 +34,12 @@ import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -125,9 +132,25 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         return result;
     }
 
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
+            String search, int page, int pageSize) {
+        LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
+                .eq(StringUtils.hasText(instanceId), RmqTopic::getInstanceId, instanceId)
+                .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
+                .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
+                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .notLikeRight(RmqTopic::getName, "RMQ_SYS_")
+                .notLikeRight(RmqTopic::getName, "rmq_sys_")
+                .orderByAsc(RmqTopic::getName, RmqTopic::getId);
+        Page<RmqTopic> result = topicMapper.selectPage(new Page<>(page, pageSize), query);
+        return PageResult.of(result.getRecords().stream().map(this::toTopicVO).toList(),
+                result.getTotal(), page, pageSize);
+    }
+
     private TopicVO toTopicVO(RmqTopic entity) {
         TopicVO vo = new TopicVO();
-        vo.setId(entity.getName());
+        vo.setId(entity.getId());
         vo.setName(entity.getName());
         vo.setClusterId(entity.getClusterId());
         vo.setInstanceId(entity.getInstanceId());
@@ -136,8 +159,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         vo.setWriteQueues(entity.getWriteQueueNums() == null ? 0 : entity.getWriteQueueNums());
         vo.setPerm(parseTopicPerm(entity.getPerm()));
         vo.setRemark(entity.getRemark());
-        vo.setCreatedAt(entity.getCreatedAt());
-        vo.setUpdatedAt(entity.getUpdatedAt());
+        vo.setGmtCreate(entity.getGmtCreate());
+        vo.setGmtModified(entity.getGmtModified());
         return vo;
     }
 
@@ -180,16 +203,19 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         List<ConsumerGroupVO> result = new ArrayList<>();
         for (RmqGroup entity : groupMapper.selectList(query)) {
             ConsumerGroupVO vo = new ConsumerGroupVO();
-            vo.setId(entity.getName());
+            vo.setId(entity.getId());
             vo.setName(entity.getName());
             vo.setClusterId(entity.getClusterId());
             vo.setInstanceId(entity.getInstanceId());
             // consumeType stores the real ConsumeType ("CLUSTERING"/"BROADCASTING"); messageModel
             // holds the subscription mode ("Push"/"Pop") and is not a ConsumeType.
             vo.setConsumeType(parseConsumeType(entity.getConsumeType()));
+            // messageModel stores the subscription mode ("Push"/"Pop"); surface it so read paths
+            // (web detail, AI rmq.group.list) never see a null subscriptionMode.
+            vo.setSubscriptionMode(parseSubscriptionMode(entity.getMessageModel()));
             vo.setRetryMaxTimes(entity.getMaxRetry() == null ? 0 : entity.getMaxRetry());
-            vo.setCreatedAt(entity.getCreatedAt());
-            vo.setUpdatedAt(entity.getUpdatedAt());
+            vo.setGmtCreate(entity.getGmtCreate());
+            vo.setGmtModified(entity.getGmtModified());
 
             // Live connection info (online instances, lag) is intentionally NOT fetched
             // during list operations to avoid N+1 admin API calls. It is loaded on
@@ -209,6 +235,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             log.debug("Unknown message model {}, falling back to CLUSTERING", messageModel);
             return ConsumeType.CLUSTERING;
         }
+    }
+
+    private SubscriptionMode parseSubscriptionMode(String messageModel) {
+        if ("Pop".equalsIgnoreCase(messageModel)) {
+            return SubscriptionMode.Pop;
+        }
+        return SubscriptionMode.Push;
     }
 
     @Override
@@ -298,8 +331,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             List<String> sortedGroups = new ArrayList<>(subscribingGroups);
             sortedGroups.sort(String::compareToIgnoreCase);
             int total = sortedGroups.size();
-            int from = Math.min((page - 1) * pageSize, total);
-            int to = Math.min(from + pageSize, total);
+            long offset = Pagination.pageOffset(page, pageSize);
+            int from = (int) Math.min(offset, total);
+            int to = from + (int) Math.min(pageSize, total - from);
             List<TopicConsumerVO> consumers = new ArrayList<>();
             for (String group : sortedGroups.subList(from, to)) {
                 try {
@@ -379,6 +413,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private List<QueueProgressVO> getGroupProgress(MQAdminExt admin, String name) {
         try {
+            ensureRetryTopicExists(admin, name);
             ConsumeStats stats = admin.examineConsumeStats(name);
             if (stats == null || stats.getOffsetTable() == null) {
                 return Collections.emptyList();
@@ -423,6 +458,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private List<SubscriptionEntryVO> getGroupSubscriptions(MQAdminExt admin, String name) {
         try {
+            ensureRetryTopicExists(admin, name);
             ConsumerConnection conn = admin.examineConsumerConnectionInfo(name);
             if (conn == null || conn.getSubscriptionTable() == null) {
                 return Collections.emptyList();
@@ -440,13 +476,74 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             }
             return subscriptions;
         } catch (Exception e) {
+            if (isGroupNotOnline(e)) {
+                // Consumers connected through a proxy never register with the broker, so
+                // the broker reports the group as offline; surface an empty subscription
+                // list instead of an error.
+                log.info("Consumer group {} not online on broker (likely proxy-connected): {}",
+                        name, e.getMessage());
+                return Collections.emptyList();
+            }
             log.warn("Failed to get subscriptions for group {}: {}", name, e.getMessage());
             throw new BusinessException(502,
                     "Failed to get subscriptions for group " + name + ": " + e.getMessage());
         }
     }
 
+    private boolean isGroupNotOnline(Exception e) {
+        if (e instanceof org.apache.rocketmq.client.exception.MQBrokerException brokerException) {
+            return brokerException.getResponseCode()
+                    == org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE;
+        }
+        String message = e.getMessage();
+        return message != null && message.contains("not online");
+    }
+
     // ── Helper methods ──────────────────────────────────────────────────
+
+    /**
+     * examineConsumeStats / examineConsumerConnectionInfo locate brokers through the
+     * {@code %RETRY%<group>} topic route, but 5.x POP consumer groups only get their
+     * retry topic created once a retry actually happens, so brand-new groups fail with
+     * CODE 17. Create the standard retry topic on every master broker when missing
+     * (same shape the broker itself creates lazily); the call is idempotent.
+     */
+    private void ensureRetryTopicExists(MQAdminExt admin, String groupName) {
+        String retryTopic = MixAll.getRetryTopic(groupName);
+        try {
+            TopicRouteData route = admin.examineTopicRouteInfo(retryTopic);
+            if (route != null && route.getBrokerDatas() != null && !route.getBrokerDatas().isEmpty()) {
+                return;
+            }
+        } catch (Exception e) {
+            log.info("Retry topic {} not routable yet, creating it: {}", retryTopic, e.getMessage());
+        }
+        try {
+            ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
+            if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
+                return;
+            }
+            TopicConfig retryConfig = new TopicConfig();
+            retryConfig.setTopicName(retryTopic);
+            retryConfig.setReadQueueNums(1);
+            retryConfig.setWriteQueueNums(1);
+            retryConfig.setPerm(PermName.PERM_READ | PermName.PERM_WRITE);
+            for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
+                String brokerAddr = brokerData.selectBrokerAddr();
+                if (brokerAddr == null || brokerAddr.isBlank()) {
+                    continue;
+                }
+                try {
+                    admin.createAndUpdateTopicConfig(brokerAddr, retryConfig);
+                } catch (Exception e) {
+                    log.warn("Failed to create retry topic {} on broker {}: {}",
+                            retryTopic, brokerAddr, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to ensure retry topic {} exists: {}", retryTopic, e.getMessage());
+        }
+    }
 
     /**
      * Resolves the lag for a single queue without clamping the broker's {@code -1} "unknown"

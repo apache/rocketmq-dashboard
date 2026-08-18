@@ -48,6 +48,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -74,10 +75,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AliyunInstanceProviderTest {
 
-    private static final String STUDIO_INSTANCE_ID = "inst-1";
+    private static final String STUDIO_INSTANCE_ID = "7";
+    private static final String STUDIO_INSTANCE_PK = STUDIO_INSTANCE_ID;
     private static final String CLOUD_INSTANCE_ID = "rmq-cn-001";
     private static final String REGION = "cn-hangzhou";
-    private static final String CREDENTIAL_ID = "cred-1";
+    private static final Long CREDENTIAL_ID = 1L;
 
     @Mock
     private AliyunClientFactory clientFactory;
@@ -96,6 +98,15 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void capabilitiesShouldExcludeUnsupportedDlqOperationsTest() {
+        assertThat(provider.capabilities())
+                .contains(InstanceCapability.TOPIC_MANAGEMENT,
+                        InstanceCapability.MESSAGE_QUERY,
+                        InstanceCapability.ACL_MANAGEMENT)
+                .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
+    }
+
+    @Test
     void listTopicsShouldMapMessageTypeAndFilterTest() {
         stubInstance();
         stubCallThrough();
@@ -111,7 +122,7 @@ class AliyunInstanceProviderTest {
         assertThat(all).hasSize(3);
         assertThat(all.get(0).getName()).isEqualTo("topic-normal");
         assertThat(all.get(0).getType()).isEqualTo(TopicType.NORMAL);
-        assertThat(all.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(all.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(all.get(0).getWriteQueues()).isZero();
         assertThat(all.get(0).getReadQueues()).isZero();
         assertThat(all.get(0).getRemark()).isEqualTo("remark-topic-normal");
@@ -150,7 +161,7 @@ class AliyunInstanceProviderTest {
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getName()).isEqualTo("GID_test");
-        assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
     }
 
@@ -276,7 +287,7 @@ class AliyunInstanceProviderTest {
         assertThat(request.getDeliveryOrderType()).isEqualTo("Concurrently");
         assertThat(request.getConsumeRetryPolicy().getRetryPolicy()).isEqualTo("DefaultRetryPolicy");
         assertThat(request.getConsumeRetryPolicy().getMaxRetryTimes()).isEqualTo(16);
-        assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(created.getDeliveryOrderType()).isEqualTo("Concurrently");
         assertThat(created.getRetryMaxTimes()).isEqualTo(16);
     }
@@ -361,9 +372,53 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void getMessageTraceShouldReturnEmptyTraceWhenAliyunDataIsNullTest() {
+        stubInstance();
+        stubCallThrough();
+        GetTraceResponse response = GetTraceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetTraceResponseBody.builder().data(null).build())
+                .build();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-trace", "orders");
+
+        assertThat(trace.getNodes()).isEmpty();
+        assertThat(trace.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
+    void getMessageTraceShouldReturnEmptyTraceWhenAliyunBodyIsNullTest() {
+        stubInstance();
+        stubCallThrough();
+        GetTraceResponse response = GetTraceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(null)
+                .build();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-body", "orders");
+
+        assertThat(trace.getNodes()).isEmpty();
+        assertThat(trace.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
+    void getMessageTraceShouldReturnEmptyTraceWhenAliyunResponseIsNullTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-response", "orders");
+
+        assertThat(trace.getNodes()).isEmpty();
+        assertThat(trace.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
     void mappedBusinessExceptionShouldPropagateTest() {
         stubInstance();
-        when(clientFactory.call(anyString(), anyString(), any()))
+        when(clientFactory.call(any(Long.class), anyString(), any()))
                 .thenThrow(new BusinessException(404, "Aliyun resource not found"));
 
         assertThatThrownBy(() -> provider.listTopics(STUDIO_INSTANCE_ID, null, null))
@@ -400,7 +455,7 @@ class AliyunInstanceProviderTest {
     }
 
     private void stubCallThrough() {
-        when(clientFactory.call(anyString(), anyString(), any())).thenAnswer(invocation -> {
+        when(clientFactory.call(any(Long.class), anyString(), any())).thenAnswer(invocation -> {
             Function<AsyncClient, CompletableFuture<Object>> action = invocation.getArgument(2);
             return action.apply(asyncClient).join();
         });

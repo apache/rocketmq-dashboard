@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Input, Modal, message } from 'antd';
+import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Modal, message } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   House,
@@ -30,31 +30,40 @@ import {
   ListDashes,
   UserGear,
   ChartBar,
-  ChartLine,
   Sun,
   Moon,
   ShieldCheck,
   TrashSimple,
   PlugsConnected,
   BellRinging,
+  Siren,
   Notebook,
   Warning,
-  GitDiff,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/useTheme';
 import { logout as requestLogout } from '../api/auth';
 import useAuthStore from '../stores/authStore';
+import { clearAiChatHistories } from '../stores/aiChatHistoryStore';
 import {
   filterNavigationEntries,
   isNavigationSearchShortcut,
   type NavigationSearchEntry,
 } from './navigationSearch';
 import { useDataModeStore } from '../stores/dataModeStore';
+import { getInstanceCapabilities } from '../services/instanceService';
+import type { InstanceCapability } from '../api/instance';
 
 const { Sider, Content } = Layout;
 
 const iconSize = 18;
+
+function hasInstanceCapability(
+  capabilities: Set<InstanceCapability> | null,
+  capability: InstanceCapability,
+) {
+  return capabilities === null || capabilities.has(capability);
+}
 
 const MainLayout = () => {
   const navigate = useNavigate();
@@ -62,10 +71,17 @@ const MainLayout = () => {
   const { darkMode, toggleTheme } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
+  const admin = useAuthStore((state) => state.admin);
   const useMock = useDataModeStore((state) => state.useMock);
   const toggleDataMode = useDataModeStore((state) => state.toggle);
+  const [capabilityState, setCapabilityState] = useState<{
+    instanceId: string;
+    capabilities: Set<InstanceCapability>;
+  } | null>(null);
 
   // Pages fetch on mount, so reload to re-request everything from the new data source.
   const handleDataModeToggle = () => {
@@ -78,6 +94,10 @@ const MainLayout = () => {
       navigate('/settings');
       return;
     }
+    if (key === 'users') {
+      navigate('/studio/users');
+      return;
+    }
     if (key !== 'logout') return;
 
     try {
@@ -85,6 +105,7 @@ const MainLayout = () => {
     } catch {
       message.warning('服务端退出失败，已清除本地登录状态');
     } finally {
+      clearAiChatHistories();
       clearAuth();
       navigate('/login', { replace: true });
     }
@@ -101,12 +122,43 @@ const MainLayout = () => {
   }, []);
 
   const instanceScopedMatch = useMemo(
-    () =>
-      location.pathname.match(
-        /^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq|resource-plan)$/,
-      ),
+    () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/),
     [location.pathname],
   );
+  const selectedInstanceId = useMemo(() => {
+    const match = location.pathname.match(/^\/instance\/([^/]+)\//);
+    if (!match) return null;
+    try {
+      const value = decodeURIComponent(match[1]);
+      return value || null;
+    } catch {
+      return null;
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!selectedInstanceId) return;
+    let active = true;
+    void getInstanceCapabilities(selectedInstanceId)
+      .then((result) => {
+        if (active) {
+          setCapabilityState({
+            instanceId: selectedInstanceId,
+            capabilities: new Set(result.capabilities),
+          });
+        }
+      })
+      .catch(() => {
+        // Preserve existing navigation when capability discovery is unavailable.
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedInstanceId]);
+
+  const instanceCapabilities =
+    capabilityState?.instanceId === selectedInstanceId ? capabilityState.capabilities : null;
+
   const selectedMenuKey = instanceScopedMatch
     ? `/instance/${instanceScopedMatch[1]}`
     : location.pathname;
@@ -120,20 +172,22 @@ const MainLayout = () => {
         label: t('nav.instance'),
         children: [
           { key: '/instance', icon: <Database size={16} />, label: t('nav.instanceList') },
-          { key: '/instance/topic', icon: <ListDashes size={16} />, label: t('nav.topic') },
-          { key: '/instance/consumer', icon: <ChatCircleText size={16} />, label: t('nav.group') },
-          { key: '/instance/acl', icon: <Key size={16} />, label: t('nav.acl') },
-          {
-            key: '/instance/message',
-            icon: <MagnifyingGlass size={16} />,
-            label: t('nav.message'),
-          },
-          { key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') },
-          {
-            key: '/instance/resource-plan',
-            icon: <Notebook size={16} />,
-            label: t('nav.resourcePlan'),
-          },
+          ...(hasInstanceCapability(instanceCapabilities, 'TOPIC_MANAGEMENT')
+            ? [{ key: '/instance/topic', icon: <ListDashes size={16} />, label: t('nav.topic') }]
+            : []),
+          ...(hasInstanceCapability(instanceCapabilities, 'CONSUMER_GROUP_MANAGEMENT')
+            ? [{ key: '/instance/consumer', icon: <ChatCircleText size={16} />, label: t('nav.group') }]
+            : []),
+          ...(hasInstanceCapability(instanceCapabilities, 'ACL_MANAGEMENT')
+            ? [{ key: '/instance/acl', icon: <Key size={16} />, label: t('nav.acl') }]
+            : []),
+          ...(hasInstanceCapability(instanceCapabilities, 'MESSAGE_QUERY')
+            ? [{ key: '/instance/message', icon: <MagnifyingGlass size={16} />, label: t('nav.message') }]
+            : []),
+          ...(hasInstanceCapability(instanceCapabilities, 'DLQ_MANAGEMENT')
+            ? [{ key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') }]
+            : []),
+          { key: '/instance/alerts', icon: <Warning size={16} />, label: t('nav.alertRuleAssets') },
         ],
       },
       {
@@ -141,29 +195,22 @@ const MainLayout = () => {
         icon: <Monitor size={iconSize} weight="duotone" />,
         label: t('nav.clusterOps'),
         children: [
-          { key: '/ops/dashboard', icon: <ChartBar size={16} />, label: t('nav.dashboard') },
-          { key: '/ops/grafana', icon: <ChartLine size={16} />, label: t('nav.grafanaDashboards') },
           { key: '/cluster/certs', icon: <ShieldCheck size={16} />, label: t('nav.certs') },
           { key: '/cluster', icon: <Database size={16} />, label: t('nav.rocketmqCluster') },
           { key: '/cluster/clients', icon: <PlugsConnected size={16} />, label: t('nav.clients') },
           { key: '/ops/alerts', icon: <BellRinging size={16} />, label: t('nav.alertRules') },
           {
             key: '/ops/system-alerts',
-            icon: <BellRinging size={16} />,
+            icon: <Siren size={16} />,
             label: t('nav.alertEvents'),
           },
-          { key: '/ops/audit', icon: <Notebook size={16} />, label: t('nav.audit') },
-          {
-            key: '/ops/nameserver-config-drift',
-            icon: <GitDiff size={16} />,
-            label: t('nav.nameServerConfigDrift'),
-          },
-          {
-            key: '/ops/alert-rule-templates',
-            icon: <Warning size={16} />,
-            label: t('nav.alertRuleAssets'),
-          },
+          { key: '/ops/dashboard', icon: <ChartBar size={16} />, label: t('nav.dashboard') },
         ],
+      },
+      {
+        key: '/ops/audit',
+        icon: <Notebook size={iconSize} weight="duotone" />,
+        label: t('nav.audit'),
       },
       { key: '/ai', icon: <Sparkle size={iconSize} weight="duotone" />, label: t('nav.ai') },
       {
@@ -172,7 +219,7 @@ const MainLayout = () => {
         label: t('nav.settings'),
       },
     ],
-    [t],
+    [t, instanceCapabilities],
   );
 
   const breadcrumbMap: Record<string, string> = useMemo(
@@ -185,7 +232,7 @@ const MainLayout = () => {
       '/instance/message': t('nav.message'),
       '/instance/acl': t('nav.acl'),
       '/instance/dlq': t('nav.dlq'),
-      '/instance/resource-plan': t('nav.resourcePlan'),
+      '/instance/alerts': t('nav.alertRuleAssets'),
       '/cluster': t('nav.rocketmqCluster'),
       '/cluster/certs': t('nav.certs'),
       '/cluster/clients': t('nav.clients'),
@@ -194,44 +241,63 @@ const MainLayout = () => {
       '/ops/system-alerts': t('nav.alertEvents'),
       '/ops/alerts': t('nav.alertRules'),
       '/ops/audit': t('nav.audit'),
-      '/ops/nameserver-config-drift': t('nav.nameServerConfigDrift'),
-      '/ops/alert-rule-templates': t('nav.alertRuleAssets'),
       '/ai': t('nav.ai'),
       '/settings': t('nav.settings'),
+      '/studio/users': '用户管理',
     }),
     [t],
   );
 
-  const pathSnippets = location.pathname.split('/').filter((i) => i);
-  const breadcrumbItems = useMemo(
-    () => [
+  const breadcrumbItems = useMemo(() => {
+    const pathSnippets = location.pathname.split('/').filter((segment) => segment);
+    return [
       {
         title: (
-          <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+          <button
+            type="button"
+            aria-label={t('layout.goHome')}
+            onClick={() => navigate('/')}
+            style={{
+              cursor: 'pointer',
+              border: 0,
+              padding: 0,
+              background: 'transparent',
+              font: 'inherit',
+            }}
+          >
             🏠
-          </span>
+          </button>
         ),
         key: 'home',
       },
-      ...pathSnippets.map((_, index) => {
-        const path = '/' + pathSnippets.slice(0, index + 1).join('/');
-        const isSectionLeaf = instanceScopedMatch && index === pathSnippets.length - 1;
-        const leafTitle = isSectionLeaf
-          ? breadcrumbMap[`/instance/${instanceScopedMatch[1]}`]
-          : undefined;
-        return {
-          title: breadcrumbMap[path] || leafTitle || path,
-          key: path,
-        };
-      }),
-    ],
-    [location.pathname, navigate, breadcrumbMap, instanceScopedMatch],
-  );
+      ...pathSnippets
+        .map((_, index) => {
+          const path = '/' + pathSnippets.slice(0, index + 1).join('/');
+          // The instance ID path segment (/instance/<id>) is an identifier, not a
+          // navigation level — keep it out of the breadcrumb trail.
+          const isInstanceIdSegment =
+            index === 1 && pathSnippets[0] === 'instance' && !breadcrumbMap[path];
+          if (isInstanceIdSegment) {
+            return null;
+          }
+          const isSectionLeaf = instanceScopedMatch && index === pathSnippets.length - 1;
+          const leafTitle = isSectionLeaf
+            ? breadcrumbMap[`/instance/${instanceScopedMatch[1]}`]
+            : undefined;
+          return {
+            title: breadcrumbMap[path] || leafTitle || path,
+            key: path,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
+    ];
+  }, [location.pathname, navigate, breadcrumbMap, instanceScopedMatch, t]);
 
   const userMenu = {
     onClick: handleUserMenuClick,
     items: [
       { key: 'profile', icon: <UserGear size={14} />, label: t('user.profile') },
+      ...(admin ? [{ key: 'users', icon: <UserGear size={14} />, label: '用户管理' }] : []),
       { type: 'divider' as const },
       { key: 'logout', label: t('user.logout'), danger: true },
     ],
@@ -273,13 +339,16 @@ const MainLayout = () => {
           event.currentTarget.style.transform = 'translateY(-150%)';
         }}
       >
-        跳到主要内容
+        {t('layout.skipToMain')}
       </a>
       <Layout style={{ height: '100vh', minHeight: 0, overflow: 'hidden' }}>
         <Sider
           theme={darkMode ? 'dark' : 'light'}
           collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
           width={220}
+          collapsedWidth={64}
           style={{
             background: siderBg,
             borderRight: `1px solid ${borderColor}`,
@@ -301,10 +370,12 @@ const MainLayout = () => {
               fontWeight: 600,
               color: logoColor,
               letterSpacing: '-0.01em',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
             }}
           >
             <span style={{ fontSize: 20 }}>🚀</span>
-            <span>RocketMQ Studio</span>
+            {!collapsed && <span>RocketMQ Studio</span>}
           </div>
 
           {/* Navigation Menu */}
@@ -315,7 +386,7 @@ const MainLayout = () => {
             defaultOpenKeys={['instance-group', 'cluster-ops-group']}
             items={menuItems}
             onClick={({ key }) => navigate(key)}
-            style={{ borderRight: 'none', paddingTop: 8, background: 'transparent' }}
+            style={{ borderRight: 'none', background: 'transparent' }}
           />
         </Sider>
 
@@ -334,12 +405,14 @@ const MainLayout = () => {
             }}
           >
             {/* Left: Breadcrumb */}
-            <Breadcrumb items={breadcrumbItems} style={{ fontSize: 13 }} />
+            <Breadcrumb items={breadcrumbItems} style={{ fontSize: 14 }} />
 
             {/* Right: Search + Lang + Theme + User */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {/* Search button */}
-              <div
+              <button
+                type="button"
+                aria-label={t('layout.openSearch')}
                 onClick={() => setSearchOpen(true)}
                 style={{
                   display: 'flex',
@@ -349,9 +422,11 @@ const MainLayout = () => {
                   borderRadius: 6,
                   border: `1px solid ${borderColor}`,
                   cursor: 'pointer',
-                  fontSize: 13,
+                  fontSize: 14,
                   color: '#9CA3AF',
                   minWidth: 160,
+                  background: 'transparent',
+                  font: 'inherit',
                 }}
               >
                 <MagnifyingGlass size={14} />
@@ -359,7 +434,7 @@ const MainLayout = () => {
                 <span
                   style={{
                     marginLeft: 'auto',
-                    fontSize: 11,
+                    fontSize: 14,
                     padding: '1px 6px',
                     borderRadius: 4,
                     background: darkMode ? '#333' : '#f5f5f5',
@@ -368,10 +443,13 @@ const MainLayout = () => {
                 >
                   ⌘K
                 </span>
-              </div>
+              </button>
 
               {/* Data mode toggle */}
-              <div
+              <button
+                type="button"
+                aria-label={useMock ? t('layout.switchToRealData') : t('layout.switchToMockData')}
+                aria-pressed={useMock}
                 onClick={handleDataModeToggle}
                 style={{
                   cursor: 'pointer',
@@ -381,16 +459,14 @@ const MainLayout = () => {
                   padding: '4px 10px',
                   borderRadius: 6,
                   border: `1px solid ${borderColor}`,
-                  fontSize: 12,
+                  fontSize: 14,
                   fontWeight: 500,
                   color: useMock ? '#d48806' : '#389e0d',
                   transition: 'all 0.2s',
+                  background: 'transparent',
+                  font: 'inherit',
                 }}
-                title={
-                  useMock
-                    ? 'Data Mode: Mock (click to switch to Real)'
-                    : 'Data Mode: Real (click to switch to Mock)'
-                }
+                title={useMock ? t('layout.switchToRealData') : t('layout.switchToMockData')}
               >
                 <span
                   style={{
@@ -402,10 +478,14 @@ const MainLayout = () => {
                   }}
                 />
                 {useMock ? 'Mock' : 'Real'}
-              </div>
+              </button>
 
               {/* Language toggle */}
-              <div
+              <button
+                type="button"
+                aria-label={
+                  lang === 'zh' ? t('layout.switchToEnglish') : t('layout.switchToChinese')
+                }
                 onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
                 style={{
                   cursor: 'pointer',
@@ -415,18 +495,27 @@ const MainLayout = () => {
                   width: 28,
                   height: 28,
                   borderRadius: 6,
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: 600,
                   color: '#1677ff',
                   transition: 'background 0.2s',
+                  border: 0,
+                  padding: 0,
+                  background: 'transparent',
+                  font: 'inherit',
                 }}
-                title={lang === 'zh' ? 'Switch to English' : '切换到中文'}
+                title={lang === 'zh' ? t('layout.switchToEnglish') : t('layout.switchToChinese')}
               >
                 {lang === 'zh' ? 'En' : '中'}
-              </div>
+              </button>
 
               {/* Theme toggle */}
-              <div
+              <button
+                type="button"
+                aria-label={
+                  darkMode ? t('layout.switchToLightTheme') : t('layout.switchToDarkTheme')
+                }
+                aria-pressed={darkMode}
                 onClick={toggleTheme}
                 style={{
                   cursor: 'pointer',
@@ -437,23 +526,39 @@ const MainLayout = () => {
                   height: 28,
                   borderRadius: 6,
                   transition: 'background 0.2s',
+                  border: 0,
+                  padding: 0,
+                  background: 'transparent',
+                  font: 'inherit',
                 }}
-                title={darkMode ? 'Light mode' : 'Dark mode'}
+                title={darkMode ? t('layout.switchToLightTheme') : t('layout.switchToDarkTheme')}
               >
                 {darkMode ? (
                   <Sun size={18} color="#9CA3AF" weight="fill" />
                 ) : (
                   <Moon size={18} color="#9CA3AF" weight="fill" />
                 )}
-              </div>
+              </button>
 
               {/* User avatar */}
               <Dropdown menu={userMenu} trigger={['click']}>
-                <Avatar
-                  size={28}
-                  style={{ backgroundColor: '#1677ff', cursor: 'pointer' }}
-                  icon={<UserGear size={16} />}
-                />
+                <button
+                  type="button"
+                  aria-label={t('layout.openUserMenu')}
+                  style={{
+                    cursor: 'pointer',
+                    border: 0,
+                    padding: 0,
+                    background: 'transparent',
+                    font: 'inherit',
+                  }}
+                >
+                  <Avatar
+                    size={28}
+                    style={{ backgroundColor: '#1677ff' }}
+                    icon={<UserGear size={16} />}
+                  />
+                </button>
               </Dropdown>
             </div>
           </div>
@@ -474,72 +579,158 @@ const MainLayout = () => {
         </Layout>
       </Layout>
 
-      {/* Search Modal */}
+      {/* Search Modal (command palette) */}
       <Modal
         open={searchOpen}
         onCancel={() => {
           setSearchOpen(false);
           setSearchText('');
+          setActiveIndex(0);
         }}
         footer={null}
         closable={false}
-        styles={{ body: { padding: 0 } }}
-        width={520}
-        centered
+        styles={{
+          body: { padding: 0 },
+          content: { padding: 0, overflow: 'hidden', borderRadius: 12 },
+        }}
+        width={600}
+        style={{ top: '12vh' }}
       >
-        <div style={{ padding: '16px 20px 8px' }}>
-          <Input
-            size="large"
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '14px 20px',
+            borderBottom: `1px solid ${borderColor}`,
+          }}
+        >
+          <MagnifyingGlass size={18} color="#9CA3AF" />
+          <input
             placeholder={t('common.searchPlaceholder')}
-            prefix={<MagnifyingGlass size={18} color="#9CA3AF" />}
             value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            onPressEnter={() => {
-              const firstResult = searchResults[0];
-              if (!firstResult) return;
-              navigate(firstResult.key);
-              setSearchOpen(false);
-              setSearchText('');
+            onChange={(e) => {
+              setSearchText(e.target.value);
+              setActiveIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActiveIndex((i) => Math.min(i + 1, Math.max(searchResults.length - 1, 0)));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActiveIndex((i) => Math.max(i - 1, 0));
+              } else if (e.key === 'Enter') {
+                const target = searchResults[Math.min(activeIndex, searchResults.length - 1)];
+                if (!target) return;
+                navigate(target.key as string);
+                setSearchOpen(false);
+                setSearchText('');
+                setActiveIndex(0);
+              }
             }}
             autoFocus
-            allowClear
-            style={{ fontSize: 16 }}
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: 16,
+              background: 'transparent',
+              color: 'inherit',
+            }}
           />
+          <span
+            style={{
+              fontSize: 14,
+              color: '#9CA3AF',
+              padding: '1px 6px',
+              borderRadius: 4,
+              background: darkMode ? '#333' : '#f5f5f5',
+              border: `1px solid ${borderColor}`,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            ESC
+          </span>
         </div>
-        <div style={{ maxHeight: 360, overflow: 'auto', padding: '8px 12px 12px' }}>
+        <div style={{ maxHeight: 380, overflow: 'auto', padding: 8 }}>
           {searchResults.length ? (
-            searchResults.map((item) => (
-              <div
-                key={item.key}
-                onClick={() => {
-                  navigate(item.key as string);
-                  setSearchOpen(false);
-                  setSearchText('');
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = darkMode ? '#1a1a1a' : '#f5f5f5';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </div>
-            ))
+            searchResults.map((item, index) => {
+              const active = index === activeIndex;
+              return (
+                <button
+                  type="button"
+                  key={item.key}
+                  ref={(el) => {
+                    if (el && active) el.scrollIntoView?.({ block: 'nearest' });
+                  }}
+                  onClick={() => {
+                    navigate(item.key as string);
+                    setSearchOpen(false);
+                    setSearchText('');
+                    setActiveIndex(0);
+                  }}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    width: '100%',
+                    border: 0,
+                    background: active ? (darkMode ? '#1f2937' : '#eff6ff') : 'transparent',
+                    color: 'inherit',
+                    textAlign: 'left',
+                    font: 'inherit',
+                  }}
+                >
+                  <span style={{ color: active ? '#1677ff' : '#9CA3AF', display: 'flex' }}>
+                    {item.icon}
+                  </span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {active && (
+                    <span
+                      aria-hidden
+                      style={{
+                        fontSize: 14,
+                        color: '#9CA3AF',
+                        padding: '0 6px',
+                        borderRadius: 4,
+                        background: darkMode ? '#333' : '#f5f5f5',
+                        border: `1px solid ${borderColor}`,
+                      }}
+                    >
+                      ↵
+                    </span>
+                  )}
+                </button>
+              );
+            })
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到匹配页面" />
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="未找到匹配页面"
+              style={{ padding: '24px 0' }}
+            />
           )}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: 16,
+            padding: '8px 20px',
+            borderTop: `1px solid ${borderColor}`,
+            fontSize: 14,
+            color: '#9CA3AF',
+            background: darkMode ? '#26262a' : '#fafafa',
+          }}
+        >
+          <span>↑↓ 切换</span>
+          <span>↵ 打开</span>
+          <span>ESC 关闭</span>
         </div>
       </Modal>
     </>

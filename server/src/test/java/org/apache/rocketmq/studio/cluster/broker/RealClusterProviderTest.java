@@ -129,6 +129,13 @@ class RealClusterProviderTest {
     }
 
     @Test
+    void describeClustersShouldTolerateNullClusterInfo() throws Exception {
+        stubClusterInfo("10.0.0.1:9876", null);
+
+        assertThat(provider.describeClusters("10.0.0.1:9876")).isEmpty();
+    }
+
+    @Test
     void discoverClustersShouldUseConfiguredNamesrv() throws Exception {
         properties.setNamesrvAddr("10.0.0.1:9876");
         stubClusterInfo("10.0.0.1:9876", sampleClusterInfo());

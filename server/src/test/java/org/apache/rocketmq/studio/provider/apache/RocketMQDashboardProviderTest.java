@@ -95,6 +95,22 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldExcludeBrokerNamedStatsTopics() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        // "broker-a" matches the broker name and is a self-named stats topic, not a user topic.
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("order-topic", "broker-a"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(1);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster ->
+                assertThat(cluster.getTopics()).isEqualTo(1));
+    }
+
+    @Test
     void dashboardShouldDeduplicateTopicsReportedByMultipleClusterBrokers() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
@@ -238,6 +254,37 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldCountTopicsFromOrphanBrokerWithoutNpe() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        // broker-a is a cluster member; broker-orphan appears in the broker table but in no
+        // clusterAddrTable set, so its cluster name resolves to null (registration race).
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", brokerData("broker-a", "10.0.0.11:10911"));
+        brokerAddrTable.put("broker-orphan", brokerData("broker-orphan", "10.0.0.13:10911"));
+        info.setBrokerAddrTable(brokerAddrTable);
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("DefaultCluster", Set.of("broker-a"));
+        info.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllTopicConfig("10.0.0.13:10911", 5000))
+                .thenReturn(topicConfig("orphan-topic"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000))
+                .thenReturn(subscriptionGroups());
+        when(adminExt.getAllSubscriptionGroup("10.0.0.13:10911", 5000))
+                .thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.13:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        // Topics from the orphan broker are counted globally without crashing.
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(2);
+    }
+
+    @Test
     void dashboardShouldRejectAnUnavailableTopologyInsteadOfReturningAnEmptyOverview() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(null);
@@ -316,7 +363,7 @@ class RocketMQDashboardProviderTest {
                 .type(InstanceType.DIRECT)
                 .endpoint("namesrv-direct:9876")
                 .build();
-        instance.setId("instance-direct");
+        instance.setId(1L);
         when(resolver.resolveInstance("instance-direct")).thenReturn(instance);
         when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
@@ -329,6 +376,29 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters()).hasSize(1);
         assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V4_DIRECT);
         verify(resolver).execute(eq(instance), any());
+    }
+
+    @Test
+    void dashboardShouldReportSelectedProxyLocalInstanceType() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.PROXY_LOCAL)
+                .endpoint("local-proxy:8080")
+                .build();
+        instance.setId(1L);
+        when(resolver.resolveInstance("instance-local")).thenReturn(instance);
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-local");
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getType())
+                .isEqualTo(ClusterType.V5_PROXY_LOCAL);
     }
 
     @Test

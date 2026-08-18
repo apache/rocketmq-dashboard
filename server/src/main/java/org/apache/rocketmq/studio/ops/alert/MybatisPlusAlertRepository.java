@@ -58,21 +58,22 @@ public class MybatisPlusAlertRepository implements AlertRepository {
             ruleMapper.updateById(entity);
         } else {
             ruleMapper.insert(entity);
+            rule.setId(entity.getId());
         }
         return rule;
     }
 
     @Override
     public boolean replaceRule(AlertRuleVO rule) {
-        if (ruleMapper.selectById(rule.getId()) == null) {
+        if (rule.getId() == null || ruleMapper.selectById(rule.getId()) == null) {
             return false;
         }
         return ruleMapper.updateById(toRuleEntity(rule)) > 0;
     }
 
     @Override
-    public boolean deleteRule(String id) {
-        return ruleMapper.deleteById(id) > 0;
+    public boolean deleteRule(Long id) {
+        return id != null && ruleMapper.deleteById(id) > 0;
     }
 
     @Override
@@ -86,14 +87,8 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
-    public SystemAlertVO saveAlert(SystemAlertVO alert) {
-        RmqSystemAlert entity = toAlertEntity(alert);
-        if (entity.getId() != null && alertMapper.selectById(entity.getId()) != null) {
-            alertMapper.updateById(entity);
-        } else {
-            alertMapper.insert(entity);
-        }
-        return alert;
+    public boolean acknowledgeAlert(SystemAlertVO alert) {
+        return alertMapper.updateById(toAlertEntity(alert)) > 0;
     }
 
     @Override
@@ -139,7 +134,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         entity.setBrokerName(rule.getBrokerName());
         entity.setClusterName(rule.getClusterName());
         entity.setSeverity(rule.getSeverity());
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setGmtModified(LocalDateTime.now());
         return entity;
     }
 
@@ -162,7 +157,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         entity.setDescription(alert.getDescription());
         entity.setTime(alert.getTime());
         entity.setAcknowledged(alert.isAcknowledged());
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setGmtModified(LocalDateTime.now());
         return entity;
     }
 

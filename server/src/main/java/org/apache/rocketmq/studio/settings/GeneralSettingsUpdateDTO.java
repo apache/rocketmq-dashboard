@@ -58,6 +58,9 @@ public class GeneralSettingsUpdateDTO {
     private String deploymentName;
     private String apiVersion;
     private String awsRegion;
+    private String dingtalkWebhook;
+    private String emailRecipients;
+    private String smsWebhook;
 
     public GeneralSettingsVO toSettings() {
         return GeneralSettingsVO.builder()
@@ -76,6 +79,9 @@ public class GeneralSettingsUpdateDTO {
                 .deploymentName(deploymentName)
                 .apiVersion(apiVersion)
                 .awsRegion(awsRegion)
+                .dingtalkWebhook(dingtalkWebhook)
+                .emailRecipients(emailRecipients)
+                .smsWebhook(smsWebhook)
                 .build();
     }
 }

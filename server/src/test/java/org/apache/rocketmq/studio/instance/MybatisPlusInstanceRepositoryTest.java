@@ -62,22 +62,54 @@ class MybatisPlusInstanceRepositoryTest {
     @Test
     void findAllShouldMapEntitiesWithoutCountsTest() {
         when(instanceMapper.selectList(any(QueryWrapper.class)))
-                .thenReturn(List.of(entity("instance-direct-1", InstanceType.DIRECT),
-                        entity("instance-proxy-1", InstanceType.PROXY)));
+                .thenReturn(List.of(entity(1L, "instance-direct-1", InstanceType.DIRECT),
+                        entity(2L, "instance-proxy-1", InstanceType.PROXY)));
 
         List<InstanceVO> result = repository.findAll();
 
         assertThat(result).hasSize(2);
         InstanceVO direct = result.stream()
-                .filter(i -> "instance-direct-1".equals(i.getId())).findFirst().orElseThrow();
+                .filter(i -> Long.valueOf(1L).equals(i.getId())).findFirst().orElseThrow();
         InstanceVO proxy = result.stream()
-                .filter(i -> "instance-proxy-1".equals(i.getId())).findFirst().orElseThrow();
+                .filter(i -> Long.valueOf(2L).equals(i.getId())).findFirst().orElseThrow();
         assertThat(direct.getTopicCount()).isZero();
         assertThat(direct.getConsumerGroupCount()).isZero();
         assertThat(proxy.getTopicCount()).isZero();
         assertThat(proxy.getConsumerGroupCount()).isZero();
         assertThat(direct.getAdminCredentialRef()).isEqualTo("admin-instance-direct-1");
         verifyNoInteractions(topicMapper, groupMapper);
+    }
+
+    @Test
+    void findByTypeShouldTreatLegacyProxyAsAllProxyAccessTypes() {
+        when(instanceMapper.selectList(any(QueryWrapper.class)))
+                .thenReturn(List.of(
+                        entity(3L, "legacy", InstanceType.PROXY),
+                        entity(4L, "local", InstanceType.PROXY_LOCAL),
+                        entity(5L, "cluster", InstanceType.PROXY_CLUSTER)));
+
+        List<InstanceVO> result = repository.findByType(InstanceType.PROXY);
+
+        assertThat(result).extracting(InstanceVO::getType)
+                .containsExactly(InstanceType.PROXY, InstanceType.PROXY_LOCAL, InstanceType.PROXY_CLUSTER);
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getSqlSegment()).contains("type IN");
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .contains(InstanceType.PROXY.name(), InstanceType.PROXY_LOCAL.name(), InstanceType.PROXY_CLUSTER.name());
+    }
+
+    @Test
+    void findByTypeShouldFilterExplicitProxyLocalTypeOnly() {
+        when(instanceMapper.selectList(any(QueryWrapper.class)))
+                .thenReturn(List.of(entity(4L, "local", InstanceType.PROXY_LOCAL)));
+
+        assertThat(repository.findByType(InstanceType.PROXY_LOCAL)).singleElement()
+                .extracting(InstanceVO::getType)
+                .isEqualTo(InstanceType.PROXY_LOCAL);
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getSqlSegment()).contains("type IN");
     }
 
     @Test
@@ -98,16 +130,16 @@ class MybatisPlusInstanceRepositoryTest {
 
     @Test
     void findByIdShouldReturnEmptyWhenMissing() {
-        when(instanceMapper.selectById("missing")).thenReturn(null);
+        when(instanceMapper.selectById(999L)).thenReturn(null);
 
-        assertThat(repository.findById("missing")).isEmpty();
+        assertThat(repository.findById(999L)).isEmpty();
     }
 
     @Test
     void findByIdShouldNotComputeCountsTest() {
-        when(instanceMapper.selectById("instance-proxy-1")).thenReturn(entity("instance-proxy-1", InstanceType.PROXY));
+        when(instanceMapper.selectById(2L)).thenReturn(entity(2L, "instance-proxy-1", InstanceType.PROXY));
 
-        Optional<InstanceVO> result = repository.findById("instance-proxy-1");
+        Optional<InstanceVO> result = repository.findById(2L);
 
         assertThat(result).isPresent();
         assertThat(result.get().getTopicCount()).isZero();
@@ -117,33 +149,33 @@ class MybatisPlusInstanceRepositoryTest {
 
     @Test
     void findByIdShouldRejectInvalidPersistedInstanceType() {
-        RmqInstance entity = entity("instance-invalid-type", InstanceType.DIRECT);
+        RmqInstance entity = entity(3L, "instance-invalid-type", InstanceType.DIRECT);
         entity.setType("UNKNOWN_TYPE");
         when(instanceMapper.selectById(entity.getId())).thenReturn(entity);
 
         assertThatThrownBy(() -> repository.findById(entity.getId()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Invalid persisted instance type")
-                .hasMessageContaining(entity.getId());
+                .hasMessageContaining(String.valueOf(entity.getId()));
     }
 
     @Test
     void findByIdShouldRejectInvalidPersistedInstanceVendor() {
-        RmqInstance entity = entity("instance-invalid-vendor", InstanceType.DIRECT);
+        RmqInstance entity = entity(4L, "instance-invalid-vendor", InstanceType.DIRECT);
         entity.setVendor("UNKNOWN_VENDOR");
         when(instanceMapper.selectById(entity.getId())).thenReturn(entity);
 
         assertThatThrownBy(() -> repository.findById(entity.getId()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Invalid persisted instance vendor")
-                .hasMessageContaining(entity.getId());
+                .hasMessageContaining(String.valueOf(entity.getId()));
     }
 
     @Test
     void countTopicsByInstanceShouldDelegateToTopicMapperTest() {
         when(topicMapper.selectCount(any(QueryWrapper.class))).thenReturn(5L);
 
-        assertThat(repository.countTopicsByInstance("instance-proxy-1")).isEqualTo(5L);
+        assertThat(repository.countTopicsByInstance(2L)).isEqualTo(5L);
         verify(topicMapper).selectCount(any(QueryWrapper.class));
     }
 
@@ -151,14 +183,14 @@ class MybatisPlusInstanceRepositoryTest {
     void countGroupsByInstanceShouldDelegateToGroupMapperTest() {
         when(groupMapper.selectCount(any(QueryWrapper.class))).thenReturn(2L);
 
-        assertThat(repository.countGroupsByInstance("instance-proxy-1")).isEqualTo(2L);
+        assertThat(repository.countGroupsByInstance(2L)).isEqualTo(2L);
         verify(groupMapper).selectCount(any(QueryWrapper.class));
     }
 
     @Test
     void saveShouldInsertWhenInstanceAbsent() {
-        InstanceVO vo = vo("instance-proxy-2", InstanceType.PROXY);
-        when(instanceMapper.selectById("instance-proxy-2")).thenReturn(null);
+        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY);
+        when(instanceMapper.selectById(5L)).thenReturn(null);
 
         repository.save(vo);
 
@@ -170,8 +202,8 @@ class MybatisPlusInstanceRepositoryTest {
 
     @Test
     void saveShouldUpdateWhenInstanceExists() {
-        InstanceVO vo = vo("instance-proxy-2", InstanceType.PROXY);
-        when(instanceMapper.selectById("instance-proxy-2")).thenReturn(entity("instance-proxy-2", InstanceType.PROXY));
+        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY);
+        when(instanceMapper.selectById(5L)).thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY));
         when(instanceMapper.updateById(any(RmqInstance.class))).thenReturn(1);
 
         repository.save(vo);
@@ -182,45 +214,53 @@ class MybatisPlusInstanceRepositoryTest {
 
     @Test
     void saveShouldReportALostConcurrentUpdate() {
-        InstanceVO vo = vo("instance-proxy-2", InstanceType.PROXY);
-        when(instanceMapper.selectById("instance-proxy-2"))
-                .thenReturn(entity("instance-proxy-2", InstanceType.PROXY));
+        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY);
+        when(instanceMapper.selectById(5L))
+                .thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY));
         when(instanceMapper.updateById(any(RmqInstance.class))).thenReturn(0);
 
         assertThatThrownBy(() -> repository.save(vo))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Instance update was not applied: instance-proxy-2")
+                .hasMessage("Instance update was not applied: 5")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
     }
 
     @Test
     void deleteByIdShouldDelegateToMapper() {
-        repository.deleteById("instance-direct-1");
-
-        verify(instanceMapper).deleteById("instance-direct-1");
+        repository.deleteById(1L);
+        verify(instanceMapper).deleteById(1L);
     }
 
-    private RmqInstance entity(String id, InstanceType type) {
+    @Test
+    void deleteByIdShouldReportWhetherARowWasRemoved() {
+        when(instanceMapper.deleteById(1L)).thenReturn(1);
+        when(instanceMapper.deleteById(2L)).thenReturn(0);
+
+        assertThat(repository.deleteById(1L)).isTrue();
+        assertThat(repository.deleteById(2L)).isFalse();
+    }
+
+    private RmqInstance entity(Long id, String name, InstanceType type) {
         RmqInstance entity = new RmqInstance();
         entity.setId(id);
-        entity.setName(id);
+        entity.setName(name);
         entity.setType(type.name());
         entity.setEndpoint("10.0.0.1:9876");
         entity.setVendor(InstanceVendor.APACHE.name());
-        entity.setAdminCredentialRef("admin-" + id);
-        entity.setCreatedAt(LocalDateTime.of(2026, 8, 3, 0, 0));
-        entity.setUpdatedAt(LocalDateTime.of(2026, 8, 3, 0, 0));
+        entity.setAdminCredentialRef("admin-" + name);
+        entity.setGmtCreate(LocalDateTime.of(2026, 8, 3, 0, 0));
+        entity.setGmtModified(LocalDateTime.of(2026, 8, 3, 0, 0));
         return entity;
     }
 
-    private InstanceVO vo(String id, InstanceType type) {
+    private InstanceVO vo(Long id, String name, InstanceType type) {
         InstanceVO vo = InstanceVO.builder()
-                .name(id)
+                .name(name)
                 .type(type)
                 .endpoint("10.0.0.1:9876")
                 .build();
         vo.setId(id);
-        vo.setAdminCredentialRef("admin-" + id);
+        vo.setAdminCredentialRef("admin-" + name);
         return vo;
     }
 }

@@ -25,6 +25,7 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
@@ -56,6 +57,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Set;
 
 /**
@@ -78,9 +80,15 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int MAX_BINARY_BODY_DISPLAY_BYTES = 48 * 1024;
     private static final int MAX_PROPERTIES = 64;
     private static final int MAX_PROPERTY_VALUE_CHARS = 1024;
+    private static final long VIEW_MESSAGE_TIMEOUT_MILLIS = 3000L;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
+    private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7 * ONE_DAY_MILLIS;
+    private static final int MAX_PULLS_PER_QUEUE = 1_000;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
+    private static final Comparator<MessageRecordVO> TOPIC_QUERY_ORDER = Comparator
+            .comparingLong(MessageRecordVO::getStoreTime)
+            .thenComparing(MessageRecordVO::getMsgId, Comparator.nullsFirst(String::compareTo));
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final QueryHistoryService queryHistoryService;
@@ -89,12 +97,14 @@ public class RocketMQMessageProvider implements MessageProvider {
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
                                                Long startTime, Long endTime) {
         String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
         return runtimeAdminClientResolver.execute(instanceId,
                 adminExt -> queryMessages(instanceId, (DefaultMQAdminExt) adminExt, endpoint,
-                        topic, msgId, tag, key, startTime, endTime));
+                        credentialHook, topic, msgId, tag, key, startTime, endTime));
     }
 
     private List<MessageRecordVO> queryMessages(String instanceId, DefaultMQAdminExt adminExt, String endpoint,
+                                                 RPCHook credentialHook,
                                                  String topic, String msgId, String tag, String key,
                                                  Long startTime, Long endTime) {
 
@@ -113,8 +123,11 @@ public class RocketMQMessageProvider implements MessageProvider {
             queryType = "KEY";
             result = queryByKey(adminExt, topic, key, tag, begin, end);
         } else if (StringUtils.hasText(topic)) {
+            if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
+                throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
+            }
             queryType = "TOPIC";
-            result = queryByTopic(endpoint, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
+            result = queryByTopic(endpoint, credentialHook, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         } else {
             log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
             return Collections.emptyList();
@@ -134,7 +147,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
         }
         if (messageExt == null) {
-            messageExt = viewMessageByOffsetId(adminExt, msgId);
+            messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
         }
         if (messageExt == null) {
             return Collections.emptyList();
@@ -143,10 +156,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
-     * Locate a message purely by its offset msgId by decoding the broker address embedded in the
-     * id and querying that broker directly. Used when no topic hint is available.
+     * Locate a message by decoding the broker address and physical offset embedded in its offset
+     * msgId, then querying that broker directly.
      */
-    private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String msgId) {
+    private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
         try {
             MessageId messageId = MessageDecoder.decodeMessageId(msgId);
             SocketAddress address = messageId.getAddress();
@@ -158,7 +171,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             return adminExt.getDefaultMQAdminExtImpl()
                     .getMqClientInstance()
                     .getMQClientAPIImpl()
-                    .viewMessage(brokerAddr, msgId, 3000L, 3000L);
+                    .viewMessage(brokerAddr, topic, messageId.getOffset(), VIEW_MESSAGE_TIMEOUT_MILLIS);
         } catch (Exception e) {
             log.warn("viewMessage by decoded offset id failed for msgId={}: {}", msgId, e.getMessage());
             return null;
@@ -189,23 +202,26 @@ public class RocketMQMessageProvider implements MessageProvider {
      * Scan a topic within a time range using a short-lived pull consumer, mirroring the approach
      * used by the RocketMQ dashboard for time-range topic queries.
      */
-    private List<MessageRecordVO> queryByTopic(String endpoint, String topic, String tag, long begin, long end, int limit) {
-        DefaultMQPullConsumer consumer = newPullConsumer("studio-msg-query", endpoint);
-        List<MessageRecordVO> result = new ArrayList<>();
+    private List<MessageRecordVO> queryByTopic(String endpoint, RPCHook credentialHook, String topic, String tag,
+                                                long begin, long end, int limit) {
+        DefaultMQPullConsumer consumer = newPullConsumer("studio-msg-query", endpoint, credentialHook);
+        int resultLimit = Math.min(limit, TOPIC_QUERY_HARD_CAP);
+        PriorityQueue<MessageRecordVO> newestMessages = new PriorityQueue<>(TOPIC_QUERY_ORDER);
         try {
             consumer.start();
             Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
             if (queues == null || queues.isEmpty()) {
-                return result;
+                return Collections.emptyList();
             }
-            outer:
             for (MessageQueue queue : queues) {
                 long minOffset = consumer.searchOffset(queue, begin);
                 long maxOffset = consumer.searchOffset(queue, end);
                 int consecutiveIllegalOffsets = 0;
+                int pullAttempts = 0;
                 for (long offset = minOffset; offset <= maxOffset; ) {
-                    if (result.size() >= Math.min(limit, TOPIC_QUERY_HARD_CAP)) {
-                        break outer;
+                    if (++pullAttempts > MAX_PULLS_PER_QUEUE) {
+                        throw new BusinessException(400,
+                                "Topic message query exceeded the per-queue pull budget; narrow the time range");
                     }
                     PullResult pullResult = consumer.pull(queue, "*", offset, 32);
                     if (pullResult == null) {
@@ -247,35 +263,51 @@ public class RocketMQMessageProvider implements MessageProvider {
                         if (!matchesTag(messageExt, tag)) {
                             continue;
                         }
-                        result.add(toRecordVO(messageExt));
-                        if (result.size() >= Math.min(limit, TOPIC_QUERY_HARD_CAP)) {
-                            break outer;
-                        }
+                        addTopicQueryCandidate(newestMessages, toRecordVO(messageExt), resultLimit);
                     }
                 }
             }
+        } catch (BusinessException exception) {
+            throw exception;
         } catch (Exception e) {
             log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
             throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
         } finally {
             consumer.shutdown();
         }
-        result.sort(Comparator.comparingLong(MessageRecordVO::getStoreTime).reversed());
-        return result;
+        return newestMessages.stream()
+                .sorted(TOPIC_QUERY_ORDER.reversed())
+                .toList();
+    }
+
+    private void addTopicQueryCandidate(PriorityQueue<MessageRecordVO> newestMessages,
+                                        MessageRecordVO candidate, int resultLimit) {
+        if (resultLimit <= 0) {
+            return;
+        }
+        if (newestMessages.size() < resultLimit) {
+            newestMessages.offer(candidate);
+            return;
+        }
+        MessageRecordVO oldestKept = newestMessages.peek();
+        if (oldestKept != null && TOPIC_QUERY_ORDER.compare(candidate, oldestKept) > 0) {
+            newestMessages.poll();
+            newestMessages.offer(candidate);
+        }
     }
 
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId));
+                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId, topic));
     }
 
-    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId) {
+    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId, String topic) {
 
         long now = System.currentTimeMillis();
         long begin;
         long end;
-        long messageStoreTimestamp = resolveMessageStoreTimestamp(adminExt, msgId);
+        long messageStoreTimestamp = resolveMessageStoreTimestamp(adminExt, msgId, topic);
         if (messageStoreTimestamp > 0) {
             // Derive the trace query window from the message's own store timestamp
             // instead of a hardcoded 1-hour lookback. This ensures traces for messages
@@ -320,11 +352,20 @@ public class RocketMQMessageProvider implements MessageProvider {
      * query window can be derived from the message's own timeline rather than the
      * current time. Returns 0 if the message cannot be located.
      */
-    private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId) {
+    private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId, String topic) {
+        if (StringUtils.hasText(topic)) {
+            try {
+                MessageExt messageExt = adminExt.viewMessage(topic, msgId);
+                if (messageExt != null) {
+                    return messageExt.getStoreTimestamp();
+                }
+            } catch (Exception e) {
+                log.debug("Could not view message {} in topic {} for trace timestamp: {}",
+                        msgId, topic, e.getMessage());
+            }
+        }
         try {
-            // No topic hint is available in the trace flow, so locate the message purely
-            // by its offset msgId.
-            MessageExt messageExt = viewMessageByOffsetId(adminExt, msgId);
+            MessageExt messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
             if (messageExt != null) {
                 return messageExt.getStoreTimestamp();
             }
@@ -371,6 +412,9 @@ public class RocketMQMessageProvider implements MessageProvider {
                         break;
                     case "EndTransaction":
                         nodes.add(buildTransactionNode(fields));
+                        break;
+                    case "Recall":
+                        nodes.add(buildRecallNode(fields));
                         break;
                     default:
                         // SubBefore and unknown types are not surfaced as timeline nodes.
@@ -429,6 +473,18 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .status("finish")
                 .costTime(0L)
                 .description("group=" + field(f, 3) + ", transactionState=" + field(f, 11))
+                .build();
+    }
+
+    // Recall layout (RocketMQ 5.5.0 TraceDataEncoder):
+    //               type, time, region, group, topic, msgId, isSuccess
+    private TraceNodeVO buildRecallNode(String[] f) {
+        return TraceNodeVO.builder()
+                .title("recall")
+                .timestamp(parseLong(field(f, 1)))
+                .status(parseBoolean(field(f, 6)) ? "finish" : "failed")
+                .costTime(0L)
+                .description("group=" + field(f, 3) + ", topic=" + field(f, 4))
                 .build();
     }
 
@@ -556,8 +612,8 @@ public class RocketMQMessageProvider implements MessageProvider {
         return tag.equals(messageExt.getTags());
     }
 
-    private DefaultMQPullConsumer newPullConsumer(String groupPrefix, String endpoint) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(groupPrefix + "-group");
+    private DefaultMQPullConsumer newPullConsumer(String groupPrefix, String endpoint, RPCHook credentialHook) {
+        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(groupPrefix + "-group", credentialHook);
         consumer.setInstanceName(ShortLivedClientName.next(groupPrefix));
         consumer.setNamesrvAddr(endpoint);
         return consumer;

@@ -34,6 +34,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -64,7 +66,13 @@ public class InstanceService {
             instances = instanceRepository.findAll();
         }
         instances.forEach(this::fillCounts);
-        return instances;
+        List<InstanceVO> sorted = new ArrayList<>(instances);
+        sorted.sort(Comparator
+                .comparing((InstanceVO instance) ->
+                        instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE ? 0 : 1)
+                .thenComparing(instance -> instance.getVendor() == null ? "" : instance.getVendor().name())
+                .thenComparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER));
+        return sorted;
     }
 
     /**
@@ -75,8 +83,8 @@ public class InstanceService {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         try {
             InstanceProvider provider = providerRegistry.forVendor(vendor);
-            instance.setTopicCount(provider.countTopics(instance.getId()));
-            instance.setConsumerGroupCount(provider.countGroups(instance.getId()));
+            instance.setTopicCount(provider.countTopics(String.valueOf(instance.getId())));
+            instance.setConsumerGroupCount(provider.countGroups(String.valueOf(instance.getId())));
             instance.setResourceCountsAvailable(true);
         } catch (RuntimeException ex) {
             instance.setResourceCountsAvailable(false);
@@ -96,16 +104,15 @@ public class InstanceService {
         }
 
         requireUniqueInstanceName(instance.getName(), null);
-        instance.setId(instance.getName());
-        instance.setCreatedAt(LocalDateTime.now());
-        instance.setUpdatedAt(LocalDateTime.now());
+        instance.setGmtCreate(LocalDateTime.now());
+        instance.setGmtModified(LocalDateTime.now());
         InstanceVO saved = instanceRepository.save(instance);
-        recordAudit("CREATE_INSTANCE", "INSTANCE", saved.getId(), null,
+        recordAudit("CREATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
     }
 
-    private void requireUniqueInstanceName(String name, String excludeId) {
+    private void requireUniqueInstanceName(String name, Long excludeId) {
         if (!StringUtils.hasText(name)) {
             return;
         }
@@ -116,6 +123,30 @@ public class InstanceService {
         });
     }
 
+    /**
+     * Resolves the external instance identifier (globally unique instance name, with a
+     * numeric primary-key fallback) to the internal database id.
+     */
+    public Long resolveInstanceId(String instanceId) {
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(InstanceVO::getId)
+                .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+    }
+
+    /**
+     * Normalizes any accepted identifier (instance name or legacy numeric id) to the
+     * canonical instance ID (the globally unique instance name). Unknown values pass
+     * through unchanged.
+     */
+    public String normalizeIdentifier(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            return instanceId;
+        }
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(InstanceVO::getName)
+                .orElse(instanceId);
+    }
+
     private void createApacheInstance(InstanceVO instance) {
         instance.setVendor(InstanceVendor.APACHE);
         instance.setName(requireInstanceName(instance.getName()));
@@ -124,6 +155,7 @@ public class InstanceService {
         if (instance.getType() == null) {
             throw new BusinessException(400, "InstanceVO type is required");
         }
+        instance.setType(instance.getType().normalizeApacheType());
     }
 
     /**
@@ -136,7 +168,7 @@ public class InstanceService {
         if (instance.getEndpoint() != null && !instance.getEndpoint().isBlank()) {
             throw new BusinessException(400, "Commercial instances must be selected from the cloud catalog, endpoint cannot be set manually");
         }
-        if (!StringUtils.hasText(instance.getCredentialId()) || !StringUtils.hasText(instance.getCloudInstanceId())
+        if (instance.getCredentialId() == null || !StringUtils.hasText(instance.getCloudInstanceId())
                 || !StringUtils.hasText(instance.getRegionId())) {
             throw new BusinessException(400,
                     "credentialId, cloudInstanceId and regionId are required for " + vendor + " instances");
@@ -218,7 +250,7 @@ public class InstanceService {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
 
-        if (instance.getId() == null || instance.getId().isBlank()) {
+        if (instance.getId() == null) {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
@@ -239,7 +271,7 @@ public class InstanceService {
         }
         if (!cloudInstance) {
             if (instance.getType() != null) {
-                updated.setType(instance.getType());
+                updated.setType(instance.getType().normalizeApacheType());
             }
             if (instance.getEndpoint() != null) {
                 updated.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
@@ -251,19 +283,19 @@ public class InstanceService {
         if (!cloudInstance && instance.getAdminCredentialRef() != null) {
             updated.setAdminCredentialRef(normalizeCredentialRef(instance.getAdminCredentialRef()));
         }
-        updated.setUpdatedAt(LocalDateTime.now());
+        updated.setGmtModified(LocalDateTime.now());
 
         InstanceVO saved = instanceRepository.save(updated);
         releaseApacheClientIfChanged(existing, saved);
-        recordAudit("UPDATE_INSTANCE", "INSTANCE", saved.getId(), null,
+        recordAudit("UPDATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
     }
 
-    public void deleteInstance(String id) {
+    public void deleteInstance(Long id) {
         log.info("Deleting instance: {}", id);
 
-        if (id == null || id.isBlank()) {
+        if (id == null) {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
@@ -272,16 +304,18 @@ public class InstanceService {
 
         InstanceProvider provider = providerRegistry.forVendor(
                 existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor());
-        int topicCount = provider.countTopics(id);
-        int consumerGroupCount = provider.countGroups(id);
+        int topicCount = provider.countTopics(String.valueOf(id));
+        int consumerGroupCount = provider.countGroups(String.valueOf(id));
         if (topicCount > 0 || consumerGroupCount > 0) {
             throw new BusinessException(409, String.format(
                     "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
                     topicCount, consumerGroupCount));
         }
-        instanceRepository.deleteById(id);
+        if (!instanceRepository.deleteById(id)) {
+            throw new BusinessException(404, "InstanceVO not found: " + id);
+        }
         releaseApacheEndpointIfUnused(existing, null);
-        recordAudit("DELETE_INSTANCE", "INSTANCE", id, null,
+        recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing));
     }
 
@@ -311,8 +345,8 @@ public class InstanceService {
                 .consumerGroupCount(instance.getConsumerGroupCount())
                 .build();
         copy.setId(instance.getId());
-        copy.setCreatedAt(instance.getCreatedAt());
-        copy.setUpdatedAt(instance.getUpdatedAt());
+        copy.setGmtCreate(instance.getGmtCreate());
+        copy.setGmtModified(instance.getGmtModified());
         return copy;
     }
 
@@ -338,7 +372,7 @@ public class InstanceService {
         releaseEndpointIfUnused(existing.getEndpoint(), saved.getEndpoint(), existing.getId());
     }
 
-    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, String excludedInstanceId) {
+    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, Long excludedInstanceId) {
         String oldEndpoint = normalizeEndpoint(previousEndpoint);
         if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))) {
             return;

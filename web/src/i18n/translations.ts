@@ -28,17 +28,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.acl': { zh: 'ACL 管理', en: 'ACL Management' },
   'nav.message': { zh: '消息查询', en: 'Message Search' },
   'nav.dlq': { zh: '死信队列', en: 'Dead Letter Queue' },
-  'nav.resourcePlan': { zh: '资源变更计划', en: 'Resource Plan' },
-  'nav.clusterOps': { zh: '集群运维', en: 'Cluster & Ops' },
+  'nav.clusterOps': { zh: '集群管理', en: 'Cluster Management' },
   'nav.certs': { zh: 'K8s 证书管理', en: 'K8s Certificates' },
   'nav.rocketmqCluster': { zh: 'RocketMQ 集群', en: 'RocketMQ Cluster' },
   'nav.clients': { zh: '客户端连接', en: 'Client Connections' },
   'nav.alertEvents': { zh: '告警事件', en: 'Alert Events' },
-  'nav.alertRules': { zh: '告警规则', en: 'Alert Rules' },
-  'nav.alertRuleAssets': { zh: '告警规则模板', en: 'Alert Rule Templates' },
+  'nav.alertRules': { zh: '集群告警', en: 'Cluster Alerts' },
+  'nav.alertRuleAssets': { zh: '业务告警', en: 'Business Alerts' },
   'nav.audit': { zh: '审计日志', en: 'Audit Log' },
   'nav.grafanaDashboards': { zh: 'Grafana 看板', en: 'Grafana Dashboards' },
-  'nav.nameServerConfigDrift': { zh: 'NameServer 配置漂移', en: 'NameServer Config Drift' },
   'nav.ai': { zh: 'AI 交互', en: 'AI Chat' },
   'nav.settings': { zh: '设置', en: 'Settings' },
 
@@ -76,6 +74,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
 
+  // ─── Global layout controls ───
+  'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
+  'layout.goHome': { zh: '返回首页', en: 'Go to home' },
+  'layout.openSearch': { zh: '打开导航搜索', en: 'Open navigation search' },
+  'layout.switchToRealData': { zh: '切换到真实数据', en: 'Switch to real data' },
+  'layout.switchToMockData': { zh: '切换到模拟数据', en: 'Switch to mock data' },
+  'layout.switchToEnglish': { zh: '切换到英语', en: 'Switch to English' },
+  'layout.switchToChinese': { zh: '切换到中文', en: 'Switch to Chinese' },
+  'layout.switchToLightTheme': { zh: '切换到浅色主题', en: 'Switch to light theme' },
+  'layout.switchToDarkTheme': { zh: '切换到深色主题', en: 'Switch to dark theme' },
+  'layout.openUserMenu': { zh: '打开用户菜单', en: 'Open user menu' },
+
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },
   'dashboard.subtitle': { zh: 'RocketMQ 集群运行概览', en: 'RocketMQ Cluster Overview' },
@@ -107,6 +117,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.broker': { zh: 'Broker 管理', en: 'Broker' },
   'cluster.proxy': { zh: 'Proxy 管理', en: 'Proxy' },
   'cluster.k8sName': { zh: 'K8s 集群名称', en: 'K8s Cluster' },
+  'cluster.brokerClusterName': { zh: 'Broker 集群名称', en: 'Broker Cluster Name' },
   'cluster.brokerName': { zh: 'Broker 名称', en: 'Broker Name' },
   'cluster.diskUsage': { zh: '磁盘使用', en: 'Disk Usage' },
   'cluster.proxyAddr': { zh: 'Proxy 地址', en: 'Proxy Address' },
@@ -117,20 +128,37 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.restart': { zh: '重启', en: 'Restart' },
   'cluster.upgrade': { zh: '升级', en: 'Upgrade' },
   'cluster.createCluster': { zh: '新建集群', en: 'New Cluster' },
-  'cluster.createNameServer': { zh: '新建 NameServer', en: 'New NameServer' },
-  'cluster.editNameServer': { zh: '编辑 NameServer', en: 'Edit NameServer' },
   'cluster.nsAddr': { zh: 'NameServer 地址', en: 'NameServer Address' },
   'cluster.nsAddrPlaceholder': { zh: '例：10.0.1.1:9876', en: 'e.g. 10.0.1.1:9876' },
-  'cluster.newAddr': { zh: '新地址', en: 'New Address' },
-  'cluster.newAddrPlaceholder': { zh: '不填则不修改', en: 'Leave empty to keep unchanged' },
-  'cluster.selectCluster': { zh: '选择集群', en: 'Select Cluster' },
+  'cluster.k8sNamespace': { zh: 'K8s Namespace', en: 'K8s Namespace' },
+  'cluster.k8sId': { zh: 'k8s ID', en: 'k8s ID' },
+  'clients.selectClusterPlaceholder': { zh: '选择 Broker 集群', en: 'Select Broker cluster' },
+  'clients.selectNameserverPlaceholder': { zh: '选择 NameServer', en: 'Select NameServer' },
+  'cluster.k8sIdExtra': {
+    zh: 'K8s 部署场景填写，非 K8s 部署可留空',
+    en: 'Fill in for K8s deployments; leave empty otherwise',
+  },
+  'cluster.k8sIdPlaceholder': { zh: '选择证书（可不填）', en: 'Select a certificate (optional)' },
+  'cluster.nsDescription': { zh: '描述', en: 'Description' },
+  'cluster.createNameServer': { zh: '新建 NameServer', en: 'New NameServer' },
+  'cluster.editNameServer': { zh: '编辑 NameServer', en: 'Edit NameServer' },
   'cluster.nsCreated': { zh: 'NameServer 已创建', en: 'NameServer created' },
   'cluster.nsUpdated': { zh: 'NameServer 已更新', en: 'NameServer updated' },
+  'cluster.nsDeleted': { zh: 'NameServer 已删除', en: 'NameServer deleted' },
+  'cluster.deleteNsConfirmTitle': { zh: '确认删除', en: 'Confirm Deletion' },
+  'cluster.deleteNsConfirmContent': {
+    zh: '确定要删除 NameServer「{name}」吗？此操作不可撤销。',
+    en: 'Delete NameServer "{name}"? This action cannot be undone.',
+  },
+  'cluster.nsOperationFailed': { zh: '操作失败，请稍后重试', en: 'Operation failed, please retry' },
   'cluster.nsClusterName': { zh: 'NameServer 集群名称', en: 'NS Cluster Name' },
   'cluster.count': { zh: '数量', en: 'Count' },
-  'cluster.searchBroker': { zh: '搜索 Broker 名称或地址', en: 'Search Broker name or address' },
+  'cluster.searchBroker': {
+    zh: '搜索集群名称、Broker 名称或地址',
+    en: 'Search cluster, Broker name or address',
+  },
   'cluster.searchProxy': { zh: '搜索 Proxy 地址', en: 'Search Proxy address' },
-  'cluster.searchNs': { zh: '搜索地址', en: 'Search address' },
+  'cluster.searchNs': { zh: '搜索名称或地址', en: 'Search name or address' },
   'cluster.running': { zh: '运行中', en: 'Running' },
   'cluster.readonly': { zh: '只读', en: 'Read Only' },
   'cluster.maintenance': { zh: '维护', en: 'Maintenance' },
@@ -195,7 +223,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'clients.detailTitle': { zh: '客户端详情 - {id}', en: 'Client Detail - {id}' },
 
   // ─── Alert Rules ───
-  'alerts.title': { zh: '告警规则管理', en: 'Alert Rules' },
+  'alerts.title': { zh: '集群告警', en: 'Cluster Alerts' },
   'alerts.subtitle': {
     zh: '配置集群监控告警规则与通知渠道',
     en: 'Configure cluster monitoring alert rules and notification channels',
@@ -294,8 +322,39 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
   'ai.commonCommands': { zh: '常用指令', en: 'Common Commands' },
+  'ai.mockProviderDisabled': { zh: 'Mock 模式已禁用 AI Provider 调用', en: 'Mock mode disables AI provider calls' },
+  'ai.mockProviderDisabledDescription': {
+    zh: '切换到真实数据模式并配置 LLM Provider 后，才会加载模型、工具目录和对话能力。',
+    en: 'Models, the tool catalog and chat capabilities are loaded only after you switch to real data mode and configure an LLM provider.',
+  },
+  'ai.mockToolsUnavailable': {
+    zh: 'Mock 模式不加载 AI 工具目录，请切换到真实数据模式后使用。',
+    en: 'The AI tool catalog is not loaded in mock mode; switch to real data mode to use it.',
+  },
+  'ai.modelsRefreshFailedAfterSave': {
+    zh: '配置已保存，但模型列表刷新失败；请稍后重试',
+    en: 'Configuration saved, but refreshing the model list failed; please retry later',
+  },
+  'ai.history.title': { zh: 'AI 对话历史', en: 'AI conversation history' },
+  'ai.history.empty': { zh: '当前模式暂无对话记录', en: 'No conversations in this mode' },
+  'ai.history.justNow': { zh: '刚刚', en: 'Just now' },
+  'ai.history.minutesAgo': { zh: '{count} 分钟前', en: '{count} min ago' },
+  'ai.responseStopped': { zh: '回答已停止。', en: 'Response stopped.' },
+  'ai.requestFailed': { zh: 'AI 请求失败', en: 'AI request failed' },
+  'ai.runtimeLoadFailed': { zh: 'AI 配置加载失败', en: 'Failed to load AI configuration' },
+  'ai.providerRequired': { zh: '请先配置并启用 LLM Provider', en: 'Configure and enable an LLM provider first' },
+  'ai.providerNotReadyDescription': {
+    zh: '请先在 设置 → AI 助手 中配置并启用 LLM Provider，启用前不会发送请求或返回 stub 回复。',
+    en: 'Configure and enable an LLM provider under Settings → AI Assistant first. No requests are sent and stub replies may be returned until it is enabled.',
+  },
+  'ai.toolCatalogLoadFailed': { zh: 'AI 工具目录加载失败', en: 'Failed to load the AI tool catalog' },
+  'ai.clusterListLoadFailed': { zh: '集群列表加载失败，已显示全局工具', en: 'Failed to load clusters; showing global tools' },
 
   // ─── Home Page ───
+  'home.banner': {
+    zh: 'RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台',
+    en: 'RocketMQ Studio — unified control plane across clusters, architectures and clouds',
+  },
   'home.greeting.night': { zh: '夜深了', en: 'Late night' },
   'home.greeting.morning': { zh: '上午好', en: 'Good morning' },
   'home.greeting.noon': { zh: '中午好', en: 'Good afternoon' },
@@ -516,10 +575,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.resetFailed': { zh: '消费位点重置失败', en: 'Failed to reset consume offset' },
 
   // ─── Home Page (additional) ───
-  'home.banner': {
-    zh: 'RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台',
-    en: 'RocketMQ Studio — Cross-cluster · Cross-arch · Cross-cloud unified management',
-  },
   'home.placeholder': {
     zh: '向 RocketMQ Bot 提问，全程加密、安全、可信',
     en: 'Ask RocketMQ Bot, fully encrypted, secure, trusted',
@@ -553,6 +608,7 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── Settings ───
   'settings.title': { zh: '设置', en: 'Settings' },
   'settings.subtitle': { zh: '管理应用配置与数据源', en: 'Manage app settings and data sources' },
+  'settings.dataSourceNotTested': { zh: '未检测', en: 'Not tested' },
 
   // ─── Certs ───
   'cert.clusterName': { zh: 'K8s 集群名称', en: 'K8s Cluster Name' },
@@ -771,40 +827,6 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'ops.fetchFailed': { zh: '获取运维数据失败', en: 'Failed to fetch ops data' },
 
-  // ─── NameServer Config Drift ───
-  'nameServerDrift.title': { zh: 'NameServer 配置漂移', en: 'NameServer Configuration Drift' },
-  'nameServerDrift.cluster': { zh: '集群', en: 'Cluster' },
-  'nameServerDrift.selectCluster': { zh: '请选择集群', en: 'Select a cluster' },
-  'nameServerDrift.refresh': { zh: '重新检查', en: 'Check again' },
-  'nameServerDrift.export': { zh: '导出结果', en: 'Export result' },
-  'nameServerDrift.loadClustersFailed': {
-    zh: '集群列表加载失败',
-    en: 'Failed to load clusters',
-  },
-  'nameServerDrift.checkFailed': { zh: '配置漂移检查失败', en: 'Configuration check failed' },
-  'nameServerDrift.consistent': { zh: '配置一致', en: 'Configuration is consistent' },
-  'nameServerDrift.consistentDescription': {
-    zh: '已比较 {keys} 个安全配置项，所有可达节点配置一致。',
-    en: '{keys} safe configuration keys were compared and all reachable nodes are consistent.',
-  },
-  'nameServerDrift.driftDetected': { zh: '检测到配置漂移', en: 'Configuration drift detected' },
-  'nameServerDrift.driftDescription': {
-    zh: '发现 {count} 个配置项在 NameServer 节点间不一致。',
-    en: '{count} configuration keys differ across NameServer nodes.',
-  },
-  'nameServerDrift.incomplete': { zh: '检查结果不完整', en: 'Check result is incomplete' },
-  'nameServerDrift.incompleteDescription': {
-    zh: '仅成功读取 {reachable}/{total} 个 NameServer 节点。',
-    en: 'Only {reachable} of {total} NameServer nodes could be read.',
-  },
-  'nameServerDrift.nodes': { zh: 'NameServer 节点', en: 'NameServer Nodes' },
-  'nameServerDrift.reachable': { zh: '可达', en: 'Reachable' },
-  'nameServerDrift.unreachable': { zh: '不可达', en: 'Unreachable' },
-  'nameServerDrift.differences': { zh: '配置差异', en: 'Configuration Differences' },
-  'nameServerDrift.configKey': { zh: '配置项', en: 'Configuration Key' },
-  'nameServerDrift.notConfigured': { zh: '未配置', en: 'Not configured' },
-  'nameServerDrift.noClusters': { zh: '暂无可检查的集群', en: 'No clusters available' },
-
   // ─── Alert Management ───
   'alertMgmt.title': { zh: '告警规则管理', en: 'Alert Management' },
   'alertMgmt.alertName': { zh: '告警名称', en: 'Alert Name' },
@@ -863,7 +885,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'grafana.exportAllDone': { zh: '全部看板已导出', en: 'All dashboards exported' },
   'grafana.exportAllFailed': { zh: '导出全部看板失败', en: 'Failed to export dashboards' },
   // ─── Alert rule templates ───
-  'alertAssets.title': { zh: '告警规则模板', en: 'Alert Rule Templates' },
+  'alertAssets.title': { zh: '业务告警', en: 'Business Alerts' },
   'alertAssets.name': { zh: '名称', en: 'Name' },
   'alertAssets.group': { zh: '规则组', en: 'Group' },
   'alertAssets.ruleCount': { zh: '规则数', en: 'Rules' },

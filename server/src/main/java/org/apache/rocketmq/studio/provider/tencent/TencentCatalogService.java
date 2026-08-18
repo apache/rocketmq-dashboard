@@ -73,14 +73,14 @@ public class TencentCatalogService implements CloudCatalogProvider {
     }
 
     @Override
-    public List<CloudRegionVO> listRegions(String credentialId) {
-        requireNonBlank(credentialId, "credentialId");
+    public List<CloudRegionVO> listRegions(Long credentialId) {
+        requireId(credentialId, "credentialId");
         return SUPPORTED_REGIONS;
     }
 
     @Override
-    public List<CloudInstanceOptionVO> listCloudInstances(String credentialId, String regionId, String search) {
-        requireNonBlank(credentialId, "credentialId");
+    public List<CloudInstanceOptionVO> listCloudInstances(Long credentialId, String regionId, String search) {
+        requireId(credentialId, "credentialId");
         requireNonBlank(regionId, "regionId");
         List<CloudInstanceOptionVO> instances = new ArrayList<>();
         for (int page = 0; page < MAX_PAGES; page++) {
@@ -94,6 +94,9 @@ public class TencentCatalogService implements CloudCatalogProvider {
                 break;
             }
             for (InstanceItem item : data) {
+                if (item == null) {
+                    continue;
+                }
                 CloudInstanceOptionVO option = toInstanceOption(item, regionId);
                 if (matchesSearch(search, option)) {
                     instances.add(option);
@@ -107,8 +110,8 @@ public class TencentCatalogService implements CloudCatalogProvider {
     }
 
     @Override
-    public CloudInstanceDetailVO getCloudInstance(String credentialId, String regionId, String cloudInstanceId) {
-        requireNonBlank(credentialId, "credentialId");
+    public CloudInstanceDetailVO getCloudInstance(Long credentialId, String regionId, String cloudInstanceId) {
+        requireId(credentialId, "credentialId");
         requireNonBlank(regionId, "regionId");
         requireNonBlank(cloudInstanceId, "cloudInstanceId");
         DescribeInstanceRequest request = new DescribeInstanceRequest();
@@ -186,6 +189,12 @@ public class TencentCatalogService implements CloudCatalogProvider {
         region.setRegionId(id);
         region.setRegionName(name);
         return region;
+    }
+
+    private static void requireId(Long value, String name) {
+        if (value == null) {
+            throw new BusinessException(400, name + " is required");
+        }
     }
 
     private static void requireNonBlank(String value, String name) {

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
@@ -85,20 +85,24 @@ describe('ProducerPage', () => {
     vi.clearAllMocks();
     vi.mocked(listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
     ]);
     vi.mocked(fetchTopicList).mockResolvedValue(['order-events', 'payment-events']);
     vi.mocked(fetchProducerGroups).mockResolvedValue(['pg-order', 'pg-payment']);
     vi.mocked(queryProducerConnection).mockResolvedValue(producerResult([]));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('loads topic options after mount', async () => {
@@ -107,6 +111,39 @@ describe('ProducerPage', () => {
     await waitFor(() => {
       expect(fetchTopicList).toHaveBeenCalledWith('instance-1');
     });
+  });
+
+  it('uses an Apache instance rather than a cloud instance for producer diagnostics', async () => {
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'cloud-instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: 'cloud:9876',
+        vendor: 'ALIYUN',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
+      },
+      {
+        id: 2,
+        name: 'apache-instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: 'apache:9876',
+        vendor: 'APACHE',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
+      },
+    ]);
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith('apache-instance'));
+    expect(screen.queryByText('cloud-instance')).not.toBeInTheDocument();
   });
 
   it('renders topic options loaded from the API', async () => {
@@ -235,6 +272,72 @@ describe('ProducerPage', () => {
     expect(screen.getByText('JAVA: 2')).toBeInTheDocument();
   });
 
+  it('exports the current producer connection diagnostics as CSV', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:producer-connections';
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection).mockResolvedValue({
+      connectionSet: [
+        {
+          clientId: '@producer-a',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ],
+      summary: {
+        totalConnections: 1,
+        uniqueClientCount: 1,
+        uniqueAddressCount: 1,
+        uniqueLanguageCount: 1,
+        uniqueVersionCount: 1,
+        languages: [{ value: 'JAVA', count: 1 }],
+        versions: [{ value: '5.1.0', count: 1 }],
+        duplicateClientIds: [],
+        warnings: ['INCOMPLETE_CLIENT_METADATA'],
+        readiness: 'WARNING',
+      },
+    });
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    expect(await screen.findByText('@producer-a')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    await expect(blob.text()).resolves.toBe(
+      [
+        '"Instance ID","Topic","Producer Group","Readiness","Warnings","Client ID","Address","Language","Version"',
+        '"instance-1","order-events","order-producer","WARNING","INCOMPLETE_CLIENT_METADATA","\'@producer-a","192.168.1.10","JAVA","5.1.0"',
+      ].join('\n'),
+    );
+    expect(
+      document.querySelector('a[download^="rocketmq-producer-connections-"]'),
+    ).not.toBeInTheDocument();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:producer-connections');
+  });
+
   it('keeps manual producer group queries available when suggestions fail', async () => {
     vi.mocked(fetchProducerGroups).mockRejectedValue(new Error('broker unavailable'));
     const user = userEvent.setup();
@@ -261,26 +364,26 @@ describe('ProducerPage', () => {
   it('clears stale producer query state before loading a new instance', async () => {
     vi.mocked(listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
+        id: 1,
         name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
       {
-        id: 'instance-2',
+        id: 2,
         name: 'instance-2',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.2:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
     ]);
     vi.mocked(fetchTopicList).mockResolvedValueOnce(['order-events']).mockResolvedValueOnce([]);

@@ -60,6 +60,10 @@ class SettingsServiceTest {
 
     private static final String PROMETHEUS_BASE_URL = "http://192.0.2.1:9090";
     private static final String PROMETHEUS_QUERY_URL = PROMETHEUS_BASE_URL + "/api/v1/query?query=up";
+    private static final String VICTORIA_METRICS_QUERY_URL =
+            PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
+    private static final String MIMIR_QUERY_URL =
+            PROMETHEUS_BASE_URL + "/prometheus/api/v1/query?query=up";
     private static final String PROMETHEUS_SUCCESS_BODY =
             "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}";
 
@@ -270,7 +274,12 @@ class SettingsServiceTest {
         DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
                 .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    DataSourceVO dataSource = invocation.getArgument(0);
+                    // Repository contract: the ds key is generated from the auto-increment id.
+                    dataSource.setKey("ds-1");
+                    return dataSource;
+                });
 
         DataSourceVO result = settingsService.createDataSource(input);
 
@@ -286,7 +295,12 @@ class SettingsServiceTest {
         DataSourceVO input = DataSourceVO.builder().key("existing-key").name("New DS")
                 .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    DataSourceVO dataSource = invocation.getArgument(0);
+                    // Repository contract: a client-provided key is replaced by the generated one.
+                    dataSource.setKey("ds-1");
+                    return dataSource;
+                });
 
         DataSourceVO result = settingsService.createDataSource(input);
 
@@ -459,7 +473,7 @@ class SettingsServiceTest {
     void testConnectionShouldNormalizeIdentifiersIndependentlyOfDefaultLocale() {
         String expectedAuthorization = "Basic "
                 + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8));
-        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+        prometheusServer.expect(requestTo(MIMIR_QUERY_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header(HttpHeaders.AUTHORIZATION, expectedAuthorization))
                 .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
@@ -505,6 +519,19 @@ class SettingsServiceTest {
     void testConnectionShouldRejectLocalhostHostname() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("http://localhost:9090")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("local or private address");
+    }
+
+    @Test
+    void testConnectionShouldRejectLoopbackIpv4Address() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("http://127.0.0.1:9090")
                 .type("Prometheus")
                 .build();
 
@@ -615,7 +642,7 @@ class SettingsServiceTest {
 
     @Test
     void testConnectionShouldReturnPrometheusErrorDetails() {
-        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+        prometheusServer.expect(requestTo(VICTORIA_METRICS_QUERY_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withStatus(HttpStatus.UNPROCESSABLE_ENTITY)
                         .contentType(MediaType.APPLICATION_JSON)

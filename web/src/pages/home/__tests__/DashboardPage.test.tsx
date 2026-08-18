@@ -94,26 +94,26 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(instanceService.listInstances).mockResolvedValue([
     {
-      id: 'instance-a',
+      id: 1,
       name: 'instance-a',
       endpoint: 'a:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
     {
-      id: 'instance-b',
+      id: 2,
       name: 'instance-b',
       endpoint: 'b:9876',
       type: 'DIRECT',
       remark: '',
       topicCount: 0,
       consumerGroupCount: 0,
-      createdAt: '',
-      updatedAt: '',
+      gmtCreate: '',
+      gmtModified: '',
     },
   ]);
 });
@@ -190,5 +190,49 @@ describe('DashboardPage', () => {
     await user.click(screen.getByText('查看全部'));
 
     expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=instance-b');
+  });
+
+  it('does not offer cloud instances for MQAdmin runtime diagnostics', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'apache-instance',
+        endpoint: 'apache:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'cloud-instance',
+        endpoint: 'cloud:9876',
+        type: 'DIRECT',
+        vendor: 'ALIYUN',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('apache-cluster'));
+    const user = userEvent.setup();
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('apache-cluster');
+    await user.click(screen.getByRole('combobox', { name: 'Dashboard instance' }));
+
+    expect(
+      await screen.findByText('apache-instance', {
+        selector: '.ant-select-item-option-content',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('cloud-instance', { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
   });
 });

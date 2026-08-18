@@ -34,6 +34,7 @@ import java.util.Locale;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,8 +52,8 @@ class MybatisPlusAlertRepositoryTest {
 
     @Test
     void replaceRuleShouldReportAConcurrentDelete() {
-        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").name("Lag").build();
-        when(ruleMapper.selectById("rule-1")).thenReturn(new RmqAlertRule());
+        AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("Lag").build();
+        when(ruleMapper.selectById(1L)).thenReturn(new RmqAlertRule());
         when(ruleMapper.updateById(any(RmqAlertRule.class))).thenReturn(0);
 
         assertThat(repository.replaceRule(rule)).isFalse();
@@ -67,6 +68,22 @@ class MybatisPlusAlertRepositoryTest {
         assertThat(repository.findAlerts(null)).singleElement()
                 .satisfies(alert -> assertThat(alert.getLevel()).isEqualTo(
                         org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning));
+    }
+
+    @Test
+    void acknowledgeAlertShouldReportUpdateOutcomeWithoutInserting() {
+        SystemAlertVO deleted = SystemAlertVO.builder().id(1L).acknowledged(true).build();
+        SystemAlertVO existing = SystemAlertVO.builder().id(2L).acknowledged(true).build();
+        when(alertMapper.updateById(argThat((RmqSystemAlert entity) ->
+                entity != null && Long.valueOf(1L).equals(entity.getId()))))
+                .thenReturn(0);
+        when(alertMapper.updateById(argThat((RmqSystemAlert entity) ->
+                entity != null && Long.valueOf(2L).equals(entity.getId()))))
+                .thenReturn(1);
+
+        assertThat(repository.acknowledgeAlert(deleted)).isFalse();
+        assertThat(repository.acknowledgeAlert(existing)).isTrue();
+        verify(alertMapper, never()).insert(any(RmqSystemAlert.class));
     }
 
     @Test

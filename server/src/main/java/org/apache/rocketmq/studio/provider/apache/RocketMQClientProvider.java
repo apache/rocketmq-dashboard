@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -29,6 +30,7 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ClientProvider;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
@@ -62,10 +64,17 @@ public class RocketMQClientProvider implements ClientProvider {
     private static final long SUBSCRIPTION_GROUP_TIMEOUT_MILLIS = 5000L;
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final MqAdminExtFactory adminFactory;
 
     @Override
     public List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type) {
         return runtimeAdminClientResolver.execute(instanceId, adminExt -> findConnections(adminExt, clusterId, type));
+    }
+
+    @Override
+    public List<ClientConnectionVO> findConnectionsAt(String namesrvAddr, String clusterId, String type) {
+        return adminFactory.execute(namesrvAddr, null,
+                adminExt -> findConnections(adminExt, clusterId, type));
     }
 
     private List<ClientConnectionVO> findConnections(MQAdminExt adminExt, String clusterId, String type) {
@@ -183,7 +192,8 @@ public class RocketMQClientProvider implements ClientProvider {
                 if (producerInfo == null) {
                     continue;
                 }
-                String key = producerGroup + '\0'
+                String key = Objects.toString(clusterId, "") + '\0'
+                        + producerGroup + '\0'
                         + Objects.toString(producerInfo.getClientId(), "") + '\0'
                         + Objects.toString(producerInfo.getRemoteIP(), "");
                 connections.putIfAbsent(key, toConnectionVO(producerInfo, producerGroup, clusterId));
@@ -193,15 +203,19 @@ public class RocketMQClientProvider implements ClientProvider {
 
     private ClientConnectionVO toConnectionVO(
             ProducerInfo producerInfo, String producerGroup, String clusterId) {
+        String remoteIp = producerInfo.getRemoteIP();
+        if (remoteIp != null && remoteIp.startsWith("/")) {
+            remoteIp = remoteIp.substring(1);
+        }
         return ClientConnectionVO.builder()
                 .clientId(producerInfo.getClientId())
                 .type(ClientType.Producer)
                 .groupOrTopic(producerGroup)
                 .producerGroup(producerGroup)
                 .protocol(Protocol.Remoting)
-                .address(producerInfo.getRemoteIP())
+                .address(remoteIp)
                 .language(mapLanguage(producerInfo.getLanguage()))
-                .version(String.valueOf(producerInfo.getVersion()))
+                .version(MQVersion.getVersionDesc(producerInfo.getVersion()))
                 .clusterName(clusterId)
                 .build();
     }
@@ -209,12 +223,14 @@ public class RocketMQClientProvider implements ClientProvider {
     private List<ClientConnectionVO> findConsumerConnections(MQAdminExt adminExt, String clusterId) {
         List<ClientConnectionVO> result = new ArrayList<>();
         Map<String, String> groups = collectSubscriptionGroups(adminExt, clusterId);
+        int attemptedGroupQueries = 0;
         int successfulGroupQueries = 0;
         for (Map.Entry<String, String> groupEntry : groups.entrySet()) {
             String group = groupEntry.getKey();
             if (isSystemGroup(group)) {
                 continue;
             }
+            attemptedGroupQueries++;
             try {
                 ConsumerConnection consumerConnection = adminExt.examineConsumerConnectionInfo(group);
                 successfulGroupQueries++;
@@ -232,7 +248,9 @@ public class RocketMQClientProvider implements ClientProvider {
                 log.warn("Failed to examine consumer connection for group={}, skipping", group, e);
             }
         }
-        if (!groups.isEmpty() && successfulGroupQueries == 0) {
+        // Only fail when at least one non-system group was actually attempted and all of them
+        // failed; a cluster whose subscription table holds only system groups is not an error.
+        if (attemptedGroupQueries > 0 && successfulGroupQueries == 0) {
             throw new BusinessException(502, "Failed to query consumer connections from all groups");
         }
         return result;
@@ -273,7 +291,7 @@ public class RocketMQClientProvider implements ClientProvider {
                 .protocol(Protocol.Remoting)
                 .address(connection.getClientAddr())
                 .language(mapLanguage(connection.getLanguage()))
-                .version(String.valueOf(connection.getVersion()))
+                .version(MQVersion.getVersionDesc(connection.getVersion()))
                 .clusterName(clusterId)
                 .build();
     }

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -102,9 +102,9 @@ describe('Message page query history', () => {
         { name: 'inventory-sync' },
       ]);
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
-      selectedInstanceId: 'instance-a',
+      selectedInstanceId: 1,
       selectInstance: vi.fn(),
-      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+      instanceOptions: [{ value: 1, label: 'Instance A' }],
     });
   });
 
@@ -142,7 +142,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
         topic: 'order-create',
         key: 'ORDER-001',
-        instanceId: 'instance-a',
+        instanceId: 1,
       });
     });
 
@@ -162,7 +162,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
-        instanceId: 'instance-a',
+        instanceId: 1,
       });
     });
   });
@@ -215,7 +215,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
-        instanceId: 'instance-a',
+        instanceId: 1,
       });
       expect(screen.getByRole('button', { name: /最近查询/ })).toBeEnabled();
     });
@@ -232,12 +232,24 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
-        instanceId: 'instance-a',
+        instanceId: 1,
       });
     });
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
+    // Clearing requires confirmation: the dialog is commanded imperatively, so spy on it
+    // and drive the confirm callback instead of depending on portal rendering in jsdom.
+    const confirmSpy = vi
+      .spyOn(Modal, 'confirm')
+      .mockImplementation((config) => {
+        config.onOk?.();
+        return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<
+          typeof Modal.confirm
+        >;
+      });
     await user.click(await screen.findByText('清空历史'));
+    expect(confirmSpy).toHaveBeenCalled();
+    confirmSpy.mockRestore();
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
     expect(localStorage).toHaveLength(0);
   });
@@ -257,7 +269,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-FAILED',
-        instanceId: 'instance-a',
+        instanceId: 1,
       });
     });
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
@@ -345,7 +357,7 @@ describe('Message page query history', () => {
         tag: 'vip',
         startTime: 1_700_000_000_000,
         endTime: 1_700_003_600_000,
-        instanceId: 'instance-a',
+        instanceId: 1,
       });
     });
 
@@ -355,7 +367,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
         topic: 'payment-callback',
         key: 'ORDER-001',
-        instanceId: 'instance-a',
+        instanceId: 1,
       });
       expect(screen.getByPlaceholderText('输入 Message Key')).toHaveValue('ORDER-001');
     });
@@ -426,7 +438,7 @@ describe('Message page query history', () => {
 
   it('requires an instance before allowing a message query', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
-      selectedInstanceId: '',
+      selectedInstanceId: undefined,
       selectInstance: vi.fn(),
       instanceOptions: [],
     });
@@ -443,21 +455,21 @@ describe('Message page query history', () => {
 
   it('loads topic options only for the selected instance', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
-      selectedInstanceId: 'instance-a',
+      selectedInstanceId: 1,
       selectInstance: vi.fn(),
-      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+      instanceOptions: [{ value: 1, label: 'Instance A' }],
     });
     topicServiceMocks.listTopics.mockResolvedValue([{ name: 'topic-on-instance-a' }]);
     renderWithProviders(<MessagePage />);
 
     await waitFor(() => {
-      expect(topicServiceMocks.listTopics).toHaveBeenCalledWith({ instanceId: 'instance-a' });
+      expect(topicServiceMocks.listTopics).toHaveBeenCalledWith({ instanceId: 1 });
     });
   });
 
   it('does not load static topic options without a selected instance', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
-      selectedInstanceId: '',
+      selectedInstanceId: undefined,
       selectInstance: vi.fn(),
       instanceOptions: [],
     });
@@ -470,9 +482,9 @@ describe('Message page query history', () => {
 
   it('clears topic options when loading the selected instance topics fails', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
-      selectedInstanceId: 'instance-a',
+      selectedInstanceId: 1,
       selectInstance: vi.fn(),
-      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+      instanceOptions: [{ value: 1, label: 'Instance A' }],
     });
     topicServiceMocks.listTopics.mockRejectedValue(new Error('topic lookup failed'));
     const user = userEvent.setup();

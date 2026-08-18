@@ -120,6 +120,7 @@ const formatSize = (bytes: number): string => {
 };
 
 const formatTimeMs = (value: number | string): string => {
+  if (!value) return '-';
   const d = new Date(value);
   const pad = (n: number, len = 2) => String(n).padStart(len, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
@@ -241,7 +242,7 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
    MessagePage
    ═══════════════════════════════════════════ */
 type InstanceFilterProps = {
-  selectedInstanceId: string;
+  selectedInstanceId: string | undefined;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
 };
@@ -445,7 +446,14 @@ const MessagePageContent = ({
 
   const handleRecentQueryMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'clear') {
-      clearRecentQueries();
+      Modal.confirm({
+        title: '清空查询历史',
+        content: '确定要清空全部查询历史吗？此操作不可恢复。',
+        okText: '清空',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: clearRecentQueries,
+      });
       return;
     }
     const recentQuery = recentQueries[Number(key)];
@@ -502,7 +510,7 @@ const MessagePageContent = ({
       width: 170,
       sorter: (a, b) => a.topic.localeCompare(b.topic),
       render: (topic: string) => (
-        <Text strong style={{ fontSize: 13 }}>
+        <Text strong style={{ fontSize: 14 }}>
           {topic}
         </Text>
       ),
@@ -522,7 +530,7 @@ const MessagePageContent = ({
       width: 120,
       sorter: (a, b) => (a.key ?? '').localeCompare(b.key ?? ''),
       render: (key: string | null) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{key || '-'}</span>
+        <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{key || '-'}</span>
       ),
     },
     {
@@ -531,7 +539,7 @@ const MessagePageContent = ({
       key: 'msgId',
       sorter: (a, b) => a.msgId.localeCompare(b.msgId),
       render: (id: string) => (
-        <Paragraph copyable style={{ fontSize: 13, marginBottom: 0, fontFamily: 'monospace' }}>
+        <Paragraph copyable style={{ fontSize: 14, marginBottom: 0, fontFamily: 'monospace' }}>
           {id}
         </Paragraph>
       ),
@@ -543,7 +551,7 @@ const MessagePageContent = ({
       width: 185,
       sorter: (a, b) => new Date(a.storeTime).valueOf() - new Date(b.storeTime).valueOf(),
       render: (time: string) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 13, whiteSpace: 'nowrap' }}>
+        <span style={{ fontFamily: 'monospace', fontSize: 14, whiteSpace: 'nowrap' }}>
           {formatTimeMs(time)}
         </span>
       ),
@@ -617,7 +625,7 @@ const MessagePageContent = ({
       dataIndex: 'deliveryStatus',
       key: 'deliveryStatus',
       render: (status: string) => {
-        const s = DELIVERY_STATUS_MAP[status.toLowerCase()] || {
+        const s = DELIVERY_STATUS_MAP[(status ?? '').toLowerCase()] || {
           label: status,
           color: 'default',
         };
@@ -632,7 +640,7 @@ const MessagePageContent = ({
         time === '-' ? (
           <span style={{ color: '#9CA3AF' }}>-</span>
         ) : (
-          <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{formatTimeMs(time)}</span>
+          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatTimeMs(time)}</span>
         ),
     },
     {
@@ -691,7 +699,7 @@ const MessagePageContent = ({
               padding: '12px 16px',
               borderRadius: 6,
               fontFamily: "'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace",
-              fontSize: 13,
+              fontSize: 14,
               lineHeight: 1.7,
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-all',
@@ -717,12 +725,12 @@ const MessagePageContent = ({
           items={traceData.nodes.map((node) => ({
             title: node.title,
             description: (
-              <div style={{ fontSize: 13 }}>
+              <div style={{ fontSize: 14 }}>
                 <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
                   {formatTimeMs(node.timestamp)}
                 </div>
                 <div style={{ marginTop: 2 }}>{node.description}</div>
-                <div style={{ color: '#9CA3AF', fontSize: 12 }}>耗时 {node.costTime}ms</div>
+                <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
               </div>
             ),
             status: node.status,
@@ -883,7 +891,7 @@ const MessagePageContent = ({
       )}
       <MessageQueryHistoryDrawer
         open={historyDrawerOpen}
-        clusterId={selectedInstanceId || undefined}
+        clusterId={selectedInstanceId}
         onClose={() => setHistoryDrawerOpen(false)}
       />
 

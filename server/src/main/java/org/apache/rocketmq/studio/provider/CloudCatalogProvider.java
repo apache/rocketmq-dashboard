@@ -28,9 +28,9 @@ public interface CloudCatalogProvider {
 
     InstanceVendor vendor();
 
-    List<CloudRegionVO> listRegions(String credentialId);
+    List<CloudRegionVO> listRegions(Long credentialId);
 
-    List<CloudInstanceOptionVO> listCloudInstances(String credentialId, String regionId, String search);
+    List<CloudInstanceOptionVO> listCloudInstances(Long credentialId, String regionId, String search);
 
-    CloudInstanceDetailVO getCloudInstance(String credentialId, String regionId, String cloudInstanceId);
+    CloudInstanceDetailVO getCloudInstance(Long credentialId, String regionId, String cloudInstanceId);
 }

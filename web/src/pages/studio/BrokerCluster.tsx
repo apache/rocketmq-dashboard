@@ -20,9 +20,11 @@ import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Sel
 import { ArrowClockwise, Cloud, ChartBar, PlugsConnected } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import { listClusters } from '../../services/clusterService';
+import { isMockMode } from '../../services/dataMode';
 import type { ClusterInfo } from '../../api/cluster';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
@@ -95,7 +97,7 @@ function mapClusters(clusters: ClusterInfo[]): {
   clusters.forEach((cluster) => {
     const clusterLabel = cluster.nsClusterName || cluster.name || cluster.id;
 
-    cluster.brokers.forEach((broker, index) => {
+    (cluster.brokers ?? []).forEach((broker, index) => {
       brokers.push({
         key: `${cluster.id}-broker-${broker.addr || index}`,
         clusterId: cluster.id,
@@ -110,7 +112,7 @@ function mapClusters(clusters: ClusterInfo[]): {
       });
     });
 
-    cluster.nameServers.forEach((nameServer, index) => {
+    (cluster.nameServers ?? []).forEach((nameServer, index) => {
       nameServers.push({
         key: `${cluster.id}-ns-${nameServer.addr || index}`,
         k8sCluster: clusterLabel,
@@ -122,7 +124,7 @@ function mapClusters(clusters: ClusterInfo[]): {
       });
     });
 
-    cluster.proxies.forEach((proxy, index) => {
+    (cluster.proxies ?? []).forEach((proxy, index) => {
       const host = hostOf(proxy.addr);
       proxies.push({
         key: `${cluster.id}-proxy-${proxy.addr || index}`,
@@ -149,7 +151,8 @@ const BrokerClusterPage = () => {
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState('');
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+  const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
   const { message } = App.useApp();
@@ -161,7 +164,7 @@ const BrokerClusterPage = () => {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (!selectedInstanceId) {
+    if (!selectedInstanceId && !isMockMode()) {
       clearData();
       return;
     }
@@ -169,16 +172,16 @@ const BrokerClusterPage = () => {
     setLoading(true);
     try {
       const clusters = await listClusters(selectedInstanceId);
-      if (requestId !== loadRequestId.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
       const mapped = mapClusters(clusters);
       setBrokerData(mapped.brokers);
       setNameServerData(mapped.nameServers);
       setProxyData(mapped.proxies);
     } catch {
-      if (requestId !== loadRequestId.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
       message.error(t('common.refreshFailed'));
     } finally {
-      if (requestId === loadRequestId.current) {
+      if (mountedRef.current && requestId === loadRequestId.current) {
         setLoading(false);
       }
     }
@@ -189,8 +192,9 @@ const BrokerClusterPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (!active) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId(nextInstances[0]?.name ?? '');
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        setInstances(apacheInstances);
+        setSelectedInstanceId(apacheInstances[0]?.name);
       })
       .catch(() => {
         if (!active) return;
@@ -203,23 +207,18 @@ const BrokerClusterPage = () => {
   }, [clearData, message, t]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const requestId = loadRequestId.current;
-    // The state updates are performed by the asynchronous cluster API request, not by this effect itself.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadData();
+    void Promise.resolve().then(() => {
+      loadData();
+    });
     return () => {
       loadRequestId.current = requestId + 1;
+      mountedRef.current = false;
     };
   }, [loadData]);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const intervalId = window.setInterval(() => {
-      void loadData();
-    }, REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [autoRefresh, loadData]);
+  useVisiblePolling(autoRefresh, REFRESH_INTERVAL_MS, loadData);
 
   const renderStatus = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {
@@ -255,7 +254,7 @@ const BrokerClusterPage = () => {
           style={{ width: 80, margin: 0 }}
           strokeColor={color}
         />
-        <span style={{ fontSize: 12, color, fontWeight: 500 }}>{percent}%</span>
+        <span style={{ fontSize: 14, color, fontWeight: 500 }}>{percent}%</span>
       </div>
     );
   };
@@ -294,7 +293,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -351,7 +350,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -396,7 +395,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -413,7 +412,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -456,7 +455,7 @@ const BrokerClusterPage = () => {
         <Space size="middle">
           <Select
             aria-label="选择实例"
-            value={selectedInstanceId || undefined}
+            value={selectedInstanceId}
             onChange={setSelectedInstanceId}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
@@ -476,7 +475,10 @@ const BrokerClusterPage = () => {
       </div>
 
       <Spin spinning={loading} tip={t('common.loading')}>
-        <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+        <Card
+          variant="borderless"
+          style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
+        >
           <Tabs
             activeKey={activeTab}
             onChange={setActiveTab}

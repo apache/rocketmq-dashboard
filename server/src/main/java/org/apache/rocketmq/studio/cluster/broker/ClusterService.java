@@ -23,6 +23,8 @@ import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
 import org.apache.rocketmq.studio.cluster.nameserver.RestartNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
@@ -39,16 +41,29 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ClusterService {
 
+    private static final long REGISTRY_PROBE_TIMEOUT_SECONDS = 15;
+
+    private static final ExecutorService REGISTRY_PROBE_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "nameserver-registry-probe");
+        thread.setDaemon(true);
+        return thread;
+    });
+
     private final ClusterRepository clusterRepository;
     private final ClusterProvider clusterProvider;
     private final RocketMQBrokerConfigService brokerConfigService;
     private final AuditService auditService;
+    private final NameserverRegistryService registryService;
 
     public List<ClusterVO> listClusters() {
         log.info("Listing all clusters");
@@ -58,6 +73,49 @@ public class ClusterService {
             return discovered;
         }
         return List.of();
+    }
+
+    /**
+     * Probes every nameserver address registered in rmq_nameserver concurrently and
+     * aggregates the online clusters. A single unreachable or timed-out entry is
+     * logged and skipped without affecting the other entries.
+     */
+    public List<ClusterVO> listRegistryClusters() {
+        List<NameserverRegistryVO> entries = registryService.list();
+        if (entries.isEmpty()) {
+            return List.of();
+        }
+        List<CompletableFuture<List<ClusterVO>>> futures = entries.stream()
+                .filter(entry -> entry.getNamesrvAddr() != null && !entry.getNamesrvAddr().isBlank())
+                .map(entry -> CompletableFuture
+                        .supplyAsync(() -> probeRegistryEntry(entry), REGISTRY_PROBE_EXECUTOR)
+                        .orTimeout(REGISTRY_PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                        .exceptionally(ex -> {
+                            log.warn("NameServer registry probe timed out or failed for {} ({}): {}",
+                                    entry.getName(), entry.getNamesrvAddr(), ex.getMessage());
+                            return List.of();
+                        }))
+                .toList();
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .flatMap(List::stream)
+                .toList();
+    }
+
+    private List<ClusterVO> probeRegistryEntry(NameserverRegistryVO entry) {
+        try {
+            List<ClusterVO> clusters = clusterProvider.discoverClustersAt(entry.getNamesrvAddr());
+            for (ClusterVO cluster : clusters) {
+                cluster.setNsClusterName(cluster.getName());
+                cluster.setName(entry.getName());
+                cluster.setEndpoint(entry.getNamesrvAddr());
+            }
+            return clusters;
+        } catch (Exception e) {
+            log.warn("Failed to probe NameServer registry entry {} ({}): {}",
+                    entry.getName(), entry.getNamesrvAddr(), e.getMessage());
+            return List.of();
+        }
     }
 
     public List<ClusterVO> listClusters(String instanceId) {

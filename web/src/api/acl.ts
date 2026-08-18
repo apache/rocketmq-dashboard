@@ -2,7 +2,7 @@ import client from './client';
 
 // Matches mock/acl.ts
 export interface AclRule {
-  id: string;
+  id: number;
   principal: string;
   resource: string;
   resourceType: string;
@@ -11,7 +11,7 @@ export interface AclRule {
   decision: string;
   scope: string;
   aclVersion: number | string;
-  createdAt?: string | null;
+  gmtCreate?: string | null;
 }
 
 export interface AclRuleQuery {
@@ -27,7 +27,7 @@ interface AclUserQuery {
 }
 
 export interface AclUser {
-  id: string;
+  id: number;
   username: string;
   accessKey: string;
   secretKey: string;
@@ -35,7 +35,7 @@ export interface AclUser {
   clusters: string[];
   permRead?: boolean;
   permWrite?: boolean;
-  createdAt?: string | null;
+  gmtCreate?: string | null;
 }
 
 export async function listAclRules(params?: AclRuleQuery) {
@@ -53,7 +53,7 @@ export async function updateAclRule(data: Partial<AclRule> & { instanceId?: stri
   return res.data.data;
 }
 
-export async function deleteAclRule(id: string, instanceId?: string) {
+export async function deleteAclRule(id: number, instanceId?: string) {
   await client.post('/acl/rules/delete', { id, instanceId });
 }
 
@@ -62,7 +62,7 @@ export async function listAclUsers(params?: AclUserQuery) {
   return res.data.data;
 }
 
-export async function getAclUserCredentials(id: string, instanceId?: string) {
+export async function getAclUserCredentials(id: number, instanceId?: string) {
   const res = await client.get<{ data: AclUser }>(
     `/acl/users/${encodeURIComponent(id)}/credentials`,
     { params: { instanceId } },
@@ -80,7 +80,7 @@ export async function updateAclUser(data: Partial<AclUser> & { instanceId?: stri
   return res.data.data;
 }
 
-export async function deleteAclUser(id: string, instanceId?: string) {
+export async function deleteAclUser(id: number, instanceId?: string) {
   await client.post('/acl/users/delete', { id, instanceId });
 }
 
@@ -95,7 +95,7 @@ export interface PlainAccessConfig {
   defaultGroupPerm?: string;
   topicPerms?: string[];
   groupPerms?: string[];
-  createdAt?: string | null;
+  gmtCreate?: string | null;
 }
 
 export interface AclClusterConfig {

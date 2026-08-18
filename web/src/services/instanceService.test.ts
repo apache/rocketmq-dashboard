@@ -22,7 +22,13 @@ vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
 
-import { createInstance, deleteInstance, listInstances, updateInstance } from './instanceService';
+import {
+  createInstance,
+  deleteInstance,
+  getInstanceCapabilities,
+  listInstances,
+  updateInstance,
+} from './instanceService';
 
 describe('instanceService mock instances', () => {
   it('returns defensive copies from list reads', async () => {
@@ -42,16 +48,23 @@ describe('instanceService mock instances', () => {
 
   it('filters mock instances with the same type and search semantics as the API', async () => {
     const byType = await listInstances({ type: 'DIRECT' });
-    expect(byType.map((instance) => instance.id)).toEqual([
-      'instance-direct-1',
-      'instance-direct-2',
-    ]);
+    expect(byType.map((instance) => instance.id)).toEqual([1, 2]);
 
     const byEndpoint = await listInstances({ search: '  10.0.2.21  ' });
-    expect(byEndpoint.map((instance) => instance.id)).toEqual(['instance-proxy-1']);
+    expect(byEndpoint.map((instance) => instance.id)).toEqual([3]);
 
     const combined = await listInstances({ type: 'DIRECT', search: 'instance-direct-2' });
-    expect(combined.map((instance) => instance.id)).toEqual(['instance-direct-2']);
+    expect(combined.map((instance) => instance.id)).toEqual([2]);
+
+    const allProxy = await listInstances({ type: 'PROXY' });
+    expect(allProxy.map((instance) => instance.type)).toEqual([
+      'PROXY_CLUSTER',
+      'PROXY_CLUSTER',
+      'PROXY_LOCAL',
+    ]);
+    await expect(listInstances({ type: 'PROXY_LOCAL' })).resolves.toEqual([
+      expect.objectContaining({ type: 'PROXY_LOCAL' }),
+    ]);
   });
 
   it('does not expose created or updated store records by reference', async () => {
@@ -69,11 +82,12 @@ describe('instanceService mock instances', () => {
     const storedCreated = afterCreate.find((instance) => instance.id === created.id);
     expect(storedCreated).toMatchObject({
       name: 'rocketmq-copy-test',
+      type: 'PROXY_CLUSTER',
       remark: 'created',
     });
 
     const updated = await updateInstance({
-      id: created.id,
+      instanceId: 'rocketmq-copy-test',
       remark: 'updated',
     });
     updated.remark = 'mutated-updated';
@@ -91,5 +105,19 @@ describe('instanceService mock instances', () => {
     );
 
     await expect(listInstances()).resolves.toEqual(before);
+  });
+
+  it('returns provider-specific mock capabilities without sharing mutable arrays', async () => {
+    const first = await getInstanceCapabilities('instance-direct-1');
+    expect(first.instanceId).toBe('instance-direct-1');
+    expect(first.vendor).toBe('APACHE');
+    first.capabilities.length = 0;
+
+    const second = await getInstanceCapabilities('instance-direct-1');
+
+    expect(second.capabilities).toContain('DLQ_MANAGEMENT');
+    await expect(getInstanceCapabilities('missing-instance')).rejects.toThrow(
+      'Instance not found: missing-instance',
+    );
   });
 });

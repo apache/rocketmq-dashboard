@@ -303,6 +303,134 @@ tools:
             type: integer
     viewHint: table
     deprecated: false
+  - name: rmq.message.query
+    cli:
+      resource: message
+      verb: query
+    description: Query messages in a RocketMQ instance by topic, message id, key or time range.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+        msgId:
+          type: string
+        key:
+          type: string
+        tag:
+          type: string
+        startTime:
+          type: integer
+        endTime:
+          type: integer
+    outputSchema:
+      type: array
+      items:
+        type: object
+        required:
+          - msgId
+          - topic
+        additionalProperties: false
+        properties:
+          msgId:
+            type: string
+          topic:
+            type: string
+          tag:
+            type: string
+          key:
+            type: string
+          storeTime:
+            type: integer
+          storeHost:
+            type: string
+          bornHost:
+            type: string
+          body:
+            type: string
+          bodyEncoding:
+            type: string
+          bodyTruncated:
+            type: boolean
+          size:
+            type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.message.trace
+    cli:
+      resource: message
+      verb: trace
+    description: Return the message trace timeline for one message id.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - msgId
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        msgId:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+    outputSchema:
+      type: object
+      required:
+        - msgId
+        - nodes
+      additionalProperties: false
+      properties:
+        msgId:
+          type: string
+        nodes:
+          type: array
+          items:
+            type: object
+            required:
+              - title
+            additionalProperties: false
+            properties:
+              title:
+                type: string
+              timestamp:
+                type: integer
+              status:
+                type: string
+              costTime:
+                type: integer
+              description:
+                type: string
+        consumerStatus:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              group:
+                type: string
+              deliveryStatus:
+                type: string
+              consumeTime:
+                type: integer
+              retryCount:
+                type: integer
+    viewHint: text
+    deprecated: false
   - name: rmq.alert.rule.list
     cli:
       resource: alert-rule
@@ -343,7 +471,7 @@ tools:
         additionalProperties: false
         properties:
           id:
-            type: string
+            type: integer
           name:
             type: string
           metric:

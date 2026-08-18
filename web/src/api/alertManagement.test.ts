@@ -61,11 +61,11 @@ describe('AlertManagement API', () => {
   it('lists persisted alert rules', async () => {
     mock.onGet('/alert-rules').reply(200, {
       code: 200,
-      data: [{ id: 'rule-1', name: 'High Lag', metric: 'lag', enabled: true }],
+      data: [{ id: 7, name: 'High Lag', metric: 'lag', enabled: true }],
     });
 
     await expect(listAlertRules()).resolves.toEqual([
-      { id: 'rule-1', name: 'High Lag', metric: 'lag', enabled: true },
+      { id: 7, name: 'High Lag', metric: 'lag', enabled: true },
     ]);
   });
 
@@ -80,15 +80,15 @@ describe('AlertManagement API', () => {
     };
     mock.onPost('/alert-rules/create').reply((config) => {
       expect(JSON.parse(config.data as string)).toEqual(request);
-      return [200, { code: 200, data: { ...request, id: 'rule-1' } }];
+      return [200, { code: 200, data: { ...request, id: 7 } }];
     });
 
-    await expect(createAlertRule(request)).resolves.toMatchObject({ id: 'rule-1' });
+    await expect(createAlertRule(request)).resolves.toMatchObject({ id: 7 });
   });
 
   it('updates persisted alert rules', async () => {
     const request = {
-      id: 'rule-1',
+      id: 7,
       name: 'High Lag',
       metric: 'rocketmq_consumer_lag_messages',
       operator: '>',
@@ -106,22 +106,22 @@ describe('AlertManagement API', () => {
 
   it('toggles persisted alert rules', async () => {
     mock.onPost('/alert-rules/toggle').reply((config) => {
-      expect(JSON.parse(config.data as string)).toEqual({ id: 'rule-1', enabled: false });
-      return [200, { code: 200, data: { id: 'rule-1', name: 'High Lag', enabled: false } }];
+      expect(JSON.parse(config.data as string)).toEqual({ id: 7, enabled: false });
+      return [200, { code: 200, data: { id: 7, name: 'High Lag', enabled: false } }];
     });
 
-    await expect(toggleAlertRule('rule-1', false)).resolves.toMatchObject({
-      id: 'rule-1',
+    await expect(toggleAlertRule(7, false)).resolves.toMatchObject({
+      id: 7,
       enabled: false,
     });
   });
 
   it('deletes persisted alert rules', async () => {
     mock.onPost('/alert-rules/delete').reply((config) => {
-      expect(JSON.parse(config.data as string)).toEqual({ id: 'rule-1' });
+      expect(JSON.parse(config.data as string)).toEqual({ id: 7 });
       return [200, { code: 200, data: null }];
     });
 
-    await expect(deleteAlertRule('rule-1')).resolves.toBeUndefined();
+    await expect(deleteAlertRule(7)).resolves.toBeUndefined();
   });
 });

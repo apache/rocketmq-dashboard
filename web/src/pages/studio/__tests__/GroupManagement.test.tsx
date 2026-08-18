@@ -64,8 +64,8 @@ const makeGroup = (overrides: Partial<ConsumerGroup>): ConsumerGroup => ({
   subscribedTopics: ['ORDER_TOPIC'],
   subscriptionDataType: 'NORMAL',
   retryMaxTimes: 16,
-  createdAt: '2025-03-15 10:30:00',
-  updatedAt: '2025-03-15 10:30:00',
+  gmtCreate: '2025-03-15 10:30:00',
+  gmtModified: '2025-03-15 10:30:00',
   delaySeconds: 12,
   instances: [],
   ...overrides,
@@ -102,6 +102,7 @@ describe('GroupManagement Page', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('should render the page title', () => {
@@ -218,27 +219,38 @@ describe('GroupManagement Page', () => {
     expect(screen.queryByText('initial-group')).not.toBeInTheDocument();
   });
 
-  it('polls only while auto refresh is enabled', async () => {
-    vi.useFakeTimers();
+  it('polls only while auto refresh is enabled and the document is visible', async () => {
+    const visibilityState = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     renderWithProviders(<GroupManagement />);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await screen.findByText('order-consumer-group');
     expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
 
     const autoRefreshSwitch = screen.getByRole('switch');
     fireEvent.click(autoRefreshSwitch);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
+
+    visibilityState.mockReturnValue('visible');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
     expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(3);
 
     fireEvent.click(autoRefreshSwitch);
     await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
       await vi.advanceTimersByTimeAsync(4000);
     });
-    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(2);
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(3);
   });
 
   it('should filter groups by search text', async () => {
@@ -254,7 +266,7 @@ describe('GroupManagement Page', () => {
   });
   it('scopes global group detail diagnostics to the record instance', async () => {
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
-      makeGroup({ name: 'shared-group', instanceId: 'instance-b' }),
+      makeGroup({ name: 'shared-group', instanceId: 'instance-2' }),
     ]);
     const user = userEvent.setup();
     renderWithProviders(<GroupManagement />);
@@ -264,11 +276,11 @@ describe('GroupManagement Page', () => {
     await waitFor(() => {
       expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
         'shared-group',
-        'instance-b',
+        'instance-2',
       );
       expect(consumerService.getConsumerProgress).toHaveBeenCalledWith(
         'shared-group',
-        'instance-b',
+        'instance-2',
       );
     });
   });
@@ -289,8 +301,8 @@ describe('GroupManagement Page', () => {
 
   it('uses unique row keys for same-named groups from different instances', async () => {
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
-      makeGroup({ name: 'shared-group', instanceId: 'instance-a' }),
-      makeGroup({ name: 'shared-group', instanceId: 'instance-b' }),
+      makeGroup({ name: 'shared-group', instanceId: 'instance-1' }),
+      makeGroup({ name: 'shared-group', instanceId: 'instance-2' }),
     ]);
     const { container } = renderWithProviders(<GroupManagement />);
     await screen.findAllByText('shared-group');
@@ -298,8 +310,8 @@ describe('GroupManagement Page', () => {
     const rowKeys = Array.from(container.querySelectorAll('tbody tr[data-row-key]')).map((row) =>
       row.getAttribute('data-row-key'),
     );
-    expect(rowKeys).toContain('instance-a\0shared-group');
-    expect(rowKeys).toContain('instance-b\0shared-group');
+    expect(rowKeys).toContain('instance-1\0shared-group');
+    expect(rowKeys).toContain('instance-2\0shared-group');
     expect(new Set(rowKeys).size).toBe(rowKeys.length);
   });
 });

@@ -61,8 +61,8 @@ const { TextArea } = Input;
 
 // ─── Types ────────────────────────────────────────────────────────
 interface AlertRule {
-  key: string;
-  id?: string;
+  key: string | number;
+  id?: number;
   index: number;
   alert: string;
   group: string;
@@ -247,15 +247,51 @@ function parseExpression(
   };
 }
 
+function parseScopeLabels(metric: string): {
+  metric: string;
+  clusterName?: string;
+  brokerName?: string;
+} {
+  const open = metric.indexOf('{');
+  if (open < 0) return { metric };
+  const metricName = metric.slice(0, open).trim();
+  const inner = metric.slice(open + 1, metric.lastIndexOf('}'));
+  let clusterName: string | undefined;
+  let brokerName: string | undefined;
+  const remaining: string[] = [];
+  for (const part of inner.split(',')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    const key = part.slice(0, eq).trim();
+    const raw = part.slice(eq + 1).trim();
+    const value = raw.replace(/^"|"$/g, '').replace(/\\\\/g, '\\').replace(/\\"/g, '"');
+    if (key === 'cluster') clusterName = value;
+    else if (key === 'broker') brokerName = value;
+    else remaining.push(part.trim());
+  }
+  // Rebuild the metric expression preserving every non-scope label.
+  const metricExpr =
+    remaining.length > 0
+      ? `${metricName}{${remaining.join(',')}}`
+      : clusterName || brokerName
+        ? metricName
+        : metric;
+  return { metric: metricExpr, clusterName, brokerName };
+}
+
 function toAlertRuleRequest(
   values: AlertRuleFormValues,
   editingRule: AlertRule | null,
 ): AlertRuleRequest {
   const expression = parseExpression(values.expr);
+  const scope = parseScopeLabels(expression.metric ?? '');
   return {
     id: editingRule?.id,
     name: values.alert.trim(),
     ...expression,
+    metric: scope.metric,
+    clusterName: scope.clusterName,
+    brokerName: scope.brokerName,
     duration: values.for,
     enabled: values.enabled ?? true,
     description: combineDescription(values.summary, values.description),
@@ -525,7 +561,7 @@ const AlertManagementPage: React.FC = () => {
         <Tooltip title={text}>
           <code
             style={{
-              fontSize: 12,
+              fontSize: 14,
               opacity: record.enabled ? 1 : 0.5,
               background: '#f5f5f5',
               padding: '2px 6px',

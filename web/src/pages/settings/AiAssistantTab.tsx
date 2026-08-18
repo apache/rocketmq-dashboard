@@ -16,20 +16,24 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { CaretDownOutlined, ControlOutlined, KeyOutlined, RobotOutlined } from '@ant-design/icons';
 import {
   Alert,
+  App,
+  AutoComplete,
   Button,
   Card,
+  Col,
+  Flex,
   Form,
   Input,
   InputNumber,
+  Row,
   Select,
   Slider,
   Space,
   Tag,
-  App,
 } from 'antd';
-import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import {
   getLlmConfig,
@@ -39,7 +43,7 @@ import {
   type LlmConfig,
   type LlmTestResult,
 } from '../../api/llm';
-import { fallbackModelOptions } from './llmModelOptions';
+import { fallbackModelOptions } from '../studio/llmModelOptions';
 
 const PROVIDER_OPTIONS = [
   { value: 'tongyi', label: '通义千问（DashScope）' },
@@ -63,13 +67,33 @@ const DEFAULT_BASE_URL: Record<string, string> = {
   ollama: 'http://localhost:11434/v1',
 };
 
+const BASE_URL_PRESETS: Record<string, { value: string; label: string }[]> = {
+  tongyi: [
+    {
+      value: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      label: '百炼 DashScope 标准（compatible-mode）',
+    },
+    {
+      value: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+      label: 'Token Plan 网关（OpenAI 兼容）',
+    },
+    {
+      value: 'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic',
+      label: 'Token Plan 网关（Anthropic 兼容）',
+    },
+  ],
+  openai: [{ value: 'https://api.openai.com/v1', label: 'OpenAI 官方' }],
+  deepseek: [{ value: 'https://api.deepseek.com/v1', label: 'DeepSeek 官方' }],
+  ollama: [{ value: 'http://localhost:11434/v1', label: 'Ollama 本地' }],
+};
+
 interface TestState {
   success: boolean;
   msg: string;
   hint?: string;
 }
 
-const LlmSettingsPage: React.FC = () => {
+export const AiAssistantTab = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const [form] = Form.useForm();
@@ -234,6 +258,13 @@ const LlmSettingsPage: React.FC = () => {
           setApiKeyConfigured(true);
           form.setFieldValue('apiKey', undefined);
         }
+        try {
+          const models = await getLlmModels();
+          const remoteModels = models.data?.map((model) => model.id || '').filter(Boolean) ?? [];
+          setModelOptions(buildModelOptions(payload.provider, remoteModels, payload.model));
+        } catch {
+          message.warning(t('ai.modelsRefreshFailedAfterSave'));
+        }
       } else {
         message.error(result.errMsg || '保存失败');
       }
@@ -245,115 +276,175 @@ const LlmSettingsPage: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: 24 }}>
-      <PageHeader title={t('llm.title')} subtitle="配置 AI 助手使用的模型服务" />
-
-      <Card loading={loading} style={{ maxWidth: 720 }}>
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ provider: 'tongyi', engine: 'claude-code' }}
-          onValuesChange={invalidateTestRequest}
-        >
-          <Form.Item
-            label="执行引擎"
-            name="engine"
-            extra="Claude Code / Qoder 引擎在服务器上以 CLI 子进程方式运行，凭据经环境变量注入；HTTP 引擎直连 OpenAI 兼容接口"
-          >
-            <Select options={ENGINE_OPTIONS} />
-          </Form.Item>
-
-          <Form.Item
-            label="模型服务商"
-            name="provider"
-            rules={[{ required: true, message: '请选择模型服务商' }]}
-          >
-            <Select options={PROVIDER_OPTIONS} onChange={handleProviderChange} />
-          </Form.Item>
-
-          <Form.Item
-            label="模型"
-            name="model"
-            rules={[{ required: true, message: '请选择或输入模型' }]}
-            extra="默认使用 qwen3.8-max"
-          >
-            <Select showSearch options={modelOptions} placeholder="选择模型" />
-          </Form.Item>
-
-          <Form.Item
-            label="API Key"
-            name="apiKey"
-            extra={
-              apiKeyConfigured
-                ? '已配置（可能来自环境变量 RMQ_LLM_TOKEN）；留空将保留现有密钥'
-                : '请输入 API Key'
+    <Flex vertical gap={24} style={{ maxWidth: 860 }}>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{ provider: 'tongyi', engine: 'claude-code' }}
+        onValuesChange={invalidateTestRequest}
+      >
+        <Flex vertical gap={24}>
+          <Card
+            loading={loading}
+            title={
+              <Space>
+                <RobotOutlined />
+                执行引擎与模型
+              </Space>
             }
           >
-            <Input.Password
-              placeholder={apiKeyConfigured ? '••••••••（已配置，留空保留）' : 'sk-...'}
-              autoComplete="new-password"
-            />
-          </Form.Item>
-          {apiKeyConfigured && (
-            <div style={{ marginTop: -16, marginBottom: 16 }}>
-              <Tag color="green">密钥已配置</Tag>
-            </div>
-          )}
-
-          <Form.Item
-            label="API Base URL"
-            name="apiBase"
-            rules={[
-              { required: true, message: '请输入 API Base URL' },
-              {
-                pattern: /^https?:\/\/.+/,
-                message: '需为 http/https 地址',
-              },
-            ]}
-          >
-            <Input placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
-          </Form.Item>
-
-          {selectedProvider === 'azure' && (
-            <>
-              <Form.Item
-                label="Azure Deployment Name"
-                name="deploymentName"
-                rules={[{ required: true, message: 'Enter the Azure OpenAI deployment name' }]}
-              >
-                <Input placeholder="my-gpt-deployment" />
-              </Form.Item>
-              <Form.Item
-                label="Azure API Version"
-                name="apiVersion"
-                rules={[{ required: true, message: 'Enter the Azure OpenAI API version' }]}
-              >
-                <Input placeholder="2024-02-15-preview" />
-              </Form.Item>
-            </>
-          )}
-
-          {selectedProvider === 'bedrock' && (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="执行引擎"
+                  name="engine"
+                  extra="Claude Code / Qoder 引擎在服务器上以 CLI 子进程方式运行，凭据经环境变量注入；HTTP 引擎直连 OpenAI 兼容接口"
+                >
+                  <Select options={ENGINE_OPTIONS} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="模型服务商"
+                  name="provider"
+                  rules={[{ required: true, message: '请选择模型服务商' }]}
+                >
+                  <Select options={PROVIDER_OPTIONS} onChange={handleProviderChange} />
+                </Form.Item>
+              </Col>
+            </Row>
             <Form.Item
-              label="AWS Region"
-              name="awsRegion"
-              rules={[{ required: true, message: 'Enter the AWS Bedrock region' }]}
+              label="模型"
+              name="model"
+              rules={[{ required: true, message: '请选择或输入模型' }]}
+              extra="默认使用 qwen3.8-max"
+              style={{ marginBottom: 0 }}
             >
-              <Input placeholder="us-east-1" />
+              <Select showSearch options={modelOptions} placeholder="选择模型" />
             </Form.Item>
-          )}
+          </Card>
 
-          <Form.Item label="Temperature" name="temperature">
-            <Slider min={0} max={2} step={0.1} marks={{ 0: '0', 0.7: '0.7', 2: '2' }} />
-          </Form.Item>
+          <Card
+            loading={loading}
+            title={
+              <Space>
+                <KeyOutlined />
+                凭据与接入地址
+              </Space>
+            }
+          >
+            <Form.Item
+              label="API Key"
+              name="apiKey"
+              extra={
+                apiKeyConfigured
+                  ? '已配置（可能来自环境变量 RMQ_LLM_TOKEN）；留空将保留现有密钥'
+                  : '请输入 API Key'
+              }
+            >
+              <Input.Password
+                placeholder={apiKeyConfigured ? '••••••••（已配置，留空保留）' : 'sk-...'}
+                autoComplete="new-password"
+              />
+            </Form.Item>
+            {apiKeyConfigured && (
+              <div style={{ marginTop: -16, marginBottom: 16 }}>
+                <Tag color="green">密钥已配置</Tag>
+              </div>
+            )}
 
-          <Form.Item label="Max Tokens" name="maxTokens">
-            <InputNumber min={1} max={200000} style={{ width: 200 }} />
-          </Form.Item>
+            <Form.Item
+              label="API Base URL"
+              name="apiBase"
+              rules={[
+                { required: true, message: '请输入 API Base URL' },
+                {
+                  pattern: /^https?:\/\/.+/,
+                  message: '需为 http/https 地址',
+                },
+              ]}
+              style={{
+                marginBottom:
+                  selectedProvider === 'azure' || selectedProvider === 'bedrock' ? undefined : 0,
+              }}
+            >
+              <AutoComplete
+                options={BASE_URL_PRESETS[selectedProvider ?? 'tongyi'] ?? []}
+                placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+                suffixIcon={<CaretDownOutlined style={{ color: '#9CA3AF' }} />}
+                filterOption={(input, option) =>
+                  (option?.value ?? '').toLowerCase().includes(input.toLowerCase()) ||
+                  (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
+                }
+              />
+            </Form.Item>
+
+            {selectedProvider === 'azure' && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label="Azure Deployment Name"
+                    name="deploymentName"
+                    rules={[{ required: true, message: 'Enter the Azure OpenAI deployment name' }]}
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Input placeholder="my-gpt-deployment" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label="Azure API Version"
+                    name="apiVersion"
+                    rules={[{ required: true, message: 'Enter the Azure OpenAI API version' }]}
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Input placeholder="2024-02-15-preview" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            )}
+
+            {selectedProvider === 'bedrock' && (
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label="AWS Region"
+                    name="awsRegion"
+                    rules={[{ required: true, message: 'Enter the AWS Bedrock region' }]}
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Input placeholder="us-east-1" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            )}
+          </Card>
+
+          <Card
+            loading={loading}
+            title={
+              <Space>
+                <ControlOutlined />
+                生成参数
+              </Space>
+            }
+          >
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="Temperature" name="temperature" style={{ marginBottom: 0 }}>
+                  <Slider min={0} max={2} step={0.1} marks={{ 0: '0', 0.7: '0.7', 2: '2' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Max Tokens" name="maxTokens" style={{ marginBottom: 0 }}>
+                  <InputNumber min={1} max={200000} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
 
           {testResult && (
             <Alert
-              style={{ marginBottom: 16 }}
               type={testResult.success ? 'success' : 'error'}
               showIcon
               message={testResult.msg}
@@ -361,20 +452,23 @@ const LlmSettingsPage: React.FC = () => {
             />
           )}
 
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Space>
-              <Button type="primary" loading={saving} onClick={() => void handleSave()}>
-                保存
-              </Button>
-              <Button loading={testing} onClick={() => void handleTest()}>
-                测试连接
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Card>
-    </div>
+          <Space>
+            <Button
+              type="primary"
+              loading={saving}
+              disabled={loading}
+              onClick={() => void handleSave()}
+            >
+              保存
+            </Button>
+            <Button loading={testing} disabled={loading} onClick={() => void handleTest()}>
+              测试连接
+            </Button>
+          </Space>
+        </Flex>
+      </Form>
+    </Flex>
   );
 };
 
-export default LlmSettingsPage;
+export default AiAssistantTab;

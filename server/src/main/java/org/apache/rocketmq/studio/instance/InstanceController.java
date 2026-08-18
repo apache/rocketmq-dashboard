@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,12 +38,19 @@ import java.util.List;
 public class InstanceController {
 
     private final InstanceService instanceService;
+    private final InstanceCapabilityService instanceCapabilityService;
 
     @GetMapping
     public Result<List<InstanceVO>> listInstances(
             @RequestParam(required = false) InstanceType type,
             @RequestParam(required = false) String search) {
         return Result.ok(instanceService.listInstances(type, search));
+    }
+
+    @GetMapping("/{instanceId}/capabilities")
+    public Result<InstanceCapabilitiesVO> getCapabilities(@PathVariable String instanceId) {
+        return Result.ok(instanceCapabilityService.getCapabilities(
+                instanceService.resolveInstanceId(instanceId)));
     }
 
     @PostMapping("/create")
@@ -52,12 +60,14 @@ public class InstanceController {
 
     @PostMapping("/update")
     public Result<InstanceVO> updateInstance(@Valid @RequestBody UpdateInstanceDTO request) {
-        return Result.ok(instanceService.updateInstance(request.toInstanceVO()));
+        InstanceVO vo = request.toInstanceVO();
+        vo.setId(instanceService.resolveInstanceId(request.getInstanceId()));
+        return Result.ok(instanceService.updateInstance(vo));
     }
 
     @PostMapping("/delete")
     public Result<Void> deleteInstance(@Valid @RequestBody DeleteRequestDTO request) {
-        instanceService.deleteInstance(request.getId());
+        instanceService.deleteInstance(instanceService.resolveInstanceId(request.getId()));
         return Result.ok();
     }
 }

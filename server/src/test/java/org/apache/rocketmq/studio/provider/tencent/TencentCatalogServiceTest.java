@@ -39,7 +39,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TencentCatalogServiceTest {
 
-    private static final String CREDENTIAL_ID = "cred-1";
+    private static final Long CREDENTIAL_ID = 1L;
     private static final String REGION = "ap-chengdu";
 
     @Mock
@@ -83,6 +83,22 @@ class TencentCatalogServiceTest {
         assertThat(instances.get(0).getInstanceId()).isEqualTo("rmq-abc");
         assertThat(instances.get(0).getRegionId()).isEqualTo(REGION);
         assertThat(instances.get(0).getTopicCount()).isEqualTo(3);
+    }
+
+    @Test
+    void listCloudInstancesShouldSkipNullItemsTest() {
+        InstanceItem item = new InstanceItem();
+        item.setInstanceId("rmq-valid");
+        item.setInstanceName("chengdu-prod");
+        DescribeInstanceListResponse response = new DescribeInstanceListResponse();
+        response.setData(new InstanceItem[]{null, item});
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        List<CloudInstanceOptionVO> instances = service.listCloudInstances(CREDENTIAL_ID, REGION, null);
+
+        assertThat(instances).singleElement()
+                .extracting(CloudInstanceOptionVO::getInstanceId)
+                .isEqualTo("rmq-valid");
     }
 
     @Test

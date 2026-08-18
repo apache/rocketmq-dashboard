@@ -55,23 +55,23 @@ describe('topic metadata API', () => {
   it('encodes topic names used in path segments', async () => {
     const topicName = '%DLQ%cg-order';
     mock
-      .onGet('/topics/%25DLQ%25cg-order/routes', { params: { instanceId: 'instance-a' } })
+      .onGet('/topics/%25DLQ%25cg-order/routes', { params: { instanceId: 'instance-1' } })
       .reply(200, { code: 200, data: [] });
     mock
-      .onGet('/topics/%25DLQ%25cg-order/consumers', { params: { instanceId: 'instance-a' } })
+      .onGet('/topics/%25DLQ%25cg-order/consumers', { params: { instanceId: 'instance-1' } })
       .reply(200, { code: 200, data: [] });
     mock
       .onGet('/topics/%25DLQ%25cg-order/consumers/page', {
-        params: { instanceId: 'instance-a', page: 2, pageSize: 20 },
+        params: { instanceId: 'instance-1', page: 2, pageSize: 20 },
       })
       .reply(200, {
         code: 200,
         data: { items: [], total: 21, page: 2, pageSize: 20 },
       });
 
-    await expect(getTopicRoutes(topicName, 'instance-a')).resolves.toEqual([]);
-    await expect(getTopicConsumers(topicName, 'instance-a')).resolves.toEqual([]);
-    await expect(getTopicConsumerPage(topicName, 'instance-a', 2, 20)).resolves.toEqual({
+    await expect(getTopicRoutes(topicName, 'instance-1')).resolves.toEqual([]);
+    await expect(getTopicConsumers(topicName, 'instance-1')).resolves.toEqual([]);
+    await expect(getTopicConsumerPage(topicName, 'instance-1', 2, 20)).resolves.toEqual({
       items: [],
       total: 21,
       page: 2,
@@ -89,11 +89,11 @@ describe('topic metadata API', () => {
     };
     mock
       .onGet('/groups/cg%2Forders/instances/client%2F10.0.0.1/stack', {
-        params: { instanceId: 'instance-a' },
+        params: { instanceId: 'instance-1' },
       })
       .reply(200, { code: 200, data: stack });
 
-    await expect(getConsumerStack('cg/orders', 'client/10.0.0.1', 'instance-a')).resolves.toEqual(
+    await expect(getConsumerStack('cg/orders', 'client/10.0.0.1', 'instance-1')).resolves.toEqual(
       stack,
     );
   });
@@ -111,8 +111,8 @@ describe('topic metadata API', () => {
       tps: 0,
       consumerGroupCount: 0,
       remark: '',
-      createdAt: '2026-07-17T00:00:00Z',
-      updatedAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
+      gmtModified: '2026-07-17T00:00:00Z',
     };
     mock.onPost('/topics/create').reply((config) => {
       expect(JSON.parse(config.data)).toMatchObject({
@@ -133,7 +133,7 @@ describe('topic metadata API', () => {
     mock.onPost('/topics/send').reply((config) => {
       expect(JSON.parse(config.data)).toMatchObject({
         topic: topic.name,
-        instanceId: 'instance-a',
+        instanceId: 'instance-1',
         body: '{"id":1}',
       });
       return [200, { code: 200, data: { msgId: 'msg-1', sendTime: 1, offsetMsgId: 'offset-1' } }];
@@ -142,7 +142,7 @@ describe('topic metadata API', () => {
     await expect(createTopic(topic)).resolves.toEqual(topic);
     await expect(deleteTopic(topic.name, 'instance-a', 'cluster-a')).resolves.toBeUndefined();
     await expect(
-      sendTopicMessage({ topic: topic.name, instanceId: 'instance-a', body: '{"id":1}' }),
+      sendTopicMessage({ topic: topic.name, instanceId: 'instance-1', body: '{"id":1}' }),
     ).resolves.toMatchObject({ msgId: 'msg-1' });
   });
 });

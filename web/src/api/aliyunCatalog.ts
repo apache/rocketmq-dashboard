@@ -20,14 +20,14 @@ export interface CloudInstanceOption {
   remark?: string;
 }
 
-export async function listAliyunRegions(credentialId: string) {
+export async function listAliyunRegions(credentialId: number) {
   const res = await client.get<{ data: CloudRegion[] }>('/cloud/aliyun/regions', {
     params: { credentialId },
   });
   return res.data.data;
 }
 
-export async function listAliyunInstances(credentialId: string, regionId: string, search?: string) {
+export async function listAliyunInstances(credentialId: number, regionId: string, search?: string) {
   const res = await client.get<{ data: CloudInstanceOption[] }>('/cloud/aliyun/instances', {
     params: { credentialId, regionId, ...(search ? { search } : {}) },
   });

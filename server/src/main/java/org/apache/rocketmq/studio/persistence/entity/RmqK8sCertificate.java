@@ -27,12 +27,10 @@ import java.time.LocalDateTime;
 @TableName("rmq_k8s_certificate")
 public class RmqK8sCertificate {
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
-    private String name;
-
-    private String namespace;
+    private String k8sId;
 
     private String cluster;
 
@@ -50,7 +48,11 @@ public class RmqK8sCertificate {
 
     private String san;
 
-    private LocalDateTime createdAt;
+    private String certPem;
 
-    private LocalDateTime updatedAt;
+    private String keyPem;
+
+    private LocalDateTime gmtCreate;
+
+    private LocalDateTime gmtModified;
 }

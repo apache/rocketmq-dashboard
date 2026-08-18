@@ -61,6 +61,18 @@ export interface NameServerInfo {
   status: string;
 }
 
+export interface NameserverRegistryEntry {
+  id: number;
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace: string | null;
+  k8sId: string | null;
+  status: string | null;
+  description: string | null;
+  gmtCreate: string | null;
+  gmtModified: string | null;
+}
+
 export interface ClusterConfig {
   flushDiskType: string;
   autoCreateTopicEnable: boolean;
@@ -99,9 +111,8 @@ export interface ClusterProbeResult {
 }
 
 export interface K8sCertInfo {
-  id: string;
-  name: string;
-  namespace: string;
+  id: number;
+  k8sId: string;
   cluster: string;
   type: string;
   issuer: string;
@@ -110,6 +121,8 @@ export interface K8sCertInfo {
   status: string;
   daysRemaining: number;
   san: string[];
+  certPem?: string;
+  keyPem?: string;
 }
 
 export interface NameServerConfigValue {
@@ -140,6 +153,11 @@ export async function listClusters(instanceId?: string) {
     params: instanceId ? { instanceId } : undefined,
   });
   return res.data.data;
+}
+
+export async function listRegistryClusters() {
+  const res = await client.get<{ data: ClusterInfo[] }>('/clusters/registry');
+  return res.data.data ?? [];
 }
 
 export async function testClusterConnection(namesrvAddr: string) {
@@ -174,6 +192,44 @@ export async function restartBroker(clusterId: string, brokerName: string) {
 }
 
 // ─── NameServer ─────────────────────────────────────────────────
+export async function listNameserverRegistry() {
+  const res = await client.get<{ data: NameserverRegistryEntry[] }>('/nameservers');
+  return res.data.data ?? [];
+}
+
+export async function createNameserverRegistry(data: {
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  k8sId?: string;
+  description?: string;
+}) {
+  const res = await client.post<{ data: NameserverRegistryEntry }>(
+    '/nameservers/registry/create',
+    data,
+  );
+  return res.data.data;
+}
+
+export async function updateNameserverRegistry(data: {
+  id: number;
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  k8sId?: string;
+  description?: string;
+}) {
+  const res = await client.post<{ data: NameserverRegistryEntry }>(
+    '/nameservers/registry/update',
+    data,
+  );
+  return res.data.data;
+}
+
+export async function deleteNameserverRegistry(id: number) {
+  await client.post('/nameservers/registry/delete', { id });
+}
+
 export async function restartNameServer(data: { clusterId: string; addr: string }) {
   await client.post('/nameservers/restart', data);
 }
@@ -230,11 +286,11 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>) {
   return res.data.data;
 }
 
-export async function renewK8sCert(id: string) {
+export async function renewK8sCert(id: number) {
   const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', { id });
   return res.data.data;
 }
 
-export async function deleteK8sCert(id: string) {
+export async function deleteK8sCert(id: number) {
   await client.post('/k8s-certs/delete', { id });
 }

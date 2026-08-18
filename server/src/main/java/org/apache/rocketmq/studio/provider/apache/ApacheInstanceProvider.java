@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -28,11 +29,13 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Open-source Apache RocketMQ implementation: pure delegation to the existing admin-client
@@ -53,13 +56,29 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public Set<InstanceCapability> capabilities() {
+        return Set.of(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT,
+                InstanceCapability.DLQ_MANAGEMENT);
+    }
+
+    @Override
     public int countTopics(String instanceId) {
-        return (int) instanceRepository.countTopicsByInstance(instanceId);
+        // The instance_id foreign key is numeric; resolve the external identifier first.
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(instance -> (int) instanceRepository.countTopicsByInstance(instance.getId()))
+                .orElse(0);
     }
 
     @Override
     public int countGroups(String instanceId) {
-        return (int) instanceRepository.countGroupsByInstance(instanceId);
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(instance -> (int) instanceRepository.countGroupsByInstance(instance.getId()))
+                .orElse(0);
     }
 
     @Override
@@ -67,6 +86,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
         return metadataProvider.listTopics(null, type, search).stream()
                 .filter(topic -> matchesInstance(topic.getInstanceId(), instanceId))
                 .toList();
+    }
+
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search,
+            int page, int pageSize) {
+        return metadataProvider.listTopicsPage(instanceId, null, type, search, page, pageSize);
     }
 
     @Override

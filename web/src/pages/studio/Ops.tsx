@@ -44,7 +44,7 @@ const OpsPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const fetchFailedMessage = t('ops.fetchFailed');
-  const token = useAuthStore((state) => state.token);
+  const userId = useAuthStore((state) => state.userId);
   const admin = useAuthStore((state) => state.admin);
 
   const [namesrvAddrList, setNamesrvAddrList] = useState<string[]>([]);
@@ -61,7 +61,7 @@ const OpsPage: React.FC = () => {
   const tlsUpdateInFlight = useRef(false);
   const [configurationAvailable, setConfigurationAvailable] = useState(false);
   const [unavailableReason, setUnavailableReason] = useState('');
-  const writeOperationEnabled = configurationAvailable && (!token || admin === true);
+  const writeOperationEnabled = configurationAvailable && (!userId || admin === true);
   const deleteNameServerDisabled =
     !selectedNamesrv || selectedNamesrv === currentNamesrv || namesrvAddrList.length <= 1;
 

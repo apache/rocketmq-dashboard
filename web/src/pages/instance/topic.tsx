@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import {
   Alert,
   Table,
@@ -36,6 +36,7 @@ import {
   Col,
   Divider,
   Typography,
+  Spin,
   message,
   App,
 } from 'antd';
@@ -49,10 +50,12 @@ import {
   EyeOutlined,
   ImportOutlined,
   ExportOutlined,
+  SyncOutlined,
   PlusCircleOutlined,
   MinusCircleOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
@@ -63,17 +66,37 @@ import {
   deleteTopic,
   getTopicConsumerPage,
   getTopicRoutes,
-  listTopics,
+  listTopicsPage,
   sendTopicMessage,
 } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import type { Instance } from '../../api/instance';
 import {
   parseCsvTable,
   validateTopicCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
+
+const INSTANCE_ACCESS_LABEL: Record<Instance['type'], string> = {
+  PROXY: 'Proxy 模式（部署形态未标明）',
+  PROXY_LOCAL: 'Proxy Local 模式',
+  PROXY_CLUSTER: 'Proxy Cluster 模式',
+  DIRECT: 'Direct 模式',
+};
+
+const INSTANCE_ACCESS_DESCRIPTION: Record<Instance['type'], string> = {
+  PROXY:
+    '接入点为 Proxy 地址，但该存量实例未标明 Local/Cluster 部署形态。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  PROXY_LOCAL:
+    '接入点为与 Broker 同进程部署的 Proxy 地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  PROXY_CLUSTER:
+    '接入点为独立 Proxy 集群的 SLB 内网地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  DIRECT:
+    '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+};
 
 // ─── Cluster name lookup ───────────────────────────────────────────
 const CLUSTER_NAME_MAP: Record<string, { name: string; type: string }> = {
@@ -113,7 +136,7 @@ const TOPIC_TYPE_CARDS = [
 // ─── Perm label ───────────────────────────────────────────────────
 const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
 
-const TOPIC_EXPORT_COLUMNS: Array<{ header: string; value: (topic: Topic) => unknown }> = [
+const TOPIC_EXPORT_COLUMNS: CsvColumn<Topic>[] = [
   { header: 'Name', value: (topic) => topic.name },
   { header: 'Namespace', value: (topic) => topic.namespace },
   { header: 'Type', value: (topic) => topic.type },
@@ -125,36 +148,11 @@ const TOPIC_EXPORT_COLUMNS: Array<{ header: string; value: (topic: Topic) => unk
   { header: 'TPS', value: (topic) => topic.tps },
   { header: 'Consumer Groups', value: (topic) => topic.consumerGroupCount },
   { header: 'Remark', value: (topic) => topic.remark },
-  { header: 'Created At', value: (topic) => topic.createdAt },
-  { header: 'Updated At', value: (topic) => topic.updatedAt },
+  { header: 'Created At', value: (topic) => topic.gmtCreate },
+  { header: 'Updated At', value: (topic) => topic.gmtModified },
 ];
 
-const escapeCsvCell = (value: unknown) => {
-  const text = value == null ? '' : String(value);
-  const formulaSafeText = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
-  return `"${formulaSafeText.replace(/"/g, '""')}"`;
-};
-
-const buildTopicCsv = (topics: Topic[]) =>
-  [
-    TOPIC_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.header)).join(','),
-    ...topics.map((topic) =>
-      TOPIC_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.value(topic))).join(','),
-    ),
-  ].join('\n');
-
-const downloadCsv = (filename: string, csv: string) => {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-};
+const buildTopicCsv = (topics: Topic[]) => buildCsv(TOPIC_EXPORT_COLUMNS, topics);
 
 // ─── Random message body generators ──────────────────────────────
 const randomOrderBody = () =>
@@ -298,6 +296,7 @@ const TopicPage = () => {
 
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [totalTopics, setTotalTopics] = useState(0);
   const [loading, setLoading] = useState(false);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
   const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
@@ -310,6 +309,11 @@ const TopicPage = () => {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncChecking, setSyncChecking] = useState(false);
+  const [syncMissing, setSyncMissing] = useState<Topic[]>([]);
+  const [syncedTopics, setSyncedTopics] = useState<Set<string>>(() => new Set());
+  const [syncingKeys, setSyncingKeys] = useState<Set<string>>(() => new Set());
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -329,6 +333,8 @@ const TopicPage = () => {
   const [importing, setImporting] = useState(false);
 
   const topicRequestIdRef = useRef(0);
+  const detailRequestIdRef = useRef(0);
+  const consumersRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -336,6 +342,7 @@ const TopicPage = () => {
       topicRequestIdRef.current += 1;
       const resetTimer = window.setTimeout(() => {
         setTopics([]);
+        setTotalTopics(0);
         setSelectedRowKeys([]);
         setLoading(false);
       }, 0);
@@ -346,9 +353,18 @@ const TopicPage = () => {
     const requestId = ++topicRequestIdRef.current;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void listTopics({ instanceId: selectedInstanceId })
-        .then((nextTopics) => {
-          if (requestId === topicRequestIdRef.current) setTopics(nextTopics);
+      void listTopicsPage({
+        instanceId: selectedInstanceId,
+        type: typeFilter || undefined,
+        search: searchText.trim() || undefined,
+        page: tablePage,
+        pageSize: tablePageSize,
+      })
+        .then((result) => {
+          if (requestId === topicRequestIdRef.current) {
+            setTopics(result.items);
+            setTotalTopics(result.total);
+          }
         })
         .catch(() => {
           if (requestId === topicRequestIdRef.current)
@@ -362,7 +378,7 @@ const TopicPage = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId]);
+  }, [selectedInstanceId, typeFilter, searchText, tablePage, tablePageSize]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -378,7 +394,7 @@ const TopicPage = () => {
     [topics, selectedInstanceId, searchText, typeFilter],
   );
 
-  const maxTablePage = Math.max(1, Math.ceil(filteredTopics.length / tablePageSize));
+  const maxTablePage = Math.max(1, Math.ceil(totalTopics / tablePageSize));
   const currentTablePage = Math.min(tablePage, maxTablePage);
 
   const resetTablePage = () => {
@@ -386,32 +402,44 @@ const TopicPage = () => {
   };
 
   const loadTopicConsumers = async (topic: Topic, page = 1, pageSize = 20) => {
+    const requestId = ++consumersRequestIdRef.current;
     const consumers = await getTopicConsumerPage(
       topic.name,
       selectedInstanceId || undefined,
       page,
       pageSize,
     );
-    setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
+    // Guard against a slower earlier page overwriting a newer one when the user pages quickly.
+    if (requestId === consumersRequestIdRef.current) {
+      setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
+    }
   };
 
   // ─── Open detail modal ────────────────────────────────────────
-  const openDetail = async (topic: Topic) => {
-    setSelectedTopic(topic);
-    setDetailModalOpen(true);
-    setDetailLoading(true);
-    try {
-      await loadTopicConsumers(topic);
-      if (!isCloudInstance) {
-        const routes = await getTopicRoutes(topic.name, selectedInstanceId || undefined);
-        setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+  const openDetail = useCallback(
+    async (topic: Topic) => {
+      const requestId = detailRequestIdRef.current + 1;
+      detailRequestIdRef.current = requestId;
+      setSelectedTopic(topic);
+      setDetailModalOpen(true);
+      setDetailLoading(true);
+      try {
+        await loadTopicConsumers(topic);
+        if (requestId !== detailRequestIdRef.current) return;
+        if (!isCloudInstance) {
+          const routes = await getTopicRoutes(topic.name, selectedInstanceId || undefined);
+          if (requestId !== detailRequestIdRef.current) return;
+          setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+        }
+      } catch {
+        if (requestId === detailRequestIdRef.current)
+          message.error('Topic 详情加载失败，请稍后重试');
+      } finally {
+        if (requestId === detailRequestIdRef.current) setDetailLoading(false);
       }
-    } catch {
-      message.error('Topic 详情加载失败，请稍后重试');
-    } finally {
-      setDetailLoading(false);
-    }
-  };
+    },
+    [loadTopicConsumers, isCloudInstance, selectedInstanceId],
+  );
 
   // Metadata lives in the database, so a record can exist without a broker route.
   const rebuildTopic = async (topic: Topic) => {
@@ -440,6 +468,68 @@ const TopicPage = () => {
   const getRoutes = (name: string): BrokerRoute[] => routesByTopic[name] ?? [];
   const getConsumerPage = (name: string): TopicConsumerPage =>
     consumersByTopic[name] ?? { items: [], total: 0, page: 1, pageSize: 20 };
+
+  // ─── Sync data: find topics without broker routes and sync them ──
+  const openSyncModal = async () => {
+    setSyncModalOpen(true);
+    setSyncChecking(true);
+    setSyncMissing([]);
+    setSyncedTopics(new Set());
+    try {
+      const results = await Promise.all(
+        topics.map(async (topic) => {
+          const instanceId = topic.instanceId || selectedInstanceId || undefined;
+          try {
+            return { topic, routes: await getTopicRoutes(topic.name, instanceId) };
+          } catch {
+            return { topic, routes: null as BrokerRoute[] | null };
+          }
+        }),
+      );
+      const checked = results.filter((r) => r.routes !== null);
+      if (checked.length < results.length) {
+        message.error('部分 Topic 路由校验失败，请稍后重试');
+      }
+      setRoutesByTopic((previous) => {
+        const next = { ...previous };
+        checked.forEach(({ topic, routes }) => {
+          next[topic.name] = routes as BrokerRoute[];
+        });
+        return next;
+      });
+      setSyncMissing(
+        checked.filter(({ routes }) => (routes as BrokerRoute[]).length === 0).map((r) => r.topic),
+      );
+    } finally {
+      setSyncChecking(false);
+    }
+  };
+
+  const syncTopicToBroker = async (topic: Topic) => {
+    const instanceId = topic.instanceId || selectedInstanceId || undefined;
+    setSyncingKeys((previous) => new Set(previous).add(topic.name));
+    try {
+      await createTopic({
+        name: topic.name,
+        type: topic.type,
+        writeQueues: topic.writeQueues,
+        readQueues: topic.readQueues,
+        instanceId,
+      });
+      const routes = await getTopicRoutes(topic.name, instanceId);
+      setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      setSyncedTopics((previous) => new Set(previous).add(topic.name));
+      message.success(`Topic「${topic.name}」已同步到 Broker`);
+    } catch {
+      message.error(`同步 Topic「${topic.name}」失败，请检查 Broker 状态后重试`);
+    } finally {
+      setSyncingKeys((previous) => {
+        const next = new Set(previous);
+        next.delete(topic.name);
+        return next;
+      });
+    }
+  };
 
   const handleAction = (key: string, topic: Topic) => {
     if (key === 'detail') {
@@ -502,7 +592,7 @@ const TopicPage = () => {
       render: (remark: string) => (
         <Text
           type="secondary"
-          style={{ fontSize: 13, display: 'block' }}
+          style={{ fontSize: 14, display: 'block' }}
           ellipsis={{ tooltip: remark }}
         >
           {remark}
@@ -528,18 +618,18 @@ const TopicPage = () => {
     },
     {
       title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'gmtCreate',
+      key: 'gmtCreate',
       width: 170,
-      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
       title: '修改时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
+      dataIndex: 'gmtModified',
+      key: 'gmtModified',
       width: 170,
-      sorter: (a, b) => (a.updatedAt ?? '').localeCompare(b.updatedAt ?? ''),
+      sorter: (a, b) => (a.gmtModified ?? '').localeCompare(b.gmtModified ?? ''),
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
@@ -653,7 +743,7 @@ const TopicPage = () => {
         <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
         <Descriptions.Item label="消费者组数">{topic.consumerGroupCount}</Descriptions.Item>
         <Descriptions.Item label="创建时间" span={2}>
-          {formatDateTime(topic.createdAt)}
+          {formatDateTime(topic.gmtCreate)}
         </Descriptions.Item>
       </Descriptions>
     );
@@ -689,7 +779,7 @@ const TopicPage = () => {
               {/* Cluster tags */}
               <Space size={4} style={{ marginBottom: 16 }}>
                 {clusterType && (
-                  <Tag color={clusterType.color} style={{ fontSize: 11 }}>
+                  <Tag color={clusterType.color} style={{ fontSize: 14 }}>
                     {t(clusterType.labelKey)}
                   </Tag>
                 )}
@@ -698,7 +788,7 @@ const TopicPage = () => {
               {/* Key stats */}
               <Row gutter={16}>
                 <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
                     今日消息量
                   </Text>
                   <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
@@ -706,7 +796,7 @@ const TopicPage = () => {
                   </Text>
                 </Col>
                 <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
                     TPS
                   </Text>
                   <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
@@ -714,7 +804,7 @@ const TopicPage = () => {
                   </Text>
                 </Col>
                 <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
                     消费者组
                   </Text>
                   <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
@@ -884,8 +974,8 @@ const TopicPage = () => {
       });
       // Keep the modal open for consecutive sends
       message.success(`消息发送成功！MsgId: ${result.msgId}`);
-    } catch {
-      message.error('消息发送失败，请稍后重试');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '消息发送失败，请稍后重试');
     } finally {
       setSending(false);
     }
@@ -897,19 +987,11 @@ const TopicPage = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <PageHeader title={t('topic.title')} subtitle={`共 ${filteredTopics.length} 个 Topic`} />
+      <PageHeader title={t('topic.title')} subtitle={`共 ${totalTopics} 个 Topic`} />
 
       {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: '12px 16px',
-            borderRadius: 8,
-            border: '1px solid var(--bolt-elements-border-color, #f0f0f0)',
-            background: 'var(--bolt-elements-bg-depth-2, #fafafa)',
-          }}
-        >
+        <InfoBanner>
           <Flex align="center" wrap="wrap" gap="8px 28px" style={{ fontSize: 14 }}>
             <span>
               <span style={{ color: '#8c8c8c', marginRight: 6 }}>当前实例</span>
@@ -917,7 +999,7 @@ const TopicPage = () => {
             </span>
             <span>
               <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入模式</span>
-              <span>{selectedInstance.type === 'DIRECT' ? 'Direct 模式' : 'Proxy 模式'}</span>
+              <span>{INSTANCE_ACCESS_LABEL[selectedInstance.type]}</span>
             </span>
             {selectedInstance.vendor === 'ALIYUN' && (
               <span>
@@ -939,11 +1021,9 @@ const TopicPage = () => {
             </span>
           </Flex>
           <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.6, color: '#8c8c8c' }}>
-            {selectedInstance.type === 'DIRECT'
-              ? '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'
-              : '接入点为 Proxy SLB 内网地址，gRPC/Remoting 客户端直接连接该地址收发消息。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'}
+            {INSTANCE_ACCESS_DESCRIPTION[selectedInstance.type]}
           </div>
-        </div>
+        </InfoBanner>
       )}
 
       {/* ── Filter bar ────────────────────────────────────────── */}
@@ -1081,6 +1161,15 @@ const TopicPage = () => {
           >
             导出
           </Button>
+          {!isCloudInstance && (
+            <Button
+              icon={<SyncOutlined />}
+              disabled={!hasSelectedInstance || topics.length === 0}
+              onClick={() => void openSyncModal()}
+            >
+              同步数据
+            </Button>
+          )}
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -1107,6 +1196,7 @@ const TopicPage = () => {
             pagination={{
               current: currentTablePage,
               pageSize: tablePageSize,
+              total: totalTopics,
               showSizeChanger: true,
               showTotal: (t) => `共 ${t} 条`,
               onChange: (page, pageSize) => {
@@ -1406,11 +1496,11 @@ const TopicPage = () => {
             <Input.TextArea
               rows={8}
               placeholder="JSON 格式消息体"
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
+              style={{ fontFamily: 'monospace', fontSize: 14 }}
             />
           </Form.Item>
           <Flex gap={12} style={{ marginTop: -8, marginBottom: 16 }}>
-            <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
+            <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
               快速填入:
             </Text>
             <Space size={4} wrap>
@@ -1420,7 +1510,7 @@ const TopicPage = () => {
                   type="text"
                   size="small"
                   onClick={() => sendForm.setFieldValue('body', gen.fn())}
-                  style={{ fontSize: 12, color: '#8c8c8c', height: 22, padding: '0 6px' }}
+                  style={{ fontSize: 14, color: '#8c8c8c', height: 22, padding: '0 6px' }}
                 >
                   {gen.label}
                 </Button>
@@ -1443,7 +1533,7 @@ const TopicPage = () => {
               ]}
             />
             {propsMode === 'text' && (
-              <Text type="secondary" style={{ fontSize: 12 }}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
                 支持 key=value，多个属性用换行或逗号分隔
               </Text>
             )}
@@ -1454,7 +1544,7 @@ const TopicPage = () => {
               <Input.TextArea
                 rows={5}
                 placeholder={'TAGS=tagA\nKEY1=value1, KEY2=value2'}
-                style={{ fontFamily: 'monospace', fontSize: 13 }}
+                style={{ fontFamily: 'monospace', fontSize: 14 }}
               />
             </Form.Item>
           ) : (
@@ -1489,6 +1579,77 @@ const TopicPage = () => {
             </Form.List>
           )}
         </Form>
+      </Modal>
+
+      <Modal
+        title="同步数据"
+        open={syncModalOpen}
+        onCancel={() => setSyncModalOpen(false)}
+        footer={<Button onClick={() => setSyncModalOpen(false)}>关闭</Button>}
+        width={680}
+        destroyOnHidden
+      >
+        {syncChecking ? (
+          <Flex justify="center" align="center" style={{ padding: 48 }}>
+            <Spin tip="正在校验 Topic 路由…">
+              <div style={{ width: 200 }} />
+            </Spin>
+          </Flex>
+        ) : syncMissing.length === 0 ? (
+          <div style={{ padding: '16px 0' }}>
+            <Text type="secondary">所有 Topic 在 Broker 上均有路由，无需同步。</Text>
+          </div>
+        ) : (
+          <>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+              以下 {syncMissing.length} 个 Topic 在 Broker 上找不到路由，可同步写入对应集群的
+              Broker（按元数据记录的队列数重建）。
+            </Text>
+            <Table<Topic>
+              dataSource={syncMissing}
+              rowKey="name"
+              size="small"
+              pagination={false}
+              columns={[
+                { title: 'Topic', dataIndex: 'name', key: 'name' },
+                {
+                  title: '写/读队列数',
+                  key: 'queues',
+                  width: 110,
+                  render: (_: unknown, topic: Topic) =>
+                    `${topic.writeQueues ?? '-'} / ${topic.readQueues ?? '-'}`,
+                },
+                {
+                  title: '状态',
+                  key: 'status',
+                  width: 100,
+                  render: (_: unknown, topic: Topic) =>
+                    syncedTopics.has(topic.name) ? (
+                      <Tag color="green">已同步</Tag>
+                    ) : (
+                      <Tag color="orange">缺失路由</Tag>
+                    ),
+                },
+                {
+                  title: '操作',
+                  key: 'action',
+                  width: 90,
+                  render: (_: unknown, topic: Topic) => (
+                    <Button
+                      size="small"
+                      type="link"
+                      loading={syncingKeys.has(topic.name)}
+                      disabled={syncedTopics.has(topic.name)}
+                      onClick={() => void syncTopicToBroker(topic)}
+                    >
+                      同步
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          </>
+        )}
       </Modal>
     </div>
   );

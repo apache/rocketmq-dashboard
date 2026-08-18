@@ -52,6 +52,9 @@ class TopicControllerTest {
     @MockBean
     private MetadataService metadataService;
 
+    @MockBean
+    private org.apache.rocketmq.studio.instance.InstanceService instanceService;
+
     @Autowired
     private ObjectMapper objectMapper;
 
@@ -123,7 +126,7 @@ class TopicControllerTest {
     void createTopicShouldReturnCreatedTopic() throws Exception {
         TopicVO input = new TopicVO();
         input.setName("new-topic");
-        input.setInstanceId("instance-a");
+        input.setInstanceId("1");
         input.setWriteQueues(16);
         input.setReadQueues(16);
 
@@ -133,6 +136,7 @@ class TopicControllerTest {
         created.setReadQueues(16);
 
         when(metadataService.createTopic(any(TopicVO.class))).thenReturn(created);
+        when(instanceService.normalizeIdentifier("1")).thenReturn("open-source-local");
 
         mockMvc.perform(post("/api/topics/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -145,7 +149,7 @@ class TopicControllerTest {
         ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
         verify(metadataService).createTopic(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("new-topic");
-        assertThat(captor.getValue().getInstanceId()).isEqualTo("instance-a");
+        assertThat(captor.getValue().getInstanceId()).isEqualTo("open-source-local");
         assertThat(captor.getValue().getWriteQueues()).isEqualTo(16);
         assertThat(captor.getValue().getReadQueues()).isEqualTo(16);
     }

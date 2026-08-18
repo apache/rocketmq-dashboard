@@ -116,8 +116,8 @@ final class AliyunConverters {
         vo.setInstanceId(studioInstanceId);
         vo.setType(toTopicType(data.getMessageType()));
         vo.setRemark(data.getRemark());
-        vo.setCreatedAt(parseDateTime(data.getCreateTime()));
-        vo.setUpdatedAt(parseDateTime(data.getUpdateTime()));
+        vo.setGmtCreate(parseDateTime(data.getCreateTime()));
+        vo.setGmtModified(parseDateTime(data.getUpdateTime()));
         vo.setWriteQueues(0);
         vo.setReadQueues(0);
         return vo;
@@ -154,8 +154,8 @@ final class AliyunConverters {
         vo.setName(data.getConsumerGroupId());
         vo.setInstanceId(studioInstanceId);
         vo.setConsumeType(toConsumeType(data.getMessageModel()));
-        vo.setCreatedAt(parseDateTime(data.getCreateTime()));
-        vo.setUpdatedAt(parseDateTime(data.getUpdateTime()));
+        vo.setGmtCreate(parseDateTime(data.getCreateTime()));
+        vo.setGmtModified(parseDateTime(data.getUpdateTime()));
         return vo;
     }
 

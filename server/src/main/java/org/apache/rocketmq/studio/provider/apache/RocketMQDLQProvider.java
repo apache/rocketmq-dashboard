@@ -27,12 +27,16 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -43,11 +47,14 @@ import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -73,15 +80,21 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     @Override
     public List<DLQGroupVO> listDLQGroups(String instanceId) {
-        return runtimeAdminClientResolver.execute(instanceId, this::listDLQGroups);
+        return listDLQGroups(instanceId, null, 1, Integer.MAX_VALUE).getItems();
     }
 
-    private List<DLQGroupVO> listDLQGroups(MQAdminExt adminExt) throws Exception {
-        Set<String> topics;
-        TopicList topicList = adminExt.fetchAllTopicList();
-        topics = topicList == null ? Collections.emptySet() : topicList.getTopicList();
+    @Override
+    public PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                admin -> listDLQGroups(admin, search, page, pageSize));
+    }
 
-        List<DLQGroupVO> groups = new ArrayList<>();
+    private PageResult<DLQGroupVO> listDLQGroups(MQAdminExt adminExt, String search, int page, int pageSize)
+            throws Exception {
+        TopicList topicList = adminExt.fetchAllTopicList();
+        Set<String> topics = topicList == null ? Collections.emptySet() : topicList.getTopicList();
+
+        List<String> dlqTopics = new ArrayList<>();
         for (String topic : topics) {
             if (topic == null || !topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
                 continue;
@@ -90,9 +103,19 @@ public class RocketMQDLQProvider implements DLQProvider {
             if (!StringUtils.hasText(groupName)) {
                 continue;
             }
-            groups.add(buildDLQGroup(adminExt, groupName, topic));
+            if (search == null || groupName.contains(search) || topic.contains(search)) {
+                dlqTopics.add(topic);
+            }
         }
-        return groups;
+        dlqTopics.sort(Comparator.naturalOrder());
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, dlqTopics.size());
+        int to = (int) Math.min(offset + pageSize, dlqTopics.size());
+        List<DLQGroupVO> groups = dlqTopics.subList(from, to).stream()
+                .map(topic -> buildDLQGroup(adminExt,
+                        topic.substring(MixAll.DLQ_GROUP_TOPIC_PREFIX.length()), topic))
+                .toList();
+        return PageResult.of(groups, dlqTopics.size(), page, pageSize);
     }
 
     private DLQGroupVO buildDLQGroup(MQAdminExt adminExt, String groupName, String dlqTopic) {
@@ -137,15 +160,23 @@ public class RocketMQDLQProvider implements DLQProvider {
     @Override
     public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              String targetTopic) {
-        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
-        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
-
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "groupName is required for DLQ resend");
+        }
+        groupName = groupName.trim();
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        if (begin >= end) {
+            throw new BusinessException(400, "DLQ resend start time must be before end time");
+        }
+
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
         DeadLetterScanResult scanResult;
         try {
-            scanResult = collectDeadLetters(endpoint, dlqTopic, begin, end);
+            scanResult = collectDeadLetters(endpoint, credentialHook, dlqTopic, begin, end, RESEND_HARD_CAP);
         } catch (BusinessException e) {
             String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, "
                             + "matched=0, resent=0, failed=0, scanIncomplete=true, scanFailedQueues=all",
@@ -158,7 +189,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         int resent = 0;
         int failed = 0;
         if (!deadLetters.isEmpty()) {
-            DefaultMQProducer producer = newProducer(endpoint);
+            DefaultMQProducer producer = newProducer(endpoint, credentialHook);
             try {
                 producer.start();
                 for (MessageExt deadLetter : deadLetters) {
@@ -193,8 +224,47 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .build();
     }
 
-    private DeadLetterScanResult collectDeadLetters(String endpoint, String dlqTopic, long begin, long end) {
-        DefaultMQPullConsumer consumer = newPullConsumer(endpoint);
+    @Override
+    public List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                             Integer maxCount) {
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+        long end = endTime != null ? endTime : System.currentTimeMillis();
+        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        int cap = maxCount == null || maxCount <= 0 ? RESEND_HARD_CAP : Math.min(maxCount, RESEND_HARD_CAP);
+        DeadLetterScanResult scanResult = collectDeadLetters(endpoint, credentialHook, dlqTopic, begin, end, cap);
+        return scanResult.messages().stream().map(this::toExportVO).toList();
+    }
+
+    private DLQMessageVO toExportVO(MessageExt message) {
+        return DLQMessageVO.builder()
+                .msgId(message.getMsgId())
+                .topic(message.getTopic())
+                .queueId(message.getQueueId())
+                .offset(message.getQueueOffset())
+                .storeTime(message.getStoreTimestamp())
+                .keys(message.getKeys())
+                .body(toUtf8Text(message.getBody()))
+                .bodyBase64(message.getBody() == null ? null
+                        : Base64.getEncoder().encodeToString(message.getBody()))
+                .build();
+    }
+
+    private String toUtf8Text(byte[] body) {
+        if (body == null) {
+            return null;
+        }
+        try {
+            return new String(body, StandardCharsets.UTF_8);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private DeadLetterScanResult collectDeadLetters(String endpoint, RPCHook credentialHook, String dlqTopic,
+                                                     long begin, long end, int cap) {
+        DefaultMQPullConsumer consumer = newPullConsumer(endpoint, credentialHook);
         List<MessageExt> result = new ArrayList<>();
         int failedQueueCount = 0;
         try {
@@ -212,7 +282,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                     long maxOffset = consumer.searchOffset(queue, end);
                     int consecutiveIllegalOffsets = 0;
                     for (long offset = minOffset; offset <= maxOffset; ) {
-                        if (result.size() >= RESEND_HARD_CAP) {
+                        if (result.size() >= cap) {
                             break outer;
                         }
                         PullResult pullResult = consumer.pull(queue, "*", offset, 32);
@@ -254,7 +324,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                             if (messageExt.getStoreTimestamp() >= begin
                                     && messageExt.getStoreTimestamp() <= end) {
                                 result.add(messageExt);
-                                if (result.size() >= RESEND_HARD_CAP) {
+                                if (result.size() >= cap) {
                                     break outer;
                                 }
                             }
@@ -300,7 +370,10 @@ public class RocketMQDLQProvider implements DLQProvider {
             if (userProperties != null) {
                 for (Map.Entry<String, String> entry : userProperties.entrySet()) {
                     String key = entry.getKey();
-                    if (!MessageConst.STRING_HASH_SET.contains(key)) {
+                    if (!MessageConst.STRING_HASH_SET.contains(key)
+                            && !MessageConst.PROPERTY_TAGS.equals(key)
+                            && !MessageConst.PROPERTY_KEYS.equals(key)
+                            && !MessageConst.PROPERTY_WAIT_STORE_MSG_OK.equals(key)) {
                         message.putUserProperty(key, entry.getValue());
                     }
                 }
@@ -342,15 +415,15 @@ public class RocketMQDLQProvider implements DLQProvider {
         return null;
     }
 
-    private DefaultMQPullConsumer newPullConsumer(String endpoint) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("studio-dlq-query-group");
+    private DefaultMQPullConsumer newPullConsumer(String endpoint, RPCHook credentialHook) {
+        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("studio-dlq-query-group", credentialHook);
         consumer.setInstanceName(ShortLivedClientName.next("studio-dlq-query"));
         consumer.setNamesrvAddr(endpoint);
         return consumer;
     }
 
-    private DefaultMQProducer newProducer(String endpoint) {
-        DefaultMQProducer producer = new DefaultMQProducer(nextResendProducerGroup());
+    private DefaultMQProducer newProducer(String endpoint, RPCHook credentialHook) {
+        DefaultMQProducer producer = new DefaultMQProducer(nextResendProducerGroup(), credentialHook);
         producer.setInstanceName(ShortLivedClientName.next("studio-dlq-resend"));
         producer.setRetryTimesWhenSendFailed(2);
         producer.setNamesrvAddr(endpoint);

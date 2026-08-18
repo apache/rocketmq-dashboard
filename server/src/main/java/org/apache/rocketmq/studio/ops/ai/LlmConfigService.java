@@ -117,6 +117,8 @@ public class LlmConfigService {
                 .deploymentName(normalized.getDeploymentName())
                 .apiVersion(normalized.getApiVersion())
                 .awsRegion(normalized.getAwsRegion())
+                .maxTokens(normalized.getMaxTokens())
+                .temperature(normalized.getTemperature())
                 .build();
         LlmConfigVO nextOverrides = copy(normalized);
         settingsService.saveGeneralSettings(updated);
@@ -239,8 +241,8 @@ public class LlmConfigService {
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .model(model)
-                .maxTokens(DEFAULT_MAX_TOKENS)
-                .temperature(DEFAULT_TEMPERATURE)
+                .maxTokens(settings.getMaxTokens() != null ? settings.getMaxTokens() : DEFAULT_MAX_TOKENS)
+                .temperature(settings.getTemperature() != null ? settings.getTemperature() : DEFAULT_TEMPERATURE)
                 .enabled(!requiresApiKey(provider) || !!StringUtils.hasText(apiKey))
                 .deploymentName(defaultString(settings.getDeploymentName(), ""))
                 .apiVersion(defaultString(settings.getApiVersion(), "2024-02-15-preview"))

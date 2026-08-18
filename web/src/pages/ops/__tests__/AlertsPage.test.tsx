@@ -41,7 +41,7 @@ vi.mock('../../../services/opsService', () => ({
 
 const alertRules: AlertRule[] = [
   {
-    id: 'alert-a',
+    id: 1,
     name: 'Broker disk usage',
     metric: '磁盘使用率',
     operator: '>',
@@ -54,7 +54,7 @@ const alertRules: AlertRule[] = [
     description: 'disk usage',
   },
   {
-    id: 'alert-b',
+    id: 2,
     name: 'Consumer lag',
     metric: '消费堆积量',
     operator: '>',
@@ -144,7 +144,7 @@ describe('AlertsPage', () => {
     await waitFor(() => {
       expect(bulkToggleAlertRules).toHaveBeenCalledTimes(1);
     });
-    expect(bulkToggleAlertRules).toHaveBeenCalledWith(['alert-a', 'alert-b'], true);
+    expect(bulkToggleAlertRules).toHaveBeenCalledWith([1, 2], true);
     expect(await screen.findByText('已启用 2 条告警规则')).toBeInTheDocument();
     expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toHaveAttribute(
       'aria-checked',
@@ -163,8 +163,8 @@ describe('AlertsPage', () => {
       alertRules.map((rule) => ({ ...cloneRule(rule), enabled: true })),
     );
     vi.mocked(bulkToggleAlertRules).mockResolvedValue({
-      succeededIds: ['alert-a'],
-      failures: { 'alert-b': 'network error' },
+      succeededIds: [1],
+      failures: { '2': 'network error' },
       updatedRules: [{ ...cloneRule(alertRules[0]), enabled: false }],
     });
 
@@ -221,7 +221,7 @@ describe('AlertsPage', () => {
   it('disables other alert rule mutations while a bulk action is running', async () => {
     let resolveToggle:
       | ((result: {
-          succeededIds: string[];
+          succeededIds: number[];
           failures: Record<string, string>;
           updatedRules: AlertRule[];
         }) => void)
@@ -240,7 +240,7 @@ describe('AlertsPage', () => {
     await user.click(screen.getByRole('button', { name: '批量启用' }));
 
     await waitFor(() => {
-      expect(bulkToggleAlertRules).toHaveBeenCalledWith(['alert-a'], true);
+      expect(bulkToggleAlertRules).toHaveBeenCalledWith([1], true);
     });
     expect(screen.getByRole('button', { name: '新建规则' })).toBeDisabled();
     expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toBeDisabled();
@@ -252,7 +252,7 @@ describe('AlertsPage', () => {
     ).toBeDisabled();
 
     resolveToggle?.({
-      succeededIds: ['alert-a'],
+      succeededIds: [1],
       failures: {},
       updatedRules: [{ ...cloneRule(alertRules[0]), enabled: true }],
     });
@@ -261,7 +261,7 @@ describe('AlertsPage', () => {
 
   it('bulk deletes selected rules after confirmation', async () => {
     vi.mocked(bulkDeleteAlertRules).mockResolvedValue({
-      succeededIds: ['alert-a', 'alert-b'],
+      succeededIds: [1, 2],
       failures: {},
       updatedRules: [],
     });
@@ -273,7 +273,7 @@ describe('AlertsPage', () => {
     await user.click(screen.getByRole('button', { name: '批量删除' }));
     await user.click(await screen.findByRole('button', { name: 'OK' }));
 
-    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith(['alert-a', 'alert-b']));
+    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith([1, 2]));
     expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
     expect(await screen.findByText('所选告警规则已删除')).toBeInTheDocument();
   });
