@@ -31,6 +31,7 @@ import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -106,7 +107,12 @@ public class InstanceService {
         requireUniqueInstanceName(instance.getName(), null);
         instance.setGmtCreate(LocalDateTime.now());
         instance.setGmtModified(LocalDateTime.now());
-        InstanceVO saved = instanceRepository.save(instance);
+        InstanceVO saved;
+        try {
+            saved = instanceRepository.save(instance);
+        } catch (DuplicateKeyException exception) {
+            throw duplicateInstanceName(instance.getName());
+        }
         recordAudit("CREATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
@@ -118,9 +124,13 @@ public class InstanceService {
         }
         instanceRepository.findByName(name).ifPresent(existing -> {
             if (excludeId == null || !excludeId.equals(existing.getId())) {
-                throw new BusinessException(400, "Instance name already exists: " + name);
+                throw duplicateInstanceName(name);
             }
         });
+    }
+
+    private BusinessException duplicateInstanceName(String name) {
+        return new BusinessException(409, "Instance name already exists: " + name);
     }
 
     /**
