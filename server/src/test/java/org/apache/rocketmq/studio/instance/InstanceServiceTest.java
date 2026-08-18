@@ -290,9 +290,10 @@ class InstanceServiceTest {
         assertThat(result.getGmtCreate()).isNotNull();
         assertThat(result.getGmtModified()).isNotNull();
         assertThat(result.getName()).isEqualTo("new-instance");
+        assertThat(result.getType()).isEqualTo(InstanceType.PROXY_CLUSTER);
         verify(instanceRepository).save(any(InstanceVO.class));
         verify(operationAuditService).record(eq("CREATE_INSTANCE"), eq("INSTANCE"), eq("1"), eq(null),
-                argThat(detail -> detail.equals("name=new-instance, vendor=APACHE, type=PROXY")
+                argThat(detail -> detail.equals("name=new-instance, vendor=APACHE, type=PROXY_CLUSTER")
                         && !detail.contains("10.0.1.1:8080")),
                 eq("SUCCESS"), eq(null));
     }
@@ -798,7 +799,22 @@ class InstanceServiceTest {
         InstanceVO created = instanceService.createInstance(instance);
 
         assertThat(created.getVendor()).isEqualTo(InstanceVendor.APACHE);
+        assertThat(created.getType()).isEqualTo(InstanceType.PROXY_CLUSTER);
         verifyNoInteractions(cloudCredentialRepository, providerRegistry);
+    }
+
+    @Test
+    void createApacheInstanceShouldPreserveExplicitProxyLocalTypeTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("local-proxy")
+                .endpoint("broker-proxy:8080")
+                .type(InstanceType.PROXY_LOCAL)
+                .build();
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO created = instanceService.createInstance(instance);
+
+        assertThat(created.getType()).isEqualTo(InstanceType.PROXY_LOCAL);
     }
 
     @Test

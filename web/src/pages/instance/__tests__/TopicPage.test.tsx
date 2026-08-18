@@ -161,6 +161,17 @@ describe('TopicPage', () => {
     vi.clearAllMocks();
   });
 
+  it('shows the selected Proxy deployment type explicitly', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      { ...selectedInstance, type: 'PROXY_LOCAL' },
+    ]);
+
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    expect(await screen.findByText(/Proxy Local 模式/)).toBeInTheDocument();
+    expect(screen.getByText(/与 Broker 同进程部署的 Proxy 地址/)).toBeInTheDocument();
+  });
+
   it('ignores duplicate Topic creates while the first request is pending', async () => {
     topicServiceMocks.createTopic.mockImplementation(() => new Promise(() => {}));
     const user = userEvent.setup();

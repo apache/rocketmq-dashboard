@@ -19,12 +19,13 @@ import client from './client';
 
 // ─── Types ──────────────────────────────────────────────────────
 export type InstanceVendor = 'APACHE' | 'ALIYUN' | 'TENCENT';
+export type InstanceType = 'PROXY' | 'PROXY_LOCAL' | 'PROXY_CLUSTER' | 'DIRECT';
 
 export interface Instance {
   id: number;
   name: string;
   remark: string | null;
-  type: 'PROXY' | 'DIRECT';
+  type: InstanceType;
   endpoint: string;
   vendor?: InstanceVendor;
   cloudInstanceId?: string;
@@ -40,7 +41,7 @@ export interface Instance {
 
 export interface CreateInstanceRequest {
   name?: string;
-  type?: 'PROXY' | 'DIRECT';
+  type?: InstanceType;
   endpoint?: string;
   remark?: string;
   vendor?: InstanceVendor;
@@ -53,7 +54,7 @@ export interface CreateInstanceRequest {
 export interface UpdateInstanceRequest {
   instanceId: string;
   name?: string;
-  type?: 'PROXY' | 'DIRECT';
+  type?: InstanceType;
   endpoint?: string;
   remark?: string;
   adminCredentialRef?: string;

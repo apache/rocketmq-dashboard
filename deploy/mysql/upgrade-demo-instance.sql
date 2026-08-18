@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(128) NOT NULL,
   remark VARCHAR(255),
-  type VARCHAR(32) NOT NULL COMMENT 'PROXY/DIRECT',
+  type VARCHAR(32) NOT NULL COMMENT 'PROXY/PROXY_LOCAL/PROXY_CLUSTER/DIRECT',
   endpoint VARCHAR(512) NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -40,9 +40,9 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 INSERT IGNORE INTO rmq_instance (id, name, remark, type, endpoint) VALUES
   ('instance-direct-1', 'instance-direct-1', '直连实例 1，交易核心链路（NameServer 直连）', 'DIRECT', '10.0.1.11:9876'),
   ('instance-direct-2', 'instance-direct-2', '直连实例 2，风控与审计链路（NameServer 直连）', 'DIRECT', '10.0.1.12:9876'),
-  ('instance-proxy-1',  'instance-proxy-1',  'Proxy 实例 1，电商交易主链路', 'PROXY', '10.0.2.21:8080'),
-  ('instance-proxy-2',  'instance-proxy-2',  'Proxy 实例 2，营销与会员链路', 'PROXY', '10.0.2.22:8080'),
-  ('instance-proxy-3',  'instance-proxy-3',  'Proxy 实例 3，物流与大数据链路', 'PROXY', '10.0.2.23:8080');
+  ('instance-proxy-1',  'instance-proxy-1',  'Proxy 实例 1，电商交易主链路', 'PROXY_CLUSTER', '10.0.2.21:8080'),
+  ('instance-proxy-2',  'instance-proxy-2',  'Proxy 实例 2，营销与会员链路', 'PROXY_CLUSTER', '10.0.2.22:8080'),
+  ('instance-proxy-3',  'instance-proxy-3',  'Proxy 实例 3，物流与大数据链路', 'PROXY_CLUSTER', '10.0.2.23:8080');
 
 -- 4. 旧种子数据回填 instance_id（旧部署里这 9 个 topic、8 个 group 已存在，INSERT IGNORE 不会更新它们）
 UPDATE rmq_topic SET instance_id = 'instance-proxy-1'

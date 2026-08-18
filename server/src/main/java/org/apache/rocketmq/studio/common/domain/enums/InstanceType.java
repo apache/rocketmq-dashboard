@@ -18,5 +18,17 @@
 package org.apache.rocketmq.studio.common.domain.enums;
 
 public enum InstanceType {
-    PROXY, DIRECT
+    /** Legacy generic Proxy value retained for persisted and cloud-managed instances. */
+    PROXY,
+    PROXY_LOCAL,
+    PROXY_CLUSTER,
+    DIRECT;
+
+    public boolean isProxy() {
+        return this != DIRECT;
+    }
+
+    public InstanceType normalizeApacheType() {
+        return this == PROXY ? PROXY_CLUSTER : this;
+    }
 }
