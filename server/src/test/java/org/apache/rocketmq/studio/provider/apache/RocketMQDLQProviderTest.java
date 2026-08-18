@@ -33,6 +33,7 @@ import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +45,8 @@ import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -374,5 +377,63 @@ class RocketMQDLQProviderTest {
 
         assertThat(first).startsWith("studio-dlq-resend-");
         assertThat(second).startsWith("studio-dlq-resend-").isNotEqualTo(first);
+    }
+
+    @Test
+    void exportMessagesReturnsMappedDeadLetterMessages() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("msg-1");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setQueueId(0);
+        deadLetter.setQueueOffset(5L);
+        deadLetter.setStoreTimestamp(150L);
+        deadLetter.setKeys("key-a,key-b");
+        deadLetter.setBody("hello dlq".getBytes(StandardCharsets.UTF_8));
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+                         when(consumer.pull(eq(queue), eq("*"), eq(0L), eq(32))).thenReturn(pullResult);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<DLQMessageVO> exported =
+                    provider.exportMessages("instance-a", "group-a", 100L, 200L, 1000);
+
+            assertThat(exported).hasSize(1);
+            DLQMessageVO vo = exported.get(0);
+            assertThat(vo.getMsgId()).isEqualTo("msg-1");
+            assertThat(vo.getTopic()).isEqualTo(dlqTopic);
+            assertThat(vo.getQueueId()).isEqualTo(0);
+            assertThat(vo.getOffset()).isEqualTo(5L);
+            assertThat(vo.getStoreTime()).isEqualTo(150L);
+            assertThat(vo.getKeys()).isEqualTo("key-a,key-b");
+            assertThat(vo.getBody()).isEqualTo("hello dlq");
+            assertThat(vo.getBodyBase64())
+                    .isEqualTo(Base64.getEncoder().encodeToString("hello dlq".getBytes(StandardCharsets.UTF_8)));
+        }
+    }
+
+    @Test
+    void exportMessagesHonorsMaxCountCap() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+                         when(consumer.pull(eq(queue), eq("*"), eq(0L), eq(32)))
+                                 .thenReturn(new PullResult(PullStatus.NO_NEW_MSG, 1L, 0L, 0L, List.of()));
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            // maxCount=0 falls back to the hard cap instead of failing; scan still completes.
+            List<DLQMessageVO> exported =
+                    provider.exportMessages("instance-a", "group-a", 100L, 200L, 0);
+            assertThat(exported).isEmpty();
+        }
     }
 }

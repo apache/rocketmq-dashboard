@@ -128,6 +128,41 @@ class ProxyControllerTest {
     }
 
     @Test
+    void proxyTopologyShouldReturnHealthView() throws Exception {
+        when(proxyAddressService.buildTopology())
+                .thenReturn(List.of(
+                        ProxyTopologyVO.builder()
+                                .proxyAddr("127.0.0.1:8081")
+                                .status("UP")
+                                .grpcPort(8081)
+                                .remotingPort(8080)
+                                .grpcReachable(true)
+                                .remotingReachable(true)
+                                .latencyMs(1L)
+                                .build(),
+                        ProxyTopologyVO.builder()
+                                .proxyAddr("10.0.0.2:8081")
+                                .status("DOWN")
+                                .grpcPort(8081)
+                                .remotingPort(8080)
+                                .grpcReachable(false)
+                                .remotingReachable(false)
+                                .latencyMs(-1L)
+                                .build()));
+
+        mockMvc.perform(get("/api/proxies/topology"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].proxyAddr").value("127.0.0.1:8081"))
+                .andExpect(jsonPath("$.data[0].status").value("UP"))
+                .andExpect(jsonPath("$.data[0].grpcReachable").value(true))
+                .andExpect(jsonPath("$.data[1].status").value("DOWN"))
+                .andExpect(jsonPath("$.data[1].latencyMs").value(-1));
+
+        verify(proxyAddressService).buildTopology();
+    }
+
+    @Test
     void reloadProxyConfigShouldReturnSuccess() throws Exception {
         RestartProxyDTO request = RestartProxyDTO.builder()
                 .clusterId("cluster-1")

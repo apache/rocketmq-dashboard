@@ -43,6 +43,13 @@ public class DLQProviderStub implements DLQProvider {
         throw unsupported();
     }
 
+    @Override
+    public List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                             Integer maxCount) {
+        log.warn("DLQProviderStub.exportMessages called but no real DLQ provider is configured. group={}", groupName);
+        throw unsupported();
+    }
+
     private BusinessException unsupported() {
         return new BusinessException(501, "DLQ provider is not configured");
     }

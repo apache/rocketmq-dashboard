@@ -37,10 +37,26 @@ export interface ProxyNode {
   isSelected: boolean;
 }
 
+export interface ProxyTopologyNode {
+  proxyAddr: string;
+  status: 'UP' | 'PARTIAL' | 'DOWN';
+  grpcPort: number;
+  remotingPort: number | null;
+  grpcReachable: boolean;
+  remotingReachable: boolean;
+  latencyMs: number;
+}
+
 // ─── API Functions ───────────────────────────────────────────────
 
 export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
   const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query');
+  return res.data.data;
+}
+
+/** Live TCP health/topology view of every registered proxy node. */
+export async function getProxyTopology(): Promise<ProxyTopologyNode[]> {
+  const res = await client.get<{ data: ProxyTopologyNode[] }>('/proxies/topology');
   return res.data.data;
 }
 

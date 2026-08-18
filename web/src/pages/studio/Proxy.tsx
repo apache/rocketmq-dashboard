@@ -45,7 +45,12 @@ import {
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { queryProxyHomePage, reloadProxyConfig, type ProxyNode } from '../../api/proxy';
+import {
+  getProxyTopology,
+  queryProxyHomePage,
+  reloadProxyConfig,
+  type ProxyNode,
+} from '../../api/proxy';
 
 const { Text } = Typography;
 
@@ -84,7 +89,7 @@ const ProxyPage: React.FC = () => {
     try {
       const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
       if (requestId !== loadRequestId.current) return false;
-      const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
+      const baseNodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
         key: addr,
         address: addr,
         status: 'unknown' as const,
@@ -96,6 +101,30 @@ const ProxyPage: React.FC = () => {
         uptime: null,
         isSelected: addr === currentProxyAddr,
       }));
+      let nodes = baseNodes;
+
+      // Overlay the live TCP health view (UP/PARTIAL/DOWN) when the backend exposes it.
+      try {
+        const topology = await getProxyTopology();
+        if (requestId !== loadRequestId.current) return false;
+        const statusByAddr = new Map(
+          topology.map((node) => [node.proxyAddr, node.status]),
+        );
+        nodes = baseNodes.map((node) => {
+          const probeStatus = statusByAddr.get(node.address);
+          const status: ProxyNode['status'] =
+            probeStatus === 'UP'
+              ? 'healthy'
+              : probeStatus === 'PARTIAL'
+                ? 'warning'
+                : probeStatus === 'DOWN'
+                  ? 'unhealthy'
+                  : node.status;
+          return { ...node, status };
+        });
+      } catch {
+        // Health probing is best-effort; keep the unknown status when it is unavailable.
+      }
       setProxyNodes(nodes);
 
       setClusterStats({

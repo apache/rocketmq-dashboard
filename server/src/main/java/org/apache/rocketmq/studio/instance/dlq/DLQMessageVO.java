@@ -16,13 +16,28 @@
  */
 package org.apache.rocketmq.studio.instance.dlq;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.List;
+/**
+ * A dead-letter message as exported by the DLQ export endpoint. {@code body} carries the
+ * UTF-8-decoded payload (best effort) while {@code bodyBase64} preserves the exact bytes
+ * so binary messages can be exported losslessly.
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DLQMessageVO {
 
-public interface DLQProvider {
-    List<DLQGroupVO> listDLQGroups(String instanceId);
-    DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
-                                     String targetTopic);
-    List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
-                                      Integer maxCount);
+    private String msgId;
+    private String topic;
+    private int queueId;
+    private long offset;
+    private long storeTime;
+    private String keys;
+    private String body;
+    private String bodyBase64;
 }

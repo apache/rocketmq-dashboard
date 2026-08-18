@@ -37,7 +37,7 @@ import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import type { DLQGroup } from '../../api/message';
-import { listDLQGroups, resendDLQ } from '../../services/messageService';
+import { exportDLQMessages, listDLQGroups, resendDLQ } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
@@ -103,6 +103,13 @@ const DLQPage = () => {
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [retryGroup, setRetryGroup] = useState<DLQGroup | null>(null);
   const [retryRange, setRetryRange] = useState<[Dayjs, Dayjs]>([
+    dayjs().subtract(1, 'day'),
+    dayjs(),
+  ]);
+  // Time range applied to dead-letter message exports. Kept page-level and
+  // visible so users know exactly which window the export covers instead of
+  // silently falling back to the backend's last-hour default.
+  const [exportRange, setExportRange] = useState<[Dayjs, Dayjs]>([
     dayjs().subtract(1, 'day'),
     dayjs(),
   ]);
@@ -256,9 +263,24 @@ const DLQPage = () => {
     }
   };
 
-  const handleExport = (group: DLQGroup) => {
-    exportDLQGroups([group], `${group.groupName}-dlq.csv`);
-    message.success(`已导出 ${group.groupName} 的死信队列摘要`);
+  const handleExport = async (group: DLQGroup) => {
+    try {
+      const blob = await exportDLQMessages({
+        instanceId: selectedInstanceId,
+        groupName: group.groupName,
+        startTime: exportRange[0].valueOf(),
+        endTime: exportRange[1].valueOf(),
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${group.groupName}-dlq-messages.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
+    } catch (error) {
+      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+    }
   };
 
   const handleBatchExport = () => {
@@ -389,6 +411,22 @@ const DLQPage = () => {
             style={{ width: 320 }}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
+          <Space size={8}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              导出时间范围
+            </Text>
+            <RangePicker
+              showTime
+              format="YYYY-MM-DD HH:mm:ss"
+              value={exportRange}
+              onChange={(vals) => {
+                if (vals && vals[0] && vals[1]) {
+                  setExportRange([vals[0], vals[1]]);
+                }
+              }}
+              style={{ width: 380 }}
+            />
+          </Space>
         </Space>
         <Button
           icon={<Download size={16} />}

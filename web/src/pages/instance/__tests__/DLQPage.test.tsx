@@ -29,6 +29,7 @@ import DLQPage from '../dlq';
 vi.mock('../../../services/messageService', () => ({
   listDLQGroups: vi.fn(),
   resendDLQ: vi.fn(),
+  exportDLQMessages: vi.fn(),
 }));
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([
@@ -189,16 +190,29 @@ describe('DLQ page', () => {
     expect(screen.getByText('ACTIVE')).toBeInTheDocument();
   });
 
-  it('exports the selected group summary as CSV', async () => {
+  it('exports the dead-letter messages of a group as JSON', async () => {
+    vi.mocked(messageService.exportDLQMessages).mockResolvedValue(
+      new Blob(['[{"msgId":"m1","topic":"%DLQ%cg-order","queueId":0,"offset":5}]'], {
+        type: 'application/json',
+      }),
+    );
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
     await user.click(screen.getByRole('button', { name: '导出' }));
 
+    expect(messageService.exportDLQMessages).toHaveBeenCalledTimes(1);
+    const exportParams = vi.mocked(messageService.exportDLQMessages).mock.calls[0][0];
+    expect(exportParams.instanceId).toBe('instance-1');
+    expect(exportParams.groupName).toBe('cg-order');
+    expect(typeof exportParams.startTime).toBe('number');
+    expect(typeof exportParams.endTime).toBe('number');
+    // Default export window is the last day, mirroring the visible range picker.
+    expect(exportParams.endTime! - exportParams.startTime!).toBeGreaterThan(23 * 3600_000);
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0][0] as Blob;
-    await expect(blob.text()).resolves.toContain('"cg-order","%DLQ%cg-order","7","3","ACTIVE"');
+    await expect(blob.text()).resolves.toContain('"msgId":"m1"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
@@ -228,7 +242,7 @@ describe('DLQ page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
 
-  it('neutralizes formulas hidden behind a leading line feed in CSV exports', async () => {
+  it('neutralizes formulas hidden behind a leading line feed in CSV summary exports', async () => {
     vi.mocked(messageService.listDLQGroups).mockResolvedValue([
       {
         ...dlqGroup,
@@ -241,7 +255,8 @@ describe('DLQ page', () => {
 
     const row = (await screen.findByText('%DLQ%formula')).closest('tr');
     if (!row) throw new Error('DLQ group row not found');
-    await user.click(within(row).getByRole('button', { name: '导出' }));
+    await user.click(within(row).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量导出/ }));
 
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     await expect(blob.text()).resolves.toContain('"\'\n=1+1","%DLQ%formula"');

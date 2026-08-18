@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -37,6 +38,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -175,5 +178,52 @@ class DLQControllerTest {
                 .andExpect(jsonPath("$.message").value("Invalid request body"));
 
         verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void exportDLQMessagesShouldReturnJsonAttachment() throws Exception {
+        when(dlqService.exportMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
+                .thenReturn(List.of(
+                        DLQMessageVO.builder()
+                                .msgId("msg-1")
+                                .topic("%DLQ%test-group")
+                                .queueId(0)
+                                .offset(5L)
+                                .storeTime(150L)
+                                .keys("key-a")
+                                .body("hello dlq")
+                                .bodyBase64("aGVsbG8gZGxx")
+                                .build()));
+
+        mockMvc.perform(get("/api/dlq/export")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"dlq-test-group.json\""))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$[0].msgId").value("msg-1"))
+                .andExpect(jsonPath("$[0].body").value("hello dlq"));
+
+        verify(dlqService).exportMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull());
+    }
+
+    @Test
+    void exportDLQMessagesShouldPassTimeRangeTest() throws Exception {
+        when(dlqService.exportMessages(eq("instance-1"), eq("test-group"), eq(1000L), eq(2000L), eq(100)))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/dlq/export")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("startTime", "1000")
+                        .param("endTime", "2000")
+                        .param("maxCount", "100"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"dlq-test-group.json\""))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
+
+        verify(dlqService).exportMessages(eq("instance-1"), eq("test-group"), eq(1000L), eq(2000L), eq(100));
     }
 }

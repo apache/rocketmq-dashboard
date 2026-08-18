@@ -33,6 +33,7 @@ import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -43,10 +44,12 @@ import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -145,7 +148,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
         DeadLetterScanResult scanResult;
         try {
-            scanResult = collectDeadLetters(endpoint, dlqTopic, begin, end);
+            scanResult = collectDeadLetters(endpoint, dlqTopic, begin, end, RESEND_HARD_CAP);
         } catch (BusinessException e) {
             String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, "
                             + "matched=0, resent=0, failed=0, scanIncomplete=true, scanFailedQueues=all",
@@ -193,7 +196,45 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .build();
     }
 
-    private DeadLetterScanResult collectDeadLetters(String endpoint, String dlqTopic, long begin, long end) {
+    @Override
+    public List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                             Integer maxCount) {
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+        long end = endTime != null ? endTime : System.currentTimeMillis();
+        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        int cap = maxCount == null || maxCount <= 0 ? RESEND_HARD_CAP : Math.min(maxCount, RESEND_HARD_CAP);
+        DeadLetterScanResult scanResult = collectDeadLetters(endpoint, dlqTopic, begin, end, cap);
+        return scanResult.messages().stream().map(this::toExportVO).toList();
+    }
+
+    private DLQMessageVO toExportVO(MessageExt message) {
+        return DLQMessageVO.builder()
+                .msgId(message.getMsgId())
+                .topic(message.getTopic())
+                .queueId(message.getQueueId())
+                .offset(message.getQueueOffset())
+                .storeTime(message.getStoreTimestamp())
+                .keys(message.getKeys())
+                .body(toUtf8Text(message.getBody()))
+                .bodyBase64(message.getBody() == null ? null
+                        : Base64.getEncoder().encodeToString(message.getBody()))
+                .build();
+    }
+
+    private String toUtf8Text(byte[] body) {
+        if (body == null) {
+            return null;
+        }
+        try {
+            return new String(body, StandardCharsets.UTF_8);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private DeadLetterScanResult collectDeadLetters(String endpoint, String dlqTopic, long begin, long end,
+                                                     int cap) {
         DefaultMQPullConsumer consumer = newPullConsumer(endpoint);
         List<MessageExt> result = new ArrayList<>();
         int failedQueueCount = 0;
@@ -212,7 +253,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                     long maxOffset = consumer.searchOffset(queue, end);
                     int consecutiveIllegalOffsets = 0;
                     for (long offset = minOffset; offset <= maxOffset; ) {
-                        if (result.size() >= RESEND_HARD_CAP) {
+                        if (result.size() >= cap) {
                             break outer;
                         }
                         PullResult pullResult = consumer.pull(queue, "*", offset, 32);
@@ -254,7 +295,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                             if (messageExt.getStoreTimestamp() >= begin
                                     && messageExt.getStoreTimestamp() <= end) {
                                 result.add(messageExt);
-                                if (result.size() >= RESEND_HARD_CAP) {
+                                if (result.size() >= cap) {
                                     break outer;
                                 }
                             }
