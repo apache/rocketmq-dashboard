@@ -66,14 +66,52 @@ class RocketMQClientProviderTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @Mock
+    private MqAdminExtFactory adminFactory;
+
     private RocketMQClientProvider provider;
 
     @BeforeEach
     void setUp() {
-        provider = new RocketMQClientProvider(runtimeAdminClientResolver);
+        provider = new RocketMQClientProvider(runtimeAdminClientResolver, adminFactory);
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>
                         getArgument(1).apply(adminExt));
+        lenient().when(adminFactory.execute(anyString(), any(), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>
+                                getArgument(2).apply(adminExt));
+    }
+
+    @Test
+    void findConnectionsAtShouldUseNameserverScopedAdminClientTest() throws Exception {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(null);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+
+        List<ClientConnectionVO> result = provider.findConnectionsAt("10.0.1.31:9876", null, null);
+
+        assertThat(result).isEmpty();
+        verify(adminFactory).execute(eq("10.0.1.31:9876"), any(), any(MqAdminExtFactory.AdminAction.class));
+        verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
+    }
+
+    @Test
+    void connectionVersionShouldBeResolvedFromMQVersionCodeTest() throws Exception {
+        Map<String, String> clusters = new HashMap<>();
+        clusters.put("10.0.0.11:10911", "cluster-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(clusters));
+        Map<String, List<ProducerInfo>> data = new HashMap<>();
+        data.put("pg-order", List.of(new ProducerInfo(
+                "client-1", "10.0.0.21:49152", LanguageCode.JAVA, 500, 1000L)));
+        ProducerTableInfo producerTable = new ProducerTableInfo(data);
+        when(adminExt.getAllProducerInfo("10.0.0.11:10911")).thenReturn(producerTable);
+
+        List<ClientConnectionVO> connections = provider.findConnectionsAt("10.0.1.31:9876", null, "Producer");
+
+        assertThat(connections).hasSize(1);
+        assertThat(connections.get(0).getVersion())
+                .isEqualTo(org.apache.rocketmq.common.MQVersion.getVersionDesc(500));
     }
 
     @Test

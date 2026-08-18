@@ -14,26 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cluster.broker;
+package org.apache.rocketmq.studio.cluster.nameserver;
 
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.List;
-
-public interface ClusterProvider {
-
-    List<ClusterVO> discoverClusters();
-
-    default List<ClusterVO> discoverClusters(String instanceId) {
-        return discoverClusters();
-    }
-
-    default List<ClusterVO> discoverClustersAt(String namesrvAddr) {
-        return List.of();
-    }
-
-    ClusterVO refreshClusterDetail(String clusterId);
-
-    default ClusterVO refreshClusterDetail(String clusterId, String instanceId) {
-        return refreshClusterDetail(clusterId);
-    }
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DeleteNameserverRegistryDTO {
+    @NotNull(message = "id is required")
+    private Long id;
 }

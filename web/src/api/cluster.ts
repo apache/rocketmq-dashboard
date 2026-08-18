@@ -61,6 +61,18 @@ export interface NameServerInfo {
   status: string;
 }
 
+export interface NameserverRegistryEntry {
+  id: number;
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace: string | null;
+  k8sId: string | null;
+  status: string | null;
+  description: string | null;
+  gmtCreate: string | null;
+  gmtModified: string | null;
+}
+
 export interface ClusterConfig {
   flushDiskType: string;
   autoCreateTopicEnable: boolean;
@@ -100,7 +112,7 @@ export interface ClusterProbeResult {
 
 export interface K8sCertInfo {
   id: number;
-  name: string;
+  k8sId: string;
   cluster: string;
   type: string;
   issuer: string;
@@ -136,11 +148,16 @@ export interface NameServerConfigDiffResult {
 }
 
 // ─── Cluster ────────────────────────────────────────────────────
-export async function listClusters(instanceId?: number) {
+export async function listClusters(instanceId?: string) {
   const res = await client.get<{ data: ClusterInfo[] }>('/clusters', {
     params: instanceId ? { instanceId } : undefined,
   });
   return res.data.data;
+}
+
+export async function listRegistryClusters() {
+  const res = await client.get<{ data: ClusterInfo[] }>('/clusters/registry');
+  return res.data.data ?? [];
 }
 
 export async function testClusterConnection(namesrvAddr: string) {
@@ -150,7 +167,7 @@ export async function testClusterConnection(namesrvAddr: string) {
   return res.data.data;
 }
 
-export async function getCluster(id: string, instanceId?: number) {
+export async function getCluster(id: string, instanceId?: string) {
   const res = await client.get<{ data: ClusterInfo }>(`/clusters/${pathSegment(id)}`, {
     params: instanceId ? { instanceId } : undefined,
   });
@@ -158,7 +175,7 @@ export async function getCluster(id: string, instanceId?: number) {
 }
 
 export async function updateClusterConfig(
-  data: { id: string; instanceId?: number } & Partial<ClusterConfig>,
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
 ) {
   const res = await client.post<{ data: ClusterConfigUpdateResult }>(
     '/clusters/config/update',
@@ -175,6 +192,44 @@ export async function restartBroker(clusterId: string, brokerName: string) {
 }
 
 // ─── NameServer ─────────────────────────────────────────────────
+export async function listNameserverRegistry() {
+  const res = await client.get<{ data: NameserverRegistryEntry[] }>('/nameservers');
+  return res.data.data ?? [];
+}
+
+export async function createNameserverRegistry(data: {
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  k8sId?: string;
+  description?: string;
+}) {
+  const res = await client.post<{ data: NameserverRegistryEntry }>(
+    '/nameservers/registry/create',
+    data,
+  );
+  return res.data.data;
+}
+
+export async function updateNameserverRegistry(data: {
+  id: number;
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  k8sId?: string;
+  description?: string;
+}) {
+  const res = await client.post<{ data: NameserverRegistryEntry }>(
+    '/nameservers/registry/update',
+    data,
+  );
+  return res.data.data;
+}
+
+export async function deleteNameserverRegistry(id: number) {
+  await client.post('/nameservers/registry/delete', { id });
+}
+
 export async function restartNameServer(data: { clusterId: string; addr: string }) {
   await client.post('/nameservers/restart', data);
 }
@@ -203,7 +258,7 @@ export async function updateNameServer(data: {
   await client.post('/nameservers/update', data);
 }
 
-export async function getNameServerConfigDiff(clusterId: string, instanceId?: number) {
+export async function getNameServerConfigDiff(clusterId: string, instanceId?: string) {
   const res = await client.get<{ data: NameServerConfigDiffResult }>('/nameservers/config-diff', {
     params: { clusterId, ...(instanceId ? { instanceId } : {}) },
   });

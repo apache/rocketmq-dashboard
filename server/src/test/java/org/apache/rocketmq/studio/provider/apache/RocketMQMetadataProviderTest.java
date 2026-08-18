@@ -296,6 +296,66 @@ class RocketMQMetadataProviderTest {
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
+    @Test
+    void getGroupSubscriptionsShouldCreateMissingRetryTopicBeforeQueryingTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineTopicRouteInfo("%RETRY%group-pop"))
+                .thenThrow(new IllegalStateException("route not found"));
+
+        org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo =
+                new org.apache.rocketmq.remoting.protocol.body.ClusterInfo();
+        java.util.HashMap<Long, String> brokerAddrs = new java.util.HashMap<>();
+        brokerAddrs.put(0L, "10.0.0.11:10911");
+        Map<String, org.apache.rocketmq.remoting.protocol.route.BrokerData> brokerAddrTable =
+                new java.util.HashMap<>();
+        brokerAddrTable.put("broker-a", new org.apache.rocketmq.remoting.protocol.route.BrokerData(
+                "cluster-a", "broker-a", brokerAddrs));
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        java.util.concurrent.ConcurrentHashMap<String, org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData> table =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData subscription =
+                new org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData();
+        subscription.setTopic("TopicA");
+        subscription.setSubString("*");
+        subscription.setExpressionType("TAG");
+        table.put("TopicA", subscription);
+        connection.setSubscriptionTable(table);
+        when(admin.examineConsumerConnectionInfo("group-pop")).thenReturn(connection);
+
+        List<SubscriptionEntryVO> subscriptions =
+                newLiveProvider(admin).getGroupSubscriptions(null, "group-pop");
+
+        assertThat(subscriptions).extracting(SubscriptionEntryVO::getTopic).containsExactly("TopicA");
+        org.mockito.ArgumentCaptor<org.apache.rocketmq.common.TopicConfig> captor =
+                org.mockito.ArgumentCaptor.forClass(org.apache.rocketmq.common.TopicConfig.class);
+        verify(admin).createAndUpdateTopicConfig(eq("10.0.0.11:10911"), captor.capture());
+        assertThat(captor.getValue().getTopicName()).isEqualTo("%RETRY%group-pop");
+        assertThat(captor.getValue().getReadQueueNums()).isEqualTo(1);
+        assertThat(captor.getValue().getWriteQueueNums()).isEqualTo(1);
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldReturnEmptyWhenGroupOnlyConnectsViaProxyTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.route.TopicRouteData route =
+                new org.apache.rocketmq.remoting.protocol.route.TopicRouteData();
+        java.util.HashMap<Long, String> brokerAddrs = new java.util.HashMap<>();
+        brokerAddrs.put(0L, "10.0.0.11:10911");
+        route.setBrokerDatas(List.of(new org.apache.rocketmq.remoting.protocol.route.BrokerData(
+                "cluster-a", "broker-a", brokerAddrs)));
+        when(admin.examineTopicRouteInfo("%RETRY%group-proxy")).thenReturn(route);
+        when(admin.examineConsumerConnectionInfo("group-proxy")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQBrokerException(
+                        org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
+                        "the consumer group[group-proxy] not online BROKER: 10.0.0.11:10911"));
+
+        assertThat(newLiveProvider(admin).getGroupSubscriptions(null, "group-proxy")).isEmpty();
+    }
+
     private RocketMQMetadataProvider newLiveProvider(MQAdminExt admin) throws Exception {
         MqAdminExtFactory factory = mock(MqAdminExtFactory.class);
         RocketMQProperties liveProperties = new RocketMQProperties();

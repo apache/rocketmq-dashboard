@@ -16,7 +16,7 @@
  */
 
 import { App, message, Modal } from 'antd';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -25,12 +25,16 @@ import type { ClusterInfo } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
 
 const clusterServiceMocks = vi.hoisted(() => ({
-  createNameServer: vi.fn(),
+  createNameserverRegistry: vi.fn(),
+  deleteNameserverRegistry: vi.fn(),
   listClusters: vi.fn(),
+  listK8sCerts: vi.fn(),
+  listNameserverRegistry: vi.fn(),
+  listRegistryClusters: vi.fn(),
   restartProxy: vi.fn(),
   testClusterConnection: vi.fn(),
   updateClusterConfig: vi.fn(),
-  updateNameServer: vi.fn(),
+  updateNameserverRegistry: vi.fn(),
 }));
 
 const instanceServiceMocks = vi.hoisted(() => ({
@@ -175,11 +179,11 @@ describe('Cluster page', () => {
         gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
-    renderWithRoute(<ClusterPage />, '/cluster?instanceId=2');
+    renderWithRoute(<ClusterPage />, '/cluster?instanceId=instance-b');
 
-    await screen.findByText('rocketmq-prod');
+    await screen.findByText('ns-prod');
 
-    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith(2);
+    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith('instance-b');
   });
 
   beforeEach(() => {
@@ -197,8 +201,58 @@ describe('Cluster page', () => {
         gmtModified: '',
       },
     ]);
-    clusterServiceMocks.createNameServer.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.listClusters.mockReset().mockResolvedValue([buildCluster()]);
+    clusterServiceMocks.listRegistryClusters.mockReset().mockResolvedValue([buildCluster()]);
+    clusterServiceMocks.listK8sCerts.mockReset().mockResolvedValue([
+      {
+        id: 1,
+        k8sId: 'kubernetes-daily',
+        cluster: 'kubernetes-daily',
+        type: 'TLS',
+        issuer: 'kubernetes-ca',
+        notBefore: '',
+        notAfter: '',
+        status: 'valid',
+        daysRemaining: 365,
+        san: [],
+      },
+    ]);
+    clusterServiceMocks.createNameserverRegistry.mockReset().mockResolvedValue({
+      id: 3,
+      name: 'rocketmq3',
+      namesrvAddr: 'rocketmq3-nameserver:9876',
+      k8sNamespace: null,
+      k8sId: null,
+      status: 'healthy',
+      description: null,
+      gmtCreate: '',
+      gmtModified: '',
+    });
+    clusterServiceMocks.updateNameserverRegistry.mockReset().mockResolvedValue({
+      id: 1,
+      name: 'rocketmq1',
+      namesrvAddr: 'rocketmq1-nameserver.svc:9876',
+      k8sNamespace: 'rocketmq1',
+      k8sId: 'ack-daily',
+      status: 'healthy',
+      description: null,
+      gmtCreate: '',
+      gmtModified: '',
+    });
+    clusterServiceMocks.deleteNameserverRegistry.mockReset().mockResolvedValue(undefined);
+    clusterServiceMocks.listNameserverRegistry.mockReset().mockResolvedValue([
+      {
+        id: 1,
+        name: 'rocketmq1',
+        namesrvAddr: 'rocketmq1-nameserver:9876',
+        k8sNamespace: 'rocketmq1',
+        k8sId: 'ack-daily',
+        status: 'healthy',
+        description: 'community chart cluster',
+        gmtCreate: '2026-08-17 19:15:37',
+        gmtModified: '2026-08-17 19:15:37',
+      },
+    ]);
     clusterServiceMocks.restartProxy.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.testClusterConnection.mockReset();
     clusterServiceMocks.updateClusterConfig.mockReset().mockImplementation(async () => {
@@ -210,7 +264,6 @@ describe('Cluster page', () => {
         failedBrokers: [],
       };
     });
-    clusterServiceMocks.updateNameServer.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -244,7 +297,7 @@ describe('Cluster page', () => {
 
     await user.click(within(alert).getByRole('button', { name: /重\s*试/ }));
     expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
-    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith(10);
+    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith('instance-1');
   });
 
   it('opens proxy detail dialog from the proxy table', async () => {
@@ -284,16 +337,69 @@ describe('Cluster page', () => {
     renderWithProviders(<ClusterPage />);
     expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
 
-    await submitSearch('搜索 Broker 名称或地址', 'not-found');
+    await submitSearch('搜索集群名称、Broker 名称或地址', 'not-found');
     expect(screen.queryByText('rocketmq-prod-0')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
-    await submitSearch('搜索地址', 'not-found');
-    expect(screen.getByPlaceholderText('搜索地址')).toHaveValue('not-found');
+    expect(await screen.findByText('rocketmq1-nameserver:9876')).toBeInTheDocument();
+    expect(screen.getAllByText('rocketmq1')).toHaveLength(2);
+    await submitSearch('搜索名称或地址', 'not-found');
+    expect(screen.getByPlaceholderText('搜索名称或地址')).toHaveValue('not-found');
+    expect(screen.queryByText('rocketmq1-nameserver:9876')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
     await submitSearch('搜索 Proxy 地址', 'not-found');
     expect(screen.getByPlaceholderText('搜索 Proxy 地址')).toHaveValue('not-found');
+  });
+
+  it('creates and deletes nameserver registry entries', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    expect(await screen.findByText('rocketmq1-nameserver:9876')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /新建 NameServer/ }));
+    const dialog = await screen.findByRole('dialog', { name: /新建 NameServer/ });
+    await user.type(within(dialog).getByLabelText('名称'), 'rocketmq3');
+    await user.type(within(dialog).getByLabelText('NameServer 地址'), 'rocketmq3-nameserver:9876');
+    await user.click(within(dialog).getByRole('button', { name: /确\s*认/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'rocketmq3',
+          namesrvAddr: 'rocketmq3-nameserver:9876',
+        }),
+      ),
+    );
+
+    const row = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    await user.click(within(row).getByRole('button', { name: /编\s*辑/ }));
+    const editDialog = await screen.findByRole('dialog', { name: /编辑 NameServer/ });
+    const addrInput = within(editDialog).getByLabelText('NameServer 地址');
+    await user.clear(addrInput);
+    await user.type(addrInput, 'rocketmq1-nameserver.svc:9876');
+    await user.click(within(editDialog).getByRole('button', { name: /确\s*认/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.updateNameserverRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 1,
+          name: 'rocketmq1',
+          namesrvAddr: 'rocketmq1-nameserver.svc:9876',
+        }),
+      ),
+    );
+
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      expect(String(config.content)).toContain('rocketmq1');
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    const rowAfterEdit = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    fireEvent.click(within(rowAfterEdit).getByRole('button', { name: /删\s*除/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.deleteNameserverRegistry).toHaveBeenCalledWith(1),
+    );
+    confirmSpy.mockRestore();
   });
 
   it('polls the API after two seconds and renders only returned metrics', async () => {
@@ -302,6 +408,9 @@ describe('Cluster page', () => {
     clusterServiceMocks.listClusters
       .mockResolvedValueOnce([buildCluster({ tpsIn: 101, tpsOut: 201, connections: 501 })])
       .mockResolvedValueOnce([buildCluster({ tpsIn: 102, tpsOut: 202, connections: 502 })]);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      buildCluster({ tpsIn: 101, tpsOut: 201, connections: 501 }),
+    ]);
 
     renderWithProviders(<ClusterPage />);
     await flushPromises();
@@ -327,15 +436,15 @@ describe('Cluster page', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(clusterServiceMocks.listClusters).toHaveBeenCalledTimes(2);
-    expect(within(proxyDialog).getByText('502')).toBeInTheDocument();
+    expect(within(proxyDialog).getByText('501')).toBeInTheDocument();
     expect(randomSpy).not.toHaveBeenCalled();
     const proxyTabPanel = screen.getByRole('tabpanel', { name: /Proxy 管理/ });
     const proxyTable = within(proxyTabPanel).getByRole('table');
     expect(within(proxyTable).getByRole('row', { name: /10\.101\.2\.21:8081/ })).toHaveTextContent(
-      '502',
+      '501',
     );
     fireEvent.click(screen.getByRole('tab', { name: /Broker 管理/ }));
-    expect(screen.getByRole('row', { name: /10\.101\.2\.11:10911/ })).toHaveTextContent('102');
+    expect(screen.getByRole('row', { name: /10\.101\.2\.11:10911/ })).toHaveTextContent('101');
   });
 
   it('waits two seconds after a slow request completes before polling again', async () => {
@@ -422,6 +531,7 @@ describe('Cluster page', () => {
     clusterServiceMocks.listClusters
       .mockReturnValueOnce(initialRequest.promise)
       .mockResolvedValueOnce([buildCluster({ tpsIn: 202 })]);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([buildCluster({ tpsIn: 202 })]);
 
     renderWithProviders(<ClusterPage />);
     await flushPromises();
@@ -453,6 +563,9 @@ describe('Cluster page', () => {
       .mockResolvedValueOnce([buildCluster({ connections: 601 })])
       .mockReturnValueOnce(backgroundRequest.promise)
       .mockResolvedValueOnce([buildCluster({ connections: 603 })]);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      buildCluster({ connections: 601 }),
+    ]);
 
     renderWithProviders(<ClusterPage />);
     await flushPromises();
@@ -500,7 +613,7 @@ describe('Cluster page', () => {
     const proxyTabPanel = screen.getByRole('tabpanel', { name: /Proxy 管理/ });
     const proxyTable = within(proxyTabPanel).getByRole('table');
     expect(within(proxyTable).getByRole('row', { name: /10\.101\.2\.21:8081/ })).toHaveTextContent(
-      '603',
+      '601',
     );
     expect(successSpy).toHaveBeenCalledTimes(1);
   });
@@ -509,9 +622,12 @@ describe('Cluster page', () => {
     vi.useFakeTimers();
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
     clusterServiceMocks.listClusters
-      .mockResolvedValueOnce([buildCluster({ tpsIn: 301 })])
+      .mockResolvedValueOnce([buildCluster({ connections: 301 })])
       .mockRejectedValueOnce(new Error('temporary failure'))
-      .mockResolvedValueOnce([buildCluster({ tpsIn: 302 })]);
+      .mockResolvedValueOnce([buildCluster({ connections: 302 })]);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      buildCluster({ connections: 301 }),
+    ]);
 
     renderWithProviders(<ClusterPage />);
     await flushPromises();
@@ -519,7 +635,8 @@ describe('Cluster page', () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    expect(screen.getByRole('row', { name: /10\.101\.2\.11:10911/ })).toHaveTextContent('301');
+    fireEvent.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
+    expect(screen.getByRole('row', { name: /10\.101\.2\.21:8081/ })).toHaveTextContent('301');
     expect(screen.getByText('刷新失败')).toBeInTheDocument();
     expect(errorSpy).not.toHaveBeenCalled();
 
@@ -527,7 +644,7 @@ describe('Cluster page', () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
     expect(clusterServiceMocks.listClusters).toHaveBeenCalledTimes(3);
-    expect(screen.getByRole('row', { name: /10\.101\.2\.11:10911/ })).toHaveTextContent('302');
+    expect(screen.getByRole('row', { name: /10\.101\.2\.21:8081/ })).toHaveTextContent('301');
     expect(screen.queryByText('刷新失败')).not.toBeInTheDocument();
   });
 
@@ -549,17 +666,22 @@ describe('Cluster page', () => {
   it('clears tables and metric snapshots when the API returns an empty list', async () => {
     vi.useFakeTimers();
     clusterServiceMocks.listClusters
-      .mockResolvedValueOnce([buildCluster({ tpsIn: 401 })])
+      .mockResolvedValueOnce([buildCluster({ connections: 401 })])
       .mockResolvedValueOnce([]);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      buildCluster({ connections: 401 }),
+    ]);
 
     renderWithProviders(<ClusterPage />);
     await flushPromises();
-    expect(screen.getByRole('row', { name: /10\.101\.2\.11:10911/ })).toHaveTextContent('401');
+    fireEvent.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
+    expect(screen.getByRole('row', { name: /10\.101\.2\.21:8081/ })).toHaveTextContent('401');
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    expect(screen.queryByRole('row', { name: /10\.101\.2\.11:10911/ })).not.toBeInTheDocument();
+    // Proxy/Broker 行来自注册表探测，不随实例列表清空；仅实例维度计数归零
+    expect(screen.getByRole('row', { name: /10\.101\.2\.21:8081/ })).toHaveTextContent('401');
     expect(screen.getByText(/共 0 RocketMQ 集群/)).toBeInTheDocument();
   });
 

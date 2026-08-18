@@ -67,6 +67,27 @@ class ClusterControllerTest {
     private ClusterConnectionService clusterConnectionService;
 
     @Test
+    void listRegistryClustersShouldReturnDiscoveredClustersTest() throws Exception {
+        when(clusterService.listRegistryClusters()).thenReturn(Collections.singletonList(
+                ClusterVO.builder()
+                        .id("DefaultCluster")
+                        .name("rocketmq1")
+                        .nsClusterName("DefaultCluster")
+                        .endpoint("rocketmq1-nameserver:9876")
+                        .status(ClusterStatus.healthy)
+                        .build()));
+
+        mockMvc.perform(get("/api/clusters/registry"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].name").value("rocketmq1"))
+                .andExpect(jsonPath("$.data[0].nsClusterName").value("DefaultCluster"))
+                .andExpect(jsonPath("$.data[0].endpoint").value("rocketmq1-nameserver:9876"));
+
+        verify(clusterService).listRegistryClusters();
+    }
+
+    @Test
     void testConnectionShouldReturnProbeResult() throws Exception {
         ClusterProbeResult probe = ClusterProbeResult.builder()
                 .connected(true)

@@ -15,7 +15,7 @@ export interface ClientConnection {
 }
 
 export interface ClientConnectionQuery {
-  instanceId: number;
+  namesrvAddr: string;
   clusterId?: string;
   type?: string;
 }

@@ -21,29 +21,53 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClientConnection } from '../../../api/connections';
+import type { ClusterInfo } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as connectionsService from '../../../services/connectionsService';
-import * as instanceService from '../../../services/instanceService';
+import * as clusterService from '../../../services/clusterService';
 import ClientsPage from '../clients';
 
 vi.mock('../../../services/connectionsService', () => ({
   listConnections: vi.fn(),
 }));
-vi.mock('../../../services/instanceService', () => ({
-  listInstances: vi.fn().mockResolvedValue([
-    {
-      id: 1,
-      name: 'instance-1',
-      endpoint: 'namesrv-1:9876',
-      type: 'DIRECT',
-      remark: '',
-      topicCount: 0,
-      consumerGroupCount: 0,
-      gmtCreate: '',
-      gmtModified: '',
-    },
-  ]),
+vi.mock('../../../services/clusterService', () => ({
+  listRegistryClusters: vi.fn(),
 }));
+
+const registryClusters: ClusterInfo[] = [
+  {
+    id: 'ns-prod',
+    name: 'rocketmq1',
+    nsClusterName: 'ns-prod',
+    type: 'V4_DIRECT',
+    endpoint: 'namesrv-1:9876',
+    status: 'healthy',
+    version: '5.5.0',
+    brokers: [],
+    proxies: [],
+    nameServers: [],
+    config: {} as ClusterInfo['config'],
+    topicCount: 0,
+    groupCount: 0,
+    tpsHistory: [],
+  },
+  {
+    id: 'ns-audit',
+    name: 'rocketmq2',
+    nsClusterName: 'ns-audit',
+    type: 'V4_DIRECT',
+    endpoint: 'namesrv-2:9876',
+    status: 'healthy',
+    version: '5.5.0',
+    brokers: [],
+    proxies: [],
+    nameServers: [],
+    config: {} as ClusterInfo['config'],
+    topicCount: 0,
+    groupCount: 0,
+    tpsHistory: [],
+  },
+];
 
 const connection: ClientConnection = {
   clientId: 'order-svc-0@10.0.1.12:49152',
@@ -100,6 +124,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  vi.mocked(clusterService.listRegistryClusters).mockResolvedValue(registryClusters);
   vi.mocked(connectionsService.listConnections).mockResolvedValue([connection]);
 });
 
@@ -115,11 +140,13 @@ const renderWithProviders = (ui: React.ReactElement) =>
   );
 
 describe('Clients page', () => {
-  it('loads connections for the selected instance', async () => {
+  it('loads connections for the first online broker cluster', async () => {
     renderWithProviders(<ClientsPage />);
 
     await screen.findByText('order-svc-0@10.0.1.12:49152');
-    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 1 });
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({
+      namesrvAddr: 'namesrv-1:9876',
+    });
   });
 
   it('summarizes connection types, protocols, and language versions', async () => {
@@ -142,7 +169,7 @@ describe('Clients page', () => {
     expect(within(languageVersions).getByText('C++ 4.9.8: 1')).toBeInTheDocument();
   });
 
-  it('updates statistics when the selected cluster changes', async () => {
+  it('updates statistics when the selected cluster filter changes', async () => {
     const user = userEvent.setup();
     vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
     renderWithProviders(<ClientsPage />);
@@ -222,7 +249,7 @@ describe('Clients page', () => {
     expect(within(screen.getByTestId('connection-total')).getByText('0')).toBeInTheDocument();
   });
 
-  it('retries the current instance connection query after a runtime failure', async () => {
+  it('retries the current cluster connection query after a runtime failure', async () => {
     vi.mocked(connectionsService.listConnections)
       .mockRejectedValueOnce(new Error('Client connection provider is not configured'))
       .mockResolvedValueOnce([connection]);
@@ -239,79 +266,47 @@ describe('Clients page', () => {
     expect(await screen.findByText('order-svc-0@10.0.1.12:49152')).toBeInTheDocument();
     expect(connectionsService.listConnections).toHaveBeenCalledTimes(2);
     expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
-      instanceId: 1,
+      namesrvAddr: 'namesrv-1:9876',
     });
   });
 
-  it('clears the previous instance data when the next instance connection request fails', async () => {
-    vi.mocked(instanceService.listInstances).mockResolvedValue([
-      {
-        id: 1,
-        name: 'instance-1',
-        endpoint: 'namesrv-1:9876',
-        type: 'DIRECT',
-        remark: '',
-        topicCount: 0,
-        consumerGroupCount: 0,
-        gmtCreate: '',
-        gmtModified: '',
-      },
-      {
-        id: 2,
-        name: 'instance-2',
-        endpoint: 'namesrv-2:9876',
-        type: 'DIRECT',
-        remark: '',
-        topicCount: 0,
-        consumerGroupCount: 0,
-        gmtCreate: '',
-        gmtModified: '',
-      },
-    ]);
+  it('clears the previous data when the next cluster connection request fails', async () => {
     vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
-      query?.instanceId === 1
+      query?.namesrvAddr === 'namesrv-1:9876'
         ? Promise.resolve([connection])
-        : Promise.reject(new Error('Instance 2 is unavailable')),
+        : Promise.reject(new Error('Cluster ns-audit is unavailable')),
     );
     const user = userEvent.setup();
     renderWithProviders(<ClientsPage />);
 
     await screen.findByText('order-svc-0@10.0.1.12:49152');
-    await user.click(screen.getByRole('combobox', { name: 'Instance' }));
+    await user.click(screen.getByRole('combobox', { name: 'NameServer' }));
     await user.click(
-      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+      await screen.findByText('rocketmq2 (namesrv-2:9876)', {
+        selector: '.ant-select-item-option-content',
+      }),
     );
 
-    expect(await screen.findByText('Instance 2 is unavailable')).toBeInTheDocument();
+    expect(await screen.findByText('Cluster ns-audit is unavailable')).toBeInTheDocument();
     expect(screen.queryByText('order-svc-0@10.0.1.12:49152')).not.toBeInTheDocument();
     expect(within(screen.getByTestId('connection-total')).getByText('0')).toBeInTheDocument();
   });
 
-  it('surfaces instance discovery failures and allows retrying', async () => {
-    vi.mocked(instanceService.listInstances)
-      .mockRejectedValueOnce(new Error('Unable to load managed instances'))
-      .mockResolvedValueOnce([
-        {
-          id: 1,
-          name: 'instance-1',
-          endpoint: 'namesrv-1:9876',
-          type: 'DIRECT',
-          remark: '',
-          topicCount: 0,
-          consumerGroupCount: 0,
-          gmtCreate: '',
-          gmtModified: '',
-        },
-      ]);
+  it('surfaces registry discovery failures and allows retrying', async () => {
+    vi.mocked(clusterService.listRegistryClusters)
+      .mockRejectedValueOnce(new Error('Unable to load registry clusters'))
+      .mockResolvedValueOnce(registryClusters);
     const user = userEvent.setup();
     renderWithProviders(<ClientsPage />);
 
-    expect(await screen.findByText('Unable to load managed instances')).toBeInTheDocument();
+    expect(await screen.findByText('Unable to load registry clusters')).toBeInTheDocument();
     expect(connectionsService.listConnections).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: /重\s*试/ }));
     await screen.findByText('order-svc-0@10.0.1.12:49152');
-    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 1 });
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({
+      namesrvAddr: 'namesrv-1:9876',
+    });
   });
 
   it('opens a client detail dialog from the connection table', async () => {
