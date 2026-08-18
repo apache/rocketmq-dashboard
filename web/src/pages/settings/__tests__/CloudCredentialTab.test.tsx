@@ -19,7 +19,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import type { CloudCredential } from '../../../api/cloudCredential';
+import type { CloudCredentialPage } from '../../../api/cloudCredential';
 import {
   createCloudCredential,
   deleteCloudCredential,
@@ -36,16 +36,21 @@ vi.mock('../../../api/cloudCredential', () => ({
   updateCloudCredential: vi.fn(),
 }));
 
-const credentials: CloudCredential[] = [
-  {
-    id: 1,
-    name: 'aliyun-test',
-    vendor: 'ALIYUN',
-    accessKey: 'LTAI****0001',
-    remark: '测试账号',
-    gmtCreate: '2026-08-18T10:00:00',
-  },
-];
+const credentials: CloudCredentialPage = {
+  items: [
+    {
+      id: 1,
+      name: 'aliyun-test',
+      vendor: 'ALIYUN',
+      accessKey: 'LTAI****0001',
+      remark: '测试账号',
+      gmtCreate: '2026-08-18T10:00:00',
+    },
+  ],
+  total: 1,
+  page: 1,
+  size: 20,
+};
 
 const renderTab = () =>
   render(
@@ -123,7 +128,7 @@ describe('CloudCredentialTab', () => {
 
   it('updates name and remark while keeping the secret unchanged when blank', async () => {
     vi.mocked(updateCloudCredential).mockResolvedValue({
-      ...credentials[0],
+      ...credentials.items[0],
       name: 'aliyun-renamed',
       remark: '新备注',
     });
