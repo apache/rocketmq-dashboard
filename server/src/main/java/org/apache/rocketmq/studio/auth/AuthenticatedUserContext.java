@@ -56,6 +56,16 @@ public final class AuthenticatedUserContext {
         return username == null ? SYSTEM_ACTOR : username;
     }
 
+    /**
+     * Returns whether the current request is an administrator or a system-initiated operation.
+     * A missing context represents background/system work, which must retain access to persisted
+     * configuration rather than being treated as a reader request.
+     */
+    public static boolean currentUserIsAdminOrSystem() {
+        Boolean admin = CURRENT_ADMIN.get();
+        return admin == null || admin;
+    }
+
     public static void clear() {
         CURRENT_USERNAME.remove();
         CURRENT_USER_ID.remove();
