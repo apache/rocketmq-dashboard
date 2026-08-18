@@ -28,6 +28,10 @@ cd .. && docker compose up -d --build
 `STUDIO_AUTH_ADMIN_PASSWORD` 开启登录保护。登录接口仅接受已配置用户；
 关闭登录保护只会跳过本地开发场景下的 API 拦截。
 
+如果是从未包含认证表的旧版部署升级，并且继续复用现有 MySQL volume，请在新版本首次登录前先执行
+`deploy/mysql/upgrade-auth-tables.sql`。全新 volume 会直接从 `schema.sql` 获得
+`rmq_studio_user` 和 `rmq_studio_session`，无需额外导入。
+
 ## 功能概览
 
 | 模块 | 能力 |

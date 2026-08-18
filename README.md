@@ -36,6 +36,10 @@ user-management page; browsers authenticate with an `HttpOnly` session cookie, a
 request a bearer token explicitly. Disabling login protection only skips API interception for local
 development.
 
+If you are upgrading an existing MySQL volume from a pre-auth deployment, import
+`deploy/mysql/upgrade-auth-tables.sql` once before the first login on the new build. Fresh volumes
+already receive `rmq_studio_user` and `rmq_studio_session` from `schema.sql`.
+
 ## Features
 
 | Module | Capabilities |
