@@ -68,8 +68,8 @@ rocketmq:
     # set the message track trace topic if you don't want use the default one
     msgTrackTopicName:
     ticketKey: ticket
-    # must create userInfo file: ${rocketmq.config.dataPath}/users.properties if the login is required
-    loginRequired: false
+    # Management endpoints require a userInfo file at ${rocketmq.config.dataPath}/users.properties.
+    loginRequired: true
     # Authentication mode for RocketMQ Dashboard
     # Available options:
     #   - 'file': Use username/password stored in a file (requires 'auth.file.path')

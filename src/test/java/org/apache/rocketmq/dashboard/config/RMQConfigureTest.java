@@ -31,6 +31,11 @@ public class RMQConfigureTest {
     private RMQConfigure rmqConfigure = new RMQConfigure();
 
     @Test
+    public void loginIsRequiredByDefault() {
+        Assert.assertTrue(new RMQConfigure().isLoginRequired());
+    }
+
+    @Test
     public void testSet() {
         rmqConfigure.setAccessKey("rocketmq");
         rmqConfigure.setSecretKey("12345678");

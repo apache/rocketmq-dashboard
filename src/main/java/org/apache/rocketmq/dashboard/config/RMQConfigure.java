@@ -64,7 +64,7 @@ public class RMQConfigure {
 
     @Setter
     @Getter
-    private boolean loginRequired = false;
+    private boolean loginRequired = true;
 
 
     private String accessKey;
