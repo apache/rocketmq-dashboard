@@ -14,20 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.auth;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AuthStatusVO {
-    private boolean loginRequired;
-    private boolean authenticated;
-    private LoginVO.UserInfo user;
+public class UpdateStudioUserStatusDTO {
+
+    @NotNull(message = "Enabled is required")
+    private Boolean enabled;
 }

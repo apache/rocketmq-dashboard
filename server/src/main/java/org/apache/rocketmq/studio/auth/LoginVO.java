@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.auth;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -29,6 +30,7 @@ import lombok.ToString;
 @AllArgsConstructor
 public class LoginVO {
     @ToString.Exclude
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String token;
     private int expiresIn;
     private UserInfo user;
@@ -38,6 +40,7 @@ public class LoginVO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class UserInfo {
+        private Long userId;
         private String username;
         private boolean admin;
     }
