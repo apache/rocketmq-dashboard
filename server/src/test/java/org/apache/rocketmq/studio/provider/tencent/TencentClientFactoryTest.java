@@ -16,9 +16,17 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
+import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class TencentClientFactoryTest {
 
@@ -44,5 +52,64 @@ class TencentClientFactoryTest {
                 .isEqualTo("trocket.ap-shenzhen-fsi.tencentcloudapi.com");
         assertThat(TencentClientFactory.endpointFor("ap-shanghai-fsi"))
                 .isEqualTo("trocket.ap-shanghai-fsi.tencentcloudapi.com");
+    }
+
+    @Test
+    void invalidateCredentialShouldRemoveAnInFlightClientCreationTest() throws Exception {
+        long credentialId = 1L;
+        BlockingClientFactory factory = new BlockingClientFactory();
+        FutureTask<TrocketClient> firstClientTask = new FutureTask<>(
+                () -> factory.client(credentialId, "ap-shanghai"));
+        Thread creationThread = new Thread(firstClientTask, "tencent-client-creation-test");
+        creationThread.start();
+        assertThat(factory.creationStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+        Thread invalidationThread = new Thread(
+                () -> factory.invalidateCredential(credentialId),
+                "tencent-client-invalidation-test");
+        invalidationThread.start();
+        awaitBlockedOrTerminated(invalidationThread);
+
+        factory.allowCreation.countDown();
+        TrocketClient firstClient = firstClientTask.get(5, TimeUnit.SECONDS);
+        invalidationThread.join(TimeUnit.SECONDS.toMillis(5));
+
+        assertThat(invalidationThread.isAlive()).isFalse();
+        assertThat(factory.client(credentialId, "ap-shanghai")).isNotSameAs(firstClient);
+        assertThat(factory.creationCount).hasValue(2);
+    }
+
+    private static void awaitBlockedOrTerminated(Thread thread) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (thread.getState() != Thread.State.BLOCKED && thread.isAlive()
+                && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertThat(thread.getState() == Thread.State.BLOCKED || !thread.isAlive()).isTrue();
+    }
+
+    private static final class BlockingClientFactory extends TencentClientFactory {
+        private final CountDownLatch creationStarted = new CountDownLatch(1);
+        private final CountDownLatch allowCreation = new CountDownLatch(1);
+        private final AtomicInteger creationCount = new AtomicInteger();
+
+        private BlockingClientFactory() {
+            super(mock(CloudCredentialRepository.class));
+        }
+
+        @Override
+        protected TrocketClient createClient(Long credentialId, String region) {
+            TrocketClient client = mock(TrocketClient.class);
+            if (creationCount.incrementAndGet() == 1) {
+                creationStarted.countDown();
+                try {
+                    assertThat(allowCreation.await(5, TimeUnit.SECONDS)).isTrue();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Client creation interrupted", exception);
+                }
+            }
+            return client;
+        }
     }
 }
