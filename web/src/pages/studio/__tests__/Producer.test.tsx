@@ -111,6 +111,7 @@ describe('ProducerPage', () => {
     await waitFor(() => {
       expect(fetchTopicList).toHaveBeenCalledWith('instance-1');
     });
+    expect(fetchProducerGroups).not.toHaveBeenCalled();
   });
 
   it('uses an Apache instance rather than a cloud instance for producer diagnostics', async () => {
@@ -159,14 +160,27 @@ describe('ProducerPage', () => {
     expect(await screen.findByRole('option', { name: 'payment-events' })).toBeInTheDocument();
   });
 
-  it('suggests active producer groups while keeping free-form input', async () => {
+  it('discovers producer groups from selector interactions after topic selection', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);
 
-    await waitFor(() => expect(fetchProducerGroups).toHaveBeenCalledTimes(1));
-    const groupInput = screen.getAllByRole('combobox')[2];
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await user.click(groupInput);
     await user.type(groupInput, 'payment');
 
+    await waitFor(() => {
+      expect(fetchProducerGroups).toHaveBeenLastCalledWith('instance-1', {
+        topic: 'order-events',
+        query: 'payment',
+        limit: 20,
+      });
+    });
     expect(await screen.findByRole('option', { name: 'pg-payment' })).toBeInTheDocument();
   });
 
@@ -349,6 +363,7 @@ describe('ProducerPage', () => {
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
     );
+    await user.click(groupInput);
     await user.type(groupInput, 'manual-producer');
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
@@ -406,6 +421,7 @@ describe('ProducerPage', () => {
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
     );
+    await user.click(groupInput);
     await user.type(groupInput, 'order-producer');
     await user.click(screen.getByRole('button', { name: /搜索/ }));
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
@@ -483,5 +499,17 @@ describe('ProducerPage', () => {
     expect(queryProducerConnection).toHaveBeenCalledTimes(1);
     resolveQuery?.(producerResult([]));
     await waitFor(() => expect(search).not.toHaveClass('ant-btn-loading'));
+  });
+
+  it('does not discover producer groups before a topic is selected', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const groupInput = screen.getAllByRole('combobox')[2];
+    await user.click(groupInput);
+    await user.type(groupInput, 'order');
+
+    expect(fetchProducerGroups).not.toHaveBeenCalled();
   });
 });

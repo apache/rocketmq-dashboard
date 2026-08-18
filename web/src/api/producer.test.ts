@@ -71,12 +71,23 @@ describe('Producer API', () => {
   });
 
   it('fetches active producer group suggestions', async () => {
-    mock.onGet('/producer/groups').reply(200, {
-      code: 200,
-      data: ['pg-order', 'pg-payment'],
+    mock.onGet('/producer/groups').reply((config) => {
+      expect(config.params.instanceId).toBe('instance-1');
+      expect(config.params.topic).toBe('order-events');
+      expect(config.params.query).toBe('pg');
+      expect(config.params.limit).toBe(20);
+      return [
+        200,
+        {
+          code: 200,
+          data: ['pg-order', 'pg-payment'],
+        },
+      ];
     });
 
-    await expect(fetchProducerGroups('instance-1')).resolves.toEqual(['pg-order', 'pg-payment']);
+    await expect(
+      fetchProducerGroups('instance-1', { topic: 'order-events', query: 'pg', limit: 20 }),
+    ).resolves.toEqual(['pg-order', 'pg-payment']);
   });
 
   it('queries producer connections by topic and group', async () => {

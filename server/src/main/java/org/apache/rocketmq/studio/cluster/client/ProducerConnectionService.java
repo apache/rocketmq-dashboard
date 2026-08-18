@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
-import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +27,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ProducerConnectionService {
+
+    private static final int DEFAULT_PRODUCER_GROUP_SELECTOR_LIMIT = 20;
+    private static final int MAX_PRODUCER_GROUP_SELECTOR_LIMIT = 100;
 
     private final ClientProvider clientProvider;
 
@@ -43,15 +45,13 @@ public class ProducerConnectionService {
                 .toList();
     }
 
-    public List<String> listProducerGroups(String instanceId) {
+    public List<String> listProducerGroups(String instanceId, String topic, String query, Integer limit) {
         String normalizedInstanceId = requireFilter(instanceId, "instanceId");
-        return clientProvider.findConnections(normalizedInstanceId, null, ClientType.Producer.name()).stream()
-                .map(ClientConnectionVO::getProducerGroup)
-                .filter(this::hasText)
-                .map(String::trim)
-                .distinct()
-                .sorted()
-                .toList();
+        return clientProvider.findProducerGroups(
+                normalizedInstanceId,
+                normalizeOptionalFilter(topic),
+                normalizeOptionalFilter(query),
+                normalizeSelectorLimit(limit));
     }
 
     private ProducerConnectionVO toProducerConnection(ClientConnectionVO connection) {
@@ -65,6 +65,20 @@ public class ProducerConnectionService {
 
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    private String normalizeOptionalFilter(String value) {
+        return hasText(value) ? value.trim() : null;
+    }
+
+    private int normalizeSelectorLimit(Integer limit) {
+        if (limit == null) {
+            return DEFAULT_PRODUCER_GROUP_SELECTOR_LIMIT;
+        }
+        if (limit < 1) {
+            return 1;
+        }
+        return Math.min(limit, MAX_PRODUCER_GROUP_SELECTOR_LIMIT);
     }
 
     private String requireFilter(String value, String fieldName) {

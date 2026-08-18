@@ -27,5 +27,7 @@ public interface ClientProvider {
         throw new BusinessException(501, "Client connection provider does not support nameserver lookup");
     }
 
+    List<String> findProducerGroups(String instanceId, String topic, String query, int limit);
+
     List<ClientConnectionVO> findProducerConnections(String instanceId, String topic, String producerGroup);
 }
