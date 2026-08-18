@@ -73,6 +73,18 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 且用户表为空，后端会拒绝登录以避免误签发会话。
 `studio.auth.login-required=false` 仅用于本地开发场景跳过 `/api/**` 拦截。
 
+### 升级已有 MySQL 数据卷
+
+MySQL 只在数据卷首次初始化时执行 `docker-entrypoint-initdb.d`。如果数据卷是在持久化登录功能加入前创建的，
+请在开启登录保护前执行幂等迁移：
+
+```bash
+docker exec -i rocketmq-studio-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" rocketmq \
+  < deploy/mysql/upgrade-studio-auth.sql
+```
+
+迁移只创建缺失的 `rmq_studio_user` 和 `rmq_studio_session` 表，可安全重复执行，不会修改已有账号或会话。
+
 ## 前置条件
 
 - 本地安装 Docker
