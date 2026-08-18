@@ -129,9 +129,15 @@ const AclPageContent = ({
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
+  const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
+  const [ruleTotal, setRuleTotal] = useState(0);
+  const [rulePage, setRulePage] = useState(1);
+  const [rulePageSize, setRulePageSize] = useState(20);
 
   // Rule filters
-  const [ruleSearch, setRuleSearch] = useState('');
+  const [rulePrincipalFilter, setRulePrincipalFilter] = useState('');
+  const [ruleResourceFilter, setRuleResourceFilter] = useState('');
+  const [ruleScopeFilter, setRuleScopeFilter] = useState<string>('all');
   const [ruleVersionFilter, setRuleVersionFilter] = useState<string>('all');
   const [ruleDecisionFilter, setRuleDecisionFilter] = useState<string>('all');
 
@@ -169,9 +175,20 @@ const AclPageContent = ({
   useEffect(() => {
     let mounted = true;
 
-    void listAclRules({ instanceId: selectedInstanceId })
+    void listAclRules({
+      instanceId: selectedInstanceId,
+      principal: rulePrincipalFilter || undefined,
+      resource: ruleResourceFilter || undefined,
+      scope: ruleScopeFilter === 'all' ? undefined : ruleScopeFilter,
+      aclVersion: ruleVersionFilter === 'all' ? undefined : ruleVersionFilter,
+      decision: ruleDecisionFilter === 'all' ? undefined : ruleDecisionFilter,
+      page: rulePage,
+      pageSize: rulePageSize,
+    })
       .then((nextRules) => {
-        if (mounted) setRules(nextRules.map(normalizeRule));
+        if (!mounted) return;
+        setRules(nextRules.items.map(normalizeRule));
+        setRuleTotal(nextRules.total);
       })
       .catch(() => {
         if (mounted) message.error(t('common.fetchDataFailed'));
@@ -202,19 +219,21 @@ const AclPageContent = ({
     return () => {
       mounted = false;
     };
-  }, [selectedInstanceId, t, userPage, userPageSize, userKeyword]);
-
-  /* ─── Filtered rules ─── */
-  const filteredRules = rules.filter((r) => {
-    const aclVersion = String(r.aclVersion);
-    const matchSearch =
-      !ruleSearch ||
-      r.principal.toLowerCase().includes(ruleSearch.toLowerCase()) ||
-      r.resource.toLowerCase().includes(ruleSearch.toLowerCase());
-    const matchVersion = ruleVersionFilter === 'all' || aclVersion === ruleVersionFilter;
-    const matchDecision = ruleDecisionFilter === 'all' || r.decision === ruleDecisionFilter;
-    return matchSearch && matchVersion && matchDecision;
-  });
+  }, [
+    t,
+    selectedInstanceId,
+    rulePrincipalFilter,
+    ruleResourceFilter,
+    ruleScopeFilter,
+    ruleVersionFilter,
+    ruleDecisionFilter,
+    rulePage,
+    rulePageSize,
+    ruleRefreshKey,
+    userPage,
+    userPageSize,
+    userKeyword,
+  ]);
 
   /* ─── Rule helpers ─── */
   const isAdmin = (principal: string) =>
@@ -263,23 +282,22 @@ const AclPageContent = ({
       const values = (await ruleForm.validateFields()) as AclRuleFormValues;
       setRuleSubmitting(true);
       if (editingRule) {
-        const updated = await updateAclRule({
+        await updateAclRule({
           ...editingRule,
           ...values,
           instanceId: selectedInstanceId,
         });
-        const normalized = normalizeRule(updated);
-        setRules((prev) => prev.map((r) => (r.id === editingRule.id ? normalized : r)));
         message.success(t('acl.ruleUpdated'));
       } else {
-        const created = await createAclRule({
+        await createAclRule({
           ...values,
           aclVersion: '2.0',
           instanceId: selectedInstanceId,
         });
-        setRules((prev) => [normalizeRule(created), ...prev]);
+        setRulePage(1);
         message.success(t('acl.ruleAdded'));
       }
+      setRuleRefreshKey((prev) => prev + 1);
       setRuleModalOpen(false);
     } catch (error) {
       if (isFormValidationError(error)) return;
@@ -292,7 +310,11 @@ const AclPageContent = ({
   const handleDeleteRule = async (id: number) => {
     try {
       await deleteAclRule(id, selectedInstanceId);
-      setRules((prev) => prev.filter((r) => r.id !== id));
+      if (rules.length === 1 && rulePage > 1) {
+        setRulePage((prev) => prev - 1);
+      } else {
+        setRuleRefreshKey((prev) => prev + 1);
+      }
       message.success(t('acl.ruleDeleted'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -947,18 +969,47 @@ const AclPageContent = ({
                       options={instanceOptions}
                       style={{ width: 220 }}
                     />
-                    <Input.Search
+                    <Input
                       placeholder={t('acl.searchPrincipal')}
                       prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
-                      value={ruleSearch}
-                      onChange={(e) => setRuleSearch(e.target.value)}
-                      onSearch={setRuleSearch}
+                      value={rulePrincipalFilter}
+                      onChange={(e) => {
+                        setRulePage(1);
+                        setRulePrincipalFilter(e.target.value);
+                      }}
                       allowClear
-                      style={{ width: 260 }}
+                      style={{ width: 220 }}
+                    />
+                    <Input
+                      placeholder={t('acl.searchResource')}
+                      prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
+                      value={ruleResourceFilter}
+                      onChange={(e) => {
+                        setRulePage(1);
+                        setRuleResourceFilter(e.target.value);
+                      }}
+                      allowClear
+                      style={{ width: 220 }}
+                    />
+                    <Select
+                      value={ruleScopeFilter}
+                      onChange={(value) => {
+                        setRulePage(1);
+                        setRuleScopeFilter(value);
+                      }}
+                      style={{ width: 180 }}
+                      options={[
+                        { value: 'all', label: t('acl.allScopes') },
+                        { value: 'cluster', label: t('acl.clusterScope') },
+                        { value: 'namespace', label: t('acl.namespaceScope') },
+                      ]}
                     />
                     <Select
                       value={ruleVersionFilter}
-                      onChange={setRuleVersionFilter}
+                      onChange={(value) => {
+                        setRulePage(1);
+                        setRuleVersionFilter(value);
+                      }}
                       style={{ width: 140 }}
                       options={[
                         { value: 'all', label: t('acl.allVersions') },
@@ -968,7 +1019,10 @@ const AclPageContent = ({
                     />
                     <Select
                       value={ruleDecisionFilter}
-                      onChange={setRuleDecisionFilter}
+                      onChange={(value) => {
+                        setRulePage(1);
+                        setRuleDecisionFilter(value);
+                      }}
                       style={{ width: 140 }}
                       options={[
                         { value: 'all', label: t('acl.allDecisions') },
@@ -981,13 +1035,23 @@ const AclPageContent = ({
                   {/* Rules table */}
                   <Table
                     columns={ruleColumns}
-                    dataSource={filteredRules}
+                    dataSource={rules}
                     rowKey="id"
                     loading={rulesLoading}
                     pagination={{
-                      pageSize: 20,
+                      current: rulePage,
+                      pageSize: rulePageSize,
+                      total: ruleTotal,
                       showSizeChanger: true,
                       showTotal: (total) => t('acl.totalRules', { n: total }),
+                      onChange: (page, pageSize) => {
+                        if (pageSize !== rulePageSize) {
+                          setRulePage(1);
+                          setRulePageSize(pageSize);
+                          return;
+                        }
+                        setRulePage(page);
+                      },
                     }}
                     size="small"
                   />

@@ -56,11 +56,17 @@ public class AclController {
     }
 
     @GetMapping("/rules")
-    public Result<List<AclRuleVO>> listRules(
-            @RequestParam(required = false) String clusterId,
+    public Result<PageResult<AclRuleVO>> listRules(
             @RequestParam(required = false) String principal,
-            @RequestParam(required = false) String instanceId) {
-        return Result.ok(aclService.listRules(clusterId, principal, instanceId));
+            @RequestParam(required = false) String resource,
+            @RequestParam(required = false) String scope,
+            @RequestParam(required = false) String decision,
+            @RequestParam(required = false) String aclVersion,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "20") Integer pageSize) {
+        return Result.ok(aclService.listRules(principal, resource, scope, decision, aclVersion,
+                instanceId, page, pageSize));
     }
 
     @PostMapping("/rules/create")

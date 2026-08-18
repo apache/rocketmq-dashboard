@@ -35,15 +35,15 @@ vi.mock('../config', () => ({
 describe('ACL service mock data', () => {
   it('returns copied ACL rule rows', async () => {
     const first = await listAclRules({ principal: 'user-admin' });
-    expect(first[0].principal).toBe('user-admin');
+    expect(first.items[0].principal).toBe('user-admin');
 
-    first[0].principal = 'mutated-principal';
-    first[0].actions.push('MUTATED');
+    first.items[0].principal = 'mutated-principal';
+    first.items[0].actions.push('MUTATED');
 
     const second = await listAclRules({ principal: 'user-admin' });
-    expect(second[0].principal).toBe('user-admin');
-    expect(second[0].actions).toEqual(['ALL']);
-    expect(second[0]).not.toBe(first[0]);
+    expect(second.items[0].principal).toBe('user-admin');
+    expect(second.items[0].actions).toEqual(['ALL']);
+    expect(second.items[0]).not.toBe(first.items[0]);
   });
 
   it('copies ACL rule arrays on create and update', async () => {
@@ -57,7 +57,7 @@ describe('ACL service mock data', () => {
     created.actions.push('MUTATED');
 
     const afterCreate = await listAclRules({ principal: 'user-created-copy-test' });
-    expect(afterCreate[0].actions).toEqual(['PUB']);
+    expect(afterCreate.items[0].actions).toEqual(['PUB']);
 
     const updateActions = ['SUB'];
     const updated = await updateAclRule({ id: created.id, actions: updateActions });
@@ -65,7 +65,7 @@ describe('ACL service mock data', () => {
     updated.actions.push('MUTATED');
 
     const afterUpdate = await listAclRules({ principal: 'user-created-copy-test' });
-    expect(afterUpdate[0].actions).toEqual(['SUB']);
+    expect(afterUpdate.items[0].actions).toEqual(['SUB']);
   });
 
   it('returns copied ACL user rows', async () => {

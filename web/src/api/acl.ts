@@ -1,6 +1,13 @@
 import client from './client';
 
 // Matches mock/acl.ts
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 export interface AclRule {
   id: number;
   principal: string;
@@ -15,9 +22,14 @@ export interface AclRule {
 }
 
 export interface AclRuleQuery {
-  clusterId?: string;
   principal?: string;
   instanceId?: string;
+  resource?: string;
+  scope?: string;
+  decision?: string;
+  aclVersion?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 // Users list query
@@ -46,7 +58,7 @@ export interface AclUser {
 }
 
 export async function listAclRules(params?: AclRuleQuery) {
-  const res = await client.get<{ data: AclRule[] }>('/acl/rules', { params });
+  const res = await client.get<{ data: PageResult<AclRule> }>('/acl/rules', { params });
   return res.data.data;
 }
 

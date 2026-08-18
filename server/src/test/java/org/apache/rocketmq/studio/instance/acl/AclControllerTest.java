@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -102,28 +103,41 @@ class AclControllerTest {
         rule.setId(1L);
         rule.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
 
-        when(aclService.listRules(isNull(), isNull(), isNull())).thenReturn(List.of(rule));
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(1), eq(20)))
+                .thenReturn(PageResult.of(java.util.List.of(rule), 1, 1, 20));
 
         mockMvc.perform(get("/api/acl/rules"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].id").value(1))
-                .andExpect(jsonPath("$.data[0].principal").value("user1"))
-                .andExpect(jsonPath("$.data[0].decision").value("ALLOW"));
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.items[0].id").value(1))
+                .andExpect(jsonPath("$.data.items[0].principal").value("user1"))
+                .andExpect(jsonPath("$.data.items[0].decision").value("ALLOW"));
     }
 
     @Test
     void listRulesShouldPassQueryParams() throws Exception {
-        when(aclService.listRules(eq("cluster-1"), eq("user1"), isNull())).thenReturn(List.of());
+        when(aclService.listRules(eq("user1"), eq("topic-a"), eq("namespace"), eq("DENY"),
+                eq("1.0"), isNull(), eq(3), eq(5))).thenReturn(PageResult.empty(3, 5));
 
         mockMvc.perform(get("/api/acl/rules")
-                        .param("clusterId", "cluster-1")
-                        .param("principal", "user1"))
+                        .param("principal", "user1")
+                        .param("resource", "topic-a")
+                        .param("scope", "namespace")
+                        .param("decision", "DENY")
+                        .param("aclVersion", "1.0")
+                        .param("page", "3")
+                        .param("pageSize", "5"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isArray());
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.page").value(3))
+                .andExpect(jsonPath("$.data.size").value(5));
 
-        verify(aclService).listRules(eq("cluster-1"), eq("user1"), isNull());
+        verify(aclService).listRules(eq("user1"), eq("topic-a"), eq("namespace"), eq("DENY"),
+                eq("1.0"), isNull(), eq(3), eq(5));
     }
 
     @Test

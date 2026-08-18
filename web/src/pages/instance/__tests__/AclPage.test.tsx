@@ -36,6 +36,7 @@ vi.mock('../../../services/aclService', () => ({
   examineBrokerClusterAclConfig: vi.fn(),
   listAclRules: vi.fn(),
   listAclUsers: vi.fn(),
+  pageAclUsers: vi.fn(),
   updateAclRule: vi.fn(),
   updateAclUser: vi.fn(),
 }));
@@ -82,31 +83,42 @@ describe('ACL page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(instanceService.listInstances).mockResolvedValue([]);
-    vi.mocked(aclService.listAclRules).mockResolvedValue([
-      {
-        id: 1,
-        principal: 'remote-user',
-        resource: 'remote-topic',
-        resourceType: 'Topic',
-        resourcePattern: 'LITERAL',
-        actions: ['PUB'],
-        decision: 'ALLOW',
-        scope: 'cluster',
-        aclVersion: 2,
-        gmtCreate: '2026-07-23T00:00:00Z',
-      },
-    ]);
-    vi.mocked(aclService.listAclUsers).mockResolvedValue([
-      {
-        id: 11,
-        username: 'remote-admin',
-        accessKey: 'acce****3456',
-        secretKey: 'secr****7654',
-        admin: true,
-        clusters: ['cluster-a'],
-        gmtCreate: '2026-07-23T00:00:00Z',
-      },
-    ]);
+
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          principal: 'remote-user',
+          resource: 'remote-topic',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 11,
+          username: 'remote-admin',
+          accessKey: 'acce****3456',
+          secretKey: 'secr****7654',
+          admin: true,
+          clusters: ['cluster-a'],
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
   });
 
   it('loads ACL rules and users through the service layer', async () => {
@@ -115,7 +127,7 @@ describe('ACL page', () => {
     expect(await screen.findByText('remote-user')).toBeInTheDocument();
     expect(screen.getByText('remote-topic')).toBeInTheDocument();
     expect(aclService.listAclRules).toHaveBeenCalledTimes(1);
-    expect(aclService.listAclUsers).toHaveBeenCalledTimes(1);
+    expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
   });
 
   it('closes an ACL rule dialog when switching to another instance', async () => {
@@ -160,7 +172,7 @@ describe('ACL page', () => {
   });
 
   it('keeps rules available when loading users fails', async () => {
-    vi.mocked(aclService.listAclUsers).mockRejectedValue(new Error('users unavailable'));
+    vi.mocked(aclService.pageAclUsers).mockRejectedValue(new Error('users unavailable'));
     renderWithProviders(<AclPage />);
 
     expect(await screen.findByText('remote-user')).toBeInTheDocument();
@@ -197,31 +209,41 @@ describe('ACL page', () => {
 
   it('shows missing backend timestamps as unavailable', async () => {
     const user = userEvent.setup();
-    vi.mocked(aclService.listAclRules).mockResolvedValue([
-      {
-        id: 2,
-        principal: 'no-time-rule',
-        resource: 'topic-a',
-        resourceType: 'Topic',
-        resourcePattern: 'LITERAL',
-        actions: ['PUB'],
-        decision: 'ALLOW',
-        scope: 'cluster',
-        aclVersion: 2,
-        gmtCreate: null,
-      },
-    ]);
-    vi.mocked(aclService.listAclUsers).mockResolvedValue([
-      {
-        id: 12,
-        username: 'no-time-user',
-        accessKey: 'acce****3456',
-        secretKey: 'secr****7654',
-        admin: false,
-        clusters: [],
-        gmtCreate: null,
-      },
-    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 2,
+          principal: 'no-time-rule',
+          resource: 'topic-a',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 12,
+          username: 'no-time-user',
+          accessKey: 'acce****3456',
+          secretKey: 'secr****7654',
+          admin: false,
+          clusters: [],
+          gmtCreate: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     renderWithProviders(<AclPage />);
 
     expect(await screen.findByText('no-time-rule')).toBeInTheDocument();
