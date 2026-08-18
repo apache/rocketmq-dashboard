@@ -18,6 +18,10 @@ package org.apache.rocketmq.studio.instance.acl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
@@ -56,6 +60,43 @@ class MybatisPlusAclRepositoryTest {
 
     @InjectMocks
     private MybatisPlusAclRepository repository;
+
+    @Test
+    void findRulePageShouldApplyFiltersAndPreserveFilteredTotal() {
+        RmqAclRule entity = new RmqAclRule();
+        entity.setId(7L);
+        entity.setPrincipal("user-orders");
+        entity.setResource("orders-*");
+        entity.setResourceType("Topic");
+        entity.setResourcePattern("PREFIX");
+        entity.setActions("PUB,SUB");
+        entity.setDecision("ALLOW");
+        entity.setScope("cluster");
+        entity.setAclVersion("2.0");
+        entity.setGmtCreate(LocalDateTime.of(2026, 8, 17, 10, 30));
+        Page<RmqAclRule> mapperPage = new Page<RmqAclRule>(2, 5)
+                .setRecords(List.of(entity))
+                .setTotal(17);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        PageResult<AclRuleVO> result = repository.findRulePage(
+                "user", "orders", "cluster", "ALLOW", "2.0", 2, 5);
+
+        ArgumentCaptor<IPage<RmqAclRule>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
+        ArgumentCaptor<Wrapper<RmqAclRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(pageCaptor.capture(), queryCaptor.capture());
+        assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(2);
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(5);
+        assertThat(result.getTotal()).isEqualTo(17);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(5);
+        assertThat(result.getItems()).singleElement().satisfies(rule -> {
+            assertThat(rule.getPrincipal()).isEqualTo("user-orders");
+            assertThat(rule.getResource()).isEqualTo("orders-*");
+        });
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("principal", "resource", "scope", "decision", "acl_version");
+    }
 
     @Test
     void replaceRuleShouldReturnEmptyWhenConcurrentDeleteWins() {

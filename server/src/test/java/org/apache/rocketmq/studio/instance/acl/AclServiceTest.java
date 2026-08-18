@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
@@ -88,13 +89,16 @@ class AclServiceTest {
                 AclRuleVO.builder().principal("user1").resource("topic-1").decision("ALLOW").build(),
                 AclRuleVO.builder().principal("user2").resource("topic-2").decision("DENY").build()
         );
-        when(aclRepository.findRules("cluster-1", "user1")).thenReturn(rules);
+        when(aclRepository.findRulePage("user1", "topic", "cluster", "ALLOW", "2.0", 2, 5))
+                .thenReturn(PageResult.of(rules, 12, 2, 5));
 
-        List<AclRuleVO> result = aclService.listRules("cluster-1", "user1", null);
+        PageResult<AclRuleVO> result = aclService.listRules("user1", "topic", "cluster",
+                "ALLOW", "2.0", null, 2, 5);
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getPrincipal()).isEqualTo("user1");
-        verify(aclRepository).findRules("cluster-1", "user1");
+        assertThat(result.getItems()).hasSize(2);
+        assertThat(result.getItems().get(0).getPrincipal()).isEqualTo("user1");
+        assertThat(result.getTotal()).isEqualTo(12);
+        verify(aclRepository).findRulePage("user1", "topic", "cluster", "ALLOW", "2.0", 2, 5);
     }
 
     @Test
@@ -128,12 +132,24 @@ class AclServiceTest {
 
     @Test
     void listRulesShouldPassNullFilters() {
-        when(aclRepository.findRules(null, null)).thenReturn(List.of());
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
 
-        List<AclRuleVO> result = aclService.listRules(null, null, null);
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+                null, null, null);
 
-        assertThat(result).isEmpty();
-        verify(aclRepository).findRules(null, null);
+        assertThat(result.getItems()).isEmpty();
+        verify(aclRepository).findRulePage(null, null, null, null, null, 1, 20);
+    }
+
+    @Test
+    void listRulesShouldNormalizeInvalidPaginationBounds() {
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        aclService.listRules(null, null, null, null, null, null, 0, 0);
+
+        verify(aclRepository).findRulePage(null, null, null, null, null, 1, 20);
     }
 
     @Test
@@ -212,7 +228,8 @@ class AclServiceTest {
     @Test
     void updateRuleShouldRejectUnknownIdInsteadOfCreatingRule() {
         when(aclRepository.replaceRule(any(AclRuleVO.class))).thenReturn(Optional.empty());
-        when(aclRepository.findRules(null, null)).thenReturn(List.of());
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
         AclRuleVO update = AclRuleVO.builder()
                 .id(999L)
                 .principal("orders")
@@ -224,7 +241,7 @@ class AclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("ACL rule not found: 999")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-        assertThat(aclService.listRules(null, null, null)).isEmpty();
+        assertThat(aclService.listRules(null, null, null, null, null, null, 1, 20).getItems()).isEmpty();
         verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
     }
 

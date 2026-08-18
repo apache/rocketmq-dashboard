@@ -16,8 +16,11 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
@@ -48,14 +51,15 @@ public class MybatisPlusAclRepository implements AclRepository {
     private final RmqAclUserMapper userMapper;
 
     @Override
-    public List<AclRuleVO> findRules(String clusterId, String principal) {
-        QueryWrapper<RmqAclRule> query = new QueryWrapper<RmqAclRule>()
-                .eq(clusterId != null && !clusterId.isBlank(), "scope", clusterId)
-                .eq(principal != null && !principal.isBlank(), "principal", principal)
-                .orderByAsc("id");
-        return ruleMapper.selectList(query).stream()
+    public PageResult<AclRuleVO> findRulePage(String principal, String resource, String scope,
+            String decision, String aclVersion, int page, int pageSize) {
+        QueryWrapper<RmqAclRule> query = ruleQuery(principal, resource, scope, decision, aclVersion);
+        IPage<RmqAclRule> mapperPage = ruleMapper.selectPage(new Page<>(page, pageSize), query);
+        List<AclRuleVO> items = mapperPage.getRecords().stream()
                 .map(MybatisPlusAclRepository::toRuleVO)
                 .collect(Collectors.toList());
+        return PageResult.of(items, mapperPage.getTotal(), (int) mapperPage.getCurrent(),
+                (int) mapperPage.getSize());
     }
 
     @Override
@@ -283,7 +287,10 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     private PlainAccessConfigVO toPlainAccessConfig(AclUserVO user) {
-        List<AclRuleVO> userRules = findRules(null, user.getAccessKey());
+        List<AclRuleVO> userRules = ruleMapper.selectList(ruleQuery(user.getAccessKey(), null, null, null, null))
+                .stream()
+                .map(MybatisPlusAclRepository::toRuleVO)
+                .collect(Collectors.toList());
         List<String> topicPerms = new ArrayList<>();
         List<String> groupPerms = new ArrayList<>();
         String defaultTopicPerm = null;
@@ -315,6 +322,18 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .groupPerms(groupPerms)
                 .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    private static QueryWrapper<RmqAclRule> ruleQuery(String principal, String resource, String scope,
+            String decision, String aclVersion) {
+        return new QueryWrapper<RmqAclRule>()
+                .like(StringUtils.hasText(principal), "principal", principal)
+                .like(StringUtils.hasText(resource), "resource", resource)
+                .eq(StringUtils.hasText(scope), "scope", scope)
+                .eq(StringUtils.hasText(decision), "decision", decision)
+                .eq(StringUtils.hasText(aclVersion), "acl_version", aclVersion)
+                .orderByDesc("gmt_create")
+                .orderByDesc("id");
     }
 
     private static String[] splitPerm(String entry) {

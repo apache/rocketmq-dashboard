@@ -16,12 +16,14 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface AclRepository {
-    List<AclRuleVO> findRules(String clusterId, String principal);
+    PageResult<AclRuleVO> findRulePage(String principal, String resource, String scope,
+            String decision, String aclVersion, int page, int pageSize);
 
     AclRuleVO saveRule(AclRuleVO rule);
 

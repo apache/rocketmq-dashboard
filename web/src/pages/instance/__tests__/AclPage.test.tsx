@@ -69,20 +69,25 @@ const renderWithProviders = (ui: React.ReactElement) =>
 describe('ACL page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(aclService.listAclRules).mockResolvedValue([
-      {
-        id: 1,
-        principal: 'remote-user',
-        resource: 'remote-topic',
-        resourceType: 'Topic',
-        resourcePattern: 'LITERAL',
-        actions: ['PUB'],
-        decision: 'ALLOW',
-        scope: 'cluster',
-        aclVersion: 2,
-        gmtCreate: '2026-07-23T00:00:00Z',
-      },
-    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          principal: 'remote-user',
+          resource: 'remote-topic',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     vi.mocked(aclService.listAclUsers).mockResolvedValue([
       {
         id: 11,
@@ -143,20 +148,25 @@ describe('ACL page', () => {
 
   it('shows missing backend timestamps as unavailable', async () => {
     const user = userEvent.setup();
-    vi.mocked(aclService.listAclRules).mockResolvedValue([
-      {
-        id: 2,
-        principal: 'no-time-rule',
-        resource: 'topic-a',
-        resourceType: 'Topic',
-        resourcePattern: 'LITERAL',
-        actions: ['PUB'],
-        decision: 'ALLOW',
-        scope: 'cluster',
-        aclVersion: 2,
-        gmtCreate: null,
-      },
-    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 2,
+          principal: 'no-time-rule',
+          resource: 'topic-a',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     vi.mocked(aclService.listAclUsers).mockResolvedValue([
       {
         id: 12,
