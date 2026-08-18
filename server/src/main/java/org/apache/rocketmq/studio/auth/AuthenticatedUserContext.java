@@ -26,20 +26,30 @@ public final class AuthenticatedUserContext {
 
     private static final ThreadLocal<String> CURRENT_USERNAME = new ThreadLocal<>();
     private static final ThreadLocal<String> CURRENT_USER_ID = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> CURRENT_ADMIN = new ThreadLocal<>();
 
     private AuthenticatedUserContext() {
     }
 
-    public static void setUsername(String username) {
+    public static void setUser(String username, boolean admin) {
         if (username == null || username.isBlank()) {
             clear();
             return;
         }
         CURRENT_USERNAME.set(username);
+        CURRENT_ADMIN.set(admin);
+    }
+
+    public static void setUsername(String username) {
+        setUser(username, false);
     }
 
     public static void setUser(Long userId, String username) {
-        setUsername(username);
+        setUser(userId, username, false);
+    }
+
+    public static void setUser(Long userId, String username, boolean admin) {
+        setUser(username, admin);
         if (userId == null) {
             CURRENT_USER_ID.remove();
         } else {
@@ -56,11 +66,6 @@ public final class AuthenticatedUserContext {
         return username == null ? SYSTEM_ACTOR : username;
     }
 
-    /**
-     * Returns whether the current request is an administrator or a system-initiated operation.
-     * A missing context represents background/system work, which must retain access to persisted
-     * configuration rather than being treated as a reader request.
-     */
     public static boolean currentUserIsAdminOrSystem() {
         Boolean admin = CURRENT_ADMIN.get();
         return admin == null || admin;
@@ -69,5 +74,6 @@ public final class AuthenticatedUserContext {
     public static void clear() {
         CURRENT_USERNAME.remove();
         CURRENT_USER_ID.remove();
+        CURRENT_ADMIN.remove();
     }
 }

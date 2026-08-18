@@ -59,9 +59,15 @@ public class AuthInterceptor implements HandlerInterceptor {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
             return false;
         }
-        authService.getAuthenticatedUser(authorization)
-                .ifPresent(user -> AuthenticatedUserContext.setUser(user.getUserId(), user.getUsername()));
-        if (requiresAdmin(request, requestPath(request)) && !authService.isAdmin(authorization)) {
+        var authenticatedUser = authService.getAuthenticatedUser(authorization).orElse(null);
+        if (authenticatedUser != null) {
+            AuthenticatedUserContext.setUser(
+                    authenticatedUser.getUserId(),
+                    authenticatedUser.getUsername(),
+                    authenticatedUser.isAdmin());
+        }
+        if (requiresAdmin(request, requestPath(request))
+                && (authenticatedUser == null || !authenticatedUser.isAdmin())) {
             writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
             return false;
         }

@@ -30,11 +30,16 @@ export interface GeneralSettings {
   model: string;
   baseUrl: string;
   dingtalkWebhook?: string;
+  dingtalkWebhookConfigured?: boolean;
   emailRecipients?: string;
   smsWebhook?: string;
+  smsWebhookConfigured?: boolean;
 }
 
-export type GeneralSettingsUpdate = Omit<GeneralSettings, 'apiKeyConfigured'> & {
+export type GeneralSettingsUpdate = Omit<
+  GeneralSettings,
+  'apiKeyConfigured' | 'dingtalkWebhookConfigured' | 'smsWebhookConfigured'
+> & {
   apiKey?: string;
   clearApiKey?: boolean;
 };
@@ -59,8 +64,16 @@ export async function getGeneralSettings() {
 }
 
 export async function saveGeneralSettings(data: GeneralSettingsUpdate) {
-  const payload = { ...data } as GeneralSettingsUpdate & { apiKeyConfigured?: boolean };
+  const payload = {
+    ...data,
+  } as GeneralSettingsUpdate & {
+    apiKeyConfigured?: boolean;
+    dingtalkWebhookConfigured?: boolean;
+    smsWebhookConfigured?: boolean;
+  };
   delete payload.apiKeyConfigured;
+  delete payload.dingtalkWebhookConfigured;
+  delete payload.smsWebhookConfigured;
   if (!payload.apiKey?.trim()) delete payload.apiKey;
   await client.post('/settings/general/save', payload);
 }
