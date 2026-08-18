@@ -26,6 +26,8 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
@@ -53,6 +55,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -155,12 +158,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
         try {
             MessageId messageId = MessageDecoder.decodeMessageId(msgId);
-            SocketAddress address = messageId.getAddress();
-            if (!(address instanceof InetSocketAddress)) {
+            String brokerAddr = validatedBrokerAddr(adminExt, msgId, messageId);
+            if (!StringUtils.hasText(brokerAddr)) {
                 return null;
             }
-            InetSocketAddress inet = (InetSocketAddress) address;
-            String brokerAddr = inet.getAddress().getHostAddress() + ":" + inet.getPort();
             return adminExt.getDefaultMQAdminExtImpl()
                     .getMqClientInstance()
                     .getMQClientAPIImpl()
@@ -169,6 +170,51 @@ public class RocketMQMessageProvider implements MessageProvider {
             log.warn("viewMessage by decoded offset id failed for msgId={}: {}", msgId, e.getMessage());
             return null;
         }
+    }
+
+    private String validatedBrokerAddr(DefaultMQAdminExt adminExt, String msgId, MessageId messageId) throws Exception {
+        String brokerAddr = decodedBrokerAddr(messageId);
+        if (!StringUtils.hasText(brokerAddr)) {
+            return null;
+        }
+        if (knownBrokerEndpoints(adminExt).contains(brokerAddr)) {
+            return brokerAddr;
+        }
+        log.warn("Rejecting decoded broker address {} for msgId={} because it is not a known broker endpoint"
+                + " for the selected instance", brokerAddr, msgId);
+        return null;
+    }
+
+    private String decodedBrokerAddr(MessageId messageId) {
+        SocketAddress address = messageId.getAddress();
+        if (!(address instanceof InetSocketAddress)) {
+            return null;
+        }
+        InetSocketAddress inet = (InetSocketAddress) address;
+        if (inet.getAddress() == null) {
+            return null;
+        }
+        return inet.getAddress().getHostAddress() + ":" + inet.getPort();
+    }
+
+    private Set<String> knownBrokerEndpoints(DefaultMQAdminExt adminExt) throws Exception {
+        ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
+        if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null
+                || clusterInfo.getBrokerAddrTable().isEmpty()) {
+            return Collections.emptySet();
+        }
+        Set<String> endpoints = new HashSet<>();
+        for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
+            if (brokerData == null || brokerData.getBrokerAddrs() == null || brokerData.getBrokerAddrs().isEmpty()) {
+                continue;
+            }
+            for (String brokerAddr : brokerData.getBrokerAddrs().values()) {
+                if (StringUtils.hasText(brokerAddr)) {
+                    endpoints.add(brokerAddr.trim());
+                }
+            }
+        }
+        return endpoints;
     }
 
     private List<MessageRecordVO> queryByKey(DefaultMQAdminExt adminExt, String topic, String key,

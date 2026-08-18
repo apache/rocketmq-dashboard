@@ -28,6 +28,8 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -49,8 +51,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -84,12 +88,22 @@ class RocketMQMessageProviderTest {
     private RocketMQMessageProvider provider;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         lenient().when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("namesrv-a:9876");
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation -> {
             MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
-            return action == null ? null : action.apply(adminExt);
+            if (action == null) {
+                return null;
+            }
+            try {
+                return action.apply(adminExt);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw exception;
+            }
         });
+        lenient().when(adminExt.examineBrokerClusterInfo())
+                .thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
         provider = new RocketMQMessageProvider(runtimeAdminClientResolver);
     }
 
@@ -211,6 +225,20 @@ class RocketMQMessageProviderTest {
 
         assertThat(result).singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo(msgId);
         verify(clientApi).viewMessage("172.30.10.100:10911", "TopicA", 27521713L, 3000L);
+    }
+
+    @Test
+    void queryByMsgIdRejectsDecodedBrokerOutsideKnownTopology() throws Exception {
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("10.2.3.4", 10911), 12345L);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        when(adminExt.viewMessage("TopicA", msgId))
+                .thenThrow(new IllegalStateException("primary lookup failed"));
+
+        List<MessageRecordVO> result = provider.queryMessages(
+                "instance-a", "TopicA", msgId, null, null, 100L, 200L);
+
+        assertThat(result).isEmpty();
+        verify(adminExt, never()).getDefaultMQAdminExtImpl();
     }
 
     @Test
@@ -580,6 +608,25 @@ class RocketMQMessageProviderTest {
                 storeTimestamp + 24 * 60 * 60 * 1000L);
     }
 
+    @Test
+    void getMessageTraceDoesNotUseDecodedBrokerOutsideKnownTopology() throws Exception {
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("10.2.3.4", 10911), 12345L);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        when(adminExt.viewMessage("TopicA", msgId))
+                .thenThrow(new IllegalStateException("topic lookup failed"));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of()));
+
+        provider.getMessageTrace("instance-a", msgId, "TopicA");
+
+        verify(adminExt, never()).getDefaultMQAdminExtImpl();
+        ArgumentCaptor<Long> beginCaptor = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> endCaptor = ArgumentCaptor.forClass(Long.class);
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq(msgId), eq(64),
+                beginCaptor.capture(), endCaptor.capture());
+        assertThat(endCaptor.getValue() - beginCaptor.getValue()).isBetween(3_660_000L, 3_670_000L);
+    }
+
     private MQClientAPIImpl mockOffsetLookupClient() {
         DefaultMQAdminExtImpl adminExtImpl = mock(DefaultMQAdminExtImpl.class);
         MQClientInstance clientInstance = mock(MQClientInstance.class);
@@ -588,6 +635,22 @@ class RocketMQMessageProviderTest {
         when(adminExtImpl.getMqClientInstance()).thenReturn(clientInstance);
         when(clientInstance.getMQClientAPIImpl()).thenReturn(clientApi);
         return clientApi;
+    }
+
+    private static ClusterInfo clusterInfoWithBrokerAddresses(String... brokerAddresses) {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        for (int index = 0; index < brokerAddresses.length; index++) {
+            BrokerData brokerData = new BrokerData();
+            brokerData.setBrokerName("broker-" + index);
+            brokerData.setCluster("cluster-a");
+            HashMap<Long, String> brokerAddrs = new HashMap<>();
+            brokerAddrs.put(0L, brokerAddresses[index]);
+            brokerData.setBrokerAddrs(brokerAddrs);
+            brokerAddrTable.put(brokerData.getBrokerName(), brokerData);
+        }
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        return clusterInfo;
     }
 
     private static String traceContext(String... fields) {
