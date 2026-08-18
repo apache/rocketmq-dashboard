@@ -179,9 +179,8 @@ const InstancePage = () => {
     const timer = window.setTimeout(() => {
       setCredentialsLoading(true);
       listCloudCredentials(vendor)
-        .then((rawResult) => {
+        .then((result) => {
           if (active) {
-            const result = Array.isArray(rawResult) ? { items: rawResult } : rawResult;
             setCredentials(result.items);
           }
         })
