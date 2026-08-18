@@ -73,7 +73,7 @@ describe('MainLayout authentication navigation', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.mocked(logout).mockReset().mockResolvedValue(undefined);
-    useAuthStore.getState().login('test-token', 'admin', true);
+    useAuthStore.getState().login('admin', 7, true);
   });
 
   it('replaces a protected route with the login page after logout', async () => {

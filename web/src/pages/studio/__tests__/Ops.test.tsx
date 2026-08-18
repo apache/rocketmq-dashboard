@@ -63,7 +63,7 @@ describe('OpsPage', () => {
     vi.clearAllMocks();
     localStorage.clear();
     sessionStorage.clear();
-    useAuthStore.setState({ token: null, user: null, admin: null });
+    useAuthStore.setState({ user: null, userId: null, admin: null });
     vi.mocked(queryOpsHomePage).mockResolvedValue({
       namesvrAddrList: ['127.0.0.1:9876', '127.0.0.2:9876'],
       configurationAvailable: true,
@@ -122,7 +122,7 @@ describe('OpsPage', () => {
   });
 
   it('hides write controls for read-only users', async () => {
-    useAuthStore.setState({ token: 'token-reader', user: 'reader', admin: false });
+    useAuthStore.setState({ user: 'reader', userId: 101, admin: false });
 
     renderWithProviders(<OpsPage />);
 
@@ -135,7 +135,7 @@ describe('OpsPage', () => {
   });
 
   it('keeps write controls visible for admin users', async () => {
-    useAuthStore.setState({ token: 'token-admin', user: 'admin', admin: true });
+    useAuthStore.setState({ user: 'admin', userId: 102, admin: true });
 
     renderWithProviders(<OpsPage />);
 

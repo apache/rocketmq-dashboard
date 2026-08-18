@@ -50,12 +50,14 @@ const GrafanaDashboardsPage = lazy(() => import('./pages/studio/GrafanaDashboard
 const ProducerPage = lazy(() => import('./pages/studio/Producer'));
 const OpsPage = lazy(() => import('./pages/studio/Ops'));
 const AlertRuleAssetsPage = lazy(() => import('./pages/studio/AlertRuleAssets'));
+const UserManagementPage = lazy(() => import('./pages/studio/UserManagement'));
 
 type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
 
 export function AuthGate() {
   const { t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
+  const syncAuth = useAuthStore((state) => state.login);
   const [gateState, setGateState] = useState<AuthGateState>(isMockMode() ? 'allowed' : 'checking');
   const [attempt, setAttempt] = useState(0);
 
@@ -66,6 +68,9 @@ export function AuthGate() {
     void getAuthStatus()
       .then((status) => {
         if (cancelled) return;
+        if (status.authenticated && status.user) {
+          syncAuth(status.user.username, status.user.userId, status.user.admin);
+        }
         if (!status.loginRequired || status.authenticated) {
           setGateState('allowed');
           return;
@@ -80,7 +85,7 @@ export function AuthGate() {
     return () => {
       cancelled = true;
     };
-  }, [attempt, clearAuth]);
+  }, [attempt, clearAuth, syncAuth]);
 
   const retry = useCallback(() => {
     setGateState('checking');
@@ -189,6 +194,8 @@ function App() {
             <Route path="studio/producer" element={<ProducerPage />} />
             <Route path="studio/ops" element={<OpsPage />} />
             <Route path="instance/alerts" element={<AlertRuleAssetsPage />} />
+            <Route path="studio/users" element={<UserManagementPage />} />
+            <Route path="ops/alert-rule-templates" element={<AlertRuleAssetsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Route>
