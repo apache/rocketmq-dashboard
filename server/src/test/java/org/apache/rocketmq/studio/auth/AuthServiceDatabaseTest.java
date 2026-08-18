@@ -100,11 +100,27 @@ class AuthServiceDatabaseTest {
     void disablingLastEnabledAdministratorIsRejected() {
         RmqStudioUser user = user(1L, "admin", true, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);
-        when(userMapper.selectCount(any(Wrapper.class))).thenReturn(1L);
+        when(userMapper.selectEnabledAdminIdsForUpdate()).thenReturn(List.of(1L));
 
         assertThatThrownBy(() -> authService.setUserEnabled(1L, false))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("The last enabled administrator cannot be disabled");
+
+        verify(userMapper, never()).updateById(any(RmqStudioUser.class));
+    }
+
+    @Test
+    void disablingAdministratorLocksEnabledAdministratorsBeforeUpdate() {
+        RmqStudioUser user = user(1L, "admin-a", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+        when(userMapper.selectEnabledAdminIdsForUpdate()).thenReturn(List.of(1L, 2L));
+
+        authService.setUserEnabled(1L, false);
+
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(userMapper);
+        inOrder.verify(userMapper).selectById(1L);
+        inOrder.verify(userMapper).selectEnabledAdminIdsForUpdate();
+        inOrder.verify(userMapper).updateById(any(RmqStudioUser.class));
     }
 
     @Test
