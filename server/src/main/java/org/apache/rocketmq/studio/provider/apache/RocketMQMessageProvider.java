@@ -78,6 +78,7 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int TRACE_QUERY_MAX = 64;
     private static final int DEFAULT_TOPIC_LIMIT = 200;
     private static final int TOPIC_QUERY_HARD_CAP = 2000;
+    private static final int TOPIC_PULL_BATCH_SIZE = 32;
     private static final int MAX_BODY_DISPLAY_BYTES = 64 * 1024;
     private static final int MAX_BINARY_BODY_DISPLAY_BYTES = 48 * 1024;
     private static final int MAX_PROPERTIES = 64;
@@ -88,6 +89,8 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7 * ONE_DAY_MILLIS;
     private static final int MAX_PULLS_PER_QUEUE = 1_000;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
+    private static final int MAX_TOPIC_SCAN_MESSAGES_PER_QUEUE = MAX_PULLS_PER_QUEUE * TOPIC_PULL_BATCH_SIZE;
+    private static final int MAX_PULL_ATTEMPTS_PER_QUEUE = MAX_PULLS_PER_QUEUE + MAX_CONSECUTIVE_OFFSET_ILLEGAL;
     private static final Comparator<MessageRecordVO> TOPIC_QUERY_ORDER = Comparator
             .comparingLong(MessageRecordVO::getStoreTime)
             .thenComparing(MessageRecordVO::getMsgId, Comparator.nullsFirst(String::compareTo));
@@ -253,16 +256,23 @@ public class RocketMQMessageProvider implements MessageProvider {
                 return Collections.emptyList();
             }
             for (MessageQueue queue : queues) {
-                long minOffset = consumer.searchOffset(queue, begin);
-                long maxOffset = consumer.searchOffset(queue, end);
+                TopicQueueScanPlan scanPlan = buildTopicQueueScanPlan(consumer, queue, begin, end);
+                if (scanPlan.isEmpty()) {
+                    continue;
+                }
+                if (scanPlan.truncated()) {
+                    log.info("Truncate topic query for {} queue {} to offsets [{}..{}) within the guarded tail budget",
+                            topic, queue, scanPlan.startOffset(), scanPlan.endOffsetExclusive());
+                }
                 int consecutiveIllegalOffsets = 0;
                 int pullAttempts = 0;
-                for (long offset = minOffset; offset <= maxOffset; ) {
-                    if (++pullAttempts > MAX_PULLS_PER_QUEUE) {
-                        throw new BusinessException(400,
-                                "Topic message query exceeded the per-queue pull budget; narrow the time range");
+                for (long offset = scanPlan.startOffset(); offset < scanPlan.endOffsetExclusive(); ) {
+                    if (++pullAttempts > MAX_PULL_ATTEMPTS_PER_QUEUE) {
+                        log.warn("Stop topic query for {} because queue {} exhausted the guarded pull budget at offset {}",
+                                topic, queue, offset);
+                        break;
                     }
-                    PullResult pullResult = consumer.pull(queue, "*", offset, 32);
+                    PullResult pullResult = consumer.pull(queue, "*", offset, TOPIC_PULL_BATCH_SIZE);
                     if (pullResult == null) {
                         log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
                         break;
@@ -272,7 +282,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                         log.warn("Stop topic query for {} because queue {} did not advance offset {}", topic, queue, offset);
                         break;
                     }
-                    offset = nextOffset;
+                    offset = Math.min(nextOffset, scanPlan.endOffsetExclusive());
                     if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL) {
                         // The broker returned a corrected offset in nextBeginOffset because
                         // the requested offset is no longer valid (expired, compacted, or
@@ -306,8 +316,6 @@ public class RocketMQMessageProvider implements MessageProvider {
                     }
                 }
             }
-        } catch (BusinessException exception) {
-            throw exception;
         } catch (Exception e) {
             log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
             throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
@@ -317,6 +325,33 @@ public class RocketMQMessageProvider implements MessageProvider {
         return newestMessages.stream()
                 .sorted(TOPIC_QUERY_ORDER.reversed())
                 .toList();
+    }
+
+    private TopicQueueScanPlan buildTopicQueueScanPlan(DefaultMQPullConsumer consumer, MessageQueue queue,
+                                                       long begin, long end) throws Exception {
+        long minOffset = consumer.minOffset(queue);
+        long maxOffsetExclusive = consumer.maxOffset(queue);
+        if (maxOffsetExclusive <= minOffset) {
+            return TopicQueueScanPlan.empty();
+        }
+        long windowStartOffset = clampOffset(consumer.searchOffset(queue, begin), minOffset, maxOffsetExclusive);
+        long windowEndOffsetExclusive = clampOffset(consumer.searchOffset(queue, inclusiveUpperBound(end)),
+                windowStartOffset, maxOffsetExclusive);
+        if (windowEndOffsetExclusive <= windowStartOffset) {
+            return TopicQueueScanPlan.empty();
+        }
+        long budgetedStartOffset = Math.max(windowStartOffset,
+                windowEndOffsetExclusive - MAX_TOPIC_SCAN_MESSAGES_PER_QUEUE);
+        return new TopicQueueScanPlan(budgetedStartOffset, windowEndOffsetExclusive,
+                budgetedStartOffset > windowStartOffset);
+    }
+
+    private long clampOffset(long offset, long minOffset, long maxOffsetExclusive) {
+        return Math.max(minOffset, Math.min(offset, maxOffsetExclusive));
+    }
+
+    private long inclusiveUpperBound(long timestamp) {
+        return timestamp == Long.MAX_VALUE ? Long.MAX_VALUE : timestamp + 1;
     }
 
     private void addTopicQueryCandidate(PriorityQueue<MessageRecordVO> newestMessages,
@@ -678,5 +713,15 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private static boolean parseBoolean(String value) {
         return "true".equalsIgnoreCase(value == null ? "" : value.trim());
+    }
+
+    private record TopicQueueScanPlan(long startOffset, long endOffsetExclusive, boolean truncated) {
+        private static TopicQueueScanPlan empty() {
+            return new TopicQueueScanPlan(0L, 0L, false);
+        }
+
+        private boolean isEmpty() {
+            return endOffsetExclusive <= startOffset;
+        }
     }
 }
