@@ -69,7 +69,6 @@ export async function listAclUsers(params?: AclUserQuery) {
   return res.data.data;
 }
 
-export async function getAclUserCredentials(id: number, instanceId?: string) {
 export async function pageAclUsers(params: AclUserQuery & { page: number; pageSize: number }) {
   const res = await client.get<{ data: AclUserPage }>('/acl/users/page', { params });
   return res.data.data;
