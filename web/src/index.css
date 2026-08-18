@@ -66,6 +66,36 @@ body {
   }
 }
 
+@keyframes oneday-orb-drift-b {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  30% {
+    transform: translate3d(-25%, -15%, 0) scale(1.15) rotate(-6deg);
+  }
+  60% {
+    transform: translate3d(-40%, -30%, 0) scale(1.3) rotate(4deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes oneday-orb-drift-c {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  40% {
+    transform: translate3d(-18%, 22%, 0) scale(1.2);
+  }
+  70% {
+    transform: translate3d(-30%, 10%, 0) scale(0.95);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 @keyframes oneday-bg-drift {
   0%,
   100% {
