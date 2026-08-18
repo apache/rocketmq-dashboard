@@ -31,6 +31,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Optional;
+
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
@@ -72,6 +74,7 @@ class AuthCredentialAuthorizationIntegrationTest {
         when(authProperties.isLoginRequired()).thenReturn(true);
         when(authService.isAuthenticated(AUTHORIZATION)).thenReturn(true);
         when(authService.isAdmin(AUTHORIZATION)).thenReturn(false);
+        when(authService.getAuthenticatedUser(AUTHORIZATION)).thenReturn(Optional.of(user(false)));
     }
 
     @Test
@@ -95,6 +98,7 @@ class AuthCredentialAuthorizationIntegrationTest {
     @Test
     void shouldAllowCredentialPathsWithMatrixParametersForAdministrator() throws Exception {
         when(authService.isAdmin(AUTHORIZATION)).thenReturn(true);
+        when(authService.getAuthenticatedUser(AUTHORIZATION)).thenReturn(Optional.of(user(true)));
 
         mockMvc.perform(get("/api/acl/users/user-1/credentials;probe=1")
                         .header(HttpHeaders.AUTHORIZATION, AUTHORIZATION))
@@ -105,5 +109,13 @@ class AuthCredentialAuthorizationIntegrationTest {
 
         verify(aclService).getUserCredentials(eq("user-1"), isNull());
         verify(cloudCredentialService).reveal(12L);
+    }
+
+    private LoginVO.UserInfo user(boolean admin) {
+        return LoginVO.UserInfo.builder()
+                .userId(1L)
+                .username(admin ? "admin" : "reader")
+                .admin(admin)
+                .build();
     }
 }
