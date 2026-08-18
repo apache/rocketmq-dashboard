@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
 import org.apache.rocketmq.studio.cluster.nameserver.RestartNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
+import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
@@ -146,6 +147,19 @@ public class ClusterService {
             return live;
         }
         throw new BusinessException(503, "Cluster details are unavailable: " + id);
+    }
+
+    public List<ProxyVO> listProxies(String clusterId) {
+        ClusterVO cluster = resolveCluster(clusterId);
+        if (cluster.getProxies() == null || cluster.getProxies().isEmpty()) {
+            return List.of();
+        }
+        return List.copyOf(cluster.getProxies());
+    }
+
+    public void requireProxy(String clusterId, String addr) {
+        ClusterVO cluster = resolveCluster(clusterId);
+        requireProxy(cluster, addr);
     }
 
     /**

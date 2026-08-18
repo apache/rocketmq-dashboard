@@ -17,9 +17,15 @@
 
 package org.apache.rocketmq.studio.cluster.proxy;
 
+import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
 
@@ -28,16 +34,29 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class ProxyAddressServiceTest {
 
+    @Mock
+    private ClusterService clusterService;
+
+    @Mock
+    private RestTemplate restTemplate;
+
     private final ProxyHealthProbe healthProbe = mock(ProxyHealthProbe.class);
-    private final ProxyAddressService proxyAddressService = new ProxyAddressService(healthProbe);
+    private ProxyAddressService proxyAddressService;
 
     @BeforeEach
     void setUp() {
+        proxyAddressService = new ProxyAddressService(clusterService, healthProbe, restTemplate);
         // Default probe outcome: everything reachable with 1 ms latency.
         when(healthProbe.probe(anyString(), anyInt(), anyInt()))
                 .thenReturn(ProxyHealthProbe.ProbeResult.reachable(1L));
@@ -141,11 +160,41 @@ class ProxyAddressServiceTest {
     }
 
     @Test
-    void reloadConfigShouldRejectUnregisteredAddressTest() {
-        assertThatThrownBy(() -> proxyAddressService.reloadConfig("10.0.0.1:8081"))
+    void reloadConfigShouldRejectLoopbackOutsideTrustedCluster() {
+        doThrow(new BusinessException(404, "Proxy not found: 127.0.0.2:8081"))
+                .when(clusterService).requireProxy("cluster-1", "127.0.0.2:8081");
+
+        assertThatThrownBy(() -> proxyAddressService.reloadConfig("cluster-1", "127.0.0.2:8081"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("addr is not a registered proxy address")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+                .hasMessage("Proxy not found: 127.0.0.2:8081")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void reloadConfigShouldRejectNonTrustedEndpoint() {
+        doThrow(new BusinessException(404, "Proxy not found: 198.51.100.10:8081"))
+                .when(clusterService).requireProxy("cluster-1", "198.51.100.10:8081");
+
+        assertThatThrownBy(() -> proxyAddressService.reloadConfig("cluster-1", "198.51.100.10:8081"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Proxy not found: 198.51.100.10:8081")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void reloadConfigShouldPostToTrustedDiscoveredProxy() {
+        doNothing().when(clusterService).requireProxy("cluster-1", "10.0.0.10:8081");
+        when(restTemplate.postForEntity(eq("http://10.0.0.10:8081/admin/reloadConfig"), isNull(), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("ok"));
+
+        proxyAddressService.reloadConfig("cluster-1", "10.0.0.10:8081");
+
+        verify(clusterService).requireProxy("cluster-1", "10.0.0.10:8081");
+        verify(restTemplate).postForEntity(eq("http://10.0.0.10:8081/admin/reloadConfig"), isNull(), eq(String.class));
     }
 
     @Test
@@ -216,7 +265,7 @@ class ProxyAddressServiceTest {
             }
             return ProxyHealthProbe.ProbeResult.reachable(300L);
         };
-        ProxyAddressService service = new ProxyAddressService(slowProbe);
+        ProxyAddressService service = new ProxyAddressService(clusterService, slowProbe);
         service.addProxyAddr("10.0.0.11:8081");
         service.addProxyAddr("10.0.0.12:8081");
         service.addProxyAddr("10.0.0.13:8081");
@@ -246,7 +295,7 @@ class ProxyAddressServiceTest {
         };
         java.util.concurrent.ExecutorService executor =
                 java.util.concurrent.Executors.newFixedThreadPool(4);
-        ProxyAddressService service = new ProxyAddressService(selectiveProbe, executor, 500L);
+        ProxyAddressService service = new ProxyAddressService(clusterService, selectiveProbe, executor, 500L);
         service.addProxyAddr("10.0.0.21:8081");
         service.addProxyAddr("10.0.0.22:8081");
 
