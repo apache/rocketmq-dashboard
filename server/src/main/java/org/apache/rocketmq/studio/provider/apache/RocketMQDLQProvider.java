@@ -140,11 +140,18 @@ public class RocketMQDLQProvider implements DLQProvider {
     @Override
     public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              String targetTopic) {
-        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
-        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
-
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "groupName is required for DLQ resend");
+        }
+        groupName = groupName.trim();
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        if (begin >= end) {
+            throw new BusinessException(400, "DLQ resend start time must be before end time");
+        }
+
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
         DeadLetterScanResult scanResult;
         try {

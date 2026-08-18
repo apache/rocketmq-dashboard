@@ -451,6 +451,7 @@ class AclControllerTest {
                 .accessKey("svc-x")
                 .admin(false)
                 .defaultTopicPerm("PUB")
+                .whiteRemoteAddress("10.0.1.*")
                 .topicPerms(List.of("order-*=PUB"))
                 .build();
         when(aclService.createAndUpdatePlainAccessConfig(any(PlainAccessConfigVO.class))).thenReturn(saved);
@@ -459,11 +460,14 @@ class AclControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "accessKey", "svc-x", "admin", false,
-                                "defaultTopicPerm", "PUB", "topicPerms", List.of("order-*=PUB")))))
+                                "defaultTopicPerm", "PUB",
+                                "whiteRemoteAddress", "10.0.1.*",
+                                "topicPerms", List.of("order-*=PUB")))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.accessKey").value("svc-x"))
                 .andExpect(jsonPath("$.data.admin").value(false))
+                .andExpect(jsonPath("$.data.whiteRemoteAddress").value("10.0.1.*"))
                 .andExpect(jsonPath("$.data.topicPerms[0]").value("order-*=PUB"));
 
         ArgumentCaptor<PlainAccessConfigVO> captor = ArgumentCaptor.forClass(PlainAccessConfigVO.class);
@@ -471,6 +475,28 @@ class AclControllerTest {
         PlainAccessConfigVO request = captor.getValue();
         assertThat(request.getAccessKey()).isEqualTo("svc-x");
         assertThat(request.getDefaultTopicPerm()).isEqualTo("PUB");
+        assertThat(request.getWhiteRemoteAddress()).isEqualTo("10.0.1.*");
         assertThat(request.getTopicPerms()).containsExactly("order-*=PUB");
+    }
+
+    @Test
+    void createUpdatePlainAccessConfigShouldReturnBadRequestForInvalidWhiteRemoteAddress() throws Exception {
+        when(aclService.createAndUpdatePlainAccessConfig(any(PlainAccessConfigVO.class)))
+                .thenThrow(new BusinessException(400,
+                        "whiteRemoteAddress is not a valid plain ACL address expression: invalid"));
+
+        mockMvc.perform(post("/api/acl/plain-access-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "accessKey", "svc-x",
+                                "whiteRemoteAddress", "invalid"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value("whiteRemoteAddress is not a valid plain ACL address expression: invalid"));
+
+        ArgumentCaptor<PlainAccessConfigVO> captor = ArgumentCaptor.forClass(PlainAccessConfigVO.class);
+        verify(aclService).createAndUpdatePlainAccessConfig(captor.capture());
+        assertThat(captor.getValue().getWhiteRemoteAddress()).isEqualTo("invalid");
     }
 }

@@ -98,6 +98,14 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- Used by PlainAclRemoteAddressValidator for IP address grammar checks;
+             currently arrives transitively via rocketmq-tools -> rocketmq-common,
+             declared explicitly to keep the direct usage resolvable. -->
+        <dependency>
+            <groupId>commons-validator</groupId>
+            <artifactId>commons-validator</artifactId>
+            <version>1.10.0</version>
+        </dependency>
         <!-- Aliyun RocketMQ 5.x OpenAPI (async V2 SDK), used by provider/alibaba -->
         <dependency>
             <groupId>com.aliyun</groupId>

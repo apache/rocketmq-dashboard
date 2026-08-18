@@ -66,6 +66,7 @@ import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -122,6 +123,72 @@ class RocketMQDLQProviderTest {
             assertThat(group.isStatsAvailable()).isTrue();
             assertThat(group.getStatus()).isEqualTo("EMPTY");
         });
+    }
+
+
+    @Test
+    void resendMessagesShouldRejectInvertedTimeRangeBeforeCreatingConsumers() {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 200L, 100L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("DLQ resend start time must be before end time")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(runtimeAdminClientResolver);
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resendMessagesShouldRejectEqualStartAndEndTimeBeforeCreatingConsumers() {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 100L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("DLQ resend start time must be before end time")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(runtimeAdminClientResolver);
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resendMessagesShouldRejectBlankGroupNameBeforeResolvingEndpoint() {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", " ", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("groupName is required for DLQ resend")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver, never()).resolveEndpoint(anyString());
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resendMessagesShouldRejectNullGroupNameBeforeResolvingEndpoint() {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", null, 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("groupName is required for DLQ resend")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver, never()).resolveEndpoint(anyString());
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resendMessagesShouldNormalizeGroupNameBeforeBuildingDlqTopicAndAuditing() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(null);
+                         doNothing().when(consumer).shutdown();
+                     });
+             MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class)) {
+            provider.resendMessages("instance-a", " group-a ", 100L, 200L, "target-topic");
+
+            assertThat(mockedConsumers.constructed()).hasSize(1);
+            verify(mockedConsumers.constructed().get(0)).fetchSubscribeMessageQueues(dlqTopic);
+            assertThat(mockedProducers.constructed()).isEmpty();
+        }
+        verify(auditService).record(eq("RESEND_DLQ"), eq("group-a"),
+                contains("group=group-a, dlqTopic=%DLQ%group-a"), eq("NO_MESSAGES"));
     }
 
     @Test
