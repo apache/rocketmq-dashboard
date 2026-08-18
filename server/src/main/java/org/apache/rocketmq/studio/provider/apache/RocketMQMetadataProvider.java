@@ -37,6 +37,7 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -312,8 +313,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             List<String> sortedGroups = new ArrayList<>(subscribingGroups);
             sortedGroups.sort(String::compareToIgnoreCase);
             int total = sortedGroups.size();
-            int from = Math.min((page - 1) * pageSize, total);
-            int to = Math.min(from + pageSize, total);
+            long offset = Pagination.pageOffset(page, pageSize);
+            int from = (int) Math.min(offset, total);
+            int to = from + (int) Math.min(pageSize, total - from);
             List<TopicConsumerVO> consumers = new ArrayList<>();
             for (String group : sortedGroups.subList(from, to)) {
                 try {

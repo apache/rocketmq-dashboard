@@ -197,6 +197,41 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicConsumersPageShouldReturnEmptyPageForLargePageNumberTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        GroupList groups = new GroupList();
+        groups.setGroupList(new HashSet<>(List.of("group-a", "group-b")));
+        when(admin.queryTopicConsumeByWho("TopicA")).thenReturn(groups);
+
+        TopicConsumerPageVO result = newLiveProvider(admin)
+                .getTopicConsumersPage(null, "TopicA", Integer.MAX_VALUE, 100);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(result.getPageSize()).isEqualTo(100);
+        verify(admin, never()).examineConsumeStats(anyString(), eq("TopicA"));
+    }
+
+    @Test
+    void metadataProviderDefaultPageShouldReturnEmptyPageForLargePageNumberTest() {
+        MetadataProvider provider = mock(MetadataProvider.class);
+        when(provider.getTopicConsumers("instance-a", "orders")).thenReturn(List.of(
+                TopicConsumerVO.builder().group("group-a").build(),
+                TopicConsumerVO.builder().group("group-b").build()));
+        when(provider.getTopicConsumersPage("instance-a", "orders", Integer.MAX_VALUE, 100))
+                .thenCallRealMethod();
+
+        TopicConsumerPageVO result = provider.getTopicConsumersPage(
+                "instance-a", "orders", Integer.MAX_VALUE, 100);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(result.getPageSize()).isEqualTo(100);
+    }
+
+    @Test
     void groupRuntimeDiagnosticsShouldUseSelectedInstanceRuntimeClient() {
         List<QueueProgressVO> progress = List.of(QueueProgressVO.builder().broker("broker-a").build());
         List<SubscriptionEntryVO> subscriptions = List.of(SubscriptionEntryVO.builder().topic("orders").build());
