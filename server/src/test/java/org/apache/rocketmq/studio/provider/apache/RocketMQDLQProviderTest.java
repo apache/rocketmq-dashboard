@@ -573,6 +573,53 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void exportMessagesRejectsCombinedBodiesAboveBudget() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt first = exportMessage(dlqTopic, "first", 6 * 1024 * 1024);
+        MessageExt second = exportMessage(dlqTopic, "second", 4 * 1024 * 1024 + 1);
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(first, second));
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+                         when(consumer.pull(eq(queue), eq("*"), eq(0L), eq(32))).thenReturn(pullResult);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            assertThatThrownBy(() ->
+                    provider.exportMessages("instance-a", "group-a", 100L, 200L, 1000))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("DLQ export exceeds the 10 MiB message body limit")
+                    .extracting("code")
+                    .isEqualTo(413);
+        }
+    }
+
+    @Test
+    void exportMessagesAllowsBodyAtExactBudget() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt deadLetter = exportMessage(
+                dlqTopic, "exact-limit", (int) RocketMQDLQProvider.MAX_EXPORT_BODY_BYTES);
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+                         when(consumer.pull(eq(queue), eq("*"), eq(0L), eq(32))).thenReturn(pullResult);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<DLQMessageVO> exported =
+                    provider.exportMessages("instance-a", "group-a", 100L, 200L, 1000);
+
+            assertThat(exported).singleElement().satisfies(message ->
+                    assertThat(message.getBodyBase64()).hasSize(13_981_016));
+        }
+    }
+
+    @Test
     void exportMessagesHonorsMaxCountCap() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
@@ -590,5 +637,14 @@ class RocketMQDLQProviderTest {
                     provider.exportMessages("instance-a", "group-a", 100L, 200L, 0);
             assertThat(exported).isEmpty();
         }
+    }
+
+    private MessageExt exportMessage(String topic, String msgId, int bodySize) {
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic(topic);
+        message.setStoreTimestamp(150L);
+        message.setBody(new byte[bodySize]);
+        return message;
     }
 }

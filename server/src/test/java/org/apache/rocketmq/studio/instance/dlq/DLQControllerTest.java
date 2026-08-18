@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -229,5 +230,19 @@ class DLQControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
 
         verify(dlqService).exportMessages(eq("instance-1"), eq("test-group"), eq(1000L), eq(2000L), eq(100));
+    }
+
+    @Test
+    void exportDLQMessagesShouldReturnPayloadTooLargeWhenBodyBudgetIsExceeded() throws Exception {
+        when(dlqService.exportMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
+                .thenThrow(new BusinessException(413, "DLQ export exceeds the 10 MiB message body limit"));
+
+        mockMvc.perform(get("/api/dlq/export")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value(413))
+                .andExpect(jsonPath("$.message")
+                        .value("DLQ export exceeds the 10 MiB message body limit"));
     }
 }
