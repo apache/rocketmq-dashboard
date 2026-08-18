@@ -41,6 +41,8 @@ import java.util.stream.Collectors;
 @Repository
 public class MybatisPlusSettingsRepository implements SettingsRepository {
 
+    private static final String GENERAL_SETTINGS_KEY = "general";
+
     private final RmqSettingsMapper settingsMapper;
     private final RmqDataSourceMapper dataSourceMapper;
     private final ObjectMapper objectMapper;
@@ -53,12 +55,9 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * The settings table holds a single row; load it regardless of its auto-increment id.
-     */
     private RmqSettings findSingletonSettings() {
         return settingsMapper.selectOne(new QueryWrapper<RmqSettings>()
-                .orderByAsc("id")
+                .eq("settings_key", GENERAL_SETTINGS_KEY)
                 .last("LIMIT 1"));
     }
 
@@ -99,6 +98,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
             RmqSettings entity = findSingletonSettings();
             if (entity == null) {
                 entity = new RmqSettings();
+                entity.setSettingsKey(GENERAL_SETTINGS_KEY);
                 entity.setJson(json);
                 entity.setGmtCreate(LocalDateTime.now());
                 entity.setGmtModified(LocalDateTime.now());
