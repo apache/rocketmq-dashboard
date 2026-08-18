@@ -34,6 +34,7 @@ import {
 } from 'antd';
 import { DownloadSimple, Eye, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
+import type { TableProps } from 'antd';
 
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -83,6 +84,8 @@ const CLIENT_CONNECTION_EXPORT_COLUMNS: CsvColumn<ClientConnection>[] = [
   { header: 'Partial', value: (connection) => (connection.partial ? 'true' : 'false') },
 ];
 
+type ClientTableFilters = Parameters<NonNullable<TableProps<ClientConnection>['onChange']>>[1];
+
 const countBy = (values: string[]) =>
   [
     ...values.reduce(
@@ -130,6 +133,7 @@ const ClientsPage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registryLoadKey, setRegistryLoadKey] = useState(0);
   const [connectionLoadKey, setConnectionLoadKey] = useState(0);
+  const [columnFilters, setColumnFilters] = useState<ClientTableFilters>({});
 
   const selectedCluster = registryClusters.find((cluster) => cluster.endpoint === selectedEndpoint);
 
@@ -263,9 +267,23 @@ const ClientsPage = () => {
     );
   }, [clusterConnections, search]);
 
+  const exportConnections = useMemo(() => {
+    const matches = (key: string, value: string) => {
+      const selected = columnFilters[key];
+      return !selected?.length || selected.some((filterValue) => String(filterValue) === value);
+    };
+    return filtered.filter(
+      (connection) =>
+        matches('clusterName', connection.clusterName) &&
+        matches('type', connection.type) &&
+        matches('protocol', connection.protocol) &&
+        matches('language', connection.language),
+    );
+  }, [columnFilters, filtered]);
+
   const handleExport = () => {
     const filename = `rocketmq-client-connections-${new Date().toISOString().slice(0, 10)}.csv`;
-    const csv = buildCsv(CLIENT_CONNECTION_EXPORT_COLUMNS, filtered);
+    const csv = buildCsv(CLIENT_CONNECTION_EXPORT_COLUMNS, exportConnections);
     downloadCsv(filename, csv);
   };
 
@@ -476,7 +494,7 @@ const ClientsPage = () => {
         </Space>
         <Button
           icon={<DownloadSimple size={16} />}
-          disabled={filtered.length === 0}
+          disabled={exportConnections.length === 0}
           onClick={handleExport}
         >
           {t('common.export')}
@@ -553,6 +571,7 @@ const ClientsPage = () => {
             `${connection.type}:${connection.clientId}:${connection.groupOrTopic}`
           }
           loading={loading}
+          onChange={(_, filters) => setColumnFilters(filters)}
           scroll={{ x: 1320 }}
           pagination={{
             pageSize: 20,

@@ -264,6 +264,42 @@ describe('Clients page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:client-connections');
   });
 
+  it('applies table column filters to the exported CSV', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:filtered-client-connections';
+    });
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    const filterTriggers = document.querySelectorAll<HTMLElement>('.ant-table-filter-trigger');
+    await user.click(filterTriggers[1]);
+    const filterDropdown = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
+    expect(filterDropdown).not.toBeNull();
+    await user.click(within(filterDropdown!).getByText('Consumer'));
+    await user.click(within(filterDropdown!).getByRole('button', { name: 'OK' }));
+
+    expect(screen.queryByText('order-svc-0@10.0.1.12:49152')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const csv = await blob.text();
+    expect(csv).not.toContain('order-svc-0@10.0.1.12:49152');
+    expect(csv).toContain('payment-svc-0@10.0.1.13:49153');
+    expect(csv).toContain('audit-svc-0@10.0.2.10:49154');
+  });
+
   it('renders empty distributions when no connections are available', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue([]);
     renderWithProviders(<ClientsPage />);
