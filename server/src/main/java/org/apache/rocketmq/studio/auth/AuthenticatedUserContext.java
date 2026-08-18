@@ -49,16 +49,22 @@ public final class AuthenticatedUserContext {
     }
 
     public static void setUser(Long userId, String username, boolean admin) {
+
         setUser(username, admin);
         if (userId == null) {
             CURRENT_USER_ID.remove();
         } else {
             CURRENT_USER_ID.set(String.valueOf(userId));
         }
+        CURRENT_ADMIN.set(admin);
     }
 
     public static String currentUserId() {
         return CURRENT_USER_ID.get();
+    }
+
+    public static boolean currentUserIsAdmin() {
+        return Boolean.TRUE.equals(CURRENT_ADMIN.get());
     }
 
     public static String currentUsernameOrSystem() {

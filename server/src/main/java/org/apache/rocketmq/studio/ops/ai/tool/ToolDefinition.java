@@ -45,6 +45,14 @@ public record ToolDefinition(
         return name;
     }
 
+    public ToolPermission parsedPermission() {
+        return ToolPermission.parse(permission);
+    }
+
+    public boolean isLowRiskReadOnly() {
+        return "L1".equalsIgnoreCase(riskLevel) && parsedPermission().isReadOnly();
+    }
+
     private static Map<String, Object> immutableMap(Map<String, Object> source) {
         Map<String, Object> copy = new LinkedHashMap<>();
         source.forEach((key, value) -> copy.put(key, immutableValue(value)));

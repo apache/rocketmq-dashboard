@@ -19,7 +19,7 @@ package org.apache.rocketmq.studio.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolAccessPolicy;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.springframework.http.HttpMethod;
@@ -30,7 +30,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.Set;
 
-@RequiredArgsConstructor
 public class AuthInterceptor implements HandlerInterceptor {
 
     private static final Set<String> READER_POST_PATHS = Set.of(
@@ -43,6 +42,20 @@ public class AuthInterceptor implements HandlerInterceptor {
     private final AuthProperties authProperties;
     private final AuthService authService;
     private final SettingsRepository settingsRepository;
+    private final ToolAccessPolicy toolAccessPolicy;
+
+    public AuthInterceptor(AuthProperties authProperties, AuthService authService,
+                           SettingsRepository settingsRepository) {
+        this(authProperties, authService, settingsRepository, null);
+    }
+
+    public AuthInterceptor(AuthProperties authProperties, AuthService authService,
+                           SettingsRepository settingsRepository, ToolAccessPolicy toolAccessPolicy) {
+        this.authProperties = authProperties;
+        this.authService = authService;
+        this.settingsRepository = settingsRepository;
+        this.toolAccessPolicy = toolAccessPolicy;
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
@@ -59,6 +72,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
             return false;
         }
+
         var authenticatedUser = authService.getAuthenticatedUser(authorization).orElse(null);
         if (authenticatedUser != null) {
             AuthenticatedUserContext.setUser(
@@ -102,12 +116,17 @@ public class AuthInterceptor implements HandlerInterceptor {
             // Read endpoints stay open to readers, except credential views that expose secrets.
             return isAdminOnlyGetPath(path);
         }
+        String normalizedPath = normalizePath(stripPathParameters(path));
+        if (toolAccessPolicy != null && toolAccessPolicy.isToolExecutionPath(normalizedPath)) {
+            return !toolAccessPolicy.isReaderAccessiblePath(normalizedPath);
+        }
         return !HttpMethod.POST.matches(method) || !READER_POST_PATHS.contains(normalizePath(path));
     }
 
     private boolean isAdminOnlyGetPath(String path) {
         String normalizedPath = normalizePath(stripPathParameters(path));
-        return "/api/llm/models".equals(normalizedPath)
+        return "/api/llm/config".equals(normalizedPath)
+                || "/api/llm/models".equals(normalizedPath)
                 || "/api/studio-users".equals(normalizedPath)
                 || isCloudCatalogPath(normalizedPath)
                 || "/api/acl/remote/rules".equals(normalizedPath)
