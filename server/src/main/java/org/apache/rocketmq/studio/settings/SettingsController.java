@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.settings;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +26,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/settings")
@@ -47,8 +46,10 @@ public class SettingsController {
     }
 
     @GetMapping("/datasources")
-    public Result<List<DataSourceVO>> listDataSources() {
-        return Result.ok(settingsService.listDataSources());
+    public Result<PageResult<DataSourceVO>> listDataSources(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(settingsService.listDataSources(page, pageSize));
     }
 
     @PostMapping("/datasources/create")

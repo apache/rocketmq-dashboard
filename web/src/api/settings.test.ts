@@ -21,6 +21,7 @@ import client from './client';
 import {
   createDataSource,
   deleteDataSource,
+  listDataSourcePage,
   listDataSources,
   testDataSource,
   updateDataSource,
@@ -48,14 +49,49 @@ describe('data sources API', () => {
     vi.unstubAllGlobals();
   });
 
-  it('loads and returns created or updated data sources', async () => {
-    mock.onGet('/settings/datasources').reply(200, { code: 200, data: [source] });
+  it('loads paged data sources and returns created or updated data sources', async () => {
+    mock.onGet('/settings/datasources').reply((config) => {
+      expect(config.params).toEqual({ page: 2, pageSize: 10 });
+      return [200, { code: 200, data: { items: [source], total: 1, page: 2, size: 10 } }];
+    });
     mock.onPost('/settings/datasources/create').reply(200, { code: 200, data: source });
     mock.onPost('/settings/datasources/update').reply(200, { code: 200, data: source });
 
-    await expect(listDataSources()).resolves.toEqual([source]);
+    await expect(listDataSourcePage({ page: 2, pageSize: 10 })).resolves.toEqual({
+      items: [source],
+      total: 1,
+      page: 2,
+      size: 10,
+    });
     await expect(createDataSource({ name: source.name })).resolves.toEqual(source);
     await expect(updateDataSource(source)).resolves.toEqual(source);
+  });
+
+  it('loads all data sources by following paginated responses', async () => {
+    mock.onGet('/settings/datasources').reply((config) => {
+      if (config.params?.page === 1) {
+        expect(config.params).toEqual({ page: 1, pageSize: 100 });
+        return [200, { code: 200, data: { items: [source], total: 2, page: 1, size: 100 } }];
+      }
+      expect(config.params).toEqual({ page: 2, pageSize: 100 });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            items: [{ ...source, key: 'source-2', name: 'Thanos' }],
+            total: 2,
+            page: 2,
+            size: 100,
+          },
+        },
+      ];
+    });
+
+    await expect(listDataSources()).resolves.toEqual([
+      source,
+      { ...source, key: 'source-2', name: 'Thanos' },
+    ]);
   });
 
   it('uses a key query parameter for deletion and sends test auth details', async () => {

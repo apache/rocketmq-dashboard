@@ -6,7 +6,11 @@
  */
 package org.apache.rocketmq.studio.persistence;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
@@ -16,11 +20,13 @@ import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusSettingsRepositoryTest {
@@ -127,5 +133,31 @@ class MybatisPlusSettingsRepositoryTest {
                 .build();
 
         assertThat(repository.replaceDataSource(replacement)).isFalse();
+    }
+
+    @Test
+    void shouldPageDataSourcesByModifiedTimeDescendingWithKeyTiebreaker() {
+        RmqDataSource beta = new RmqDataSource();
+        beta.setDsKey("ds-b");
+        beta.setJson("{\"name\":\"Beta\",\"type\":\"Prometheus\",\"url\":\"http://beta\",\"auth\":\"None\"}");
+        RmqDataSource alpha = new RmqDataSource();
+        alpha.setDsKey("ds-a");
+        alpha.setJson("{\"name\":\"Alpha\",\"type\":\"Prometheus\",\"url\":\"http://alpha\",\"auth\":\"None\"}");
+        Page<RmqDataSource> mapperPage = new Page<RmqDataSource>(2, 1)
+                .setRecords(java.util.List.of(beta, alpha))
+                .setTotal(2);
+        when(dataSourceMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        PageResult<DataSourceVO> result = repository.findDataSourcesPage(2, 1);
+
+        ArgumentCaptor<IPage<RmqDataSource>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
+        ArgumentCaptor<Wrapper<RmqDataSource>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(dataSourceMapper).selectPage(pageCaptor.capture(), queryCaptor.capture());
+        assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(2);
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(1);
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getItems()).extracting(DataSourceVO::getKey).containsExactly("ds-b", "ds-a");
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("ORDER BY", "gmt_modified", "DESC", "ds_key", "ASC");
     }
 }

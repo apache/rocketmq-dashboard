@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +27,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -165,27 +165,35 @@ class SettingsControllerTest {
                 .url("prod:9876").status("connected").build();
         DataSourceVO ds2 = DataSourceVO.builder().key("ds-2").name("Staging").type("Prometheus")
                 .url("staging:9876").status("disconnected").build();
-        when(settingsService.listDataSources()).thenReturn(Arrays.asList(ds1, ds2));
+        when(settingsService.listDataSources(2, 10))
+                .thenReturn(PageResult.of(Arrays.asList(ds1, ds2), 12, 2, 10));
 
-        mockMvc.perform(get("/api/settings/datasources"))
+        mockMvc.perform(get("/api/settings/datasources")
+                        .param("page", "2")
+                        .param("pageSize", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code", is(200)))
-                .andExpect(jsonPath("$.data", hasSize(2)))
-                .andExpect(jsonPath("$.data[0].key", is("ds-1")))
-                .andExpect(jsonPath("$.data[0].name", is("Production")))
-                .andExpect(jsonPath("$.data[0].status", is("connected")))
-                .andExpect(jsonPath("$.data[1].key", is("ds-2")))
-                .andExpect(jsonPath("$.data[1].name", is("Staging")));
+                .andExpect(jsonPath("$.data.total", is(12)))
+                .andExpect(jsonPath("$.data.page", is(2)))
+                .andExpect(jsonPath("$.data.size", is(10)))
+                .andExpect(jsonPath("$.data.items", hasSize(2)))
+                .andExpect(jsonPath("$.data.items[0].key", is("ds-1")))
+                .andExpect(jsonPath("$.data.items[0].name", is("Production")))
+                .andExpect(jsonPath("$.data.items[0].status", is("connected")))
+                .andExpect(jsonPath("$.data.items[1].key", is("ds-2")))
+                .andExpect(jsonPath("$.data.items[1].name", is("Staging")));
     }
 
     @Test
     void listDataSourcesShouldReturnEmptyList() throws Exception {
-        when(settingsService.listDataSources()).thenReturn(Collections.emptyList());
+        when(settingsService.listDataSources(1, 20)).thenReturn(PageResult.empty(1, 20));
 
         mockMvc.perform(get("/api/settings/datasources"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code", is(200)))
-                .andExpect(jsonPath("$.data", hasSize(0)));
+                .andExpect(jsonPath("$.data.page", is(1)))
+                .andExpect(jsonPath("$.data.size", is(20)))
+                .andExpect(jsonPath("$.data.items", hasSize(0)));
     }
 
     @Test

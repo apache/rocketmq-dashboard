@@ -28,4 +28,11 @@ class PageResultTest {
 
         assertThat(result.getItems()).isNotNull().isEmpty();
     }
+
+    @Test
+    void ofShouldNormalizePagesToTheFirstPage() {
+        PageResult<String> result = PageResult.of(null, 0, 0, 20);
+
+        assertThat(result.getPage()).isEqualTo(1);
+    }
 }

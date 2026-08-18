@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import java.net.InetAddress;
@@ -68,6 +69,7 @@ public class SettingsService {
     private static final String AUTH_BEARER = "bearer token";
     private static final Duration DATA_SOURCE_TEST_CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration DATA_SOURCE_TEST_READ_TIMEOUT = Duration.ofSeconds(5);
+    private static final int MAX_DATA_SOURCE_PAGE_SIZE = 100;
 
     private final SettingsRepository settingsRepository;
     private final RestClient restClient;
@@ -170,9 +172,10 @@ public class SettingsService {
     }
 
 
-    public List<DataSourceVO> listDataSources() {
-        log.debug("Listing all data sources");
-        return settingsRepository.findAllDataSources();
+    public PageResult<DataSourceVO> listDataSources(int page, int pageSize) {
+        validateDataSourcePagination(page, pageSize);
+        log.debug("Listing data sources page={}, pageSize={}", page, pageSize);
+        return settingsRepository.findDataSourcesPage(page, pageSize);
     }
 
 
@@ -208,6 +211,16 @@ public class SettingsService {
             UrlHostGuard.check(url, false);
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(400, exception.getMessage());
+        }
+    }
+
+    private void validateDataSourcePagination(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be at least 1");
+        }
+        if (pageSize < 1 || pageSize > MAX_DATA_SOURCE_PAGE_SIZE) {
+            throw new BusinessException(400,
+                    "pageSize must be between 1 and " + MAX_DATA_SOURCE_PAGE_SIZE);
         }
     }
 

@@ -33,7 +33,7 @@ public class PageResult<T> {
         PageResult<T> result = new PageResult<>();
         result.items = items == null ? Collections.emptyList() : items;
         result.total = total;
-        result.page = page;
+        result.page = Math.max(page, 1);
         result.size = size;
         return result;
     }

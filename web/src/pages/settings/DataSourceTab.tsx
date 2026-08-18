@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Flex,
@@ -38,7 +38,7 @@ import StatusBadge from '../../components/StatusBadge';
 import {
   createDataSource,
   deleteDataSource,
-  listDataSources,
+  listDataSourcePage,
   testDataSource,
   updateDataSource,
 } from '../../api/settings';
@@ -70,6 +70,7 @@ const DATA_SOURCE_TYPE_OPTIONS = [
 ];
 
 type DataSourceFormValues = Partial<DataSource>;
+const DEFAULT_PAGE_SIZE = 10;
 
 const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
 const authNeedsSecret = (auth?: string) => auth === 'Basic Auth' || auth === 'Bearer Token';
@@ -91,6 +92,9 @@ const withoutSecrets = (values: DataSourceFormValues): Partial<DataSource> => {
 export const DataSourceTab = () => {
   const { t } = useLang();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [total, setTotal] = useState(0);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -99,24 +103,63 @@ export const DataSourceTab = () => {
   const authValue = Form.useWatch('auth', dsForm);
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
+  const listRequestId = useRef(0);
+
+  const applyDataSourcePage = (
+    result: { items: DataSource[]; total: number },
+    nextPage: number,
+    nextPageSize: number,
+  ) => {
+    const lastPage = result.total > 0 ? Math.max(1, Math.ceil(result.total / nextPageSize)) : 1;
+    if (result.total > 0 && result.items.length === 0 && nextPage > lastPage) {
+      setPage(lastPage);
+      return false;
+    }
+    setDataSources(result.items);
+    setTotal(result.total);
+    return true;
+  };
+
+  const reloadDataSourcePage = async (nextPage: number, nextPageSize: number) => {
+    const requestId = ++listRequestId.current;
+    try {
+      const result = await listDataSourcePage({ page: nextPage, pageSize: nextPageSize });
+      if (requestId !== listRequestId.current) return;
+      applyDataSourcePage(result, nextPage, nextPageSize);
+    } catch {
+      if (requestId === listRequestId.current) {
+        message.error('数据源加载失败，请稍后重试');
+      }
+    } finally {
+      if (requestId === listRequestId.current) {
+        setLoading(false);
+      }
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
-    void listDataSources()
-      .then((sources) => {
-        if (!cancelled) setDataSources(sources);
-      })
-      .catch(() => {
-        if (!cancelled) message.error('数据源加载失败，请稍后重试');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
+    const requestId = ++listRequestId.current;
+    void (async () => {
+      try {
+        const result = await listDataSourcePage({ page, pageSize });
+        if (!cancelled && requestId === listRequestId.current) {
+          applyDataSourcePage(result, page, pageSize);
+        }
+      } catch {
+        if (!cancelled && requestId === listRequestId.current) {
+          message.error('数据源加载失败，请稍后重试');
+        }
+      } finally {
+        if (!cancelled && requestId === listRequestId.current) {
+          setLoading(false);
+        }
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [page, pageSize]);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,17 +217,22 @@ export const DataSourceTab = () => {
       const values = await dsForm.validateFields();
       const dataSourceValues = withoutSecrets(values);
       setSubmitting(true);
-      const saved = editingDataSource
-        ? await updateDataSource({ ...editingDataSource, ...dataSourceValues })
-        : await createDataSource(dataSourceValues);
-      setDataSources((previous) =>
-        editingDataSource
-          ? previous.map((dataSource) => (dataSource.key === saved.key ? saved : dataSource))
-          : [...previous, saved],
-      );
+      if (editingDataSource) {
+        await updateDataSource({ ...editingDataSource, ...dataSourceValues });
+      } else {
+        await createDataSource(dataSourceValues);
+      }
       message.success(editingDataSource ? '数据源已更新' : '数据源已添加');
+      setEditingDataSource(null);
       setModalOpen(false);
       dsForm.resetFields();
+      if (page !== 1) {
+        setLoading(true);
+        setPage(1);
+      } else {
+        setLoading(true);
+        await reloadDataSourcePage(1, pageSize);
+      }
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
@@ -198,8 +246,14 @@ export const DataSourceTab = () => {
   const handleDelete = async (dataSource: DataSource) => {
     try {
       await deleteDataSource(dataSource.key);
-      setDataSources((previous) => previous.filter((item) => item.key !== dataSource.key));
       message.success('数据源已删除');
+      if (dataSources.length === 1 && page > 1) {
+        setLoading(true);
+        setPage(page - 1);
+      } else {
+        setLoading(true);
+        await reloadDataSourcePage(page, pageSize);
+      }
     } catch {
       message.error('删除数据源失败，请稍后重试');
     }
@@ -296,7 +350,23 @@ export const DataSourceTab = () => {
         dataSource={dataSources}
         rowKey="key"
         loading={loading}
-        pagination={false}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50', '100'],
+          onChange: (nextPage, nextPageSize) => {
+            if (nextPageSize !== pageSize) {
+              setLoading(true);
+              setPage(1);
+              setPageSize(nextPageSize);
+              return;
+            }
+            setLoading(true);
+            setPage(nextPage);
+          },
+        }}
         size="middle"
       />
 

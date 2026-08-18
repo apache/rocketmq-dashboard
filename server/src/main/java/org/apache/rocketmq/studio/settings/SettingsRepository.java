@@ -17,7 +17,7 @@
 package org.apache.rocketmq.studio.settings;
 
 
-import java.util.List;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import java.util.Optional;
 
 public interface SettingsRepository {
@@ -26,7 +26,7 @@ public interface SettingsRepository {
 
     void saveGeneralSettings(GeneralSettingsVO settings);
 
-    List<DataSourceVO> findAllDataSources();
+    PageResult<DataSourceVO> findDataSourcesPage(int page, int pageSize);
 
     DataSourceVO saveDataSource(DataSourceVO dataSource);
 

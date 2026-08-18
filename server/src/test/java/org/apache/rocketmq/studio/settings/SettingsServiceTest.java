@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +38,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
-import java.util.List;
 import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -244,29 +244,51 @@ class SettingsServiceTest {
     }
 
     @Test
-    void listDataSourcesShouldReturnAllSources() {
+    void listDataSourcesShouldReturnTheRequestedPage() {
         DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("rocketmq")
                 .url("localhost:9876").status("connected").build();
         DataSourceVO ds2 = DataSourceVO.builder().key("ds-2").name("Staging").type("rocketmq")
                 .url("staging:9876").status("disconnected").build();
-        when(settingsRepository.findAllDataSources()).thenReturn(Arrays.asList(ds1, ds2));
+        when(settingsRepository.findDataSourcesPage(2, 10))
+                .thenReturn(PageResult.of(Arrays.asList(ds1, ds2), 12, 2, 10));
 
-        List<DataSourceVO> result = settingsService.listDataSources();
+        PageResult<DataSourceVO> result = settingsService.listDataSources(2, 10);
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getName()).isEqualTo("Production");
-        assertThat(result.get(0).getStatus()).isEqualTo("connected");
-        assertThat(result.get(1).getName()).isEqualTo("Staging");
-        assertThat(result.get(1).getStatus()).isEqualTo("disconnected");
+        assertThat(result.getTotal()).isEqualTo(12);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(10);
+        assertThat(result.getItems()).extracting(DataSourceVO::getName)
+                .containsExactly("Production", "Staging");
     }
 
     @Test
-    void listDataSourcesShouldReturnEmptyListWhenNoSources() {
-        when(settingsRepository.findAllDataSources()).thenReturn(Collections.emptyList());
+    void listDataSourcesShouldRejectPageNumbersBeforeOne() {
+        assertThatThrownBy(() -> settingsService.listDataSources(0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be at least 1")
+                .extracting("code")
+                .isEqualTo(400);
+    }
 
-        List<DataSourceVO> result = settingsService.listDataSources();
+    @Test
+    void listDataSourcesShouldRejectPageSizesOutsideTheSupportedRange() {
+        assertThatThrownBy(() -> settingsService.listDataSources(1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100")
+                .extracting("code")
+                .isEqualTo(400);
+    }
 
-        assertThat(result).isEmpty();
+    @Test
+    void listDataSourcesShouldPreserveEmptyPagesAtTheBoundary() {
+        when(settingsRepository.findDataSourcesPage(3, 2))
+                .thenReturn(PageResult.of(Collections.emptyList(), 4, 3, 2));
+
+        PageResult<DataSourceVO> result = settingsService.listDataSources(3, 2);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(4);
+        assertThat(result.getPage()).isEqualTo(3);
     }
 
     @Test
@@ -382,7 +404,6 @@ class SettingsServiceTest {
                 .hasMessage("Data source not found: missing")
                 .extracting("code")
                 .isEqualTo(404);
-        assertThat(service.listDataSources()).isEmpty();
     }
 
     @Test
@@ -397,7 +418,6 @@ class SettingsServiceTest {
                 .hasMessage("Data source key is required")
                 .extracting("code")
                 .isEqualTo(400);
-        assertThat(service.listDataSources()).isEmpty();
     }
 
     @Test

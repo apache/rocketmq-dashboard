@@ -20,7 +20,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { DataSource } from '../../../api/settings';
-import { createDataSource, listDataSources, testDataSource } from '../../../api/settings';
+import { createDataSource, listDataSourcePage, testDataSource } from '../../../api/settings';
 import { LangProvider } from '../../../i18n/LangContext';
 import { DataSourceTab } from '../DataSourceTab';
 
@@ -28,6 +28,7 @@ vi.mock('../../../api/settings', () => ({
   createDataSource: vi.fn(),
   deleteDataSource: vi.fn(),
   getGeneralSettings: vi.fn(),
+  listDataSourcePage: vi.fn(),
   listDataSources: vi.fn(),
   saveGeneralSettings: vi.fn(),
   testDataSource: vi.fn(),
@@ -81,12 +82,22 @@ beforeAll(() => {
 describe('DataSourceTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listDataSources).mockResolvedValue(sources);
+    vi.mocked(listDataSourcePage).mockResolvedValue({
+      items: sources,
+      total: 2,
+      page: 1,
+      size: 10,
+    });
   });
 
   it('keeps data source creation disabled until the initial list is ready', async () => {
-    const initialList = deferred<DataSource[]>();
-    vi.mocked(listDataSources).mockReturnValue(initialList.promise);
+    const initialList = deferred<{
+      items: DataSource[];
+      total: number;
+      page: number;
+      size: number;
+    }>();
+    vi.mocked(listDataSourcePage).mockReturnValue(initialList.promise);
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
@@ -99,7 +110,7 @@ describe('DataSourceTab', () => {
     await user.click(addButton);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    initialList.resolve(sources);
+    initialList.resolve({ items: sources, total: 2, page: 1, size: 10 });
 
     await waitFor(() => expect(addButton).toBeEnabled());
     await user.click(addButton);
@@ -149,9 +160,12 @@ describe('DataSourceTab', () => {
   });
 
   it('keeps each row loading until its own connection test finishes', async () => {
-    vi.mocked(listDataSources).mockResolvedValue(
-      sources.map((source) => ({ ...source, auth: 'None' })),
-    );
+    vi.mocked(listDataSourcePage).mockResolvedValue({
+      items: sources.map((source) => ({ ...source, auth: 'None' })),
+      total: 2,
+      page: 1,
+      size: 10,
+    });
     let resolveFirst: (value: { success: boolean; message: string }) => void = () => undefined;
     let resolveSecond: (value: { success: boolean; message: string }) => void = () => undefined;
     vi.mocked(testDataSource)
@@ -258,15 +272,19 @@ describe('DataSourceTab', () => {
   });
 
   it('creates and tests a Grafana Mimir data source', async () => {
-    vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
-    vi.mocked(createDataSource).mockResolvedValue({
+    const created = {
       key: 'mimir-prod',
       name: 'Mimir prod',
       type: 'Mimir',
       url: 'http://mimir:9009',
       auth: 'None',
       status: 'healthy',
-    });
+    };
+    vi.mocked(listDataSourcePage)
+      .mockResolvedValueOnce({ items: sources, total: 2, page: 1, size: 10 })
+      .mockResolvedValueOnce({ items: [created, ...sources], total: 3, page: 1, size: 10 });
+    vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
+    vi.mocked(createDataSource).mockResolvedValue(created);
 
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
@@ -372,6 +390,45 @@ describe('DataSourceTab', () => {
     ]) {
       expect(within(popup).getByRole('option', { name: type })).toBeInTheDocument();
     }
+  });
+
+  it('requests the selected page from the backend paginator', async () => {
+    vi.mocked(listDataSourcePage)
+      .mockResolvedValueOnce({ items: [sources[0]], total: 11, page: 1, size: 10 })
+      .mockResolvedValueOnce({ items: [sources[1]], total: 11, page: 2, size: 10 });
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByTitle('2'));
+
+    expect(await screen.findByText('Thanos DR')).toBeInTheDocument();
+    expect(vi.mocked(listDataSourcePage)).toHaveBeenNthCalledWith(2, { page: 2, pageSize: 10 });
+  });
+
+  it('returns to the previous page when the backend reports the current page is out of range', async () => {
+    vi.mocked(listDataSourcePage)
+      .mockResolvedValueOnce({ items: [sources[0]], total: 11, page: 1, size: 10 })
+      .mockResolvedValueOnce({ items: [], total: 10, page: 2, size: 10 })
+      .mockResolvedValueOnce({ items: [sources[0]], total: 10, page: 1, size: 10 });
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByTitle('2'));
+
+    expect(await screen.findByText('Prometheus prod')).toBeInTheDocument();
+    expect(vi.mocked(listDataSourcePage)).toHaveBeenNthCalledWith(3, { page: 1, pageSize: 10 });
   });
 });
 

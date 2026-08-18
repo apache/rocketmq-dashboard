@@ -17,9 +17,11 @@
 package org.apache.rocketmq.studio.persistence;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
@@ -32,7 +34,6 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -114,10 +115,17 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     }
 
     @Override
-    public List<DataSourceVO> findAllDataSources() {
-        return dataSourceMapper.selectList(new QueryWrapper<RmqDataSource>().orderByAsc("id")).stream()
-                .map(this::toDataSourceVO)
-                .collect(Collectors.toList());
+    public PageResult<DataSourceVO> findDataSourcesPage(int page, int pageSize) {
+        Page<RmqDataSource> resultPage = dataSourceMapper.selectPage(
+                new Page<>(page, pageSize),
+                new QueryWrapper<RmqDataSource>()
+                        .orderByDesc("gmt_modified")
+                        .orderByAsc("ds_key"));
+        return PageResult.of(
+                resultPage.getRecords().stream().map(this::toDataSourceVO).collect(Collectors.toList()),
+                resultPage.getTotal(),
+                page,
+                pageSize);
     }
 
     @Override
