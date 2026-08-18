@@ -35,15 +35,15 @@ spring:
 
   security:
     user:
-      name: rocketmq
-      password: 1234567
+      name: ${DASHBOARD_ACTUATOR_USERNAME}
+      password: ${DASHBOARD_ACTUATOR_PASSWORD}
       roles: ADMIN
 
 management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: health,info
 
 logging:
   config: classpath:logback.xml
