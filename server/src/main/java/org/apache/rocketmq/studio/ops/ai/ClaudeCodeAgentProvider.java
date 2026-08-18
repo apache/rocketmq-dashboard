@@ -275,15 +275,15 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         return normalized;
     }
 
-    private static final class BoundedProcessInputStream extends InputStream {
+    static final class BoundedProcessInputStream extends InputStream {
 
         private final InputStream delegate;
         private final Process process;
         private final AtomicLong outputBytes;
         private final long maxBytes;
 
-        private BoundedProcessInputStream(InputStream delegate, Process process,
-                                          AtomicLong outputBytes, long maxBytes) {
+        BoundedProcessInputStream(InputStream delegate, Process process,
+                                  AtomicLong outputBytes, long maxBytes) {
             this.delegate = delegate;
             this.process = process;
             this.outputBytes = outputBytes;
@@ -309,11 +309,29 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         }
 
         @Override
+        public long skip(long bytes) throws IOException {
+            long skipped = delegate.skip(bytes);
+            if (skipped > 0) {
+                record(skipped);
+            }
+            return skipped;
+        }
+
+        @Override
+        public int available() throws IOException {
+            long remaining = maxBytes - outputBytes.get();
+            if (remaining <= 0) {
+                return 0;
+            }
+            return (int) Math.min(delegate.available(), remaining);
+        }
+
+        @Override
         public void close() throws IOException {
             delegate.close();
         }
 
-        private void record(int read) throws OutputLimitException {
+        private void record(long read) throws OutputLimitException {
             if (outputBytes.addAndGet(read) > maxBytes) {
                 process.destroyForcibly();
                 throw new OutputLimitException();

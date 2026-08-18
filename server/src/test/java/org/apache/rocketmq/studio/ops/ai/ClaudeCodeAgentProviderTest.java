@@ -18,14 +18,35 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class ClaudeCodeAgentProviderTest {
+
+    @Test
+    void boundedStreamShouldCountSkippedBytesAndCapAvailableBytes() throws Exception {
+        Process process = mock(Process.class);
+        AtomicLong outputBytes = new AtomicLong();
+        InputStream stream = new ClaudeCodeAgentProvider.BoundedProcessInputStream(
+                new ByteArrayInputStream(new byte[6]), process, outputBytes, 5);
+
+        assertThat(stream.available()).isEqualTo(5);
+        assertThat(stream.skip(5)).isEqualTo(5);
+        assertThat(outputBytes).hasValue(5);
+        assertThat(stream.available()).isZero();
+        assertThatThrownBy(() -> stream.skip(1)).isInstanceOf(IOException.class);
+        verify(process).destroyForcibly();
+    }
 
     @Test
     void streamShouldDrainLargeStderrOutputTest() {
