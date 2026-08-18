@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,17 @@ public class TopicController {
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String search) {
         return Result.ok(metadataService.listTopics(instanceId, clusterId, type, search));
+    }
+
+    @GetMapping("/page")
+    public Result<PageResult<TopicVO>> listTopicsPage(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String clusterId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(metadataService.listTopicsPage(instanceId, clusterId, type, search, page, pageSize));
     }
 
     @PostMapping("/create")

@@ -22,8 +22,8 @@ import { useLang } from '../../i18n/LangContext';
 import { listClusters } from '../../services/clusterService';
 import { isMockMode } from '../../services/dataMode';
 import type { ClusterInfo } from '../../api/cluster';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -192,8 +192,9 @@ const BrokerClusterPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (!active) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId(nextInstances[0]?.name);
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        setInstances(apacheInstances);
+        setSelectedInstanceId(apacheInstances[0]?.name);
       })
       .catch(() => {
         if (!active) return;

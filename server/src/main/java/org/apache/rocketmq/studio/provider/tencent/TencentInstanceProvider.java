@@ -61,6 +61,7 @@ import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +80,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
 
@@ -121,6 +123,16 @@ public class TencentInstanceProvider implements InstanceProvider {
     @Override
     public InstanceVendor vendor() {
         return InstanceVendor.TENCENT;
+    }
+
+    @Override
+    public Set<InstanceCapability> capabilities() {
+        return Set.of(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT);
     }
 
     @Override

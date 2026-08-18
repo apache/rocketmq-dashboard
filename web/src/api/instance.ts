@@ -20,6 +20,13 @@ import client from './client';
 // ─── Types ──────────────────────────────────────────────────────
 export type InstanceVendor = 'APACHE' | 'ALIYUN' | 'TENCENT';
 export type InstanceType = 'PROXY' | 'PROXY_LOCAL' | 'PROXY_CLUSTER' | 'DIRECT';
+export type InstanceCapability =
+  | 'TOPIC_MANAGEMENT'
+  | 'CONSUMER_GROUP_MANAGEMENT'
+  | 'MESSAGE_QUERY'
+  | 'MESSAGE_TRACE'
+  | 'ACL_MANAGEMENT'
+  | 'DLQ_MANAGEMENT';
 
 export interface Instance {
   id: number;
@@ -65,6 +72,18 @@ export interface InstanceQuery {
   search?: string;
 }
 
+/** Whether an instance can use Apache MQAdmin-backed runtime diagnostics. */
+export function supportsApacheRuntime(instance: Pick<Instance, 'vendor'>): boolean {
+  return instance.vendor === undefined || instance.vendor === 'APACHE';
+}
+
+export interface InstanceCapabilities {
+  instanceId: string;
+  vendor: InstanceVendor;
+  accessType: Instance['type'];
+  capabilities: InstanceCapability[];
+}
+
 // ─── Instance CRUD ──────────────────────────────────────────────
 export async function listInstances(query: InstanceQuery = {}) {
   const search = query.search?.trim();
@@ -73,6 +92,13 @@ export async function listInstances(query: InstanceQuery = {}) {
     ...(search ? { search } : {}),
   };
   const res = await client.get<{ data: Instance[] }>('/instances', { params });
+  return res.data.data;
+}
+
+export async function getInstanceCapabilities(instanceId: string) {
+  const res = await client.get<{ data: InstanceCapabilities }>(
+    `/instances/${encodeURIComponent(instanceId)}/capabilities`,
+  );
   return res.data.data;
 }
 

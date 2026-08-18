@@ -56,6 +56,7 @@ import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -100,7 +101,7 @@ class TencentInstanceProviderTest {
     @BeforeEach
     void setUp() {
         provider = new TencentInstanceProvider(clientFactory, instanceRepository);
-        when(instanceRepository.findByIdentifier(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(InstanceVO.builder()
+        lenient().when(instanceRepository.findByIdentifier(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(InstanceVO.builder()
                 .name("tencent-prod")
                 .vendor(InstanceVendor.TENCENT)
                 .cloudInstanceId(CLOUD_INSTANCE_ID)
@@ -111,6 +112,15 @@ class TencentInstanceProviderTest {
             TencentClientFactory.TencentCall<Object> action = invocation.getArgument(2);
             return action.execute(client);
         });
+    }
+
+    @Test
+    void capabilitiesShouldExcludeUnsupportedDlqOperationsTest() {
+        assertThat(provider.capabilities())
+                .contains(InstanceCapability.TOPIC_MANAGEMENT,
+                        InstanceCapability.MESSAGE_QUERY,
+                        InstanceCapability.ACL_MANAGEMENT)
+                .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
 
     @Test

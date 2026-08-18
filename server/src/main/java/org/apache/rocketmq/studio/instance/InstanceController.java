@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,12 +38,19 @@ import java.util.List;
 public class InstanceController {
 
     private final InstanceService instanceService;
+    private final InstanceCapabilityService instanceCapabilityService;
 
     @GetMapping
     public Result<List<InstanceVO>> listInstances(
             @RequestParam(required = false) InstanceType type,
             @RequestParam(required = false) String search) {
         return Result.ok(instanceService.listInstances(type, search));
+    }
+
+    @GetMapping("/{instanceId}/capabilities")
+    public Result<InstanceCapabilitiesVO> getCapabilities(@PathVariable String instanceId) {
+        return Result.ok(instanceCapabilityService.getCapabilities(
+                instanceService.resolveInstanceId(instanceId)));
     }
 
     @PostMapping("/create")

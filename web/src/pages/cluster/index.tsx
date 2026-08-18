@@ -72,6 +72,7 @@ import {
   updateNameserverRegistry,
 } from '../../services/clusterService';
 import { listInstances } from '../../services/instanceService';
+import { supportsApacheRuntime } from '../../api/instance';
 import { isMockMode } from '../../services/dataMode';
 
 const { Text } = Typography;
@@ -317,7 +318,7 @@ const ClusterPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
-        const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         const initialInstanceId = apacheInstances.some(
           (instance) => instance.name === requestedInstanceId,
         )

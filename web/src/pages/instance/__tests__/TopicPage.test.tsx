@@ -32,6 +32,7 @@ const topicServiceMocks = vi.hoisted(() => ({
   getTopicConsumerPage: vi.fn(),
   getTopicRoutes: vi.fn(),
   listTopics: vi.fn(),
+  listTopicsPage: vi.fn(),
   sendTopicMessage: vi.fn(),
 }));
 
@@ -40,6 +41,14 @@ const instanceServiceMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../services/topicService', () => topicServiceMocks);
+
+const mockTopicsList = (items: Topic[]) =>
+  topicServiceMocks.listTopicsPage.mockResolvedValue({
+    items,
+    total: items.length,
+    page: 1,
+    size: 20,
+  });
 vi.mock('../../../services/instanceService', () => instanceServiceMocks);
 
 beforeAll(() => {
@@ -121,7 +130,7 @@ const getTableBody = () => {
 
 describe('TopicPage', () => {
   beforeEach(() => {
-    topicServiceMocks.listTopics.mockResolvedValue(buildTopics(25));
+    mockTopicsList(buildTopics(25));
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({ deleted: [], failed: [] });
     topicServiceMocks.createTopic.mockImplementation(async (data: Partial<Topic>) => ({
       ...buildTopics(1)[0],
@@ -198,7 +207,7 @@ describe('TopicPage', () => {
       exportedBlob = blob as Blob;
       return 'blob:topic-export';
     });
-    topicServiceMocks.listTopics.mockResolvedValue([
+    mockTopicsList([
       {
         ...buildTopics(1)[0],
         name: 'orders-topic',
@@ -248,7 +257,7 @@ describe('TopicPage', () => {
         gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
-    topicServiceMocks.listTopics.mockResolvedValue(
+    mockTopicsList(
       buildTopics(25).map((topic) => ({ ...topic, instanceId: 'instance-a' })),
     );
     renderWithProviders('/instance/instance-a/topic');
@@ -292,7 +301,7 @@ describe('TopicPage', () => {
         type: 'DIRECT',
       },
     ]);
-    topicServiceMocks.listTopics.mockResolvedValue([topic]);
+    mockTopicsList([topic]);
     renderWithProviders('/instance/instance-a/topic');
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
@@ -313,7 +322,7 @@ describe('TopicPage', () => {
 
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
     const user = userEvent.setup();
-    topicServiceMocks.listTopics.mockResolvedValue(buildTopics(3));
+    mockTopicsList(buildTopics(3));
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({
       deleted: ['topic-01', 'topic-03'],
       failed: ['topic-02'],
@@ -336,7 +345,7 @@ describe('TopicPage', () => {
 
   it('filters topics by the instance from the route and shows its endpoint', async () => {
     const base = buildTopics(1)[0];
-    topicServiceMocks.listTopics.mockResolvedValue([
+    mockTopicsList([
       { ...base, name: 'topic-a', instanceId: 'instance-proxy-1' },
       { ...base, name: 'topic-b', instanceId: 'instance-proxy-2' },
     ]);
@@ -374,7 +383,7 @@ describe('TopicPage', () => {
 
   it('imports valid topic CSV rows through the create service with the selected instance', async () => {
     const user = userEvent.setup();
-    topicServiceMocks.listTopics.mockResolvedValue([]);
+    mockTopicsList([]);
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
     renderWithProviders('/instance/instance-proxy-1/topic');
 
@@ -405,7 +414,7 @@ describe('TopicPage', () => {
   it('does not call createTopic when imported topic CSV is invalid or duplicated', async () => {
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
-    topicServiceMocks.listTopics.mockResolvedValue([
+    mockTopicsList([
       { ...buildTopics(1)[0], instanceId: 'instance-proxy-1' },
     ]);
     renderWithProviders('/instance/instance-proxy-1/topic');
@@ -428,7 +437,7 @@ describe('TopicPage', () => {
 
   it('imports valid topic rows while skipping duplicate rows', async () => {
     const user = userEvent.setup();
-    topicServiceMocks.listTopics.mockResolvedValue([]);
+    mockTopicsList([]);
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
     renderWithProviders('/instance/instance-proxy-1/topic');
 
@@ -463,7 +472,7 @@ describe('TopicPage', () => {
     renderWithProviders();
 
     expect(await screen.findByText('共 0 个 Topic')).toBeInTheDocument();
-    expect(topicServiceMocks.listTopics).not.toHaveBeenCalled();
+    expect(topicServiceMocks.listTopicsPage).not.toHaveBeenCalled();
     await waitFor(() => expect(document.querySelector('.ant-spin-spinning')).toBeNull());
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /创建 Topic/ })).toBeDisabled();
@@ -471,7 +480,7 @@ describe('TopicPage', () => {
 
   it('renders unavailable Topic consumer metrics distinctly from zero', async () => {
     const user = userEvent.setup();
-    topicServiceMocks.listTopics.mockResolvedValue([buildTopics(1)[0]]);
+    mockTopicsList([buildTopics(1)[0]]);
     topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
       items: [
         {

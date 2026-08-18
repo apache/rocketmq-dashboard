@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -28,6 +29,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Unified instance-scoped operations SPI. Every method takes the Studio instance id as its
@@ -38,11 +40,25 @@ public interface InstanceProvider {
 
     InstanceVendor vendor();
 
+    default Set<InstanceCapability> capabilities() {
+        return Set.of();
+    }
+
     int countTopics(String instanceId);
 
     int countGroups(String instanceId);
 
     List<TopicVO> listTopics(String instanceId, String type, String search);
+
+    default PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search,
+            int page, int pageSize) {
+        List<TopicVO> topics = listTopics(instanceId, type, search);
+        int total = topics.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(topics.subList(from, to), total, page, pageSize);
+    }
 
     TopicVO createTopic(String instanceId, TopicVO topic);
 

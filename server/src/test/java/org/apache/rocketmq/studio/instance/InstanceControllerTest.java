@@ -19,7 +19,9 @@ package org.apache.rocketmq.studio.instance;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -54,6 +56,9 @@ class InstanceControllerTest {
 
     @MockBean
     private InstanceService instanceService;
+
+    @MockBean
+    private InstanceCapabilityService instanceCapabilityService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -101,6 +106,26 @@ class InstanceControllerTest {
                 .andExpect(jsonPath("$.data[0].name").value("production"));
 
         verify(instanceService).listInstances(isNull(), eq("prod"));
+    }
+
+    @Test
+    void getCapabilitiesShouldResolveStringInstanceIdAndReturnContractTest() throws Exception {
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
+        when(instanceCapabilityService.getCapabilities(1L)).thenReturn(new InstanceCapabilitiesVO(
+                "instance-1",
+                InstanceVendor.APACHE,
+                InstanceType.DIRECT,
+                List.of(InstanceCapability.TOPIC_MANAGEMENT, InstanceCapability.DLQ_MANAGEMENT)));
+
+        mockMvc.perform(get("/api/instances/instance-1/capabilities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.instanceId").value("instance-1"))
+                .andExpect(jsonPath("$.data.vendor").value("APACHE"))
+                .andExpect(jsonPath("$.data.accessType").value("DIRECT"))
+                .andExpect(jsonPath("$.data.capabilities[0]").value("TOPIC_MANAGEMENT"))
+                .andExpect(jsonPath("$.data.capabilities[1]").value("DLQ_MANAGEMENT"));
+
+        verify(instanceService).resolveInstanceId("instance-1");
     }
 
     @Test

@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -49,6 +50,17 @@ class ApacheInstanceProviderTest {
 
     @InjectMocks
     private ApacheInstanceProvider provider;
+
+    @Test
+    void capabilitiesShouldIncludeApacheOnlyOperationsTest() {
+        assertThat(provider.capabilities()).contains(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT,
+                InstanceCapability.DLQ_MANAGEMENT);
+    }
 
     @Test
     void vendorShouldBeApacheTest() {

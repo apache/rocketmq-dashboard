@@ -121,6 +121,8 @@
 | 78 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
 | 79 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
 | 80 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 81 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 82 | GET | `/api/topics/page` | Topic 分页列表 |
 
 ## 通用响应格式
 
@@ -359,6 +361,27 @@ POST /api/instances/delete
 | `id` | `string` | 是 | 实例 ID |
 
 **Response `data`:** `null`
+
+### 3.5 获取实例能力契约
+
+```
+GET /api/instances/{instanceId}/capabilities
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+
+**Response `data`:** `InstanceCapabilities`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instanceId` | `string` | 实例 ID |
+| `vendor` | `string` | 厂商: `APACHE` / `ALIYUN` / `TENCENT` |
+| `accessType` | `string` | 接入类型: `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` 等 |
+| `capabilities` | `string[]` | 能力列表: `TOPIC_MANAGEMENT` / `CONSUMER_GROUP_MANAGEMENT` / `MESSAGE_QUERY` / `MESSAGE_TRACE` / `ACL_MANAGEMENT` / `DLQ_MANAGEMENT` |
 
 ---
 
@@ -721,7 +744,33 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `createdAt` | `string` | 创建时间 (ISO 8601) |
 | `updatedAt` | `string` | 更新时间 (ISO 8601) |
 
-### 5.2 创建 Topic
+### 5.2 分页获取 Topic 列表
+
+```
+GET /api/topics/page?instanceId={instanceId}&clusterId={clusterId}&type={type}&search={keyword}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 实例 ID（全局唯一字符串） |
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `type` | `string` | 否 | 按类型过滤 |
+| `search` | `string` | 否 | 按名称搜索 |
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，最大 `100` |
+
+**Response `data`:** `PageResult<Topic>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `Topic[]` | 当前页数据，结构同 5.1 |
+| `total` | `number` | 总条数 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 每页条数 |
+
+### 5.3 创建 Topic
 
 ```
 POST /api/topics/create
@@ -742,7 +791,7 @@ POST /api/topics/create
 
 **Response `data`:** `Topic`
 
-### 5.3 更新 Topic
+### 5.4 更新 Topic
 
 ```
 POST /api/topics/update
@@ -763,7 +812,7 @@ POST /api/topics/update
 
 **Response `data`:** `Topic`
 
-### 5.4 删除 Topic
+### 5.5 删除 Topic
 
 ```
 POST /api/topics/delete
@@ -777,7 +826,7 @@ POST /api/topics/delete
 
 **Response `data`:** `null`
 
-### 5.5 获取 Topic 路由信息
+### 5.6 获取 Topic 路由信息
 
 ```
 GET /api/topics/:name/routes
@@ -793,7 +842,7 @@ GET /api/topics/:name/routes
 | `readQueues` | `number` | 读队列数 |
 | `perm` | `string` | 权限 |
 
-### 5.6 获取 Topic 消费者列表
+### 5.7 获取 Topic 消费者列表
 
 ```
 GET /api/topics/:name/consumers
@@ -809,7 +858,7 @@ GET /api/topics/:name/consumers
 | `consumeTps` | `number` | 消费 TPS |
 | `diffTotal` | `number` | 堆积消息数 |
 
-### 5.7 发送消息到 Topic
+### 5.8 发送消息到 Topic
 
 ```
 POST /api/topics/send

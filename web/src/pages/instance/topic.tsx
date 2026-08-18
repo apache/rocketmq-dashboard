@@ -66,7 +66,7 @@ import {
   deleteTopic,
   getTopicConsumerPage,
   getTopicRoutes,
-  listTopics,
+  listTopicsPage,
   sendTopicMessage,
 } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
@@ -293,6 +293,7 @@ const TopicPage = () => {
 
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [totalTopics, setTotalTopics] = useState(0);
   const [loading, setLoading] = useState(false);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
   const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
@@ -338,6 +339,7 @@ const TopicPage = () => {
       topicRequestIdRef.current += 1;
       const resetTimer = window.setTimeout(() => {
         setTopics([]);
+        setTotalTopics(0);
         setSelectedRowKeys([]);
         setLoading(false);
       }, 0);
@@ -348,9 +350,18 @@ const TopicPage = () => {
     const requestId = ++topicRequestIdRef.current;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void listTopics({ instanceId: selectedInstanceId })
-        .then((nextTopics) => {
-          if (requestId === topicRequestIdRef.current) setTopics(nextTopics);
+      void listTopicsPage({
+        instanceId: selectedInstanceId,
+        type: typeFilter || undefined,
+        search: searchText.trim() || undefined,
+        page: tablePage,
+        pageSize: tablePageSize,
+      })
+        .then((result) => {
+          if (requestId === topicRequestIdRef.current) {
+            setTopics(result.items);
+            setTotalTopics(result.total);
+          }
         })
         .catch(() => {
           if (requestId === topicRequestIdRef.current)
@@ -364,7 +375,7 @@ const TopicPage = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId]);
+  }, [selectedInstanceId, typeFilter, searchText, tablePage, tablePageSize]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -380,7 +391,7 @@ const TopicPage = () => {
     [topics, selectedInstanceId, searchText, typeFilter],
   );
 
-  const maxTablePage = Math.max(1, Math.ceil(filteredTopics.length / tablePageSize));
+  const maxTablePage = Math.max(1, Math.ceil(totalTopics / tablePageSize));
   const currentTablePage = Math.min(tablePage, maxTablePage);
 
   const resetTablePage = () => {
@@ -964,7 +975,7 @@ const TopicPage = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <PageHeader title={t('topic.title')} subtitle={`共 ${filteredTopics.length} 个 Topic`} />
+      <PageHeader title={t('topic.title')} subtitle={`共 ${totalTopics} 个 Topic`} />
 
       {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (
@@ -1166,6 +1177,7 @@ const TopicPage = () => {
             pagination={{
               current: currentTablePage,
               pageSize: tablePageSize,
+              total: totalTopics,
               showSizeChanger: true,
               showTotal: (t) => `共 ${t} 条`,
               onChange: (page, pageSize) => {
