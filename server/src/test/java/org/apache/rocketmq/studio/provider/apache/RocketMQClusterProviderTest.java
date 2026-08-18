@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
@@ -139,6 +141,30 @@ class RocketMQClusterProviderTest {
                 assertThat(broker.getTpsOut()).isEqualTo(4_000_000_000L);
             });
         });
+    }
+
+    @Test
+    void discoverClustersShouldDiscoverProxiesViaHeartbeatSyncerTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+
+        Connection first = new Connection();
+        first.setClientAddr("10.0.3.5:54321");
+        Connection second = new Connection();
+        second.setClientAddr("10.0.3.6:12345");
+        ConsumerConnection consumerConnection = new ConsumerConnection();
+        consumerConnection.setConnectionSet(new java.util.HashSet<>(java.util.List.of(first, second)));
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(consumerConnection);
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters).hasSize(1);
+        assertThat(clusters.get(0).getProxies()).hasSize(2);
+        assertThat(clusters.get(0).getProxies().get(0).getAddr()).isEqualTo("10.0.3.5:8080");
+        assertThat(clusters.get(0).getProxies().get(0).getGrpcPort()).isEqualTo(8081);
+        assertThat(clusters.get(0).getProxies().get(0).getStatus()).isEqualTo(ClusterStatus.healthy);
     }
 
     private RocketMQClusterProvider newProvider(DefaultMQAdminExt adminExt) {

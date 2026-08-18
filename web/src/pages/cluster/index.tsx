@@ -43,6 +43,7 @@ import {
   ReloadOutlined,
   SettingOutlined,
   EyeOutlined,
+  DeleteOutlined,
   EditOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
@@ -53,22 +54,25 @@ import { countClusterComponents } from './clusterStats';
 import type {
   BrokerInfo,
   ProxyInfo,
-  NameServerInfo,
+  NameserverRegistryEntry,
   ClusterConfig,
   ClusterInfo,
   ClusterProbeResult,
 } from '../../api/cluster';
 import {
-  createNameServer,
+  createNameserverRegistry,
+  deleteNameserverRegistry,
   listClusters,
+  listK8sCerts,
+  listNameserverRegistry,
+  listRegistryClusters,
   restartProxy,
   testClusterConnection,
   updateClusterConfig,
-  updateNameServer,
+  updateNameserverRegistry,
 } from '../../services/clusterService';
 import { listInstances } from '../../services/instanceService';
 import { isMockMode } from '../../services/dataMode';
-import type { Instance } from '../../api/instance';
 
 const { Text } = Typography;
 
@@ -89,29 +93,171 @@ const ClusterPage = () => {
   const { t } = useLang();
   const [searchParams] = useSearchParams();
   const requestedInstanceIdParam = searchParams.get('instanceId');
-  const parsedRequestedInstanceId =
-    requestedInstanceIdParam === null ? NaN : Number(requestedInstanceIdParam);
-  const requestedInstanceId = Number.isNaN(parsedRequestedInstanceId)
-    ? undefined
-    : parsedRequestedInstanceId;
+  const requestedInstanceId = requestedInstanceIdParam ?? undefined;
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
-  const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined);
   const [instanceLoadError, setInstanceLoadError] = useState<string | null>(null);
   const [instanceLoadKey, setInstanceLoadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [nsSearch, setNsSearch] = useState('');
   const [brokerSearch, setBrokerSearch] = useState('');
-  const [brokerNsClusterFilter, setBrokerNsClusterFilter] = useState<string>('');
   const [proxySearch, setProxySearch] = useState('');
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
-  const [nsModalOpen, setNsModalOpen] = useState(false);
-  const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
+  const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
-  const [nsForm] = Form.useForm();
   const [configForm] = Form.useForm();
+
+  const loadNsRegistry = useCallback(async () => {
+    try {
+      setNsRegistry(await listNameserverRegistry());
+    } catch {
+      setNsRegistry([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    listNameserverRegistry()
+      .then((entries) => {
+        if (active) setNsRegistry(entries);
+      })
+      .catch(() => {
+        if (active) setNsRegistry([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const [k8sIdOptions, setK8sIdOptions] = useState<string[]>([]);
+
+  const [registryClusters, setRegistryClusters] = useState<ClusterInfo[]>([]);
+  const [registryLoading, setRegistryLoading] = useState(true);
+
+  const loadRegistryClusters = useCallback(async () => {
+    setRegistryLoading(true);
+    try {
+      setRegistryClusters(await listRegistryClusters());
+    } catch {
+      setRegistryClusters([]);
+    } finally {
+      setRegistryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    listRegistryClusters()
+      .then((next) => {
+        if (active) setRegistryClusters(next);
+      })
+      .catch(() => {
+        if (active) setRegistryClusters([]);
+      })
+      .finally(() => {
+        if (active) setRegistryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    listK8sCerts()
+      .then((certs) => {
+        if (active) {
+          setK8sIdOptions([...new Set(certs.map((cert) => cert.k8sId).filter(Boolean))]);
+        }
+      })
+      .catch(() => {
+        if (active) setK8sIdOptions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const [nsCreateModalOpen, setNsCreateModalOpen] = useState(false);
+  const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
+  const [nsEditId, setNsEditId] = useState<number | null>(null);
+  const [nsCreateForm] = Form.useForm();
+
+  const handleNsSubmit = useCallback(async () => {
+    let values: Record<string, string>;
+    try {
+      values = await nsCreateForm.validateFields();
+    } catch {
+      return;
+    }
+    const payload = {
+      name: values.name,
+      namesrvAddr: values.namesrvAddr,
+      k8sNamespace: values.k8sNamespace || undefined,
+      k8sId: values.k8sId || undefined,
+      description: values.description || undefined,
+    };
+    try {
+      if (nsModalMode === 'edit' && nsEditId !== null) {
+        await updateNameserverRegistry({ id: nsEditId, ...payload });
+        message.success(t('cluster.nsUpdated'));
+      } else {
+        await createNameserverRegistry(payload);
+        message.success(t('cluster.nsCreated'));
+      }
+      setNsCreateModalOpen(false);
+      nsCreateForm.resetFields();
+      await loadNsRegistry();
+    } catch {
+      message.error(t('cluster.nsOperationFailed'));
+    }
+  }, [loadNsRegistry, nsCreateForm, nsEditId, nsModalMode, t]);
+
+  const openNsCreateModal = useCallback(() => {
+    setNsModalMode('create');
+    setNsEditId(null);
+    nsCreateForm.resetFields();
+    setNsCreateModalOpen(true);
+  }, [nsCreateForm]);
+
+  const openNsEditModal = useCallback(
+    (entry: NameserverRegistryEntry) => {
+      setNsModalMode('edit');
+      setNsEditId(entry.id);
+      nsCreateForm.setFieldsValue({
+        name: entry.name,
+        namesrvAddr: entry.namesrvAddr,
+        k8sNamespace: entry.k8sNamespace ?? '',
+        k8sId: entry.k8sId ?? '',
+        description: entry.description ?? '',
+      });
+      setNsCreateModalOpen(true);
+    },
+    [nsCreateForm],
+  );
+
+  const handleNsDelete = useCallback(
+    (entry: NameserverRegistryEntry) => {
+      Modal.confirm({
+        title: t('cluster.deleteNsConfirmTitle'),
+        content: t('cluster.deleteNsConfirmContent', { name: entry.name }),
+        okText: t('common.delete'),
+        okType: 'danger',
+        cancelText: t('common.cancel'),
+        onOk: async () => {
+          try {
+            await deleteNameserverRegistry(entry.id);
+            message.success(t('cluster.nsDeleted'));
+            await loadNsRegistry();
+          } catch {
+            message.error(t('cluster.nsOperationFailed'));
+          }
+        },
+      });
+    },
+    [loadNsRegistry, t],
+  );
 
   // ─── Connection test ──────────────────────────────────────────────────────
   const [connectModalOpen, setConnectModalOpen] = useState(false);
@@ -164,7 +310,7 @@ const ClusterPage = () => {
     Promise.resolve(),
   );
   const tRef = useRef(t);
-  const selectedInstanceIdRef = useRef<number | undefined>(undefined);
+  const selectedInstanceIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,22 +318,18 @@ const ClusterPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
-        setInstances(apacheInstances);
         const initialInstanceId = apacheInstances.some(
-          (instance) => instance.id === requestedInstanceId,
+          (instance) => instance.name === requestedInstanceId,
         )
           ? requestedInstanceId
-          : apacheInstances[0]?.id;
+          : apacheInstances[0]?.name;
         selectedInstanceIdRef.current = initialInstanceId;
-        setSelectedInstanceId(initialInstanceId);
         setInstanceLoadError(null);
         if (initialInstanceId) void requestRefreshRef.current('manual');
       })
       .catch(() => {
         if (cancelled) return;
         selectedInstanceIdRef.current = undefined;
-        setInstances([]);
-        setSelectedInstanceId(undefined);
         setClusters([]);
         setSelectedProxy(null);
         setInstanceLoadError(tRef.current('common.fetchDataFailed'));
@@ -237,18 +379,6 @@ const ClusterPage = () => {
             const nextClusters = await listClusters(selectedInstanceIdRef.current);
             if (!mountedRef.current) return;
             setClusters(nextClusters);
-            setSelectedProxy((current) => {
-              if (!current) return null;
-              const cluster = nextClusters.find((item) => item.id === current.clusterId);
-              const proxy = cluster?.proxies?.find((item) => item.addr === current.addr);
-              if (!cluster || !proxy) return null;
-              return {
-                ...proxy,
-                clusterId: cluster.id,
-                clusterName: cluster.name,
-                nsClusterName: cluster.nsClusterName,
-              };
-            });
             setRefreshFailed(false);
           } catch {
             if (!mountedRef.current) return;
@@ -394,16 +524,15 @@ const ClusterPage = () => {
     };
     const brokerSearchText = searchText(brokerSearch);
 
-    const allBrokers: BrokerWithCluster[] = clusters.flatMap((c) =>
+    const allBrokers: BrokerWithCluster[] = registryClusters.flatMap((c) =>
       (c.brokers ?? [])
         .filter((b) => {
           const matchSearch =
             !brokerSearchText ||
+            searchText(c.nsClusterName).includes(brokerSearchText) ||
             searchText(b.name).includes(brokerSearchText) ||
             searchText(b.addr).includes(brokerSearchText);
-          const matchNsCluster =
-            !brokerNsClusterFilter || c.nsClusterName === brokerNsClusterFilter;
-          return matchSearch && matchNsCluster;
+          return matchSearch;
         })
         .map((b) => ({
           ...b,
@@ -415,11 +544,11 @@ const ClusterPage = () => {
 
     const brokerColumns: ColumnsType<BrokerWithCluster> = [
       {
-        title: t('cluster.k8sName'),
-        dataIndex: 'clusterName',
-        key: 'clusterName',
+        title: t('cluster.brokerClusterName'),
+        dataIndex: 'nsClusterName',
+        key: 'nsClusterName',
         width: 160,
-        sorter: (a, b) => a.clusterName.localeCompare(b.clusterName),
+        sorter: (a, b) => a.nsClusterName.localeCompare(b.nsClusterName),
         render: (name: string) => (
           <Text strong style={{ fontSize: 14 }}>
             {name}
@@ -443,6 +572,7 @@ const ClusterPage = () => {
         dataIndex: 'status',
         key: 'status',
         width: 90,
+        align: 'center',
         sorter: (a, b) => a.status.localeCompare(b.status),
         render: (status: string) => {
           const map: Record<string, { color: string; label: string }> = {
@@ -459,7 +589,7 @@ const ClusterPage = () => {
         dataIndex: 'version',
         key: 'version',
         width: 80,
-        align: 'right',
+        align: 'center',
         sorter: (a, b) => (a.version || '').localeCompare(b.version || ''),
         render: (v?: string | null) => <span style={{ fontSize: 14 }}>{v || '-'}</span>,
       },
@@ -532,11 +662,6 @@ const ClusterPage = () => {
       },
     ];
 
-    const nsClusterOptions = [
-      { value: '', label: t('common.all') },
-      ...clusters.map((c) => ({ value: c.nsClusterName, label: c.nsClusterName })),
-    ];
-
     return (
       <div>
         <Flex justify="space-between" style={{ marginBottom: 16 }}>
@@ -548,12 +673,6 @@ const ClusterPage = () => {
               onChange={(e) => !e.target.value && setBrokerSearch('')}
               style={{ width: 240 }}
             />
-            <Select
-              value={brokerNsClusterFilter}
-              onChange={setBrokerNsClusterFilter}
-              style={{ width: 180 }}
-              options={nsClusterOptions}
-            />
           </Space>
           <Button type="primary" icon={<PlusOutlined />} onClick={openConnectModal}>
             {t('cluster.createCluster')}
@@ -563,7 +682,7 @@ const ClusterPage = () => {
           <Table
             columns={brokerColumns}
             dataSource={allBrokers}
-            loading={loading}
+            loading={registryLoading}
             rowKey="addr"
             pagination={{ pageSize: 20 }}
             size="small"
@@ -662,125 +781,110 @@ const ClusterPage = () => {
     );
   }
 
-  // ─── Tab 2: NameServer 管理 (nested by cluster) ────────────────────────────
+  // ─── Tab 2: NameServer 管理 (rmq_nameserver 注册表) ────────────────────────
 
   function renderNameServerTab() {
     const nsSearchText = searchText(nsSearch);
-    const filteredClusters = clusters
-      .map((c) => {
-        const nameServers = (c.nameServers ?? []).filter((ns) => {
-          const matchSearch = !nsSearchText || searchText(ns.addr).includes(nsSearchText);
-          return matchSearch;
-        });
-        return { ...c, filteredNameServers: nameServers };
-      })
-      .filter((c) => c.filteredNameServers.length > 0);
+    const filteredRegistry = nsRegistry.filter((entry) => {
+      if (!nsSearchText) return true;
+      return (
+        searchText(entry.name).includes(nsSearchText) ||
+        searchText(entry.namesrvAddr).includes(nsSearchText) ||
+        searchText(entry.k8sNamespace).includes(nsSearchText) ||
+        searchText(entry.k8sId).includes(nsSearchText)
+      );
+    });
 
-    const getNsSubColumns = (clusterId: string): ColumnsType<NameServerInfo> => [
+    const registryColumns: ColumnsType<NameserverRegistryEntry> = [
       {
-        title: t('common.address'),
-        dataIndex: 'addr',
-        key: 'addr',
-        sorter: (a, b) => compareText(a.addr, b.addr),
-        render: (addr: string | null) => (
-          <Text code style={{ fontSize: 14 }}>
-            {safeText(addr)}
+        title: t('common.name'),
+        dataIndex: 'name',
+        key: 'name',
+        width: 180,
+        sorter: (a, b) => compareText(a.name, b.name),
+        render: (name: string | null) => (
+          <Text strong style={{ fontSize: 14 }}>
+            {safeText(name)}
           </Text>
         ),
+      },
+      {
+        title: t('cluster.nsAddr'),
+        dataIndex: 'namesrvAddr',
+        key: 'namesrvAddr',
+        sorter: (a, b) => compareText(a.namesrvAddr, b.namesrvAddr),
+        render: (addr: string | null) => <Text style={{ fontSize: 14 }}>{safeText(addr)}</Text>,
+      },
+      {
+        title: t('cluster.k8sId'),
+        dataIndex: 'k8sId',
+        key: 'k8sId',
+        width: 180,
+        sorter: (a, b) => compareText(a.k8sId, b.k8sId),
+        render: (k8sId: string | null) =>
+          k8sId ? (
+            <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{k8sId}</Text>
+          ) : (
+            <Text type="secondary">-</Text>
+          ),
+      },
+      {
+        title: t('cluster.k8sNamespace'),
+        dataIndex: 'k8sNamespace',
+        key: 'k8sNamespace',
+        width: 180,
+        sorter: (a, b) => compareText(a.k8sNamespace, b.k8sNamespace),
+        render: (ns: string | null) =>
+          ns ? <Text style={{ fontSize: 14 }}>{ns}</Text> : <Text type="secondary">-</Text>,
       },
       {
         title: t('common.status'),
         dataIndex: 'status',
         key: 'status',
         width: 90,
-        sorter: (a, b) => a.status.localeCompare(b.status),
-        render: (status: string) => {
+        sorter: (a, b) => safeText(a.status).localeCompare(safeText(b.status)),
+        render: (status: string | null) => {
           const map: Record<string, { color: string; label: string }> = {
             healthy: { color: 'green', label: t('cluster.running') },
             warning: { color: 'gold', label: t('cluster.warning') },
             error: { color: 'red', label: t('cluster.error') },
             offline: { color: 'default', label: t('cluster.offline') },
           };
-          const cfg = map[status] ?? { color: 'default', label: status };
+          const cfg = map[status ?? ''] ?? { color: 'default', label: safeText(status) };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
         },
       },
       {
+        title: t('cluster.nsDescription'),
+        dataIndex: 'description',
+        key: 'description',
+        ellipsis: true,
+        render: (desc: string | null) => safeText(desc) || <Text type="secondary">-</Text>,
+      },
+      {
         title: t('common.actions'),
         key: 'action',
-        width: 100,
-        render: (_: unknown, record: NameServerInfo) => (
+        width: 160,
+        render: (_: unknown, record: NameserverRegistryEntry) => (
           <Flex gap={6}>
             <Button
               size="small"
               icon={<EditOutlined />}
               style={{ borderColor: '#722ed1', color: '#722ed1' }}
-              onClick={() => {
-                setNsModalMode('edit');
-                nsForm.setFieldsValue({ clusterId, addr: record.addr, newAddr: '' });
-                setNsModalOpen(true);
-              }}
+              onClick={() => openNsEditModal(record)}
             >
               {t('common.edit')}
             </Button>
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleNsDelete(record)}
+            >
+              {t('common.delete')}
+            </Button>
           </Flex>
         ),
-      },
-    ];
-
-    const clusterColumns: ColumnsType<ClusterInfo & { filteredNameServers: NameServerInfo[] }> = [
-      {
-        title: t('cluster.k8sName'),
-        dataIndex: 'name',
-        key: 'name',
-        width: 180,
-        render: (name: string) => (
-          <Text strong style={{ fontSize: 14 }}>
-            {name}
-          </Text>
-        ),
-      },
-      {
-        title: t('cluster.nsClusterName'),
-        dataIndex: 'nsClusterName',
-        key: 'nsClusterName',
-        width: 180,
-        render: (name: string) => (
-          <Text strong style={{ fontSize: 14 }}>
-            {name}
-          </Text>
-        ),
-      },
-      {
-        title: t('common.status'),
-        dataIndex: 'status',
-        key: 'status',
-        width: 90,
-        render: (status: string) => {
-          const map: Record<string, { color: string; label: string }> = {
-            healthy: { color: 'green', label: t('cluster.running') },
-            warning: { color: 'gold', label: t('cluster.warning') },
-            error: { color: 'red', label: t('cluster.error') },
-            offline: { color: 'default', label: t('cluster.offline') },
-          };
-          const cfg = map[status] ?? { color: 'default', label: status };
-          return <Tag color={cfg.color}>{cfg.label}</Tag>;
-        },
-      },
-      {
-        title: t('common.version'),
-        dataIndex: 'version',
-        key: 'version',
-        width: 80,
-        render: (v: string) => <Tag>{v}</Tag>,
-      },
-      {
-        title: t('cluster.count'),
-        key: 'nsCount',
-        width: 80,
-        align: 'center',
-        render: (_: unknown, record: ClusterInfo & { filteredNameServers: NameServerInfo[] }) =>
-          record.filteredNameServers.length,
       },
     ];
 
@@ -788,20 +892,6 @@ const ClusterPage = () => {
       <div>
         <Flex justify="space-between" style={{ marginBottom: 16 }}>
           <Space>
-            <Select
-              value={selectedInstanceId}
-              onChange={(instanceId) => {
-                selectedInstanceIdRef.current = instanceId;
-                setSelectedInstanceId(instanceId);
-                void requestRefresh('manual');
-              }}
-              placeholder="Select instance"
-              style={{ width: 180 }}
-              options={instances.map((instance) => ({
-                value: instance.id,
-                label: instance.name,
-              }))}
-            />
             <Input.Search
               placeholder={t('cluster.searchNs')}
               allowClear
@@ -810,39 +900,17 @@ const ClusterPage = () => {
               style={{ width: 240 }}
             />
           </Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setNsModalMode('create');
-              nsForm.resetFields();
-              setNsModalOpen(true);
-            }}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={openNsCreateModal}>
             {t('cluster.createNameServer')}
           </Button>
         </Flex>
         <Card styles={{ body: { padding: 0 } }}>
           <Table
-            columns={clusterColumns}
-            dataSource={filteredClusters}
-            loading={loading}
+            columns={registryColumns}
+            dataSource={filteredRegistry}
             rowKey="id"
             pagination={{ pageSize: 20 }}
             size="small"
-            expandable={{
-              expandedRowRender: (record) => (
-                <div style={{ padding: '8px 0' }}>
-                  <Table
-                    columns={getNsSubColumns(record.id)}
-                    dataSource={record.filteredNameServers}
-                    rowKey="addr"
-                    pagination={false}
-                    size="small"
-                  />
-                </div>
-              ),
-            }}
           />
         </Card>
       </div>
@@ -855,7 +923,7 @@ const ClusterPage = () => {
     type ProxyRow = ProxyDetail;
     const proxySearchText = searchText(proxySearch);
 
-    const allProxies: ProxyRow[] = clusters
+    const allProxies: ProxyRow[] = registryClusters
       .filter((c) => (c.proxies?.length ?? 0) > 0)
       .flatMap((c) =>
         (c.proxies ?? [])
@@ -873,11 +941,11 @@ const ClusterPage = () => {
 
     const proxyColumns: ColumnsType<ProxyRow> = [
       {
-        title: t('cluster.k8sName'),
-        dataIndex: 'clusterName',
-        key: 'clusterName',
+        title: t('cluster.brokerClusterName'),
+        dataIndex: 'nsClusterName',
+        key: 'nsClusterName',
         width: 160,
-        sorter: (a, b) => a.clusterName.localeCompare(b.clusterName),
+        sorter: (a, b) => a.nsClusterName.localeCompare(b.nsClusterName),
         render: (name: string) => (
           <Text strong style={{ fontSize: 14 }}>
             {name}
@@ -890,11 +958,7 @@ const ClusterPage = () => {
         key: 'addr',
         width: 200,
         sorter: (a, b) => compareText(a.addr, b.addr),
-        render: (addr: string | null) => (
-          <Text code style={{ fontSize: 14 }}>
-            {safeText(addr)}
-          </Text>
-        ),
+        render: (addr: string | null) => <Text style={{ fontSize: 14 }}>{safeText(addr)}</Text>,
       },
       {
         title: t('common.status'),
@@ -923,20 +987,20 @@ const ClusterPage = () => {
         render: (v: number) => v.toLocaleString(),
       },
       {
-        title: t('cluster.grpcPort'),
-        dataIndex: 'grpcPort',
-        key: 'grpcPort',
-        width: 100,
-        align: 'center',
-        sorter: (a, b) => a.grpcPort - b.grpcPort,
-      },
-      {
         title: t('cluster.remotingPort'),
         dataIndex: 'remotingPort',
         key: 'remotingPort',
         width: 120,
         align: 'center',
         sorter: (a, b) => a.remotingPort - b.remotingPort,
+      },
+      {
+        title: t('cluster.grpcPort'),
+        dataIndex: 'grpcPort',
+        key: 'grpcPort',
+        width: 100,
+        align: 'center',
+        sorter: (a, b) => a.grpcPort - b.grpcPort,
       },
       {
         title: t('common.actions'),
@@ -997,7 +1061,7 @@ const ClusterPage = () => {
           <Table
             columns={proxyColumns}
             dataSource={allProxies}
-            loading={loading}
+            loading={registryLoading}
             rowKey={(r) => `${r.clusterName}-${r.addr}`}
             pagination={{ pageSize: 20 }}
             size="small"
@@ -1028,7 +1092,11 @@ const ClusterPage = () => {
               size="small"
               icon={<ReloadOutlined spin={loading} />}
               aria-label={t('common.refresh')}
-              onClick={() => void requestRefresh('manual')}
+              onClick={() => {
+                void requestRefresh('manual');
+                void loadNsRegistry();
+                void loadRegistryClusters();
+              }}
             >
               {t('common.refresh')}
             </Button>
@@ -1088,61 +1156,46 @@ const ClusterPage = () => {
           50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(82, 196, 26, 0); }
         }
       `}</style>
-      {/* ─── NameServer Create/Edit Modal ─── */}
+      {/* ─── NameServer 注册表新建/编辑弹窗 ─── */}
       <Modal
         title={
           nsModalMode === 'create' ? t('cluster.createNameServer') : t('cluster.editNameServer')
         }
-        open={nsModalOpen}
-        onCancel={() => setNsModalOpen(false)}
-        onOk={() => {
-          nsForm.validateFields().then(async (values: Record<string, string>) => {
-            if (nsModalMode === 'create') {
-              await createNameServer({ clusterId: values.clusterId, addr: values.addr });
-              message.success(`${t('cluster.nsCreated')}: ${values.addr}`);
-            } else {
-              await updateNameServer({
-                clusterId: values.clusterId,
-                addr: values.addr,
-                newAddr: values.newAddr,
-              });
-              message.success(
-                `${t('cluster.nsUpdated')}: ${values.addr}${values.newAddr ? ` → ${values.newAddr}` : ''}`,
-              );
-            }
-            await requestRefresh('operation');
-            setNsModalOpen(false);
-          });
-        }}
+        open={nsCreateModalOpen}
+        onCancel={() => setNsCreateModalOpen(false)}
+        onOk={() => void handleNsSubmit()}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
         destroyOnHidden
       >
-        <Form form={nsForm} layout="vertical" style={{ marginTop: 16 }}>
-          {nsModalMode === 'create' && (
-            <Form.Item
-              name="clusterId"
-              label={t('cluster.selectCluster')}
-              rules={[{ required: true, message: t('cluster.selectCluster') }]}
-            >
-              <Select
-                placeholder={t('cluster.selectCluster')}
-                options={clusters.map((c) => ({ label: c.name, value: c.id }))}
-              />
-            </Form.Item>
-          )}
+        <Form form={nsCreateForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
-            name="addr"
+            name="name"
+            label={t('common.name')}
+            rules={[{ required: true, message: t('common.name') }]}
+          >
+            <Input placeholder="rocketmq1" />
+          </Form.Item>
+          <Form.Item
+            name="namesrvAddr"
             label={t('cluster.nsAddr')}
             rules={[{ required: true, message: t('cluster.nsAddr') }]}
           >
-            <Input placeholder={t('cluster.nsAddrPlaceholder')} disabled={nsModalMode === 'edit'} />
+            <Input placeholder={t('cluster.nsAddrPlaceholder')} />
           </Form.Item>
-          {nsModalMode === 'edit' && (
-            <Form.Item name="newAddr" label={t('cluster.newAddr')}>
-              <Input placeholder={t('cluster.newAddrPlaceholder')} />
-            </Form.Item>
-          )}
+          <Form.Item name="k8sId" label={t('cluster.k8sId')} extra={t('cluster.k8sIdExtra')}>
+            <Select
+              allowClear
+              placeholder={t('cluster.k8sIdPlaceholder')}
+              options={k8sIdOptions.map((k8sId) => ({ value: k8sId, label: k8sId }))}
+            />
+          </Form.Item>
+          <Form.Item name="k8sNamespace" label={t('cluster.k8sNamespace')}>
+            <Input placeholder="rocketmq1" />
+          </Form.Item>
+          <Form.Item name="description" label={t('cluster.nsDescription')}>
+            <Input.TextArea rows={2} />
+          </Form.Item>
         </Form>
       </Modal>
       <Tabs items={tabItems} defaultActiveKey="broker" />
@@ -1185,11 +1238,11 @@ const ClusterPage = () => {
             <Descriptions.Item label={t('cluster.connections')}>
               {selectedProxy.connections.toLocaleString()}
             </Descriptions.Item>
-            <Descriptions.Item label={t('cluster.grpcPort')}>
-              {selectedProxy.grpcPort}
-            </Descriptions.Item>
             <Descriptions.Item label={t('cluster.remotingPort')}>
               {selectedProxy.remotingPort}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.grpcPort')}>
+              {selectedProxy.grpcPort}
             </Descriptions.Item>
           </Descriptions>
         )}

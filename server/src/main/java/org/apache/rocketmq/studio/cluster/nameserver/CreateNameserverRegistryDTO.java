@@ -14,35 +14,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.persistence.entity;
+package org.apache.rocketmq.studio.cluster.nameserver;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-
-import java.time.LocalDateTime;
+import lombok.NoArgsConstructor;
 
 @Data
-@TableName("rmq_nameserver")
-public class RmqNameserver {
-
-    @TableId(type = IdType.AUTO)
-    private Long id;
-
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class CreateNameserverRegistryDTO {
+    @NotBlank(message = "name is required")
+    @Size(max = 128, message = "name must not exceed 128 characters")
     private String name;
 
+    @NotBlank(message = "namesrvAddr is required")
+    @Size(max = 512, message = "namesrvAddr must not exceed 512 characters")
     private String namesrvAddr;
 
+    @Size(max = 128, message = "k8sNamespace must not exceed 128 characters")
     private String k8sNamespace;
 
+    @Size(max = 128, message = "k8sId must not exceed 128 characters")
     private String k8sId;
 
-    private String status;
-
     private String description;
-
-    private LocalDateTime gmtCreate;
-
-    private LocalDateTime gmtModified;
 }

@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
@@ -25,6 +27,7 @@ import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
+import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
@@ -41,6 +44,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Real cluster discovery implementation using the RocketMQ admin API.
@@ -51,6 +55,17 @@ import java.util.Set;
 @Primary
 @RequiredArgsConstructor
 public class RocketMQClusterProvider implements ClusterProvider {
+
+    /**
+     * Open-source 5.x proxies never register with the NameServer, but every proxy node
+     * consumes the broadcast heartbeat-syncer group {@code CID_DefaultHeartBeatSyncerTopic}.
+     * The registered consumer connections therefore reveal the online proxy IPs
+     * (same idea as the commercial {@code clusterList2} tool).
+     */
+    private static final String HEARTBEAT_SYNCER_TOPIC = "DefaultHeartBeatSyncerTopic";
+    private static final String HEARTBEAT_SYNCER_CONSUMER_GROUP = "CID_" + HEARTBEAT_SYNCER_TOPIC;
+    private static final int PROXY_REMOTING_PORT = 8080;
+    private static final int PROXY_GRPC_PORT = 8081;
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
@@ -68,7 +83,14 @@ public class RocketMQClusterProvider implements ClusterProvider {
             log.debug("NameServer address not configured, returning empty cluster list");
             return Collections.emptyList();
         }
+        return discoverClustersAt(namesrvAddr);
+    }
 
+    @Override
+    public List<ClusterVO> discoverClustersAt(String namesrvAddr) {
+        if (!StringUtils.hasText(namesrvAddr)) {
+            return Collections.emptyList();
+        }
         try {
             return adminFactory.execute(namesrvAddr, null, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
@@ -79,6 +101,8 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 Map<String, Set<String>> clusterAddrTable = clusterInfo.getClusterAddrTable();
                 Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
 
+                List<ProxyVO> proxies = discoverProxiesViaHeartbeatSyncer(admin);
+
                 List<ClusterVO> clusters = new ArrayList<>();
                 for (Map.Entry<String, Set<String>> entry : clusterAddrTable.entrySet()) {
                     String clusterName = entry.getKey();
@@ -88,14 +112,15 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     List<NameServerVO> nameServers = buildNameServerList(namesrvAddr);
 
                     ClusterVO cluster = buildClusterVO(clusterName, brokers, nameServers);
+                    cluster.setProxies(proxies);
                     clusters.add(cluster);
                 }
                 return clusters;
             });
         } catch (Exception e) {
-            log.warn("Failed to discover clusters via NameServer: {}", e.getMessage());
+            log.warn("Failed to discover clusters via NameServer {}: {}", namesrvAddr, e.getMessage());
             throw new BusinessException(502,
-                    "Failed to discover clusters via NameServer: " + rootMessage(e));
+                    "Failed to discover clusters via NameServer " + namesrvAddr + ": " + rootMessage(e));
         }
     }
 
@@ -130,7 +155,9 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 List<BrokerVO> brokers = buildBrokerList(admin, brokerNames, brokerAddrTable);
                 List<NameServerVO> nameServers = buildNameServerList(namesrvAddr);
 
-                return buildClusterVO(clusterId, brokers, nameServers);
+                ClusterVO cluster = buildClusterVO(clusterId, brokers, nameServers);
+                cluster.setProxies(discoverProxiesViaHeartbeatSyncer(admin));
+                return cluster;
             });
         } catch (Exception e) {
             if (e instanceof BusinessException businessException) {
@@ -279,6 +306,40 @@ public class RocketMQClusterProvider implements ClusterProvider {
             return runtimeAdminClientResolver.resolveEndpoint(instanceId);
         }
         return properties.getNamesrvAddr();
+    }
+
+    private List<ProxyVO> discoverProxiesViaHeartbeatSyncer(MQAdminExt admin) {
+        try {
+            ConsumerConnection connection =
+                    admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP);
+            if (connection == null || connection.getConnectionSet() == null) {
+                return Collections.emptyList();
+            }
+            Set<String> proxyIps = new TreeSet<>();
+            for (Connection conn : connection.getConnectionSet()) {
+                String clientAddr = conn.getClientAddr();
+                if (clientAddr == null || clientAddr.isBlank()) {
+                    continue;
+                }
+                int separator = clientAddr.lastIndexOf(':');
+                proxyIps.add(separator > 0 ? clientAddr.substring(0, separator) : clientAddr);
+            }
+            List<ProxyVO> proxies = new ArrayList<>();
+            for (String ip : proxyIps) {
+                proxies.add(ProxyVO.builder()
+                        .addr(ip + ":" + PROXY_REMOTING_PORT)
+                        .status(ClusterStatus.healthy)
+                        .connections(0)
+                        .grpcPort(PROXY_GRPC_PORT)
+                        .remotingPort(PROXY_REMOTING_PORT)
+                        .build());
+            }
+            return proxies;
+        } catch (Exception e) {
+            log.debug("No proxy discovered via heartbeat syncer group {}: {}",
+                    HEARTBEAT_SYNCER_CONSUMER_GROUP, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     private List<NameServerVO> buildNameServerList(String namesrvAddr) {

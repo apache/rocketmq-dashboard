@@ -52,6 +52,133 @@ class NameServerControllerTest {
     @MockBean
     private NameServerConfigDiffService configDiffService;
 
+    @MockBean
+    private NameserverRegistryService registryService;
+
+    @Test
+    void listRegistryShouldReturnRegisteredNameserversTest() throws Exception {
+        when(registryService.list()).thenReturn(java.util.List.of(
+                NameserverRegistryVO.builder()
+                        .id(1L)
+                        .name("rocketmq1")
+                        .namesrvAddr("rocketmq1-nameserver:9876")
+                        .k8sNamespace("rocketmq1")
+                        .status("healthy")
+                        .build()));
+
+        mockMvc.perform(get("/api/nameservers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].name").value("rocketmq1"))
+                .andExpect(jsonPath("$.data[0].namesrvAddr").value("rocketmq1-nameserver:9876"))
+                .andExpect(jsonPath("$.data[0].k8sNamespace").value("rocketmq1"));
+
+        verify(registryService).list();
+    }
+
+    @Test
+    void createRegistryEntryShouldReturnCreatedEntryTest() throws Exception {
+        when(registryService.create(any(CreateNameserverRegistryDTO.class))).thenReturn(
+                NameserverRegistryVO.builder()
+                        .id(3L)
+                        .name("rocketmq3")
+                        .namesrvAddr("rocketmq3-nameserver:9876")
+                        .k8sNamespace("rocketmq3")
+                        .build());
+
+        mockMvc.perform(post("/api/nameservers/registry/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(CreateNameserverRegistryDTO.builder()
+                                .name("rocketmq3")
+                                .namesrvAddr("rocketmq3-nameserver:9876")
+                                .k8sNamespace("rocketmq3")
+                                .build())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(3))
+                .andExpect(jsonPath("$.data.k8sNamespace").value("rocketmq3"));
+
+        verify(registryService).create(any(CreateNameserverRegistryDTO.class));
+    }
+
+    @Test
+    void createRegistryEntryShouldRejectBlankNameTest() throws Exception {
+        mockMvc.perform(post("/api/nameservers/registry/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(CreateNameserverRegistryDTO.builder()
+                                .name(" ")
+                                .namesrvAddr("10.0.0.1:9876")
+                                .build())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("name is required"));
+
+        verifyNoInteractions(registryService);
+    }
+
+    @Test
+    void updateRegistryEntryShouldReturnUpdatedEntryTest() throws Exception {
+        when(registryService.update(any(UpdateNameserverRegistryDTO.class))).thenReturn(
+                NameserverRegistryVO.builder()
+                        .id(1L)
+                        .name("rocketmq1")
+                        .namesrvAddr("rocketmq1-nameserver.svc:9876")
+                        .build());
+
+        mockMvc.perform(post("/api/nameservers/registry/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(UpdateNameserverRegistryDTO.builder()
+                                .id(1L)
+                                .name("rocketmq1")
+                                .namesrvAddr("rocketmq1-nameserver.svc:9876")
+                                .build())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.namesrvAddr").value("rocketmq1-nameserver.svc:9876"));
+
+        verify(registryService).update(any(UpdateNameserverRegistryDTO.class));
+    }
+
+    @Test
+    void updateRegistryEntryShouldRejectMissingIdTest() throws Exception {
+        mockMvc.perform(post("/api/nameservers/registry/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(UpdateNameserverRegistryDTO.builder()
+                                .name("rocketmq1")
+                                .namesrvAddr("x:9876")
+                                .build())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(registryService);
+    }
+
+    @Test
+    void deleteRegistryEntryShouldReturnOkTest() throws Exception {
+        mockMvc.perform(post("/api/nameservers/registry/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(DeleteNameserverRegistryDTO.builder()
+                                .id(1L)
+                                .build())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(registryService).delete(1L);
+    }
+
+    @Test
+    void deleteRegistryEntryShouldRejectMissingIdTest() throws Exception {
+        mockMvc.perform(post("/api/nameservers/registry/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(registryService);
+    }
+
     @Test
     void compareConfigurationShouldReturnDriftResult() throws Exception {
         NameServerConfigDiffVO result = NameServerConfigDiffVO.builder()

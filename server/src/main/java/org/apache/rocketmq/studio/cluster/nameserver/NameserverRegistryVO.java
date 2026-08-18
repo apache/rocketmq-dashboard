@@ -14,26 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cluster.broker;
+package org.apache.rocketmq.studio.cluster.nameserver;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.List;
+import java.time.LocalDateTime;
 
-public interface ClusterProvider {
-
-    List<ClusterVO> discoverClusters();
-
-    default List<ClusterVO> discoverClusters(String instanceId) {
-        return discoverClusters();
-    }
-
-    default List<ClusterVO> discoverClustersAt(String namesrvAddr) {
-        return List.of();
-    }
-
-    ClusterVO refreshClusterDetail(String clusterId);
-
-    default ClusterVO refreshClusterDetail(String clusterId, String instanceId) {
-        return refreshClusterDetail(clusterId);
-    }
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class NameserverRegistryVO {
+    private Long id;
+    private String name;
+    private String namesrvAddr;
+    private String k8sNamespace;
+    private String k8sId;
+    private String status;
+    private String description;
+    private LocalDateTime gmtCreate;
+    private LocalDateTime gmtModified;
 }

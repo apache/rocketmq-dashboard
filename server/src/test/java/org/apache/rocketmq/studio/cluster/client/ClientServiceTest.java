@@ -72,4 +72,25 @@ class ClientServiceTest {
 
         verifyNoInteractions(clientProvider);
     }
+
+    @Test
+    void listConnectionsAtShouldTrimAndDelegateToProvider() {
+        when(clientProvider.findConnectionsAt("10.0.1.31:9876", "DefaultCluster", null))
+                .thenReturn(List.of());
+
+        List<ClientConnectionVO> result =
+                clientService.listConnectionsAt(" 10.0.1.31:9876 ", " DefaultCluster ", " ");
+
+        assertThat(result).isEmpty();
+        verify(clientProvider).findConnectionsAt("10.0.1.31:9876", "DefaultCluster", null);
+    }
+
+    @Test
+    void listConnectionsAtShouldRejectBlankNamesrvAddrBeforeQueryingProvider() {
+        assertThatThrownBy(() -> clientService.listConnectionsAt(" ", null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("namesrvAddr is required");
+
+        verifyNoInteractions(clientProvider);
+    }
 }

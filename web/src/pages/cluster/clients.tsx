@@ -39,8 +39,8 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
-import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
+import { listRegistryClusters } from '../../services/clusterService';
+import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
@@ -107,18 +107,29 @@ const ClientsPage = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const [connections, setConnections] = useState<ClientConnection[]>([]);
-  const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined);
+  const [registryClusters, setRegistryClusters] = useState<ClusterInfo[]>([]);
+  const [selectedEndpoint, setSelectedEndpoint] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [instanceLoadKey, setInstanceLoadKey] = useState(0);
+  const [registryLoadKey, setRegistryLoadKey] = useState(0);
   const [connectionLoadKey, setConnectionLoadKey] = useState(0);
 
-  const handleInstanceChange = (instanceId: number) => {
-    setSelectedInstanceId(instanceId);
+  const selectedCluster = registryClusters.find((cluster) => cluster.endpoint === selectedEndpoint);
+
+  const nameserverOptions = useMemo(
+    () =>
+      registryClusters.map((cluster) => ({
+        value: cluster.endpoint,
+        label: `${cluster.name} (${cluster.endpoint})`,
+      })),
+    [registryClusters],
+  );
+
+  const handleNameserverChange = (endpoint: string) => {
+    setSelectedEndpoint(endpoint);
     setConnections([]);
     setClusterFilter('ALL');
     setSelectedConnection(null);
@@ -129,17 +140,22 @@ const ClientsPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    void listInstances()
-      .then((nextInstances) => {
+    void listRegistryClusters()
+      .then((nextClusters) => {
         if (cancelled) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId((current) => current ?? nextInstances[0]?.id);
+        setRegistryClusters(nextClusters);
+        setSelectedEndpoint((current) => {
+          if (current && nextClusters.some((cluster) => cluster.endpoint === current)) {
+            return current;
+          }
+          return nextClusters[0]?.endpoint;
+        });
         setLoadError(null);
       })
       .catch((error) => {
         if (cancelled) return;
-        setInstances([]);
-        setSelectedInstanceId(undefined);
+        setRegistryClusters([]);
+        setSelectedEndpoint(undefined);
         setConnections([]);
         setLoadError(getLoadErrorMessage(error));
       })
@@ -150,17 +166,17 @@ const ClientsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [instanceLoadKey]);
+  }, [registryLoadKey]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!selectedInstanceId) {
+    if (!selectedEndpoint || !selectedCluster) {
       return () => {
         cancelled = true;
       };
     }
 
-    void listConnections({ instanceId: selectedInstanceId })
+    void listConnections({ namesrvAddr: selectedEndpoint })
       .then((nextConnections) => {
         if (!cancelled) {
           setConnections(nextConnections);
@@ -182,7 +198,7 @@ const ClientsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [connectionLoadKey, selectedInstanceId]);
+  }, [connectionLoadKey, selectedEndpoint, selectedCluster]);
 
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {
@@ -246,17 +262,14 @@ const ClientsPage = () => {
         .filter((option) => option.value !== 'ALL')
         .map((option) => ({ text: option.label, value: option.value })),
       onFilter: (value, record) => record.clusterName === value,
-      render: (name: string) => (
-        <Tag color="blue" style={{ fontSize: 14 }}>
-          {name}
-        </Tag>
-      ),
+      render: (name: string) => <Text style={{ fontSize: 14 }}>{name}</Text>,
     },
     {
       title: t('clients.clientId'),
       dataIndex: 'clientId',
       key: 'clientId',
       width: 260,
+      ellipsis: true,
       render: (id: string) => (
         <Text
           copyable
@@ -290,6 +303,7 @@ const ClientsPage = () => {
       dataIndex: 'groupOrTopic',
       key: 'groupOrTopic',
       width: 180,
+      ellipsis: true,
       render: (name: string) => (
         <Text strong style={{ fontSize: 14 }}>
           {name}
@@ -394,7 +408,7 @@ const ClientsPage = () => {
               onClick={() => {
                 setLoading(true);
                 setLoadError(null);
-                setInstanceLoadKey((key) => key + 1);
+                setRegistryLoadKey((key) => key + 1);
                 setConnectionLoadKey((key) => key + 1);
               }}
             >
@@ -416,12 +430,12 @@ const ClientsPage = () => {
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
         <Space size={12} wrap>
           <Select
-            aria-label="Instance"
-            value={selectedInstanceId}
-            onChange={handleInstanceChange}
-            placeholder="Select instance"
-            style={{ width: 180 }}
-            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            aria-label="NameServer"
+            value={selectedEndpoint}
+            onChange={handleNameserverChange}
+            placeholder={t('clients.selectNameserverPlaceholder')}
+            style={{ width: 240 }}
+            options={nameserverOptions}
           />
           <Select
             aria-label={t('clients.cluster')}
