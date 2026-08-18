@@ -100,6 +100,26 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldTrackAuthenticatedAdminStateInUserContext() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest("GET", "/api/clusters", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        Object handler = new Object();
+
+        boolean allowed = session.interceptor().preHandle(request, response, handler);
+
+        assertThat(allowed).isTrue();
+        assertThat(AuthenticatedUserContext.currentUsernameOrSystem()).isEqualTo("test-user");
+        assertThat(AuthenticatedUserContext.currentUserIsAdminOrSystem()).isTrue();
+
+        session.interceptor().afterCompletion(request, response, handler, null);
+
+        assertThat(AuthenticatedUserContext.currentUsernameOrSystem())
+                .isEqualTo(AuthenticatedUserContext.SYSTEM_ACTOR);
+        assertThat(AuthenticatedUserContext.currentUserIsAdminOrSystem()).isTrue();
+    }
+
+    @Test
     void shouldEnforceLoginWhenDatabaseRequiresItEvenIfPropertyIsDisabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties),

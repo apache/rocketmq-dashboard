@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
@@ -115,6 +116,28 @@ class SettingsServiceTest {
         assertThat(result.isRequireLogin()).isTrue();
         assertThat(result.getLlmProvider()).isEqualTo("openai");
         assertThat(result.getModel()).isEqualTo("gpt-4");
+    }
+
+    @Test
+    void getGeneralSettingsShouldRedactNotificationWebhooksForReaderSessions() {
+        GeneralSettingsVO settings = GeneralSettingsVO.builder()
+                .theme("dark")
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=secret")
+                .smsWebhook("https://sms.example.test/notify")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(settings);
+        AuthenticatedUserContext.setUser("reader", false);
+
+        try {
+            GeneralSettingsVO result = settingsService.getGeneralSettings();
+
+            assertThat(result.getDingtalkWebhook()).isEqualTo("******");
+            assertThat(result.isDingtalkWebhookConfigured()).isTrue();
+            assertThat(result.getSmsWebhook()).isEqualTo("******");
+            assertThat(result.isSmsWebhookConfigured()).isTrue();
+        } finally {
+            AuthenticatedUserContext.clear();
+        }
     }
 
     @Test
