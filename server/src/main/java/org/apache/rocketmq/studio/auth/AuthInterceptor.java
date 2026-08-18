@@ -155,6 +155,8 @@ public class AuthInterceptor implements HandlerInterceptor {
         path = normalizePath(path);
         return path.equals("/api/auth/login")
                 || path.equals("/api/auth/status")
+                || path.equals("/livez")
+                || path.equals("/readyz")
                 || path.startsWith("/api-docs")
                 || path.startsWith("/swagger-ui")
                 || path.startsWith("/actuator/health");

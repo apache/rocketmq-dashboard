@@ -60,7 +60,7 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8888/actuator/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8888/readyz"]
       interval: 10s
       timeout: 5s
       retries: 30
