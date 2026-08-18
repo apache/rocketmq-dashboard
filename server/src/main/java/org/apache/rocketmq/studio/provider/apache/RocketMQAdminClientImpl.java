@@ -22,7 +22,9 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
@@ -31,6 +33,7 @@ import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -158,6 +161,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
+                applyTopicType(topicConfig, topic.getType());
 
                 for (String addr : brokerAddrs) {
                     admin.createAndUpdateTopicConfig(addr, topicConfig);
@@ -179,7 +183,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 if (topic.getInstanceId() != null) {
                     entity.setInstanceId(topic.getInstanceId());
                 }
-                entity.setTopicType(topic.getType() != null ? topic.getType().name() : "NORMAL");
+                if (topic.getType() != null) {
+                    entity.setTopicType(topic.getType().name());
+                } else if (isNew) {
+                    entity.setTopicType(TopicType.NORMAL.name());
+                }
                 entity.setReadQueueNums(readQueues);
                 entity.setWriteQueueNums(writeQueues);
                 entity.setPerm(topicConfig.getPerm());
@@ -248,6 +256,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
+                applyTopicType(topicConfig, topic.getType());
 
                 for (String addr : brokerAddrs) {
                     admin.createAndUpdateTopicConfig(addr, topicConfig);
@@ -283,6 +292,15 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw classifyBrokerFailure(e, "update topic");
             }
         });
+    }
+
+    private void applyTopicType(TopicConfig topicConfig, TopicType topicType) {
+        if (topicType == null) {
+            return;
+        }
+        topicConfig.setAttributes(Map.of(
+                "+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(),
+                topicType.name()));
     }
 
     @Override
@@ -340,8 +358,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
         }
 
         String namesrvAddr = namesrvAddr(request.getInstanceId());
+        RPCHook credentialHook = credentialHook(request.getInstanceId());
 
-        DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup());
+        DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup(), credentialHook);
         producer.setNamesrvAddr(namesrvAddr);
         producer.setSendMsgTimeout(5000);
 
@@ -569,6 +588,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
                 : namesrvAddr();
+    }
+
+    private RPCHook credentialHook(String instanceId) {
+        return StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.resolveCredentialHook(instanceId)
+                : null;
     }
 
     private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {

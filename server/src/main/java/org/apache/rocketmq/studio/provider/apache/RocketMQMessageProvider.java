@@ -25,6 +25,7 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
@@ -82,6 +83,8 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final long VIEW_MESSAGE_TIMEOUT_MILLIS = 3000L;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
+    private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7 * ONE_DAY_MILLIS;
+    private static final int MAX_PULLS_PER_QUEUE = 1_000;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final Comparator<MessageRecordVO> TOPIC_QUERY_ORDER = Comparator
             .comparingLong(MessageRecordVO::getStoreTime)
@@ -94,12 +97,14 @@ public class RocketMQMessageProvider implements MessageProvider {
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
                                                Long startTime, Long endTime) {
         String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
         return runtimeAdminClientResolver.execute(instanceId,
                 adminExt -> queryMessages(instanceId, (DefaultMQAdminExt) adminExt, endpoint,
-                        topic, msgId, tag, key, startTime, endTime));
+                        credentialHook, topic, msgId, tag, key, startTime, endTime));
     }
 
     private List<MessageRecordVO> queryMessages(String instanceId, DefaultMQAdminExt adminExt, String endpoint,
+                                                 RPCHook credentialHook,
                                                  String topic, String msgId, String tag, String key,
                                                  Long startTime, Long endTime) {
 
@@ -118,8 +123,11 @@ public class RocketMQMessageProvider implements MessageProvider {
             queryType = "KEY";
             result = queryByKey(adminExt, topic, key, tag, begin, end);
         } else if (StringUtils.hasText(topic)) {
+            if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
+                throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
+            }
             queryType = "TOPIC";
-            result = queryByTopic(endpoint, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
+            result = queryByTopic(endpoint, credentialHook, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         } else {
             log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
             return Collections.emptyList();
@@ -194,8 +202,9 @@ public class RocketMQMessageProvider implements MessageProvider {
      * Scan a topic within a time range using a short-lived pull consumer, mirroring the approach
      * used by the RocketMQ dashboard for time-range topic queries.
      */
-    private List<MessageRecordVO> queryByTopic(String endpoint, String topic, String tag, long begin, long end, int limit) {
-        DefaultMQPullConsumer consumer = newPullConsumer("studio-msg-query", endpoint);
+    private List<MessageRecordVO> queryByTopic(String endpoint, RPCHook credentialHook, String topic, String tag,
+                                                long begin, long end, int limit) {
+        DefaultMQPullConsumer consumer = newPullConsumer("studio-msg-query", endpoint, credentialHook);
         int resultLimit = Math.min(limit, TOPIC_QUERY_HARD_CAP);
         PriorityQueue<MessageRecordVO> newestMessages = new PriorityQueue<>(TOPIC_QUERY_ORDER);
         try {
@@ -208,7 +217,12 @@ public class RocketMQMessageProvider implements MessageProvider {
                 long minOffset = consumer.searchOffset(queue, begin);
                 long maxOffset = consumer.searchOffset(queue, end);
                 int consecutiveIllegalOffsets = 0;
+                int pullAttempts = 0;
                 for (long offset = minOffset; offset <= maxOffset; ) {
+                    if (++pullAttempts > MAX_PULLS_PER_QUEUE) {
+                        throw new BusinessException(400,
+                                "Topic message query exceeded the per-queue pull budget; narrow the time range");
+                    }
                     PullResult pullResult = consumer.pull(queue, "*", offset, 32);
                     if (pullResult == null) {
                         log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
@@ -253,6 +267,8 @@ public class RocketMQMessageProvider implements MessageProvider {
                     }
                 }
             }
+        } catch (BusinessException exception) {
+            throw exception;
         } catch (Exception e) {
             log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
             throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
@@ -596,8 +612,8 @@ public class RocketMQMessageProvider implements MessageProvider {
         return tag.equals(messageExt.getTags());
     }
 
-    private DefaultMQPullConsumer newPullConsumer(String groupPrefix, String endpoint) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(groupPrefix + "-group");
+    private DefaultMQPullConsumer newPullConsumer(String groupPrefix, String endpoint, RPCHook credentialHook) {
+        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(groupPrefix + "-group", credentialHook);
         consumer.setInstanceName(ShortLivedClientName.next(groupPrefix));
         consumer.setNamesrvAddr(endpoint);
         return consumer;

@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.dlq;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -67,27 +68,30 @@ class DLQControllerTest {
                 .status("ACTIVE")
                 .build();
 
-        when(dlqService.listDLQGroups("instance-1")).thenReturn(List.of(group));
+        when(dlqService.listDLQGroups("instance-1", null, 1, 20))
+                .thenReturn(PageResult.of(List.of(group), 1, 1, 20));
 
         mockMvc.perform(get("/api/dlq").param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].groupName").value("test-group"))
-                .andExpect(jsonPath("$.data[0].dlqTopic").value("%DLQ%test-group"))
-                .andExpect(jsonPath("$.data[0].messageCount").value(10));
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items[0].groupName").value("test-group"))
+                .andExpect(jsonPath("$.data.items[0].dlqTopic").value("%DLQ%test-group"))
+                .andExpect(jsonPath("$.data.items[0].messageCount").value(10))
+                .andExpect(jsonPath("$.data.total").value(1));
     }
 
     @Test
     void listDLQGroupsShouldPassInstanceId() throws Exception {
-        when(dlqService.listDLQGroups(eq("instance-1"))).thenReturn(List.of());
+        when(dlqService.listDLQGroups(eq("instance-1"), isNull(), eq(1), eq(20)))
+                .thenReturn(PageResult.empty(1, 20));
 
         mockMvc.perform(get("/api/dlq")
                         .param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isArray());
+                .andExpect(jsonPath("$.data.items").isArray());
 
-        verify(dlqService).listDLQGroups(eq("instance-1"));
+        verify(dlqService).listDLQGroups(eq("instance-1"), isNull(), eq(1), eq(20));
     }
 
     @Test

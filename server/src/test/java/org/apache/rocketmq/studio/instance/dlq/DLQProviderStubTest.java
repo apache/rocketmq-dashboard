@@ -36,6 +36,15 @@ class DLQProviderStubTest {
     }
 
     @Test
+    void pagedListDLQGroupsShouldFailExplicitlyWhenRealProviderIsMissing() {
+        assertThatThrownBy(() -> provider.listDLQGroups("instance-1", "search", 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("DLQ provider is not configured")
+                .extracting("code")
+                .isEqualTo(501);
+    }
+
+    @Test
     void resendMessagesShouldFailExplicitlyWhenRealProviderIsMissing() {
         assertThatThrownBy(() -> provider.resendMessages("instance-1", "group-1", 1000L, 2000L, "target-topic"))
                 .isInstanceOf(BusinessException.class)

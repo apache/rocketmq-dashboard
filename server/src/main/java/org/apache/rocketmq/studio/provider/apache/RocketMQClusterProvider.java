@@ -83,16 +83,20 @@ public class RocketMQClusterProvider implements ClusterProvider {
             log.debug("NameServer address not configured, returning empty cluster list");
             return Collections.emptyList();
         }
-        return discoverClustersAt(namesrvAddr);
+        return discoverClustersAt(namesrvAddr, instanceId);
     }
 
     @Override
     public List<ClusterVO> discoverClustersAt(String namesrvAddr) {
+        return discoverClustersAt(namesrvAddr, null);
+    }
+
+    private List<ClusterVO> discoverClustersAt(String namesrvAddr, String instanceId) {
         if (!StringUtils.hasText(namesrvAddr)) {
             return Collections.emptyList();
         }
         try {
-            return adminFactory.execute(namesrvAddr, null, admin -> {
+            return executeAdmin(instanceId, namesrvAddr, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return Collections.<ClusterVO>emptyList();
@@ -138,7 +142,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
         }
 
         try {
-            return adminFactory.execute(namesrvAddr, null, admin -> {
+            return executeAdmin(instanceId, namesrvAddr, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return null;
@@ -306,6 +310,14 @@ public class RocketMQClusterProvider implements ClusterProvider {
             return runtimeAdminClientResolver.resolveEndpoint(instanceId);
         }
         return properties.getNamesrvAddr();
+    }
+
+    private <T> T executeAdmin(String instanceId, String namesrvAddr,
+                               MqAdminExtFactory.AdminAction<T> action) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        return adminFactory.execute(namesrvAddr, null, action);
     }
 
     private List<ProxyVO> discoverProxiesViaHeartbeatSyncer(MQAdminExt admin) {
