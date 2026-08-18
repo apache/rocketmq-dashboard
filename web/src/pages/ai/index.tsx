@@ -390,6 +390,7 @@ const AiPage = () => {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
   const [toolModalOpen, setToolModalOpen] = useState(false);
+  const [enhance, setEnhance] = useState(false);
   const [tools, setTools] = useState<McpTool[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
   const [clusterOptions, setClusterOptions] = useState<{ value: string; label: string }[]>([]);
@@ -850,7 +851,15 @@ const AiPage = () => {
                       <SlidersHorizontal size={17} />
                       <span>工具</span>
                     </button>
-                    <button className="tool-btn">
+                    <button
+                      className="tool-btn"
+                      onClick={() => setEnhance((value) => !value)}
+                      style={{
+                        borderColor: enhance ? '#1677ff' : undefined,
+                        color: enhance ? '#1677ff' : undefined,
+                      }}
+                      title="发送前增强 Prompt"
+                    >
                       <Sparkle size={17} />
                       <span>Prompt 增强</span>
                     </button>
@@ -859,7 +868,7 @@ const AiPage = () => {
                 <div className="shrink-0 flex items-center gap-1">
                   <button
                     className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
-                    onClick={() => void handleSend()}
+                    onClick={() => void handleSend(undefined, undefined, enhance)}
                     disabled={loading || !inputValue.trim() || !llmReady}
                     style={{
                       opacity: loading || !inputValue.trim() || !llmReady ? 0.5 : 1,

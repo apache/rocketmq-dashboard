@@ -685,6 +685,8 @@ const ConsumerPageContent = ({
         <Button
           size="small"
           icon={<Eye size={14} />}
+          disabled
+          title="队列分布暂未支持"
           style={{ borderColor: '#1677ff', color: '#1677ff' }}
         >
           查看分布

@@ -490,6 +490,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   useEffect(() => {
     if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
       window.setTimeout(() => {
+        // Keep the ref in sync with the state; queries read the ref, so a stale key would
+        // keep hitting the de-registered data source while the UI shows the default.
+        dataSourceKeyRef.current = '';
         setDataSourceKey('');
         setData(null);
       }, 0);

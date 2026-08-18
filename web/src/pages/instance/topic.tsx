@@ -335,6 +335,7 @@ const TopicPage = () => {
 
   const topicRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
+  const consumersRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -392,13 +393,17 @@ const TopicPage = () => {
   };
 
   const loadTopicConsumers = async (topic: Topic, page = 1, pageSize = 20) => {
+    const requestId = ++consumersRequestIdRef.current;
     const consumers = await getTopicConsumerPage(
       topic.name,
       selectedInstanceId || undefined,
       page,
       pageSize,
     );
-    setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
+    // Guard against a slower earlier page overwriting a newer one when the user pages quickly.
+    if (requestId === consumersRequestIdRef.current) {
+      setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
+    }
   };
 
   // ─── Open detail modal ────────────────────────────────────────
