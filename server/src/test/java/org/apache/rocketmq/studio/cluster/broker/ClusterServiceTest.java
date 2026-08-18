@@ -203,6 +203,25 @@ class ClusterServiceTest {
     }
 
     @Test
+    void listProxiesShouldUseResolvedCluster() {
+        when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
+
+        List<ProxyVO> proxies = clusterService.listProxies("cluster-1");
+
+        assertThat(proxies).extracting(ProxyVO::getAddr).containsExactly("10.0.0.10:8081");
+    }
+
+    @Test
+    void requireProxyShouldRejectUnknownAddress() {
+        when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
+
+        assertThatThrownBy(() -> clusterService.requireProxy("cluster-1", "127.0.0.1:8081"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Proxy not found: 127.0.0.1:8081")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
     void updateConfigShouldUpdateFlushDiskType() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
 

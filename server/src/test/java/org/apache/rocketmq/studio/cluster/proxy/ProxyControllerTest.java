@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -105,18 +106,15 @@ class ProxyControllerTest {
 
     @Test
     void listProxiesShouldReturnProxiesForCluster() throws Exception {
-        when(proxyAddressService.getHomePage())
-                .thenReturn(ProxyHomeVO.builder()
-                        .proxyAddrList(List.of("127.0.0.1:8081"))
-                        .currentProxyAddr("127.0.0.1:8081")
-                        .build());
+        when(clusterService.listProxies("cluster-1"))
+                .thenReturn(List.of(ProxyVO.builder().addr("10.0.0.10:8081").build()));
 
         mockMvc.perform(get("/api/proxies").param("clusterId", "cluster-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].addr").value("127.0.0.1:8081"));
+                .andExpect(jsonPath("$.data[0].addr").value("10.0.0.10:8081"));
 
-        verify(proxyAddressService).getHomePage();
+        verify(clusterService).listProxies("cluster-1");
     }
 
     @Test
@@ -176,7 +174,7 @@ class ProxyControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.success").value(true));
 
-        verify(proxyAddressService).reloadConfig("127.0.0.1:8081");
+        verify(proxyAddressService).reloadConfig(eq("cluster-1"), eq("127.0.0.1:8081"));
     }
 
     @Test

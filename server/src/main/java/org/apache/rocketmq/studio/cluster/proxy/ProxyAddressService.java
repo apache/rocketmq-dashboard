@@ -17,11 +17,9 @@
 
 package org.apache.rocketmq.studio.cluster.proxy;
 
-import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
-
-
-
+import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +31,6 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
-
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -76,6 +73,7 @@ public class ProxyAddressService {
     /** Bounded pool for the I/O-bound TCP probes; probes queue beyond this share the budget. */
     private static final int PROBE_EXECUTOR_THREADS = 8;
 
+    private final ClusterService clusterService;
     private final Set<String> proxyAddrs = new LinkedHashSet<>(List.of("127.0.0.1:8081"));
     private String currentProxyAddr = "127.0.0.1:8081";
     private final RestTemplate restTemplate;
@@ -84,19 +82,33 @@ public class ProxyAddressService {
     private final long topologyTotalTimeoutMillis;
 
     @Autowired
-    public ProxyAddressService(ProxyHealthProbe healthProbe) {
-        this(healthProbe, defaultProbeExecutor(), TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
+    public ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe) {
+        this(clusterService, healthProbe, newRestTemplate(), defaultProbeExecutor(), TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
     }
 
-    ProxyAddressService(ProxyHealthProbe healthProbe, ExecutorService probeExecutor,
-                        long topologyTotalTimeoutMillis) {
+    ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe, RestTemplate restTemplate) {
+        this(clusterService, healthProbe, restTemplate, defaultProbeExecutor(), TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
+    }
+
+    ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe,
+                        ExecutorService probeExecutor, long topologyTotalTimeoutMillis) {
+        this(clusterService, healthProbe, newRestTemplate(), probeExecutor, topologyTotalTimeoutMillis);
+    }
+
+    ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe, RestTemplate restTemplate,
+                        ExecutorService probeExecutor, long topologyTotalTimeoutMillis) {
+        this.clusterService = clusterService;
         this.healthProbe = healthProbe;
+        this.restTemplate = restTemplate;
         this.probeExecutor = probeExecutor;
         this.topologyTotalTimeoutMillis = topologyTotalTimeoutMillis;
+    }
+
+    private static RestTemplate newRestTemplate() {
         NoRedirectClientHttpRequestFactory factory = new NoRedirectClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(3));
         factory.setReadTimeout(Duration.ofSeconds(3));
-        this.restTemplate = new RestTemplate(factory);
+        return new RestTemplate(factory);
     }
 
     private static ExecutorService defaultProbeExecutor() {
@@ -258,13 +270,10 @@ public class ProxyAddressService {
      * POSTs to {@code http://<addr>/admin/reloadConfig}. Throws {@link BusinessException}
      * on transport or protocol failure so the caller receives a structured error response.
      */
-    public void reloadConfig(String addr) {
+    public void reloadConfig(String clusterId, String addr) {
+        String normalizedClusterId = normalizeClusterId(clusterId);
         String normalized = normalizeProxyAddr(addr, "addr");
-        synchronized (this) {
-            if (!proxyAddrs.contains(normalized)) {
-                throw new BusinessException(400, "addr is not a registered proxy address");
-            }
-        }
+        clusterService.requireProxy(normalizedClusterId, normalized);
         String url = "http://" + normalized + RELOAD_PATH;
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);
@@ -284,6 +293,13 @@ public class ProxyAddressService {
             log.warn("Proxy config reload via {} failed: {}", url, ex.getMessage());
             throw new BusinessException(500, "Config reload failed: " + ex.getMessage());
         }
+    }
+
+    private String normalizeClusterId(String clusterId) {
+        if (clusterId == null || clusterId.trim().isEmpty()) {
+            throw new BusinessException(400, "clusterId is required");
+        }
+        return clusterId.trim();
     }
 
     private String normalizeProxyAddr(String proxyAddr, String fieldName) {
