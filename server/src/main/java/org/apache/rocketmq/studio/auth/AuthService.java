@@ -176,7 +176,11 @@ public class AuthService {
         user.setAdmin(admin);
         user.setEnabled(true);
         user.setPasswordChangedAt(now());
-        userMapper.insert(user);
+        try {
+            userMapper.insert(user);
+        } catch (DuplicateKeyException exception) {
+            throw new BusinessException(409, "Username is already in use");
+        }
         return user;
     }
 
