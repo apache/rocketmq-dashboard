@@ -19,6 +19,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -114,6 +122,85 @@ class LoginRateLimiterTest {
 
         assertThatThrownBy(() -> limiter.checkAllowed("operator")).isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> limiter.checkAllowed("OPERATOR")).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void rejectsNewUsernamesWhenTrackingCapacityIsExhaustedTest() {
+        for (int index = 0; index < LoginRateLimiter.MAX_TRACKED_USERNAMES; index++) {
+            limiter.recordFailure("unknown-" + index);
+        }
+
+        assertThatThrownBy(() -> limiter.recordFailure("one-too-many"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(429))
+                .hasMessage("Too many login attempts are being tracked; try again later");
+    }
+
+    @Test
+    void reclaimsExpiredUsernamesWhenTrackingCapacityIsExhaustedTest() {
+        limiter = new LoginRateLimiter(clock, 2);
+        limiter.recordFailure("stale-a");
+        limiter.recordFailure("stale-b");
+        clock.advance(LoginRateLimiter.FAILURE_WINDOW.plusSeconds(1));
+
+        assertThatCode(() -> limiter.recordFailure("fresh-a")).doesNotThrowAnyException();
+        assertThatCode(() -> limiter.recordFailure("fresh-b")).doesNotThrowAnyException();
+        assertThatThrownBy(() -> limiter.recordFailure("one-too-many"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(429));
+    }
+
+    @Test
+    void existingUsernameCanReachLockThresholdAtTrackingCapacityTest() {
+        limiter = new LoginRateLimiter(clock, 1);
+
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("operator");
+        }
+
+        assertThatThrownBy(() -> limiter.checkAllowed("operator"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(429));
+    }
+
+    @Test
+    void concurrentNewUsernamesCannotExceedTrackingCapacityTest() throws Exception {
+        int capacity = 8;
+        int contenders = 64;
+        limiter = new LoginRateLimiter(clock, capacity);
+        ExecutorService executor = Executors.newFixedThreadPool(16);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger accepted = new AtomicInteger();
+        AtomicInteger rejected = new AtomicInteger();
+        List<Future<?>> futures = new ArrayList<>();
+        try {
+            for (int index = 0; index < contenders; index++) {
+                String username = "concurrent-" + index;
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    try {
+                        limiter.recordFailure(username);
+                        accepted.incrementAndGet();
+                    } catch (BusinessException exception) {
+                        assertThat(exception.getCode()).isEqualTo(429);
+                        rejected.incrementAndGet();
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(5, TimeUnit.SECONDS);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(accepted).hasValue(capacity);
+        assertThat(rejected).hasValue(contenders - capacity);
     }
 
     private static final class MutableClock extends Clock {
