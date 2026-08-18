@@ -38,7 +38,11 @@ describe('Auth API', () => {
   });
 
   it('status should return the login requirement and session state', async () => {
-    const authStatus = { loginRequired: true, authenticated: false };
+    const authStatus = {
+      loginRequired: true,
+      authenticated: true,
+      user: { userId: 7, username: 'studio-admin', admin: true },
+    };
     mock.onGet('/auth/status').reply(200, { data: authStatus });
 
     await expect(getAuthStatus()).resolves.toEqual(authStatus);
@@ -46,9 +50,9 @@ describe('Auth API', () => {
 
   it('login should post credentials and return token data', async () => {
     const mockResponse = {
-      token: 'jwt-token-123',
       expiresIn: 86400,
       user: {
+        userId: 7,
         username: 'admin',
         admin: true,
       },
@@ -59,9 +63,9 @@ describe('Auth API', () => {
 
     const result = await login('admin', 'secret');
     expect(result).toEqual(mockResponse);
-    expect(result.token).toBe('jwt-token-123');
     expect(result.expiresIn).toBe(86400);
     expect(result.user.username).toBe('admin');
+    expect(result.user.userId).toBe(7);
     expect(result.user.admin).toBe(true);
   });
 

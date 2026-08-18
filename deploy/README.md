@@ -39,6 +39,15 @@ cd deploy && docker compose up -d --build
 
 默认访问地址为 `http://127.0.0.1:6789`。
 
+后端提供两个独立的编排探针，前端 Nginx 仅透出这两个探针与 Actuator health：
+
+- `GET /livez`：仅检查 Studio 进程存活状态，不依赖数据库、RocketMQ、Prometheus 或云 API。
+- `GET /readyz`：检查 Studio 是否可接收控制面请求，包含数据库连接状态。Docker Compose
+  使用该端点决定何时启动前端。
+
+RocketMQ、Prometheus 和云 API 故障由 Studio 的运行态诊断页面展示，不纳入 liveness，避免下游
+故障触发 Studio 容器反复重启。
+
 默认 schema 只创建 Studio 所需的表，不会写入实例、Topic、消费组或 ACL 示例数据。需要演示数据时，
 请在开发环境中显式导入 `deploy/mysql/upgrade-demo-instance.sql` 和
 `deploy/mysql/upgrade-demo-acl.sql`，不要在生产环境导入这些脚本。
@@ -54,10 +63,14 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 ```
 
 开启后，`/api/auth/login` 使用 JSON request body 接收用户名和密码，密码不会出现在 URL 查询
-参数中。登录成功后前端会把返回的 token 作为 `Authorization: Bearer <token>` 发送给后续
-`/api/**` 请求；未携带有效 token 的请求会返回 `401 Unauthorized`。
+参数中。浏览器登录成功后会话写入 `HttpOnly` 会话 Cookie，后续 `/api/**` 请求随 Cookie 自动
+携带；未携带有效会话的请求会返回 `401 Unauthorized`。非浏览器 API 客户端可在登录时通过
+`X-RocketMQ-Studio-Session-Delivery: bearer` 请求头显式换取 bearer token。
 
-`/api/auth/login` 始终只接受已配置用户；如未配置有效用户名和密码，后端会拒绝登录以避免误签发 token。
+`STUDIO_AUTH_ADMIN_USERNAME` / `STUDIO_AUTH_ADMIN_PASSWORD` 只是首次启动的引导账号：当数据库
+用户表为空时，首次登录会把已配置用户写入 `rmq_studio_user` 表，此后以数据库为账号数据的唯一
+来源，管理员可在「用户管理」页面创建用户、启用/禁用账号和重置密码。如未配置有效用户名和密码
+且用户表为空，后端会拒绝登录以避免误签发会话。
 `studio.auth.login-required=false` 仅用于本地开发场景跳过 `/api/**` 拦截。
 
 ## 前置条件

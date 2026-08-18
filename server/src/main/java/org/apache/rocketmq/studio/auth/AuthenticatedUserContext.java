@@ -18,13 +18,14 @@
 package org.apache.rocketmq.studio.auth;
 
 /**
- * Holds the authenticated username for the current request thread.
+ * Holds the authenticated Studio principal for the current request thread.
  */
 public final class AuthenticatedUserContext {
 
     public static final String SYSTEM_ACTOR = "system";
 
     private static final ThreadLocal<String> CURRENT_USERNAME = new ThreadLocal<>();
+    private static final ThreadLocal<String> CURRENT_USER_ID = new ThreadLocal<>();
 
     private AuthenticatedUserContext() {
     }
@@ -37,6 +38,19 @@ public final class AuthenticatedUserContext {
         CURRENT_USERNAME.set(username);
     }
 
+    public static void setUser(Long userId, String username) {
+        setUsername(username);
+        if (userId == null) {
+            CURRENT_USER_ID.remove();
+        } else {
+            CURRENT_USER_ID.set(String.valueOf(userId));
+        }
+    }
+
+    public static String currentUserId() {
+        return CURRENT_USER_ID.get();
+    }
+
     public static String currentUsernameOrSystem() {
         String username = CURRENT_USERNAME.get();
         return username == null ? SYSTEM_ACTOR : username;
@@ -44,5 +58,6 @@ public final class AuthenticatedUserContext {
 
     public static void clear() {
         CURRENT_USERNAME.remove();
+        CURRENT_USER_ID.remove();
     }
 }

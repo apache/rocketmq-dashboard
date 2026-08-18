@@ -14,20 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.auth;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AuthStatusVO {
-    private boolean loginRequired;
-    private boolean authenticated;
-    private LoginVO.UserInfo user;
+public class CreateStudioUserDTO {
+
+    @NotBlank(message = "Username is required")
+    @Size(max = 128, message = "Username must not exceed 128 characters")
+    private String username;
+
+    @NotBlank(message = "Password is required")
+    @Size(min = 8, max = 256, message = "Password must contain 8 to 256 characters")
+    @ToString.Exclude
+    private String password;
+
+    private boolean admin;
 }

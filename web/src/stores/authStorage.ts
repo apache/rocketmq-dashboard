@@ -15,34 +15,45 @@
  * limitations under the License.
  */
 
-export const TOKEN_STORAGE_KEY = 'token';
 export const USER_STORAGE_KEY = 'rocketmq-studio-user';
+export const USER_ID_STORAGE_KEY = 'rocketmq-studio-user-id';
 export const USER_ADMIN_STORAGE_KEY = 'rocketmq-studio-user-admin';
 
 export interface AuthSession {
-  token: string | null;
   user: string | null;
+  userId: number | null;
   admin: boolean | null;
+}
+
+function parseUserId(raw: string | null): number | null {
+  if (raw == null || raw === '') {
+    return null;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function readAuthSession(): AuthSession {
   try {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     const admin = localStorage.getItem(USER_ADMIN_STORAGE_KEY);
     return {
-      token,
-      user: token ? localStorage.getItem(USER_STORAGE_KEY) : null,
-      admin: token && admin != null ? admin === 'true' : null,
+      user: localStorage.getItem(USER_STORAGE_KEY),
+      userId: parseUserId(localStorage.getItem(USER_ID_STORAGE_KEY)),
+      admin: admin != null ? admin === 'true' : null,
     };
   } catch {
-    return { token: null, user: null, admin: null };
+    return { user: null, userId: null, admin: null };
   }
 }
 
-export function persistAuthSession(token: string, user: string, admin: boolean): void {
+export function persistAuthSession(user: string, userId: number | null, admin: boolean): void {
   try {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
     localStorage.setItem(USER_STORAGE_KEY, user);
+    if (userId != null) {
+      localStorage.setItem(USER_ID_STORAGE_KEY, String(userId));
+    } else {
+      localStorage.removeItem(USER_ID_STORAGE_KEY);
+    }
     localStorage.setItem(USER_ADMIN_STORAGE_KEY, String(admin));
   } catch {
     // The in-memory store remains usable when browser storage is unavailable.
@@ -51,8 +62,9 @@ export function persistAuthSession(token: string, user: string, admin: boolean):
 
 export function clearAuthSession(): void {
   try {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem('token');
     localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(USER_ID_STORAGE_KEY);
     localStorage.removeItem(USER_ADMIN_STORAGE_KEY);
   } catch {
     // The caller still clears the in-memory store.

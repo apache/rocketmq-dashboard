@@ -66,6 +66,7 @@ const MainLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
+  const admin = useAuthStore((state) => state.admin);
   const useMock = useDataModeStore((state) => state.useMock);
   const toggleDataMode = useDataModeStore((state) => state.toggle);
 
@@ -78,6 +79,10 @@ const MainLayout = () => {
   const handleUserMenuClick = async ({ key }: { key: string }) => {
     if (key === 'profile') {
       navigate('/settings');
+      return;
+    }
+    if (key === 'users') {
+      navigate('/studio/users');
       return;
     }
     if (key !== 'logout') return;
@@ -185,6 +190,7 @@ const MainLayout = () => {
       '/ops/audit': t('nav.audit'),
       '/ai': t('nav.ai'),
       '/settings': t('nav.settings'),
+      '/studio/users': '用户管理',
     }),
     [t],
   );
@@ -238,6 +244,7 @@ const MainLayout = () => {
     onClick: handleUserMenuClick,
     items: [
       { key: 'profile', icon: <UserGear size={14} />, label: t('user.profile') },
+      ...(admin ? [{ key: 'users', icon: <UserGear size={14} />, label: '用户管理' }] : []),
       { type: 'divider' as const },
       { key: 'logout', label: t('user.logout'), danger: true },
     ],

@@ -14,20 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.auth;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AuthStatusVO {
-    private boolean loginRequired;
-    private boolean authenticated;
-    private LoginVO.UserInfo user;
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest
+@ActiveProfiles("dev")
+class AuthCookieProfileTest {
+
+    @Autowired
+    private AuthProperties authProperties;
+
+    @Test
+    void devProfileShouldAllowLocalHttpCookies() {
+        assertThat(authProperties.isSessionCookieSecure()).isFalse();
+    }
 }

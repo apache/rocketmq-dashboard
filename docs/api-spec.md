@@ -25,7 +25,7 @@
 >
 > Base URL: `/api`
 > Content-Type: `application/json`
-> 认证方式: `Authorization: Bearer <token>`
+> 浏览器认证方式: `HttpOnly` 会话 Cookie。自动化 API 客户端可在登录时显式请求 bearer token，后续使用 `Authorization: Bearer <token>`。
 
 ## 接口设计风格
 
@@ -168,13 +168,20 @@ POST /api/auth/login
 | `username` | `string` | 是 | 用户名 |
 | `password` | `string` | 是 | 密码 |
 
+**可选 Request Header：**
+
+| Header | 值 | 说明 |
+|--------|----|------|
+| `X-RocketMQ-Studio-Session-Delivery` | `bearer` | 仅供非浏览器 API 客户端使用。响应 `data.token` 返回 bearer token，且不设置 Cookie。省略时使用 `HttpOnly` 会话 Cookie，响应不包含 token。 |
+
 **Response `data`:**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `token` | `string` | JWT Token |
+| `token` | `string` | 仅当请求 `X-RocketMQ-Studio-Session-Delivery: bearer` 时返回的会话 token |
 | `expiresIn` | `number` | 过期时间（秒） |
 | `user` | `object` | 用户信息 |
+| `user.userId` | `number` | 用户 ID（数据库主键）。配置引导用户（未落库）登录时为空 |
 | `user.username` | `string` | 用户名 |
 | `user.admin` | `boolean` | 是否管理员 |
 
