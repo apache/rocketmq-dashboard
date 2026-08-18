@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -237,7 +237,19 @@ describe('Message page query history', () => {
     });
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
+    // Clearing requires confirmation: the dialog is commanded imperatively, so spy on it
+    // and drive the confirm callback instead of depending on portal rendering in jsdom.
+    const confirmSpy = vi
+      .spyOn(Modal, 'confirm')
+      .mockImplementation((config) => {
+        config.onOk?.();
+        return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<
+          typeof Modal.confirm
+        >;
+      });
     await user.click(await screen.findByText('清空历史'));
+    expect(confirmSpy).toHaveBeenCalled();
+    confirmSpy.mockRestore();
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
     expect(localStorage).toHaveLength(0);
   });

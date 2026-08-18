@@ -446,7 +446,14 @@ const MessagePageContent = ({
 
   const handleRecentQueryMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'clear') {
-      clearRecentQueries();
+      Modal.confirm({
+        title: '清空查询历史',
+        content: '确定要清空全部查询历史吗？此操作不可恢复。',
+        okText: '清空',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: clearRecentQueries,
+      });
       return;
     }
     const recentQuery = recentQueries[Number(key)];

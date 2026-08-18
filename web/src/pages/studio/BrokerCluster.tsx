@@ -208,9 +208,10 @@ const BrokerClusterPage = () => {
   useEffect(() => {
     mountedRef.current = true;
     const requestId = loadRequestId.current;
-    const timeoutId = window.setTimeout(() => void loadData());
+    void Promise.resolve().then(() => {
+      loadData();
+    });
     return () => {
-      window.clearTimeout(timeoutId);
       loadRequestId.current = requestId + 1;
       mountedRef.current = false;
     };

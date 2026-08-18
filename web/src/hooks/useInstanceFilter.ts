@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listInstances } from '../services/instanceService';
 import type { Instance } from '../api/instance';
@@ -38,13 +38,23 @@ export function useInstanceFilter() {
 
   const [instances, setInstances] = useState<Instance[]>([]);
 
+  // Keep the latest selected instance id in a ref so the instance *list* is only
+  // fetched when needed (section / navigation changes) and not re-fetched every
+  // time the user switches between instances — the list itself does not depend
+  // on the selection.
+  const routeInstanceIdRef = useRef(routeInstanceId);
+  useEffect(() => {
+    routeInstanceIdRef.current = routeInstanceId;
+  }, [routeInstanceId]);
+
   useEffect(() => {
     let cancelled = false;
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        const isKnownInstance = nextInstances.some((instance) => instance.name === routeInstanceId);
+        const selectedInstanceId = routeInstanceIdRef.current;
+        const isKnownInstance = nextInstances.some((instance) => instance.name === selectedInstanceId);
         if (nextInstances.length > 0 && !isKnownInstance) {
           navigate(`/instance/${encodeURIComponent(nextInstances[0].name)}/${section}`, {
             replace: true,
@@ -57,7 +67,7 @@ export function useInstanceFilter() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, routeInstanceId, section]);
+  }, [navigate, section]);
 
   const selectedInstanceId =
     routeInstanceId !== undefined && instances.some((instance) => instance.name === routeInstanceId)
