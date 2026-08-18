@@ -95,6 +95,23 @@ class DLQControllerTest {
     }
 
     @Test
+    void listDLQGroupsShouldPassSearchAndPaging() throws Exception {
+        when(dlqService.listDLQGroups(eq("instance-1"), eq("order"), eq(2), eq(50)))
+                .thenReturn(PageResult.empty(2, 50));
+
+        mockMvc.perform(get("/api/dlq")
+                        .param("instanceId", "instance-1")
+                        .param("search", "order")
+                        .param("page", "2")
+                        .param("pageSize", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(50));
+
+        verify(dlqService).listDLQGroups(eq("instance-1"), eq("order"), eq(2), eq(50));
+    }
+
+    @Test
     void resendMessagesShouldReturnSuccess() throws Exception {
         Map<String, Object> body = Map.of(
                 "instanceId", "instance-1",

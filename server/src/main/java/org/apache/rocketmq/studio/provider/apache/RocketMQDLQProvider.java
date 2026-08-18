@@ -55,6 +55,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -93,6 +94,7 @@ public class RocketMQDLQProvider implements DLQProvider {
             throws Exception {
         TopicList topicList = adminExt.fetchAllTopicList();
         Set<String> topics = topicList == null ? Collections.emptySet() : topicList.getTopicList();
+        String normalizedSearch = StringUtils.hasText(search) ? search.trim().toLowerCase(Locale.ROOT) : null;
 
         List<String> dlqTopics = new ArrayList<>();
         for (String topic : topics) {
@@ -103,7 +105,9 @@ public class RocketMQDLQProvider implements DLQProvider {
             if (!StringUtils.hasText(groupName)) {
                 continue;
             }
-            if (search == null || groupName.contains(search) || topic.contains(search)) {
+            if (normalizedSearch == null
+                    || groupName.toLowerCase(Locale.ROOT).contains(normalizedSearch)
+                    || topic.toLowerCase(Locale.ROOT).contains(normalizedSearch)) {
                 dlqTopics.add(topic);
             }
         }

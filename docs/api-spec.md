@@ -1377,10 +1377,24 @@ GET /api/messages/:msgId/trace
 ### 9.1 获取 DLQ 列表
 
 ```
-GET /api/dlq?clusterId={clusterId}
+GET /api/dlq?instanceId={instanceId}&search={keyword}&page={page}&pageSize={pageSize}
 ```
 
-**Response `data`:** `DLQGroup[]`
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `search` | `string` | 否 | 按 Group 名称或 DLQ Topic 搜索，大小写不敏感 |
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，最大 `100` |
+
+**Response `data`:** `PageResult<DLQGroup>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `DLQGroup[]` | 当前页数据 |
+| `total` | `number` | 匹配总数 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 当前页大小 |
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -1389,7 +1403,8 @@ GET /api/dlq?clusterId={clusterId}
 | `messageCount` | `number` | 死信消息数量 |
 | `lastEnqueueTime` | `string` | 最后入队时间 (ISO 8601) |
 | `retryCount` | `number` | 已重试次数 |
-| `status` | `string` | 状态: `active` / `empty` |
+| `status` | `string` | 状态: `ACTIVE` / `EMPTY` / `UNAVAILABLE` |
+| `statsAvailable` | `boolean` | 是否成功读取 DLQ Topic 统计信息 |
 
 ### 9.2 重发死信消息
 
@@ -1401,12 +1416,22 @@ POST /api/dlq/resend
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
 | `groupName` | `string` | 是 | 消费组名称 |
-| `startTime` | `string` | 是 | 重投时间范围起始 (ISO 8601) |
-| `endTime` | `string` | 是 | 重投时间范围结束 (ISO 8601) |
+| `startTime` | `number` | 否 | 重投时间范围起始（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 重投时间范围结束（Unix 毫秒时间戳） |
 | `targetTopic` | `string` | 否 | 目标 Topic，不传则重投回原 Topic |
 
-**Response `data`:** `null`
+**Response `data`:** `DLQResendResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `matched` | `number` | 命中的死信消息数 |
+| `resent` | `number` | 成功重投条数 |
+| `failed` | `number` | 重投失败条数 |
+| `outcome` | `string` | 结果: `SUCCESS` / `PARTIAL` / `FAILED` / `NO_MESSAGES` |
+| `scanIncomplete` | `boolean` | 是否有部分队列扫描失败 |
+| `failedQueueCount` | `number` | 扫描失败的队列数 |
 
 ---
 

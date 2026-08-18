@@ -402,7 +402,10 @@ const DLQPage = () => {
             placeholder="搜索 Group 名称或 DLQ Topic"
             allowClear
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             onSearch={(value) => {
               setSearch(value);
               setPage(1);
