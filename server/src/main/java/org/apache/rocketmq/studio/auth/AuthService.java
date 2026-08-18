@@ -63,6 +63,7 @@ public class AuthService {
     private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 30;
     private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
     private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
+    private static final int MAX_USERNAME_LENGTH = 128;
     private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
@@ -355,13 +356,16 @@ public class AuthService {
         if (request.getUsername() == null || request.getUsername().isBlank()) {
             throw new BusinessException(400, "Username is required");
         }
+        if (request.getUsername().trim().length() > MAX_USERNAME_LENGTH) {
+            throw new BusinessException(400, "Username must not exceed 128 characters");
+        }
         if (request.getPassword() == null || request.getPassword().isBlank()) {
             throw new BusinessException(400, "Password is required");
         }
     }
 
     private void validateUsername(String username) {
-        if (username == null || username.isBlank() || username.trim().length() > 128) {
+        if (username == null || username.isBlank() || username.trim().length() > MAX_USERNAME_LENGTH) {
             throw new BusinessException(400, "Username must contain 1 to 128 characters");
         }
     }

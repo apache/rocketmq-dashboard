@@ -150,6 +150,38 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginShouldRejectOversizedUsernameBeforeRateLimitTracking() {
+        LoginDTO request = new LoginDTO();
+        request.setUsername("u".repeat(129));
+        request.setPassword("secret");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Username must not exceed 128 characters")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void correctLoginShouldSucceedWhenUnrelatedFailureTrackingIsAtCapacity() {
+        Clock clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
+        LoginRateLimiter limitedRateLimiter = new LoginRateLimiter(clock, 1);
+        limitedRateLimiter.recordFailure("unknown");
+        authService = new AuthService(authProperties, settingsRepository, clock, null, null,
+                new PasswordHasher(), limitedRateLimiter);
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("operator");
+        user.setPassword("secret");
+        authProperties.setUsers(List.of(user));
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("secret");
+
+        LoginVO response = authService.login(request);
+
+        assertThat(response.getUser().getUsername()).isEqualTo("operator");
+    }
+
+    @Test
     void loginShouldRejectWithoutConfiguredUsers() {
         LoginDTO request = new LoginDTO();
         request.setUsername("admin");
