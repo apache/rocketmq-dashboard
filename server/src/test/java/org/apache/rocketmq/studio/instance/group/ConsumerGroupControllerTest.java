@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.group;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -62,6 +63,41 @@ class ConsumerGroupControllerTest {
 
     @MockBean
     private ConsumerDiagnosticsService consumerDiagnosticsService;
+
+    @Test
+    void listConsumerGroupsShouldPassQueryParams() throws Exception {
+        when(metadataService.listConsumerGroups("instance-a", "cluster-a", "orders"))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/groups")
+                        .param("instanceId", "instance-a")
+                        .param("clusterId", "cluster-a")
+                        .param("search", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+
+        verify(metadataService).listConsumerGroups("instance-a", "cluster-a", "orders");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPassSelectedInstanceFiltersAndPaging() throws Exception {
+        PageResult<ConsumerGroupVO> page = PageResult.of(List.of(), 3, 2, 20);
+        when(metadataService.listConsumerGroupsPage("instance-a", "cluster-a", "orders", 2, 20))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/groups/page")
+                        .param("instanceId", "instance-a")
+                        .param("clusterId", "cluster-a")
+                        .param("search", "orders")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(20));
+
+        verify(metadataService).listConsumerGroupsPage("instance-a", "cluster-a", "orders", 2, 20);
+    }
 
     @Test
     void createConsumerGroupShouldPassValidatedRequest() throws Exception {

@@ -39,6 +39,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MetadataService {
 
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final MetadataProvider metadataProvider;
     private final AdminClient adminClient;
     private final InstanceProviderRegistry providerRegistry;
@@ -179,6 +181,17 @@ public class MetadataService {
         return resolve(instanceId).listConsumerGroups(instanceId, normalizeFilter(search));
     }
 
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
+                                                              int page, int pageSize) {
+        validatePagination(page, pageSize);
+
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, clusterId, search);
+        int total = groups.size();
+        int from = Math.min((page - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
+        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+    }
+
 
     public ConsumerGroupVO getConsumerGroup(String name) {
         return getConsumerGroup(null, name);
@@ -253,6 +266,15 @@ public class MetadataService {
 
     private String normalizeFilter(String value) {
         return !StringUtils.hasText(value) ? null : value.trim();
+    }
+
+    private void validatePagination(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than zero");
+        }
+        if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(400, "pageSize must be between 1 and " + MAX_PAGE_SIZE);
+        }
     }
 
     private void requireTopic(TopicVO topic) {

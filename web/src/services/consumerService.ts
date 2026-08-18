@@ -2,9 +2,11 @@ import { isMockMode } from './dataMode';
 import * as metadataApi from '../api/metadata';
 import type {
   ConsumerGroup,
+  ConsumerGroupPageQuery,
   ConsumerGroupQuery,
   ConsumerGroupDetail,
   ConsumerStackTrace,
+  PageResult,
   QueueProgress,
   ResetConsumerOffsetRequest,
   SubscriptionEntry,
@@ -45,17 +47,39 @@ const normalizeConsumerGroup = <T extends ConsumerGroup>(group: T): T => ({
   instances: group.instances ?? [],
 });
 
+function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
+  let result = [...consumerGroupsState];
+  if (params?.clusterId) result = result.filter((group) => group.clusterId === params.clusterId);
+  if (params?.search) {
+    const kw = params.search.trim().toLowerCase();
+    if (kw) result = result.filter((group) => group.name.toLowerCase().includes(kw));
+  }
+  return result;
+}
+
 export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<ConsumerGroup[]> {
   if (isMockMode()) {
-    let result = [...consumerGroupsState];
-    if (params?.clusterId) result = result.filter((group) => group.clusterId === params.clusterId);
-    if (params?.search) {
-      const kw = params.search.trim().toLowerCase();
-      if (kw) result = result.filter((g) => g.name.toLowerCase().includes(kw));
-    }
-    return result.map(copyConsumerGroup);
+    return filterConsumerGroups(params).map(copyConsumerGroup);
   }
   return (await metadataApi.listConsumerGroups(params)).map(normalizeConsumerGroup);
+}
+
+export async function listConsumerGroupPage(
+  params: ConsumerGroupPageQuery = {},
+): Promise<PageResult<ConsumerGroup>> {
+  if (isMockMode()) {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 20;
+    const groups = filterConsumerGroups(params);
+    const from = Math.min((page - 1) * pageSize, groups.length);
+    return {
+      items: groups.slice(from, from + pageSize).map(copyConsumerGroup),
+      total: groups.length,
+      page,
+      size: pageSize,
+    };
+  }
+  return metadataApi.listConsumerGroupPage(params);
 }
 
 export async function getConsumerProgress(

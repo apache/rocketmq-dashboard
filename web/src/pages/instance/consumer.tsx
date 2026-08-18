@@ -77,7 +77,7 @@ import {
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
-  listConsumerGroups,
+  listConsumerGroupPage,
   resetConsumerOffset,
 } from '../../services/consumerService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
@@ -176,11 +176,14 @@ const ConsumerPageContent = ({
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
+  const [totalGroups, setTotalGroups] = useState(0);
   const [loading, setLoading] = useState(hasSelectedInstance);
   const [submitting, setSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [modeFilter, setModeFilter] = useState<string>('ALL');
   const [sortKey, setSortKey] = useState<string>('name_asc');
   const [modalOpen, setModalOpen] = useState(false);
@@ -225,9 +228,17 @@ const ConsumerPageContent = ({
     const requestId = ++groupRequestIdRef.current;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void listConsumerGroups({ instanceId: selectedInstanceId })
-        .then((nextGroups) => {
-          if (requestId === groupRequestIdRef.current) setGroups(nextGroups);
+      void listConsumerGroupPage({
+        instanceId: selectedInstanceId,
+        search: search.trim() || undefined,
+        page,
+        pageSize,
+      })
+        .then((result) => {
+          if (requestId === groupRequestIdRef.current) {
+            setGroups(result.items);
+            setTotalGroups(result.total);
+          }
         })
         .catch(() => {
           if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
@@ -239,7 +250,7 @@ const ConsumerPageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [t, selectedInstanceId]);
+  }, [t, selectedInstanceId, search, page, pageSize]);
 
   const loadSubscriptions = useCallback(
     async (groupName: string, force = false) => {
@@ -279,13 +290,7 @@ const ConsumerPageContent = ({
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
-    let data = groups.filter(
-      (g) => g.name.includes(search) || (g.subscribedTopics ?? []).some((t) => t.includes(search)),
-    );
-
-    if (selectedInstanceId) {
-      data = data.filter((g) => g.instanceId === selectedInstanceId);
-    }
+    let data = groups;
 
     if (modeFilter !== 'ALL') {
       data = data.filter((g) => g.subscriptionMode === modeFilter);
@@ -298,7 +303,7 @@ const ConsumerPageContent = ({
     }
 
     return data;
-  }, [groups, search, modeFilter, sortKey, selectedInstanceId]);
+  }, [groups, modeFilter, sortKey]);
 
   /* ─── Open detail modal ─── */
   const openModal = (group: ConsumerGroup) => {
@@ -802,7 +807,7 @@ const ConsumerPageContent = ({
       {/* ─── Header ─── */}
       <PageHeader
         title={t('group.title')}
-        subtitle={`管理消费者组订阅关系与消费进度，共 ${groups.length} 个 Group`}
+        subtitle={`管理消费者组订阅关系与消费进度，共 ${totalGroups} 个 Group`}
       />
 
       {/* ─── Filter Bar ─── */}
@@ -818,8 +823,14 @@ const ConsumerPageContent = ({
             placeholder="搜索 Group 名称或 Topic"
             allowClear
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onSearch={setSearch}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            onSearch={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
             style={{ width: 320 }}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
@@ -933,9 +944,16 @@ const ConsumerPageContent = ({
             onChange: (keys) => setSelectedRowKeys(keys),
           }}
           pagination={{
-            pageSize: 20,
+            current: page,
+            pageSize,
+            total: totalGroups,
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 个 Group`,
+            pageSizeOptions: [10, 20, 50, 100],
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
           }}
           size="small"
           expandable={{

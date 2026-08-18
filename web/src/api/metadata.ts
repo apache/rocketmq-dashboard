@@ -54,6 +54,13 @@ export interface TopicConsumerPage {
   pageSize: number;
 }
 
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 // ─── Consumer Group (matches mock/consumers.ts) ─────────────────
 export interface ConsumerGroup {
   name: string;
@@ -124,6 +131,11 @@ export interface ConsumerGroupQuery {
   instanceId?: string;
   clusterId?: string;
   search?: string;
+}
+
+export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
+  page?: number;
+  pageSize?: number;
 }
 
 export interface ResetConsumerOffsetRequest {
@@ -216,6 +228,11 @@ export async function sendTopicMessage(data: SendTopicMessageRequest) {
 // ─── Consumer Group API ─────────────────────────────────────────
 export async function listConsumerGroups(params?: ConsumerGroupQuery) {
   const res = await client.get<{ data: ConsumerGroup[] }>('/groups', { params });
+  return res.data.data;
+}
+
+export async function listConsumerGroupPage(params?: ConsumerGroupPageQuery) {
+  const res = await client.get<{ data: PageResult<ConsumerGroup> }>('/groups/page', { params });
   return res.data.data;
 }
 
