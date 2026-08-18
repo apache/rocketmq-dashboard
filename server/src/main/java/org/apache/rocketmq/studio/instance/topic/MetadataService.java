@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.util.StringUtils;
@@ -73,6 +74,23 @@ public class MetadataService {
                     normalizeFilter(clusterId), normalizeFilter(type), normalizeFilter(search));
         }
         return resolve(instanceId).listTopics(instanceId, normalizeFilter(type), normalizeFilter(search));
+    }
+
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
+            String search, int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than zero");
+        }
+        if (pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "pageSize must be between 1 and 100");
+        }
+        instanceId = normalizeInstanceId(instanceId);
+        if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
+            return metadataProvider.listTopicsPage(normalizeFilter(clusterId),
+                    normalizeFilter(type), normalizeFilter(search), page, pageSize);
+        }
+        return resolve(instanceId).listTopicsPage(instanceId, normalizeFilter(type),
+                normalizeFilter(search), page, pageSize);
     }
 
 

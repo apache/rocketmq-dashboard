@@ -14,21 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.provider;
 
-package org.apache.rocketmq.studio.common.domain.enums;
-
-public enum InstanceType {
-    /** Legacy generic Proxy value retained for persisted and cloud-managed instances. */
-    PROXY,
-    PROXY_LOCAL,
-    PROXY_CLUSTER,
-    DIRECT;
-
-    public boolean isProxy() {
-        return this != DIRECT;
-    }
-
-    public InstanceType normalizeApacheType() {
-        return this == PROXY ? PROXY_CLUSTER : this;
-    }
+/**
+ * Stable, user-facing capabilities implemented by an instance provider.
+ */
+public enum InstanceCapability {
+    TOPIC_MANAGEMENT,
+    CONSUMER_GROUP_MANAGEMENT,
+    MESSAGE_QUERY,
+    MESSAGE_TRACE,
+    ACL_MANAGEMENT,
+    DLQ_MANAGEMENT
 }

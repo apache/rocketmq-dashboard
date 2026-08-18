@@ -65,7 +65,9 @@ const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
 
 /* ─── Helpers ─── */
 const typeLabel: Record<string, { text: string; color: string }> = {
-  PROXY: { text: 'Proxy 模式', color: 'blue' },
+  PROXY: { text: 'Proxy 模式（部署形态未标明）', color: 'blue' },
+  PROXY_LOCAL: { text: 'Proxy Local 模式', color: 'cyan' },
+  PROXY_CLUSTER: { text: 'Proxy Cluster 模式', color: 'blue' },
   DIRECT: { text: 'Direct 模式', color: 'orange' },
 };
 
@@ -109,7 +111,7 @@ const InstancePage = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [vendor, setVendor] = useState<InstanceVendor>(DEFAULT_VENDOR);
   const [addForm] = Form.useForm();
-  const addInstanceType = Form.useWatch<'PROXY' | 'DIRECT' | undefined>('type', addForm);
+  const addInstanceType = Form.useWatch<Instance['type'] | undefined>('type', addForm);
   const addCredentialId = Form.useWatch<number | undefined>('credentialId', addForm);
   const addRegionId = Form.useWatch<string | undefined>('regionId', addForm);
   const [credentials, setCredentials] = useState<CloudCredential[]>([]);
@@ -121,7 +123,7 @@ const InstancePage = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
-  const editInstanceType = Form.useWatch<'PROXY' | 'DIRECT' | undefined>('type', editForm);
+  const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
   const [submitting, setSubmitting] = useState(false);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
@@ -567,7 +569,9 @@ const InstancePage = () => {
             style={{ width: 140 }}
             options={[
               { value: 'ALL', label: '全部架构' },
-              { value: 'PROXY', label: 'Proxy 模式' },
+              { value: 'PROXY', label: '全部 Proxy 模式' },
+              { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
+              { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
               { value: 'DIRECT', label: 'Direct 模式' },
             ]}
           />
@@ -740,7 +744,8 @@ const InstancePage = () => {
               <Select
                 placeholder="选择接入方式"
                 options={[
-                  { value: 'PROXY', label: 'Proxy 模式' },
+                  { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
+                  { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
                   { value: 'DIRECT', label: 'Direct 模式' },
                 ]}
               />
@@ -759,9 +764,11 @@ const InstancePage = () => {
               extra={
                 addInstanceType === 'DIRECT'
                   ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
-                  : addInstanceType === 'PROXY'
-                    ? 'Proxy 模式请填写 Proxy SLB 内网地址（如 proxy.mq.svc:8080）'
-                    : '请先选择接入方式'
+                  : addInstanceType === 'PROXY_LOCAL'
+                    ? 'Proxy Local 模式请填写与 Broker 同进程部署的 Proxy 接入地址（如 broker-proxy.mq.svc:8080）'
+                    : addInstanceType === 'PROXY_CLUSTER'
+                      ? 'Proxy Cluster 模式请填写独立 Proxy 集群的 SLB 内网地址（如 proxy.mq.svc:8080）'
+                      : '请先选择接入方式'
               }
             >
               <Input
@@ -811,7 +818,9 @@ const InstancePage = () => {
           >
             <Select
               options={[
-                { value: 'PROXY', label: 'Proxy 模式' },
+                { value: 'PROXY', label: 'Proxy 模式（部署形态未标明）' },
+                { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
+                { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
                 { value: 'DIRECT', label: 'Direct 模式' },
               ]}
             />

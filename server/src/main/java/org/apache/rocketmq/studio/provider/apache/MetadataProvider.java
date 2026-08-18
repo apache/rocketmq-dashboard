@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
@@ -29,6 +30,22 @@ import java.util.List;
 
 public interface MetadataProvider {
     List<TopicVO> listTopics(String clusterId, String type, String search);
+
+    default PageResult<TopicVO> listTopicsPage(String clusterId, String type, String search,
+            int page, int pageSize) {
+        List<TopicVO> topics = listTopics(clusterId, type, search);
+        int total = topics.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(topics.subList(from, to), total, page, pageSize);
+    }
+
+    default PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
+            String search, int page, int pageSize) {
+        return listTopicsPage(clusterId, type, search, page, pageSize);
+    }
+
     List<ConsumerGroupVO> listConsumerGroups(String clusterId, String search);
 
     default List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {

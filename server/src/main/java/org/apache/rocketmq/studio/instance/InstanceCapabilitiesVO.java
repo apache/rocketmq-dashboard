@@ -14,21 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.instance;
 
-package org.apache.rocketmq.studio.common.domain.enums;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 
-public enum InstanceType {
-    /** Legacy generic Proxy value retained for persisted and cloud-managed instances. */
-    PROXY,
-    PROXY_LOCAL,
-    PROXY_CLUSTER,
-    DIRECT;
+import java.util.List;
 
-    public boolean isProxy() {
-        return this != DIRECT;
-    }
-
-    public InstanceType normalizeApacheType() {
-        return this == PROXY ? PROXY_CLUSTER : this;
-    }
+/**
+ * Capability contract for a single instance. {@code instanceId} is the canonical,
+ * globally unique instance identifier (the instance name), never the numeric primary key.
+ */
+public record InstanceCapabilitiesVO(
+        String instanceId,
+        InstanceVendor vendor,
+        InstanceType accessType,
+        List<InstanceCapability> capabilities) {
 }

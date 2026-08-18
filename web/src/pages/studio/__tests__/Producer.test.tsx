@@ -113,6 +113,39 @@ describe('ProducerPage', () => {
     });
   });
 
+  it('uses an Apache instance rather than a cloud instance for producer diagnostics', async () => {
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'cloud-instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: 'cloud:9876',
+        vendor: 'ALIYUN',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
+      },
+      {
+        id: 2,
+        name: 'apache-instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: 'apache:9876',
+        vendor: 'APACHE',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
+      },
+    ]);
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith('apache-instance'));
+    expect(screen.queryByText('cloud-instance')).not.toBeInTheDocument();
+  });
+
   it('renders topic options loaded from the API', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);

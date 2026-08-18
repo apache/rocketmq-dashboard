@@ -40,7 +40,7 @@ import {
   type ProducerConnectionWarning,
   type ProducerReadiness,
 } from '../../api/producer';
-import type { Instance } from '../../api/instance';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
@@ -92,8 +92,13 @@ const ProducerPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId((current) => current ?? nextInstances[0]?.name);
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        setInstances(apacheInstances);
+        setSelectedInstanceId((current) =>
+          apacheInstances.some((instance) => instance.name === current)
+            ? current
+            : apacheInstances[0]?.name,
+        );
       })
       .catch(() => {
         if (!cancelled) {

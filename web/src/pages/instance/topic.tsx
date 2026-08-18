@@ -66,10 +66,11 @@ import {
   deleteTopic,
   getTopicConsumerPage,
   getTopicRoutes,
-  listTopics,
+  listTopicsPage,
   sendTopicMessage,
 } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import type { Instance } from '../../api/instance';
 import {
   parseCsvTable,
   validateTopicCsvImport,
@@ -78,6 +79,24 @@ import {
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
+
+const INSTANCE_ACCESS_LABEL: Record<Instance['type'], string> = {
+  PROXY: 'Proxy 模式（部署形态未标明）',
+  PROXY_LOCAL: 'Proxy Local 模式',
+  PROXY_CLUSTER: 'Proxy Cluster 模式',
+  DIRECT: 'Direct 模式',
+};
+
+const INSTANCE_ACCESS_DESCRIPTION: Record<Instance['type'], string> = {
+  PROXY:
+    '接入点为 Proxy 地址，但该存量实例未标明 Local/Cluster 部署形态。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  PROXY_LOCAL:
+    '接入点为与 Broker 同进程部署的 Proxy 地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  PROXY_CLUSTER:
+    '接入点为独立 Proxy 集群的 SLB 内网地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  DIRECT:
+    '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+};
 
 // ─── Cluster name lookup ───────────────────────────────────────────
 const CLUSTER_NAME_MAP: Record<string, { name: string; type: string }> = {
@@ -274,6 +293,7 @@ const TopicPage = () => {
 
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [totalTopics, setTotalTopics] = useState(0);
   const [loading, setLoading] = useState(false);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
   const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
@@ -319,6 +339,7 @@ const TopicPage = () => {
       topicRequestIdRef.current += 1;
       const resetTimer = window.setTimeout(() => {
         setTopics([]);
+        setTotalTopics(0);
         setSelectedRowKeys([]);
         setLoading(false);
       }, 0);
@@ -329,9 +350,18 @@ const TopicPage = () => {
     const requestId = ++topicRequestIdRef.current;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void listTopics({ instanceId: selectedInstanceId })
-        .then((nextTopics) => {
-          if (requestId === topicRequestIdRef.current) setTopics(nextTopics);
+      void listTopicsPage({
+        instanceId: selectedInstanceId,
+        type: typeFilter || undefined,
+        search: searchText.trim() || undefined,
+        page: tablePage,
+        pageSize: tablePageSize,
+      })
+        .then((result) => {
+          if (requestId === topicRequestIdRef.current) {
+            setTopics(result.items);
+            setTotalTopics(result.total);
+          }
         })
         .catch(() => {
           if (requestId === topicRequestIdRef.current)
@@ -345,7 +375,7 @@ const TopicPage = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId]);
+  }, [selectedInstanceId, typeFilter, searchText, tablePage, tablePageSize]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -361,7 +391,7 @@ const TopicPage = () => {
     [topics, selectedInstanceId, searchText, typeFilter],
   );
 
-  const maxTablePage = Math.max(1, Math.ceil(filteredTopics.length / tablePageSize));
+  const maxTablePage = Math.max(1, Math.ceil(totalTopics / tablePageSize));
   const currentTablePage = Math.min(tablePage, maxTablePage);
 
   const resetTablePage = () => {
@@ -945,7 +975,7 @@ const TopicPage = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <PageHeader title={t('topic.title')} subtitle={`共 ${filteredTopics.length} 个 Topic`} />
+      <PageHeader title={t('topic.title')} subtitle={`共 ${totalTopics} 个 Topic`} />
 
       {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (
@@ -957,7 +987,7 @@ const TopicPage = () => {
             </span>
             <span>
               <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入模式</span>
-              <span>{selectedInstance.type === 'DIRECT' ? 'Direct 模式' : 'Proxy 模式'}</span>
+              <span>{INSTANCE_ACCESS_LABEL[selectedInstance.type]}</span>
             </span>
             {selectedInstance.vendor === 'ALIYUN' && (
               <span>
@@ -979,9 +1009,7 @@ const TopicPage = () => {
             </span>
           </Flex>
           <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.6, color: '#8c8c8c' }}>
-            {selectedInstance.type === 'DIRECT'
-              ? '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'
-              : '接入点为 Proxy SLB 内网地址，gRPC/Remoting 客户端直接连接该地址收发消息。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'}
+            {INSTANCE_ACCESS_DESCRIPTION[selectedInstance.type]}
           </div>
         </InfoBanner>
       )}
@@ -1149,6 +1177,7 @@ const TopicPage = () => {
             pagination={{
               current: currentTablePage,
               pageSize: tablePageSize,
+              total: totalTopics,
               showSizeChanger: true,
               showTotal: (t) => `共 ${t} 条`,
               onChange: (page, pageSize) => {

@@ -51,10 +51,19 @@ import {
   type NavigationSearchEntry,
 } from './navigationSearch';
 import { useDataModeStore } from '../stores/dataModeStore';
+import { getInstanceCapabilities } from '../services/instanceService';
+import type { InstanceCapability } from '../api/instance';
 
 const { Sider, Content } = Layout;
 
 const iconSize = 18;
+
+function hasInstanceCapability(
+  capabilities: Set<InstanceCapability> | null,
+  capability: InstanceCapability,
+) {
+  return capabilities === null || capabilities.has(capability);
+}
 
 const MainLayout = () => {
   const navigate = useNavigate();
@@ -69,6 +78,10 @@ const MainLayout = () => {
   const admin = useAuthStore((state) => state.admin);
   const useMock = useDataModeStore((state) => state.useMock);
   const toggleDataMode = useDataModeStore((state) => state.toggle);
+  const [capabilityState, setCapabilityState] = useState<{
+    instanceId: string;
+    capabilities: Set<InstanceCapability>;
+  } | null>(null);
 
   // Pages fetch on mount, so reload to re-request everything from the new data source.
   const handleDataModeToggle = () => {
@@ -112,6 +125,40 @@ const MainLayout = () => {
     () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/),
     [location.pathname],
   );
+  const selectedInstanceId = useMemo(() => {
+    const match = location.pathname.match(/^\/instance\/([^/]+)\//);
+    if (!match) return null;
+    try {
+      const value = decodeURIComponent(match[1]);
+      return value || null;
+    } catch {
+      return null;
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!selectedInstanceId) return;
+    let active = true;
+    void getInstanceCapabilities(selectedInstanceId)
+      .then((result) => {
+        if (active) {
+          setCapabilityState({
+            instanceId: selectedInstanceId,
+            capabilities: new Set(result.capabilities),
+          });
+        }
+      })
+      .catch(() => {
+        // Preserve existing navigation when capability discovery is unavailable.
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedInstanceId]);
+
+  const instanceCapabilities =
+    capabilityState?.instanceId === selectedInstanceId ? capabilityState.capabilities : null;
+
   const selectedMenuKey = instanceScopedMatch
     ? `/instance/${instanceScopedMatch[1]}`
     : location.pathname;
@@ -125,15 +172,21 @@ const MainLayout = () => {
         label: t('nav.instance'),
         children: [
           { key: '/instance', icon: <Database size={16} />, label: t('nav.instanceList') },
-          { key: '/instance/topic', icon: <ListDashes size={16} />, label: t('nav.topic') },
-          { key: '/instance/consumer', icon: <ChatCircleText size={16} />, label: t('nav.group') },
-          { key: '/instance/acl', icon: <Key size={16} />, label: t('nav.acl') },
-          {
-            key: '/instance/message',
-            icon: <MagnifyingGlass size={16} />,
-            label: t('nav.message'),
-          },
-          { key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') },
+          ...(hasInstanceCapability(instanceCapabilities, 'TOPIC_MANAGEMENT')
+            ? [{ key: '/instance/topic', icon: <ListDashes size={16} />, label: t('nav.topic') }]
+            : []),
+          ...(hasInstanceCapability(instanceCapabilities, 'CONSUMER_GROUP_MANAGEMENT')
+            ? [{ key: '/instance/consumer', icon: <ChatCircleText size={16} />, label: t('nav.group') }]
+            : []),
+          ...(hasInstanceCapability(instanceCapabilities, 'ACL_MANAGEMENT')
+            ? [{ key: '/instance/acl', icon: <Key size={16} />, label: t('nav.acl') }]
+            : []),
+          ...(hasInstanceCapability(instanceCapabilities, 'MESSAGE_QUERY')
+            ? [{ key: '/instance/message', icon: <MagnifyingGlass size={16} />, label: t('nav.message') }]
+            : []),
+          ...(hasInstanceCapability(instanceCapabilities, 'DLQ_MANAGEMENT')
+            ? [{ key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') }]
+            : []),
           { key: '/instance/alerts', icon: <Warning size={16} />, label: t('nav.alertRuleAssets') },
         ],
       },
@@ -166,7 +219,7 @@ const MainLayout = () => {
         label: t('nav.settings'),
       },
     ],
-    [t],
+    [t, instanceCapabilities],
   );
 
   const breadcrumbMap: Record<string, string> = useMemo(
