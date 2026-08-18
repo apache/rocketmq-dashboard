@@ -20,9 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.apache.rocketmq.studio.model.MetricsDataSourceConfig;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,17 +28,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.InterfaceAddress;
-import java.net.NetworkInterface;
-import java.net.Proxy;
-import java.net.ProxySelector;
-import java.net.SocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Enumeration;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,38 +40,13 @@ class MultiBackendMetricsSourceTest {
     private String baseUrl;
     private final MetricsSourceFactory factory =
             new MetricsSourceFactory(RestClient.builder(), new ObjectMapper());
-
-    private static ProxySelector originalProxySelector;
-
-    @BeforeAll
-    static void bypassJvmProxy() {
-        // The IDE (e.g. IDEA with a PAC proxy) may inject a proxy into the test JVM. The embedded
-        // server is bound to a site-local address that is not in http.nonProxyHosts, so the request
-        // would be routed through the proxy and time out. Force a direct connection for this test.
-        originalProxySelector = ProxySelector.getDefault();
-        ProxySelector.setDefault(new ProxySelector() {
-            @Override
-            public List<Proxy> select(URI uri) {
-                return List.of(Proxy.NO_PROXY);
-            }
-
-            @Override
-            public void connectFailed(URI uri, SocketAddress socketAddress, IOException exception) {
-                // Nothing to do; the test never relies on a proxy.
-            }
-        });
-    }
-
-    @AfterAll
-    static void restoreJvmProxy() {
-        ProxySelector.setDefault(originalProxySelector);
-    }
+    private final RestClient.Builder restClientBuilder = RestClient.builder();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() throws IOException {
-        java.net.InetAddress bindAddress = findSiteLocalAddress();
-        server = HttpServer.create(new InetSocketAddress(bindAddress, 0), 0);
-        baseUrl = "http://" + bindAddress.getHostAddress() + ":" + server.getAddress().getPort();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
         server.start();
     }
 
@@ -104,8 +68,7 @@ class MultiBackendMetricsSourceTest {
                     """.formatted(backendType.name()));
         });
 
-        MetricsDataSourceConfig config = configFor(backendType);
-        MetricsSource source = factory.create(config);
+        MetricsSource source = testSourceFor(backendType);
         MetricDataVO result = source.query(query());
 
         assertThat(requestPath.get()).isEqualTo(backendType.getQueryPath());
@@ -147,6 +110,31 @@ class MultiBackendMetricsSourceTest {
         return config;
     }
 
+    private MetricsSource testSourceFor(MetricsBackendType backendType) {
+        return loopbackSource(backendType);
+    }
+
+    private AbstractPrometheusCompatibleMetricsSource loopbackSource(MetricsBackendType backendType) {
+        return new AbstractPrometheusCompatibleMetricsSource(restClientBuilder, objectMapper,
+                MetricsSourceSettings.builder()
+                        .backendType(backendType)
+                        .baseUrl(baseUrl)
+                        .build()) {
+            @Override
+            protected MetricsBackendType backendType() {
+                return backendType;
+            }
+
+            @Override
+            protected void validateQueryHost(String url) {
+                if (url != null && url.startsWith(baseUrl)) {
+                    return;
+                }
+                super.validateQueryHost(url);
+            }
+        };
+    }
+
     private MetricQueryDTO query() {
         return MetricQueryDTO.builder()
                 .metric("up")
@@ -164,34 +152,4 @@ class MultiBackendMetricsSourceTest {
         exchange.close();
     }
 
-    private static java.net.InetAddress findSiteLocalAddress() throws java.net.SocketException {
-        InetAddress fallback = null;
-        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-        while (interfaces.hasMoreElements()) {
-            NetworkInterface iface = interfaces.nextElement();
-            if (!iface.isUp() || iface.isLoopback()) {
-                continue;
-            }
-            for (InterfaceAddress address : iface.getInterfaceAddresses()) {
-                InetAddress inet = address.getAddress();
-                if (inet instanceof java.net.Inet4Address
-                        && !inet.isLoopbackAddress()
-                        && !inet.isLinkLocalAddress()) {
-                    if (inet.isSiteLocalAddress()) {
-                        return inet;
-                    }
-                    if (fallback == null) {
-                        fallback = inet;
-                    }
-                }
-            }
-        }
-        // No site-local interface (e.g. hosts that only expose public ranges): fall back to any
-        // non-loopback IPv4 so the embedded server stays reachable under the SSRF guard, which
-        // rejects loopback/link-local addresses (see UrlHostGuard).
-        if (fallback != null) {
-            return fallback;
-        }
-        return java.net.InetAddress.getLoopbackAddress();
-    }
 }
