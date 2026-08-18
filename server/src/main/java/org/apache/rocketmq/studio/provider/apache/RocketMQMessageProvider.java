@@ -83,6 +83,8 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final long VIEW_MESSAGE_TIMEOUT_MILLIS = 3000L;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
+    private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7 * ONE_DAY_MILLIS;
+    private static final int MAX_PULLS_PER_QUEUE = 1_000;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final Comparator<MessageRecordVO> TOPIC_QUERY_ORDER = Comparator
             .comparingLong(MessageRecordVO::getStoreTime)
@@ -121,6 +123,9 @@ public class RocketMQMessageProvider implements MessageProvider {
             queryType = "KEY";
             result = queryByKey(adminExt, topic, key, tag, begin, end);
         } else if (StringUtils.hasText(topic)) {
+            if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
+                throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
+            }
             queryType = "TOPIC";
             result = queryByTopic(endpoint, credentialHook, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         } else {
@@ -212,7 +217,12 @@ public class RocketMQMessageProvider implements MessageProvider {
                 long minOffset = consumer.searchOffset(queue, begin);
                 long maxOffset = consumer.searchOffset(queue, end);
                 int consecutiveIllegalOffsets = 0;
+                int pullAttempts = 0;
                 for (long offset = minOffset; offset <= maxOffset; ) {
+                    if (++pullAttempts > MAX_PULLS_PER_QUEUE) {
+                        throw new BusinessException(400,
+                                "Topic message query exceeded the per-queue pull budget; narrow the time range");
+                    }
                     PullResult pullResult = consumer.pull(queue, "*", offset, 32);
                     if (pullResult == null) {
                         log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
@@ -257,6 +267,8 @@ public class RocketMQMessageProvider implements MessageProvider {
                     }
                 }
             }
+        } catch (BusinessException exception) {
+            throw exception;
         } catch (Exception e) {
             log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
             throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());

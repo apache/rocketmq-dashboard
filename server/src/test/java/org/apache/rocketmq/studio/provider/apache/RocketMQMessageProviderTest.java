@@ -184,6 +184,18 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryMessagesShouldRejectTopicRangesLongerThanSevenDays() throws Exception {
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 0L, 8L * 24 * 60 * 60 * 1000))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Topic message query time range must not exceed 7 days")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), any(), any(), anyInt());
+    }
+
+    @Test
     void queryByKeySurfacesAdminFailure() throws Exception {
         when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
                 .thenThrow(new IllegalStateException("broker unavailable"));
