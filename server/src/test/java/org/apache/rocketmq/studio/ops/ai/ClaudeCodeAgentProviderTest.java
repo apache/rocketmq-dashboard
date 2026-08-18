@@ -18,14 +18,35 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class ClaudeCodeAgentProviderTest {
+
+    @Test
+    void boundedStreamShouldCountSkippedBytesAndCapAvailableBytes() throws Exception {
+        Process process = mock(Process.class);
+        AtomicLong outputBytes = new AtomicLong();
+        InputStream stream = new ClaudeCodeAgentProvider.BoundedProcessInputStream(
+                new ByteArrayInputStream(new byte[6]), process, outputBytes, 5);
+
+        assertThat(stream.available()).isEqualTo(5);
+        assertThat(stream.skip(5)).isEqualTo(5);
+        assertThat(outputBytes).hasValue(5);
+        assertThat(stream.available()).isZero();
+        assertThatThrownBy(() -> stream.skip(1)).isInstanceOf(IOException.class);
+        verify(process).destroyForcibly();
+    }
 
     @Test
     void streamShouldDrainLargeStderrOutputTest() {
@@ -49,6 +70,42 @@ class ClaudeCodeAgentProviderTest {
                 .isInstanceOf(LlmGatewayException.class)
                 .satisfies(exception -> assertThat(((LlmGatewayException) exception).getStatusCode())
                         .isEqualTo(504));
+    }
+
+    @Test
+    void streamShouldRejectOversizedStdoutTest() {
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
+                List.of("sh", "-c", "head -c 6291456 /dev/zero | tr '\\0' x"), 5);
+
+        assertOutputTooLarge(provider);
+    }
+
+    @Test
+    void streamShouldRejectOversizedStderrTest() {
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
+                List.of("sh", "-c", "head -c 6291456 /dev/zero >&2"), 5);
+
+        assertOutputTooLarge(provider);
+    }
+
+    @Test
+    void streamShouldApplyLimitAcrossStdoutAndStderrTest() {
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(List.of(
+                "sh", "-c", "head -c 3145728 /dev/zero | tr '\\0' x; "
+                        + "head -c 3145728 /dev/zero >&2"), 5);
+
+        assertOutputTooLarge(provider);
+    }
+
+    private void assertOutputTooLarge(TestClaudeCodeAgentProvider provider) {
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(502);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.output_too_large");
+                });
     }
 
     private static class TestClaudeCodeAgentProvider extends ClaudeCodeAgentProvider {

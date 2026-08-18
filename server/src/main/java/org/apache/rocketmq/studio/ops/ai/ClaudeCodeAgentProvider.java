@@ -36,6 +36,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -52,6 +53,7 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
     private static final String ANTHROPIC_APP_SUFFIX = "/apps/anthropic";
     private static final long STREAM_TIMEOUT_SECONDS = 300;
     private static final long OUTPUT_DRAIN_TIMEOUT_SECONDS = 10;
+    private static final long MAX_OUTPUT_BYTES = 5L * 1024 * 1024;
 
     private final LlmProperties llmProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -100,10 +102,12 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         try {
             Process process = builder.start();
             AtomicBoolean emitted = new AtomicBoolean(false);
+            AtomicLong outputBytes = new AtomicLong();
             StringBuilder resultText = new StringBuilder();
             CompletableFuture<Void> stdoutFuture = drainStdout(
-                    process.getInputStream(), tokenConsumer, emitted, resultText);
-            CompletableFuture<String> stderrFuture = readAsync(process.getErrorStream());
+                    bounded(process.getInputStream(), process, outputBytes), tokenConsumer, emitted, resultText);
+            CompletableFuture<String> stderrFuture = readAsync(
+                    bounded(process.getErrorStream(), process, outputBytes));
             long timeoutSeconds = streamTimeoutSeconds();
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
@@ -135,6 +139,10 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
 
     protected long streamTimeoutSeconds() {
         return STREAM_TIMEOUT_SECONDS;
+    }
+
+    private InputStream bounded(InputStream stream, Process process, AtomicLong outputBytes) {
+        return new BoundedProcessInputStream(stream, process, outputBytes, MAX_OUTPUT_BYTES);
     }
 
     private CompletableFuture<Void> drainStdout(InputStream stdout, Consumer<String> tokenConsumer,
@@ -171,10 +179,26 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         try {
             return future.get(OUTPUT_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (ExecutionException exception) {
+            if (hasCause(exception, OutputLimitException.class)) {
+                throw new LlmGatewayException(502, "llm.provider.output_too_large",
+                        binaryName() + " CLI output exceeded the maximum of " + MAX_OUTPUT_BYTES + " bytes",
+                        "Retry with a shorter prompt or reduce the provider response size.", exception);
+            }
             throw new IOException("Failed to drain Claude CLI output", exception.getCause());
         } catch (TimeoutException exception) {
             throw new IOException("Timed out while draining Claude CLI output", exception);
         }
+    }
+
+    private boolean hasCause(Throwable throwable, Class<? extends Throwable> causeType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (causeType.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     /** Parses one stream-json line: emits text deltas, records the final result. */
@@ -249,5 +273,72 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                     + ANTHROPIC_APP_SUFFIX;
         }
         return normalized;
+    }
+
+    static final class BoundedProcessInputStream extends InputStream {
+
+        private final InputStream delegate;
+        private final Process process;
+        private final AtomicLong outputBytes;
+        private final long maxBytes;
+
+        BoundedProcessInputStream(InputStream delegate, Process process,
+                                  AtomicLong outputBytes, long maxBytes) {
+            this.delegate = delegate;
+            this.process = process;
+            this.outputBytes = outputBytes;
+            this.maxBytes = maxBytes;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int value = delegate.read();
+            if (value != -1) {
+                record(1);
+            }
+            return value;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            int read = delegate.read(buffer, offset, length);
+            if (read > 0) {
+                record(read);
+            }
+            return read;
+        }
+
+        @Override
+        public long skip(long bytes) throws IOException {
+            long skipped = delegate.skip(bytes);
+            if (skipped > 0) {
+                record(skipped);
+            }
+            return skipped;
+        }
+
+        @Override
+        public int available() throws IOException {
+            long remaining = maxBytes - outputBytes.get();
+            if (remaining <= 0) {
+                return 0;
+            }
+            return (int) Math.min(delegate.available(), remaining);
+        }
+
+        @Override
+        public void close() throws IOException {
+            delegate.close();
+        }
+
+        private void record(long read) throws OutputLimitException {
+            if (outputBytes.addAndGet(read) > maxBytes) {
+                process.destroyForcibly();
+                throw new OutputLimitException();
+            }
+        }
+    }
+
+    private static final class OutputLimitException extends IOException {
     }
 }
