@@ -435,6 +435,46 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldReportMessagesProducedSinceTodayMorning() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("2.0", "5.0", "1000", "1250"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("2.0", "5.0", "400", "475"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalMessagesToday()).isEqualTo(325L);
+    }
+
+    @Test
+    void dashboardShouldNotReportNegativeCountWhenBrokerCounterMovesBackwards() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("2.0", "5.0", "1000", "50"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalMessagesToday()).isZero();
+    }
+
+    @Test
+    void dashboardShouldIgnoreMalformedTodayMessageCounters() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("2.0", "5.0", "invalid", "1250"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("2.0", "5.0", "400", "invalid"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalMessagesToday()).isZero();
+    }
+
+    @Test
     void dashboardShouldTolerateMissingTopicListAndClusterMembership() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         ClusterInfo info = new ClusterInfo();
@@ -531,11 +571,17 @@ class RocketMQDashboardProviderTest {
     }
 
     private KVTable runtimeStats(String putTps, String getTransferredTps) {
+        return runtimeStats(putTps, getTransferredTps, "42", "84");
+    }
+
+    private KVTable runtimeStats(String putTps, String getTransferredTps,
+                                 String todayMorning, String todayNow) {
         HashMap<String, String> table = new HashMap<>();
         table.put("brokerVersionDesc", "  V5_3_3  ");
         table.put("putTps", "1.0 " + putTps + " 3.0");
         table.put("getTransferredTps", "4.0 " + getTransferredTps + " 6.0");
-        table.put("msgPutTotalTodayMorning", "42");
+        table.put("msgPutTotalTodayMorning", todayMorning);
+        table.put("msgPutTotalTodayNow", todayNow);
 
         KVTable kvTable = new KVTable();
         kvTable.setTable(table);
