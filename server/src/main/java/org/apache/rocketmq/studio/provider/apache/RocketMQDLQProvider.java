@@ -27,6 +27,7 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -151,11 +152,12 @@ public class RocketMQDLQProvider implements DLQProvider {
         }
 
         String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
         DeadLetterScanResult scanResult;
         try {
-            scanResult = collectDeadLetters(endpoint, dlqTopic, begin, end, RESEND_HARD_CAP);
+            scanResult = collectDeadLetters(endpoint, credentialHook, dlqTopic, begin, end, RESEND_HARD_CAP);
         } catch (BusinessException e) {
             String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, "
                             + "matched=0, resent=0, failed=0, scanIncomplete=true, scanFailedQueues=all",
@@ -168,7 +170,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         int resent = 0;
         int failed = 0;
         if (!deadLetters.isEmpty()) {
-            DefaultMQProducer producer = newProducer(endpoint);
+            DefaultMQProducer producer = newProducer(endpoint, credentialHook);
             try {
                 producer.start();
                 for (MessageExt deadLetter : deadLetters) {
@@ -207,11 +209,12 @@ public class RocketMQDLQProvider implements DLQProvider {
     public List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              Integer maxCount) {
         String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
         int cap = maxCount == null || maxCount <= 0 ? RESEND_HARD_CAP : Math.min(maxCount, RESEND_HARD_CAP);
-        DeadLetterScanResult scanResult = collectDeadLetters(endpoint, dlqTopic, begin, end, cap);
+        DeadLetterScanResult scanResult = collectDeadLetters(endpoint, credentialHook, dlqTopic, begin, end, cap);
         return scanResult.messages().stream().map(this::toExportVO).toList();
     }
 
@@ -240,9 +243,9 @@ public class RocketMQDLQProvider implements DLQProvider {
         }
     }
 
-    private DeadLetterScanResult collectDeadLetters(String endpoint, String dlqTopic, long begin, long end,
-                                                     int cap) {
-        DefaultMQPullConsumer consumer = newPullConsumer(endpoint);
+    private DeadLetterScanResult collectDeadLetters(String endpoint, RPCHook credentialHook, String dlqTopic,
+                                                     long begin, long end, int cap) {
+        DefaultMQPullConsumer consumer = newPullConsumer(endpoint, credentialHook);
         List<MessageExt> result = new ArrayList<>();
         int failedQueueCount = 0;
         try {
@@ -393,15 +396,15 @@ public class RocketMQDLQProvider implements DLQProvider {
         return null;
     }
 
-    private DefaultMQPullConsumer newPullConsumer(String endpoint) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("studio-dlq-query-group");
+    private DefaultMQPullConsumer newPullConsumer(String endpoint, RPCHook credentialHook) {
+        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("studio-dlq-query-group", credentialHook);
         consumer.setInstanceName(ShortLivedClientName.next("studio-dlq-query"));
         consumer.setNamesrvAddr(endpoint);
         return consumer;
     }
 
-    private DefaultMQProducer newProducer(String endpoint) {
-        DefaultMQProducer producer = new DefaultMQProducer(nextResendProducerGroup());
+    private DefaultMQProducer newProducer(String endpoint, RPCHook credentialHook) {
+        DefaultMQProducer producer = new DefaultMQProducer(nextResendProducerGroup(), credentialHook);
         producer.setInstanceName(ShortLivedClientName.next("studio-dlq-resend"));
         producer.setRetryTimesWhenSendFailed(2);
         producer.setNamesrvAddr(endpoint);

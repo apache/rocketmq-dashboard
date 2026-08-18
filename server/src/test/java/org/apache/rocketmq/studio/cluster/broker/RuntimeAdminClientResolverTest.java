@@ -142,6 +142,42 @@ class RuntimeAdminClientResolverTest {
     }
 
     @Test
+    void resolvesCredentialHookForShortLivedRuntimeClients() {
+        InstanceVO instance = InstanceVO.builder()
+                .endpoint("namesrv-b:9876")
+                .adminCredentialRef("production-admin")
+                .build();
+        instance.setId(4L);
+        MqAdminProperties properties = new MqAdminProperties();
+        MqAdminProperties.Credential credential = new MqAdminProperties.Credential();
+        credential.setAccessKey("admin-ak");
+        credential.setSecretKey("admin-sk");
+        properties.getCredentials().put("production-admin", credential);
+        when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
+                properties);
+
+        org.apache.rocketmq.acl.common.AclClientRPCHook hook =
+                (org.apache.rocketmq.acl.common.AclClientRPCHook) resolver.resolveCredentialHook("instance-b");
+
+        assertThat(hook.getSessionCredentials().getAccessKey()).isEqualTo("admin-ak");
+        assertThat(hook.getSessionCredentials().getSecretKey()).isEqualTo("admin-sk");
+        verifyNoInteractions(adminFactory);
+    }
+
+    @Test
+    void returnsNoCredentialHookWhenTheSelectedInstanceHasNoCredentialReference() {
+        InstanceVO instance = InstanceVO.builder().endpoint("namesrv-b:9876").build();
+        instance.setId(5L);
+        when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
+                new MqAdminProperties());
+
+        assertThat(resolver.resolveCredentialHook("instance-b")).isNull();
+        verifyNoInteractions(adminFactory);
+    }
+
+    @Test
     void rejectsUnknownOrIncompleteCredentialReferencesBeforeNetworkCalls() {
         MqAdminProperties properties = new MqAdminProperties();
         MqAdminProperties.Credential credential = new MqAdminProperties.Credential();

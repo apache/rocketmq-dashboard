@@ -27,6 +27,7 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
@@ -46,6 +47,7 @@ import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
@@ -62,6 +64,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -194,8 +197,10 @@ class RocketMQDLQProviderTest {
     @Test
     void resendMessagesDoesNotPullWhenDlqQueueSetIsNull() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        List<List<?>> consumerConstructorArguments = new ArrayList<>();
         try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
                      mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         consumerConstructorArguments.add(context.arguments());
                          doNothing().when(consumer).start();
                          when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(null);
                          doNothing().when(consumer).shutdown();
@@ -205,6 +210,9 @@ class RocketMQDLQProviderTest {
             provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
             assertThat(mockedConsumers.constructed()).hasSize(1);
+            assertThat(consumerConstructorArguments).singleElement();
+            assertThat(consumerConstructorArguments.get(0)).hasSize(2);
+            assertThat(consumerConstructorArguments.get(0).get(1)).isNull();
             DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
             verify(consumer).setNamesrvAddr("namesrv-a:9876");
             verify(consumer).start();
@@ -219,6 +227,54 @@ class RocketMQDLQProviderTest {
                 contains("matched=0, resent=0, failed=0"),
                 eq("NO_MESSAGES"));
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
+    }
+
+    @Test
+    void resendMessagesUsesSelectedInstanceCredentialHookForScanAndResend() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("acl-dlq-message");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1});
+        deadLetter.setStoreTimestamp(150L);
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        RPCHook credentialHook = mock(RPCHook.class);
+        List<List<?>> consumerConstructorArguments = new ArrayList<>();
+        List<List<?>> producerConstructorArguments = new ArrayList<>();
+        when(runtimeAdminClientResolver.resolveCredentialHook("instance-a")).thenReturn(credentialHook);
+
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         consumerConstructorArguments.add(context.arguments());
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(queue, 100L)).thenReturn(0L);
+                         when(consumer.searchOffset(queue, 200L)).thenReturn(0L);
+                         when(consumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
+                         doNothing().when(consumer).shutdown();
+                     });
+             MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         producerConstructorArguments.add(context.arguments());
+                         doNothing().when(producer).start();
+                         when(producer.send(any(Message.class))).thenReturn(sendResult);
+                         doNothing().when(producer).shutdown();
+                     })) {
+            provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
+
+            assertThat(mockedConsumers.constructed()).singleElement();
+            assertThat(mockedProducers.constructed()).singleElement();
+        }
+
+        assertThat(consumerConstructorArguments).singleElement();
+        assertThat(consumerConstructorArguments.get(0).get(1)).isSameAs(credentialHook);
+        assertThat(producerConstructorArguments).singleElement();
+        assertThat(producerConstructorArguments.get(0).get(1)).isSameAs(credentialHook);
+        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
     }
 
     @Test

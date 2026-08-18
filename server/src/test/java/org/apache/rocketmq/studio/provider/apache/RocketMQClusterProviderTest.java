@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -23,21 +24,32 @@ import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RocketMQClusterProviderTest {
@@ -174,6 +186,66 @@ class RocketMQClusterProviderTest {
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr("10.0.0.1:9876");
         return new RocketMQClusterProvider(adminFactory, properties, mock(RuntimeAdminClientResolver.class));
+    }
+
+    @Test
+    void discoverClustersShouldUseSelectedInstanceAdminCredential() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        RocketMQClusterProvider provider = newAuthenticatedInstanceProvider(adminFactory, adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+
+        List<ClusterVO> clusters = provider.discoverClusters("instance-a");
+
+        assertThat(clusters).singleElement()
+                .extracting(ClusterVO::getName)
+                .isEqualTo("DefaultCluster");
+        verify(adminFactory).execute(eq("10.0.0.2:9876"), isA(AclClientRPCHook.class),
+                eq("cluster-admin"), any());
+        verify(adminFactory, never()).execute(eq("10.0.0.2:9876"), isNull(), any());
+    }
+
+    @Test
+    void refreshClusterDetailShouldUseSelectedInstanceAdminCredential() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        RocketMQClusterProvider provider = newAuthenticatedInstanceProvider(adminFactory, adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+
+        ClusterVO cluster = provider.refreshClusterDetail("DefaultCluster", "instance-a");
+
+        assertThat(cluster).isNotNull();
+        assertThat(cluster.getName()).isEqualTo("DefaultCluster");
+        verify(adminFactory).execute(eq("10.0.0.2:9876"), isA(AclClientRPCHook.class),
+                eq("cluster-admin"), any());
+        verify(adminFactory, never()).execute(eq("10.0.0.2:9876"), isNull(), any());
+    }
+
+    private RocketMQClusterProvider newAuthenticatedInstanceProvider(MqAdminExtFactory adminFactory,
+                                                                      DefaultMQAdminExt adminExt) {
+        InstanceRepository instanceRepository = mock(InstanceRepository.class);
+        InstanceVO instance = InstanceVO.builder()
+                .name("Authenticated instance")
+                .vendor(InstanceVendor.APACHE)
+                .type(InstanceType.DIRECT)
+                .endpoint("10.0.0.2:9876")
+                .adminCredentialRef("cluster-admin")
+                .build();
+        instance.setId(1L);
+        when(instanceRepository.findByIdentifier("instance-a")).thenReturn(Optional.of(instance));
+        MqAdminProperties adminProperties = new MqAdminProperties();
+        MqAdminProperties.Credential credential = new MqAdminProperties.Credential();
+        credential.setAccessKey("admin-ak");
+        credential.setSecretKey("admin-sk");
+        adminProperties.getCredentials().put("cluster-admin", credential);
+        RuntimeAdminClientResolver resolver =
+                new RuntimeAdminClientResolver(instanceRepository, adminFactory, adminProperties);
+        when(adminFactory.execute(eq("10.0.0.2:9876"), any(), eq("cluster-admin"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3)
+                        .apply(adminExt));
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        return new RocketMQClusterProvider(adminFactory, properties, resolver);
     }
 
     @Test

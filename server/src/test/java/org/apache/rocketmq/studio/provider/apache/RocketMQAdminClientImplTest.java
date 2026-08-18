@@ -21,6 +21,7 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -47,6 +48,7 @@ import org.mockito.MockedConstruction;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -61,6 +63,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
@@ -541,8 +544,10 @@ class RocketMQAdminClientImplTest {
     @Test
     void sendMessageShouldAllowBodyAtMaximumSize() throws Exception {
         when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
+        List<List<?>> constructorArguments = new ArrayList<>();
         try (MockedConstruction<DefaultMQProducer> mockedProducers =
                      mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         constructorArguments.add(context.arguments());
                          doNothing().when(producer).start();
                          SendResult sendResult = new SendResult();
                          sendResult.setSendStatus(SendStatus.SEND_OK);
@@ -562,14 +567,21 @@ class RocketMQAdminClientImplTest {
             ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
             verify(producer).send(messageCaptor.capture());
             assertThat(messageCaptor.getValue().getBody()).hasSize(4 * 1024 * 1024);
+            assertThat(constructorArguments).singleElement();
+            assertThat(constructorArguments.get(0)).hasSize(2);
+            assertThat(constructorArguments.get(0).get(1)).isNull();
         }
     }
 
     @Test
-    void sendMessageUsesSelectedInstanceEndpoint() throws Exception {
+    void sendMessageUsesSelectedInstanceEndpointAndCredentialHook() throws Exception {
+        RPCHook credentialHook = mock(RPCHook.class);
+        List<List<?>> constructorArguments = new ArrayList<>();
         when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
+        when(runtimeAdminClientResolver.resolveCredentialHook("instance-a")).thenReturn(credentialHook);
         try (MockedConstruction<DefaultMQProducer> mockedProducers =
                      mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         constructorArguments.add(context.arguments());
                          doNothing().when(producer).start();
                          SendResult sendResult = new SendResult();
                          sendResult.setSendStatus(SendStatus.SEND_OK);
@@ -587,7 +599,11 @@ class RocketMQAdminClientImplTest {
 
             DefaultMQProducer producer = mockedProducers.constructed().getFirst();
             verify(producer).setNamesrvAddr("10.0.0.2:9876");
+            assertThat(constructorArguments).singleElement();
+            assertThat(constructorArguments.get(0)).hasSize(2);
+            assertThat(constructorArguments.get(0).get(1)).isSameAs(credentialHook);
         }
+        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
     }
 
     @Test

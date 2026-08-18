@@ -23,6 +23,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
@@ -340,8 +341,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
         }
 
         String namesrvAddr = namesrvAddr(request.getInstanceId());
+        RPCHook credentialHook = credentialHook(request.getInstanceId());
 
-        DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup());
+        DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup(), credentialHook);
         producer.setNamesrvAddr(namesrvAddr);
         producer.setSendMsgTimeout(5000);
 
@@ -569,6 +571,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
                 : namesrvAddr();
+    }
+
+    private RPCHook credentialHook(String instanceId) {
+        return StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.resolveCredentialHook(instanceId)
+                : null;
     }
 
     private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
