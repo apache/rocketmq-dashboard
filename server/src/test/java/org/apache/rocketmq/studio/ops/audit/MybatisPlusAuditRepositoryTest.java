@@ -82,7 +82,7 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(record.getClusterId()).isEqualTo("prod-cn");
         assertThat(record.getErrorMessage()).isEqualTo("denied");
         assertThat(queryCaptor.getValue().getSqlSegment())
-                .contains("operation", "resource_type", "cluster_id", "result", "operated_at", "id");
+                .contains("operation", "resource_type", "cluster_id", "result", "gmt_create", "id");
     }
 
     @Test
