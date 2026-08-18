@@ -4,6 +4,7 @@ import type {
   AclRule,
   AclRuleQuery,
   AclUser,
+  AclUserPage,
   AclClusterConfig,
   PlainAccessConfig,
 } from '../api/acl';
@@ -62,6 +63,21 @@ export async function listAclUsers(params?: {
     return result.map(copyAclUser);
   }
   return aclApi.listAclUsers(params);
+}
+
+export async function pageAclUsers(params: {
+  keyword?: string;
+  instanceId?: string;
+  page: number;
+  pageSize: number;
+}): Promise<AclUserPage> {
+  if (isMockMode()) {
+    const users = await listAclUsers(params);
+    const from = (params.page - 1) * params.pageSize;
+    return { items: users.slice(from, from + params.pageSize), total: users.length,
+      page: params.page, size: params.pageSize };
+  }
+  return aclApi.pageAclUsers(params);
 }
 
 export async function getAclUserCredentials(id: number, instanceId?: string): Promise<AclUser> {

@@ -21,9 +21,16 @@ export interface AclRuleQuery {
 }
 
 // Users list query
-interface AclUserQuery {
+export interface AclUserQuery {
   keyword?: string;
   instanceId?: string;
+}
+
+export interface AclUserPage {
+  items: AclUser[];
+  total: number;
+  page: number;
+  size: number;
 }
 
 export interface AclUser {
@@ -59,6 +66,12 @@ export async function deleteAclRule(id: number, instanceId?: string) {
 
 export async function listAclUsers(params?: AclUserQuery) {
   const res = await client.get<{ data: AclUser[] }>('/acl/users', { params });
+  return res.data.data;
+}
+
+export async function getAclUserCredentials(id: number, instanceId?: string) {
+export async function pageAclUsers(params: AclUserQuery & { page: number; pageSize: number }) {
+  const res = await client.get<{ data: AclUserPage }>('/acl/users/page', { params });
   return res.data.data;
 }
 
