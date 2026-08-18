@@ -55,6 +55,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -250,7 +251,7 @@ class RocketMQMessageProviderTest {
                      mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
                          doNothing().when(consumer).start();
                          when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
-                         when(consumer.searchOffset(eq(queue), anyLong())).thenReturn(10L);
+                         mockQueueWindow(consumer, queue, 100L, 200L, 10L, 10L, 11L, 11L);
                          when(consumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
                          doNothing().when(consumer).shutdown();
                      })) {
@@ -275,7 +276,8 @@ class RocketMQMessageProviderTest {
                          doNothing().when(consumer).start();
                          when(consumer.fetchSubscribeMessageQueues("TopicA"))
                                  .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
-                         when(consumer.searchOffset(any(MessageQueue.class), anyLong())).thenReturn(10L);
+                         mockQueueWindow(consumer, olderQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+                         mockQueueWindow(consumer, newerQueue, 100L, 300L, 10L, 10L, 11L, 11L);
                          when(consumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
                          when(consumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
                          doNothing().when(consumer).shutdown();
@@ -303,8 +305,7 @@ class RocketMQMessageProviderTest {
                      mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
                          doNothing().when(consumer).start();
                          when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
-                         when(consumer.searchOffset(queue, 100L)).thenReturn(10L);
-                         when(consumer.searchOffset(queue, 200L)).thenReturn(50L);
+                         mockQueueWindow(consumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
                          when(consumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(illegalOffset);
                          when(consumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterCorrection);
                          when(consumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
@@ -338,7 +339,8 @@ class RocketMQMessageProviderTest {
                          doNothing().when(consumer).start();
                          when(consumer.fetchSubscribeMessageQueues("TopicA"))
                                  .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
-                         when(consumer.searchOffset(any(MessageQueue.class), anyLong())).thenReturn(10L);
+                         mockQueueWindow(consumer, olderQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+                         mockQueueWindow(consumer, newerQueue, 100L, 300L, 10L, 10L, 11L, 11L);
                          when(consumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
                          when(consumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
                          doNothing().when(consumer).shutdown();
@@ -366,7 +368,8 @@ class RocketMQMessageProviderTest {
                          doNothing().when(consumer).start();
                          when(consumer.fetchSubscribeMessageQueues("TopicA"))
                                  .thenReturn(new LinkedHashSet<>(List.of(firstQueue, secondQueue)));
-                         when(consumer.searchOffset(any(MessageQueue.class), anyLong())).thenReturn(10L);
+                         mockQueueWindow(consumer, firstQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+                         mockQueueWindow(consumer, secondQueue, 100L, 300L, 10L, 10L, 11L, 11L);
                          when(consumer.pull(firstQueue, "*", 10L, 32)).thenReturn(firstPullResult);
                          when(consumer.pull(secondQueue, "*", 10L, 32)).thenReturn(secondPullResult);
                          doNothing().when(consumer).shutdown();
@@ -599,6 +602,65 @@ class RocketMQMessageProviderTest {
                 storeTimestamp + 24 * 60 * 60 * 1000L);
     }
 
+    @Test
+    void queryByTopicReturnsLatestMessagesWhenWindowExceedsLegacyPullLimit() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        long begin = 10_000L;
+        long end = 49_999L;
+        long maxOffsetExclusive = 40_000L;
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+                         mockQueueWindow(consumer, queue, begin, end, 0L, 0L, maxOffsetExclusive, maxOffsetExclusive);
+                         when(consumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
+                                 .thenAnswer(invocation -> topicPullBatch(invocation.getArgument(2), maxOffsetExclusive, begin));
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<MessageRecordVO> messages = provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, begin, end);
+
+            assertThat(messages).hasSize(200);
+            assertThat(messages.get(0).getMsgId()).isEqualTo("msg-39999");
+            assertThat(messages.get(199).getMsgId()).isEqualTo("msg-39800");
+            DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
+            verify(consumer).pull(queue, "*", 8_000L, 32);
+            verify(consumer, never()).pull(queue, "*", 0L, 32);
+        }
+        verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
+                begin, end, 200);
+    }
+
+    @Test
+    void queryByTopicKeepsPullOffsetsInsideTailBudgetWhenWindowIsLargerThanCap() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        long begin = 20_000L;
+        long end = 69_999L;
+        long maxOffsetExclusive = 50_000L;
+        List<Long> pulledOffsets = new ArrayList<>();
+        try (MockedConstruction<DefaultMQPullConsumer> ignored =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+                         mockQueueWindow(consumer, queue, begin, end, 0L, 0L, maxOffsetExclusive, maxOffsetExclusive);
+                         when(consumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
+                                 .thenAnswer(invocation -> {
+                                     long offset = invocation.getArgument(2);
+                                     pulledOffsets.add(offset);
+                                     return topicPullBatch(offset, maxOffsetExclusive, begin);
+                                 });
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<MessageRecordVO> messages = provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, begin, end);
+
+            assertThat(messages).hasSize(200);
+            assertThat(pulledOffsets).isNotEmpty();
+            assertThat(pulledOffsets.get(0)).isEqualTo(18_000L);
+            assertThat(pulledOffsets).allMatch(offset -> offset >= 18_000L);
+        }
+    }
+
     private MQClientAPIImpl mockOffsetLookupClient() {
         DefaultMQAdminExtImpl adminExtImpl = mock(DefaultMQAdminExtImpl.class);
         MQClientInstance clientInstance = mock(MQClientInstance.class);
@@ -607,6 +669,15 @@ class RocketMQMessageProviderTest {
         when(adminExtImpl.getMqClientInstance()).thenReturn(clientInstance);
         when(clientInstance.getMQClientAPIImpl()).thenReturn(clientApi);
         return clientApi;
+    }
+
+    private static void mockQueueWindow(DefaultMQPullConsumer consumer, MessageQueue queue, long begin, long end,
+                                        long minOffset, long startOffset, long endOffsetExclusive,
+                                        long maxOffsetExclusive) throws Exception {
+        when(consumer.minOffset(queue)).thenReturn(minOffset);
+        when(consumer.maxOffset(queue)).thenReturn(maxOffsetExclusive);
+        when(consumer.searchOffset(queue, begin)).thenReturn(startOffset);
+        when(consumer.searchOffset(queue, end + 1)).thenReturn(endOffsetExclusive);
     }
 
     private static String traceContext(String... fields) {
@@ -625,5 +696,13 @@ class RocketMQMessageProviderTest {
         message.setStoreTimestamp(storeTimestamp);
         message.setBody(("body-" + msgId).getBytes(StandardCharsets.UTF_8));
         return message;
+    }
+
+    private static PullResult topicPullBatch(long offset, long endOffsetExclusive, long storeTimeBase) {
+        long batchEnd = Math.min(offset + 32, endOffsetExclusive);
+        List<MessageExt> messages = LongStream.range(offset, batchEnd)
+                .mapToObj(index -> topicMessage("msg-" + index, storeTimeBase + index))
+                .toList();
+        return new PullResult(PullStatus.FOUND, batchEnd, 0L, endOffsetExclusive, messages);
     }
 }
