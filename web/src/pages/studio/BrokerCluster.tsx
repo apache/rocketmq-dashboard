@@ -151,7 +151,7 @@ const BrokerClusterPage = () => {
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
@@ -193,7 +193,7 @@ const BrokerClusterPage = () => {
       .then((nextInstances) => {
         if (!active) return;
         setInstances(nextInstances);
-        setSelectedInstanceId(nextInstances[0]?.id);
+        setSelectedInstanceId(nextInstances[0]?.name);
       })
       .catch(() => {
         if (!active) return;
@@ -457,7 +457,7 @@ const BrokerClusterPage = () => {
             onChange={setSelectedInstanceId}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
-            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
           />
           <Switch
             checked={autoRefresh}

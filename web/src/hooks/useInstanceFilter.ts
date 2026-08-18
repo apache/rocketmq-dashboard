@@ -33,8 +33,7 @@ export function useInstanceFilter() {
 
   const scopedMatch = pathname.match(INSTANCE_SCOPED_PATH);
   const staticMatch = pathname.match(STATIC_SECTION_PATH);
-  const parsedRouteId = scopedMatch ? Number(decodeURIComponent(scopedMatch[1])) : NaN;
-  const routeInstanceId = Number.isNaN(parsedRouteId) ? undefined : parsedRouteId;
+  const routeInstanceId = scopedMatch ? decodeURIComponent(scopedMatch[1]) : undefined;
   const section = scopedMatch?.[2] ?? staticMatch?.[1] ?? 'topic';
 
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -45,9 +44,9 @@ export function useInstanceFilter() {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        const isKnownInstance = nextInstances.some((instance) => instance.id === routeInstanceId);
+        const isKnownInstance = nextInstances.some((instance) => instance.name === routeInstanceId);
         if (nextInstances.length > 0 && !isKnownInstance) {
-          navigate(`/instance/${nextInstances[0].id}/${section}`, {
+          navigate(`/instance/${encodeURIComponent(nextInstances[0].name)}/${section}`, {
             replace: true,
           });
         }
@@ -61,17 +60,17 @@ export function useInstanceFilter() {
   }, [navigate, routeInstanceId, section]);
 
   const selectedInstanceId =
-    routeInstanceId !== undefined && instances.some((instance) => instance.id === routeInstanceId)
+    routeInstanceId !== undefined && instances.some((instance) => instance.name === routeInstanceId)
       ? routeInstanceId
-      : instances[0]?.id;
-  const selectedInstance = instances.find((instance) => instance.id === selectedInstanceId);
+      : instances[0]?.name;
+  const selectedInstance = instances.find((instance) => instance.name === selectedInstanceId);
 
-  const selectInstance = (id: number) => {
-    navigate(`/instance/${id}/${section}`);
+  const selectInstance = (name: string) => {
+    navigate(`/instance/${encodeURIComponent(name)}/${section}`);
   };
 
   const instanceOptions = instances.map((instance) => ({
-    value: instance.id,
+    value: instance.name,
     label: instance.name,
   }));
 

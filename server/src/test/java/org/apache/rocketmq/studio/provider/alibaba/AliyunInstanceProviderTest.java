@@ -75,7 +75,7 @@ import static org.mockito.Mockito.when;
 class AliyunInstanceProviderTest {
 
     private static final String STUDIO_INSTANCE_ID = "7";
-    private static final Long STUDIO_INSTANCE_PK = 7L;
+    private static final String STUDIO_INSTANCE_PK = STUDIO_INSTANCE_ID;
     private static final String CLOUD_INSTANCE_ID = "rmq-cn-001";
     private static final String REGION = "cn-hangzhou";
     private static final Long CREDENTIAL_ID = 1L;

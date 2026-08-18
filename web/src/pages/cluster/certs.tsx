@@ -45,7 +45,7 @@ const getErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message ? error.message : '请求失败，请稍后重试';
 
 interface CreateCertFormValues {
-  name: string;
+  k8sId: string;
   cluster: string;
   type: string;
   certPem?: string;
@@ -83,7 +83,9 @@ const K8sCertsPage = () => {
   const filteredCerts = certs.filter((cert) => {
     const matchSearch =
       !normalizedCertSearch ||
-      [cert.name, cert.cluster].some((value) => value.toLowerCase().includes(normalizedCertSearch));
+      [cert.k8sId, cert.cluster].some((value) =>
+        value.toLowerCase().includes(normalizedCertSearch),
+      );
     const matchType = !certTypeFilter || cert.type === certTypeFilter;
     return matchSearch && matchType;
   });
@@ -98,14 +100,14 @@ const K8sCertsPage = () => {
     setCreating(true);
     try {
       const created = await createK8sCert({
-        name: values.name.trim(),
+        k8sId: values.k8sId.trim(),
         cluster: values.cluster.trim(),
         type: values.type,
         certPem: values.certPem?.trim() || undefined,
         keyPem: values.keyPem?.trim() || undefined,
       });
       setCerts((previous) => [...previous, created]);
-      message.success(`证书「${created.name}」已添加`);
+      message.success(`证书「${created.k8sId}」已添加`);
       setCreateModalOpen(false);
       createForm.resetFields();
     } catch (error: unknown) {
@@ -120,7 +122,7 @@ const K8sCertsPage = () => {
     try {
       await deleteK8sCert(cert.id);
       setCerts((previous) => previous.filter((item) => item.id !== cert.id));
-      message.success(`证书「${cert.name}」已删除`);
+      message.success(`证书「${cert.k8sId}」已删除`);
     } catch (error: unknown) {
       message.error(getErrorMessage(error));
     } finally {
@@ -139,13 +141,13 @@ const K8sCertsPage = () => {
       render: (name: string) => <Text strong>{name}</Text>,
     },
     {
-      title: '证书名称',
-      dataIndex: 'name',
-      key: 'name',
+      title: 'k8s ID',
+      dataIndex: 'k8sId',
+      key: 'k8sId',
       width: 240,
-      sorter: (a, b) => a.name.localeCompare(b.name),
-      render: (name: string) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{name}</Text>
+      sorter: (a, b) => a.k8sId.localeCompare(b.k8sId),
+      render: (k8sId: string) => (
+        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{k8sId}</Text>
       ),
     },
     {
@@ -223,7 +225,7 @@ const K8sCertsPage = () => {
       fixed: 'right',
       render: (_: unknown, cert: K8sCertInfo) => (
         <Popconfirm
-          title={`确定要删除证书「${cert.name}」吗？`}
+          title={`确定要删除证书「${cert.k8sId}」吗？`}
           onConfirm={() => void handleDelete(cert)}
           okText="删除"
           cancelText="取消"
@@ -254,7 +256,7 @@ const K8sCertsPage = () => {
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>
           <Input.Search
-            placeholder="搜索证书名称或集群"
+            placeholder="搜索 k8s ID 或集群"
             allowClear
             onSearch={setCertSearch}
             onChange={(e) => !e.target.value && setCertSearch('')}
@@ -304,11 +306,11 @@ const K8sCertsPage = () => {
       >
         <Form form={createForm} layout="vertical" preserve={false}>
           <Form.Item
-            label="证书名称"
-            name="name"
-            rules={[{ required: true, message: '请输入证书名称' }]}
+            label="k8s ID"
+            name="k8sId"
+            rules={[{ required: true, message: '请输入 k8s ID' }]}
           >
-            <Input placeholder="例如：kubernetes-admin-client" />
+            <Input placeholder="例如：kubernetes-daily" />
           </Form.Item>
           <Form.Item
             label="K8s 集群名称"

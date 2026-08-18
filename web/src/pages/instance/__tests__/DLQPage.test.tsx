@@ -86,7 +86,7 @@ const renderWithProviders = (ui: React.ReactElement) =>
   render(
     <App>
       <LangProvider>
-        <MemoryRouter initialEntries={['/instance/1/dlq']}>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={['/instance/instance-1/dlq']}>{ui}</MemoryRouter>
       </LangProvider>
     </App>,
   );
@@ -137,7 +137,7 @@ describe('DLQ page', () => {
 
     expect(await screen.findByText('cg-order')).toBeInTheDocument();
     expect(screen.getByText('%DLQ%cg-order')).toBeInTheDocument();
-    expect(messageService.listDLQGroups).toHaveBeenCalledWith(1);
+    expect(messageService.listDLQGroups).toHaveBeenCalledWith('instance-1');
   });
 
   it('surfaces unavailable DLQ provider errors when loading groups', async () => {
@@ -340,7 +340,7 @@ describe('DLQ page', () => {
     );
 
     await waitFor(() => {
-      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith(2);
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-2');
     });
     await waitFor(() => {
       expect(screen.queryByRole('row', { name: /cg-order/ })).not.toBeInTheDocument();

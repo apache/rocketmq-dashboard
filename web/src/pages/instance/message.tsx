@@ -242,9 +242,9 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
    MessagePage
    ═══════════════════════════════════════════ */
 type InstanceFilterProps = {
-  selectedInstanceId: number | undefined;
-  selectInstance: (instanceId: number) => void;
-  instanceOptions: { value: number; label: string }[];
+  selectedInstanceId: string | undefined;
+  selectInstance: (instanceId: string) => void;
+  instanceOptions: { value: string; label: string }[];
 };
 
 const MessagePage = () => {
@@ -884,7 +884,7 @@ const MessagePageContent = ({
       )}
       <MessageQueryHistoryDrawer
         open={historyDrawerOpen}
-        clusterId={selectedInstanceId !== undefined ? String(selectedInstanceId) : undefined}
+        clusterId={selectedInstanceId}
         onClose={() => setHistoryDrawerOpen(false)}
       />
 

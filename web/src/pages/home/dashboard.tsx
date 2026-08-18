@@ -33,9 +33,9 @@ const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [dashboardInstanceId, setDashboardInstanceId] = useState<number>();
+  const [dashboardInstanceId, setDashboardInstanceId] = useState<string>();
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<number>();
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const dashboardRequestIdRef = useRef(0);
@@ -96,7 +96,7 @@ const DashboardPage = () => {
             placeholder="All configured instances"
             value={selectedInstanceId}
             onChange={setSelectedInstanceId}
-            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
             style={{ width: 220 }}
           />
           <Button onClick={() => void loadDashboard()} loading={loading}>

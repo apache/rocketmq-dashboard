@@ -92,7 +92,7 @@ export interface MetricProfile {
 }
 
 // ─── Dashboard ──────────────────────────────────────────────────
-export async function getDashboard(instanceId?: number) {
+export async function getDashboard(instanceId?: string) {
   const res = await client.get<{ data: DashboardData }>('/dashboard', {
     params: instanceId ? { instanceId } : undefined,
   });
@@ -108,7 +108,7 @@ export async function queryMetrics(query: MetricQuery) {
 export interface DataSourceQuery {
   key: string;
   query: MetricQuery;
-  instanceId?: number;
+  instanceId?: string;
   username?: string;
   password?: string;
   bearerToken?: string;

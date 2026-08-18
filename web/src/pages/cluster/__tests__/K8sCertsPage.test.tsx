@@ -32,7 +32,7 @@ vi.mock('../../../services/clusterService', () => ({
 const certs: K8sCertInfo[] = [
   {
     id: 1,
-    name: 'rocketmq-prod-tls',
+    k8sId: 'rocketmq-prod-tls',
     cluster: 'prod-cluster',
     type: 'TLS',
     issuer: 'kubernetes-ca',
@@ -44,7 +44,7 @@ const certs: K8sCertInfo[] = [
   },
   {
     id: 2,
-    name: 'rocketmq-staging-tls',
+    k8sId: 'rocketmq-staging-tls',
     cluster: 'staging-cluster',
     type: 'TLS',
     issuer: 'kubernetes-ca',
@@ -113,7 +113,7 @@ describe('K8sCertsPage', () => {
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
-    await user.type(screen.getByPlaceholderText('搜索证书名称或集群'), `${query}{enter}`);
+    await user.type(screen.getByPlaceholderText('搜索 k8s ID 或集群'), `${query}{enter}`);
 
     expect(screen.getByText(expected)).toBeInTheDocument();
     expect(screen.queryByText(hidden)).not.toBeInTheDocument();
@@ -123,7 +123,7 @@ describe('K8sCertsPage', () => {
     vi.mocked(createK8sCert).mockResolvedValue({
       ...certs[0],
       id: 3,
-      name: 'kubernetes-admin-client',
+      k8sId: 'kubernetes-admin-client',
       cluster: 'kubernetes',
     });
     const user = userEvent.setup();
@@ -133,7 +133,7 @@ describe('K8sCertsPage', () => {
     await user.click(screen.getByRole('button', { name: /新增证书/ }));
 
     await user.type(
-      screen.getByPlaceholderText('例如：kubernetes-admin-client'),
+      screen.getByPlaceholderText('例如：kubernetes-daily'),
       'kubernetes-admin-client',
     );
     await user.type(
@@ -145,7 +145,7 @@ describe('K8sCertsPage', () => {
     await waitFor(() =>
       expect(createK8sCert).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: 'kubernetes-admin-client',
+          k8sId: 'kubernetes-admin-client',
           cluster: 'kubernetes',
           type: 'TLS',
         }),

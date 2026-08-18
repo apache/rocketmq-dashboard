@@ -70,7 +70,7 @@ describe('instanceService mock instances', () => {
     });
 
     const updated = await updateInstance({
-      id: created.id,
+      instanceId: 'rocketmq-copy-test',
       remark: 'updated',
     });
     updated.remark = 'mutated-updated';
@@ -83,7 +83,9 @@ describe('instanceService mock instances', () => {
   it('rejects deleting missing mock instances', async () => {
     const before = await listInstances();
 
-    await expect(deleteInstance(999999)).rejects.toThrow('Instance not found: 999999');
+    await expect(deleteInstance('missing-instance')).rejects.toThrow(
+      'Instance not found: missing-instance',
+    );
 
     await expect(listInstances()).resolves.toEqual(before);
   });

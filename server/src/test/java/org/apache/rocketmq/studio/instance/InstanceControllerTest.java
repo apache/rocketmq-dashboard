@@ -149,11 +149,6 @@ class InstanceControllerTest {
 
     @Test
     void updateInstanceShouldReturnUpdatedInstance() throws Exception {
-        InstanceVO update = InstanceVO.builder()
-                .name("updated-name")
-                .build();
-        update.setId(1L);
-
         InstanceVO updated = InstanceVO.builder()
                 .name("updated-name")
                 .endpoint("10.0.1.1:8080")
@@ -163,11 +158,14 @@ class InstanceControllerTest {
         updated.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
         updated.setGmtModified(LocalDateTime.of(2026, 7, 8, 12, 0));
 
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
         when(instanceService.updateInstance(any(InstanceVO.class))).thenReturn(updated);
 
         mockMvc.perform(post("/api/instances/update")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(update)))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "instanceId", "instance-1",
+                                "name", "updated-name"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value(1))
@@ -188,9 +186,10 @@ class InstanceControllerTest {
 
     @Test
     void deleteInstanceShouldReturnSuccess() throws Exception {
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
         doNothing().when(instanceService).deleteInstance(1L);
 
-        Map<String, String> body = Map.of("id", "1");
+        Map<String, String> body = Map.of("id", "instance-1");
 
         mockMvc.perform(post("/api/instances/delete")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -204,13 +203,14 @@ class InstanceControllerTest {
 
     @Test
     void deleteInstanceShouldReturnConflictWhenManagedResourcesExist() throws Exception {
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
         doThrow(new BusinessException(409,
                 "Cannot delete instance with managed resources: topics=2, consumerGroups=1"))
                 .when(instanceService).deleteInstance(1L);
 
         mockMvc.perform(post("/api/instances/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("id", "1"))))
+                        .content(objectMapper.writeValueAsString(Map.of("id", "instance-1"))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.message")

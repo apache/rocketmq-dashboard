@@ -142,21 +142,21 @@ export function buildProducerConnectionSummary(
 }
 
 /** Fetch topic names for a managed instance. */
-export async function fetchTopicList(instanceId: number): Promise<string[]> {
+export async function fetchTopicList(instanceId: string): Promise<string[]> {
   const res = await client.get<TopicListResponse>('/topics', { params: { instanceId } });
   const topics = res.data.data?.map((topic) => topic.name) ?? res.data.topicList ?? [];
   return topics.sort();
 }
 
 /** Fetch active producer groups for query suggestions */
-export async function fetchProducerGroups(instanceId: number): Promise<string[]> {
+export async function fetchProducerGroups(instanceId: string): Promise<string[]> {
   const res = await client.get<{ data?: string[] }>('/producer/groups', { params: { instanceId } });
   return res.data.data ?? [];
 }
 
 /** Query producer connections by topic and producer group */
 export async function queryProducerConnection(
-  instanceId: number,
+  instanceId: string,
   topic: string,
   producerGroup: string,
 ): Promise<ProducerConnectionResult> {

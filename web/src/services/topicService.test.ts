@@ -83,10 +83,10 @@ describe('topic service mock data', () => {
   });
 
   it('filters mock topics by instance ID', async () => {
-    const topics = await listTopics({ instanceId: 3 });
+    const topics = await listTopics({ instanceId: 'instance-proxy-1' });
 
     expect(topics).not.toHaveLength(0);
-    expect(topics.every((topic) => topic.instanceId === 3)).toBe(true);
+    expect(topics.every((topic) => topic.instanceId === 'instance-proxy-1')).toBe(true);
   });
 
   it('rejects duplicate topic creates in the same cluster', async () => {

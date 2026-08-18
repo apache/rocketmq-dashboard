@@ -170,7 +170,7 @@ describe('BrokerCluster Page', () => {
     expect(brokerA.length).toBeGreaterThan(0);
     expect(screen.getAllByText('broker-api-b').length).toBeGreaterThan(0);
     expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
-    expect(listClusters).toHaveBeenCalledWith(1);
+    expect(listClusters).toHaveBeenCalledWith('instance-1');
   });
 
   it('does not fall back to an unscoped cluster query when instance discovery fails', async () => {

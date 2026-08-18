@@ -51,7 +51,7 @@ export interface CreateInstanceRequest {
 }
 
 export interface UpdateInstanceRequest {
-  id: number;
+  instanceId: string;
   name?: string;
   type?: 'PROXY' | 'DIRECT';
   endpoint?: string;
@@ -85,6 +85,6 @@ export async function updateInstance(data: UpdateInstanceRequest) {
   return res.data.data;
 }
 
-export async function deleteInstance(id: number) {
-  await client.post('/instances/delete', { id });
+export async function deleteInstance(instanceId: string) {
+  await client.post('/instances/delete', { id: instanceId });
 }

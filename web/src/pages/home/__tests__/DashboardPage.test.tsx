@@ -133,7 +133,7 @@ describe('DashboardPage', () => {
     await user.click(
       await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
     );
-    await waitFor(() => expect(dashboardService.getDashboard).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(dashboardService.getDashboard).toHaveBeenCalledWith('instance-a'));
 
     expect(screen.queryByText('initial-cluster')).not.toBeInTheDocument();
     instanceA.resolve(dashboard('instance-a-cluster'));
@@ -189,6 +189,6 @@ describe('DashboardPage', () => {
     );
     await user.click(screen.getByText('查看全部'));
 
-    expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=2');
+    expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=instance-b');
   });
 });

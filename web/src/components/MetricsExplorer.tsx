@@ -215,7 +215,7 @@ const MetricChart = ({ data, metric, locale, noSamples }: MetricChartProps) => {
 };
 
 interface MetricsExplorerProps {
-  instanceId?: number;
+  instanceId?: string;
 }
 
 type DataSourceAuthMode = 'none' | 'basic' | 'bearer';
@@ -336,7 +336,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       dataSources.filter(
         (source) =>
           !source.instanceIds?.length ||
-          (instanceId !== undefined && source.instanceIds.includes(String(instanceId))),
+          (instanceId !== undefined && source.instanceIds.includes(instanceId)),
       ),
     [dataSources, instanceId],
   );

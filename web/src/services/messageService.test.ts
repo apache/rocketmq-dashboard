@@ -65,12 +65,12 @@ describe('message service mock data', () => {
   });
 
   it('returns copied DLQ group rows', async () => {
-    const first = await listDLQGroups(1);
+    const first = await listDLQGroups('instance-1');
     expect(first[0].groupName).toBe('cg-order-processor');
 
     first[0].groupName = 'mutated-group';
 
-    const second = await listDLQGroups(1);
+    const second = await listDLQGroups('instance-1');
     expect(second[0].groupName).toBe('cg-order-processor');
     expect(second[0]).not.toBe(first[0]);
   });

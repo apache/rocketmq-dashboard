@@ -74,7 +74,7 @@ const buildTopics = (count: number): Topic[] =>
       namespace: 'default',
       type: 'NORMAL',
       clusterId: 'rmq-cn-v5-prod-01',
-      instanceId: 5,
+      instanceId: 'instance-proxy-1',
       writeQueues: 8,
       readQueues: 8,
       perm: 'RW',
@@ -238,9 +238,9 @@ describe('TopicPage', () => {
       },
     ]);
     topicServiceMocks.listTopics.mockResolvedValue(
-      buildTopics(25).map((topic) => ({ ...topic, instanceId: 6 })),
+      buildTopics(25).map((topic) => ({ ...topic, instanceId: 'instance-a' })),
     );
-    renderWithProviders('/instance/6/topic');
+    renderWithProviders('/instance/instance-a/topic');
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
 
@@ -253,9 +253,14 @@ describe('TopicPage', () => {
 
     await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
     await waitFor(() =>
-      expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-21', 6),
+      expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-21', 'instance-a'),
     );
-    expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenCalledWith('topic-21', 6, 1, 20);
+    expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenCalledWith(
+      'topic-21',
+      'instance-a',
+      1,
+      20,
+    );
 
     const closeButton = document.querySelector('.ant-modal-close');
     expect(closeButton).not.toBeNull();
@@ -267,7 +272,7 @@ describe('TopicPage', () => {
 
   it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
     const user = userEvent.setup();
-    const topic = { ...buildTopics(1)[0], instanceId: 6 };
+    const topic = { ...buildTopics(1)[0], instanceId: 'instance-a' };
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         ...selectedInstance,
@@ -277,7 +282,7 @@ describe('TopicPage', () => {
       },
     ]);
     topicServiceMocks.listTopics.mockResolvedValue([topic]);
-    renderWithProviders('/instance/6/topic');
+    renderWithProviders('/instance/instance-a/topic');
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /详情/ }));
@@ -289,10 +294,10 @@ describe('TopicPage', () => {
         type: 'NORMAL',
         writeQueues: 8,
         readQueues: 8,
-        instanceId: 6,
+        instanceId: 'instance-a',
       }),
     );
-    expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith('topic-01', 6);
+    expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith('topic-01', 'instance-a');
   });
 
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
@@ -321,8 +326,8 @@ describe('TopicPage', () => {
   it('filters topics by the instance from the route and shows its endpoint', async () => {
     const base = buildTopics(1)[0];
     topicServiceMocks.listTopics.mockResolvedValue([
-      { ...base, name: 'topic-a', instanceId: 5 },
-      { ...base, name: 'topic-b', instanceId: 7 },
+      { ...base, name: 'topic-a', instanceId: 'instance-proxy-1' },
+      { ...base, name: 'topic-b', instanceId: 'instance-proxy-2' },
     ]);
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
@@ -349,7 +354,7 @@ describe('TopicPage', () => {
       },
     ]);
 
-    renderWithProviders('/instance/5/topic');
+    renderWithProviders('/instance/instance-proxy-1/topic');
 
     expect(await screen.findByText('topic-a')).toBeInTheDocument();
     expect(screen.queryByText('topic-b')).not.toBeInTheDocument();
@@ -360,7 +365,7 @@ describe('TopicPage', () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue([]);
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
-    renderWithProviders('/instance/5/topic');
+    renderWithProviders('/instance/instance-proxy-1/topic');
 
     await screen.findByText(/共 0 个 Topic/);
     const csv = [
@@ -379,7 +384,7 @@ describe('TopicPage', () => {
         readQueues: 6,
         perm: 'RW',
         remark: 'orders',
-        instanceId: 5,
+        instanceId: 'instance-proxy-1',
       }),
     );
     expect(await screen.findByText('已导入 1 个 Topic')).toBeInTheDocument();
@@ -389,8 +394,10 @@ describe('TopicPage', () => {
   it('does not call createTopic when imported topic CSV is invalid or duplicated', async () => {
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
-    topicServiceMocks.listTopics.mockResolvedValue([{ ...buildTopics(1)[0], instanceId: 5 }]);
-    renderWithProviders('/instance/5/topic');
+    topicServiceMocks.listTopics.mockResolvedValue([
+      { ...buildTopics(1)[0], instanceId: 'instance-proxy-1' },
+    ]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
     expect(await screen.findByText('10.0.2.21:8080')).toBeInTheDocument();
@@ -412,7 +419,7 @@ describe('TopicPage', () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue([]);
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
-    renderWithProviders('/instance/5/topic');
+    renderWithProviders('/instance/instance-proxy-1/topic');
 
     await screen.findByText(/共 0 个 Topic/);
     await screen.findByText('10.0.2.21:8080');
@@ -431,11 +438,11 @@ describe('TopicPage', () => {
     await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(2));
     expect(topicServiceMocks.createTopic).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ name: 'topic-a', instanceId: 5 }),
+      expect.objectContaining({ name: 'topic-a', instanceId: 'instance-proxy-1' }),
     );
     expect(topicServiceMocks.createTopic).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ name: 'topic-b', instanceId: 5 }),
+      expect.objectContaining({ name: 'topic-b', instanceId: 'instance-proxy-1' }),
     );
     expect(await screen.findByText('已导入 2 个 Topic，1 行无效已跳过')).toBeInTheDocument();
   });
@@ -473,7 +480,12 @@ describe('TopicPage', () => {
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
-    expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenCalledWith('topic-01', 5, 1, 20);
+    expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenCalledWith(
+      'topic-01',
+      'instance-proxy-1',
+      1,
+      20,
+    );
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
   });
 });

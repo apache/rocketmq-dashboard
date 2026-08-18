@@ -32,7 +32,7 @@ import java.util.List;
 public class UpdateCertDTO {
     @NotNull(message = "id is required")
     private Long id;
-    private String name;
+    private String k8sId;
     private String cluster;
     @Pattern(regexp = "TLS|mTLS|ServiceAccount", message = "type must be one of TLS, mTLS, ServiceAccount")
     private String type;

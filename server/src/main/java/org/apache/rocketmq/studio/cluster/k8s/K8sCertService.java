@@ -69,7 +69,7 @@ public class K8sCertService {
 
     public K8sCertVO createCert(CreateCertDTO command) {
         requireCommand(command);
-        log.info("Creating K8s certificate: {}", command.getName());
+        log.info("Creating K8s certificate: {}", command.getK8sId());
 
         LocalDateTime now = LocalDateTime.now(clock);
         LocalDateTime notBefore = now;
@@ -85,7 +85,7 @@ public class K8sCertService {
         }
 
         K8sCertVO cert = K8sCertVO.builder()
-                .name(command.getName())
+                .k8sId(command.getK8sId())
                 .cluster(command.getCluster())
                 .type(CertType.valueOf(command.getType()))
                 .issuer(issuer)
@@ -101,7 +101,7 @@ public class K8sCertService {
 
         K8sCertVO saved = k8sCertRepository.save(refreshExpirationState(cert, now));
         auditCertificate("CREATE_K8S_CERTIFICATE", saved);
-        log.info("K8s certificate created: {} (id={})", saved.getName(), saved.getId());
+        log.info("K8s certificate created: {} (id={})", saved.getK8sId(), saved.getId());
         return saved;
     }
 
@@ -112,11 +112,11 @@ public class K8sCertService {
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
 
         K8sCertVO updated = copyOf(existing);
-        String name = normalizeOptionalIdentity(command.getName(), "name");
+        String k8sId = normalizeOptionalIdentity(command.getK8sId(), "k8sId");
         String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster");
         String issuer = normalizeOptionalIdentity(command.getIssuer(), "issuer");
-        if (name != null) {
-            updated.setName(name);
+        if (k8sId != null) {
+            updated.setK8sId(k8sId);
         }
         if (cluster != null) {
             updated.setCluster(cluster);
@@ -135,7 +135,7 @@ public class K8sCertService {
 
         K8sCertVO saved = k8sCertRepository.save(refreshExpirationState(updated, now));
         auditCertificate("UPDATE_K8S_CERTIFICATE", saved);
-        log.info("K8s certificate updated: {} (id={})", saved.getName(), saved.getId());
+        log.info("K8s certificate updated: {} (id={})", saved.getK8sId(), saved.getId());
         return saved;
     }
 
@@ -157,7 +157,7 @@ public class K8sCertService {
 
         K8sCertVO saved = k8sCertRepository.save(renewed);
         auditCertificate("RENEW_K8S_CERTIFICATE", saved);
-        log.info("K8s certificate renewed: {} (id={}), new expiry: {}", saved.getName(), saved.getId(), notAfter);
+        log.info("K8s certificate renewed: {} (id={}), new expiry: {}", saved.getK8sId(), saved.getId(), notAfter);
         return saved;
     }
 
@@ -212,7 +212,7 @@ public class K8sCertService {
 
     private K8sCertVO copyOf(K8sCertVO cert) {
         K8sCertVO copy = K8sCertVO.builder()
-                .name(cert.getName())
+                .k8sId(cert.getK8sId())
                 .cluster(cert.getCluster())
                 .type(cert.getType())
                 .issuer(cert.getIssuer())
@@ -232,7 +232,7 @@ public class K8sCertService {
 
     private void auditCertificate(String operation, K8sCertVO certificate) {
         recordAudit(operation, "K8S_CERTIFICATE", String.valueOf(certificate.getId()), null,
-                "name=" + certificate.getName() + ", cluster=" + certificate.getCluster());
+                "k8sId=" + certificate.getK8sId() + ", cluster=" + certificate.getCluster());
     }
 
     private X509Certificate parseCertificate(String certPem) {

@@ -35,7 +35,7 @@ import java.util.List;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class K8sCertVO extends BaseEntity {
-    private String name;
+    private String k8sId;
     private String cluster;
     private CertType type;
     private String issuer;

@@ -52,7 +52,7 @@ class MybatisPlusK8sCertRepositoryTest {
         RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
         when(mapper.selectById(1L)).thenReturn(certificate());
         when(mapper.updateById(any(RmqK8sCertificate.class))).thenReturn(0);
-        K8sCertVO cert = K8sCertVO.builder().name("broker").build();
+        K8sCertVO cert = K8sCertVO.builder().k8sId("broker").build();
         cert.setId(1L);
 
         assertThatThrownBy(() -> repository(mapper).save(cert))

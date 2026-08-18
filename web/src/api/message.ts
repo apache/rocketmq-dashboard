@@ -35,7 +35,7 @@ export interface TraceRecord {
 }
 
 export interface MessageQuery {
-  instanceId?: number;
+  instanceId?: string;
   topic?: string;
   tag?: string;
   key?: string;
@@ -80,9 +80,9 @@ export async function queryMessages(params: MessageQuery) {
   return sortMessagesByStoreTimeDesc(res.data.data);
 }
 
-export async function getMessageTrace(msgId: string, instanceId?: number, topic?: string) {
+export async function getMessageTrace(msgId: string, instanceId?: string, topic?: string) {
   const params: Record<string, string> = {};
-  if (instanceId !== undefined) params.instanceId = String(instanceId);
+  if (instanceId !== undefined) params.instanceId = instanceId;
   if (topic !== undefined) params.topic = topic;
   const res = await client.get<{ data: TraceRecord }>(
     `/messages/${encodeURIComponent(msgId)}/trace`,
@@ -92,13 +92,13 @@ export async function getMessageTrace(msgId: string, instanceId?: number, topic?
 }
 
 // ─── DLQ ────────────────────────────────────────────────────────
-export async function listDLQGroups(instanceId: number) {
+export async function listDLQGroups(instanceId: string) {
   const res = await client.get<{ data: DLQGroup[] }>('/dlq', { params: { instanceId } });
   return res.data.data;
 }
 
 export async function resendDLQ(data: {
-  instanceId: number;
+  instanceId: string;
   groupName: string;
   startTime: number;
   endTime: number;

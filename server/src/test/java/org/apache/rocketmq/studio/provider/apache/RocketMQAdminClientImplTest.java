@@ -250,18 +250,18 @@ class RocketMQAdminClientImplTest {
         when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
         when(topicMapper.selectOne(any())).thenReturn(null);
         doNothing().when(selectedAdmin).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
-        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("1"), any()))
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any()))
                 .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
                         .apply(selectedAdmin));
 
         TopicVO topic = new TopicVO();
         topic.setName("topicA");
-        topic.setInstanceId(1L);
+        topic.setInstanceId("open-source-local");
 
         adminClient.createTopic(topic);
         adminClient.updateTopic(topic);
 
-        verify(runtimeAdminClientResolver, times(2)).execute(org.mockito.ArgumentMatchers.eq("1"), any());
+        verify(runtimeAdminClientResolver, times(2)).execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any());
         verify(selectedAdmin, times(2)).createAndUpdateTopicConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
         verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
@@ -363,7 +363,7 @@ class RocketMQAdminClientImplTest {
         when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
         when(groupMapper.selectOne(any())).thenReturn(null);
         doNothing().when(selectedAdmin).createAndUpdateSubscriptionGroupConfig(anyString(), any());
-        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("1"), any()))
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any()))
                 .thenAnswer(invocation -> {
                     MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
                     return action.apply(selectedAdmin);
@@ -371,11 +371,11 @@ class RocketMQAdminClientImplTest {
 
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("cg-orders");
-        group.setInstanceId(1L);
+        group.setInstanceId("open-source-local");
 
         adminClient.createConsumerGroup(group);
 
-        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("1"), any());
+        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any());
         verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any());
         verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());

@@ -36,6 +36,7 @@ import java.util.List;
 public class TopicController {
 
     private final MetadataService metadataService;
+    private final org.apache.rocketmq.studio.instance.InstanceService instanceService;
 
     @GetMapping
     public Result<List<TopicVO>> listTopics(
@@ -49,13 +50,17 @@ public class TopicController {
     @PostMapping("/create")
     public Result<TopicVO> createTopic(@Valid @RequestBody(required = false) CreateTopicDTO topic) {
         requireCreateTopicRequest(topic);
-        return Result.ok(metadataService.createTopic(topic.toTopicVO()));
+        TopicVO vo = topic.toTopicVO();
+        vo.setInstanceId(instanceService.normalizeIdentifier(topic.getInstanceId()));
+        return Result.ok(metadataService.createTopic(vo));
     }
 
     @PostMapping("/update")
     public Result<TopicVO> updateTopic(@Valid @RequestBody(required = false) UpdateTopicDTO topic) {
         requireTopicRequest(topic);
-        return Result.ok(metadataService.updateTopic(topic.toTopicVO()));
+        TopicVO vo = topic.toTopicVO();
+        vo.setInstanceId(instanceService.normalizeIdentifier(topic.getInstanceId()));
+        return Result.ok(metadataService.updateTopic(vo));
     }
 
     @PostMapping("/delete")

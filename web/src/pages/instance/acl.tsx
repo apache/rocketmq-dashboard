@@ -1232,7 +1232,7 @@ const AclPage = () => {
               tokenSeparators={[',']}
               allowClear
               options={instances.map((instance) => ({
-                value: instance.cloudInstanceId ?? String(instance.id),
+                value: instance.cloudInstanceId ?? instance.name,
                 label: instance.name,
               }))}
             />
