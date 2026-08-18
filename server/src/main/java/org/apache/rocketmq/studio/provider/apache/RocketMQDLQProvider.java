@@ -71,6 +71,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final int RESEND_HARD_CAP = 5000;
+    static final long MAX_EXPORT_BODY_BYTES = 10L * 1024 * 1024;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final String ORIGIN_MESSAGE_ID_PROPERTY = "studio_dlq_origin_message_id";
     private static final String ORIGIN_TOPIC_PROPERTY = "studio_dlq_origin_topic";
@@ -176,7 +177,8 @@ public class RocketMQDLQProvider implements DLQProvider {
 
         DeadLetterScanResult scanResult;
         try {
-            scanResult = collectDeadLetters(endpoint, credentialHook, dlqTopic, begin, end, RESEND_HARD_CAP);
+            scanResult = collectDeadLetters(
+                    endpoint, credentialHook, dlqTopic, begin, end, RESEND_HARD_CAP, Long.MAX_VALUE);
         } catch (BusinessException e) {
             String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, "
                             + "matched=0, resent=0, failed=0, scanIncomplete=true, scanFailedQueues=all",
@@ -233,7 +235,8 @@ public class RocketMQDLQProvider implements DLQProvider {
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
         int cap = maxCount == null || maxCount <= 0 ? RESEND_HARD_CAP : Math.min(maxCount, RESEND_HARD_CAP);
-        DeadLetterScanResult scanResult = collectDeadLetters(endpoint, credentialHook, dlqTopic, begin, end, cap);
+        DeadLetterScanResult scanResult = collectDeadLetters(
+                endpoint, credentialHook, dlqTopic, begin, end, cap, MAX_EXPORT_BODY_BYTES);
         return scanResult.messages().stream().map(this::toExportVO).toList();
     }
 
@@ -263,10 +266,11 @@ public class RocketMQDLQProvider implements DLQProvider {
     }
 
     private DeadLetterScanResult collectDeadLetters(String endpoint, RPCHook credentialHook, String dlqTopic,
-                                                     long begin, long end, int cap) {
+                                                     long begin, long end, int cap, long bodyByteBudget) {
         DefaultMQPullConsumer consumer = newPullConsumer(endpoint, credentialHook);
         List<MessageExt> result = new ArrayList<>();
         int failedQueueCount = 0;
+        long collectedBodyBytes = 0;
         try {
             consumer.start();
             Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(dlqTopic);
@@ -323,13 +327,21 @@ public class RocketMQDLQProvider implements DLQProvider {
                         for (MessageExt messageExt : pullResult.getMsgFoundList()) {
                             if (messageExt.getStoreTimestamp() >= begin
                                     && messageExt.getStoreTimestamp() <= end) {
+                                int bodyBytes = messageExt.getBody() == null ? 0 : messageExt.getBody().length;
+                                if (bodyBytes > bodyByteBudget - collectedBodyBytes) {
+                                    throw new BusinessException(413,
+                                            "DLQ export exceeds the 10 MiB message body limit");
+                                }
                                 result.add(messageExt);
+                                collectedBodyBytes += bodyBytes;
                                 if (result.size() >= cap) {
                                     break outer;
                                 }
                             }
                         }
                     }
+                } catch (BusinessException exception) {
+                    throw exception;
                 } catch (Exception e) {
                     failedQueueCount++;
                     log.warn("Failed to scan DLQ queue {} in {}: {}", queue, dlqTopic, e.getMessage());
