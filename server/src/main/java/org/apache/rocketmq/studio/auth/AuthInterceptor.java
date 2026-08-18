@@ -28,6 +28,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.util.Optional;
 import java.util.Set;
 
 @RequiredArgsConstructor
@@ -55,13 +56,14 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
         String authorization = AuthCookie.authorization(request, authProperties);
-        if (!authService.isAuthenticated(authorization)) {
+        Optional<LoginVO.UserInfo> authenticatedUser = authService.getAuthenticatedUser(authorization);
+        if (authenticatedUser.isEmpty()) {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
             return false;
         }
-        authService.getAuthenticatedUser(authorization)
-                .ifPresent(user -> AuthenticatedUserContext.setUser(user.getUserId(), user.getUsername()));
-        if (requiresAdmin(request, requestPath(request)) && !authService.isAdmin(authorization)) {
+        LoginVO.UserInfo user = authenticatedUser.get();
+        AuthenticatedUserContext.setUser(user.getUserId(), user.getUsername());
+        if (requiresAdmin(request, requestPath(request)) && !user.isAdmin()) {
             writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
             return false;
         }
