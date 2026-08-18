@@ -29,6 +29,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Optional;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
@@ -63,7 +65,7 @@ class AuthControllerTest {
     @Test
     void statusShouldReportDisabledLoginProtection() throws Exception {
         when(authProperties.isLoginRequired()).thenReturn(false);
-        when(authService.isAuthenticated(null)).thenReturn(false);
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/auth/status"))
                 .andExpect(status().isOk())
@@ -79,7 +81,7 @@ class AuthControllerTest {
         when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
                 .requireLogin(true)
                 .build());
-        when(authService.isAuthenticated(null)).thenReturn(false);
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/auth/status"))
                 .andExpect(status().isOk())
@@ -90,7 +92,7 @@ class AuthControllerTest {
     @Test
     void statusShouldReportUnauthenticatedWhenTokenIsMissing() throws Exception {
         when(authProperties.isLoginRequired()).thenReturn(true);
-        when(authService.isAuthenticated(null)).thenReturn(false);
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/auth/status"))
                 .andExpect(status().isOk())
@@ -101,17 +103,23 @@ class AuthControllerTest {
     @Test
     void statusShouldReportAuthenticatedForActiveToken() throws Exception {
         when(authProperties.isLoginRequired()).thenReturn(true);
-        when(authService.isAuthenticated("Bearer token-1")).thenReturn(true);
+        when(authService.getAuthenticatedUser("Bearer token-1")).thenReturn(Optional.of(LoginVO.UserInfo.builder()
+                .userId(7L)
+                .username("studio-admin")
+                .admin(true)
+                .build()));
 
         mockMvc.perform(get("/api/auth/status")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.loginRequired").value(true))
-                .andExpect(jsonPath("$.data.authenticated").value(true));
+                .andExpect(jsonPath("$.data.authenticated").value(true))
+                .andExpect(jsonPath("$.data.user.userId").value(7))
+                .andExpect(jsonPath("$.data.user.username").value("studio-admin"));
     }
 
     @Test
-    void loginShouldReturnTokenOnValidRequest() throws Exception {
+    void loginShouldSetHttpOnlySessionCookieOnValidRequest() throws Exception {
         LoginVO mockResponse = LoginVO.builder()
                 .token("mock-jwt-abc123")
                 .expiresIn(86400)
@@ -133,7 +141,12 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"))
-                .andExpect(jsonPath("$.data.token").value("mock-jwt-abc123"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE,
+                        org.hamcrest.Matchers.allOf(
+                                org.hamcrest.Matchers.containsString("rmq_studio_session=mock-jwt-abc123"),
+                                org.hamcrest.Matchers.containsString("HttpOnly"),
+                                org.hamcrest.Matchers.containsString("SameSite=Strict"))))
+                .andExpect(jsonPath("$.data.token").doesNotExist())
                 .andExpect(jsonPath("$.data.expiresIn").value(86400))
                 .andExpect(jsonPath("$.data.user.username").value("testuser"))
                 .andExpect(jsonPath("$.data.user.admin").value(false));
@@ -165,6 +178,28 @@ class AuthControllerTest {
     }
 
     @Test
+    void loginShouldReturnBearerTokenOnlyWhenExplicitlyRequested() throws Exception {
+        LoginVO mockResponse = LoginVO.builder()
+                .token("mock-jwt-api-client")
+                .expiresIn(86400)
+                .user(LoginVO.UserInfo.builder().username("automation").build())
+                .build();
+        when(authService.login(any(LoginDTO.class))).thenReturn(mockResponse);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("automation");
+        request.setPassword("testpass");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .header(AuthCookie.SESSION_DELIVERY_HEADER, "bearer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
+                .andExpect(jsonPath("$.data.token").value("mock-jwt-api-client"));
+    }
+
+    @Test
     void loginShouldRejectMissingRequestBody() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON))
@@ -179,6 +214,11 @@ class AuthControllerTest {
     void logoutShouldReturnSuccess() throws Exception {
         doNothing().when(authService).logout("Bearer token-1");
         when(authService.isAuthenticated("Bearer token-1")).thenReturn(true);
+        when(authService.getAuthenticatedUser("Bearer token-1")).thenReturn(Optional.of(LoginVO.UserInfo.builder()
+                .userId(7L)
+                .username("studio-admin")
+                .admin(true)
+                .build()));
 
         mockMvc.perform(post("/api/auth/logout")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))

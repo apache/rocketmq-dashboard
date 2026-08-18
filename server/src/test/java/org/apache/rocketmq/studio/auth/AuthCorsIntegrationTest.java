@@ -42,12 +42,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(value = InstanceController.class, properties = "studio.auth.login-required=true")
+@WebMvcTest(value = InstanceController.class, properties = {
+    "studio.auth.login-required=true",
+    "studio.cors.allowed-origins=https://studio.example.com,http://localhost:5173"
+})
 @AutoConfigureMockMvc(addFilters = false)
 @Import({AuthWebConfig.class, CorsConfig.class})
 class AuthCorsIntegrationTest {
 
     private static final String FRONTEND_ORIGIN = "https://studio.example.com";
+
+    private static final String DISALLOWED_ORIGIN = "https://evil.example";
 
     @Autowired
     private MockMvc mockMvc;
@@ -70,12 +75,24 @@ class AuthCorsIntegrationTest {
     }
 
     @Test
-    void shouldAllowCorsPreflightWithoutAuthentication() throws Exception {
+    void shouldEchoConfiguredOriginForPreflightWithoutAuthentication() throws Exception {
         mockMvc.perform(options("/api/instances")
                         .header(HttpHeaders.ORIGIN, FRONTEND_ORIGIN)
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*"));
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, FRONTEND_ORIGIN))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+
+        verifyNoMoreInteractions(authService);
+    }
+
+    @Test
+    void shouldRejectPreflightFromDisallowedOrigin() throws Exception {
+        mockMvc.perform(options("/api/instances")
+                        .header(HttpHeaders.ORIGIN, DISALLOWED_ORIGIN)
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
 
         verifyNoMoreInteractions(authService);
     }

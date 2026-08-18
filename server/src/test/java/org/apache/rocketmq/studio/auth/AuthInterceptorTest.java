@@ -179,6 +179,20 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
     }
 
+    @Test
+    void shouldAllowHealthProbesWhenLoginIsEnabled() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties), settingsRepository());
+
+        for (String path : List.of("/livez", "/readyz")) {
+            boolean allowed = interceptor.preHandle(new MockHttpServletRequest("GET", path),
+                    new MockHttpServletResponse(), new Object());
+
+            assertThat(allowed).as(path).isTrue();
+        }
+    }
+
     private AuthService authService(AuthProperties properties) {
         return new AuthService(properties, settingsRepositoryWithTimeout(30));
     }
