@@ -42,7 +42,7 @@ vi.mock('../../../api/alertManagement', () => ({
 
 const alertRules = [
   {
-    id: 'rule-broker-down',
+    id: 1,
     name: 'BrokerDown',
     metric: 'up{job="rocketmq-broker"}',
     operator: '==',
@@ -53,7 +53,7 @@ const alertRules = [
     description: 'Broker unavailable - Broker has been unavailable for five minutes',
   },
   {
-    id: 'rule-consumer-lag',
+    id: 2,
     name: 'ConsumerLagHigh',
     metric: 'rocketmq_consumer_lag_messages',
     operator: '>',
@@ -140,7 +140,7 @@ describe('AlertManagementPage', () => {
     vi.mocked(exportAlertRulesYaml).mockResolvedValue({ rules: rulesYaml });
     vi.mocked(createAlertRule).mockImplementation(async (rule) => ({
       ...rule,
-      id: 'rule-new',
+      id: 3,
     }));
     vi.mocked(updateAlertRule).mockImplementation(async (rule) => rule);
     vi.mocked(toggleAlertRule).mockImplementation(async (id, enabled) => ({
@@ -224,7 +224,7 @@ describe('AlertManagementPage', () => {
   it('classifies persisted Proxy metrics under the Proxy team and group', async () => {
     vi.mocked(listAlertRules).mockResolvedValue([
       {
-        id: 'rule-proxy-down',
+        id: 4,
         name: 'ProxyDown',
         metric: 'rocketmq_proxy_up',
         operator: '==',

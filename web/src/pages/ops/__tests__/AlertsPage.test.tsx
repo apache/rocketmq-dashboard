@@ -34,7 +34,7 @@ vi.mock('../../../services/opsService', () => ({
 
 const alertRules: AlertRule[] = [
   {
-    id: 'alert-a',
+    id: 1,
     name: 'Broker disk usage',
     metric: 'rocketmq_disk_use_ratio',
     operator: '>',
@@ -47,7 +47,7 @@ const alertRules: AlertRule[] = [
     description: 'disk usage',
   },
   {
-    id: 'alert-b',
+    id: 2,
     name: 'Consumer lag',
     metric: 'rocketmq_consumer_lag_messages',
     operator: '>',
@@ -113,7 +113,7 @@ describe('AlertsPage', () => {
 
   it('submits backend-compatible metric and duration values when creating a rule', async () => {
     vi.mocked(createAlertRule).mockImplementation(async (rule) => ({
-      id: 'alert-created',
+      id: 3,
       name: rule.name ?? '',
       metric: rule.metric ?? '',
       operator: rule.operator ?? '>',
@@ -194,7 +194,7 @@ describe('AlertsPage', () => {
       alertRules.map((rule) => ({ ...cloneRule(rule), enabled: true })),
     );
     vi.mocked(toggleAlertRule).mockImplementation(async (id, enabled) => {
-      if (id === 'alert-b') throw new Error('network error');
+      if (id === 2) throw new Error('network error');
       const rule = alertRules.find((item) => item.id === id);
       if (!rule) throw new Error(`Rule not found: ${id}`);
       return { ...cloneRule(rule), enabled };

@@ -47,7 +47,7 @@ const renderPage = () =>
 describe('SystemAlertsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listSystemAlerts).mockResolvedValue([
+    vi.mocked(listSystemAlerts).mockResolvedValue({ items: [
       {
         id: 1,
         level: 'error',
@@ -64,11 +64,11 @@ describe('SystemAlertsPage', () => {
         time: '2026-08-10 01:01',
         acknowledged: false,
       },
-    ]);
+    ], total: 2, page: 1, size: 20 });
   });
 
   it('renders an alert with an unknown backend level', async () => {
-    vi.mocked(listSystemAlerts).mockResolvedValue([
+    vi.mocked(listSystemAlerts).mockResolvedValue({ items: [
       {
         id: 3,
         level: 'critical',
@@ -77,7 +77,7 @@ describe('SystemAlertsPage', () => {
         time: '2026-08-10 01:00',
         acknowledged: false,
       },
-    ]);
+    ], total: 1, page: 1, size: 20 });
 
     renderPage();
 
@@ -87,7 +87,7 @@ describe('SystemAlertsPage', () => {
   });
 
   it('filters backend alert levels case-insensitively', async () => {
-    vi.mocked(listSystemAlerts).mockResolvedValue([
+    vi.mocked(listSystemAlerts).mockResolvedValue({ items: [
       {
         id: 4,
         level: 'Error',
@@ -104,7 +104,7 @@ describe('SystemAlertsPage', () => {
         time: '2026-08-10 01:01',
         acknowledged: false,
       },
-    ]);
+    ], total: 2, page: 1, size: 20 });
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Mixed-case error');

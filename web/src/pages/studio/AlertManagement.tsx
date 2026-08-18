@@ -504,7 +504,8 @@ const AlertManagementPage: React.FC = () => {
     try {
       const selectedRuleIds = selectedRules
         .map((rule) => rule.id)
-        .filter((id): id is string => Boolean(id));
+        .filter((id): id is number => id != null)
+        .map(String);
       const data = await exportAlertRulesYaml(
         selectedRuleIds.length > 0 ? selectedRuleIds : undefined,
       );
