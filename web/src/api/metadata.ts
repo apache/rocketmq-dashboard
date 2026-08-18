@@ -145,7 +145,7 @@ export interface TopicPage {
   size: number;
 }
 
-export async function listTopicsPage(params: TopicQuery & { page?: number; pageSize?: number }) {
+export async function listTopicsPage(params?: TopicQuery & { page?: number; pageSize?: number }) {
   const res = await client.get<{ data: TopicPage }>('/topics/page', { params });
   return res.data.data;
 }
