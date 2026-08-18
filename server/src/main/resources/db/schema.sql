@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS rmq_nameserver (
   k8s_id VARCHAR(128) DEFAULT NULL COMMENT 'k8s ID（K8s 部署场景填写，非 K8s 部署留空）',
   status VARCHAR(32) DEFAULT 'healthy',
   description TEXT,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_nameserver_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 2. 实例注册表（实例管理页的数据源，topic/group 按 instance_id 归属统计）

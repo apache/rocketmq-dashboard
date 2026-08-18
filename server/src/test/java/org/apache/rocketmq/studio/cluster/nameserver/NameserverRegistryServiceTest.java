@@ -24,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -111,8 +112,24 @@ class NameserverRegistryServiceTest {
                 .namesrvAddr("10.0.0.1:9876")
                 .build()))
                 .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", 409)
                 .hasMessageContaining("already exists");
         verify(nameserverMapper, never()).insert(any(RmqNameserver.class));
+    }
+
+    @Test
+    void createShouldReturnConflictWhenNameIsInsertedConcurrentlyTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class)))
+                .thenThrow(new DuplicateKeyException("uk_nameserver_name"));
+
+        assertThatThrownBy(() -> service.create(CreateNameserverRegistryDTO.builder()
+                .name("rocketmq1")
+                .namesrvAddr("10.0.0.1:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", 409)
+                .hasMessage("NameServer registry name already exists: rocketmq1");
     }
 
     @Test
@@ -162,8 +179,28 @@ class NameserverRegistryServiceTest {
                 .namesrvAddr("x:9876")
                 .build()))
                 .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", 409)
                 .hasMessageContaining("already exists");
         verify(nameserverMapper, never()).updateById(any(RmqNameserver.class));
+    }
+
+    @Test
+    void updateShouldReturnConflictWhenNameIsClaimedConcurrentlyTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class)))
+                .thenThrow(new DuplicateKeyException("uk_nameserver_name"));
+
+        assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq2")
+                .namesrvAddr("10.0.0.2:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", 409)
+                .hasMessage("NameServer registry name already exists: rocketmq2");
     }
 
     @Test
