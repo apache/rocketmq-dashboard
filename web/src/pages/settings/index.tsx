@@ -22,10 +22,11 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { GeneralSettingsTab } from './GeneralSettingsTab';
 import { AiAssistantTab } from './AiAssistantTab';
+import { CloudCredentialTab } from './CloudCredentialTab';
 import { DataSourceTab } from './DataSourceTab';
 import { AboutTab } from './AboutTab';
 
-const TAB_KEYS = ['general', 'ai', 'datasource', 'about'] as const;
+const TAB_KEYS = ['general', 'ai', 'credential', 'datasource', 'about'] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 const SettingsPage = () => {
@@ -46,6 +47,7 @@ const SettingsPage = () => {
         items={[
           { key: 'general', label: '通用设置', children: <GeneralSettingsTab /> },
           { key: 'ai', label: 'AI 助手', children: <AiAssistantTab /> },
+          { key: 'credential', label: '云凭据管理', children: <CloudCredentialTab /> },
           { key: 'datasource', label: '数据源管理', children: <DataSourceTab /> },
           { key: 'about', label: '关于', children: <AboutTab /> },
         ]}

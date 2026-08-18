@@ -18,7 +18,12 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { listCloudCredentials } from './cloudCredential';
+import {
+  createCloudCredential,
+  deleteCloudCredential,
+  listCloudCredentials,
+  updateCloudCredential,
+} from './cloudCredential';
 
 const mock = new MockAdapter(client);
 
@@ -52,5 +57,55 @@ describe('cloudCredential API', () => {
     expect(credentials).toHaveLength(1);
     expect(credentials[0].vendor).toBe('ALIYUN');
     expect(credentials[0].secretKey).toBeUndefined();
+  });
+
+  it('creates a credential with the full payload', async () => {
+    mock.onPost('/cloud-credentials/create').reply((config) => {
+      const body = JSON.parse(config.data);
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            id: 1,
+            name: body.name,
+            vendor: body.vendor,
+            accessKey: 'LTAI****0001',
+            gmtCreate: '2026-08-18T00:00:00',
+          },
+        },
+      ];
+    });
+
+    const saved = await createCloudCredential({
+      name: 'aliyun-test',
+      vendor: 'ALIYUN',
+      accessKey: 'LTAI00000001',
+      secretKey: 'secret-0001',
+      remark: 'test account',
+    });
+
+    expect(saved.id).toBe(1);
+    expect(JSON.parse(mock.history.post[0].data)).toMatchObject({
+      name: 'aliyun-test',
+      vendor: 'ALIYUN',
+      accessKey: 'LTAI00000001',
+      secretKey: 'secret-0001',
+    });
+  });
+
+  it('updates only provided fields and deletes by string id', async () => {
+    mock.onPost('/cloud-credentials/update').reply(200, {
+      code: 200,
+      data: { id: 1, name: 'renamed', vendor: 'ALIYUN', accessKey: 'LTAI****0001' },
+    });
+    mock.onPost('/cloud-credentials/delete').reply(200, { code: 200 });
+
+    const saved = await updateCloudCredential({ id: 1, name: 'renamed' });
+    expect(saved.name).toBe('renamed');
+    expect(JSON.parse(mock.history.post[0].data)).toEqual({ id: 1, name: 'renamed' });
+
+    await deleteCloudCredential(1);
+    expect(JSON.parse(mock.history.post[1].data)).toEqual({ id: '1' });
   });
 });

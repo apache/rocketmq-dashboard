@@ -16,6 +16,7 @@
  */
 
 import type { CSSProperties, ReactNode } from 'react';
+import { theme } from 'antd';
 
 interface InfoBannerProps {
   title?: ReactNode;
@@ -25,34 +26,38 @@ interface InfoBannerProps {
   'data-testid'?: string;
 }
 
-// 页面级常驻说明统一使用中性灰色 banner，区别于带语义色的告警/错误 Alert
-const InfoBanner = ({ title, description, children, style, ...rest }: InfoBannerProps) => (
-  <div
-    {...rest}
-    style={{
-      marginBottom: 16,
-      padding: '12px 16px',
-      borderRadius: 8,
-      border: '1px solid var(--bolt-elements-border-color, #f0f0f0)',
-      background: 'var(--bolt-elements-bg-depth-2, #fafafa)',
-      ...style,
-    }}
-  >
-    {title && <div style={{ fontSize: 14, fontWeight: 500 }}>{title}</div>}
-    {description && (
-      <div
-        style={{
-          fontSize: 14,
-          lineHeight: 1.6,
-          color: '#8c8c8c',
-          marginTop: title ? 6 : 0,
-        }}
-      >
-        {description}
-      </div>
-    )}
-    {children}
-  </div>
-);
+// 页面级常驻说明统一使用中性灰色 banner，区别于带语义色的告警/错误 Alert；
+// 颜色取 antd 主题 token，深色模式下自动适配（浅色模式观感等同 #fafafa/#f0f0f0）
+const InfoBanner = ({ title, description, children, style, ...rest }: InfoBannerProps) => {
+  const { token } = theme.useToken();
+  return (
+    <div
+      {...rest}
+      style={{
+        marginBottom: 16,
+        padding: '12px 16px',
+        borderRadius: 8,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        background: token.colorFillQuaternary,
+        ...style,
+      }}
+    >
+      {title && <div style={{ fontSize: 14, fontWeight: 500 }}>{title}</div>}
+      {description && (
+        <div
+          style={{
+            fontSize: 14,
+            lineHeight: 1.6,
+            color: token.colorTextSecondary,
+            marginTop: title ? 6 : 0,
+          }}
+        >
+          {description}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+};
 
 export default InfoBanner;

@@ -209,17 +209,26 @@ const MainLayout = () => {
         ),
         key: 'home',
       },
-      ...pathSnippets.map((_, index) => {
-        const path = '/' + pathSnippets.slice(0, index + 1).join('/');
-        const isSectionLeaf = instanceScopedMatch && index === pathSnippets.length - 1;
-        const leafTitle = isSectionLeaf
-          ? breadcrumbMap[`/instance/${instanceScopedMatch[1]}`]
-          : undefined;
-        return {
-          title: breadcrumbMap[path] || leafTitle || path,
-          key: path,
-        };
-      }),
+      ...pathSnippets
+        .map((_, index) => {
+          const path = '/' + pathSnippets.slice(0, index + 1).join('/');
+          // The instance ID path segment (/instance/<id>) is an identifier, not a
+          // navigation level — keep it out of the breadcrumb trail.
+          const isInstanceIdSegment =
+            index === 1 && pathSnippets[0] === 'instance' && !breadcrumbMap[path];
+          if (isInstanceIdSegment) {
+            return null;
+          }
+          const isSectionLeaf = instanceScopedMatch && index === pathSnippets.length - 1;
+          const leafTitle = isSectionLeaf
+            ? breadcrumbMap[`/instance/${instanceScopedMatch[1]}`]
+            : undefined;
+          return {
+            title: breadcrumbMap[path] || leafTitle || path,
+            key: path,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
     ];
   }, [location.pathname, navigate, breadcrumbMap, instanceScopedMatch, t]);
 
@@ -315,7 +324,7 @@ const MainLayout = () => {
             defaultOpenKeys={['instance-group', 'cluster-ops-group']}
             items={menuItems}
             onClick={({ key }) => navigate(key)}
-            style={{ borderRight: 'none', paddingTop: 8, background: 'transparent' }}
+            style={{ borderRight: 'none', background: 'transparent' }}
           />
         </Sider>
 
