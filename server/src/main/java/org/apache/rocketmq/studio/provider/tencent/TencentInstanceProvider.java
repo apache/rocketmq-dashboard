@@ -39,16 +39,19 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
+import com.tencentcloudapi.trocket.v20230308.models.Filter;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.ResetConsumerGroupOffsetRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -187,37 +190,92 @@ public class TencentInstanceProvider implements InstanceProvider {
         return listTopics(instanceId, type, search, true);
     }
 
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search, int page, int pageSize) {
+        Context context = resolve(instanceId);
+        DescribeTopicListResponse response = describeTopics(context, type, search,
+                Pagination.pageOffset(page, pageSize), pageSize);
+        Long totalCount = response == null ? null : response.getTotalCount();
+        if (totalCount == null || totalCount < 0L) {
+            return paginate(listTopics(instanceId, type, search, true), page, pageSize);
+        }
+        return PageResult.of(toTopics(response.getData(), instanceId, context, true), totalCount, page, pageSize);
+    }
+
     private List<TopicVO> listTopics(String instanceId, String type, String search, boolean enrichTimes) {
         Context context = resolve(instanceId);
         List<TopicVO> topics = new ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
-            DescribeTopicListRequest request = new DescribeTopicListRequest();
-            request.setInstanceId(context.cloudInstanceId());
-            request.setOffset((long) page * PAGE_SIZE);
-            request.setLimit((long) PAGE_SIZE);
-            DescribeTopicListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
-                    client -> client.DescribeTopicList(request));
+        for (long offset = 0L; ; offset += PAGE_SIZE) {
+            DescribeTopicListResponse response = describeTopics(context, type, search, offset, PAGE_SIZE);
             TopicItem[] data = response == null ? null : response.getData();
             if (data == null || data.length == 0) {
                 break;
             }
-            for (TopicItem item : data) {
-                if (item == null) {
-                    continue;
-                }
-                TopicVO topic = toTopic(item, instanceId);
-                if (matchesType(type, topic) && matchesSearch(search, topic)) {
-                    if (enrichTimes) {
-                        enrichTopicTimes(context, topic);
-                    }
-                    topics.add(topic);
-                }
-            }
-            if (data.length < PAGE_SIZE) {
+            topics.addAll(toTopics(data, instanceId, context, enrichTimes));
+            if (hasFetchedAll(offset, PAGE_SIZE, response.getTotalCount()) || data.length < PAGE_SIZE) {
                 break;
             }
         }
         return topics;
+    }
+
+    private DescribeTopicListResponse describeTopics(Context context, String type, String search, long offset, long limit) {
+        DescribeTopicListRequest request = new DescribeTopicListRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setOffset(offset);
+        request.setLimit(limit);
+        Filter[] filters = topicFilters(type, search);
+        if (filters.length > 0) {
+            request.setFilters(filters);
+        }
+        return clientFactory.call(context.credentialId(), context.regionId(), client -> client.DescribeTopicList(request));
+    }
+
+    private static Filter[] topicFilters(String type, String search) {
+        List<Filter> filters = new ArrayList<>(2);
+        if (StringUtils.hasText(search)) {
+            Filter filter = new Filter();
+            filter.setName("TopicName");
+            filter.setValues(new String[]{search.trim()});
+            filters.add(filter);
+        }
+        if (StringUtils.hasText(type)) {
+            Filter filter = new Filter();
+            filter.setName("TopicType");
+            filter.setValues(new String[]{type.trim().toUpperCase(Locale.ROOT)});
+            filters.add(filter);
+        }
+        return filters.toArray(Filter[]::new);
+    }
+
+    private List<TopicVO> toTopics(TopicItem[] data, String instanceId, Context context, boolean enrichTimes) {
+        if (data == null || data.length == 0) {
+            return List.of();
+        }
+        List<TopicVO> topics = new ArrayList<>(data.length);
+        for (TopicItem item : data) {
+            if (item == null) {
+                continue;
+            }
+            TopicVO topic = toTopic(item, instanceId);
+            if (enrichTimes) {
+                enrichTopicTimes(context, topic);
+            }
+            topics.add(topic);
+        }
+        return topics;
+    }
+
+    private static boolean hasFetchedAll(long offset, int pageSize, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && offset + pageSize >= totalCount;
+    }
+
+    private static PageResult<TopicVO> paginate(List<TopicVO> topics, int page, int pageSize) {
+        int total = topics.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 
     /**
@@ -961,19 +1019,6 @@ public class TencentInstanceProvider implements InstanceProvider {
             return ConsumeType.CLUSTERING;
         }
         return null;
-    }
-
-    private static boolean matchesType(String type, TopicVO topic) {
-        return !StringUtils.hasText(type)
-                || topic.getType() != null && topic.getType().name().equalsIgnoreCase(type.trim());
-    }
-
-    private static boolean matchesSearch(String search, TopicVO topic) {
-        if (!StringUtils.hasText(search)) {
-            return true;
-        }
-        String needle = search.trim().toLowerCase(Locale.ROOT);
-        return contains(topic.getName(), needle) || contains(topic.getRemark(), needle);
     }
 
     private static boolean matchesSearch(String search, String value) {

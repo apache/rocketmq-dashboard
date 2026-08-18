@@ -45,8 +45,10 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
 import org.springframework.util.StringUtils;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -64,6 +66,7 @@ import lombok.RequiredArgsConstructor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -145,40 +148,81 @@ public class AliyunInstanceProvider implements InstanceProvider {
     @Override
     public List<TopicVO> listTopics(String instanceId, String type, String search) {
         Context ctx = resolve(instanceId);
-        List<ListTopicsResponseBody.List> all = new ArrayList<>();
-        for (int page = 1; page <= AliyunConverters.MAX_PAGES; page++) {
-            ListTopicsRequest.Builder builder = ListTopicsRequest.builder()
-                    .instanceId(ctx.cloudInstanceId())
-                    .pageNumber(page)
-                    .pageSize(AliyunConverters.PAGE_SIZE);
-            if (!!StringUtils.hasText(search)) {
-                builder.filter(search);
-            }
-            ListTopicsRequest request = builder.build();
-            ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
-                    client -> client.listTopics(request));
-            ListTopicsResponseBody body = response == null ? null : response.getBody();
-            ListTopicsResponseBody.Data data = body == null ? null : body.getData();
+        List<TopicVO> topics = new ArrayList<>();
+        for (int page = 1; ; page++) {
+            ListTopicsResponseBody.Data data = fetchTopicPage(ctx, type, search, page, AliyunConverters.PAGE_SIZE);
             List<ListTopicsResponseBody.List> list = data == null ? null : data.getList();
             if (list == null || list.isEmpty()) {
                 break;
             }
-            all.addAll(list);
-            if (list.size() < AliyunConverters.PAGE_SIZE) {
+            topics.addAll(toTopics(list, instanceId));
+            if (hasFetchedAll(page, AliyunConverters.PAGE_SIZE, data.getTotalCount())
+                    || list.size() < AliyunConverters.PAGE_SIZE) {
                 break;
             }
         }
-        List<TopicVO> topics = new ArrayList<>();
-        for (ListTopicsResponseBody.List item : all) {
-            if (item == null) {
-                continue;
-            }
-            TopicVO vo = AliyunConverters.toTopicVO(item, instanceId);
-            if (matchesType(type, vo)) {
-                topics.add(vo);
+
+        return topics;
+    }
+
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search, int page, int pageSize) {
+        Context ctx = resolve(instanceId);
+        ListTopicsResponseBody.Data data = fetchTopicPage(ctx, type, search, page, pageSize);
+        Long totalCount = data == null ? null : data.getTotalCount();
+        if (totalCount == null || totalCount < 0L) {
+            return paginate(listTopics(instanceId, type, search), page, pageSize);
+        }
+        return PageResult.of(toTopics(data.getList(), instanceId), boundedCount(totalCount), page, pageSize);
+    }
+
+    private ListTopicsResponseBody.Data fetchTopicPage(Context ctx, String type, String search, int page, int pageSize) {
+        ListTopicsRequest request = buildTopicRequest(ctx.cloudInstanceId(), type, search, page, pageSize);
+        ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.listTopics(request));
+        ListTopicsResponseBody body = response == null ? null : response.getBody();
+        return body == null ? null : body.getData();
+    }
+
+    private ListTopicsRequest buildTopicRequest(String cloudInstanceId, String type, String search,
+            int page, int pageSize) {
+        ListTopicsRequest.Builder builder = ListTopicsRequest.builder()
+                .instanceId(cloudInstanceId)
+                .pageNumber(page)
+                .pageSize(pageSize);
+        if (StringUtils.hasText(search)) {
+            builder.filter(search);
+        }
+        if (StringUtils.hasText(type)) {
+            builder.messageTypes(List.of(type.trim().toUpperCase(Locale.ROOT)));
+        }
+        return builder.build();
+    }
+
+    private static List<TopicVO> toTopics(List<ListTopicsResponseBody.List> rows, String instanceId) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        List<TopicVO> topics = new ArrayList<>(rows.size());
+        for (ListTopicsResponseBody.List row : rows) {
+            if (row != null) {
+                topics.add(AliyunConverters.toTopicVO(row, instanceId));
+
             }
         }
         return topics;
+    }
+
+    private static boolean hasFetchedAll(int page, int pageSize, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && (long) page * pageSize >= totalCount;
+    }
+
+    private static PageResult<TopicVO> paginate(List<TopicVO> topics, int page, int pageSize) {
+        int total = topics.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 
     @Override
@@ -492,13 +536,6 @@ public class AliyunInstanceProvider implements InstanceProvider {
             throw new BusinessException(400, "Instance " + instanceId + " is missing Aliyun cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
-    }
-
-    private static boolean matchesType(String type, TopicVO vo) {
-        if (!StringUtils.hasText(type)) {
-            return true;
-        }
-        return vo.getType() != null && vo.getType().name().equalsIgnoreCase(type.trim());
     }
 
     private record Context(String cloudInstanceId, String regionId, Long credentialId) {

@@ -63,6 +63,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -110,13 +111,17 @@ class AliyunInstanceProviderTest {
     void listTopicsShouldMapMessageTypeAndFilterTest() {
         stubInstance();
         stubCallThrough();
-        ListTopicsResponse response = topicsResponse(
-                topicRow("topic-normal", "NORMAL"),
-                null,
-                topicRow("topic-fifo", "FIFO"),
-                topicRow("topic-mystery", "MYSTERY"));
-        when(asyncClient.listTopics(any(ListTopicsRequest.class)))
-                .thenReturn(CompletableFuture.completedFuture(response));
+        when(asyncClient.listTopics(any(ListTopicsRequest.class))).thenAnswer(invocation -> {
+            ListTopicsRequest request = invocation.getArgument(0);
+            if (request.getMessageTypes() != null && request.getMessageTypes().contains("FIFO")) {
+                return CompletableFuture.completedFuture(topicsResponse(topicRow("topic-fifo", "FIFO")));
+            }
+            return CompletableFuture.completedFuture(topicsResponse(
+                    topicRow("topic-normal", "NORMAL"),
+                    null,
+                    topicRow("topic-fifo", "FIFO"),
+                    topicRow("topic-mystery", "MYSTERY")));
+        });
 
         List<TopicVO> all = provider.listTopics(STUDIO_INSTANCE_ID, null, null);
 
@@ -133,6 +138,57 @@ class AliyunInstanceProviderTest {
 
         assertThat(fifos).hasSize(1);
         assertThat(fifos.get(0).getType()).isEqualTo(TopicType.FIFO);
+    }
+
+    @Test
+    void listTopicsShouldTraversePastLegacyFivePageCapTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any(ListTopicsRequest.class))).thenAnswer(invocation -> {
+            ListTopicsRequest request = invocation.getArgument(0);
+            int pageNumber = request.getPageNumber();
+            if (pageNumber <= 5) {
+                return CompletableFuture.completedFuture(topicsResponse(501L, pageNumber, AliyunConverters.PAGE_SIZE,
+                        IntStream.range(0, AliyunConverters.PAGE_SIZE)
+                                .mapToObj(index -> topicRow("topic-" + ((pageNumber - 1) * AliyunConverters.PAGE_SIZE + index),
+                                        "NORMAL"))
+                                .toArray(ListTopicsResponseBody.List[]::new)));
+            }
+            return CompletableFuture.completedFuture(topicsResponse(501L, pageNumber, AliyunConverters.PAGE_SIZE,
+                    topicRow("topic-500", "NORMAL")));
+        });
+
+        List<TopicVO> topics = provider.listTopics(STUDIO_INSTANCE_ID, null, null);
+
+        assertThat(topics).hasSize(501);
+        ArgumentCaptor<ListTopicsRequest> captor = ArgumentCaptor.forClass(ListTopicsRequest.class);
+        verify(asyncClient, times(6)).listTopics(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListTopicsRequest::getPageNumber)
+                .containsExactly(1, 2, 3, 4, 5, 6);
+    }
+
+    @Test
+    void listTopicsPageShouldUseAliyunNativePaginationAndFiltersTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any(ListTopicsRequest.class))).thenReturn(CompletableFuture.completedFuture(
+                topicsResponse(321L, 3L, 20L,
+                        topicRow("orders-fifo-40", "FIFO"),
+                        topicRow("orders-fifo-41", "FIFO"))));
+
+        var page = provider.listTopicsPage(STUDIO_INSTANCE_ID, "fifo", "orders", 3, 20);
+
+        assertThat(page.getTotal()).isEqualTo(321);
+        assertThat(page.getPage()).isEqualTo(3);
+        assertThat(page.getSize()).isEqualTo(20);
+        assertThat(page.getItems()).extracting(TopicVO::getName)
+                .containsExactly("orders-fifo-40", "orders-fifo-41");
+        ArgumentCaptor<ListTopicsRequest> captor = ArgumentCaptor.forClass(ListTopicsRequest.class);
+        verify(asyncClient).listTopics(captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(3);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(20);
+        assertThat(captor.getValue().getFilter()).isEqualTo("orders");
+        assertThat(captor.getValue().getMessageTypes()).containsExactly("FIFO");
     }
 
     @Test
@@ -506,14 +562,19 @@ class AliyunInstanceProviderTest {
     }
 
     private static ListTopicsResponse topicsResponse(ListTopicsResponseBody.List... rows) {
+        return topicsResponse((long) rows.length, 1L, 100L, rows);
+    }
+
+    private static ListTopicsResponse topicsResponse(long totalCount, long pageNumber, long pageSize,
+            ListTopicsResponseBody.List... rows) {
         return ListTopicsResponse.create().toBuilder()
                 .statusCode(200)
                 .body(ListTopicsResponseBody.builder()
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(rows))
-                                .pageNumber(1L)
-                                .pageSize(100L)
-                                .totalCount((long) rows.length)
+                                .pageNumber(pageNumber)
+                                .pageSize(pageSize)
+                                .totalCount(totalCount)
                                 .build())
                         .build())
                 .build();
