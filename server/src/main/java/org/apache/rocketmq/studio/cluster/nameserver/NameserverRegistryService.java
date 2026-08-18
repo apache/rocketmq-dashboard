@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -41,7 +42,7 @@ public class NameserverRegistryService {
         Long existing = nameserverMapper.selectCount(new QueryWrapper<RmqNameserver>()
                 .eq("name", command.getName()));
         if (existing != null && existing > 0) {
-            throw new BusinessException(400, "NameServer registry name already exists: " + command.getName());
+            throw duplicateName(command.getName());
         }
         RmqNameserver entity = new RmqNameserver();
         entity.setName(command.getName());
@@ -49,7 +50,11 @@ public class NameserverRegistryService {
         entity.setK8sNamespace(command.getK8sNamespace());
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());
-        nameserverMapper.insert(entity);
+        try {
+            nameserverMapper.insert(entity);
+        } catch (DuplicateKeyException exception) {
+            throw duplicateName(command.getName());
+        }
         return toVO(nameserverMapper.selectById(entity.getId()));
     }
 
@@ -62,14 +67,18 @@ public class NameserverRegistryService {
                 .eq("name", command.getName())
                 .ne("id", command.getId()));
         if (duplicates != null && duplicates > 0) {
-            throw new BusinessException(400, "NameServer registry name already exists: " + command.getName());
+            throw duplicateName(command.getName());
         }
         entity.setName(command.getName());
         entity.setNamesrvAddr(command.getNamesrvAddr());
         entity.setK8sNamespace(command.getK8sNamespace());
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());
-        nameserverMapper.updateById(entity);
+        try {
+            nameserverMapper.updateById(entity);
+        } catch (DuplicateKeyException exception) {
+            throw duplicateName(command.getName());
+        }
         return toVO(nameserverMapper.selectById(entity.getId()));
     }
 
@@ -78,6 +87,10 @@ public class NameserverRegistryService {
             throw new BusinessException(404, "NameServer registry entry not found: " + id);
         }
         nameserverMapper.deleteById(id);
+    }
+
+    private BusinessException duplicateName(String name) {
+        return new BusinessException(409, "NameServer registry name already exists: " + name);
     }
 
     private NameserverRegistryVO toVO(RmqNameserver entity) {
