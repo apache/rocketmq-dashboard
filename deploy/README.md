@@ -73,8 +73,9 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 且用户表为空，后端会拒绝登录以避免误签发会话。
 `studio.auth.login-required=false` 仅用于本地开发场景跳过 `/api/**` 拦截。
 
-如果是从 2026-08 之前、尚未包含认证表的旧部署升级，并且继续复用现有 MySQL volume，请在新版本
-首次登录前先执行一次：
+如果是从 2026-08 之前、尚未包含认证表的旧部署升级，并且继续复用现有 MySQL volume，请先确认
+`rmq_settings` 是否已经包含 `settings_key`；若没有，先执行
+`deploy/mysql/upgrade-settings-singleton-key.sql`，再在新版本首次登录前执行一次：
 
 ```bash
 docker exec -i rocketmq-studio-mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-studio123}" rocketmq \

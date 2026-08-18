@@ -60,8 +60,10 @@ class AuthVolumeUpgradeIntegrationTest {
                   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                   gmt_create datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                   gmt_modified datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  settings_key varchar(128) NOT NULL DEFAULT 'general',
                   json text NOT NULL,
-                  PRIMARY KEY (id)
+                  PRIMARY KEY (id),
+                  UNIQUE KEY uk_rmq_settings_settings_key (settings_key)
                 )
                 """);
         jdbcTemplate.execute("""
