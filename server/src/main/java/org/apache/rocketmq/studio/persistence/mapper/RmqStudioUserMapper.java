@@ -12,6 +12,12 @@ package org.apache.rocketmq.studio.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
 
 public interface RmqStudioUserMapper extends BaseMapper<RmqStudioUser> {
+
+    @Select("SELECT id FROM rmq_studio_user WHERE admin = 1 AND enabled = 1 ORDER BY id FOR UPDATE")
+    List<Long> selectEnabledAdminIdsForUpdate();
 }

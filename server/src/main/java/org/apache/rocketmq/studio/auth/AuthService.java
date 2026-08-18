@@ -31,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -180,11 +181,15 @@ public class AuthService {
         return user;
     }
 
+    @Transactional
     public RmqStudioUser setUserEnabled(Long userId, boolean enabled) {
         requireDatabaseBacked();
         RmqStudioUser user = getUser(userId);
-        if (!enabled && Boolean.TRUE.equals(user.getAdmin()) && enabledAdminCount() <= 1) {
-            throw new BusinessException(409, "The last enabled administrator cannot be disabled");
+        if (!enabled && Boolean.TRUE.equals(user.getAdmin())) {
+            List<Long> enabledAdminIds = userMapper.selectEnabledAdminIdsForUpdate();
+            if (enabledAdminIds.contains(user.getId()) && enabledAdminIds.size() <= 1) {
+                throw new BusinessException(409, "The last enabled administrator cannot be disabled");
+            }
         }
         userMapper.updateById(userWithEnabled(user, enabled));
         if (!enabled) {
@@ -333,12 +338,6 @@ public class AuthService {
         update.setId(user.getId());
         update.setEnabled(enabled);
         return update;
-    }
-
-    private long enabledAdminCount() {
-        return userMapper.selectCount(new QueryWrapper<RmqStudioUser>()
-                .eq("admin", true)
-                .eq("enabled", true));
     }
 
     private void revokeUserSessions(Long userId) {
