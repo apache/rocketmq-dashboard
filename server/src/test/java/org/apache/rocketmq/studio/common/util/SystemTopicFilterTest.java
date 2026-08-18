@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SystemTopicFilterTest {
 
     @Test
-    void shouldRecognizeSharedSystemTopicPrefixesAndBrokerNamesTest() {
+    void shouldRecognizeCanonicalSystemTopicsAndBrokerNamesTest() {
         Set<String> brokerNames = Set.of("broker-prod-a", "broker-prod-b");
 
         assertThat(SystemTopicFilter.isSystem(null, brokerNames)).isTrue();
@@ -35,14 +35,15 @@ class SystemTopicFilterTest {
         assertThat(SystemTopicFilter.isSystem("SCHEDULE_TOPIC_XXXX", brokerNames)).isTrue();
         assertThat(SystemTopicFilter.isSystem("%RETRY%consumer-a", brokerNames)).isTrue();
         assertThat(SystemTopicFilter.isSystem("%DLQ%consumer-a", brokerNames)).isTrue();
-        assertThat(SystemTopicFilter.isSystem("CID_RMQ_SYS_TRANS", brokerNames)).isTrue();
-        assertThat(SystemTopicFilter.isSystem("broker_config", brokerNames)).isTrue();
-        assertThat(SystemTopicFilter.isSystem("BenchmarkTestTopic", brokerNames)).isTrue();
         assertThat(SystemTopicFilter.isSystem("TBW102", brokerNames)).isTrue();
         assertThat(SystemTopicFilter.isSystem("SELF_TEST_TOPIC", brokerNames)).isTrue();
         assertThat(SystemTopicFilter.isSystem("OFFSET_MOVED_EVENT", brokerNames)).isTrue();
         assertThat(SystemTopicFilter.isSystem("broker-prod-a", brokerNames)).isTrue();
 
         assertThat(SystemTopicFilter.isSystem("orders", brokerNames)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("CID_orders", brokerNames)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("broker_events", brokerNames)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("BenchmarkTestOrders", brokerNames)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("SCHEDULE_TOPIC_orders", brokerNames)).isFalse();
     }
 }

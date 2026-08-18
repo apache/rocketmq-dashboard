@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.common.util;
 
+import org.apache.rocketmq.common.topic.TopicValidator;
+
 import java.util.Set;
 
 /**
@@ -27,16 +29,7 @@ import java.util.Set;
  */
 public final class SystemTopicFilter {
 
-    private static final Set<String> SYSTEM_TOPIC_PREFIXES = Set.of(
-            "RMQ_SYS_", "rmq_sys_", "SCHEDULE_TOPIC_", "%RETRY%", "%DLQ%",
-            "CID_", "broker_", "BenchmarkTest"
-    );
-
-    private static final Set<String> SYSTEM_TOPICS = Set.of(
-            "TBW102", "SELF_TEST_TOPIC", "DefaultCluster", "OFFSET_MOVED_EVENT",
-            "broker", "SCHEDULE_TOPIC_XXXX", "RMQ_SYS_TRANS_HALF_TOPIC",
-            "RMQ_SYS_TRACE_TOPIC", "RMQ_SYS_TRANS_OP_HALF_TOPIC"
-    );
+    private static final Set<String> RETRY_AND_DLQ_PREFIXES = Set.of("%RETRY%", "%DLQ%");
 
     private SystemTopicFilter() {
     }
@@ -54,10 +47,10 @@ public final class SystemTopicFilter {
         if (topicName == null || topicName.isEmpty()) {
             return true;
         }
-        if (SYSTEM_TOPICS.contains(topicName)) {
+        if (TopicValidator.isSystemTopic(topicName)) {
             return true;
         }
-        for (String prefix : SYSTEM_TOPIC_PREFIXES) {
+        for (String prefix : RETRY_AND_DLQ_PREFIXES) {
             if (topicName.startsWith(prefix)) {
                 return true;
             }
