@@ -66,6 +66,10 @@ public interface InstanceProvider {
 
     void deleteTopic(String instanceId, String topicName);
 
+    default void deleteTopic(String instanceId, String topicName, String clusterId) {
+        deleteTopic(instanceId, topicName);
+    }
+
     List<TopicConsumerVO> getTopicConsumers(String instanceId, String topicName);
 
     default TopicConsumerPageVO getTopicConsumersPage(String instanceId, String topicName, int page, int pageSize) {
@@ -88,11 +92,20 @@ public interface InstanceProvider {
 
     void deleteConsumerGroup(String instanceId, String groupName);
 
+    default void deleteConsumerGroup(String instanceId, String groupName, String clusterId) {
+        deleteConsumerGroup(instanceId, groupName);
+    }
+
     List<QueueProgressVO> getGroupProgress(String instanceId, String groupName);
 
     List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String groupName);
 
     void resetOffset(String instanceId, String groupName, long timestamp, String topic);
+
+    default void resetOffset(String instanceId, String groupName, long timestamp, String topic,
+                             String clusterId) {
+        resetOffset(instanceId, groupName, timestamp, topic);
+    }
 
     List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                         String tag, String key, Long startTime, Long endTime);

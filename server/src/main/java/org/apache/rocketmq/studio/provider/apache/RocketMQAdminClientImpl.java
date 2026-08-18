@@ -141,7 +141,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
         return executeForInstance(topic.getInstanceId(), admin -> {
             try {
-                String clusterName = getClusterName(admin);
+                String clusterName = resolveClusterName(admin, topic.getClusterId());
                 // Match on the (cluster_id, name) key: the same topic name can exist in several
                 // clusters, and a name-only lookup would blow up with TooManyResultsException.
                 RmqTopic existing = topicMapper.selectOne(
@@ -206,6 +206,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         "queues=" + writeQueues + "/" + readQueues, "SUCCESS");
 
                 topic.setId(entity.getId());
+                topic.setClusterId(clusterName);
                 topic.setWriteQueues(writeQueues);
                 topic.setReadQueues(readQueues);
                 return topic;
@@ -227,7 +228,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             try {
                 // Match on the (cluster_id, name) key to avoid ambiguity when several clusters share
                 // the same topic name (a name-only lookup would throw TooManyResultsException).
-                String clusterName = getClusterName(admin);
+                String clusterName = resolveClusterName(admin, topic.getClusterId());
                 RmqTopic existing = topicMapper.selectOne(
                         new LambdaQueryWrapper<RmqTopic>()
                                 .eq(RmqTopic::getClusterId, clusterName)
@@ -281,6 +282,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         "queues=" + writeQueues + "/" + readQueues, "SUCCESS");
 
                 topic.setId(existing == null ? null : existing.getId());
+                topic.setClusterId(clusterName);
                 topic.setWriteQueues(writeQueues);
                 topic.setReadQueues(readQueues);
                 return topic;
@@ -304,17 +306,18 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void deleteTopic(String instanceId, String name) {
+    public void deleteTopic(String instanceId, String name, String clusterId) {
         String namesrvAddr = namesrvAddr(instanceId);
         executeForInstance(instanceId, admin -> {
             try {
-                String clusterName = getClusterName(admin);
+                String clusterName = resolveClusterName(admin, clusterId);
                 Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
+                if (brokerAddrs.isEmpty()) {
+                    throw new BusinessException(500, "No broker available to delete topic");
+                }
 
                 // Delete from brokers
-                if (!brokerAddrs.isEmpty()) {
-                    admin.deleteTopicInBroker(brokerAddrs, name);
-                }
+                admin.deleteTopicInBroker(brokerAddrs, name);
 
                 // Delete from nameserver
                 Set<String> nsAddrs = new HashSet<>();
@@ -420,7 +423,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String groupName = group.getName();
 
         try {
-            String groupClusterName = getClusterName(admin);
+            String groupClusterName = resolveClusterName(admin, group.getClusterId());
             Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, groupClusterName);
             if (brokerAddrs.isEmpty()) {
                 throw new BusinessException(500, "No broker available to create consumer group");
@@ -467,6 +470,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
 
             group.setId(entity.getId());
+            group.setClusterId(groupClusterName);
             return group;
         } catch (BusinessException e) {
             recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
@@ -478,24 +482,27 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void deleteConsumerGroup(String instanceId, String name) {
+    public void deleteConsumerGroup(String instanceId, String name, String clusterId) {
         if (StringUtils.hasText(instanceId)) {
             runtimeAdminClientResolver.execute(instanceId, admin -> {
-                doDeleteConsumerGroup(admin, name);
+                doDeleteConsumerGroup(admin, name, clusterId);
                 return null;
             });
             return;
         }
         adminFactory.execute(namesrvAddr(), null, admin -> {
-            doDeleteConsumerGroup(admin, name);
+            doDeleteConsumerGroup(admin, name, clusterId);
             return null;
         });
     }
 
-    private void doDeleteConsumerGroup(MQAdminExt admin, String name) {
+    private void doDeleteConsumerGroup(MQAdminExt admin, String name, String requestedClusterId) {
         try {
-            String clusterName = getClusterName(admin);
+            String clusterName = resolveClusterName(admin, requestedClusterId);
             Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
+            if (brokerAddrs.isEmpty()) {
+                throw new BusinessException(500, "No broker available to delete consumer group");
+            }
 
             for (String addr : brokerAddrs) {
                 admin.deleteSubscriptionGroup(addr, name, true);
@@ -517,19 +524,22 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void resetOffset(String instanceId, String name, long timestamp, String topic) {
+    public void resetOffset(String instanceId, String name, long timestamp, String topic,
+                            String clusterId) {
         if (!StringUtils.hasText(topic)) {
             throw new BusinessException(400, "topic is required for offset reset");
         }
         try {
             if (StringUtils.hasText(instanceId)) {
                 runtimeAdminClientResolver.execute(instanceId, admin -> {
-                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    admin.resetOffsetByTimestamp(
+                            resolveClusterName(admin, clusterId), topic, name, timestamp, false);
                     return null;
                 });
             } else {
                 adminFactory.execute(namesrvAddr(), null, admin -> {
-                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    admin.resetOffsetByTimestamp(
+                            resolveClusterName(admin, clusterId), topic, name, timestamp, false);
                     return null;
                 });
             }
@@ -603,46 +613,24 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return adminFactory.execute(namesrvAddr(), null, action);
     }
 
-    private Set<String> getAllMasterBrokerAddrs(MQAdminExt admin) throws Exception {
-        Set<String> addrs = new HashSet<>();
-        ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-        if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-            return addrs;
-        }
-
-        for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-            if (brokerData.getBrokerAddrs() == null) {
-                continue;
-            }
-            // Use master address (brokerId = 0) preferentially
-            String masterAddr = brokerData.getBrokerAddrs().get(0L);
-            if (masterAddr == null && !brokerData.getBrokerAddrs().isEmpty()) {
-                masterAddr = brokerData.getBrokerAddrs().values().iterator().next();
-            }
-            if (masterAddr != null) {
-                addrs.add(masterAddr);
-            }
-        }
-        return addrs;
-    }
-
     /**
      * Returns master broker addresses for the specified cluster only, using the
-     * clusterAddrTable to map cluster name to broker names. Falls back to all
-     * brokers when the cluster name is unknown or the cluster table is missing.
+     * clusterAddrTable to map cluster name to broker names. Returns an empty set
+     * when the cluster cannot be resolved so callers fail closed instead of
+     * accidentally targeting every broker in a multi-cluster instance.
      */
     private Set<String> getMasterBrokerAddrsForCluster(MQAdminExt admin, String clusterName) throws Exception {
         if (!StringUtils.hasText(clusterName)) {
-            return getAllMasterBrokerAddrs(admin);
+            return Set.of();
         }
         ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
         if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null
                 || clusterInfo.getBrokerAddrTable() == null) {
-            return getAllMasterBrokerAddrs(admin);
+            return Set.of();
         }
         Set<String> brokerNames = clusterInfo.getClusterAddrTable().get(clusterName);
         if (brokerNames == null || brokerNames.isEmpty()) {
-            return getAllMasterBrokerAddrs(admin);
+            return Set.of();
         }
         Set<String> addrs = new HashSet<>();
         for (String brokerName : brokerNames) {
@@ -658,19 +646,29 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 addrs.add(masterAddr);
             }
         }
-        return addrs.isEmpty() ? getAllMasterBrokerAddrs(admin) : addrs;
+        return addrs;
     }
 
-    private String getClusterName(MQAdminExt admin) {
-        try {
-            ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-            if (clusterInfo != null && clusterInfo.getClusterAddrTable() != null
-                    && !clusterInfo.getClusterAddrTable().isEmpty()) {
-                return clusterInfo.getClusterAddrTable().keySet().iterator().next();
-            }
-        } catch (Exception ignored) {
+    private String resolveClusterName(MQAdminExt admin, String requestedClusterId) throws Exception {
+        ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
+        if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null
+                || clusterInfo.getClusterAddrTable().isEmpty()) {
+            throw new BusinessException(502, "Unable to resolve target cluster from NameServer");
         }
-        return "DefaultCluster";
+
+        Map<String, Set<String>> clusterAddrTable = clusterInfo.getClusterAddrTable();
+        if (StringUtils.hasText(requestedClusterId)) {
+            String clusterName = requestedClusterId.trim();
+            if (!clusterAddrTable.containsKey(clusterName)) {
+                throw new BusinessException(404, "Cluster not found: " + clusterName);
+            }
+            return clusterName;
+        }
+        if (clusterAddrTable.size() == 1) {
+            return clusterAddrTable.keySet().iterator().next();
+        }
+        throw new BusinessException(
+                400, "clusterId is required when NameServer manages multiple clusters");
     }
 
     private int toRocketMQPerm(TopicPerm perm) {

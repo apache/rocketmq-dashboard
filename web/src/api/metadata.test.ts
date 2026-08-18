@@ -123,7 +123,11 @@ describe('topic metadata API', () => {
       return [200, { code: 200, data: topic }];
     });
     mock.onPost('/topics/delete').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ name: topic.name, instanceId: 'instance-1' });
+      expect(JSON.parse(config.data)).toEqual({
+        name: topic.name,
+        instanceId: 'instance-a',
+        clusterId: 'cluster-a',
+      });
       return [200, { code: 200, data: null }];
     });
     mock.onPost('/topics/send').reply((config) => {
@@ -136,7 +140,7 @@ describe('topic metadata API', () => {
     });
 
     await expect(createTopic(topic)).resolves.toEqual(topic);
-    await expect(deleteTopic(topic.name, 'instance-1')).resolves.toBeUndefined();
+    await expect(deleteTopic(topic.name, 'instance-a', 'cluster-a')).resolves.toBeUndefined();
     await expect(
       sendTopicMessage({ topic: topic.name, instanceId: 'instance-1', body: '{"id":1}' }),
     ).resolves.toMatchObject({ msgId: 'msg-1' });

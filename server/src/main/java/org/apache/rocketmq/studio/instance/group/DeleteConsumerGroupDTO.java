@@ -31,4 +31,6 @@ public class DeleteConsumerGroupDTO {
     private String name;
 
     private String instanceId;
+
+    private String clusterId;
 }

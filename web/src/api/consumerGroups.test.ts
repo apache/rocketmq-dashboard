@@ -86,6 +86,7 @@ describe('consumer groups API contract', () => {
       name: group.name,
       instanceId: 'instance-1',
       topic: 'orders',
+      clusterId: 'cluster-a',
       timestamp: 1784246400000,
     };
     mock.onGet('/groups/orders').reply(200, { code: 200, data: group });
@@ -100,10 +101,16 @@ describe('consumer groups API contract', () => {
 
   it('includes selected instance context when deleting a consumer group', async () => {
     mock.onPost('/groups/delete').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ name: group.name, instanceId: 'instance-1' });
+      expect(JSON.parse(config.data)).toEqual({
+        name: group.name,
+        instanceId: 'instance-a',
+        clusterId: 'cluster-a',
+      });
       return [200, { code: 200, data: null }];
     });
 
-    await expect(deleteConsumerGroup(group.name, 'instance-1')).resolves.toBeUndefined();
+    await expect(
+      deleteConsumerGroup(group.name, 'instance-a', 'cluster-a'),
+    ).resolves.toBeUndefined();
   });
 });

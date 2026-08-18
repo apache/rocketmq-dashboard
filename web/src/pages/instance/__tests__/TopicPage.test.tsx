@@ -315,17 +315,25 @@ describe('TopicPage', () => {
         writeQueues: 8,
         readQueues: 8,
         instanceId: 'instance-a',
+        clusterId: 'rmq-cn-v5-prod-01',
       }),
     );
     expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith('topic-01', 'instance-a');
+
+    const closeButton = document.querySelector('.ant-modal-close');
+    expect(closeButton).not.toBeNull();
+    await user.click(closeButton as HTMLElement);
   });
 
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
     const user = userEvent.setup();
     mockTopicsList(buildTopics(3));
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({
-      deleted: ['topic-01', 'topic-03'],
-      failed: ['topic-02'],
+      deleted: [
+        JSON.stringify(['rmq-cn-v5-prod-01', 'topic-01']),
+        JSON.stringify(['rmq-cn-v5-prod-01', 'topic-03']),
+      ],
+      failed: [JSON.stringify(['rmq-cn-v5-prod-01', 'topic-02'])],
     });
     renderWithProviders();
 
@@ -336,9 +344,11 @@ describe('TopicPage', () => {
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
 
-    await waitFor(() => expect(screen.queryByText('topic-01')).not.toBeInTheDocument());
-    expect(screen.getByText('topic-02')).toBeInTheDocument();
-    expect(screen.queryByText('topic-03')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument(),
+    );
+    expect(within(getTableBody()).getByText('topic-02')).toBeInTheDocument();
+    expect(within(getTableBody()).queryByText('topic-03')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
     expect(screen.getByText('已删除 2 个 Topic，1 个删除失败')).toBeInTheDocument();
   });

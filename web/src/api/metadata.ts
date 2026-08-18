@@ -130,6 +130,7 @@ export interface ResetConsumerOffsetRequest {
   name: string;
   timestamp: number;
   topic: string;
+  clusterId?: string;
 }
 
 // ─── Topic API ──────────────────────────────────────────────────
@@ -160,8 +161,12 @@ export async function updateTopic(data: Partial<Topic>) {
   return res.data.data;
 }
 
-export async function deleteTopic(name: string, instanceId?: string) {
-  await client.post('/topics/delete', { name, ...(instanceId ? { instanceId } : {}) });
+export async function deleteTopic(name: string, instanceId?: string, clusterId?: string) {
+  await client.post('/topics/delete', {
+    name,
+    ...(instanceId ? { instanceId } : {}),
+    ...(clusterId ? { clusterId } : {}),
+  });
 }
 
 export async function getTopicRoutes(name: string, instanceId?: string) {
@@ -256,8 +261,12 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>) {
   return res.data.data;
 }
 
-export async function deleteConsumerGroup(name: string, instanceId?: string) {
-  await client.post('/groups/delete', { name, ...(instanceId ? { instanceId } : {}) });
+export async function deleteConsumerGroup(name: string, instanceId?: string, clusterId?: string) {
+  await client.post('/groups/delete', {
+    name,
+    ...(instanceId ? { instanceId } : {}),
+    ...(clusterId ? { clusterId } : {}),
+  });
 }
 
 export interface ResetConsumerOffsetRequest {
@@ -265,6 +274,7 @@ export interface ResetConsumerOffsetRequest {
   instanceId?: string;
   timestamp: number;
   topic: string;
+  clusterId?: string;
 }
 
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest) {

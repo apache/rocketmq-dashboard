@@ -85,13 +85,19 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
   return metadataApi.updateTopic(data);
 }
 
-export async function deleteTopic(name: string, instanceId?: string): Promise<void> {
+export async function deleteTopic(
+  name: string,
+  instanceId?: string,
+  clusterId?: string,
+): Promise<void> {
   if (isMockMode()) {
-    const idx = mockTopics.findIndex((t) => t.name === name);
+    const idx = mockTopics.findIndex(
+      (topic) => topic.name === name && (!clusterId || topic.clusterId === clusterId),
+    );
     if (idx >= 0) mockTopics.splice(idx, 1);
     return;
   }
-  return metadataApi.deleteTopic(name, instanceId);
+  return metadataApi.deleteTopic(name, instanceId, clusterId);
 }
 
 export interface BatchDeleteTopicsResult {
@@ -99,18 +105,24 @@ export interface BatchDeleteTopicsResult {
   failed: string[];
 }
 
+export interface TopicDeleteTarget {
+  key: string;
+  name: string;
+  clusterId?: string;
+}
+
 // Batch delete: attempt every selected topic and report partial failures.
 export async function batchDeleteTopics(
-  names: string[],
+  targets: TopicDeleteTarget[],
   instanceId?: string,
 ): Promise<BatchDeleteTopicsResult> {
   const result: BatchDeleteTopicsResult = { deleted: [], failed: [] };
-  for (const name of names) {
+  for (const target of targets) {
     try {
-      await deleteTopic(name, instanceId);
-      result.deleted.push(name);
+      await deleteTopic(target.name, instanceId, target.clusterId);
+      result.deleted.push(target.key);
     } catch {
-      result.failed.push(name);
+      result.failed.push(target.key);
     }
   }
   return result;

@@ -113,6 +113,9 @@ const TYPE_OPTIONS = [
   { label: 'LiteTopic', value: 'LITE' },
 ];
 
+const topicRowKey = (topic: Pick<Topic, 'clusterId' | 'name'>): string =>
+  JSON.stringify([topic.clusterId, topic.name]);
+
 // Topic 类型选项（描述参考阿里云 RocketMQ 消息类型语义），创建弹窗用 Segmented 展示
 const TOPIC_TYPE_CARDS = [
   { value: 'NORMAL', label: '普通消息', desc: '适用于无特殊顺序要求的常规消息收发场景。' },
@@ -449,6 +452,7 @@ const TopicPage = () => {
         writeQueues: topic.writeQueues,
         readQueues: topic.readQueues,
         instanceId,
+        clusterId: topic.clusterId,
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
@@ -546,8 +550,16 @@ const TopicPage = () => {
         cancelText: '取消',
         onOk: async () => {
           try {
-            await deleteTopic(topic.name, selectedInstanceId || undefined);
-            setTopics((previous) => previous.filter((item) => item.name !== topic.name));
+            await deleteTopic(
+              topic.name,
+              topic.instanceId || selectedInstanceId || undefined,
+              topic.clusterId,
+            );
+            setTopics((previous) =>
+              previous.filter(
+                (item) => item.name !== topic.name || item.clusterId !== topic.clusterId,
+              ),
+            );
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
             message.error('删除 Topic 失败，请稍后重试');
@@ -1080,15 +1092,22 @@ const TopicPage = () => {
                   cancelText: '取消',
                   onOk: async () => {
                     try {
-                      const names = selectedRowKeys.map(String);
+                      const selectedKeys = new Set(selectedRowKeys.map(String));
+                      const targets = topics
+                        .filter((topic) => selectedKeys.has(topicRowKey(topic)))
+                        .map((topic) => ({
+                          key: topicRowKey(topic),
+                          name: topic.name,
+                          clusterId: topic.clusterId,
+                        }));
                       const { deleted, failed } = await batchDeleteTopics(
-                        names,
+                        targets,
                         selectedInstanceId || undefined,
                       );
                       if (deleted.length > 0) {
-                        const deletedNames = new Set(deleted);
+                        const deletedKeys = new Set(deleted);
                         setTopics((previous) =>
-                          previous.filter((topic) => !deletedNames.has(topic.name)),
+                          previous.filter((topic) => !deletedKeys.has(topicRowKey(topic))),
                         );
                       }
                       setSelectedRowKeys(failed);
@@ -1169,7 +1188,7 @@ const TopicPage = () => {
             columns={columns}
             dataSource={filteredTopics}
             loading={loading}
-            rowKey="name"
+            rowKey={topicRowKey}
             rowSelection={{
               selectedRowKeys,
               onChange: (keys) => setSelectedRowKeys(keys),

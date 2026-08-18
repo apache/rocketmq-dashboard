@@ -110,6 +110,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public void deleteTopic(String instanceId, String topicName, String clusterId) {
+        adminClient.deleteTopic(instanceId, topicName, clusterId);
+    }
+
+    @Override
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String topicName) {
         return metadataProvider.getTopicConsumers(instanceId, topicName);
     }
@@ -135,6 +140,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public void deleteConsumerGroup(String instanceId, String groupName, String clusterId) {
+        adminClient.deleteConsumerGroup(instanceId, groupName, clusterId);
+    }
+
+    @Override
     public List<QueueProgressVO> getGroupProgress(String instanceId, String groupName) {
         return metadataProvider.getGroupProgress(instanceId, groupName);
     }
@@ -147,6 +157,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public void resetOffset(String instanceId, String groupName, long timestamp, String topic) {
         adminClient.resetOffset(instanceId, groupName, timestamp, topic);
+    }
+
+    @Override
+    public void resetOffset(String instanceId, String groupName, long timestamp, String topic,
+                            String clusterId) {
+        adminClient.resetOffset(instanceId, groupName, timestamp, topic, clusterId);
     }
 
     @Override

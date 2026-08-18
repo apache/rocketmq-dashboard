@@ -27,9 +27,18 @@ public interface AdminClient {
     ConsumerGroupVO getConsumerGroup(String instanceId, String name);
     TopicVO createTopic(TopicVO topic);
     TopicVO updateTopic(TopicVO topic);
-    void deleteTopic(String instanceId, String name);
+    default void deleteTopic(String instanceId, String name) {
+        deleteTopic(instanceId, name, null);
+    }
+    void deleteTopic(String instanceId, String name, String clusterId);
     SendMessageVO sendMessage(SendMessageDTO request);
     ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group);
-    void deleteConsumerGroup(String instanceId, String name);
-    void resetOffset(String instanceId, String name, long timestamp, String topic);
+    default void deleteConsumerGroup(String instanceId, String name) {
+        deleteConsumerGroup(instanceId, name, null);
+    }
+    void deleteConsumerGroup(String instanceId, String name, String clusterId);
+    default void resetOffset(String instanceId, String name, long timestamp, String topic) {
+        resetOffset(instanceId, name, timestamp, topic, null);
+    }
+    void resetOffset(String instanceId, String name, long timestamp, String topic, String clusterId);
 }

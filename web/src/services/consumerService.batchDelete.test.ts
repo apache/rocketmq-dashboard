@@ -18,7 +18,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const metadataApiMocks = vi.hoisted(() => ({
-  deleteTopic: vi.fn(),
+  deleteConsumerGroup: vi.fn(),
 }));
 
 vi.mock('../config', () => ({
@@ -28,38 +28,36 @@ vi.mock('../config', () => ({
 
 vi.mock('../api/metadata', () => metadataApiMocks);
 
-import { batchDeleteTopics } from './topicService';
+import { batchDeleteConsumerGroups } from './consumerService';
 
-describe('topic service batch deletion', () => {
+describe('consumer group service batch deletion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('keeps same-name targets distinct and reports each outcome by row key', async () => {
-    metadataApiMocks.deleteTopic.mockImplementation(
+  it('forwards each target cluster and continues after a failure', async () => {
+    metadataApiMocks.deleteConsumerGroup.mockImplementation(
       (_name: string, _instanceId: string, clusterId: string) =>
         clusterId === 'cluster-2' ? Promise.reject(new Error('delete failed')) : Promise.resolve(),
     );
 
     await expect(
-      batchDeleteTopics(
+      batchDeleteConsumerGroups(
         [
           { key: 'cluster-1/orders', name: 'orders', clusterId: 'cluster-1' },
           { key: 'cluster-2/orders', name: 'orders', clusterId: 'cluster-2' },
-          { key: 'cluster-3/payments', name: 'payments', clusterId: 'cluster-3' },
         ],
         'instance-a',
       ),
-    ).resolves.toEqual({
-      deleted: ['cluster-1/orders', 'cluster-3/payments'],
-      failed: ['cluster-2/orders'],
-    });
-    expect(metadataApiMocks.deleteTopic.mock.calls.map(([name]) => name)).toEqual([
+    ).resolves.toEqual({ deleted: ['cluster-1/orders'], failed: ['cluster-2/orders'] });
+
+    expect(metadataApiMocks.deleteConsumerGroup).toHaveBeenNthCalledWith(
+      1,
       'orders',
-      'orders',
-      'payments',
-    ]);
-    expect(metadataApiMocks.deleteTopic).toHaveBeenNthCalledWith(
+      'instance-a',
+      'cluster-1',
+    );
+    expect(metadataApiMocks.deleteConsumerGroup).toHaveBeenNthCalledWith(
       2,
       'orders',
       'instance-a',
