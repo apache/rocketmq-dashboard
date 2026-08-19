@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -108,6 +109,24 @@ class MessageServiceTest {
         verify(history).recordMessageQuery("cloud-instance", "KEY", "orders", null, null,
                 "ORDER-1", null, null, 1);
         verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void normalizesNullProviderMessageResults() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(fallback, registry, history);
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(fallback.queryMessages("instance-a", "orders", null, null, null, 100L, 200L))
+                .thenReturn(null);
+
+        List<MessageRecordVO> result = service.queryMessages(
+                "instance-a", "orders", null, null, null, 100L, 200L);
+
+        assertThat(result).isEmpty();
+        verify(history).recordMessageQuery("instance-a", "TOPIC", "orders", null, null,
+                null, 100L, 200L, 0);
     }
 
     @Test

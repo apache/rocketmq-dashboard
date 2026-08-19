@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -43,8 +44,9 @@ public class MessageService {
         List<MessageRecordVO> result = providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime))
                 .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
-        recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.size());
-        return result;
+        List<MessageRecordVO> safeResult = result == null ? Collections.emptyList() : result;
+        recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, safeResult.size());
+        return safeResult;
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
