@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.common.config;
 
+import java.net.URI;
 import java.util.Arrays;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -33,7 +34,32 @@ public class CorsConfig implements WebMvcConfigurer {
         this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
+                .peek(CorsConfig::validateOrigin)
                 .toArray(String[]::new);
+    }
+
+    private static void validateOrigin(String origin) {
+        if ("*".equals(origin)) {
+            throw new IllegalArgumentException(
+                    "studio.cors.allowed-origins cannot contain '*' when credentials are enabled");
+        }
+        final URI uri;
+        try {
+            uri = URI.create(origin);
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalArgumentException("Invalid CORS origin: " + origin, invalid);
+        }
+        boolean http = "http".equalsIgnoreCase(uri.getScheme())
+                || "https".equalsIgnoreCase(uri.getScheme());
+        boolean originOnly = uri.getHost() != null
+                && uri.getUserInfo() == null
+                && (uri.getPath() == null || uri.getPath().isEmpty())
+                && uri.getQuery() == null
+                && uri.getFragment() == null;
+        if (!http || !originOnly) {
+            throw new IllegalArgumentException(
+                    "CORS origin must be an HTTP(S) origin without a path: " + origin);
+        }
     }
 
     @Override
