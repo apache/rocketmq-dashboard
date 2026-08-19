@@ -94,6 +94,9 @@ public class TencentCatalogService implements CloudCatalogProvider {
                 break;
             }
             for (InstanceItem item : data) {
+                if (item == null) {
+                    continue;
+                }
                 CloudInstanceOptionVO option = toInstanceOption(item, regionId);
                 if (matchesSearch(search, option)) {
                     instances.add(option);

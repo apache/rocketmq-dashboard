@@ -86,6 +86,21 @@ class TencentCatalogServiceTest {
     }
 
     @Test
+    void listCloudInstancesShouldSkipNullItemsTest() {
+        InstanceItem item = new InstanceItem();
+        item.setInstanceId("rmq-valid");
+        item.setInstanceName("valid-instance");
+        DescribeInstanceListResponse response = new DescribeInstanceListResponse();
+        response.setData(new InstanceItem[]{null, item});
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        List<CloudInstanceOptionVO> instances = service.listCloudInstances(CREDENTIAL_ID, REGION, null);
+
+        assertThat(instances).extracting(CloudInstanceOptionVO::getInstanceId)
+                .containsExactly("rmq-valid");
+    }
+
+    @Test
     void getCloudInstanceShouldMapOnlyOpenEndpointsTest() {
         Endpoint vpc = endpoint("VPC", "OPEN", "vpc.tencent:8080");
         Endpoint publicEndpoint = endpoint("PUBLIC", "OPEN", "public.tencent:8080");
