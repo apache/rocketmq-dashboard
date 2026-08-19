@@ -112,6 +112,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListTopicsResponse response = topicsResponse(
                 topicRow("topic-normal", "NORMAL"),
+                null,
                 topicRow("topic-fifo", "FIFO"),
                 topicRow("topic-mystery", "MYSTERY"));
         when(asyncClient.listTopics(any(ListTopicsRequest.class)))
@@ -142,12 +143,13 @@ class AliyunInstanceProviderTest {
                 .statusCode(200)
                 .body(ListConsumerGroupsResponseBody.builder()
                         .data(ListConsumerGroupsResponseBody.Data.builder()
-                                .list(List.of(ListConsumerGroupsResponseBody.List.builder()
-                                        .consumerGroupId("GID_test")
-                                        .messageModel("Clustering")
-                                        .status("RUNNING")
-                                        .remark("test group")
-                                        .build()))
+                                .list(java.util.Arrays.asList(null,
+                                        ListConsumerGroupsResponseBody.List.builder()
+                                                .consumerGroupId("GID_test")
+                                                .messageModel("Clustering")
+                                                .status("RUNNING")
+                                                .remark("test group")
+                                                .build()))
                                 .pageNumber(1L)
                                 .pageSize(100L)
                                 .totalCount(1L)
@@ -209,7 +211,8 @@ class AliyunInstanceProviderTest {
                 .statusCode(200)
                 .body(ListMessagesResponseBody.builder()
                         .data(ListMessagesResponseBody.Data.builder()
-                                .list(List.of(
+                                .list(java.util.Arrays.asList(
+                                        null,
                                         ListMessagesResponseBody.List.builder()
                                                 .messageId("msg-1")
                                                 .topicName("topic-a")
@@ -369,6 +372,47 @@ class AliyunInstanceProviderTest {
         TraceNodeVO consumer = trace.getNodes().get(2);
         assertThat(consumer.getTitle()).isEqualTo("Consumer GID_test");
         assertThat(consumer.getStatus()).isEqualTo("CONSUME_OK");
+        assertThat(trace.getConsumerStatus()).singleElement().satisfies(status -> {
+            assertThat(status.getGroup()).isEqualTo("GID_test");
+            assertThat(status.getDeliveryStatus().name()).isEqualTo("success");
+            assertThat(status.getConsumeTime())
+                    .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:10"));
+        });
+    }
+
+    @Test
+    void getMessageTraceShouldSkipNullConsumerOperations() {
+        stubInstance();
+        stubCallThrough();
+        GetTraceResponse response = GetTraceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetTraceResponseBody.builder()
+                        .data(GetTraceResponseBody.Data.builder()
+                                .consumerInfos(List.of(GetTraceResponseBody.ConsumerInfos.builder()
+                                        .consumerGroupId("GID_test")
+                                        .records(List.of(GetTraceResponseBody.Records.builder()
+                                                .consumeStatus("CONSUME_FAILED")
+                                                .operations(java.util.Arrays.asList(null,
+                                                        GetTraceResponseBody.RecordsOperations.builder()
+                                                                .operateTime("2023-03-22 12:17:10")
+                                                                .build()))
+                                                .build()))
+                                        .build()))
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-1", "orders");
+
+        assertThat(trace.getNodes()).singleElement()
+                .extracting(TraceNodeVO::getTimestamp)
+                .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:10"));
+        assertThat(trace.getConsumerStatus()).singleElement().satisfies(status -> {
+            assertThat(status.getDeliveryStatus().name()).isEqualTo("failed");
+            assertThat(status.getConsumeTime())
+                    .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:10"));
+        });
     }
 
     @Test
@@ -466,7 +510,7 @@ class AliyunInstanceProviderTest {
                 .statusCode(200)
                 .body(ListTopicsResponseBody.builder()
                         .data(ListTopicsResponseBody.Data.builder()
-                                .list(List.of(rows))
+                                .list(java.util.Arrays.asList(rows))
                                 .pageNumber(1L)
                                 .pageSize(100L)
                                 .totalCount((long) rows.length)
