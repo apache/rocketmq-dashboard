@@ -50,6 +50,7 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
 
     private static final Pattern THREAD_HEADER =
             Pattern.compile("^(?<name>.+?)TID:\\s+(?<id>\\d+)\\s+STATE:\\s+(?<state>\\S+)\\s*$");
+    static final int MAX_JSTACK_CHARS = 2 * 1024 * 1024;
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final MqAdminExtFactory adminFactory;
@@ -139,6 +140,10 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
         if (!StringUtils.hasText(jstack)) {
             return List.of();
         }
+        if (jstack.length() > MAX_JSTACK_CHARS) {
+            throw new BusinessException(502,
+                    "Consumer stack exceeds the supported size of " + MAX_JSTACK_CHARS + " characters");
+        }
 
         List<ConsumerThreadStackVO> threads = new ArrayList<>();
         ThreadBuilder current = null;
@@ -150,11 +155,16 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
             if (header.matches()) {
                 if (current != null) {
                     threads.add(current.build());
+                    current = null;
                 }
-                current = new ThreadBuilder(
-                        header.group("name").trim(),
-                        Long.parseLong(header.group("id")),
-                        header.group("state").trim());
+                try {
+                    current = new ThreadBuilder(
+                            header.group("name").trim(),
+                            Long.parseLong(header.group("id")),
+                            header.group("state").trim());
+                } catch (NumberFormatException malformedThreadId) {
+                    log.debug("Ignoring consumer stack row with an invalid thread id");
+                }
                 continue;
             }
             if (current != null) {
