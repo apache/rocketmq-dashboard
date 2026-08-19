@@ -34,4 +34,16 @@ class PasswordHasherTest {
         assertThat(hasher.matches("a-long-enough-password", firstHash)).isTrue();
         assertThat(hasher.matches("different-password", firstHash)).isFalse();
     }
+    @Test
+    void rejectsUnexpectedSaltAndDigestSizesBeforeDerivingAKey() {
+        PasswordHasher hasher = new PasswordHasher();
+        String validHash = hasher.hash("a-long-enough-password");
+        String[] parts = validHash.split("\\$", -1);
+
+        assertThat(hasher.matches("a-long-enough-password",
+                "pbkdf2$210000$" + "A".repeat(1_000_000) + "$" + parts[3])).isFalse();
+        assertThat(hasher.matches("a-long-enough-password",
+                "pbkdf2$210000$" + parts[2] + "$AA==")).isFalse();
+    }
+
 }
