@@ -46,12 +46,21 @@ public class ClusterListToolHandler implements ToolHandler {
 
     private static Map<String, Object> safeProjection(ClusterVO cluster) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", cluster.getId());
-        result.put("name", cluster.getName());
+        result.put("id", blankIfNull(cluster.getId()));
+        result.put("name", blankIfNull(cluster.getName()));
         result.put("type", requiredEnumName(cluster.getType(), "type", cluster.getId()));
         result.put("status", requiredEnumName(cluster.getStatus(), "status", cluster.getId()));
-        result.put("version", cluster.getVersion());
+        result.put("version", blankIfNull(cluster.getVersion()));
         return result;
+    }
+
+    /**
+     * The output schema declares id/name/version as required strings; providers that do
+     * not populate them (notably the Apache runtime provider, which reports no cluster
+     * version) must not emit nulls or schema validation turns the tool call into a 500.
+     */
+    private static String blankIfNull(String value) {
+        return value == null ? "" : value;
     }
 
     private static String requiredEnumName(Enum<?> value, String field, String clusterId) {
