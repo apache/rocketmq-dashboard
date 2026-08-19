@@ -44,13 +44,26 @@ describe('ACL API contract', () => {
   });
 
   it('uses the controller-supported ACL rule filters', async () => {
-    const params = { clusterId: 'cluster-a', principal: 'orders' };
+    const params = {
+      principal: 'orders',
+      resource: 'orders-*',
+      scope: 'cluster',
+      decision: 'ALLOW',
+      aclVersion: '2.0',
+      page: 2,
+      pageSize: 10,
+    };
     mock.onGet('/acl/rules').reply((config) => {
       expect(config.params).toEqual(params);
-      return [200, { code: 200, data: [] }];
+      return [200, { code: 200, data: { items: [], total: 21, page: 2, size: 10 } }];
     });
 
-    await expect(listAclRules(params)).resolves.toEqual([]);
+    await expect(listAclRules(params)).resolves.toEqual({
+      items: [],
+      total: 21,
+      page: 2,
+      size: 10,
+    });
   });
 
   it('returns records created by rule and user APIs', async () => {

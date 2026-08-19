@@ -18,7 +18,9 @@ package org.apache.rocketmq.studio.instance.acl;
 
 import org.springframework.util.StringUtils;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.util.EntityIds;
@@ -33,6 +35,7 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -42,6 +45,7 @@ import java.util.Locale;
 public class AclService {
 
     private static final SecureRandom CREDENTIAL_RANDOM = new SecureRandom();
+    private static final int DEFAULT_RULE_PAGE_SIZE = 20;
 
     private final AclRepository aclRepository;
     private final OperationAuditService operationAuditService;
@@ -64,12 +68,23 @@ public class AclService {
     }
 
 
-    public List<AclRuleVO> listRules(String clusterId, String principal, String instanceId) {
+    public PageResult<AclRuleVO> listRules(String principal, String resource, String scope, String decision,
+            String aclVersion, String instanceId, Integer page, Integer pageSize) {
+        int normalizedPage = normalizePage(page);
+        int normalizedPageSize = normalizePageSize(pageSize);
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.listRules(instanceId, principal);
+            List<AclRuleVO> filtered = tencentAclService.listRules(instanceId, principal).stream()
+                    .filter(rule -> containsIgnoreCase(rule.getResource(), resource))
+                    .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
+                    .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
+                    .filter(rule -> equalsIgnoreCase(rule.getAclVersion(), aclVersion))
+                    .toList();
+            return paginateRules(filtered, normalizedPage, normalizedPageSize);
         }
-        log.info("Listing ACL rules for clusterId={}, principal={}", clusterId, principal);
-        return aclRepository.findRules(clusterId, principal);
+        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, aclVersion={}, page={}, pageSize={}",
+                principal, resource, scope, decision, aclVersion, normalizedPage, normalizedPageSize);
+        return aclRepository.findRulePage(principal, resource, scope, decision, aclVersion,
+                normalizedPage, normalizedPageSize);
     }
 
 
@@ -127,6 +142,25 @@ public class AclService {
         return aclRepository.findUsers().stream()
                 .map(this::maskCredentials)
                 .toList();
+    }
+
+    public PageResult<AclUserVO> pageUsers(String instanceId, int page, int pageSize, String keyword) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "page must be >= 1 and pageSize must be between 1 and 100");
+        }
+        String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        List<AclUserVO> users = (isTencentInstance(instanceId)
+                ? tencentAclService.listUsers(instanceId) : aclRepository.findUsers()).stream()
+                .filter(user -> query.isEmpty()
+                        || containsIgnoreCase(user.getUsername(), query)
+                        || containsIgnoreCase(user.getAccessKey(), query))
+                .sorted(Comparator.comparing(AclUserVO::getGmtCreate, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(AclUserVO::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        int from = (int) Math.min(Pagination.pageOffset(page, pageSize), users.size());
+        int to = Math.min(from + pageSize, users.size());
+        return PageResult.of(users.subList(from, to).stream().map(this::maskCredentials).toList(),
+                users.size(), page, pageSize);
     }
 
 
@@ -314,6 +348,36 @@ public class AclService {
                 .whiteRemoteAddress(user.getWhiteRemoteAddress())
                 .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    private static int normalizePage(Integer page) {
+        return page == null || page < 1 ? 1 : page;
+    }
+
+    private static int normalizePageSize(Integer pageSize) {
+        return pageSize == null || pageSize < 1 ? DEFAULT_RULE_PAGE_SIZE : pageSize;
+    }
+
+    private static boolean containsIgnoreCase(String value, String expectedFragment) {
+        if (!StringUtils.hasText(expectedFragment)) {
+            return true;
+        }
+        return StringUtils.hasText(value)
+                && value.toLowerCase(Locale.ROOT).contains(expectedFragment.toLowerCase(Locale.ROOT));
+    }
+
+    private static boolean equalsIgnoreCase(String value, String expected) {
+        if (!StringUtils.hasText(expected)) {
+            return true;
+        }
+        return StringUtils.hasText(value) && value.equalsIgnoreCase(expected);
+    }
+
+    private static PageResult<AclRuleVO> paginateRules(List<AclRuleVO> rules, int page, int pageSize) {
+        int total = rules.size();
+        int fromIndex = Math.min((page - 1) * pageSize, total);
+        int toIndex = Math.min(fromIndex + pageSize, total);
+        return PageResult.of(rules.subList(fromIndex, toIndex), total, page, pageSize);
     }
 
     private void auditRule(String operation, AclRuleVO rule) {

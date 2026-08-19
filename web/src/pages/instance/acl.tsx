@@ -59,7 +59,7 @@ import {
   getAclUserCredentials,
   examineBrokerClusterAclConfig,
   listAclRules,
-  listAclUsers,
+  pageAclUsers,
   updateAclRule,
   updateAclUser,
 } from '../../services/aclService';
@@ -103,21 +103,41 @@ const isFormValidationError = (error: unknown) =>
 /* ═══════════════════════════════════════════
    ACL Management Page
    ═══════════════════════════════════════════ */
-const AclPage = () => {
+type AclPageContentProps = Pick<
+  ReturnType<typeof useInstanceFilter>,
+  'selectedInstanceId' | 'selectInstance' | 'instanceOptions' | 'instances'
+>;
+
+const AclPageContent = ({
+  selectedInstanceId,
+  selectInstance,
+  instanceOptions,
+  instances,
+}: AclPageContentProps) => {
   const { t } = useLang();
-  const { selectedInstanceId, selectInstance, instanceOptions, instances } = useInstanceFilter();
+  const hasSelectedInstance = Boolean(selectedInstanceId);
 
   /* ─── State ─── */
   const [rules, setRules] = useState<AclRule[]>([]);
   const [users, setUsers] = useState<AclUser[]>([]);
-  const [rulesLoading, setRulesLoading] = useState(true);
-  const [usersLoading, setUsersLoading] = useState(true);
+  const [rulesLoading, setRulesLoading] = useState(hasSelectedInstance);
+  const [usersLoading, setUsersLoading] = useState(hasSelectedInstance);
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(20);
+  const [userTotal, setUserTotal] = useState(0);
+  const [userKeyword, setUserKeyword] = useState('');
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
+  const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
+  const [ruleTotal, setRuleTotal] = useState(0);
+  const [rulePage, setRulePage] = useState(1);
+  const [rulePageSize, setRulePageSize] = useState(20);
 
   // Rule filters
-  const [ruleSearch, setRuleSearch] = useState('');
+  const [rulePrincipalFilter, setRulePrincipalFilter] = useState('');
+  const [ruleResourceFilter, setRuleResourceFilter] = useState('');
+  const [ruleScopeFilter, setRuleScopeFilter] = useState<string>('all');
   const [ruleVersionFilter, setRuleVersionFilter] = useState<string>('all');
   const [ruleDecisionFilter, setRuleDecisionFilter] = useState<string>('all');
 
@@ -135,6 +155,7 @@ const AclPage = () => {
   const [revealedKeys, setRevealedKeys] = useState<Set<number>>(new Set());
   const [adminUpdatingIds, setAdminUpdatingIds] = useState<Set<number>>(() => new Set());
   const adminUpdateInFlightRef = useRef<Set<number>>(new Set());
+  const revealRequestGenerationRef = useRef<Record<number, number>>({});
   const [credentialsByUser, setCredentialsByUser] = useState<
     Record<number, { accessKey: string; secretKey: string }>
   >({});
@@ -143,6 +164,7 @@ const AclPage = () => {
   const [clusterConfig, setClusterConfig] = useState<AclClusterConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
   const [clusterIdInput, setClusterIdInput] = useState('DefaultCluster');
+  const examineRequestGenerationRef = useRef(0);
 
   // Plain access config modal
   const [plainModalOpen, setPlainModalOpen] = useState(false);
@@ -153,9 +175,20 @@ const AclPage = () => {
   useEffect(() => {
     let mounted = true;
 
-    void listAclRules({ instanceId: selectedInstanceId })
+    void listAclRules({
+      instanceId: selectedInstanceId,
+      principal: rulePrincipalFilter || undefined,
+      resource: ruleResourceFilter || undefined,
+      scope: ruleScopeFilter === 'all' ? undefined : ruleScopeFilter,
+      aclVersion: ruleVersionFilter === 'all' ? undefined : ruleVersionFilter,
+      decision: ruleDecisionFilter === 'all' ? undefined : ruleDecisionFilter,
+      page: rulePage,
+      pageSize: rulePageSize,
+    })
       .then((nextRules) => {
-        if (mounted) setRules(nextRules.map(normalizeRule));
+        if (!mounted) return;
+        setRules(nextRules.items.map(normalizeRule));
+        setRuleTotal(nextRules.total);
       })
       .catch(() => {
         if (mounted) message.error(t('common.fetchDataFailed'));
@@ -164,9 +197,17 @@ const AclPage = () => {
         if (mounted) setRulesLoading(false);
       });
 
-    void listAclUsers({ instanceId: selectedInstanceId })
-      .then((nextUsers) => {
-        if (mounted) setUsers(nextUsers.map(normalizeUser));
+    void pageAclUsers({
+      instanceId: selectedInstanceId,
+      page: userPage,
+      pageSize: userPageSize,
+      keyword: userKeyword || undefined,
+    })
+      .then((result) => {
+        if (mounted) {
+          setUsers(result.items.map(normalizeUser));
+          setUserTotal(result.total);
+        }
       })
       .catch(() => {
         if (mounted) message.error(t('common.fetchDataFailed'));
@@ -178,19 +219,21 @@ const AclPage = () => {
     return () => {
       mounted = false;
     };
-  }, [t, selectedInstanceId]);
-
-  /* ─── Filtered rules ─── */
-  const filteredRules = rules.filter((r) => {
-    const aclVersion = String(r.aclVersion);
-    const matchSearch =
-      !ruleSearch ||
-      r.principal.toLowerCase().includes(ruleSearch.toLowerCase()) ||
-      r.resource.toLowerCase().includes(ruleSearch.toLowerCase());
-    const matchVersion = ruleVersionFilter === 'all' || aclVersion === ruleVersionFilter;
-    const matchDecision = ruleDecisionFilter === 'all' || r.decision === ruleDecisionFilter;
-    return matchSearch && matchVersion && matchDecision;
-  });
+  }, [
+    t,
+    selectedInstanceId,
+    rulePrincipalFilter,
+    ruleResourceFilter,
+    ruleScopeFilter,
+    ruleVersionFilter,
+    ruleDecisionFilter,
+    rulePage,
+    rulePageSize,
+    ruleRefreshKey,
+    userPage,
+    userPageSize,
+    userKeyword,
+  ]);
 
   /* ─── Rule helpers ─── */
   const isAdmin = (principal: string) =>
@@ -239,23 +282,22 @@ const AclPage = () => {
       const values = (await ruleForm.validateFields()) as AclRuleFormValues;
       setRuleSubmitting(true);
       if (editingRule) {
-        const updated = await updateAclRule({
+        await updateAclRule({
           ...editingRule,
           ...values,
           instanceId: selectedInstanceId,
         });
-        const normalized = normalizeRule(updated);
-        setRules((prev) => prev.map((r) => (r.id === editingRule.id ? normalized : r)));
         message.success(t('acl.ruleUpdated'));
       } else {
-        const created = await createAclRule({
+        await createAclRule({
           ...values,
           aclVersion: '2.0',
           instanceId: selectedInstanceId,
         });
-        setRules((prev) => [normalizeRule(created), ...prev]);
+        setRulePage(1);
         message.success(t('acl.ruleAdded'));
       }
+      setRuleRefreshKey((prev) => prev + 1);
       setRuleModalOpen(false);
     } catch (error) {
       if (isFormValidationError(error)) return;
@@ -268,7 +310,11 @@ const AclPage = () => {
   const handleDeleteRule = async (id: number) => {
     try {
       await deleteAclRule(id, selectedInstanceId);
-      setRules((prev) => prev.filter((r) => r.id !== id));
+      if (rules.length === 1 && rulePage > 1) {
+        setRulePage((prev) => prev - 1);
+      } else {
+        setRuleRefreshKey((prev) => prev + 1);
+      }
       message.success(t('acl.ruleDeleted'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -278,6 +324,8 @@ const AclPage = () => {
   /* ─── User helpers ─── */
   const toggleRevealKey = async (userId: number) => {
     const revealing = !revealedKeys.has(userId);
+    const revealGeneration = (revealRequestGenerationRef.current[userId] ?? 0) + 1;
+    revealRequestGenerationRef.current[userId] = revealGeneration;
     setRevealedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) {
@@ -290,6 +338,7 @@ const AclPage = () => {
     if (!revealing || credentialsByUser[userId]) return;
     try {
       const credentials = await getAclUserCredentials(userId, selectedInstanceId);
+      if (revealRequestGenerationRef.current[userId] !== revealGeneration) return;
       setCredentialsByUser((prev) => ({
         ...prev,
         [userId]: {
@@ -298,6 +347,7 @@ const AclPage = () => {
         },
       }));
     } catch {
+      if (revealRequestGenerationRef.current[userId] !== revealGeneration) return;
       setRevealedKeys((prev) => {
         const next = new Set(prev);
         next.delete(userId);
@@ -402,15 +452,21 @@ const AclPage = () => {
       message.warning(t('acl.inputRequired', { field: t('acl.examineCluster') }));
       return;
     }
+    const requestGeneration = examineRequestGenerationRef.current + 1;
+    examineRequestGenerationRef.current = requestGeneration;
     try {
       setConfigLoading(true);
       const config = await examineBrokerClusterAclConfig(clusterId);
+      if (examineRequestGenerationRef.current !== requestGeneration) return;
       setClusterConfig(config);
       message.success(t('acl.configExamined'));
     } catch {
+      if (examineRequestGenerationRef.current !== requestGeneration) return;
       message.error(t('common.operationFailed'));
     } finally {
-      setConfigLoading(false);
+      if (examineRequestGenerationRef.current === requestGeneration) {
+        setConfigLoading(false);
+      }
     }
   };
 
@@ -913,18 +969,47 @@ const AclPage = () => {
                       options={instanceOptions}
                       style={{ width: 220 }}
                     />
-                    <Input.Search
+                    <Input
                       placeholder={t('acl.searchPrincipal')}
                       prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
-                      value={ruleSearch}
-                      onChange={(e) => setRuleSearch(e.target.value)}
-                      onSearch={setRuleSearch}
+                      value={rulePrincipalFilter}
+                      onChange={(e) => {
+                        setRulePage(1);
+                        setRulePrincipalFilter(e.target.value);
+                      }}
                       allowClear
-                      style={{ width: 260 }}
+                      style={{ width: 220 }}
+                    />
+                    <Input
+                      placeholder={t('acl.searchResource')}
+                      prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
+                      value={ruleResourceFilter}
+                      onChange={(e) => {
+                        setRulePage(1);
+                        setRuleResourceFilter(e.target.value);
+                      }}
+                      allowClear
+                      style={{ width: 220 }}
+                    />
+                    <Select
+                      value={ruleScopeFilter}
+                      onChange={(value) => {
+                        setRulePage(1);
+                        setRuleScopeFilter(value);
+                      }}
+                      style={{ width: 180 }}
+                      options={[
+                        { value: 'all', label: t('acl.allScopes') },
+                        { value: 'cluster', label: t('acl.clusterScope') },
+                        { value: 'namespace', label: t('acl.namespaceScope') },
+                      ]}
                     />
                     <Select
                       value={ruleVersionFilter}
-                      onChange={setRuleVersionFilter}
+                      onChange={(value) => {
+                        setRulePage(1);
+                        setRuleVersionFilter(value);
+                      }}
                       style={{ width: 140 }}
                       options={[
                         { value: 'all', label: t('acl.allVersions') },
@@ -934,7 +1019,10 @@ const AclPage = () => {
                     />
                     <Select
                       value={ruleDecisionFilter}
-                      onChange={setRuleDecisionFilter}
+                      onChange={(value) => {
+                        setRulePage(1);
+                        setRuleDecisionFilter(value);
+                      }}
                       style={{ width: 140 }}
                       options={[
                         { value: 'all', label: t('acl.allDecisions') },
@@ -947,13 +1035,23 @@ const AclPage = () => {
                   {/* Rules table */}
                   <Table
                     columns={ruleColumns}
-                    dataSource={filteredRules}
+                    dataSource={rules}
                     rowKey="id"
                     loading={rulesLoading}
                     pagination={{
-                      pageSize: 20,
+                      current: rulePage,
+                      pageSize: rulePageSize,
+                      total: ruleTotal,
                       showSizeChanger: true,
                       showTotal: (total) => t('acl.totalRules', { n: total }),
+                      onChange: (page, pageSize) => {
+                        if (pageSize !== rulePageSize) {
+                          setRulePage(1);
+                          setRulePageSize(pageSize);
+                          return;
+                        }
+                        setRulePage(page);
+                      },
                     }}
                     size="small"
                   />
@@ -979,6 +1077,15 @@ const AclPage = () => {
                       >
                         {t('acl.addUser')}
                       </Button>
+                      <Input.Search
+                        value={userKeyword}
+                        onChange={(event) => {
+                          setUserPage(1);
+                          setUserKeyword(event.target.value);
+                        }}
+                        allowClear
+                        style={{ width: 240 }}
+                      />
                     </Space>
                   </div>
 
@@ -988,9 +1095,15 @@ const AclPage = () => {
                     rowKey="id"
                     loading={usersLoading}
                     pagination={{
-                      pageSize: 20,
+                      current: userPage,
+                      pageSize: userPageSize,
+                      total: userTotal,
                       showSizeChanger: true,
                       showTotal: (total) => t('acl.totalUsers', { n: total }),
+                      onChange: (page, pageSize) => {
+                        setUserPage(page);
+                        setUserPageSize(pageSize);
+                      },
                     }}
                     size="small"
                   />
@@ -1331,6 +1444,16 @@ const AclPage = () => {
         </Form>
       </Modal>
     </div>
+  );
+};
+
+const AclPage = () => {
+  const instanceFilter = useInstanceFilter();
+  return (
+    <AclPageContent
+      key={instanceFilter.selectedInstanceId || 'no-selected-instance'}
+      {...instanceFilter}
+    />
   );
 };
 

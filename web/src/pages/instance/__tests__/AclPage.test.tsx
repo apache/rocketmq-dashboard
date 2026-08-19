@@ -15,14 +15,15 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { App, message } from 'antd';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as aclService from '../../../services/aclService';
+import * as instanceService from '../../../services/instanceService';
 import AclPage from '../acl';
 
 vi.mock('../../../services/aclService', () => ({
@@ -31,9 +32,11 @@ vi.mock('../../../services/aclService', () => ({
   createAndUpdatePlainAccessConfig: vi.fn(),
   deleteAclRule: vi.fn(),
   deleteAclUser: vi.fn(),
+  getAclUserCredentials: vi.fn(),
   examineBrokerClusterAclConfig: vi.fn(),
   listAclRules: vi.fn(),
   listAclUsers: vi.fn(),
+  pageAclUsers: vi.fn(),
   updateAclRule: vi.fn(),
   updateAclUser: vi.fn(),
 }));
@@ -57,43 +60,65 @@ beforeAll(() => {
   });
 });
 
-const renderWithProviders = (ui: React.ReactElement) =>
+const renderWithProviders = (ui: React.ReactElement, initialEntry = '/') =>
   render(
     <App>
       <LangProvider>
-        <MemoryRouter>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={[initialEntry]}>{ui}</MemoryRouter>
       </LangProvider>
     </App>,
   );
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 describe('ACL page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(aclService.listAclRules).mockResolvedValue([
-      {
-        id: 1,
-        principal: 'remote-user',
-        resource: 'remote-topic',
-        resourceType: 'Topic',
-        resourcePattern: 'LITERAL',
-        actions: ['PUB'],
-        decision: 'ALLOW',
-        scope: 'cluster',
-        aclVersion: 2,
-        gmtCreate: '2026-07-23T00:00:00Z',
-      },
-    ]);
-    vi.mocked(aclService.listAclUsers).mockResolvedValue([
-      {
-        id: 11,
-        username: 'remote-admin',
-        accessKey: 'acce****3456',
-        secretKey: 'secr****7654',
-        admin: true,
-        clusters: ['cluster-a'],
-        gmtCreate: '2026-07-23T00:00:00Z',
-      },
-    ]);
+    vi.mocked(instanceService.listInstances).mockResolvedValue([]);
+
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          principal: 'remote-user',
+          resource: 'remote-topic',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 11,
+          username: 'remote-admin',
+          accessKey: 'acce****3456',
+          secretKey: 'secr****7654',
+          admin: true,
+          clusters: ['cluster-a'],
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
   });
 
   it('loads ACL rules and users through the service layer', async () => {
@@ -102,11 +127,52 @@ describe('ACL page', () => {
     expect(await screen.findByText('remote-user')).toBeInTheDocument();
     expect(screen.getByText('remote-topic')).toBeInTheDocument();
     expect(aclService.listAclRules).toHaveBeenCalledTimes(1);
-    expect(aclService.listAclUsers).toHaveBeenCalledTimes(1);
+    expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes an ACL rule dialog when switching to another instance', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'Instance A',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'Instance B',
+        type: 'DIRECT',
+        endpoint: '127.0.0.2:9876',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    renderWithProviders(<AclPage />, '/instance/1/acl');
+
+    expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
   });
 
   it('keeps rules available when loading users fails', async () => {
-    vi.mocked(aclService.listAclUsers).mockRejectedValue(new Error('users unavailable'));
+    vi.mocked(aclService.pageAclUsers).mockRejectedValue(new Error('users unavailable'));
     renderWithProviders(<AclPage />);
 
     expect(await screen.findByText('remote-user')).toBeInTheDocument();
@@ -143,31 +209,41 @@ describe('ACL page', () => {
 
   it('shows missing backend timestamps as unavailable', async () => {
     const user = userEvent.setup();
-    vi.mocked(aclService.listAclRules).mockResolvedValue([
-      {
-        id: 2,
-        principal: 'no-time-rule',
-        resource: 'topic-a',
-        resourceType: 'Topic',
-        resourcePattern: 'LITERAL',
-        actions: ['PUB'],
-        decision: 'ALLOW',
-        scope: 'cluster',
-        aclVersion: 2,
-        gmtCreate: null,
-      },
-    ]);
-    vi.mocked(aclService.listAclUsers).mockResolvedValue([
-      {
-        id: 12,
-        username: 'no-time-user',
-        accessKey: 'acce****3456',
-        secretKey: 'secr****7654',
-        admin: false,
-        clusters: [],
-        gmtCreate: null,
-      },
-    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 2,
+          principal: 'no-time-rule',
+          resource: 'topic-a',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 12,
+          username: 'no-time-user',
+          accessKey: 'acce****3456',
+          secretKey: 'secr****7654',
+          admin: false,
+          clusters: [],
+          gmtCreate: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     renderWithProviders(<AclPage />);
 
     expect(await screen.findByText('no-time-rule')).toBeInTheDocument();
@@ -364,6 +440,184 @@ describe('ACL page', () => {
     expect(await screen.findByText('rocketmq-admin')).toBeInTheDocument();
     expect(screen.getByText('ACL 2.0')).toBeInTheDocument();
     expect(aclService.examineBrokerClusterAclConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps cluster config ownership with the latest examine request', async () => {
+    const firstExamine =
+      deferred<Awaited<ReturnType<typeof aclService.examineBrokerClusterAclConfig>>>();
+    const secondExamine =
+      deferred<Awaited<ReturnType<typeof aclService.examineBrokerClusterAclConfig>>>();
+    const thirdExamine =
+      deferred<Awaited<ReturnType<typeof aclService.examineBrokerClusterAclConfig>>>();
+    const successSpy = vi.spyOn(message, 'success').mockImplementation(vi.fn());
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    const user = userEvent.setup();
+    vi.mocked(aclService.examineBrokerClusterAclConfig)
+      .mockReturnValueOnce(firstExamine.promise)
+      .mockReturnValueOnce(secondExamine.promise)
+      .mockReturnValueOnce(thirdExamine.promise);
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    const clusterInput = screen.getByPlaceholderText('请输入集群 ID');
+    const examineButton = screen.getByRole('button', { name: /检\s*查\s*配\s*置/ });
+
+    fireEvent.change(clusterInput, { target: { value: 'cluster-old-1' } });
+    await user.click(examineButton);
+    await waitFor(() =>
+      expect(aclService.examineBrokerClusterAclConfig).toHaveBeenNthCalledWith(1, 'cluster-old-1'),
+    );
+
+    await user.clear(clusterInput);
+    await user.type(clusterInput, 'cluster-old-2{enter}');
+    await waitFor(() =>
+      expect(aclService.examineBrokerClusterAclConfig).toHaveBeenNthCalledWith(2, 'cluster-old-2'),
+    );
+
+    await user.clear(clusterInput);
+    await user.type(clusterInput, 'cluster-latest{enter}');
+    await waitFor(() =>
+      expect(aclService.examineBrokerClusterAclConfig).toHaveBeenNthCalledWith(3, 'cluster-latest'),
+    );
+
+    await act(async () => {
+      firstExamine.resolve({
+        clusterId: 'cluster-old-1',
+        aclEnabled: true,
+        aclVersion: 'ACL stale-1',
+        globalWhiteRemoteAddresses: [],
+        accounts: [
+          {
+            accessKey: 'stale-account-1',
+            admin: true,
+            defaultTopicPerm: 'ALL',
+            defaultGroupPerm: 'ALL',
+            topicPerms: [],
+            groupPerms: [],
+          },
+        ],
+        accountCount: 1,
+      });
+    });
+
+    expect(screen.queryByText('stale-account-1')).not.toBeInTheDocument();
+    expect(successSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(examineButton).toHaveClass('ant-btn-loading');
+
+    await act(async () => {
+      secondExamine.reject(new Error('stale failure'));
+    });
+
+    expect(screen.queryByText('stale-account-1')).not.toBeInTheDocument();
+    expect(successSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(examineButton).toHaveClass('ant-btn-loading');
+
+    await act(async () => {
+      thirdExamine.resolve({
+        clusterId: 'cluster-latest',
+        aclEnabled: true,
+        aclVersion: 'ACL latest',
+        globalWhiteRemoteAddresses: ['10.0.0.0/8'],
+        accounts: [
+          {
+            accessKey: 'latest-account',
+            admin: false,
+            defaultTopicPerm: 'PUB',
+            defaultGroupPerm: 'SUB',
+            topicPerms: ['topic=PUB'],
+            groupPerms: ['group=SUB'],
+          },
+        ],
+        accountCount: 1,
+      });
+    });
+
+    expect(await screen.findByText('latest-account')).toBeInTheDocument();
+    expect(screen.getByText('ACL latest')).toBeInTheDocument();
+    await waitFor(() => expect(examineButton).not.toHaveClass('ant-btn-loading'));
+    expect(successSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps credential reveal ownership with the latest user generation', async () => {
+    type CredentialResponse = Awaited<ReturnType<typeof aclService.getAclUserCredentials>>;
+    const firstReveal = deferred<CredentialResponse>();
+    const secondReveal = deferred<CredentialResponse>();
+    const thirdReveal = deferred<CredentialResponse>();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    const user = userEvent.setup();
+    vi.mocked(aclService.getAclUserCredentials)
+      .mockReturnValueOnce(firstReveal.promise)
+      .mockReturnValueOnce(secondReveal.promise)
+      .mockReturnValueOnce(thirdReveal.promise);
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    const row = await screen.findByRole('row', { name: /remote-admin/ });
+    const secretCell = screen.getByText('••••••••••••').closest('td');
+    expect(secretCell).not.toBeNull();
+    const revealButton = within(secretCell as HTMLElement).getByRole('button');
+
+    await user.click(revealButton);
+    await waitFor(() => expect(aclService.getAclUserCredentials).toHaveBeenCalledTimes(1));
+    expect(within(row).getByText('加载中…')).toBeInTheDocument();
+
+    await user.click(revealButton);
+    expect(within(row).queryByText('加载中…')).not.toBeInTheDocument();
+
+    await user.click(revealButton);
+    await waitFor(() => expect(aclService.getAclUserCredentials).toHaveBeenCalledTimes(2));
+    expect(within(row).getByText('加载中…')).toBeInTheDocument();
+
+    await user.click(revealButton);
+    expect(within(row).queryByText('加载中…')).not.toBeInTheDocument();
+
+    await user.click(revealButton);
+    await waitFor(() => expect(aclService.getAclUserCredentials).toHaveBeenCalledTimes(3));
+    expect(within(row).getByText('加载中…')).toBeInTheDocument();
+
+    await act(async () => {
+      firstReveal.resolve({
+        id: 1,
+        username: 'remote-admin',
+        accessKey: 'stale-access-key',
+        secretKey: 'stale-secret-key',
+        admin: true,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      });
+    });
+
+    expect(within(row).getByText('加载中…')).toBeInTheDocument();
+    expect(screen.queryByText('stale-secret-key')).not.toBeInTheDocument();
+    expect(screen.queryByText('stale-access-key')).not.toBeInTheDocument();
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      secondReveal.reject(new Error('stale reveal failure'));
+    });
+
+    expect(within(row).getByText('加载中…')).toBeInTheDocument();
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      thirdReveal.resolve({
+        id: 1,
+        username: 'remote-admin',
+        accessKey: 'latest-access-key',
+        secretKey: 'latest-secret-key',
+        admin: true,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      });
+    });
+
+    expect(await within(row).findByText('latest-secret-key')).toBeInTheDocument();
+    expect(within(row).getByText('latest-access-key')).toBeInTheDocument();
+    expect(screen.queryByText('stale-secret-key')).not.toBeInTheDocument();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('creates a plain access account', async () => {

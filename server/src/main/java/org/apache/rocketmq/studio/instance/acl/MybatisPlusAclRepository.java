@@ -16,8 +16,11 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
@@ -32,8 +35,10 @@ import lombok.RequiredArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -48,14 +53,15 @@ public class MybatisPlusAclRepository implements AclRepository {
     private final RmqAclUserMapper userMapper;
 
     @Override
-    public List<AclRuleVO> findRules(String clusterId, String principal) {
-        QueryWrapper<RmqAclRule> query = new QueryWrapper<RmqAclRule>()
-                .eq(clusterId != null && !clusterId.isBlank(), "scope", clusterId)
-                .eq(principal != null && !principal.isBlank(), "principal", principal)
-                .orderByAsc("id");
-        return ruleMapper.selectList(query).stream()
+    public PageResult<AclRuleVO> findRulePage(String principal, String resource, String scope,
+            String decision, String aclVersion, int page, int pageSize) {
+        QueryWrapper<RmqAclRule> query = ruleQuery(principal, resource, scope, decision, aclVersion);
+        IPage<RmqAclRule> mapperPage = ruleMapper.selectPage(new Page<>(page, pageSize), query);
+        List<AclRuleVO> items = mapperPage.getRecords().stream()
                 .map(MybatisPlusAclRepository::toRuleVO)
                 .collect(Collectors.toList());
+        return PageResult.of(items, mapperPage.getTotal(), (int) mapperPage.getCurrent(),
+                (int) mapperPage.getSize());
     }
 
     @Override
@@ -126,7 +132,9 @@ public class MybatisPlusAclRepository implements AclRepository {
         }
         RmqAclUser entity = toUserEntity(user);
         entity.setGmtCreate(existing.getGmtCreate());
-        userMapper.updateById(entity);
+        if (userMapper.updateById(entity) == 0) {
+            return Optional.empty();
+        }
         user.setGmtCreate(existing.getGmtCreate());
         return Optional.of(user);
     }
@@ -169,8 +177,13 @@ public class MybatisPlusAclRepository implements AclRepository {
     @Override
     @Transactional
     public PlainAccessConfigVO createAndUpdatePlainAccessConfig(PlainAccessConfigVO config) {
-        RmqAclUser existing = userMapper.selectOne(
+        List<RmqAclUser> existingAccounts = userMapper.selectList(
                 new QueryWrapper<RmqAclUser>().eq("access_key", config.getAccessKey()));
+        if (existingAccounts.size() > 1) {
+            throw new BusinessException(409, "Multiple plain access accounts use accessKey: "
+                    + config.getAccessKey());
+        }
+        RmqAclUser existing = existingAccounts.isEmpty() ? null : existingAccounts.get(0);
         boolean secretProvided = StringUtils.hasText(config.getSecretKey());
         if (!secretProvided && existing == null) {
             throw new BusinessException(400, "secretKey is required for a new plain access account");
@@ -283,13 +296,16 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     private PlainAccessConfigVO toPlainAccessConfig(AclUserVO user) {
-        List<AclRuleVO> userRules = findRules(null, user.getAccessKey());
+        List<AclRuleVO> userRules = ruleMapper.selectList(ruleQuery(user.getAccessKey(), null, null, null, null))
+                .stream()
+                .map(MybatisPlusAclRepository::toRuleVO)
+                .collect(Collectors.toList());
         List<String> topicPerms = new ArrayList<>();
         List<String> groupPerms = new ArrayList<>();
         String defaultTopicPerm = null;
         String defaultGroupPerm = null;
         for (AclRuleVO rule : userRules) {
-            String actions = rule.getActions() == null ? "" : String.join(",", rule.getActions());
+            String actions = joinNormalizedCsv(rule.getActions());
             if ("Topic".equals(rule.getResourceType())) {
                 topicPerms.add(rule.getResource() + "=" + actions);
             } else if ("Group".equals(rule.getResourceType())) {
@@ -315,6 +331,18 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .groupPerms(groupPerms)
                 .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    private static QueryWrapper<RmqAclRule> ruleQuery(String principal, String resource, String scope,
+            String decision, String aclVersion) {
+        return new QueryWrapper<RmqAclRule>()
+                .like(StringUtils.hasText(principal), "principal", principal)
+                .like(StringUtils.hasText(resource), "resource", resource)
+                .eq(StringUtils.hasText(scope), "scope", scope)
+                .eq(StringUtils.hasText(decision), "decision", decision)
+                .eq(StringUtils.hasText(aclVersion), "acl_version", aclVersion)
+                .orderByDesc("gmt_create")
+                .orderByDesc("id");
     }
 
     private static String[] splitPerm(String entry) {
@@ -352,7 +380,7 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setResource(rule.getResource());
         entity.setResourceType(rule.getResourceType());
         entity.setResourcePattern(rule.getResourcePattern());
-        entity.setActions(rule.getActions() == null ? null : String.join(",", rule.getActions()));
+        entity.setActions(joinNormalizedCsv(rule.getActions()));
         entity.setDecision(rule.getDecision());
         entity.setScope(rule.getScope());
         entity.setAclVersion(rule.getAclVersion());
@@ -381,7 +409,7 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setAccessKey(user.getAccessKey());
         entity.setSecretKey(CredentialUtils.encodeBase64(user.getSecretKey()));
         entity.setAdmin(user.isAdmin());
-        entity.setClusters(user.getClusters() == null ? null : String.join(",", user.getClusters()));
+        entity.setClusters(joinNormalizedCsv(user.getClusters()));
         entity.setGmtCreate(user.getGmtCreate());
         entity.setGmtModified(LocalDateTime.now());
         return entity;
@@ -394,6 +422,20 @@ public class MybatisPlusAclRepository implements AclRepository {
         return Arrays.stream(value.split(","))
                 .map(String::trim)
                 .filter(part -> !part.isEmpty())
+                .distinct()
                 .collect(Collectors.toList());
+    }
+
+    private static String joinNormalizedCsv(List<String> values) {
+        if (values == null) {
+            return null;
+        }
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                normalized.add(value.trim());
+            }
+        }
+        return normalized.isEmpty() ? null : String.join(",", normalized);
     }
 }

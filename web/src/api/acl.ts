@@ -1,6 +1,13 @@
 import client from './client';
 
 // Matches mock/acl.ts
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 export interface AclRule {
   id: number;
   principal: string;
@@ -15,15 +22,27 @@ export interface AclRule {
 }
 
 export interface AclRuleQuery {
-  clusterId?: string;
   principal?: string;
   instanceId?: string;
+  resource?: string;
+  scope?: string;
+  decision?: string;
+  aclVersion?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 // Users list query
-interface AclUserQuery {
+export interface AclUserQuery {
   keyword?: string;
   instanceId?: string;
+}
+
+export interface AclUserPage {
+  items: AclUser[];
+  total: number;
+  page: number;
+  size: number;
 }
 
 export interface AclUser {
@@ -39,7 +58,7 @@ export interface AclUser {
 }
 
 export async function listAclRules(params?: AclRuleQuery) {
-  const res = await client.get<{ data: AclRule[] }>('/acl/rules', { params });
+  const res = await client.get<{ data: PageResult<AclRule> }>('/acl/rules', { params });
   return res.data.data;
 }
 
@@ -59,6 +78,11 @@ export async function deleteAclRule(id: number, instanceId?: string) {
 
 export async function listAclUsers(params?: AclUserQuery) {
   const res = await client.get<{ data: AclUser[] }>('/acl/users', { params });
+  return res.data.data;
+}
+
+export async function pageAclUsers(params: AclUserQuery & { page: number; pageSize: number }) {
+  const res = await client.get<{ data: AclUserPage }>('/acl/users/page', { params });
   return res.data.data;
 }
 

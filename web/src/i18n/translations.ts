@@ -322,7 +322,10 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
   'ai.commonCommands': { zh: '常用指令', en: 'Common Commands' },
-  'ai.mockProviderDisabled': { zh: 'Mock 模式已禁用 AI Provider 调用', en: 'Mock mode disables AI provider calls' },
+  'ai.mockProviderDisabled': {
+    zh: 'Mock 模式已禁用 AI Provider 调用',
+    en: 'Mock mode disables AI provider calls',
+  },
   'ai.mockProviderDisabledDescription': {
     zh: '切换到真实数据模式并配置 LLM Provider 后，才会加载模型、工具目录和对话能力。',
     en: 'Models, the tool catalog and chat capabilities are loaded only after you switch to real data mode and configure an LLM provider.',
@@ -342,13 +345,22 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.responseStopped': { zh: '回答已停止。', en: 'Response stopped.' },
   'ai.requestFailed': { zh: 'AI 请求失败', en: 'AI request failed' },
   'ai.runtimeLoadFailed': { zh: 'AI 配置加载失败', en: 'Failed to load AI configuration' },
-  'ai.providerRequired': { zh: '请先配置并启用 LLM Provider', en: 'Configure and enable an LLM provider first' },
+  'ai.providerRequired': {
+    zh: '请先配置并启用 LLM Provider',
+    en: 'Configure and enable an LLM provider first',
+  },
   'ai.providerNotReadyDescription': {
     zh: '请先在 设置 → AI 助手 中配置并启用 LLM Provider，启用前不会发送请求或返回 stub 回复。',
     en: 'Configure and enable an LLM provider under Settings → AI Assistant first. No requests are sent and stub replies may be returned until it is enabled.',
   },
-  'ai.toolCatalogLoadFailed': { zh: 'AI 工具目录加载失败', en: 'Failed to load the AI tool catalog' },
-  'ai.clusterListLoadFailed': { zh: '集群列表加载失败，已显示全局工具', en: 'Failed to load clusters; showing global tools' },
+  'ai.toolCatalogLoadFailed': {
+    zh: 'AI 工具目录加载失败',
+    en: 'Failed to load the AI tool catalog',
+  },
+  'ai.clusterListLoadFailed': {
+    zh: '集群列表加载失败，已显示全局工具',
+    en: 'Failed to load clusters; showing global tools',
+  },
 
   // ─── Home Page ───
   'home.banner': {
@@ -402,7 +414,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'acl.admin': { zh: '管理员', en: 'Admin' },
   'acl.username': { zh: '用户名', en: 'Username' },
   'acl.associatedClusters': { zh: '关联集群', en: 'Associated Clusters' },
-  'acl.searchPrincipal': { zh: '搜索主体或资源', en: 'Search principal or resource' },
+  'acl.searchPrincipal': { zh: '搜索主体', en: 'Search principal' },
+  'acl.searchResource': { zh: '搜索资源', en: 'Search resource' },
+  'acl.allScopes': { zh: '全部范围', en: 'All Scopes' },
   'acl.allVersions': { zh: '全部版本', en: 'All Versions' },
   'acl.allDecisions': { zh: '全部决策', en: 'All Decisions' },
   'acl.totalRules': { zh: '共 {n} 条规则', en: '{n} rules total' },

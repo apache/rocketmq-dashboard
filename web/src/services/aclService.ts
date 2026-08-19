@@ -2,8 +2,10 @@ import { isMockMode } from './dataMode';
 import * as aclApi from '../api/acl';
 import type {
   AclRule,
+  PageResult,
   AclRuleQuery,
   AclUser,
+  AclUserPage,
   AclClusterConfig,
   PlainAccessConfig,
 } from '../api/acl';
@@ -37,14 +39,36 @@ function copyAclUser(user: AclUser): AclUser {
   };
 }
 
-export async function listAclRules(params?: AclRuleQuery): Promise<AclRule[]> {
+export async function listAclRules(params?: AclRuleQuery): Promise<PageResult<AclRule>> {
   if (isMockMode()) {
     let result = [...aclRulesState];
     if (params?.principal) {
       const principal = params.principal.toLowerCase();
       result = result.filter((rule) => rule.principal.toLowerCase().includes(principal));
     }
-    return result.map(copyAclRule);
+    if (params?.resource) {
+      const resource = params.resource.toLowerCase();
+      result = result.filter((rule) => rule.resource.toLowerCase().includes(resource));
+    }
+    if (params?.scope) {
+      result = result.filter((rule) => rule.scope === params.scope);
+    }
+    if (params?.decision) {
+      result = result.filter((rule) => rule.decision === params.decision);
+    }
+    if (params?.aclVersion) {
+      result = result.filter((rule) => String(rule.aclVersion) === params.aclVersion);
+    }
+    const page = Math.max(params?.page ?? 1, 1);
+    const pageSize = Math.max(params?.pageSize ?? 20, 1);
+    const fromIndex = Math.min((page - 1) * pageSize, result.length);
+    const toIndex = Math.min(fromIndex + pageSize, result.length);
+    return {
+      items: result.slice(fromIndex, toIndex).map(copyAclRule),
+      total: result.length,
+      page,
+      size: pageSize,
+    };
   }
   return aclApi.listAclRules(params);
 }
@@ -62,6 +86,25 @@ export async function listAclUsers(params?: {
     return result.map(copyAclUser);
   }
   return aclApi.listAclUsers(params);
+}
+
+export async function pageAclUsers(params: {
+  keyword?: string;
+  instanceId?: string;
+  page: number;
+  pageSize: number;
+}): Promise<AclUserPage> {
+  if (isMockMode()) {
+    const users = await listAclUsers(params);
+    const from = (params.page - 1) * params.pageSize;
+    return {
+      items: users.slice(from, from + params.pageSize),
+      total: users.length,
+      page: params.page,
+      size: params.pageSize,
+    };
+  }
+  return aclApi.pageAclUsers(params);
 }
 
 export async function getAclUserCredentials(id: number, instanceId?: string): Promise<AclUser> {
