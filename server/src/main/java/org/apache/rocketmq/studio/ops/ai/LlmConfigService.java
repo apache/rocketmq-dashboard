@@ -134,12 +134,16 @@ public class LlmConfigService {
         if (!LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(normalized.normalizeEngine())) {
             return testCliEngine(normalized.normalizeEngine());
         }
-        if (llmClient.supports(normalized)) {
-            try {
-                llmClient.listModels(normalized);
-            } catch (LlmGatewayException exception) {
-                return LlmOperationResultVO.failure(exception.getCode(), exception.getMessage(), exception.getHint());
-            }
+        if (!llmClient.supports(normalized)) {
+            return LlmOperationResultVO.failure(
+                    "llm.config.unsupported_provider",
+                    "LLM provider is not supported by the OpenAI-compatible gateway",
+                    "Use one of: openai, deepseek, tongyi, ollama.");
+        }
+        try {
+            llmClient.listModels(normalized);
+        } catch (LlmGatewayException exception) {
+            return LlmOperationResultVO.failure(exception.getCode(), exception.getMessage(), exception.getHint());
         }
         return LlmOperationResultVO.success("Connection successful");
     }
