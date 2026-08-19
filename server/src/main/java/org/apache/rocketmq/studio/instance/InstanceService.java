@@ -29,9 +29,12 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.settings.DataSourceVO;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -50,6 +53,7 @@ public class InstanceService {
     private final InstanceProviderRegistry providerRegistry;
     private final MqAdminExtFactory adminFactory;
     private final OperationAuditService operationAuditService;
+    private final SettingsRepository settingsRepository;
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -292,6 +296,7 @@ public class InstanceService {
         return saved;
     }
 
+    @Transactional
     public void deleteInstance(Long id) {
         log.info("Deleting instance: {}", id);
 
@@ -314,9 +319,26 @@ public class InstanceService {
         if (!instanceRepository.deleteById(id)) {
             throw new BusinessException(404, "InstanceVO not found: " + id);
         }
+        removeDataSourceBindings(existing.getName());
         releaseApacheEndpointIfUnused(existing, null);
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing));
+    }
+
+    private void removeDataSourceBindings(String instanceId) {
+        for (DataSourceVO dataSource : settingsRepository.findAllDataSources()) {
+            List<String> instanceIds = dataSource.getInstanceIds();
+            if (instanceIds == null || !instanceIds.contains(instanceId)) {
+                continue;
+            }
+            dataSource.setInstanceIds(instanceIds.stream()
+                    .filter(candidate -> !instanceId.equals(candidate))
+                    .toList());
+            if (!settingsRepository.replaceDataSource(dataSource)) {
+                log.warn("Metrics data source {} disappeared while removing instance binding {}",
+                        dataSource.getKey(), instanceId);
+            }
+        }
     }
 
     private void requireInstance(InstanceVO instance) {
@@ -355,7 +377,7 @@ public class InstanceService {
         if (vendor != InstanceVendor.APACHE) {
             return;
         }
-        releaseEndpointIfUnused(existing.getEndpoint(), currentEndpoint, existing.getId());
+        releaseOldClientIfUnused(existing, currentEndpoint, null, existing.getId());
     }
 
     private void releaseApacheClientIfChanged(InstanceVO existing, InstanceVO saved) {
@@ -363,25 +385,31 @@ public class InstanceService {
         if (vendor != InstanceVendor.APACHE) {
             return;
         }
-        if (!Objects.equals(normalizeCredentialRef(existing.getAdminCredentialRef()),
-                normalizeCredentialRef(saved.getAdminCredentialRef()))
-                && Objects.equals(normalizeEndpoint(existing.getEndpoint()), normalizeEndpoint(saved.getEndpoint()))) {
-            adminFactory.release(existing.getEndpoint());
-            return;
-        }
-        releaseEndpointIfUnused(existing.getEndpoint(), saved.getEndpoint(), existing.getId());
+        releaseOldClientIfUnused(existing, saved.getEndpoint(), saved.getAdminCredentialRef(), existing.getId());
     }
 
-    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, Long excludedInstanceId) {
-        String oldEndpoint = normalizeEndpoint(previousEndpoint);
-        if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))) {
+    private void releaseOldClientIfUnused(InstanceVO existing, String currentEndpoint,
+                                          String currentCredentialRef, Long excludedInstanceId) {
+        String oldEndpoint = normalizeEndpoint(existing.getEndpoint());
+        String oldCredentialRef = normalizeCredentialRef(existing.getAdminCredentialRef());
+        if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))
+                && Objects.equals(oldCredentialRef, normalizeCredentialRef(currentCredentialRef))) {
             return;
         }
-        boolean stillReferenced = instanceRepository.findAll().stream()
-                .anyMatch(instance -> !excludedInstanceId.equals(instance.getId())
-                        && oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
-        if (!stillReferenced) {
+        List<InstanceVO> remaining = instanceRepository.findAll().stream()
+                .filter(instance -> !excludedInstanceId.equals(instance.getId()))
+                .toList();
+        boolean endpointReferenced = remaining.stream()
+                .anyMatch(instance -> oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
+        if (!endpointReferenced) {
             adminFactory.release(oldEndpoint);
+            return;
+        }
+        boolean identityReferenced = remaining.stream()
+                .anyMatch(instance -> oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint()))
+                        && Objects.equals(oldCredentialRef, normalizeCredentialRef(instance.getAdminCredentialRef())));
+        if (!identityReferenced) {
+            adminFactory.release(oldEndpoint, oldCredentialRef);
         }
     }
 

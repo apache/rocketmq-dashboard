@@ -132,6 +132,25 @@ public class MqAdminExtFactory {
         log.info("Released RocketMQ admin clients for namesrv {}", normalizedNamesrvAddr);
     }
 
+    /** Stops one credential-scoped client without interrupting other identities on the endpoint. */
+    public void release(String namesrvAddr, String authenticationIdentity) {
+        if (namesrvAddr == null || namesrvAddr.isBlank()) {
+            return;
+        }
+        String normalizedNamesrvAddr = normalizeNamesrvAddr(namesrvAddr);
+        if (normalizedNamesrvAddr.isEmpty()) {
+            return;
+        }
+        AdminClientCacheKey key = new AdminClientCacheKey(normalizedNamesrvAddr,
+                normalizeAuthenticationIdentity(authenticationIdentity));
+        DefaultMQAdminExt admin = cache.remove(key);
+        if (admin != null) {
+            safeShutdown(admin);
+            log.info("Released RocketMQ admin client for namesrv {} and identity {}",
+                    normalizedNamesrvAddr, key.authenticationIdentity());
+        }
+    }
+
     private DefaultMQAdminExt createAndStart(String namesrvAddr, RPCHook rpcHook) {
         DefaultMQAdminExt admin = newAdmin(rpcHook);
         admin.setNamesrvAddr(namesrvAddr);
