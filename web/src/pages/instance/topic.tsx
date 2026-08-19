@@ -54,6 +54,7 @@ import {
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
+import { parseMessagePropertiesText } from '../../utils/messageProperties';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
 import {
@@ -245,19 +246,6 @@ const RANDOM_BODY_GENERATORS = [
 // ─── Format helpers ───────────────────────────────────────────────
 const formatNumber = (n: number) => n.toLocaleString('zh-CN');
 
-// 解析批量粘贴的用户属性串：key=value 按换行或逗号分隔，等号只取第一个
-const parsePropsText = (text: string): Record<string, string> => {
-  const props: Record<string, string> = {};
-  for (const line of text.split(/[\n,]+/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const eqIndex = trimmed.indexOf('=');
-    if (eqIndex <= 0) continue;
-    const key = trimmed.slice(0, eqIndex).trim();
-    if (key) props[key] = trimmed.slice(eqIndex + 1).trim();
-  }
-  return props;
-};
 const formatDateTime = (iso?: string): string => {
   if (!iso) return '-';
   const d = new Date(iso);
@@ -832,17 +820,29 @@ const TopicPage = () => {
       // validation error, keep the modal open
       return;
     }
+    // Validate pasted properties before entering the request state so invalid or duplicate
+    // entries cannot be silently dropped and sent.
+    let props: Record<string, string> = {};
+    if (propsMode === 'text') {
+      try {
+        props = parseMessagePropertiesText(values.propsText || '');
+      } catch (error) {
+        sendForm.setFields([
+          {
+            name: 'propsText',
+            errors: [error instanceof Error ? error.message : '用户属性格式无效'],
+          },
+        ]);
+        return;
+      }
+    } else if (values.properties && Array.isArray(values.properties)) {
+      values.properties.forEach((property: { key?: string; value?: string }) => {
+        if (property.key) props[property.key] = property.value || '';
+      });
+    }
+
     setSending(true);
     try {
-      // Build properties: batch-paste text mode or key-value form rows
-      let props: Record<string, string> = {};
-      if (propsMode === 'text') {
-        props = parsePropsText(values.propsText || '');
-      } else if (values.properties && Array.isArray(values.properties)) {
-        values.properties.forEach((p: { key?: string; value?: string }) => {
-          if (p.key) props[p.key] = p.value || '';
-        });
-      }
       const result = await sendTopicMessage({
         topic: values.topic,
         instanceId: selectedInstanceId || undefined,
