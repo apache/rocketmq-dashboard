@@ -77,7 +77,7 @@
 .login-brand-eyebrow {
   color: #7dd3fc;
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 1.4px;
   margin-bottom: 18px;
@@ -100,7 +100,7 @@
 
 .login-brand-status {
   color: #c5d3e7;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 
@@ -200,7 +200,7 @@
 
 .login-form-footer {
   color: var(--login-muted);
-  font-size: 12px;
+  font-size: 14px;
   margin: 34px 0 0;
 }
 

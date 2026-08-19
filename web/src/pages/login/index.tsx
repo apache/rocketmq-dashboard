@@ -72,7 +72,7 @@ const LoginPage = () => {
           <span>RocketMQ Studio</span>
         </div>
         <div className="login-brand-copy">
-          <span className="login-brand-eyebrow">CONTROL PLANE</span>
+          <span className="login-brand-eyebrow">{t('login.brandEyebrow')}</span>
           <Title id="login-brand-title" level={1} className="login-brand-title">
             {t('login.brandTitle')}
           </Title>
