@@ -31,6 +31,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -64,7 +67,7 @@ public class GrafanaDashboardService {
      */
     public List<GrafanaDashboardInfo> listDashboards() {
         List<GrafanaDashboardInfo> infos = new ArrayList<>();
-        for (Resource resource : resolveResources()) {
+        for (Resource resource : resolveUniqueResources()) {
             String uid = uidOf(resource);
             if (uid == null) {
                 continue;
@@ -151,12 +154,21 @@ public class GrafanaDashboardService {
     }
 
     private Resource findResource(String uid) {
-        for (Resource resource : resolveResources()) {
+        for (Resource resource : resolveUniqueResources()) {
             if (uid.equals(uidOf(resource))) {
                 return resource;
             }
         }
         return null;
+    }
+
+    private List<Resource> resolveUniqueResources() {
+        Map<String, Resource> resourcesByUid = new LinkedHashMap<>();
+        Arrays.stream(resolveResources())
+                .filter(resource -> uidOf(resource) != null)
+                .sorted(Comparator.comparing(Resource::getDescription))
+                .forEach(resource -> resourcesByUid.putIfAbsent(uidOf(resource), resource));
+        return new ArrayList<>(resourcesByUid.values());
     }
 
     protected Resource[] resolveResources() {
