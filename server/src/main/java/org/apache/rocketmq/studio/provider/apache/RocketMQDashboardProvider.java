@@ -111,6 +111,23 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             totalClusters = clusterAddrTable.size();
             totalBrokers = brokerAddrTable.size();
 
+            Set<String> topologyUnavailableClusters = new HashSet<>();
+            for (Map.Entry<String, Set<String>> clusterEntry : clusterAddrTable.entrySet()) {
+                Set<String> brokerNames = clusterEntry.getValue();
+                if (brokerNames == null || brokerNames.isEmpty()) {
+                    topologyUnavailableClusters.add(clusterEntry.getKey());
+                    continue;
+                }
+                boolean incomplete = brokerNames.stream().anyMatch(brokerName -> {
+                    BrokerData brokerData = brokerAddrTable.get(brokerName);
+                    return brokerData == null || brokerData.getBrokerAddrs() == null
+                            || brokerData.getBrokerAddrs().get(0L) == null;
+                });
+                if (incomplete) {
+                    topologyUnavailableClusters.add(clusterEntry.getKey());
+                }
+            }
+
             // Collect all unique broker addresses (master only, brokerId=0)
             Set<String> masterAddrs = new HashSet<>();
 
@@ -241,7 +258,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 long clusterTpsIn = 0;
                 long clusterTpsOut = 0;
                 String version = "unknown";
-                boolean runtimeMetricsUnavailable = topicCountsUnavailableClusters.contains(clusterName)
+                boolean runtimeMetricsUnavailable = topologyUnavailableClusters.contains(clusterName)
+                        || topicCountsUnavailableClusters.contains(clusterName)
                         || groupCountsUnavailableClusters.contains(clusterName);
 
                 for (String brokerName : brokerNames) {

@@ -45,6 +45,7 @@ public class MetricsSourceFactory {
                 .baseUrl(config.getUrl())
                 .connectTimeout(Duration.ofSeconds(3))
                 .readTimeout(Duration.ofSeconds(10))
+                .authType(config.getAuthType())
                 .username(config.getUsername())
                 .password(config.getPassword())
                 .bearerToken(config.getBearerToken())

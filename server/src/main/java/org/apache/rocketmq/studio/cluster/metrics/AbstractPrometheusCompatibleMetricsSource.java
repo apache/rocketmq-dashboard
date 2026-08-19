@@ -42,6 +42,7 @@ import java.net.URI;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.StreamSupport;
 
@@ -198,18 +199,29 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
     }
 
     private void applyAuthentication(HttpHeaders headers) {
-        if (StringUtils.hasText(settings.getBearerToken())) {
-            headers.setBearerAuth(settings.getBearerToken());
-            return;
-        }
-        boolean hasUsername = StringUtils.hasText(settings.getUsername());
-        boolean hasPassword = StringUtils.hasText(settings.getPassword());
-        if (hasUsername != hasPassword) {
-            throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
-                    backendLabel() + " basic authentication is incomplete");
-        }
-        if (hasUsername) {
-            headers.setBasicAuth(settings.getUsername(), settings.getPassword());
+        String authType = StringUtils.hasText(settings.getAuthType())
+                ? settings.getAuthType().strip().toLowerCase(Locale.ROOT)
+                : "none";
+        switch (authType) {
+            case "none" -> {
+                // Credentials may remain after changing modes; none must never send them.
+            }
+            case "basic" -> {
+                if (!StringUtils.hasText(settings.getUsername()) || !StringUtils.hasText(settings.getPassword())) {
+                    throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                            backendLabel() + " basic authentication is incomplete");
+                }
+                headers.setBasicAuth(settings.getUsername(), settings.getPassword());
+            }
+            case "bearer" -> {
+                if (!StringUtils.hasText(settings.getBearerToken())) {
+                    throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                            backendLabel() + " bearer authentication is incomplete");
+                }
+                headers.setBearerAuth(settings.getBearerToken());
+            }
+            default -> throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                    "Unsupported " + backendLabel() + " authentication mode: " + settings.getAuthType());
         }
     }
 
