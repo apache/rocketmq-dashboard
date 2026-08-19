@@ -97,11 +97,13 @@ public class CloudCredentialService {
             existing.setRemark(request.getRemark());
         }
         existing.setGmtModified(LocalDateTime.now());
-        CloudCredentialVO saved = credentialRepository.save(existing);
-        invalidateCloudClients(saved);
-        recordAudit("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(saved.getId()), null,
-                credentialAuditDetail(saved));
-        return maskAccessKey(saved);
+        if (!credentialRepository.replace(existing)) {
+            throw new BusinessException(404, "Cloud credential not found: " + request.getId());
+        }
+        invalidateCloudClients(existing);
+        recordAudit("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(existing.getId()), null,
+                credentialAuditDetail(existing));
+        return maskAccessKey(existing);
     }
 
     public void delete(Long id) {
