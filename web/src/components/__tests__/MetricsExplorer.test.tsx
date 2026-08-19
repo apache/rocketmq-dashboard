@@ -147,6 +147,27 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('42 messages/s')).toBeInTheDocument();
   });
 
+  it('sorts provider samples before drawing and selecting the latest value', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [
+            { timestamp: 1_800_000_000, value: '42' },
+            { timestamp: 1_799_996_400, value: '40' },
+          ],
+        },
+      ],
+    });
+
+    const { container } = renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
+    const points = container.querySelector('polyline')?.getAttribute('points')?.split(' ') ?? [];
+    expect(Number(points[0].split(',')[0])).toBeLessThan(Number(points[1].split(',')[0]));
+  });
+
   it('updates the query window when the range changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);

@@ -60,7 +60,8 @@ interface NumericSample {
 const toNumericSamples = (series: MetricSeries): NumericSample[] =>
   series.values
     .map((sample) => ({ timestamp: sample.timestamp, value: Number(sample.value) }))
-    .filter((sample) => Number.isFinite(sample.timestamp) && Number.isFinite(sample.value));
+    .filter((sample) => Number.isFinite(sample.timestamp) && Number.isFinite(sample.value))
+    .sort((left, right) => left.timestamp - right.timestamp);
 
 const seriesLabel = (series: MetricSeries, fallback: string) => {
   const labels = Object.entries(series.labels)
