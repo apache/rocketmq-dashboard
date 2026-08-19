@@ -21,6 +21,10 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -38,9 +42,12 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedHashMap;
@@ -164,6 +171,42 @@ class RocketMQMetadataProviderTest {
 
         assertThat(provider.getTopicRoutes("instance-a", "orders")).containsExactlyElementsOf(routes);
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "0, RW",
+        "2, WO",
+        "3, WO",
+        "4, RO",
+        "5, RO",
+        "6, RW",
+        "7, RW"
+    })
+    void getTopicRoutesShouldInterpretPermissionBits(int permission, TopicPerm expected) throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName("broker-a");
+        queueData.setReadQueueNums(4);
+        queueData.setWriteQueueNums(2);
+        queueData.setPerm(permission);
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-a");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(queueData));
+        routeData.setBrokerDatas(List.of(brokerData));
+        when(admin.examineTopicRouteInfo("TopicA")).thenReturn(routeData);
+
+        List<BrokerRouteVO> routes = newLiveProvider(admin).getTopicRoutes(null, "TopicA");
+
+        assertThat(routes).singleElement().satisfies(route -> {
+            assertThat(route.getBrokerName()).isEqualTo("broker-a");
+            assertThat(route.getBrokerAddr()).isEqualTo("10.0.0.1:10911");
+            assertThat(route.getReadQueues()).isEqualTo(4);
+            assertThat(route.getWriteQueues()).isEqualTo(2);
+            assertThat(route.getPerm()).isEqualTo(expected);
+        });
     }
 
     @Test

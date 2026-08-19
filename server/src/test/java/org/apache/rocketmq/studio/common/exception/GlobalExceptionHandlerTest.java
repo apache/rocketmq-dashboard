@@ -65,6 +65,29 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value("LLM provider request timed out"));
     }
 
+    @Test
+    void unmappedRouteReturns404WithEnvelopeInsteadOf500() {
+        // Standalone MockMvc does not synthesize NoResourceFoundException for unmapped
+        // routes (only a full Spring MVC resource resolver does), so verify the handler
+        // mapping directly: NoResourceFoundException must map to a 404 Result envelope
+        // rather than falling through to the generic 500 catch-all.
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        org.springframework.web.servlet.resource.NoResourceFoundException ex =
+                new org.springframework.web.servlet.resource.NoResourceFoundException(
+                        org.springframework.http.HttpMethod.GET, "missing-resource");
+        org.apache.rocketmq.studio.common.domain.Result<?> result =
+                handler.handleNoResourceFoundException(ex);
+        org.assertj.core.api.Assertions.assertThat(result.getCode()).isEqualTo(404);
+    }
+
+    @Test
+    void wrongHttpMethodReturns405WithEnvelopeInsteadOf500() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/test/business/400"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value(405));
+    }
+
     @RestController
     static class FailingController {
 

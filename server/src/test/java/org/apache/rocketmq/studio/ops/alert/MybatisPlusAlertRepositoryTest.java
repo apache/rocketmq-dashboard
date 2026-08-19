@@ -28,6 +28,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -68,6 +69,32 @@ class MybatisPlusAlertRepositoryTest {
         assertThat(repository.findAlerts(null)).singleElement()
                 .satisfies(alert -> assertThat(alert.getLevel()).isEqualTo(
                         org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning));
+    }
+
+    @Test
+    void saveRuleShouldCanonicalizeChannelsBeforePersistence() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .id(1L)
+                .name("Lag")
+                .channels(Arrays.asList(" email ", null, "", "sms", "email", " sms "))
+                .build();
+
+        repository.saveRule(rule);
+
+        verify(ruleMapper).insert(argThat((RmqAlertRule entity) ->
+                entity != null && "email,sms".equals(entity.getChannels())));
+    }
+
+    @Test
+    void findAllRulesShouldCanonicalizeLegacyStoredChannels() {
+        RmqAlertRule entity = new RmqAlertRule();
+        entity.setId(1L);
+        entity.setName("Lag");
+        entity.setChannels(" email ,,sms,email, sms ");
+        when(ruleMapper.selectList(any())).thenReturn(List.of(entity));
+
+        assertThat(repository.findAllRules()).singleElement()
+                .satisfies(rule -> assertThat(rule.getChannels()).containsExactly("email", "sms"));
     }
 
     @Test

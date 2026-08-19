@@ -34,7 +34,7 @@ public class AlertRuleRequestDTO {
     private String thresholdUnit;
     @Pattern(regexp = "(?:[0-9]+(?:ms|s|m|h|d|w|y))+", message = "duration is invalid")
     private String duration;
-    private List<String> channels;
+    private List<@NotBlank(message = "channel must not be blank") String> channels;
     private boolean enabled;
     private String description;
     private String brokerName;
@@ -52,12 +52,23 @@ public class AlertRuleRequestDTO {
                 .threshold(threshold)
                 .thresholdUnit(thresholdUnit)
                 .duration(duration)
-                .channels(channels)
+                .channels(normalizeChannels(channels))
                 .enabled(enabled)
                 .description(description)
                 .brokerName(brokerName)
                 .clusterName(clusterName)
                 .severity(severity)
                 .build();
+    }
+
+    private static List<String> normalizeChannels(List<String> values) {
+        if (values == null) {
+            return null;
+        }
+        return values.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 }

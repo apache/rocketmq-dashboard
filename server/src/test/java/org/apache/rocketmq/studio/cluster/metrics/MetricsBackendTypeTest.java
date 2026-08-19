@@ -31,6 +31,10 @@ class MetricsBackendTypeTest {
                 .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
         assertThat(MetricsBackendType.fromProviderType("VICTORIA_METRICS"))
                 .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
+        assertThat(MetricsBackendType.fromProviderType("victoria metrics"))
+                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
+        assertThat(MetricsBackendType.fromProviderType("victoria-metrics"))
+                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
         assertThat(MetricsBackendType.fromProviderType("THANOS")).isEqualTo(MetricsBackendType.THANOS);
         assertThat(MetricsBackendType.fromProviderType("CORTEX")).isEqualTo(MetricsBackendType.CORTEX);
         assertThat(MetricsBackendType.fromProviderType("MIMIR")).isEqualTo(MetricsBackendType.MIMIR);
@@ -69,6 +73,13 @@ class MetricsBackendTypeTest {
         assertThat(MetricsBackendType.THANOS.getQueryPath()).isEqualTo("/api/v1/query_range");
         assertThat(MetricsBackendType.CORTEX.getQueryPath()).isEqualTo("/api/v1/query_range");
         assertThat(MetricsBackendType.ARMS.getQueryPath()).isEqualTo("/api/v1/query_range");
+    }
+
+    @Test
+    void shouldExposeCanonicalProviderType() {
+        assertThat(MetricsBackendType.PROMETHEUS.getProviderType()).isEqualTo("Prometheus");
+        assertThat(MetricsBackendType.VICTORIA_METRICS.getProviderType()).isEqualTo("VictoriaMetrics");
+        assertThat(MetricsBackendType.ARMS.getProviderType()).isEqualTo("ARMS");
     }
 
     @Test

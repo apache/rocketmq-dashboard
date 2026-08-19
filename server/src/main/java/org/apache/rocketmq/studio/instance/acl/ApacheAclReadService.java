@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.acl;
 
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.remoting.protocol.body.AclInfo;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Service;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -46,15 +48,23 @@ public class ApacheAclReadService {
                     continue;
                 }
                 try {
-                    policies.put(address, admin.listAcl(address, subject, resource).stream()
-                            .map(RemoteAclPolicyVO::from)
-                            .toList());
+                    policies.put(address, mapPolicies(admin.listAcl(address, subject, resource)));
                 } catch (Exception ex) {
                     failures.put(address, rootMessage(ex));
                 }
             }
             return result(policies, failures);
         });
+    }
+
+    private List<RemoteAclPolicyVO> mapPolicies(List<AclInfo> brokerPolicies) {
+        if (brokerPolicies == null) {
+            return List.of();
+        }
+        return brokerPolicies.stream()
+                .filter(Objects::nonNull)
+                .map(RemoteAclPolicyVO::from)
+                .toList();
     }
 
     private RemoteAclReadResult result(Map<String, List<RemoteAclPolicyVO>> policies,

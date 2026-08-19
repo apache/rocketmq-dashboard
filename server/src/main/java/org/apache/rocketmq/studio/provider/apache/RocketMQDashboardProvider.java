@@ -235,13 +235,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         tpsIn += parseTps(table.get("putTps"));
                         tpsOut += parseTps(table.get("getTransferredTps"));
 
-                        String msgPutToday = table.get("msgPutTotalTodayMorning");
-                        if (msgPutToday != null) {
-                            try {
-                                messagesToday += Long.parseLong(msgPutToday.trim());
-                            } catch (NumberFormatException ignored) {
-                            }
-                        }
+                        messagesToday += parseMessagesToday(table);
                     }
                 } catch (Exception e) {
                     log.warn("Failed to get runtime info from broker {}: {}", brokerAddr, e.getMessage());
@@ -383,6 +377,26 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             log.debug("Failed to parse TPS value: {}", tpsStr);
         }
         return 0;
+    }
+
+    private long parseMessagesToday(Map<String, String> runtimeStats) {
+        String morningValue = runtimeStats.get("msgPutTotalTodayMorning");
+        String currentValue = runtimeStats.get("msgPutTotalTodayNow");
+        if (morningValue == null || currentValue == null) {
+            return 0;
+        }
+        try {
+            long morning = Long.parseLong(morningValue.trim());
+            long current = Long.parseLong(currentValue.trim());
+            if (morning < 0 || current < 0) {
+                return 0;
+            }
+            return Math.max(0, current - morning);
+        } catch (NumberFormatException exception) {
+            log.debug("Failed to parse today's message counters: morning={}, current={}",
+                    morningValue, currentValue);
+            return 0;
+        }
     }
 
     private boolean isSystemTopic(String topic) {
