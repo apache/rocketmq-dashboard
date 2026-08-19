@@ -19,14 +19,28 @@ package org.apache.rocketmq.studio.ops.ai;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -105,6 +119,153 @@ class OpenAiCompatibleLlmGatewayTest {
                 });
     }
 
+    @Test
+    void saturatedGatewayReturnsStructuredOverloadWithoutRunningProviderOnCaller() throws Exception {
+        ExecutorService executor = singleChatExecutor();
+        List<RecordingSseEmitter> emitters = new CopyOnWriteArrayList<>();
+        OpenAiCompatibleLlmGateway testedGateway = gateway(executor, emitters);
+        LlmConfigVO config = config("openai", "sk-test");
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(configService.getConfig()).thenReturn(config);
+        when(llmClient.supports(config)).thenReturn(true);
+        doAnswer(invocation -> {
+            started.countDown();
+            release.await();
+            return null;
+        }).when(llmClient).stream(any(), any(), any(), any());
+        try {
+            testedGateway.chat(ChatDTO.builder().message("first").build());
+            assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+
+            CompletableFuture<SseEmitter> overloaded = CompletableFuture.supplyAsync(
+                    () -> testedGateway.chat(ChatDTO.builder().message("second").build()));
+            SseEmitter result = overloaded.get(1, TimeUnit.SECONDS);
+
+            assertThat(result).isSameAs(emitters.get(1));
+            assertThat(emitters.get(1).eventText())
+                    .contains("event:error", "llm.gateway.overloaded", "503", "event:done", "[DONE]");
+            assertThat(emitters.get(1).completed).isTrue();
+        } finally {
+            release.countDown();
+            testedGateway.destroy();
+        }
+    }
+
+    @Test
+    void downstreamTimeoutInterruptsTheRunningProviderWithoutSendingAnotherTerminalEvent() throws Exception {
+        ExecutorService executor = singleChatExecutor();
+        List<RecordingSseEmitter> emitters = new CopyOnWriteArrayList<>();
+        OpenAiCompatibleLlmGateway testedGateway = gateway(executor, emitters);
+        LlmConfigVO config = config("openai", "sk-test");
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        when(configService.getConfig()).thenReturn(config);
+        when(llmClient.supports(config)).thenReturn(true);
+        doAnswer(invocation -> {
+            started.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException exception) {
+                interrupted.countDown();
+                Thread.currentThread().interrupt();
+            }
+            return null;
+        }).when(llmClient).stream(any(), any(), any(), any());
+        try {
+            testedGateway.chat(ChatDTO.builder().message("hello").build());
+            assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+
+            emitters.get(0).triggerTimeout();
+
+            assertThat(interrupted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(emitters.get(0).sentEvents).isEmpty();
+        } finally {
+            testedGateway.destroy();
+        }
+    }
+
+    @Test
+    void gatewayShutdownInterruptsActiveProviderWork() throws Exception {
+        ExecutorService executor = singleChatExecutor();
+        List<RecordingSseEmitter> emitters = new CopyOnWriteArrayList<>();
+        OpenAiCompatibleLlmGateway testedGateway = gateway(executor, emitters);
+        LlmConfigVO config = config("openai", "sk-test");
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        when(configService.getConfig()).thenReturn(config);
+        when(llmClient.supports(config)).thenReturn(true);
+        doAnswer(invocation -> {
+            started.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException exception) {
+                interrupted.countDown();
+                Thread.currentThread().interrupt();
+            }
+            return null;
+        }).when(llmClient).stream(any(), any(), any(), any());
+
+        testedGateway.chat(ChatDTO.builder().message("hello").build());
+        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+
+        testedGateway.destroy();
+
+        assertThat(interrupted.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(emitters.get(0).sentEvents).isEmpty();
+    }
+
+    @Test
+    void successfulAndFailedStreamsEmitOneTerminalSequence() throws Exception {
+        ExecutorService executor = singleChatExecutor();
+        List<RecordingSseEmitter> emitters = new CopyOnWriteArrayList<>();
+        OpenAiCompatibleLlmGateway testedGateway = gateway(executor, emitters);
+        LlmConfigVO config = config("openai", "sk-test");
+        when(configService.getConfig()).thenReturn(config);
+        when(llmClient.supports(config)).thenReturn(true);
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<String> consumer = invocation.getArgument(3, Consumer.class);
+            consumer.accept("hello");
+            return null;
+        }).doThrow(new LlmGatewayException(502, "llm.provider.failed", "provider failed", "retry"))
+                .when(llmClient).stream(any(), any(), any(), any());
+        try {
+            testedGateway.chat(ChatDTO.builder().message("success").build());
+            assertThat(emitters.get(0).completedLatch.await(5, TimeUnit.SECONDS)).isTrue();
+            testedGateway.chat(ChatDTO.builder().message("failure").build());
+            assertThat(emitters.get(1).completedLatch.await(5, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(emitters.get(0).eventText())
+                    .contains("event:message", "hello", "event:done", "[DONE]")
+                    .doesNotContain("event:error");
+            assertThat(emitters.get(1).eventText())
+                    .contains("event:error", "llm.provider.failed", "event:done", "[DONE]");
+            assertThat(emitters.get(0).eventCount("event:done")).isEqualTo(1);
+            assertThat(emitters.get(1).eventCount("event:done")).isEqualTo(1);
+        } finally {
+            testedGateway.destroy();
+        }
+    }
+
+    private OpenAiCompatibleLlmGateway gateway(ExecutorService executor,
+                                                List<RecordingSseEmitter> emitters) {
+        return new OpenAiCompatibleLlmGateway(
+                configService, llmClient, new AgentProviderRegistry(List.of()), new ObjectMapper(),
+                executor, timeout -> {
+                    RecordingSseEmitter emitter = new RecordingSseEmitter(timeout);
+                    emitters.add(emitter);
+                    return emitter;
+                });
+    }
+
+    private ExecutorService singleChatExecutor() {
+        return new ThreadPoolExecutor(
+                0, 1, 60L, TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                new ThreadPoolExecutor.AbortPolicy());
+    }
+
     private LlmConfigVO config(String provider, String apiKey) {
         return LlmConfigVO.builder()
                 .provider(provider)
@@ -115,5 +276,71 @@ class OpenAiCompatibleLlmGatewayTest {
                 .temperature(0.2)
                 .enabled(true)
                 .build();
+    }
+
+    private static final class RecordingSseEmitter extends SseEmitter {
+        private final List<Set<ResponseBodyEmitter.DataWithMediaType>> sentEvents = new CopyOnWriteArrayList<>();
+        private final CountDownLatch completedLatch = new CountDownLatch(1);
+        private Runnable completionCallback;
+        private Runnable timeoutCallback;
+        private Consumer<Throwable> errorCallback;
+        private boolean completed;
+
+        RecordingSseEmitter(long timeout) {
+            super(timeout);
+        }
+
+        @Override
+        public void send(SseEventBuilder builder) throws IOException {
+            sentEvents.add(builder.build());
+        }
+
+        @Override
+        public synchronized void onCompletion(Runnable callback) {
+            completionCallback = callback;
+        }
+
+        @Override
+        public synchronized void onTimeout(Runnable callback) {
+            timeoutCallback = callback;
+        }
+
+        @Override
+        public synchronized void onError(Consumer<Throwable> callback) {
+            errorCallback = callback;
+        }
+
+        @Override
+        public synchronized void complete() {
+            completed = true;
+            completedLatch.countDown();
+            if (completionCallback != null) {
+                completionCallback.run();
+            }
+        }
+
+        @Override
+        public synchronized void completeWithError(Throwable throwable) {
+            completedLatch.countDown();
+            if (errorCallback != null) {
+                errorCallback.accept(throwable);
+            }
+        }
+
+        void triggerTimeout() {
+            timeoutCallback.run();
+        }
+
+        String eventText() {
+            List<String> values = new ArrayList<>();
+            sentEvents.forEach(event -> event.forEach(item -> values.add(String.valueOf(item.getData()))));
+            return String.join("", values);
+        }
+
+        long eventCount(String marker) {
+            return sentEvents.stream()
+                    .filter(event -> event.stream().anyMatch(item -> String.valueOf(item.getData()).contains(marker)))
+                    .count();
+        }
     }
 }
