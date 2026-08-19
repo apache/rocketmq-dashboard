@@ -25,6 +25,7 @@ import { chatStream, executeTool, listTools } from '../../../api/ai';
 import { listClusters, type ClusterInfo } from '../../../api/cluster';
 import { getLlmConfig, getLlmModels } from '../../../api/llm';
 import { useAiChatHistoryStore } from '../../../stores/aiChatHistoryStore';
+import useAuthStore from '../../../stores/authStore';
 import AiPage from '../index';
 
 const dataModeMocks = vi.hoisted(() => ({ useMock: false }));
@@ -88,6 +89,7 @@ describe('AiPage tool runner', () => {
         real: { conversations: [], activeConversationId: null },
       },
     });
+    useAuthStore.setState({ user: null, userId: null, admin: null });
     vi.mocked(getLlmConfig).mockResolvedValue({
       provider: 'openai',
       apiBase: 'https://api.openai.com/v1',
@@ -132,6 +134,22 @@ describe('AiPage tool runner', () => {
     await user.click(screen.getByRole('button', { name: '工具' }));
     expect(listTools).not.toHaveBeenCalled();
     expect(listClusters).not.toHaveBeenCalled();
+  });
+
+  it('degrades for reader accounts without loading model configuration', async () => {
+    useAuthStore.setState({ user: 'reader', userId: 9, admin: false });
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => {
+      expect(getLlmConfig).not.toHaveBeenCalled();
+      expect(getLlmModels).not.toHaveBeenCalled();
+    });
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    await waitFor(() => expect(listClusters).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+    expect(screen.queryByText('Failed to load AI configuration')).not.toBeInTheDocument();
+    expect(screen.queryByText('加载 AI 配置失败')).not.toBeInTheDocument();
   });
 
   it('uses the mode carried from the home-page draft', async () => {
@@ -179,7 +197,9 @@ describe('AiPage tool runner', () => {
     expect(useAiChatHistoryStore.getState().histories.real.conversations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          messages: expect.arrayContaining([expect.objectContaining({ text: 'Previous conversation' })]),
+          messages: expect.arrayContaining([
+            expect.objectContaining({ text: 'Previous conversation' }),
+          ]),
         }),
       ]),
     );
@@ -237,7 +257,9 @@ describe('AiPage tool runner', () => {
     await user.click(await screen.findByRole('button', { name: 'AI 对话历史' }));
     expect(screen.getByText('刚刚')).toBeInTheDocument();
     expect(screen.getByText('5 分钟前')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Previous conversation5 分钟前$/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^Previous conversation5 分钟前$/ }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^Previous conversation/ }));
 
     expect(
@@ -285,7 +307,9 @@ describe('AiPage tool runner', () => {
 
     expect(requestSignal?.aborted).toBe(true);
     expect(useAiChatHistoryStore.getState().histories.real.activeConversationId).toBe('previous');
-    await waitFor(() => expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument(),
+    );
   });
 
   it('does not send while an input method composition is being confirmed', async () => {

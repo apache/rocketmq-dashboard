@@ -56,6 +56,7 @@ import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { formatRelativeTime, formatTimeOfDay } from '../../utils/format';
 import { useDataModeStore } from '../../stores/dataModeStore';
 import { useEngineStore } from '../../stores/engineStore';
+import useAuthStore from '../../stores/authStore';
 import {
   getRecentAiChatConversations,
   flushAiChatHistoryPersistence,
@@ -189,7 +190,12 @@ const UserBubble = ({ text, createdAt }: Pick<Message, 'text' | 'createdAt'>) =>
         {text}
         {createdAt && (
           <div
-            style={{ marginTop: 4, color: token.colorTextTertiary, fontSize: 14, textAlign: 'right' }}
+            style={{
+              marginTop: 4,
+              color: token.colorTextTertiary,
+              fontSize: 14,
+              textAlign: 'right',
+            }}
           >
             {formatTimeOfDay(createdAt)}
           </div>
@@ -203,216 +209,216 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
   const { token } = theme.useToken();
 
   return (
-  <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
-    <div
-      style={{
-        width: 36,
-        height: 36,
-        borderRadius: '50%',
-        background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover} 100%)`,
-        flexShrink: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: '0 2px 8px rgba(22, 119, 255, 0.3)',
-      }}
-    >
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="white"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+    <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: '50%',
+          background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover} 100%)`,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 8px rgba(22, 119, 255, 0.3)',
+        }}
       >
-        <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
-        <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-        <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
-        <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
-      </svg>
-    </div>
-    <Card
-      size="small"
-      style={{
-        maxWidth: '75%',
-        background: token.colorBgElevated,
-        borderColor: token.colorBorderSecondary,
-        boxShadow: `0 1px 4px ${token.colorTextQuaternary}`,
-        borderRadius: 12,
-        borderTopLeftRadius: 4,
-      }}
-      styles={{ body: { padding: '12px 16px' } }}
-    >
-      {/* Tool call indicator */}
-      {msg.toolCall && (
-        <Tag
-          color="purple"
-          style={{
-            marginBottom: 12,
-            borderRadius: 6,
-            fontSize: 14,
-            background: token.colorPrimaryBg,
-            borderColor: token.colorPrimaryBorder,
-          }}
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="white"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
-          {msg.toolCall.label}
-        </Tag>
-      )}
-
-      {/* Table content */}
-      {msg.tableData && msg.tableColumns && (
-        <Table
-          dataSource={msg.tableData}
-          columns={msg.tableColumns}
-          rowKey="key"
-          size="small"
-          pagination={false}
-          style={{ marginBottom: 12 }}
-        />
-      )}
-
-      {/* Stat cards */}
-      {msg.stats && (
-        <Row gutter={12} style={{ marginBottom: 12 }}>
-          {msg.stats.map((s) => (
-            <Col key={s.title}>
-              <Card
-                size="small"
-                style={{
-                  borderRadius: 8,
-                  borderTop: `3px solid ${s.color}`,
-                  minWidth: 120,
-                }}
-                styles={{ body: { padding: '8px 12px' } }}
-              >
-                <Statistic
-                  title={
-                    <Text type="secondary" style={{ fontSize: 14 }}>
-                      {s.title}
-                    </Text>
-                  }
-                  value={s.value}
-                  suffix={s.suffix}
-                  valueStyle={{ fontSize: 20, fontWeight: 600, color: s.color }}
-                />
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      )}
-
-      {/* Descriptions */}
-      {msg.descriptions && (
-        <Descriptions bordered size="small" column={2} style={{ marginBottom: 12 }}>
-          {msg.descriptions.map((d) => (
-            <Descriptions.Item key={d.label} label={d.label}>
-              <Text strong>{d.value}</Text>
-            </Descriptions.Item>
-          ))}
-        </Descriptions>
-      )}
-
-      {/* Chain of thought (enhanced prompt) */}
-      {msg.thinking && (
-        <details style={{ marginBottom: 12 }}>
-          <summary
+          <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+          <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+          <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+          <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+        </svg>
+      </div>
+      <Card
+        size="small"
+        style={{
+          maxWidth: '75%',
+          background: token.colorBgElevated,
+          borderColor: token.colorBorderSecondary,
+          boxShadow: `0 1px 4px ${token.colorTextQuaternary}`,
+          borderRadius: 12,
+          borderTopLeftRadius: 4,
+        }}
+        styles={{ body: { padding: '12px 16px' } }}
+      >
+        {/* Tool call indicator */}
+        {msg.toolCall && (
+          <Tag
+            color="purple"
             style={{
-              cursor: 'pointer',
-              color: token.colorPrimary,
+              marginBottom: 12,
+              borderRadius: 6,
               fontSize: 14,
-              fontWeight: 500,
-              userSelect: 'none',
+              background: token.colorPrimaryBg,
+              borderColor: token.colorPrimaryBorder,
             }}
           >
-            思维链：Prompt 增强改写
-          </summary>
-          <div
-            style={{
-              marginTop: 8,
-              padding: '8px 12px',
-              background: token.colorFillSecondary,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              borderRadius: 8,
-              fontSize: 14,
-              lineHeight: 1.7,
-              color: token.colorTextSecondary,
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {msg.thinking}
-          </div>
-        </details>
-      )}
+            {msg.toolCall.label}
+          </Tag>
+        )}
 
-      {/* Waiting indicator (inside the bubble) */}
-      {msg.pending && !msg.summary && (
-        <Flex gap={4} align="center" style={{ padding: '2px 0' }}>
-          <span
-            style={{
-              display: 'inline-block',
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: token.colorPrimary,
-              animation: 'dotPulse 1.4s infinite ease-in-out',
-            }}
+        {/* Table content */}
+        {msg.tableData && msg.tableColumns && (
+          <Table
+            dataSource={msg.tableData}
+            columns={msg.tableColumns}
+            rowKey="key"
+            size="small"
+            pagination={false}
+            style={{ marginBottom: 12 }}
           />
-          <span
-            style={{
-              display: 'inline-block',
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: token.colorPrimary,
-              animation: 'dotPulse 1.4s infinite ease-in-out 0.2s',
-            }}
-          />
-          <span
-            style={{
-              display: 'inline-block',
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: token.colorPrimary,
-              animation: 'dotPulse 1.4s infinite ease-in-out 0.4s',
-            }}
-          />
-          <Text type="secondary" style={{ fontSize: 14, marginLeft: 8 }}>
-            正在思考…
-          </Text>
-        </Flex>
-      )}
+        )}
 
-      {/* Summary text */}
-      {msg.summary && (
-        <div className="ai-markdown">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.summary}</ReactMarkdown>
-        </div>
-      )}
-
-      {/* Action buttons */}
-      {msg.actions && (
-        <>
-          <Divider style={{ margin: '12px 0 8px' }} />
-          <Flex gap={8}>
-            {msg.actions.map((a) => (
-              <Button key={a.label} type={a.type || 'default'} size="small">
-                {a.label}
-              </Button>
+        {/* Stat cards */}
+        {msg.stats && (
+          <Row gutter={12} style={{ marginBottom: 12 }}>
+            {msg.stats.map((s) => (
+              <Col key={s.title}>
+                <Card
+                  size="small"
+                  style={{
+                    borderRadius: 8,
+                    borderTop: `3px solid ${s.color}`,
+                    minWidth: 120,
+                  }}
+                  styles={{ body: { padding: '8px 12px' } }}
+                >
+                  <Statistic
+                    title={
+                      <Text type="secondary" style={{ fontSize: 14 }}>
+                        {s.title}
+                      </Text>
+                    }
+                    value={s.value}
+                    suffix={s.suffix}
+                    valueStyle={{ fontSize: 20, fontWeight: 600, color: s.color }}
+                  />
+                </Card>
+              </Col>
             ))}
-          </Flex>
-        </>
-      )}
+          </Row>
+        )}
 
-      {msg.createdAt && (
-        <div style={{ marginTop: 8, color: token.colorTextTertiary, fontSize: 14 }}>
-          {formatTimeOfDay(msg.createdAt)}
-        </div>
-      )}
-    </Card>
-  </Flex>
+        {/* Descriptions */}
+        {msg.descriptions && (
+          <Descriptions bordered size="small" column={2} style={{ marginBottom: 12 }}>
+            {msg.descriptions.map((d) => (
+              <Descriptions.Item key={d.label} label={d.label}>
+                <Text strong>{d.value}</Text>
+              </Descriptions.Item>
+            ))}
+          </Descriptions>
+        )}
+
+        {/* Chain of thought (enhanced prompt) */}
+        {msg.thinking && (
+          <details style={{ marginBottom: 12 }}>
+            <summary
+              style={{
+                cursor: 'pointer',
+                color: token.colorPrimary,
+                fontSize: 14,
+                fontWeight: 500,
+                userSelect: 'none',
+              }}
+            >
+              思维链：Prompt 增强改写
+            </summary>
+            <div
+              style={{
+                marginTop: 8,
+                padding: '8px 12px',
+                background: token.colorFillSecondary,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 8,
+                fontSize: 14,
+                lineHeight: 1.7,
+                color: token.colorTextSecondary,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {msg.thinking}
+            </div>
+          </details>
+        )}
+
+        {/* Waiting indicator (inside the bubble) */}
+        {msg.pending && !msg.summary && (
+          <Flex gap={4} align="center" style={{ padding: '2px 0' }}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: token.colorPrimary,
+                animation: 'dotPulse 1.4s infinite ease-in-out',
+              }}
+            />
+            <span
+              style={{
+                display: 'inline-block',
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: token.colorPrimary,
+                animation: 'dotPulse 1.4s infinite ease-in-out 0.2s',
+              }}
+            />
+            <span
+              style={{
+                display: 'inline-block',
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: token.colorPrimary,
+                animation: 'dotPulse 1.4s infinite ease-in-out 0.4s',
+              }}
+            />
+            <Text type="secondary" style={{ fontSize: 14, marginLeft: 8 }}>
+              正在思考…
+            </Text>
+          </Flex>
+        )}
+
+        {/* Summary text */}
+        {msg.summary && (
+          <div className="ai-markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.summary}</ReactMarkdown>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {msg.actions && (
+          <>
+            <Divider style={{ margin: '12px 0 8px' }} />
+            <Flex gap={8}>
+              {msg.actions.map((a) => (
+                <Button key={a.label} type={a.type || 'default'} size="small">
+                  {a.label}
+                </Button>
+              ))}
+            </Flex>
+          </>
+        )}
+
+        {msg.createdAt && (
+          <div style={{ marginTop: 8, color: token.colorTextTertiary, fontSize: 14 }}>
+            {formatTimeOfDay(msg.createdAt)}
+          </div>
+        )}
+      </Card>
+    </Flex>
   );
 };
 
@@ -425,6 +431,8 @@ const AiPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const useMock = useDataModeStore((state) => state.useMock);
+  const userId = useAuthStore((state) => state.userId);
+  const admin = useAuthStore((state) => state.admin);
   const chatMode: AiChatDataMode = useMock ? 'mock' : 'real';
   const { token } = theme.useToken();
   const history = useAiChatHistoryStore((state) => state.histories[chatMode]);
@@ -471,6 +479,7 @@ const AiPage = () => {
     mode?: ChatMode;
     enhance?: boolean;
   } | null>(null);
+  const canInspectLlmRuntime = !userId || admin === true;
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -488,11 +497,12 @@ const AiPage = () => {
       setLoading(false);
       previousChatModeRef.current = chatMode;
     }
-    conversationIdRef.current = useAiChatHistoryStore.getState().histories[chatMode].activeConversationId;
+    conversationIdRef.current =
+      useAiChatHistoryStore.getState().histories[chatMode].activeConversationId;
   }, [chatMode, history.activeConversationId]);
 
   const loadLlmRuntime = useCallback(async () => {
-    if (useMock) {
+    if (useMock || !canInspectLlmRuntime) {
       setLlmConfig(null);
       setModelOptions([]);
       setSelectedModel('');
@@ -523,7 +533,7 @@ const AiPage = () => {
     } finally {
       setModelsLoading(false);
     }
-  }, [t, useMock]);
+  }, [canInspectLlmRuntime, t, useMock]);
 
   useEffect(() => {
     void Promise.resolve().then(loadLlmRuntime);
@@ -664,7 +674,9 @@ const AiPage = () => {
         if (controller.signal.aborted) {
           updateMessages(chatMode, conversationId, (prev) =>
             prev.map((item) =>
-              item.id === responseId && !item.summary ? { ...item, summary: t('ai.responseStopped') } : item,
+              item.id === responseId && !item.summary
+                ? { ...item, summary: t('ai.responseStopped') }
+                : item,
             ),
           );
         } else {
@@ -843,24 +855,26 @@ const AiPage = () => {
     <Flex
       vertical
       className="ai-page"
-      style={{
-        height: '100%',
-        minHeight: 0,
-        padding: 24,
-        overflow: 'hidden',
-        '--ai-surface': token.colorBgContainer,
-        '--ai-surface-elevated': token.colorBgElevated,
-        '--ai-border': token.colorBorderSecondary,
-        '--ai-text': token.colorText,
-        '--ai-text-secondary': token.colorTextSecondary,
-        '--ai-text-tertiary': token.colorTextTertiary,
-        '--ai-primary': token.colorPrimary,
-        '--ai-primary-bg': token.colorPrimaryBg,
-        '--ai-primary-hover': token.colorPrimaryHover,
-        '--ai-fill-secondary': token.colorFillSecondary,
-        '--ai-code-bg': token.colorBgSpotlight,
-        '--ai-code-text': token.colorTextLightSolid,
-      } as CSSProperties}
+      style={
+        {
+          height: '100%',
+          minHeight: 0,
+          padding: 24,
+          overflow: 'hidden',
+          '--ai-surface': token.colorBgContainer,
+          '--ai-surface-elevated': token.colorBgElevated,
+          '--ai-border': token.colorBorderSecondary,
+          '--ai-text': token.colorText,
+          '--ai-text-secondary': token.colorTextSecondary,
+          '--ai-text-tertiary': token.colorTextTertiary,
+          '--ai-primary': token.colorPrimary,
+          '--ai-primary-bg': token.colorPrimaryBg,
+          '--ai-primary-hover': token.colorPrimaryHover,
+          '--ai-fill-secondary': token.colorFillSecondary,
+          '--ai-code-bg': token.colorBgSpotlight,
+          '--ai-code-text': token.colorTextLightSolid,
+        } as CSSProperties
+      }
     >
       {/* Chat Area */}
       <div
@@ -883,7 +897,11 @@ const AiPage = () => {
           ) : (
             <AiMessage
               key={msg.id}
-              msg={msg.createdAt || !legacyMessageTimestamp ? msg : { ...msg, createdAt: legacyMessageTimestamp }}
+              msg={
+                msg.createdAt || !legacyMessageTimestamp
+                  ? msg
+                  : { ...msg, createdAt: legacyMessageTimestamp }
+              }
             />
           ),
         )}
@@ -967,6 +985,7 @@ const AiPage = () => {
                 onChange={(val) => setSelectedModel(val)}
                 options={modelOptions}
                 loading={modelsLoading}
+                disabled={!canInspectLlmRuntime}
                 variant="borderless"
                 placeholder={modelsLoading ? '加载模型中...' : '选择模型'}
                 popupMatchSelectWidth={false}
@@ -1085,7 +1104,15 @@ const AiPage = () => {
                 }`}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {conversation.prompt}
                   </span>
                   <span

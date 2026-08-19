@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerConfigDiffService;
@@ -39,6 +40,7 @@ import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardService;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -79,6 +81,7 @@ class ToolGatewayServiceTest {
 
     @BeforeEach
     void setUp() {
+        AuthenticatedUserContext.setUser(1L, "admin", true);
         catalog = canonicalCatalog();
         clusterService = mock(ClusterService.class);
         dashboardService = mock(DashboardService.class);
@@ -110,6 +113,11 @@ class ToolGatewayServiceTest {
                 messageTraceHandler);
     }
 
+    @AfterEach
+    void clearAuthenticatedUser() {
+        AuthenticatedUserContext.clear();
+    }
+
     @Test
     void discoveryWithoutClusterOnlyExposesClusterList() {
         assertThat(gateway.discover(null))
@@ -134,6 +142,24 @@ class ToolGatewayServiceTest {
                         "rmq.message.trace",
                         "rmq.alert.rule.list",
                         "rmq.nameserver.config.diff");
+    }
+
+    @Test
+    void discoveryForReaderFiltersSensitiveMessageTools() {
+        AuthenticatedUserContext.setUser(2L, "reader", false);
+        when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
+
+        assertThat(gateway.discover("cluster-v5"))
+                .extracting(AiToolVO::getName)
+                .contains(
+                        "rmq.cluster.list",
+                        "rmq.capabilities",
+                        "rmq.dashboard.summary",
+                        "rmq.topic.list",
+                        "rmq.group.list",
+                        "rmq.alert.rule.list",
+                        "rmq.nameserver.config.diff")
+                .doesNotContain("rmq.message.query", "rmq.message.trace");
     }
 
     @Test
@@ -215,6 +241,21 @@ class ToolGatewayServiceTest {
                 "status", "healthy",
                 "version", "5.2.0")));
         assertThat(output.toString()).doesNotContain("do-not-expose");
+    }
+
+    @Test
+    void readerCanExecuteLowRiskReadOnlyTool() {
+        AuthenticatedUserContext.setUser(2L, "reader", false);
+        when(clusterService.listClusters()).thenReturn(List.of(cluster(ClusterType.V5_PROXY_CLUSTER)));
+
+        Object output = gateway.execute("rmq.cluster.list", Map.of());
+
+        assertThat(output).isEqualTo(List.of(Map.of(
+                "id", "cluster-v5",
+                "name", "test",
+                "type", "V5_PROXY_CLUSTER",
+                "status", "healthy",
+                "version", "5.2.0")));
     }
 
     @Test
@@ -488,6 +529,17 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    void readerCannotExecuteSensitiveMessageQueryTool() {
+        AuthenticatedUserContext.setUser(2L, "reader", false);
+
+        assertThatThrownBy(() -> gateway.execute(
+                "rmq.message.query", Map.of("cluster", "cluster-v5")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Admin permission required");
+        verifyNoInteractions(messageService);
+    }
+
+    @Test
     void refusesNonL1CatalogEntriesEvenWhenAHandlerIsRegistered() throws IOException {
         String yaml = canonicalCatalogText().replaceFirst("riskLevel: L1", "riskLevel: L2");
         ToolCatalog l2Catalog = ToolCatalog.load(
@@ -508,6 +560,32 @@ class ToolGatewayServiceTest {
         assertThatThrownBy(() -> l2Gateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("only L1 tools are enabled");
+        verifyNoInteractions(clusterService);
+    }
+
+    @Test
+    void readerCannotExecuteCatalogEntriesWithoutReadPermission() throws IOException {
+        AuthenticatedUserContext.setUser(2L, "reader", false);
+        String yaml = canonicalCatalogText().replaceFirst(
+                "permission: cluster:read", "permission: cluster:write");
+        ToolCatalog writeCatalog = ToolCatalog.load(
+                new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
+                new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
+        ToolGatewayService writeGateway = gateway(
+                writeCatalog,
+                clusterListHandler,
+                capabilitiesHandler,
+                dashboardSummaryHandler,
+                topicListHandler,
+                consumerGroupListHandler,
+                alertRuleListHandler,
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler);
+
+        assertThatThrownBy(() -> writeGateway.execute("rmq.cluster.list", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Admin permission required");
         verifyNoInteractions(clusterService);
     }
 
@@ -626,6 +704,7 @@ class ToolGatewayServiceTest {
                 toolCatalog,
                 capabilityResolver,
                 new ObjectMapper(),
+                new ToolAccessPolicy(toolCatalog),
                 List.of(handlers));
     }
 

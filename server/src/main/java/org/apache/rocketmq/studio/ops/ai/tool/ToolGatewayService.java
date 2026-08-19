@@ -24,6 +24,7 @@ import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import com.networknt.schema.dialect.Dialects;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.ai.AiToolVO;
 import org.springframework.stereotype.Service;
@@ -47,15 +48,18 @@ public class ToolGatewayService {
     private final Map<String, ToolHandler> handlers;
     private final Map<String, Schema> inputSchemas;
     private final Map<String, Schema> outputSchemas;
+    private final ToolAccessPolicy toolAccessPolicy;
 
     public ToolGatewayService(
             ToolCatalog catalog,
             CapabilityResolver capabilityResolver,
             ObjectMapper objectMapper,
+            ToolAccessPolicy toolAccessPolicy,
             List<ToolHandler> handlers) {
         this.catalog = catalog;
         this.capabilityResolver = capabilityResolver;
         this.objectMapper = objectMapper;
+        this.toolAccessPolicy = toolAccessPolicy;
         this.handlers = registerHandlers(catalog, handlers);
 
         SchemaRegistry registry = SchemaRegistry.withDefaultDialect(
@@ -77,6 +81,7 @@ public class ToolGatewayService {
                         || !requiresCluster(definition))
                 .filter(definition -> discoveryCapabilities.capabilities().containsAll(
                         definition.requiredCapabilities()))
+                .filter(this::isVisibleToCurrentUser)
                 .map(ToolGatewayService::toView)
                 .toList();
     }
@@ -113,6 +118,7 @@ public class ToolGatewayService {
             throw new BusinessException(
                     400, "Execution rejected; only L1 tools are enabled: " + name);
         }
+        toolAccessPolicy.authorizeCurrentUser(definition);
         enforceCapabilities(definition, normalizedInput);
 
         Object output = handler.execute(normalizedInput);
@@ -217,6 +223,10 @@ public class ToolGatewayService {
     private static boolean requiresCluster(ToolDefinition definition) {
         Object required = definition.inputSchema().get("required");
         return required instanceof List<?> fields && fields.contains("cluster");
+    }
+
+    private boolean isVisibleToCurrentUser(ToolDefinition definition) {
+        return AuthenticatedUserContext.currentUserIsAdmin() || toolAccessPolicy.isReaderAccessible(definition);
     }
 
     private static AiToolVO toView(ToolDefinition definition) {
