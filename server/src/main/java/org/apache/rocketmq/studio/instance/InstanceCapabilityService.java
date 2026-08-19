@@ -26,6 +26,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Resolves the capability contract for an instance by delegating to the vendor provider.
@@ -42,7 +45,10 @@ public class InstanceCapabilityService {
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         InstanceProvider provider = providerRegistry.forVendor(vendor);
-        List<InstanceCapability> capabilities = provider.capabilities().stream()
+        List<InstanceCapability> capabilities = Optional.ofNullable(provider.capabilities())
+                .orElseGet(Set::of)
+                .stream()
+                .filter(Objects::nonNull)
                 .sorted(Comparator.comparingInt(InstanceCapability::ordinal))
                 .toList();
         return new InstanceCapabilitiesVO(instance.getName(), vendor, instance.getType(), capabilities);

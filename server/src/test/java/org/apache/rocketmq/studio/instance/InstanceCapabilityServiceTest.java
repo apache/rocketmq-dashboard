@@ -28,6 +28,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 
@@ -91,6 +93,41 @@ class InstanceCapabilityServiceTest {
 
         assertThat(result.instanceId()).isEqualTo("direct-1");
         assertThat(result.vendor()).isEqualTo(InstanceVendor.APACHE);
+    }
+
+    @Test
+    void getCapabilitiesShouldNormalizeMalformedProviderResultsTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("cloud-1")
+                .vendor(InstanceVendor.ALIYUN)
+                .type(InstanceType.PROXY)
+                .build();
+        instance.setId(3L);
+        when(instanceRepository.findById(3L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(instanceProvider.capabilities()).thenReturn(null);
+
+        InstanceCapabilitiesVO result = service.getCapabilities(3L);
+
+        assertThat(result.capabilities()).isEmpty();
+    }
+
+    @Test
+    void getCapabilitiesShouldIgnoreNullProviderEntriesTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("cloud-2")
+                .vendor(InstanceVendor.ALIYUN)
+                .type(InstanceType.PROXY)
+                .build();
+        instance.setId(4L);
+        when(instanceRepository.findById(4L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(instanceProvider.capabilities()).thenReturn(new HashSet<>(Arrays.asList(
+                null, InstanceCapability.DLQ_MANAGEMENT)));
+
+        InstanceCapabilitiesVO result = service.getCapabilities(4L);
+
+        assertThat(result.capabilities()).containsExactly(InstanceCapability.DLQ_MANAGEMENT);
     }
 
     @Test
