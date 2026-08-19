@@ -100,9 +100,9 @@ public class MetricProfileService {
                 mapping(SemanticMetric.CONSUMER_LAG_LATENCY, "rocketmq_consumer_lag_latency",
                         "max(rocketmq_consumer_lag_latency) by (cluster, topic, consumer_group)",
                         "cluster", "topic", "consumer_group"),
-                mapping(SemanticMetric.BROKER_HEALTH, "rocketmq_processor_watermark",
-                        "max(rocketmq_processor_watermark) by (cluster, node_id, processor)",
-                        "cluster", "node_id", "processor")
+                mapping(SemanticMetric.BROKER_HEALTH, "up",
+                        "max(up) by (cluster, node_id)",
+                        "cluster", "node_id")
         );
     }
 

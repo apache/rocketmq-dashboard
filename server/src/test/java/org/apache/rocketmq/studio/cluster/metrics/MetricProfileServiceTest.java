@@ -54,7 +54,11 @@ class MetricProfileServiceTest {
         assertThat(mapping(profile, SemanticMetric.CONSUMER_LAG_MESSAGES).getPrometheusMetric())
                 .isEqualTo("rocketmq_consumer_lag_messages");
         assertThat(mapping(profile, SemanticMetric.BROKER_HEALTH).getPrometheusMetric())
-                .isEqualTo("rocketmq_processor_watermark");
+                .isEqualTo("up");
+        assertThat(mapping(profile, SemanticMetric.BROKER_HEALTH).getPromql())
+                .isEqualTo("max(up) by (cluster, node_id)");
+        assertThat(mapping(profile, SemanticMetric.BROKER_HEALTH).getLabels())
+                .containsExactly("cluster", "node_id");
     }
 
     @Test
