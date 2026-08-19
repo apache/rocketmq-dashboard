@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -47,6 +48,18 @@ public class MqAdminProperties {
      * Kubernetes Secret, and must never be persisted in the Studio database.
      */
     private Map<String, Credential> credentials = new LinkedHashMap<>();
+
+    public void setCredentials(Map<String, Credential> credentials) {
+        this.credentials = new LinkedHashMap<>();
+        if (credentials == null) {
+            return;
+        }
+        credentials.forEach((reference, credential) -> {
+            if (StringUtils.hasText(reference) && credential != null) {
+                this.credentials.put(reference.trim(), credential);
+            }
+        });
+    }
 
     @Getter
     @Setter

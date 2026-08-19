@@ -73,7 +73,8 @@ public class RuntimeAdminClientResolver {
         if (!StringUtils.hasText(credentialRef)) {
             return null;
         }
-        MqAdminProperties.Credential credential = adminProperties.getCredentials().get(credentialRef);
+        MqAdminProperties.Credential credential = adminProperties == null
+                ? null : adminProperties.getCredentials().get(credentialRef);
         if (credential == null || !StringUtils.hasText(credential.getAccessKey())
                 || !StringUtils.hasText(credential.getSecretKey())) {
             throw new BusinessException(422,

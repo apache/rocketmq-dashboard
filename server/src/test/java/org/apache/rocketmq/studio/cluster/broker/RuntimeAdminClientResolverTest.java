@@ -29,6 +29,7 @@ import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -202,6 +203,36 @@ class RuntimeAdminClientResolverTest {
         assertThatThrownBy(() -> resolver.execute("instance-b", ignored -> "unused"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Admin credential reference is not configured: incomplete");
+        verifyNoInteractions(adminFactory);
+    }
+
+    @Test
+    void normalizesCredentialMapsAndRejectsMissingReferencesCleanly() {
+        MqAdminProperties.Credential credential = new MqAdminProperties.Credential();
+        credential.setAccessKey("admin-ak");
+        credential.setSecretKey("admin-sk");
+        Map<String, MqAdminProperties.Credential> configured = new HashMap<>();
+        configured.put(" production-admin ", credential);
+        configured.put("empty-entry", null);
+        configured.put("  ", credential);
+        MqAdminProperties properties = new MqAdminProperties();
+        properties.setCredentials(configured);
+
+        assertThat(properties.getCredentials()).containsOnlyKeys("production-admin");
+        properties.setCredentials(null);
+        assertThat(properties.getCredentials()).isEmpty();
+
+        InstanceVO instance = InstanceVO.builder()
+                .endpoint("namesrv-b:9876")
+                .adminCredentialRef("production-admin")
+                .build();
+        when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(
+                instanceRepository, adminFactory, properties);
+
+        assertThatThrownBy(() -> resolver.execute("instance-b", ignored -> "unused"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Admin credential reference is not configured: production-admin");
         verifyNoInteractions(adminFactory);
     }
 
