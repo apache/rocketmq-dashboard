@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 
@@ -50,6 +51,7 @@ public class RmqK8sCertificate {
 
     private String certPem;
 
+    @ToString.Exclude
     private String keyPem;
 
     private LocalDateTime gmtCreate;
