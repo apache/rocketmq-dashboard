@@ -44,6 +44,8 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -93,6 +95,38 @@ public class RocketMQClientProvider implements ClientProvider {
     public List<ClientConnectionVO> findProducerConnections(String instanceId, String topic, String producerGroup) {
         return runtimeAdminClientResolver.execute(instanceId,
                 adminExt -> findProducerConnections(adminExt, topic, producerGroup));
+    }
+
+    @Override
+    public List<String> findProducerGroups(String instanceId, String topic, String query, int limit) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> findProducerGroups(adminExt, topic, query, limit));
+    }
+
+    private List<String> findProducerGroups(MQAdminExt adminExt, String topic, String query, int limit) {
+        BrokerTopology topology = discoverBrokerTopology(adminExt, null, "producer group selector");
+        if (topology.brokerAddresses().isEmpty()) {
+            return List.of();
+        }
+        String normalizedQuery = query == null ? null : query.toLowerCase(Locale.ROOT);
+        LinkedHashSet<String> groups = new LinkedHashSet<>();
+        int successfulBrokers = 0;
+        for (String brokerAddress : topology.brokerAddresses()) {
+            try {
+                ProducerTableInfo producerTable = adminExt.getAllProducerInfo(brokerAddress);
+                successfulBrokers++;
+                collectProducerGroups(groups, producerTable, normalizedQuery);
+            } catch (Exception e) {
+                log.warn("Failed to fetch producer groups from broker={}, skipping", brokerAddress, e);
+            }
+        }
+        if (successfulBrokers == 0) {
+            throw new BusinessException(502, "Failed to query producer groups from all brokers");
+        }
+        return groups.stream()
+                .sorted(Comparator.naturalOrder())
+                .limit(limit)
+                .toList();
     }
 
     private List<ClientConnectionVO> findProducerConnections(MQAdminExt adminExt, String topic, String producerGroup) {
@@ -199,6 +233,22 @@ public class RocketMQClientProvider implements ClientProvider {
                 connections.putIfAbsent(key, toConnectionVO(producerInfo, producerGroup, clusterId));
             }
         });
+    }
+
+    private void collectProducerGroups(
+            LinkedHashSet<String> groups,
+            ProducerTableInfo producerTable,
+            String normalizedQuery) {
+        if (producerTable == null || producerTable.getData() == null) {
+            return;
+        }
+        producerTable.getData().keySet().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(group -> !group.isEmpty())
+                .filter(group -> normalizedQuery == null
+                        || group.toLowerCase(Locale.ROOT).contains(normalizedQuery))
+                .forEach(groups::add);
     }
 
     private ClientConnectionVO toConnectionVO(

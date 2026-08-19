@@ -70,6 +70,8 @@ const PRODUCER_CONNECTION_EXPORT_COLUMNS: CsvColumn<ProducerConnectionExportRow>
   { header: 'Version', value: (connection) => connection.versionDesc },
 ];
 
+const PRODUCER_GROUP_SELECTOR_LIMIT = 20;
+
 const ProducerPage = () => {
   const [form] = Form.useForm();
   const [topicList, setTopicList] = useState<string[]>([]);
@@ -85,7 +87,11 @@ const ProducerPage = () => {
   const { message } = App.useApp();
   const fetchTopicFailedMessage = t('producer.fetchTopicFailed');
   const queryRequestIdRef = useRef(0);
+
   const queryInFlightRef = useRef<number | null>(null);
+
+  const producerGroupRequestIdRef = useRef(0);
+  const selectedTopic = Form.useWatch('selectedTopic', form);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,31 +159,33 @@ const ProducerPage = () => {
     };
   }, [fetchTopicFailedMessage, form, message, selectedInstanceId]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const handleTopicChange = () => {
+    producerGroupRequestIdRef.current += 1;
+    setProducerGroups([]);
+    form.setFieldValue('producerGroup', undefined);
+  };
 
-    if (!selectedInstanceId) {
-      return () => {
-        cancelled = true;
-      };
+  const loadProducerGroups = async (query = '') => {
+    if (!selectedInstanceId || !selectedTopic) {
+      setProducerGroups([]);
+      return;
     }
-
-    void fetchProducerGroups(selectedInstanceId)
-      .then((groups) => {
-        if (!cancelled) {
-          setProducerGroups(groups);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setProducerGroups([]);
-        }
+    const requestId = ++producerGroupRequestIdRef.current;
+    try {
+      const groups = await fetchProducerGroups(selectedInstanceId, {
+        topic: selectedTopic,
+        query,
+        limit: PRODUCER_GROUP_SELECTOR_LIMIT,
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedInstanceId]);
+      if (requestId === producerGroupRequestIdRef.current) {
+        setProducerGroups(groups);
+      }
+    } catch {
+      if (requestId === producerGroupRequestIdRef.current) {
+        setProducerGroups([]);
+      }
+    }
+  };
 
   const onFinish = async (values: { selectedTopic: string; producerGroup: string }) => {
     if (queryInFlightRef.current !== null) return;
@@ -318,6 +326,7 @@ const ProducerPage = () => {
               placeholder={t('producer.selectTopic')}
               style={{ width: 300 }}
               optionFilterProp="label"
+              onChange={handleTopicChange}
               options={topicList.map((topic) => ({ value: topic, label: topic }))}
             />
           </Form.Item>
@@ -331,6 +340,12 @@ const ProducerPage = () => {
               placeholder={t('producer.inputGroup')}
               style={{ width: 300 }}
               options={producerGroups.map((group) => ({ value: group }))}
+              onFocus={() => {
+                void loadProducerGroups();
+              }}
+              onSearch={(value) => {
+                void loadProducerGroups(value);
+              }}
               filterOption={(inputValue, option) =>
                 option?.value.toLowerCase().includes(inputValue.toLowerCase()) ?? false
               }

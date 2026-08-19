@@ -44,15 +44,19 @@ class ProducerControllerTest {
 
     @Test
     void listProducerGroupsShouldReturnSuggestions() throws Exception {
-        when(producerConnectionService.listProducerGroups("instance-1"))
+        when(producerConnectionService.listProducerGroups("instance-1", "order-topic", "pg", 20))
                 .thenReturn(List.of("pg-order", "pg-payment"));
 
-        mockMvc.perform(get("/api/producer/groups").param("instanceId", "instance-1"))
+        mockMvc.perform(get("/api/producer/groups")
+                        .param("instanceId", "instance-1")
+                        .param("topic", "order-topic")
+                        .param("query", "pg")
+                        .param("limit", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0]").value("pg-order"))
                 .andExpect(jsonPath("$.data[1]").value("pg-payment"));
 
-        verify(producerConnectionService).listProducerGroups("instance-1");
+        verify(producerConnectionService).listProducerGroups("instance-1", "order-topic", "pg", 20);
     }
 
     @Test

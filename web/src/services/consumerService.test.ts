@@ -22,6 +22,7 @@ import {
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
+  listConsumerGroupPage,
   listConsumerGroups,
 } from './consumerService';
 
@@ -73,6 +74,32 @@ describe('consumer service mock data', () => {
     const blankSearchGroups = await listConsumerGroups({ search: '   ' });
 
     expect(blankSearchGroups).toHaveLength(allGroups.length);
+  });
+
+  it('returns paged mock consumer groups with the filtered total', async () => {
+    const page = await listConsumerGroupPage({
+      search: 'cg-order-notify',
+      page: 1,
+      pageSize: 1,
+    });
+
+    expect(page.items.map((group) => group.name)).toEqual(['cg-order-notify']);
+    expect(page.total).toBe(1);
+    expect(page.page).toBe(1);
+    expect(page.size).toBe(1);
+  });
+
+  it('returns an empty page when the one-based offset starts past the filtered total', async () => {
+    const page = await listConsumerGroupPage({
+      search: 'cg-order-notify',
+      page: 2,
+      pageSize: 1,
+    });
+
+    expect(page.items).toEqual([]);
+    expect(page.total).toBe(1);
+    expect(page.page).toBe(2);
+    expect(page.size).toBe(1);
   });
 
   it('returns copied progress and subscription rows', async () => {

@@ -97,18 +97,23 @@ class ProducerConnectionServiceTest {
     }
 
     @Test
-    void listProducerGroupsShouldReturnSortedUniqueActiveGroups() {
-        when(clientProvider.findConnections("instance-1", null, ClientType.Producer.name()))
-                .thenReturn(List.of(
-                        ClientConnectionVO.builder().producerGroup(" pg-payment ").build(),
-                        ClientConnectionVO.builder().producerGroup("pg-order").build(),
-                        ClientConnectionVO.builder().producerGroup("pg-payment").build(),
-                        ClientConnectionVO.builder().producerGroup(" ").build(),
-                        ClientConnectionVO.builder().build()));
+    void listProducerGroupsShouldDelegateSelectorDiscoveryWithNormalizedFilters() {
+        when(clientProvider.findProducerGroups("instance-1", "order-topic", "pg", 100))
+                .thenReturn(List.of("pg-order", "pg-payment"));
 
-        assertThat(producerConnectionService.listProducerGroups("instance-1"))
+        assertThat(producerConnectionService.listProducerGroups(" instance-1 ", " order-topic ", " pg ", 1000))
                 .containsExactly("pg-order", "pg-payment");
-        verify(clientProvider).findConnections("instance-1", null, ClientType.Producer.name());
+        verify(clientProvider).findProducerGroups("instance-1", "order-topic", "pg", 100);
+    }
+
+    @Test
+    void listProducerGroupsShouldApplyDefaultSelectorLimit() {
+        when(clientProvider.findProducerGroups("instance-1", null, null, 20))
+                .thenReturn(List.of("pg-order"));
+
+        assertThat(producerConnectionService.listProducerGroups("instance-1", " ", " ", null))
+                .containsExactly("pg-order");
+        verify(clientProvider).findProducerGroups("instance-1", null, null, 20);
     }
 
     @Test

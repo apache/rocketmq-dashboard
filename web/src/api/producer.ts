@@ -155,8 +155,22 @@ export async function fetchTopicList(instanceId: string): Promise<string[]> {
 }
 
 /** Fetch active producer groups for query suggestions */
-export async function fetchProducerGroups(instanceId: string): Promise<string[]> {
-  const res = await client.get<{ data?: string[] }>('/producer/groups', { params: { instanceId } });
+export async function fetchProducerGroups(
+  instanceId: string,
+  options: {
+    topic?: string;
+    query?: string;
+    limit?: number;
+  } = {},
+): Promise<string[]> {
+  const res = await client.get<{ data?: string[] }>('/producer/groups', {
+    params: {
+      instanceId,
+      topic: options.topic,
+      query: options.query,
+      limit: options.limit,
+    },
+  });
   return res.data.data ?? [];
 }
 

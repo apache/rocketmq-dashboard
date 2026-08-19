@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -265,6 +266,56 @@ class MetadataServiceTest {
 
         assertThat(result).containsExactly(group);
         verify(metadataProvider).listConsumerGroups("cluster-1", "order");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPaginateFromOneBasedIndexes() {
+        ConsumerGroupVO first = new ConsumerGroupVO();
+        first.setName("cg-a");
+        ConsumerGroupVO second = new ConsumerGroupVO();
+        second.setName("cg-b");
+        ConsumerGroupVO third = new ConsumerGroupVO();
+        third.setName("cg-c");
+        when(apacheProvider.listConsumerGroups("instance-a", "order"))
+                .thenReturn(List.of(first, second, third));
+
+        PageResult<ConsumerGroupVO> result =
+                metadataService.listConsumerGroupsPage("instance-a", null, "order", 2, 2);
+
+        assertThat(result.getItems()).containsExactly(third);
+        assertThat(result.getTotal()).isEqualTo(3);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(2);
+        verify(apacheProvider).listConsumerGroups("instance-a", "order");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldReturnEmptyItemsWhenPageStartsPastFilteredTotal() {
+        ConsumerGroupVO first = new ConsumerGroupVO();
+        first.setName("cg-a");
+        when(metadataProvider.listConsumerGroups("cluster-1", "order")).thenReturn(List.of(first));
+
+        PageResult<ConsumerGroupVO> result =
+                metadataService.listConsumerGroupsPage(null, "cluster-1", "order", 2, 1);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(1);
+        verify(metadataProvider).listConsumerGroups("cluster-1", "order");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldRejectInvalidPaginationBounds() {
+        assertThatThrownBy(() -> metadataService.listConsumerGroupsPage(null, "cluster-1", null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than zero");
+        assertThatThrownBy(() -> metadataService.listConsumerGroupsPage(null, "cluster-1", null, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+        assertThatThrownBy(() -> metadataService.listConsumerGroupsPage(null, "cluster-1", null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
     }
 
 }

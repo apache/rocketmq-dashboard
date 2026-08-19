@@ -230,6 +230,39 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void producerGroupSelectorReturnsSortedUniqueBoundedMatches() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        " pg-payment ", List.of(producerInfo("producer-payment", "10.0.0.2:1000")),
+                        "pg-order", List.of(producerInfo("producer-order", "10.0.0.1:1000")))));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-order", List.of(producerInfo("producer-order-2", "10.0.0.3:1000")),
+                        "pg-shipment", List.of(producerInfo("producer-shipment", "10.0.0.4:1000")),
+                        " ", List.of(producerInfo("ignored", "10.0.0.5:1000")))));
+
+        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", "pg", 2);
+
+        assertThat(groups).containsExactly("pg-order", "pg-payment");
+        verify(adminExt, never()).examineProducerConnectionInfo(anyString(), anyString());
+    }
+
+    @Test
+    void producerGroupSelectorFailsWhenEveryBrokerQueryFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllProducerInfo(anyString()))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.findProducerGroups("instance-a", "TopicA", "pg", 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query producer groups from all brokers")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void exactProducerQueryPassesNonBlankGroupToAdminApi() throws Exception {
         ProducerConnection producerConnection = new ProducerConnection();
         producerConnection.setConnectionSet(new HashSet<>(List.of(

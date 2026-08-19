@@ -22,6 +22,7 @@ import {
   getConsumerGroup,
   getConsumerProgress,
   getConsumerSubscriptions,
+  listConsumerGroupPage,
   listConsumerGroups,
   deleteConsumerGroup,
   resetConsumerOffset,
@@ -64,6 +65,23 @@ describe('consumer groups API contract', () => {
     });
 
     await expect(listConsumerGroups(params)).resolves.toEqual([group]);
+  });
+
+  it('uses the paged inventory query fields supported by the backend', async () => {
+    const params = {
+      instanceId: 'instance-1',
+      clusterId: 'cluster-a',
+      search: 'orders',
+      page: 2,
+      pageSize: 10,
+    };
+    const page = { items: [group], total: 11, page: 2, size: 10 };
+    mock.onGet('/groups/page').reply((config) => {
+      expect(config.params).toEqual(params);
+      return [200, { code: 200, data: page }];
+    });
+
+    await expect(listConsumerGroupPage(params)).resolves.toEqual(page);
   });
 
   it('encodes consumer group names and passes instance context for runtime queries', async () => {
