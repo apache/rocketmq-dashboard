@@ -31,5 +31,7 @@ public interface CloudCredentialRepository {
 
     CloudCredentialVO save(CloudCredentialVO credential);
 
+    boolean replace(CloudCredentialVO credential);
+
     boolean deleteById(Long id);
 }

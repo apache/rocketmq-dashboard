@@ -167,8 +167,7 @@ class CloudCredentialServiceTest {
         stored.setAccessKey("LTAI5tUpdateKey000000001");
         stored.setSecretKey("old-secret");
         when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
-        when(credentialRepository.save(any(CloudCredentialVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(credentialRepository.replace(any(CloudCredentialVO.class))).thenReturn(true);
 
         UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
         request.setId(1L);
@@ -179,6 +178,25 @@ class CloudCredentialServiceTest {
         verify(aliyunClientFactory).invalidateCredential(1L);
         verify(operationAuditService).record(eq("UPDATE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
                 eq("1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateShouldNotRecreateConcurrentlyDeletedCredentialTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(1L);
+        stored.setVendor(InstanceVendor.TENCENT);
+        stored.setAccessKey("AKIDexample");
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
+        when(credentialRepository.replace(stored)).thenReturn(false);
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId(1L);
+        request.setName("renamed");
+
+        assertThatThrownBy(() -> service.update(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential not found: 1");
+
+        verify(tencentClientFactory, never()).invalidateCredential(any());
     }
 
     @Test
