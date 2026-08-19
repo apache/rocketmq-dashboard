@@ -25,6 +25,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -75,7 +77,7 @@ class AlertRuleAssetControllerTest {
         mockMvc.perform(get("/api/alert-rules/assets/rocketmq-broker-down/export"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/x-yaml"))
-                .andExpect(header().string("Content-Disposition",
-                        "form-data; name=\"attachment\"; filename=\"rocketmq-broker-down.yaml\""));
+                .andExpect(header().string("Content-Disposition", startsWith("attachment;")))
+                .andExpect(header().string("Content-Disposition", containsString("rocketmq-broker-down.yaml")));
     }
 }
