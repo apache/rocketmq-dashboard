@@ -42,7 +42,7 @@ public class TopicListToolHandler implements ToolHandler {
         String clusterId = (String) input.get("cluster");
         String type = (String) input.get("type");
         String search = (String) input.get("search");
-        return metadataService.listTopics(clusterId, type, search).stream()
+        return ToolResultUtils.stream(metadataService.listTopics(clusterId, type, search))
                 .map(TopicListToolHandler::safeProjection)
                 .toList();
     }

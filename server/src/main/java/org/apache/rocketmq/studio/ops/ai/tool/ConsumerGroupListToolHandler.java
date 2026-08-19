@@ -42,7 +42,7 @@ public class ConsumerGroupListToolHandler implements ToolHandler {
     public Object execute(Map<String, Object> input) {
         String clusterId = (String) input.get("cluster");
         String search = (String) input.get("search");
-        return metadataService.listConsumerGroups(clusterId, search).stream()
+        return ToolResultUtils.stream(metadataService.listConsumerGroups(clusterId, search))
                 .map(ConsumerGroupListToolHandler::safeProjection)
                 .toList();
     }
@@ -79,7 +79,7 @@ public class ConsumerGroupListToolHandler implements ToolHandler {
     }
 
     private static List<String> copyList(List<String> value) {
-        return value == null ? List.of() : List.copyOf(value);
+        return ToolResultUtils.copyStrings(value);
     }
 
     private static String blankIfNull(String value) {

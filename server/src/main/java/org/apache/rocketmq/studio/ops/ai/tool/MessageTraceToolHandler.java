@@ -54,10 +54,11 @@ public class MessageTraceToolHandler implements ToolHandler {
     private static Map<String, Object> project(String msgId, TraceRecordVO trace) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("msgId", msgId);
-        result.put("nodes", trace.getNodes().stream()
+        result.put("nodes", ToolResultUtils.stream(trace == null ? null : trace.getNodes())
                 .map(MessageTraceToolHandler::projectNode)
                 .toList());
-        result.put("consumerStatus", trace.getConsumerStatus().stream()
+        result.put("consumerStatus", ToolResultUtils.stream(
+                        trace == null ? null : trace.getConsumerStatus())
                 .map(MessageTraceToolHandler::projectConsumerStatus)
                 .toList());
         return result;

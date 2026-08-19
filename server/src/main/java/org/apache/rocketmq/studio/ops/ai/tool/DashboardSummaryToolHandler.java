@@ -45,8 +45,8 @@ public class DashboardSummaryToolHandler implements ToolHandler {
     public Object execute(Map<String, Object> input) {
         String clusterId = (String) input.get("cluster");
         DashboardDataVO dashboard = dashboardService.getDashboard();
-        ClusterOverviewVO cluster = clusters(dashboard).stream()
-                .filter(item -> clusterId.equals(item.getId()))
+        ClusterOverviewVO cluster = ToolResultUtils.stream(clusters(dashboard))
+                .filter(item -> java.util.Objects.equals(clusterId, item.getId()))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(
                         404, "Dashboard cluster not found: " + clusterId));

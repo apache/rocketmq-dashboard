@@ -83,4 +83,16 @@ class MessageTraceToolHandlerTest {
 
         verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
     }
+    @Test
+    void executeShouldNormalizeMissingTraceCollections() {
+        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-1"), eq("TopicA")))
+                .thenReturn(null);
+
+        Map<?, ?> result = (Map<?, ?>) handler.execute(Map.of(
+                "cluster", "instance-a", "msgId", "msg-1", "topic", "TopicA"));
+
+        assertThat((List<?>) result.get("nodes")).isEmpty();
+        assertThat((List<?>) result.get("consumerStatus")).isEmpty();
+    }
+
 }

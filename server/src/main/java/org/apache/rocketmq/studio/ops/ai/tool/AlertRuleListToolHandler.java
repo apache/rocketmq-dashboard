@@ -43,7 +43,7 @@ public class AlertRuleListToolHandler implements ToolHandler {
     public Object execute(Map<String, Object> input) {
         String search = (String) input.get("search");
         Boolean enabled = (Boolean) input.get("enabled");
-        return alertService.listRules().stream()
+        return ToolResultUtils.stream(alertService.listRules())
                 .filter(rule -> matchesEnabled(rule, enabled))
                 .filter(rule -> matchesSearch(rule, search))
                 .map(AlertRuleListToolHandler::safeProjection)
@@ -91,7 +91,7 @@ public class AlertRuleListToolHandler implements ToolHandler {
     }
 
     private static List<String> copyList(List<String> value) {
-        return value == null ? List.of() : List.copyOf(value);
+        return ToolResultUtils.copyStrings(value);
     }
 
     private static String blankIfNull(String value) {
