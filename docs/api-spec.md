@@ -766,9 +766,9 @@ GET /api/topics/page?instanceId={instanceId}&clusterId={clusterId}&type={type}&s
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `items` | `Topic[]` | 当前页数据，结构同 5.1 |
-| `total` | `number` | 总条数 |
+| `total` | `number` | 总条数；云厂商实例返回 provider 原生分页的匹配总数，不会被单次列表上限截断 |
 | `page` | `number` | 当前页码 |
-| `size` | `number` | 每页条数 |
+| `size` | `number` | 每页条数（回显请求中的 `pageSize`） |
 
 ### 5.3 创建 Topic
 

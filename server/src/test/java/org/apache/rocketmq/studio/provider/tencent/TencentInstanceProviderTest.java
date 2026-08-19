@@ -36,6 +36,7 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
+import com.tencentcloudapi.trocket.v20230308.models.Filter;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.ResetConsumerGroupOffsetRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
@@ -166,9 +167,17 @@ class TencentInstanceProviderTest {
     void listTopicsShouldMapAndFilterAndEnrichTimesTest() throws Exception {
         TopicItem normal = topicItem("orders", "NORMAL", 8L);
         TopicItem fifo = topicItem("orders-fifo", "FIFO", 4L);
-        DescribeTopicListResponse response = new DescribeTopicListResponse();
-        response.setData(new TopicItem[]{normal, fifo});
-        when(client.DescribeTopicList(any())).thenReturn(response);
+        when(client.DescribeTopicList(any())).thenAnswer(invocation -> {
+            DescribeTopicListRequest request = invocation.getArgument(0);
+            DescribeTopicListResponse response = new DescribeTopicListResponse();
+            Filter[] filters = request.getFilters();
+            if (filters != null && filters.length == 2) {
+                response.setData(new TopicItem[]{fifo});
+            } else {
+                response.setData(new TopicItem[]{normal, fifo});
+            }
+            return response;
+        });
         DescribeTopicResponse detail = new DescribeTopicResponse();
         detail.setCreatedTime(1600000000000L);
         detail.setLastUpdateTime(1600000100000L);
@@ -188,6 +197,66 @@ class TencentInstanceProviderTest {
         assertThat(topics.get(0).getGmtModified())
                 .isEqualTo(java.time.Instant.ofEpochMilli(1600000100000L)
                         .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+        ArgumentCaptor<DescribeTopicListRequest> captor =
+                ArgumentCaptor.forClass(DescribeTopicListRequest.class);
+        verify(client).DescribeTopicList(captor.capture());
+        assertThat(captor.getValue().getFilters()).extracting(Filter::getName)
+                .containsExactly("TopicName", "TopicType");
+        assertThat(captor.getValue().getFilters()[0].getValues()).containsExactly("fifo");
+        assertThat(captor.getValue().getFilters()[1].getValues()).containsExactly("FIFO");
+    }
+
+    @Test
+    void listTopicsPageShouldUseTencentNativePaginationAndFiltersTest() throws Exception {
+        TopicItem item = topicItem("orders-fifo-10000", "FIFO", 8L);
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setTotalCount(10001L);
+        response.setData(new TopicItem[]{item});
+        when(client.DescribeTopicList(any())).thenReturn(response);
+        DescribeTopicResponse detail = new DescribeTopicResponse();
+        detail.setCreatedTime(1700000000000L);
+        detail.setLastUpdateTime(1700000100000L);
+        when(client.DescribeTopic(any())).thenReturn(detail);
+
+        var page = provider.listTopicsPage(STUDIO_INSTANCE_ID, "fifo", "orders", 101, 100);
+
+        assertThat(page.getTotal()).isEqualTo(10001L);
+        assertThat(page.getPage()).isEqualTo(101);
+        assertThat(page.getSize()).isEqualTo(100);
+        assertThat(page.getItems()).extracting(TopicVO::getName).containsExactly("orders-fifo-10000");
+        ArgumentCaptor<DescribeTopicListRequest> captor =
+                ArgumentCaptor.forClass(DescribeTopicListRequest.class);
+        verify(client).DescribeTopicList(captor.capture());
+        assertThat(captor.getValue().getOffset()).isEqualTo(10000L);
+        assertThat(captor.getValue().getLimit()).isEqualTo(100L);
+        assertThat(captor.getValue().getFilters()).extracting(Filter::getName)
+                .containsExactly("TopicName", "TopicType");
+    }
+
+    @Test
+    void countTopicsShouldFallBackToCompleteListingPastLegacyTenThousandCapTest() throws Exception {
+        when(client.DescribeTopicList(any())).thenAnswer(invocation -> {
+            DescribeTopicListRequest request = invocation.getArgument(0);
+            DescribeTopicListResponse response = new DescribeTopicListResponse();
+            if (request.getLimit() == 1L && request.getOffset() == 0L) {
+                response.setData(new TopicItem[]{topicItem("seed", "NORMAL", 8L)});
+                return response;
+            }
+            int start = request.getOffset().intValue();
+            int count = Math.min(request.getLimit().intValue(), Math.max(10001 - start, 0));
+            response.setTotalCount(10001L);
+            response.setData(IntStream.range(0, count)
+                    .mapToObj(index -> topicItem("topic-" + (start + index), "NORMAL", 8L))
+                    .toArray(TopicItem[]::new));
+            return response;
+        });
+
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(10001);
+        ArgumentCaptor<DescribeTopicListRequest> captor =
+                ArgumentCaptor.forClass(DescribeTopicListRequest.class);
+        verify(client, times(102)).DescribeTopicList(captor.capture());
+        assertThat(captor.getAllValues().get(0).getLimit()).isEqualTo(1L);
+        assertThat(captor.getAllValues().get(101).getOffset()).isEqualTo(10000L);
     }
 
     @Test
