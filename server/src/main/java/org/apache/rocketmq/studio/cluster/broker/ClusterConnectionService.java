@@ -18,9 +18,13 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Verifies live connectivity to a RocketMQ NameServer and summarises the topology it reports.
@@ -43,14 +47,25 @@ public class ClusterConnectionService {
      * @return a populated {@link ClusterProbeResult} on success
      */
     public ClusterProbeResult testConnection(TestConnectionDTO command) {
+        if (command == null || !StringUtils.hasText(command.getNamesrvAddr())) {
+            throw new BusinessException(400, "NameServer address is required");
+        }
         String namesrvAddr = command.getNamesrvAddr().trim();
         log.info("Testing connection to NameServer {}", namesrvAddr);
-        long start = System.currentTimeMillis();
+        long start = System.nanoTime();
         ClusterVO cluster = clusterProvider.describeCluster(namesrvAddr);
-        long elapsed = System.currentTimeMillis() - start;
+        long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        if (cluster == null) {
+            throw new BusinessException(502, "NameServer returned no cluster topology");
+        }
 
         List<String> brokerNames = cluster.getBrokers() == null ? List.of()
-                : cluster.getBrokers().stream().map(BrokerVO::getName).toList();
+                : cluster.getBrokers().stream()
+                        .filter(Objects::nonNull)
+                        .map(BrokerVO::getName)
+                        .filter(StringUtils::hasText)
+                        .map(String::trim)
+                        .toList();
 
         return ClusterProbeResult.builder()
                 .connected(true)

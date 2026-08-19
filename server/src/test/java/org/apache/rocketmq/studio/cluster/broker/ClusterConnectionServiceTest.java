@@ -67,6 +67,42 @@ class ClusterConnectionServiceTest {
     }
 
     @Test
+    void testConnectionShouldRejectMissingCommand() {
+        assertThatThrownBy(() -> service.testConnection(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer address is required");
+    }
+
+    @Test
+    void testConnectionShouldRejectMissingTopology() {
+        when(clusterProvider.describeCluster(eq("10.0.0.1:9876"))).thenReturn(null);
+
+        assertThatThrownBy(() -> service.testConnection(
+                TestConnectionDTO.builder().namesrvAddr("10.0.0.1:9876").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502))
+                .hasMessage("NameServer returned no cluster topology");
+    }
+
+    @Test
+    void testConnectionShouldIgnoreMalformedBrokerRows() {
+        ClusterVO cluster = ClusterVO.builder()
+                .name("DefaultCluster")
+                .brokers(java.util.Arrays.asList(
+                        null,
+                        BrokerVO.builder().name("  ").build(),
+                        BrokerVO.builder().name(" broker-a ").build()))
+                .build();
+        when(clusterProvider.describeCluster(eq("10.0.0.1:9876"))).thenReturn(cluster);
+
+        ClusterProbeResult result = service.testConnection(
+                TestConnectionDTO.builder().namesrvAddr("10.0.0.1:9876").build());
+
+        assertThat(result.getBrokerNames()).containsExactly("broker-a");
+        assertThat(result.getBrokerCount()).isEqualTo(1);
+    }
+
+    @Test
     void testConnectionShouldPropagateProviderFailure() {
         when(clusterProvider.describeCluster(eq("10.0.0.9:9876")))
                 .thenThrow(new BusinessException(502, "Failed to connect NameServer"));
