@@ -90,6 +90,17 @@ describe('API client response contract', () => {
     expect(message.error).toHaveBeenCalledWith('Topic already exists');
   });
 
+  it('rejects failed HTTP envelopes with the backend message', async () => {
+    mock.onPost('/topics/create').reply(400, {
+      code: 400,
+      message: 'Topic name is required',
+      data: null,
+    });
+
+    await expect(client.post('/topics/create', {})).rejects.toThrow('Topic name is required');
+    expect(message.error).toHaveBeenCalledWith('Topic name is required');
+  });
+
   it('uses a stable fallback for malformed error envelopes', async () => {
     mock.onGet('/clusters').reply(200, { code: '500', data: null });
 
@@ -144,6 +155,7 @@ describe('API client response contract', () => {
 
     expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
+    expect(message.error).not.toHaveBeenCalled();
   });
 
   it('preserves the original 401 error when the request URL is malformed', async () => {
