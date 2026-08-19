@@ -40,7 +40,9 @@ public class MetricsService {
     private static final long MAX_RANGE_SECONDS = 31L * 24 * 60 * 60;
     private static final long MAX_SAMPLE_POINTS = 11_000L;
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
-    private static final Pattern DURATION_PART_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)(ms|s|m|h|d|w|y)");
+    private static final Pattern DURATION_PATTERN = Pattern.compile(
+            "(?=\\d)(?:\\d+y)?(?:\\d+w)?(?:\\d+d)?(?:\\d+h)?(?:\\d+m)?(?:\\d+s)?(?:\\d+ms)?");
+    private static final Pattern DURATION_PART_PATTERN = Pattern.compile("(\\d+)(ms|s|m|h|d|w|y)");
     private static final Map<String, BigDecimal> UNIT_TO_MILLIS = Map.of(
             "ms", BigDecimal.ONE,
             "s", BigDecimal.valueOf(1_000L),
@@ -184,6 +186,9 @@ public class MetricsService {
             return new BigDecimal(value).multiply(BigDecimal.valueOf(1_000L));
         }
 
+        if (!DURATION_PATTERN.matcher(value).matches()) {
+            throw badRequest("Metric query step is invalid");
+        }
         Matcher matcher = DURATION_PART_PATTERN.matcher(value);
         BigDecimal millis = BigDecimal.ZERO;
         int position = 0;
