@@ -370,8 +370,10 @@ public class SettingsService {
         try {
             return areAllowedDataSourceAddresses(InetAddress.getAllByName(normalized));
         } catch (UnknownHostException exception) {
-            // Unresolvable host: let the connection attempt surface the real connectivity error.
-            return true;
+            // Fail closed: an unresolvable host must not be handed to the connection
+            // layer (this used to return true, creating a blind reachability oracle that
+            // differed from UrlHostGuard.check, which also fails closed).
+            return false;
         }
     }
 

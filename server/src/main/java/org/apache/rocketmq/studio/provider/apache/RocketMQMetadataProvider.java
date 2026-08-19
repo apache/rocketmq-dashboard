@@ -100,6 +100,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             "RMQ_SYS_TRACE_TOPIC", "RMQ_SYS_TRANS_OP_HALF_TOPIC"
     );
 
+    // Upper bound on groups scanned by the non-paginated getTopicConsumers. Without this the
+    // call used Integer.MAX_VALUE, fanning out one examineConsumeStats + one
+    // examineConsumerConnectionInfo RPC per group (an unbounded N+1 against the broker).
+    // Topics with more groups should use the paginated /consumers/page endpoint instead.
+    private static final int TOPIC_CONSUMER_SCAN_LIMIT = 1000;
+
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
     private final RmqTopicMapper topicMapper;
@@ -415,7 +421,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String name) {
-        return getTopicConsumersPage(instanceId, name, 1, Integer.MAX_VALUE).getItems();
+        return getTopicConsumersPage(instanceId, name, 1, TOPIC_CONSUMER_SCAN_LIMIT).getItems();
     }
 
     @Override
@@ -479,6 +485,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                         }
                     } catch (Exception ignored) {
                         // group may be offline
+                        log.debug("Skipping consumer connection info for group {}: {}", group, ignored.getMessage());
                     }
 
                     consumers.add(TopicConsumerVO.builder()
@@ -490,6 +497,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                             .build());
                 } catch (Exception ignored) {
                     // stats unavailable for this group, still list it below without numbers
+                    log.debug("Skipping consume stats for group {}: {}", group, ignored.getMessage());
                     consumers.add(TopicConsumerVO.builder()
                             .group(group)
                             .consumeType(ConsumeType.CLUSTERING)

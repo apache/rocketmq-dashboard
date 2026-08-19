@@ -97,7 +97,7 @@ public class LlmConfigService {
                 ? copy(overrides)
                 : fromGeneralSettings(settingsService.getGeneralSettings());
         String token = envToken();
-        if (!!StringUtils.hasText(token)) {
+        if (StringUtils.hasText(token)) {
             config.setApiKey(token.trim());
             config.setEnabled(true);
         }
