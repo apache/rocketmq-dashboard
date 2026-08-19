@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Getter
 @Setter
@@ -38,10 +39,23 @@ public class AuthProperties {
     private List<User> users = new ArrayList<>();
 
     public List<User> configuredUsers() {
+        if (users == null) {
+            return List.of();
+        }
         return users.stream()
+                .filter(Objects::nonNull)
                 .filter(user -> StringUtils.hasText(user.getUsername()))
                 .filter(user -> StringUtils.hasText(user.getPassword()))
+                .map(AuthProperties::normalizedUser)
                 .toList();
+    }
+
+    private static User normalizedUser(User configured) {
+        User normalized = new User();
+        normalized.setUsername(configured.getUsername().trim());
+        normalized.setPassword(configured.getPassword());
+        normalized.setAdmin(configured.isAdmin());
+        return normalized;
     }
 
     @Getter
