@@ -22,6 +22,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as aliyunCatalogApi from '../../../api/aliyunCatalog';
 import * as cloudCredentialApi from '../../../api/cloudCredential';
+import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCredential';
 import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as instanceService from '../../../services/instanceService';
@@ -47,6 +48,13 @@ vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn(),
   updateInstance: vi.fn(),
 }));
+
+const cloudCredentialPage = (items: CloudCredential[]): CloudCredentialPage => ({
+  items,
+  total: items.length,
+  page: 1,
+  size: 20,
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -105,7 +113,7 @@ const deferred = <T,>() => {
 describe('InstancePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([]);
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(cloudCredentialPage([]));
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([]);
     vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
     vi.mocked(instanceService.listInstances).mockResolvedValue([
@@ -394,22 +402,24 @@ describe('InstancePage', () => {
     const user = userEvent.setup();
     const oldRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     const latestRegions = deferred<Array<{ regionId: string; regionName: string }>>();
-    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
-      {
-        id: 101,
-        name: 'old-account',
-        vendor: 'ALIYUN',
-        accessKey: 'LTAI-old',
-        gmtCreate: '2026-01-01T00:00:00Z',
-      },
-      {
-        id: 102,
-        name: 'latest-account',
-        vendor: 'ALIYUN',
-        accessKey: 'LTAI-latest',
-        gmtCreate: '2026-01-01T00:00:00Z',
-      },
-    ]);
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
+      cloudCredentialPage([
+        {
+          id: 101,
+          name: 'old-account',
+          vendor: 'ALIYUN',
+          accessKey: 'LTAI-old',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 102,
+          name: 'latest-account',
+          vendor: 'ALIYUN',
+          accessKey: 'LTAI-latest',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+      ]),
+    );
     vi.mocked(aliyunCatalogApi.listAliyunRegions)
       .mockReturnValueOnce(oldRegions.promise)
       .mockReturnValueOnce(latestRegions.promise);
@@ -461,15 +471,17 @@ describe('InstancePage', () => {
       deferred<
         Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
       >();
-    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
-      {
-        id: 103,
-        name: 'cloud-account',
-        vendor: 'ALIYUN',
-        accessKey: 'LTAI-one',
-        gmtCreate: '2026-01-01T00:00:00Z',
-      },
-    ]);
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
+      cloudCredentialPage([
+        {
+          id: 103,
+          name: 'cloud-account',
+          vendor: 'ALIYUN',
+          accessKey: 'LTAI-one',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+      ]),
+    );
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([
       { regionId: 'cn-beijing', regionName: 'Beijing' },
       { regionId: 'cn-shanghai', regionName: 'Shanghai' },
@@ -541,22 +553,24 @@ describe('InstancePage', () => {
   it('clears a pending region load when the cloud vendor changes', async () => {
     const user = userEvent.setup();
     const pendingRegions = deferred<Array<{ regionId: string; regionName: string }>>();
-    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
-      {
-        id: 104,
-        name: 'aliyun-account',
-        vendor: 'ALIYUN',
-        accessKey: 'LTAI-one',
-        gmtCreate: '2026-01-01T00:00:00Z',
-      },
-      {
-        id: 105,
-        name: 'tencent-account',
-        vendor: 'TENCENT',
-        accessKey: 'AKID-one',
-        gmtCreate: '2026-01-01T00:00:00Z',
-      },
-    ]);
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
+      cloudCredentialPage([
+        {
+          id: 104,
+          name: 'aliyun-account',
+          vendor: 'ALIYUN',
+          accessKey: 'LTAI-one',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 105,
+          name: 'tencent-account',
+          vendor: 'TENCENT',
+          accessKey: 'AKID-one',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+      ]),
+    );
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockReturnValue(pendingRegions.promise);
 
     renderPage();
@@ -600,22 +614,24 @@ describe('InstancePage', () => {
       deferred<
         Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
       >();
-    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
-      {
-        id: 104,
-        name: 'aliyun-account',
-        vendor: 'ALIYUN',
-        accessKey: 'LTAI-one',
-        gmtCreate: '2026-01-01T00:00:00Z',
-      },
-      {
-        id: 105,
-        name: 'tencent-account',
-        vendor: 'TENCENT',
-        accessKey: 'AKID-one',
-        gmtCreate: '2026-01-01T00:00:00Z',
-      },
-    ]);
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
+      cloudCredentialPage([
+        {
+          id: 104,
+          name: 'aliyun-account',
+          vendor: 'ALIYUN',
+          accessKey: 'LTAI-one',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 105,
+          name: 'tencent-account',
+          vendor: 'TENCENT',
+          accessKey: 'AKID-one',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+      ]),
+    );
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([
       { regionId: 'cn-beijing', regionName: 'Beijing' },
     ]);

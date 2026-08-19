@@ -76,8 +76,8 @@ export const CloudCredentialTab = () => {
   useEffect(() => {
     let cancelled = false;
     void listCloudCredentials()
-      .then((list) => {
-        if (!cancelled) setCredentials(list);
+      .then((result) => {
+        if (!cancelled) setCredentials(result.items);
       })
       .catch(() => {
         if (!cancelled) message.error('云凭据加载失败，请稍后重试');

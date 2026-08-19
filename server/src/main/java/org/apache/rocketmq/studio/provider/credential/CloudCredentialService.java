@@ -19,12 +19,15 @@ package org.apache.rocketmq.studio.provider.credential;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -47,6 +50,11 @@ public class CloudCredentialService {
         return credentialRepository.findAll().stream()
                 .map(this::maskAccessKey)
                 .toList();
+    }
+    public PageResult<CloudCredentialVO> listMasked(InstanceVendor vendor, String search, int page, int pageSize) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) throw new BusinessException(400, "Invalid page or pageSize");
+        PageResult<CloudCredentialVO> result = credentialRepository.findPage(vendor, search, page, pageSize);
+        return PageResult.of(result.getItems().stream().map(this::maskAccessKey).toList(), result.getTotal(), page, pageSize);
     }
 
     public CloudCredentialVO create(CloudCredentialVO credential) {
@@ -71,7 +79,13 @@ public class CloudCredentialService {
         log.info("Creating cloud credential name={}, vendor={}", credential.getName(), credential.getVendor());
         credential.setGmtCreate(LocalDateTime.now());
         credential.setGmtModified(LocalDateTime.now());
-        CloudCredentialVO saved = credentialRepository.save(credential);
+        CloudCredentialVO saved;
+        try {
+            saved = credentialRepository.save(credential);
+        } catch (DuplicateKeyException exception) {
+            throw new BusinessException(409, "Cloud credential already exists for vendor "
+                    + credential.getVendor() + " and accessKey " + CredentialUtils.mask(credential.getAccessKey()));
+        }
         recordAudit("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(saved.getId()), null,
                 credentialAuditDetail(saved));
         return maskAccessKey(saved);

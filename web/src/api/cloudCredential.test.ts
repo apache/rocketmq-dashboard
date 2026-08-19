@@ -41,22 +41,27 @@ describe('cloudCredential API', () => {
   it('returns masked credentials from the backend', async () => {
     mock.onGet('/cloud-credentials').reply(200, {
       code: 200,
-      data: [
-        {
-          id: 'cred-1',
-          name: 'aliyun-test',
-          vendor: 'ALIYUN',
-          accessKey: 'LTAI****0001',
-          createdAt: '2026-08-06T00:00:00Z',
-        },
-      ],
+      data: {
+        items: [
+          {
+            id: 'cred-1',
+            name: 'aliyun-test',
+            vendor: 'ALIYUN',
+            accessKey: 'LTAI****0001',
+            createdAt: '2026-08-06T00:00:00Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      },
     });
 
     const credentials = await listCloudCredentials();
 
-    expect(credentials).toHaveLength(1);
-    expect(credentials[0].vendor).toBe('ALIYUN');
-    expect(credentials[0].secretKey).toBeUndefined();
+    expect(credentials.items).toHaveLength(1);
+    expect(credentials.items[0].vendor).toBe('ALIYUN');
+    expect(credentials.items[0].secretKey).toBeUndefined();
   });
 
   it('creates a credential with the full payload', async () => {

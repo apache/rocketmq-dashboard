@@ -16,8 +16,22 @@ export interface CloudCredential {
   gmtCreate: string;
 }
 
-export async function listCloudCredentials() {
-  const res = await client.get<{ data: CloudCredential[] }>('/cloud-credentials');
+export interface CloudCredentialPage {
+  items: CloudCredential[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export async function listCloudCredentials(
+  vendor?: InstanceVendor,
+  search?: string,
+  page = 1,
+  pageSize = 20,
+): Promise<CloudCredentialPage> {
+  const res = await client.get<{ data: CloudCredentialPage }>('/cloud-credentials', {
+    params: { vendor, search, page, pageSize },
+  });
   return res.data.data;
 }
 

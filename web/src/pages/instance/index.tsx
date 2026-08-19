@@ -178,10 +178,10 @@ const InstancePage = () => {
     let active = true;
     const timer = window.setTimeout(() => {
       setCredentialsLoading(true);
-      listCloudCredentials()
-        .then((items) => {
+      listCloudCredentials(vendor)
+        .then((result) => {
           if (active) {
-            setCredentials(items.filter((item) => item.vendor === vendor));
+            setCredentials(result.items);
           }
         })
         .catch(() => {
