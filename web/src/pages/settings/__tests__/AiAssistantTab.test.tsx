@@ -145,6 +145,29 @@ describe('AiAssistantTab', () => {
     ).toBeInTheDocument();
   });
 
+  it('refreshes the model list from a successful connection test', async () => {
+    const user = userEvent.setup();
+    llmApiMocks.testLlmConnection.mockResolvedValue({
+      status: 0,
+      msg: 'ok',
+      models: [{ id: 'qwen3.8-max' }, { id: 'qwen-plus-latest' }],
+    });
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.type(screen.getByLabelText('API Key'), 'sk-preview');
+    await user.click(screen.getByRole('button', { name: /测试连接/ }));
+
+    await waitFor(() => expect(llmApiMocks.testLlmConnection).toHaveBeenCalledTimes(1));
+    expect(llmApiMocks.testLlmConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'sk-preview', provider: 'tongyi' }),
+    );
+    await user.click(screen.getAllByRole('combobox')[2]);
+    expect(
+      await screen.findByText('qwen-plus-latest', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+  });
+
   it('ignores a connection result after the tested configuration changes', async () => {
     let resolveTest!: (result: { status: number; msg: string }) => void;
     llmApiMocks.testLlmConnection.mockImplementationOnce(

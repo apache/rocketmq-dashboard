@@ -234,6 +234,10 @@ export const AiAssistantTab = () => {
       const result = await testLlmConnection(payload);
       if (testRequestIdRef.current === requestId) {
         applyTestResult(result);
+        if (result.status === 0) {
+          const remoteModels = result.models?.map((model) => model.id || '').filter(Boolean) ?? [];
+          setModelOptions(buildModelOptions(payload.provider, remoteModels, payload.model));
+        }
       }
     } catch {
       if (testRequestIdRef.current === requestId) {
