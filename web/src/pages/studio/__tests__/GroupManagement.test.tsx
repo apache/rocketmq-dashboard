@@ -199,6 +199,50 @@ describe('GroupManagement Page', () => {
     expect(screen.queryByText('FIRST_GROUP_TOPIC')).not.toBeInTheDocument();
   });
 
+  it('keeps subscriptions when progress loading fails', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'AVAILABLE_SUBSCRIPTION',
+        expression: '*',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
+      },
+    ]);
+    vi.mocked(consumerService.getConsumerProgress).mockRejectedValue(new Error('unavailable'));
+
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+    await user.click(await screen.findByText('order-consumer-group'));
+
+    expect(await screen.findByText('AVAILABLE_SUBSCRIPTION')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getAllByRole('tab')[2]);
+    expect(document.querySelector('.ant-alert-error')).toBeInTheDocument();
+  });
+
+  it('keeps progress when subscription loading fails', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions).mockRejectedValue(new Error('unavailable'));
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
+      {
+        broker: 'broker-a',
+        queueId: 0,
+        brokerOffset: 20,
+        consumerOffset: 10,
+        diffTotal: 10,
+      },
+    ]);
+
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+    await user.click(await screen.findByText('order-consumer-group'));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getAllByRole('tab')[2]);
+
+    expect(await screen.findByText('broker-a')).toBeInTheDocument();
+    expect(document.querySelector('.ant-alert-error')).toBeInTheDocument();
+  });
+
   it('queues one refresh instead of overlapping an active group request', async () => {
     const initialGroups = createDeferred<ConsumerGroup[]>();
     const refreshedGroups = createDeferred<ConsumerGroup[]>();

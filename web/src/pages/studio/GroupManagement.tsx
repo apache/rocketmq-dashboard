@@ -30,6 +30,7 @@ import {
   Space,
   Switch,
   message,
+  Alert,
 } from 'antd';
 import { MagnifyingGlass, ArrowClockwise, Users } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -66,7 +67,10 @@ const GroupManagementPage = () => {
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState<SubscriptionEntry[]>([]);
   const [progress, setProgress] = useState<QueueProgress[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+  const [progressError, setProgressError] = useState<string | null>(null);
   const listRequestId = useRef(0);
   const listInFlight = useRef<Promise<void> | null>(null);
   const listRefreshQueued = useRef(false);
@@ -135,23 +139,41 @@ const GroupManagementPage = () => {
       setModalVisible(true);
       setSubscriptions([]);
       setProgress([]);
-      setDetailLoading(true);
-      try {
-        const [subs, prog] = await Promise.all([
-          getConsumerSubscriptions(group.name, group.instanceId),
-          getConsumerProgress(group.name, group.instanceId),
-        ]);
-        if (requestId !== detailRequestId.current) return;
-        setSubscriptions(subs);
-        setProgress(prog);
-      } catch {
-        if (requestId !== detailRequestId.current) return;
-        message.error(t('consumer.fetchProgressFailed', { name: group.name }));
-      } finally {
-        if (requestId === detailRequestId.current) {
-          setDetailLoading(false);
-        }
-      }
+      setSubscriptionError(null);
+      setProgressError(null);
+      setSubscriptionLoading(true);
+      setProgressLoading(true);
+
+      const subscriptionRequest = getConsumerSubscriptions(group.name, group.instanceId)
+        .then(
+          (result) => {
+            if (requestId === detailRequestId.current) setSubscriptions(result);
+          },
+          () => {
+            if (requestId === detailRequestId.current) {
+              setSubscriptionError(t('consumer.fetchSubscriptionsFailed', { name: group.name }));
+            }
+          },
+        )
+        .finally(() => {
+          if (requestId === detailRequestId.current) setSubscriptionLoading(false);
+        });
+      const progressRequest = getConsumerProgress(group.name, group.instanceId)
+        .then(
+          (result) => {
+            if (requestId === detailRequestId.current) setProgress(result);
+          },
+          () => {
+            if (requestId === detailRequestId.current) {
+              setProgressError(t('consumer.fetchProgressFailed', { name: group.name }));
+            }
+          },
+        )
+        .finally(() => {
+          if (requestId === detailRequestId.current) setProgressLoading(false);
+        });
+
+      await Promise.all([subscriptionRequest, progressRequest]);
     },
     [t],
   );
@@ -434,11 +456,19 @@ const GroupManagementPage = () => {
                     <h4 style={{ marginTop: 20, marginBottom: 12 }}>
                       {t('groupMgmt.subscription')}
                     </h4>
+                    {subscriptionError && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={subscriptionError}
+                        style={{ marginBottom: 12 }}
+                      />
+                    )}
                     <Table
                       columns={subscriptionColumns}
                       dataSource={subscriptions}
                       rowKey="topic"
-                      loading={detailLoading}
+                      loading={subscriptionLoading}
                       pagination={false}
                       size="small"
                     />
@@ -475,39 +505,51 @@ const GroupManagementPage = () => {
                 key: 'progress',
                 label: t('groupMgmt.consumeProgress'),
                 children: (
-                  <Table
-                    columns={[
-                      { title: 'Broker', dataIndex: 'broker', key: 'broker' },
-                      { title: 'QueueId', dataIndex: 'queueId', key: 'queueId' },
-                      {
-                        title: 'Broker Offset',
-                        dataIndex: 'brokerOffset',
-                        key: 'brokerOffset',
-                        render: (v: number) => v.toLocaleString(),
-                      },
-                      {
-                        title: 'Consumer Offset',
-                        dataIndex: 'consumerOffset',
-                        key: 'consumerOffset',
-                        render: (v: number) => v.toLocaleString(),
-                      },
-                      {
-                        title: 'Diff',
-                        dataIndex: 'diffTotal',
-                        key: 'diffTotal',
-                        render: (v: number) => (
-                          <span style={{ color: v > 100 ? '#ff4d4f' : '#52c41a', fontWeight: 500 }}>
-                            {v.toLocaleString()}
-                          </span>
-                        ),
-                      },
-                    ]}
-                    dataSource={progress}
-                    rowKey={(record) => `${record.broker}-${record.queueId}`}
-                    loading={detailLoading}
-                    pagination={false}
-                    size="small"
-                  />
+                  <>
+                    {progressError && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={progressError}
+                        style={{ marginBottom: 12 }}
+                      />
+                    )}
+                    <Table
+                      columns={[
+                        { title: 'Broker', dataIndex: 'broker', key: 'broker' },
+                        { title: 'QueueId', dataIndex: 'queueId', key: 'queueId' },
+                        {
+                          title: 'Broker Offset',
+                          dataIndex: 'brokerOffset',
+                          key: 'brokerOffset',
+                          render: (v: number) => v.toLocaleString(),
+                        },
+                        {
+                          title: 'Consumer Offset',
+                          dataIndex: 'consumerOffset',
+                          key: 'consumerOffset',
+                          render: (v: number) => v.toLocaleString(),
+                        },
+                        {
+                          title: 'Diff',
+                          dataIndex: 'diffTotal',
+                          key: 'diffTotal',
+                          render: (v: number) => (
+                            <span
+                              style={{ color: v > 100 ? '#ff4d4f' : '#52c41a', fontWeight: 500 }}
+                            >
+                              {v.toLocaleString()}
+                            </span>
+                          ),
+                        },
+                      ]}
+                      dataSource={progress}
+                      rowKey={(record) => `${record.broker}-${record.queueId}`}
+                      loading={progressLoading}
+                      pagination={false}
+                      size="small"
+                    />
+                  </>
                 ),
               },
             ]}

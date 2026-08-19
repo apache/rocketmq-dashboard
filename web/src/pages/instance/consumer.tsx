@@ -949,7 +949,7 @@ const ConsumerPageContent = ({
                   dataSource={
                     subscriptionsByGroup[diagnosticCacheKey(selectedInstanceId, record.name)] ?? []
                   }
-                  rowKey="topic"
+                  rowKey={(record) => `${record.topic}-${record.filterMode}-${record.expression}`}
                   loading={
                     subscriptionLoadingByGroup[diagnosticCacheKey(selectedInstanceId, record.name)]
                   }
@@ -1177,7 +1177,9 @@ const ConsumerPageContent = ({
                       <Table
                         columns={subscriptionSubColumns}
                         dataSource={visibleSubscriptions}
-                        rowKey="topic"
+                        rowKey={(record) =>
+                          `${record.topic}-${record.filterMode}-${record.expression}`
+                        }
                         loading={subscriptionLoadingByGroup[selectedDiagnosticKey]}
                         pagination={false}
                         size="small"
