@@ -73,4 +73,28 @@ class QueryHistoryControllerTest {
                 .andExpect(jsonPath("$.data.messageQueries").value(7))
                 .andExpect(jsonPath("$.data.traceQueries").value(3));
     }
+
+    @Test
+    void normalizesOptionalHistoryFilters() throws Exception {
+        when(queryHistoryService.listMessageQueries("instance-a", "TOPIC", null, 1, 20))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 20));
+        when(queryHistoryService.listTraceQueries("instance-a", null, 1, 20))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 20));
+
+        mockMvc.perform(get("/api/query-history/messages")
+                        .param("clusterId", "  instance-a  ")
+                        .param("queryType", " TOPIC ")
+                        .param("search", "   "))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/query-history/traces")
+                        .param("clusterId", " instance-a ")
+                        .param("search", "\t"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/query-history/summary").param("clusterId", "   "))
+                .andExpect(status().isOk());
+
+        verify(queryHistoryService).listMessageQueries("instance-a", "TOPIC", null, 1, 20);
+        verify(queryHistoryService).listTraceQueries("instance-a", null, 1, 20);
+        verify(queryHistoryService).summarize(null);
+    }
 }

@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Drawer, Flex, Input, Statistic, Table, Tabs, Tag } from 'antd';
+import { Alert, Button, Drawer, Flex, Input, Statistic, Table, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getQueryHistorySummary,
@@ -23,7 +23,11 @@ interface Props {
 }
 
 const PAGE_SIZE = 20;
-const formatTime = (value?: string) => (value ? new Date(value).toLocaleString() : '-');
+const formatTime = (value?: string) => {
+  if (!value) return '-';
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? '-' : timestamp.toLocaleString();
+};
 
 const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
   const [tab, setTab] = useState<'messages' | 'traces'>('messages');
@@ -42,6 +46,10 @@ const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
     const id = ++requestId.current;
     setLoading(true);
     setError('');
+    setSummary(undefined);
+    setMessageRows([]);
+    setTraceRows([]);
+    setTotal(0);
     try {
       const [nextSummary, result] = await Promise.all([
         getQueryHistorySummary(clusterId),
@@ -115,7 +123,20 @@ const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
         }}
         style={{ marginBottom: 12, width: 420 }}
       />
-      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          message="查询历史加载失败"
+          description={error}
+          action={
+            <Button size="small" onClick={() => void load()}>
+              重试
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
       <Tabs
         activeKey={tab}
         onChange={(key) => {

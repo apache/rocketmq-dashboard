@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Card,
@@ -273,27 +273,38 @@ const MessagePageContent = ({
   const { t } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
   const [topicError, setTopicError] = useState<string | null>(null);
+  const [topicLoading, setTopicLoading] = useState(false);
+  const topicRequestId = useRef(0);
 
-  useEffect(() => {
+  const loadTopicOptions = useCallback(async () => {
     if (!selectedInstanceId) {
+      setTopicOptions([]);
+      setTopicError(null);
+      setTopicLoading(false);
       return;
     }
-    let cancelled = false;
-    void listTopics({ instanceId: selectedInstanceId })
-      .then((nextTopics) => {
-        if (cancelled) return;
-        setTopicError(null);
-        setTopicOptions(nextTopics.map((topic) => topic.name));
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setTopicOptions([]);
-        setTopicError(error instanceof Error ? error.message : '加载 Topic 列表失败');
-      });
-    return () => {
-      cancelled = true;
-    };
+    const requestId = ++topicRequestId.current;
+    setTopicLoading(true);
+    setTopicError(null);
+    setTopicOptions([]);
+    try {
+      const nextTopics = await listTopics({ instanceId: selectedInstanceId });
+      if (requestId !== topicRequestId.current) return;
+      setTopicOptions(nextTopics.map((topic) => topic.name));
+    } catch (error: unknown) {
+      if (requestId !== topicRequestId.current) return;
+      setTopicError(error instanceof Error ? error.message : '加载 Topic 列表失败');
+    } finally {
+      if (requestId === topicRequestId.current) setTopicLoading(false);
+    }
   }, [selectedInstanceId]);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadTopicOptions);
+    return () => {
+      topicRequestId.current += 1;
+    };
+  }, [loadTopicOptions]);
   const [queryMode, setQueryMode] = useState<QueryMode>('topic');
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
@@ -328,7 +339,13 @@ const MessagePageContent = ({
         ? { topic: selectedTopic, key: keyInput || undefined }
         : { topic: selectedTopic, msgId: msgIdInput || undefined };
   const queryValidationError = getQueryValidationError(queryMode, currentQueryParams);
-  const queryDisabledReason = !selectedInstanceId ? '请先选择实例' : queryValidationError;
+  const queryDisabledReason = !selectedInstanceId
+    ? '请先选择实例'
+    : topicLoading
+      ? '正在加载 Topic 列表'
+      : topicError
+        ? 'Topic 列表加载失败，请先重试'
+        : queryValidationError;
 
   /* ─── Handlers ─── */
   const handleReset = () => {
@@ -789,6 +806,8 @@ const MessagePageContent = ({
                   onChange={setSelectedTopic}
                   allowClear
                   showSearch
+                  loading={topicLoading}
+                  disabled={topicLoading || Boolean(topicError)}
                   options={topicOptions.map((t) => ({
                     value: t,
                     label: t,
@@ -816,6 +835,8 @@ const MessagePageContent = ({
                   onChange={setSelectedTopic}
                   allowClear
                   showSearch
+                  loading={topicLoading}
+                  disabled={topicLoading || Boolean(topicError)}
                   options={topicOptions.map((t) => ({
                     value: t,
                     label: t,
@@ -839,6 +860,8 @@ const MessagePageContent = ({
                   onChange={setSelectedTopic}
                   allowClear
                   showSearch
+                  loading={topicLoading}
+                  disabled={topicLoading || Boolean(topicError)}
                   options={topicOptions.map((t) => ({
                     value: t,
                     label: t,
@@ -887,7 +910,18 @@ const MessagePageContent = ({
       </Card>
 
       {topicError && (
-        <Alert showIcon type="error" message={topicError} style={{ marginBottom: 16 }} />
+        <Alert
+          showIcon
+          type="error"
+          message="Topic 列表加载失败"
+          description={topicError}
+          action={
+            <Button size="small" onClick={() => void loadTopicOptions()}>
+              重试
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
       )}
       <MessageQueryHistoryDrawer
         open={historyDrawerOpen}

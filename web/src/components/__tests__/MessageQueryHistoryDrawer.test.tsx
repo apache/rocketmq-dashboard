@@ -88,4 +88,24 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(await screen.findByText('msg-1')).toBeInTheDocument();
     await waitFor(() => expect(listTraceQueryHistory).toHaveBeenCalled());
   });
+
+  it('clears stale rows and offers retry when a new instance load fails', async () => {
+    const view = render(
+      <App>
+        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+      </App>,
+    );
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    vi.mocked(getQueryHistorySummary).mockRejectedValueOnce(new Error('network unavailable'));
+
+    view.rerender(
+      <App>
+        <MessageQueryHistoryDrawer open clusterId="instance-b" onClose={vi.fn()} />
+      </App>,
+    );
+
+    expect(await screen.findByText('查询历史加载失败')).toBeInTheDocument();
+    expect(screen.queryByText('order-1')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled();
+  });
 });

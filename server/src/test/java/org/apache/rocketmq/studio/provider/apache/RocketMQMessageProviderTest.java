@@ -35,7 +35,6 @@ import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
-import org.apache.rocketmq.studio.instance.message.QueryHistoryService;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExtImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,9 +81,6 @@ class RocketMQMessageProviderTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
-    @Mock
-    private QueryHistoryService queryHistoryService;
-
     private RocketMQMessageProvider provider;
 
     @BeforeEach
@@ -94,7 +90,7 @@ class RocketMQMessageProviderTest {
             MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
             return action == null ? null : action.apply(adminExt);
         });
-        provider = new RocketMQMessageProvider(runtimeAdminClientResolver, queryHistoryService);
+        provider = new RocketMQMessageProvider(runtimeAdminClientResolver);
     }
 
     @Test
@@ -125,8 +121,6 @@ class RocketMQMessageProviderTest {
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
-        verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
-                100L, 200L, 0);
     }
 
     @Test
@@ -164,8 +158,6 @@ class RocketMQMessageProviderTest {
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
-        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString(), any(), any(), anyInt());
     }
 
     @Test
@@ -179,8 +171,6 @@ class RocketMQMessageProviderTest {
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
-        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString(), any(), any(), anyInt());
     }
 
     @Test
@@ -190,9 +180,6 @@ class RocketMQMessageProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Topic message query time range must not exceed 7 days")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
-
-        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString(), any(), any(), anyInt());
     }
 
     @Test
@@ -319,8 +306,6 @@ class RocketMQMessageProviderTest {
             verify(consumer).pull(queue, "*", 20L, 32);
             verify(consumer).pull(queue, "*", 40L, 32);
         }
-        verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
-                100L, 200L, 1);
     }
 
     @Test
@@ -449,7 +434,6 @@ class RocketMQMessageProviderTest {
         TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
 
         assertThat(record.getNodes()).hasSize(2);
-        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("msg-123"), eq(null), eq(2), eq(1));
         TraceNodeVO produce = record.getNodes().get(0);
         assertThat(produce.getTitle()).isEqualTo("produce");
         assertThat(produce.getStatus()).isEqualTo("finish");
@@ -507,7 +491,6 @@ class RocketMQMessageProviderTest {
                 beginCaptor.capture(), endCaptor.capture());
         assertThat(beginCaptor.getValue()).isEqualTo(10_000_000L - 5 * 60_000L);
         assertThat(endCaptor.getValue()).isGreaterThanOrEqualTo(10_000_000L + 24 * 3600_000L);
-        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("msg-with-topic"), eq(null), eq(0), eq(0));
     }
 
     @Test
@@ -522,7 +505,6 @@ class RocketMQMessageProviderTest {
         verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("invalid-offset-id"), eq(64),
                 beginCaptor.capture(), endCaptor.capture());
         assertThat(endCaptor.getValue() - beginCaptor.getValue()).isBetween(3_660_000L, 3_670_000L);
-        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("invalid-offset-id"), eq(null), eq(0), eq(0));
     }
 
     @Test
@@ -570,7 +552,6 @@ class RocketMQMessageProviderTest {
                 .hasMessage("Failed to query message trace: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
 
-        verify(queryHistoryService, never()).recordTraceQuery(anyString(), anyString(), any(), anyInt(), anyInt());
     }
 
     @Test

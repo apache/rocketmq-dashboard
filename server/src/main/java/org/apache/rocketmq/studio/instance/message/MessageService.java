@@ -34,14 +34,17 @@ public class MessageService {
 
     private final MessageProvider messageProvider;
     private final InstanceProviderRegistry providerRegistry;
+    private final QueryHistoryService queryHistoryService;
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
         validateTopicQueryWindow(topic, msgId, key, startTime, endTime);
         log.info("Querying messages: topic={}, msgId={}, tag={}, key={}", topic, msgId, tag, key);
-        return providerRegistry.byInstanceId(instanceId)
+        List<MessageRecordVO> result = providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime))
                 .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
+        recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.size());
+        return result;
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
@@ -49,9 +52,33 @@ public class MessageService {
             throw new BusinessException(400, "msgId is required");
         }
         log.info("Getting message trace: msgId={}, topic={}", msgId, topic);
-        return providerRegistry.byInstanceId(instanceId)
+        TraceRecordVO result = providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.getMessageTrace(instanceId, msgId, topic))
                 .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic));
+        recordTraceQuery(instanceId, msgId, topic, result);
+        return result;
+    }
+
+    private void recordMessageQuery(String instanceId, String topic, String msgId, String tag,
+                                    String key, Long startTime, Long endTime, int resultCount) {
+        String queryType = StringUtils.hasText(msgId) ? "MSG_ID" : StringUtils.hasText(key) ? "KEY" : "TOPIC";
+        try {
+            queryHistoryService.recordMessageQuery(instanceId, queryType, topic, msgId, tag, key,
+                    startTime, endTime, resultCount);
+        } catch (RuntimeException failure) {
+            log.warn("Failed to record message query history: {}", failure.getMessage());
+        }
+    }
+
+    private void recordTraceQuery(String instanceId, String msgId, String topic, TraceRecordVO result) {
+        int nodeCount = result == null || result.getNodes() == null ? 0 : result.getNodes().size();
+        int consumerCount = result == null || result.getConsumerStatus() == null ? 0
+                : result.getConsumerStatus().size();
+        try {
+            queryHistoryService.recordTraceQuery(instanceId, msgId, topic, nodeCount, consumerCount);
+        } catch (RuntimeException failure) {
+            log.warn("Failed to record trace query history: {}", failure.getMessage());
+        }
     }
 
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {
@@ -72,10 +99,14 @@ public class MessageService {
         }
         long end = endTime == null ? System.currentTimeMillis() : endTime;
         long start = startTime == null ? end - 60 * 60 * 1000L : startTime;
-        if (start > end) {
-            throw new BusinessException(400, "startTime must not be after endTime");
+        if (start < 0 || end < 0) {
+            throw new BusinessException(400, "message query timestamps must not be negative");
         }
-        if (end - start > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
+        if (start >= end) {
+            throw new BusinessException(400, "startTime must be before endTime");
+        }
+        // Compare without subtracting untrusted endpoints; end - start can overflow long.
+        if (start < end - MAX_TOPIC_QUERY_WINDOW_MILLIS) {
             throw new BusinessException(400, "topic query time range must not exceed 7 days");
         }
     }
