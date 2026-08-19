@@ -815,7 +815,22 @@ const translations: Record<string, Record<Lang, string>> = {
   'login.passwordRequired': { zh: '密码为必填项', en: 'Password is required' },
   'login.success': { zh: '登录成功', en: 'Login successful' },
   'login.failed': { zh: '登录失败', en: 'Login failed' },
-  'login.welcome': { zh: '欢迎使用 RocketMQ 仪表盘', en: 'Welcome to RocketMQ Dashboard' },
+  'login.welcome': { zh: '登录到控制台', en: 'Sign in to the console' },
+  'login.brandTitle': {
+    zh: '统一管理每一条消息链路',
+    en: 'Operate every message path from one place',
+  },
+  'login.brandDescription': {
+    zh: '跨集群、跨架构、跨云环境查看运行状态并执行可靠的消息运维操作。',
+    en: 'Observe runtime health and operate RocketMQ reliably across clusters, architectures, and clouds.',
+  },
+  'login.formDescription': {
+    zh: '使用已配置的控制台账号继续。',
+    en: 'Use a configured console account to continue.',
+  },
+  'login.statusLabel': { zh: '控制台服务可用', en: 'Control plane available' },
+  'login.switchToLight': { zh: '切换到浅色模式', en: 'Switch to light mode' },
+  'login.switchToDark': { zh: '切换到深色模式', en: 'Switch to dark mode' },
   'login.statusCheckFailed': {
     zh: '无法验证登录状态',
     en: 'Unable to verify login status',
