@@ -160,6 +160,19 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void createUserShouldReturnConflictWhenConcurrentInsertWins() {
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+        when(userMapper.insert(any(RmqStudioUser.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("duplicate username"));
+
+        assertThatThrownBy(() -> authService.createUser("operator", "password-1", false))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Username is already in use")
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(409));
+    }
+
+    @Test
     void repeatedFailedLoginsAreRejectedWithTooManyRequestsTest() {
         when(userMapper.selectCount(isNull())).thenReturn(1L);
         when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);

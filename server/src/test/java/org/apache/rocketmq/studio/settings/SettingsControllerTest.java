@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,6 +87,41 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.data.apiKeyConfigured", is(true)))
                 .andExpect(jsonPath("$.data.clearApiKey").doesNotExist())
                 .andExpect(jsonPath("$.data.model", is("gpt-4")));
+    }
+
+    @Test
+    void getGeneralSettingsShouldRedactNotificationWebhooksForReaders() throws Exception {
+        AuthenticatedUserContext.setUser("reader", false);
+        try {
+            GeneralSettingsVO settings = GeneralSettingsVO.builder()
+                    .theme("dark")
+                    .compact(true)
+                    .desktopNotify(true)
+                    .notifySound(false)
+                    .sessionTimeout(30)
+                    .requireLogin(true)
+                    .llmProvider("openai")
+                    .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=secret")
+                    .emailRecipients("ops@example.com")
+                    .smsWebhook("https://sms.example.test/notify")
+                    .model("gpt-4")
+                    .baseUrl("https://api.openai.com")
+                    .build();
+            when(settingsService.getGeneralSettings()).thenReturn(settings.toBuilder()
+                    .dingtalkWebhook("******")
+                    .smsWebhook("******")
+                    .build());
+
+            mockMvc.perform(get("/api/settings/general"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.dingtalkWebhook", is("******")))
+                    .andExpect(jsonPath("$.data.dingtalkWebhookConfigured", is(true)))
+                    .andExpect(jsonPath("$.data.emailRecipients", is("ops@example.com")))
+                    .andExpect(jsonPath("$.data.smsWebhook", is("******")))
+                    .andExpect(jsonPath("$.data.smsWebhookConfigured", is(true)));
+        } finally {
+            AuthenticatedUserContext.clear();
+        }
     }
 
     @Test

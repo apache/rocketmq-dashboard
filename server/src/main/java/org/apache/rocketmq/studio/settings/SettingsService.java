@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.settings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -52,6 +53,7 @@ import java.util.Set;
 @Service
 public class SettingsService {
 
+    private static final String REDACTED_NOTIFICATION_WEBHOOK = "******";
     private static final List<byte[]> CLOUD_METADATA_ADDRESSES = List.of(
             new byte[] {
                 (byte) 0xfd, 0x00, 0x0e, (byte) 0xc2,
@@ -98,7 +100,25 @@ public class SettingsService {
 
     public GeneralSettingsVO getGeneralSettings() {
         log.debug("Loading general settings");
-        return settingsRepository.loadGeneralSettings();
+        GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
+        if (AuthenticatedUserContext.currentUserIsAdminOrSystem()) {
+            return settings;
+        }
+        return redactNotificationWebhooks(settings);
+    }
+
+    private GeneralSettingsVO redactNotificationWebhooks(GeneralSettingsVO settings) {
+        if (settings == null) {
+            return null;
+        }
+        return settings.toBuilder()
+                .dingtalkWebhook(StringUtils.hasText(settings.getDingtalkWebhook())
+                        ? REDACTED_NOTIFICATION_WEBHOOK
+                        : settings.getDingtalkWebhook())
+                .smsWebhook(StringUtils.hasText(settings.getSmsWebhook())
+                        ? REDACTED_NOTIFICATION_WEBHOOK
+                        : settings.getSmsWebhook())
+                .build();
     }
 
 

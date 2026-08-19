@@ -71,7 +71,12 @@ export function AuthGate() {
         if (status.authenticated && status.user) {
           syncAuth(status.user.username, status.user.userId, status.user.admin);
         }
-        if (!status.loginRequired || status.authenticated) {
+        if (!status.loginRequired) {
+          clearAuth();
+          setGateState('allowed');
+          return;
+        }
+        if (status.authenticated) {
           setGateState('allowed');
           return;
         }

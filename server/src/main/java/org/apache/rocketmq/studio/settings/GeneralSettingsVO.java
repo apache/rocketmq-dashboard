@@ -25,7 +25,7 @@ import lombok.ToString;
 import org.springframework.util.StringUtils;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class GeneralSettingsVO {
@@ -56,5 +56,15 @@ public class GeneralSettingsVO {
     @JsonProperty(value = "apiKeyConfigured", access = JsonProperty.Access.READ_ONLY)
     public boolean isApiKeyConfigured() {
         return StringUtils.hasText(apiKey);
+    }
+
+    @JsonProperty(value = "dingtalkWebhookConfigured", access = JsonProperty.Access.READ_ONLY)
+    public boolean isDingtalkWebhookConfigured() {
+        return StringUtils.hasText(dingtalkWebhook);
+    }
+
+    @JsonProperty(value = "smsWebhookConfigured", access = JsonProperty.Access.READ_ONLY)
+    public boolean isSmsWebhookConfigured() {
+        return StringUtils.hasText(smsWebhook);
     }
 }

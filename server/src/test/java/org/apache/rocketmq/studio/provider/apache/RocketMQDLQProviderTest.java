@@ -578,7 +578,9 @@ class RocketMQDLQProviderTest {
         }
         verify(auditService).record(
                 eq("RESEND_DLQ"),
+                eq("DLQ"),
                 eq("group-a"),
+                eq(null),
                 contains("scanTruncated=true"),
                 eq("PARTIAL"));
     }

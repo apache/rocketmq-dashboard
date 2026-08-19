@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Space, Switch, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Key, Plus } from '@phosphor-icons/react';
+import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { changePassword } from '../../api/auth';
@@ -44,8 +45,10 @@ interface PasswordFormValues {
 const dateTime = (value?: string) => (value ? new Date(value).toLocaleString() : '-');
 
 const UserManagementPage = () => {
+  const navigate = useNavigate();
   const admin = useAuthStore((state) => state.admin);
   const userId = useAuthStore((state) => state.userId);
+  const clearAuth = useAuthStore((state) => state.logout);
   const [users, setUsers] = useState<StudioUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -101,6 +104,8 @@ const UserManagementPage = () => {
     try {
       if (passwordTarget.id === userId) {
         await changePassword(values.currentPassword ?? '', values.newPassword);
+        clearAuth();
+        navigate('/login', { replace: true });
         message.success('密码已修改，请使用新密码重新登录');
       } else {
         await resetStudioUserPassword(passwordTarget.id, values.newPassword);
@@ -124,7 +129,8 @@ const UserManagementPage = () => {
     {
       title: '状态',
       dataIndex: 'enabled',
-      render: (value: boolean) => (value ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>),
+      render: (value: boolean) =>
+        value ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>,
     },
     { title: '创建时间', dataIndex: 'gmtCreate', render: dateTime },
     {
@@ -186,12 +192,21 @@ const UserManagementPage = () => {
       </Card>
       {admin && <Table rowKey="id" loading={loading} columns={columns} dataSource={users} />}
 
-      <Modal title="新建 Studio 用户" open={createOpen} onOk={() => void createUser()} onCancel={() => setCreateOpen(false)}>
+      <Modal
+        title="新建 Studio 用户"
+        open={createOpen}
+        onOk={() => void createUser()}
+        onCancel={() => setCreateOpen(false)}
+      >
         <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
           <Form.Item name="username" label="用户名" rules={[{ required: true }, { max: 128 }]}>
             <Input autoComplete="username" />
           </Form.Item>
-          <Form.Item name="password" label="初始密码" rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}>
+          <Form.Item
+            name="password"
+            label="初始密码"
+            rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}
+          >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
           <Form.Item name="admin" label="管理员权限" valuePropName="checked">
@@ -201,7 +216,11 @@ const UserManagementPage = () => {
       </Modal>
 
       <Modal
-        title={passwordTarget?.id === userId ? '修改我的密码' : `重置 ${passwordTarget?.username ?? ''} 的密码`}
+        title={
+          passwordTarget?.id === userId
+            ? '修改我的密码'
+            : `重置 ${passwordTarget?.username ?? ''} 的密码`
+        }
         open={passwordTarget !== null}
         onOk={() => void updatePassword()}
         onCancel={() => {
@@ -215,7 +234,11 @@ const UserManagementPage = () => {
               <Input.Password autoComplete="current-password" />
             </Form.Item>
           )}
-          <Form.Item name="newPassword" label="新密码" rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}>
+          <Form.Item
+            name="newPassword"
+            label="新密码"
+            rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}
+          >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
         </Form>
