@@ -432,6 +432,29 @@ describe('LiteTopic Page', () => {
     expect(screen.queryByText('10 / 100')).not.toBeInTheDocument();
   });
 
+  it('clears stale quota while retaining a successful refreshed list', async () => {
+    apiMocks.queryLiteTopicQuota.mockResolvedValue(createQuota(90));
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      { namespace: 'default', topicPattern: 'old-*' },
+    ]);
+
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByText('old-*')).toBeInTheDocument();
+    expect(screen.getByText('90 / 100')).toBeInTheDocument();
+
+    apiMocks.queryLiteTopicQuota.mockRejectedValueOnce(new Error('quota failed'));
+    apiMocks.queryLiteTopicList.mockResolvedValueOnce([
+      { namespace: 'default', topicPattern: 'fresh-*' },
+    ]);
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+
+    expect(await screen.findByText('fresh-*')).toBeInTheDocument();
+    expect(screen.queryByText('old-*')).not.toBeInTheDocument();
+    expect(screen.queryByText('90 / 100')).not.toBeInTheDocument();
+    expect(await screen.findByText('获取配额信息失败')).toBeInTheDocument();
+  });
+
   it('keeps a failed namespace request cleared', async () => {
     const failedList = createDeferred<LiteTopicItem[]>();
     const failedQuota = createDeferred<LiteTopicQuota>();
