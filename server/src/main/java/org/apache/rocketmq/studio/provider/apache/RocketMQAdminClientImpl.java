@@ -630,7 +630,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         }
 
         for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-            if (brokerData.getBrokerAddrs() == null) {
+            if (brokerData == null || brokerData.getBrokerAddrs() == null) {
                 continue;
             }
             // Use master address (brokerId = 0) preferentially

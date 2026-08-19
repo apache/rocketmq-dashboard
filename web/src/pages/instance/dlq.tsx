@@ -167,6 +167,9 @@ const DLQPage = () => {
       };
     }
 
+    // Clear `loading` inside the same callback as the data updates so rows and
+    // the cleared spinner commit in one batched render — otherwise rows can be
+    // visible for a render while the spin overlay still blocks pointer events.
     void listDLQGroups(selectedInstanceId, search || undefined, page, pageSize)
       .then((result) => {
         if (!cancelled) {
@@ -179,13 +182,14 @@ const DLQPage = () => {
           setSelectedGroupNames((selected) =>
             selected.filter((groupName) => availableGroups.has(groupName)),
           );
+          setLoading(false);
         }
       })
       .catch((error) => {
-        if (!cancelled) setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
+          setLoading(false);
+        }
       });
 
     return () => {
@@ -402,7 +406,10 @@ const DLQPage = () => {
             placeholder="搜索 Group 名称或 DLQ Topic"
             allowClear
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             onSearch={(value) => {
               setSearch(value);
               setPage(1);

@@ -248,6 +248,30 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void createTopicSkipsNullBrokerDataWhenFallingBackToAllBrokers() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("missing-broker", null);
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        brokerAddrTable.put("broker-1", brokerData);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        adminClient.createTopic(topic);
+
+        verify(adminExt).createAndUpdateTopicConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
+    }
+
+    @Test
     void topicWritesUseSelectedInstanceAdmin() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);

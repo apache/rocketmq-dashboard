@@ -162,6 +162,22 @@ class RocketMQDLQProviderTest {
                 .containsExactly("order-b");
     }
 
+    @Test
+    void listDLQGroupsShouldFilterCaseInsensitivelyTest() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "Order-Consumer",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "payment-consumer"));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        when(adminExt.examineTopicStats(anyString())).thenReturn(new TopicStatsTable());
+
+        PageResult<DLQGroupVO> filtered = provider.listDLQGroups("instance-a", "order", 1, 20);
+
+        assertThat(filtered.getTotal()).isEqualTo(1);
+        assertThat(filtered.getItems()).extracting(DLQGroupVO::getGroupName)
+                .containsExactly("Order-Consumer");
+    }
+
 
     @Test
     void resendMessagesShouldRejectInvertedTimeRangeBeforeCreatingConsumers() {

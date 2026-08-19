@@ -121,6 +121,9 @@ describe('DLQ page', () => {
   });
 
   beforeEach(() => {
+    vi.mocked(messageService.listDLQGroups).mockReset();
+    vi.mocked(messageService.resendDLQ).mockReset();
+    vi.mocked(messageService.exportDLQMessages).mockReset();
     createObjectURL = vi.fn().mockReturnValue('blob:dlq');
     revokeObjectURL = vi.fn();
     Object.defineProperty(URL, 'createObjectURL', {
@@ -148,6 +151,43 @@ describe('DLQ page', () => {
     expect(messageService.listDLQGroups).toHaveBeenCalledWith('instance-1', undefined, 1, 20);
   });
 
+  it('resets pagination to the first page when the search term changes', async () => {
+    vi.mocked(messageService.listDLQGroups)
+      .mockResolvedValueOnce({
+        items: [dlqGroup],
+        total: 40,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [dlqGroup],
+        total: 40,
+        page: 2,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [dlqGroup],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByTitle('2'));
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', undefined, 2, 20),
+    );
+
+    const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+    await user.type(searchInput, 'ord');
+
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20),
+    );
+  });
+
   it('surfaces unavailable DLQ provider errors when loading groups', async () => {
     vi.mocked(messageService.listDLQGroups).mockRejectedValue(
       new Error('DLQ provider is not configured'),
@@ -171,10 +211,9 @@ describe('DLQ page', () => {
   });
 
   it('sorts DLQ rows with missing enqueue timestamps', async () => {
-    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([
-      dlqGroup,
-      { ...secondDlqGroup, lastEnqueueTime: null },
-    ]));
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(
+      pageOf([dlqGroup, { ...secondDlqGroup, lastEnqueueTime: null }]),
+    );
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
@@ -250,13 +289,15 @@ describe('DLQ page', () => {
   });
 
   it('neutralizes formulas hidden behind a leading line feed in CSV summary exports', async () => {
-    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([
-      {
-        ...dlqGroup,
-        groupName: '\n=1+1',
-        dlqTopic: '%DLQ%formula',
-      },
-    ]));
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(
+      pageOf([
+        {
+          ...dlqGroup,
+          groupName: '\n=1+1',
+          dlqTopic: '%DLQ%formula',
+        },
+      ]),
+    );
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 

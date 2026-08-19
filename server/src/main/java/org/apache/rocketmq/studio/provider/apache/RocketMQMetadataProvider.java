@@ -42,6 +42,7 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
+import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -146,8 +147,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
-                .notLikeRight(RmqTopic::getName, "RMQ_SYS_")
+                .notIn(RmqTopic::getName, TopicValidator.getSystemTopicSet())
                 .notLikeRight(RmqTopic::getName, "rmq_sys_")
+                .notLikeRight(RmqTopic::getName, "%RETRY%")
+                .notLikeRight(RmqTopic::getName, "%DLQ%")
                 .orderByAsc(RmqTopic::getName, RmqTopic::getId);
         Page<RmqTopic> result = topicMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords().stream().map(this::toTopicVO).toList(),

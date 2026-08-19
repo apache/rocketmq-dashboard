@@ -100,8 +100,10 @@ public class QueryHistoryService {
     public PageResult<MessageQueryHistoryVO> listMessageQueries(String clusterId, String queryType,
                                                                  String search, int page, int pageSize) {
         String pattern = escapeLike(search);
+        String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
         QueryWrapper<RmqMessageQuery> query = new QueryWrapper<RmqMessageQuery>()
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq("queried_by", queriedBy)
                 .eq(StringUtils.hasText(queryType), "query_type", queryType)
                 .and(StringUtils.hasText(search), nested -> nested
                         .like("topic", pattern)
@@ -118,8 +120,10 @@ public class QueryHistoryService {
     public PageResult<TraceQueryHistoryVO> listTraceQueries(String clusterId, String search,
                                                              int page, int pageSize) {
         String pattern = escapeLike(search);
+        String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
         QueryWrapper<RmqTraceQuery> query = new QueryWrapper<RmqTraceQuery>()
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq("queried_by", queriedBy)
                 .and(StringUtils.hasText(search), nested -> nested
                         .like("topic", pattern)
                         .or().like("msg_id", pattern)
@@ -132,19 +136,24 @@ public class QueryHistoryService {
     }
 
     public QueryHistorySummaryVO summarize(String clusterId) {
+        String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
         QueryWrapper<RmqMessageQuery> messageFilter = new QueryWrapper<RmqMessageQuery>()
-                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId);
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq("queried_by", queriedBy);
         QueryWrapper<RmqTraceQuery> traceFilter = new QueryWrapper<RmqTraceQuery>()
-                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId);
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq("queried_by", queriedBy);
         long messageCount = messageQueryMapper.selectCount(messageFilter);
         long traceCount = traceQueryMapper.selectCount(traceFilter);
         RmqMessageQuery latestMessage = messageQueryMapper.selectOne(
                 new QueryWrapper<RmqMessageQuery>()
                         .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                        .eq("queried_by", queriedBy)
                         .orderByDesc("gmt_create", "id").last("LIMIT 1"));
         RmqTraceQuery latestTrace = traceQueryMapper.selectOne(
                 new QueryWrapper<RmqTraceQuery>()
                         .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                        .eq("queried_by", queriedBy)
                         .orderByDesc("gmt_create", "id").last("LIMIT 1"));
         LocalDateTime latest = latestOf(
                 latestMessage == null ? null : latestMessage.getGmtCreate(),
