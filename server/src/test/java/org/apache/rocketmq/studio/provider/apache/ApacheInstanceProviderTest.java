@@ -72,7 +72,7 @@ class ApacheInstanceProviderTest {
         InstanceVO instance = InstanceVO.builder().name("inst-1").build();
         instance.setId(1L);
         when(instanceRepository.findByIdentifier("inst-1")).thenReturn(Optional.of(instance));
-        when(instanceRepository.countTopicsByInstance(1L)).thenReturn(3L);
+        when(instanceRepository.countTopicsByInstance("inst-1")).thenReturn(3L);
 
         assertThat(provider.countTopics("inst-1")).isEqualTo(3);
     }
@@ -82,9 +82,18 @@ class ApacheInstanceProviderTest {
         InstanceVO instance = InstanceVO.builder().name("inst-1").build();
         instance.setId(1L);
         when(instanceRepository.findByIdentifier("inst-1")).thenReturn(Optional.of(instance));
-        when(instanceRepository.countGroupsByInstance(1L)).thenReturn(2L);
+        when(instanceRepository.countGroupsByInstance("inst-1")).thenReturn(2L);
 
         assertThat(provider.countGroups("inst-1")).isEqualTo(2);
+    }
+
+    @Test
+    void listTopicsShouldPassTheSelectedInstanceToMetadataProvider() {
+        when(metadataProvider.listTopics("inst-1", null, "FIFO", "orders")).thenReturn(java.util.List.of());
+
+        assertThat(provider.listTopics("inst-1", "FIFO", "orders")).isEmpty();
+
+        verify(metadataProvider).listTopics("inst-1", null, "FIFO", "orders");
     }
 
     @Test

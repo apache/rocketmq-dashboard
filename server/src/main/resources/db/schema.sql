@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_topic (
   `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   cluster_id VARCHAR(64) NOT NULL,
-  instance_id VARCHAR(128) COMMENT '归属实例 ID（rmq_instance.name，全局唯一）',
+  instance_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '归属实例 ID（rmq_instance.name；空字符串表示历史未归属记录）',
   name VARCHAR(255) NOT NULL,
   topic_type VARCHAR(32) DEFAULT 'NORMAL',
   read_queue_nums INT DEFAULT 8,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_topic (
   status VARCHAR(32) DEFAULT 'ACTIVE',
   created_by VARCHAR(64),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_cluster_topic (cluster_id, name),
+  UNIQUE KEY uk_cluster_instance_topic (cluster_id, instance_id, name),
   INDEX idx_topic_instance (instance_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_group (
   `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   cluster_id VARCHAR(64) NOT NULL,
-  instance_id VARCHAR(128) COMMENT '归属实例 ID（rmq_instance.name，全局唯一）',
+  instance_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '归属实例 ID（rmq_instance.name；空字符串表示历史未归属记录）',
   name VARCHAR(255) NOT NULL,
   consume_type VARCHAR(32) DEFAULT 'CONCURRENTLY',
   message_model VARCHAR(32) DEFAULT 'CLUSTERING',
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_group (
   status VARCHAR(32) DEFAULT 'ACTIVE',
   created_by VARCHAR(64),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_cluster_group (cluster_id, name),
+  UNIQUE KEY uk_cluster_instance_group (cluster_id, instance_id, name),
   INDEX idx_group_instance (instance_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

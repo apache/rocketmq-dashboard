@@ -175,7 +175,7 @@ class MybatisPlusInstanceRepositoryTest {
     void countTopicsByInstanceShouldDelegateToTopicMapperTest() {
         when(topicMapper.selectCount(any(QueryWrapper.class))).thenReturn(5L);
 
-        assertThat(repository.countTopicsByInstance(2L)).isEqualTo(5L);
+        assertThat(repository.countTopicsByInstance("instance-proxy-1")).isEqualTo(5L);
         verify(topicMapper).selectCount(any(QueryWrapper.class));
     }
 
@@ -183,7 +183,7 @@ class MybatisPlusInstanceRepositoryTest {
     void countGroupsByInstanceShouldDelegateToGroupMapperTest() {
         when(groupMapper.selectCount(any(QueryWrapper.class))).thenReturn(2L);
 
-        assertThat(repository.countGroupsByInstance(2L)).isEqualTo(2L);
+        assertThat(repository.countGroupsByInstance("instance-proxy-1")).isEqualTo(2L);
         verify(groupMapper).selectCount(any(QueryWrapper.class));
     }
 

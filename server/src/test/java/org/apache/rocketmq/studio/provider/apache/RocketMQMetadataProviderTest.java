@@ -16,6 +16,10 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
@@ -38,6 +42,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
+import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
 import org.junit.jupiter.api.Test;
@@ -59,6 +64,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
@@ -161,6 +167,34 @@ class RocketMQMetadataProviderTest {
         assertThat(groups).extracting(ConsumerGroupVO::getTotalLag).containsExactly(0L, 0L);
         verify(groupMapper).selectList(any());
         verifyNoInteractions(runtimeAdminClientResolver);
+    }
+
+    @Test
+    void listTopicsShouldScopeDatabaseQueryToSelectedInstance() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(topicMapper.selectList(any())).thenReturn(List.of());
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.listTopics("instance-a", "cluster-1", "NORMAL", "orders")).isEmpty();
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<org.apache.rocketmq.studio.persistence.entity.RmqTopic>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectList(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("instance_id", "cluster_id");
+    }
+
+    @Test
+    void listConsumerGroupsShouldScopeDatabaseQueryToSelectedInstance() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(groupMapper.selectList(any())).thenReturn(List.of());
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.listConsumerGroups("instance-a", "cluster-1", "orders")).isEmpty();
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper, times(1)).selectList(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("instance_id", "cluster_id");
     }
 
     @Test

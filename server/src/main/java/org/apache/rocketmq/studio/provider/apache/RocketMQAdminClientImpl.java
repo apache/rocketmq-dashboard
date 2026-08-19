@@ -70,6 +70,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private static final String MESSAGE_SENDER_GROUP_PREFIX = "studio-msg-sender";
     private static final int MAX_MESSAGE_SIZE = 4 * 1024 * 1024; // 4 MB default broker limit
+    private static final String LEGACY_METADATA_SCOPE = "";
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
@@ -142,11 +143,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return executeForInstance(topic.getInstanceId(), admin -> {
             try {
                 String clusterName = getClusterName(admin);
-                // Match on the (cluster_id, name) key: the same topic name can exist in several
-                // clusters, and a name-only lookup would blow up with TooManyResultsException.
+                // Match on the instance-scoped identity: the same topic name can exist in several
+                // clusters or Studio instances, and a broader lookup would corrupt metadata.
                 RmqTopic existing = topicMapper.selectOne(
                         new LambdaQueryWrapper<RmqTopic>()
                                 .eq(RmqTopic::getClusterId, clusterName)
+                                .eq(RmqTopic::getInstanceId, metadataScope(topic.getInstanceId()))
                                 .eq(RmqTopic::getName, topicName));
                 TopicPerm effectivePerm = topic.getPerm() != null
                         ? topic.getPerm()
@@ -169,20 +171,20 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
                 // Persist to DB. Re-creating a topic that already has a record (for example when
                 // rebuilding a broker route from the console) must update it instead of failing on
-                // the unique (cluster_id, name) key.
+                // the instance-scoped unique key.
                 RmqTopic entity = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
                         .eq(RmqTopic::getClusterId, clusterName)
+                        .eq(RmqTopic::getInstanceId, metadataScope(topic.getInstanceId()))
                         .eq(RmqTopic::getName, topicName));
                 boolean isNew = entity == null;
                 if (isNew) {
                     entity = new RmqTopic();
                     entity.setName(topicName);
                     entity.setClusterId(clusterName);
+                    entity.setInstanceId(metadataScope(topic.getInstanceId()));
                     entity.setGmtCreate(LocalDateTime.now());
                 }
-                if (topic.getInstanceId() != null) {
-                    entity.setInstanceId(topic.getInstanceId());
-                }
+                entity.setInstanceId(metadataScope(topic.getInstanceId()));
                 if (topic.getType() != null) {
                     entity.setTopicType(topic.getType().name());
                 } else if (isNew) {
@@ -225,12 +227,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
         return executeForInstance(topic.getInstanceId(), admin -> {
             try {
-                // Match on the (cluster_id, name) key to avoid ambiguity when several clusters share
-                // the same topic name (a name-only lookup would throw TooManyResultsException).
+                // Match on the instance-scoped identity so same-name resources under different
+                // Studio instances do not overwrite each other.
                 String clusterName = getClusterName(admin);
                 RmqTopic existing = topicMapper.selectOne(
                         new LambdaQueryWrapper<RmqTopic>()
                                 .eq(RmqTopic::getClusterId, clusterName)
+                                .eq(RmqTopic::getInstanceId, metadataScope(topic.getInstanceId()))
                                 .eq(RmqTopic::getName, topicName));
                 // Preserve the existing queue counts when the update request does not change them,
                 // matching the perm semantics below; defaulting to 8 would silently resize the
@@ -329,6 +332,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 // Topic names may be shared by several clusters managed by this Studio instance.
                 topicMapper.delete(new LambdaQueryWrapper<RmqTopic>()
                         .eq(RmqTopic::getClusterId, clusterName)
+                        .eq(RmqTopic::getInstanceId, metadataScope(instanceId))
                         .eq(RmqTopic::getName, name));
 
                 recordAudit("DELETE_TOPIC", name, "", "SUCCESS");
@@ -437,21 +441,21 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 admin.createAndUpdateSubscriptionGroupConfig(addr, config);
             }
 
-            // Persist to DB, upserting so re-creating an existing group does not violate the
-            // unique (cluster_id, name) key.
+            // Persist to DB, upserting so re-creating an existing group stays scoped to the
+            // selected Studio instance.
             RmqGroup entity = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
                     .eq(RmqGroup::getClusterId, groupClusterName)
+                    .eq(RmqGroup::getInstanceId, metadataScope(group.getInstanceId()))
                     .eq(RmqGroup::getName, groupName));
             boolean isNewGroup = entity == null;
             if (isNewGroup) {
                 entity = new RmqGroup();
                 entity.setName(groupName);
                 entity.setClusterId(groupClusterName);
+                entity.setInstanceId(metadataScope(group.getInstanceId()));
                 entity.setGmtCreate(LocalDateTime.now());
             }
-            if (group.getInstanceId() != null) {
-                entity.setInstanceId(group.getInstanceId());
-            }
+            entity.setInstanceId(metadataScope(group.getInstanceId()));
             entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
             entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");
             entity.setMaxRetry(config.getRetryMaxTimes());
@@ -481,18 +485,18 @@ public class RocketMQAdminClientImpl implements AdminClient {
     public void deleteConsumerGroup(String instanceId, String name) {
         if (StringUtils.hasText(instanceId)) {
             runtimeAdminClientResolver.execute(instanceId, admin -> {
-                doDeleteConsumerGroup(admin, name);
+                doDeleteConsumerGroup(instanceId, admin, name);
                 return null;
             });
             return;
         }
         adminFactory.execute(namesrvAddr(), null, admin -> {
-            doDeleteConsumerGroup(admin, name);
+            doDeleteConsumerGroup(null, admin, name);
             return null;
         });
     }
 
-    private void doDeleteConsumerGroup(MQAdminExt admin, String name) {
+    private void doDeleteConsumerGroup(String instanceId, MQAdminExt admin, String name) {
         try {
             String clusterName = getClusterName(admin);
             Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
@@ -504,6 +508,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             // Consumer group names may be shared by several clusters managed by this Studio instance.
             groupMapper.delete(new LambdaQueryWrapper<RmqGroup>()
                     .eq(RmqGroup::getClusterId, clusterName)
+                    .eq(RmqGroup::getInstanceId, metadataScope(instanceId))
                     .eq(RmqGroup::getName, name));
 
             recordAudit("DELETE_GROUP", name, "", "SUCCESS");
@@ -611,6 +616,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
             return runtimeAdminClientResolver.execute(instanceId, action);
         }
         return adminFactory.execute(namesrvAddr(), null, action);
+    }
+
+    private String metadataScope(String instanceId) {
+        return StringUtils.hasText(instanceId) ? instanceId.trim() : LEGACY_METADATA_SCOPE;
     }
 
     private Set<String> getAllMasterBrokerAddrs(MQAdminExt admin) throws Exception {
