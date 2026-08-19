@@ -135,7 +135,7 @@ class RocketMQAdminClientImplTest {
         adminClient.resetOffset("instance-a", "cg-orders", 1784246400000L, "orders");
 
         verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
-        verify(auditService).record("RESET_OFFSET", "cg-orders",
+        verify(auditService).record("RESET_OFFSET", "GROUP", "cg-orders", null,
                 "instanceId=instance-a, topic=orders, timestamp=1784246400000", "SUCCESS");
     }
 
@@ -161,7 +161,7 @@ class RocketMQAdminClientImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Instance not found: missing-instance")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
-        verify(auditService).record("RESET_OFFSET", "cg-orders",
+        verify(auditService).record("RESET_OFFSET", "GROUP", "cg-orders", null,
                 "Instance not found: missing-instance", "FAILED");
     }
 
@@ -175,7 +175,8 @@ class RocketMQAdminClientImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to reset offset: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(500));
-        verify(auditService).record("RESET_OFFSET", "cg-orders", "broker unavailable", "FAILED");
+        verify(auditService).record("RESET_OFFSET", "GROUP", "cg-orders", null,
+                "broker unavailable", "FAILED");
     }
 
     @Test
@@ -477,13 +478,14 @@ class RocketMQAdminClientImplTest {
         });
         doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
         doThrow(new RuntimeException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), anyString());
+                .record(anyString(), anyString(), anyString(), any(), anyString(), anyString());
 
         TopicVO topic = new TopicVO();
         topic.setName("topicA");
 
         assertThat(adminClient.createTopic(topic).getId()).isEqualTo(1L);
-        verify(auditService).record("CREATE_TOPIC", "topicA", "queues=8/8", "SUCCESS");
+        verify(auditService).record("CREATE_TOPIC", "TOPIC", "topicA", null,
+                "queues=8/8", "SUCCESS");
     }
 
     @Test
@@ -491,7 +493,7 @@ class RocketMQAdminClientImplTest {
         when(adminExt.examineBrokerClusterInfo())
                 .thenThrow(new IllegalStateException("broker unavailable"));
         doThrow(new RuntimeException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), anyString());
+                .record(anyString(), anyString(), anyString(), any(), anyString(), anyString());
 
         TopicVO topic = new TopicVO();
         topic.setName("topicA");
@@ -538,7 +540,7 @@ class RocketMQAdminClientImplTest {
     void sendMessageShouldNotFailWhenAuditRecordingFails() throws Exception {
         when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
         doThrow(new RuntimeException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), anyString());
+                .record(anyString(), anyString(), anyString(), any(), anyString(), anyString());
         try (MockedConstruction<DefaultMQProducer> mockedProducers =
                      mockConstruction(DefaultMQProducer.class, (producer, context) -> {
                          doNothing().when(producer).start();
@@ -576,7 +578,7 @@ class RocketMQAdminClientImplTest {
         }
         verifyNoInteractions(runtimeAdminClientResolver);
         verify(properties, never()).getNamesrvAddr();
-        verify(auditService).record("SEND_MESSAGE", "TopicA",
+        verify(auditService).record("SEND_MESSAGE", "MESSAGE", "TopicA", null,
                 "Message body size 4194306 exceeds the maximum of 4194304 bytes", "FAILED");
     }
 
@@ -664,7 +666,7 @@ class RocketMQAdminClientImplTest {
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining("FLUSH_DISK_TIMEOUT");
 
-            verify(auditService).record("SEND_MESSAGE", "TopicA",
+            verify(auditService).record("SEND_MESSAGE", "MESSAGE", "TopicA", null,
                     "Message send did not succeed: FLUSH_DISK_TIMEOUT", "FAILED");
         }
     }
@@ -686,7 +688,7 @@ class RocketMQAdminClientImplTest {
                     .isInstanceOf(BusinessException.class)
                     .hasMessageContaining("null");
 
-            verify(auditService).record("SEND_MESSAGE", "TopicA",
+            verify(auditService).record("SEND_MESSAGE", "MESSAGE", "TopicA", null,
                     "Message send did not succeed: null", "FAILED");
         }
     }

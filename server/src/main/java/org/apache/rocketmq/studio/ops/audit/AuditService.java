@@ -89,10 +89,16 @@ public class AuditService {
     }
 
     public void record(String operationType, String target, String clusterId, String detail, String result) {
+        record(operationType, null, target, clusterId, detail, result);
+    }
+
+    public void record(String operationType, String resourceType, String target, String clusterId,
+                       String detail, String result) {
         AuditRecordVO record = AuditRecordVO.builder()
                 .timestamp(LocalDateTime.now())
                 .operator(AuthenticatedUserContext.currentUsernameOrSystem())
                 .operationType(operationType)
+                .resourceType(resourceType)
                 .target(target)
                 .clusterId(clusterId)
                 .detail(detail)

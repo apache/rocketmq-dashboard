@@ -74,6 +74,18 @@ class AuditServiceTest {
     }
 
     @Test
+    void recordShouldPreserveExplicitResourceClassification() {
+        auditService.record("RESEND_DLQ", "DLQ", "consumer-a", "instance-a",
+                "resent=3", "SUCCESS");
+
+        ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
+        verify(auditRepository).save(captor.capture());
+        assertThat(captor.getValue().getResourceType()).isEqualTo("DLQ");
+        assertThat(captor.getValue().getTarget()).isEqualTo("consumer-a");
+        assertThat(captor.getValue().getClusterId()).isEqualTo("instance-a");
+    }
+
+    @Test
     void queryLogsDelegatesPaginationAndFiltersToRepository() {
         AuditRecordVO record = AuditRecordVO.builder().operationType("CREATE").build();
         when(auditRepository.findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("prod-cn"),

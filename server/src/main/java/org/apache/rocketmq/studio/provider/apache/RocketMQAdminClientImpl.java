@@ -565,11 +565,21 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private void recordAudit(String action, String resource, String detail, String result) {
         try {
-            auditService.record(action, resource, detail, result);
+            auditService.record(action, auditResourceType(action), resource, null, detail, result);
         } catch (Exception auditFailure) {
             log.warn("Failed to record audit action={} resource={}: {}", action, resource,
                     auditFailure.getMessage());
         }
+    }
+
+    private String auditResourceType(String action) {
+        if (action.endsWith("_TOPIC")) {
+            return "TOPIC";
+        }
+        if ("SEND_MESSAGE".equals(action)) {
+            return "MESSAGE";
+        }
+        return "GROUP";
     }
 
     /**

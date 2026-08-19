@@ -63,6 +63,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -223,7 +224,7 @@ class RocketMQDLQProviderTest {
             verify(mockedConsumers.constructed().get(0)).fetchSubscribeMessageQueues(dlqTopic);
             assertThat(mockedProducers.constructed()).isEmpty();
         }
-        verify(auditService).record(eq("RESEND_DLQ"), eq("group-a"),
+        verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), eq(null),
                 contains("group=group-a, dlqTopic=%DLQ%group-a"), eq("NO_MESSAGES"));
     }
 
@@ -256,7 +257,9 @@ class RocketMQDLQProviderTest {
         }
         verify(auditService).record(
                 eq("RESEND_DLQ"),
+                eq("DLQ"),
                 eq("group-a"),
+                isNull(),
                 contains("matched=0, resent=0, failed=0"),
                 eq("NO_MESSAGES"));
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
@@ -327,7 +330,9 @@ class RocketMQDLQProviderTest {
         }
         verify(auditService).record(
                 eq("RESEND_DLQ"),
+                eq("DLQ"),
                 eq("group-a"),
+                isNull(),
                 contains("scanFailedQueues=all"),
                 eq("FAILED"));
     }
@@ -359,7 +364,9 @@ class RocketMQDLQProviderTest {
         }
         verify(auditService).record(
                 eq("RESEND_DLQ"),
+                eq("DLQ"),
                 eq("group-a"),
+                isNull(),
                 contains("scanFailedQueues=1"),
                 eq("PARTIAL"));
     }
@@ -431,7 +438,9 @@ class RocketMQDLQProviderTest {
         }
         verify(auditService).record(
                 eq("RESEND_DLQ"),
+                eq("DLQ"),
                 eq("group-a"),
+                isNull(),
                 contains("matched=1, resent=1, failed=0"),
                 eq("SUCCESS"));
     }
@@ -474,7 +483,9 @@ class RocketMQDLQProviderTest {
         }
         verify(auditService).record(
                 eq("RESEND_DLQ"),
+                eq("DLQ"),
                 eq("group-a"),
+                isNull(),
                 contains("matched=1, resent=0, failed=1"),
                 eq("FAILED"));
     }
