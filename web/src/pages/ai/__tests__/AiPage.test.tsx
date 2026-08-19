@@ -288,6 +288,36 @@ describe('AiPage tool runner', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument());
   });
 
+  it('does not send while an input method composition is being confirmed', async () => {
+    renderPage();
+    const input = await screen.findByPlaceholderText(
+      '输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟...',
+    );
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    fireEvent.change(input, { target: { value: '检查集群状态' } });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates prompt submissions before loading state is rendered', async () => {
+    vi.mocked(chatStream).mockReturnValue(new Promise(() => {}));
+    renderPage();
+    const input = await screen.findByPlaceholderText(
+      '输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟...',
+    );
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+    fireEvent.change(input, { target: { value: '检查集群状态' } });
+
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+
+    expect(chatStream).toHaveBeenCalledTimes(1);
+  });
+
   it('loads the catalog, creates a schema template, and renders structured output', async () => {
     const user = userEvent.setup();
     vi.mocked(executeTool).mockResolvedValue({
@@ -325,8 +355,16 @@ describe('AiPage tool runner', () => {
     let resolveOld!: (value: typeof oldTools) => void;
     let resolveLatest!: (value: typeof latestTools) => void;
     vi.mocked(listTools)
-      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
-      .mockReturnValueOnce(new Promise((resolve) => { resolveLatest = resolve; }));
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveLatest = resolve;
+        }),
+      );
     const user = userEvent.setup();
     renderPage();
 

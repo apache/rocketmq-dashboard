@@ -166,6 +166,9 @@ const LiteTopicPage: React.FC = () => {
 
       if (quotaResult.status === 'fulfilled') {
         setQuota(quotaResult.value);
+      } else {
+        setQuota(null);
+        messageRef.current.warning(translationRef.current('liteTopic.fetchQuotaFailed'));
       }
 
       if (listResult.status === 'fulfilled') {

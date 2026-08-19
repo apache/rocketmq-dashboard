@@ -77,6 +77,7 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { parseMessageProperties } from '../../utils/messageProperties';
 
 const { Text } = Typography;
 
@@ -261,19 +262,6 @@ const RANDOM_BODY_GENERATORS = [
 // ─── Format helpers ───────────────────────────────────────────────
 const formatNumber = (n: number) => n.toLocaleString('zh-CN');
 
-// 解析批量粘贴的用户属性串：key=value 按换行或逗号分隔，等号只取第一个
-const parsePropsText = (text: string): Record<string, string> => {
-  const props: Record<string, string> = {};
-  for (const line of text.split(/[\n,]+/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const eqIndex = trimmed.indexOf('=');
-    if (eqIndex <= 0) continue;
-    const key = trimmed.slice(0, eqIndex).trim();
-    if (key) props[key] = trimmed.slice(eqIndex + 1).trim();
-  }
-  return props;
-};
 const formatDateTime = (iso?: string): string => {
   if (!iso) return '-';
   const d = new Date(iso);
@@ -946,7 +934,12 @@ const TopicPage = () => {
       // Build properties: batch-paste text mode or key-value form rows
       let props: Record<string, string> = {};
       if (propsMode === 'text') {
-        props = parsePropsText(values.propsText || '');
+        const parsed = parseMessageProperties(values.propsText || '');
+        if (parsed.errors.length > 0) {
+          message.error(`消息属性格式错误：${parsed.errors.join('；')}`);
+          return;
+        }
+        props = parsed.properties;
       } else if (values.properties && Array.isArray(values.properties)) {
         values.properties.forEach((p: { key?: string; value?: string }) => {
           if (p.key) props[p.key] = p.value || '';

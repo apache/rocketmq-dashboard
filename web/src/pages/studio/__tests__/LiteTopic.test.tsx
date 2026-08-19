@@ -465,4 +465,25 @@ describe('LiteTopic Page', () => {
     expect(screen.queryByText('old-*')).not.toBeInTheDocument();
     expect(screen.queryByText('90 / 100')).not.toBeInTheDocument();
   });
+
+  it('clears stale quota while preserving a successfully refreshed topic list', async () => {
+    apiMocks.queryLiteTopicQuota
+      .mockResolvedValueOnce(createQuota(90))
+      .mockRejectedValueOnce(new Error('quota unavailable'));
+    apiMocks.queryLiteTopicList
+      .mockResolvedValueOnce([{ namespace: 'default', topicPattern: 'old-*' }])
+      .mockResolvedValueOnce([{ namespace: 'default', topicPattern: 'fresh-*' }]);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('old-*')).toBeInTheDocument();
+    expect(screen.getByText('90 / 100')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /刷新/ }));
+
+    expect(await screen.findByText('fresh-*')).toBeInTheDocument();
+    expect(screen.queryByText('old-*')).not.toBeInTheDocument();
+    expect(screen.queryByText('90 / 100')).not.toBeInTheDocument();
+    expect(await screen.findByText('获取配额信息失败')).toBeInTheDocument();
+  });
 });
