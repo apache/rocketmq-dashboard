@@ -72,9 +72,13 @@ public class MessageService {
         }
         long end = endTime == null ? System.currentTimeMillis() : endTime;
         long start = startTime == null ? end - 60 * 60 * 1000L : startTime;
-        if (start > end) {
-            throw new BusinessException(400, "startTime must not be after endTime");
+        if (start < 0 || end < 0) {
+            throw new BusinessException(400, "startTime and endTime must not be negative");
         }
+        if (start >= end) {
+            throw new BusinessException(400, "startTime must be before endTime");
+        }
+        // Subtraction is safe after both timestamps are proven non-negative and strictly ordered.
         if (end - start > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
             throw new BusinessException(400, "topic query time range must not exceed 7 days");
         }

@@ -67,9 +67,36 @@ class MessageServiceTest {
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 200L, 100L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("startTime must not be after endTime");
+                .hasMessage("startTime must be before endTime");
 
         verifyNoInteractions(provider);
+    }
+
+    @Test
+    void rejectsEqualTopicQueryTimestampsBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry);
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 100L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+
+        verifyNoInteractions(provider, registry);
+    }
+
+    @Test
+    void rejectsNegativeAndOverflowingTopicQueryTimestampsBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry);
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null,
+                Long.MIN_VALUE, Long.MAX_VALUE))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime and endTime must not be negative");
+
+        verifyNoInteractions(provider, registry);
     }
 
     @Test
