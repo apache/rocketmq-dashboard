@@ -8,6 +8,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -19,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Properties;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -26,6 +28,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RocketMQBrokerConfigServiceTest {
@@ -50,6 +53,44 @@ class RocketMQBrokerConfigServiceTest {
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         brokerConfigService = new RocketMQBrokerConfigService(
                 adminFactory, properties, runtimeAdminClientResolver, auditService);
+    }
+
+    @Test
+    void getBrokerConfigShouldUseDefaultsForMissingResponse() throws Exception {
+        when(adminExt.getBrokerConfig("broker-a:10911")).thenReturn(null);
+
+        var config = brokerConfigService.getBrokerConfig("broker-a:10911");
+
+        assertThat(config.getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
+        assertThat(config.getMaxMessageSize()).isEqualTo(4_194_304);
+        assertThat(config.getWriteQueueNums()).isEqualTo(8);
+        assertThat(config.getFileReservedTime()).isEqualTo(72);
+    }
+
+    @Test
+    void getBrokerConfigShouldNormalizeMalformedValues() throws Exception {
+        Properties properties = new Properties();
+        properties.setProperty("flushDiskType", " sync_flush ");
+        properties.setProperty("autoCreateTopicEnable", " FALSE ");
+        properties.setProperty("autoCreateSubscriptionGroup", "invalid");
+        properties.setProperty("maxMessageSize", "-1");
+        properties.setProperty("defaultTopicQueueNums", "0");
+        properties.setProperty("fileReservedTime", "not-a-number");
+        properties.setProperty("brokerPermission", "8");
+        properties.setProperty("deleteWhen", "  ");
+        when(adminExt.getBrokerConfig("broker-a:10911")).thenReturn(properties);
+
+        var config = brokerConfigService.getBrokerConfig("broker-a:10911");
+
+        assertThat(config.getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
+        assertThat(config.isAutoCreateTopicEnable()).isFalse();
+        assertThat(config.isAutoCreateSubscriptionGroup()).isTrue();
+        assertThat(config.getMaxMessageSize()).isEqualTo(4_194_304);
+        assertThat(config.getWriteQueueNums()).isEqualTo(8);
+        assertThat(config.getReadQueueNums()).isEqualTo(8);
+        assertThat(config.getFileReservedTime()).isEqualTo(72);
+        assertThat(config.getBrokerPermission()).isEqualTo(6);
+        assertThat(config.getDeleteWhen()).isEqualTo("04");
     }
 
     @Test

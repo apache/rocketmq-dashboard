@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Locale;
 import java.util.Properties;
 
 @Slf4j
@@ -100,37 +101,66 @@ public class RocketMQBrokerConfigService {
     }
 
     private ClusterConfigVO mapToClusterConfigVO(Properties props) {
+        Properties safeProps = props == null ? new Properties() : props;
         ClusterConfigVO vo = new ClusterConfigVO();
-        vo.setFlushDiskType(parseFlushDiskType(props.getProperty("flushDiskType", "ASYNC_FLUSH")));
-        vo.setAutoCreateTopicEnable(Boolean.parseBoolean(props.getProperty("autoCreateTopicEnable", "true")));
-        vo.setAutoCreateSubscriptionGroup(Boolean.parseBoolean(props.getProperty("autoCreateSubscriptionGroup", "true")));
-        vo.setMaxMessageSize(parseIntSafe(props.getProperty("maxMessageSize"), 4194304));
-        vo.setWriteQueueNums(parseIntSafe(props.getProperty("defaultTopicQueueNums"), 8));
-        vo.setReadQueueNums(parseIntSafe(props.getProperty("defaultTopicQueueNums"), 8));
-        vo.setFileReservedTime(parseIntSafe(props.getProperty("fileReservedTime"), 72));
-        vo.setBrokerPermission(parseIntSafe(props.getProperty("brokerPermission"), 6));
-        vo.setDeleteWhen(props.getProperty("deleteWhen", "04"));
-        vo.setMsgTraceTopicName(props.getProperty("msgTraceTopicName", "RMQ_SYS_TRACE_TOPIC"));
+        vo.setFlushDiskType(parseFlushDiskType(safeProps.getProperty("flushDiskType")));
+        vo.setAutoCreateTopicEnable(parseBoolean(safeProps.getProperty("autoCreateTopicEnable"), true));
+        vo.setAutoCreateSubscriptionGroup(
+                parseBoolean(safeProps.getProperty("autoCreateSubscriptionGroup"), true));
+        vo.setMaxMessageSize(parseIntInRange(safeProps.getProperty("maxMessageSize"), 4194304, 1,
+                Integer.MAX_VALUE));
+        int queueCount = parseIntInRange(safeProps.getProperty("defaultTopicQueueNums"), 8, 1,
+                Integer.MAX_VALUE);
+        vo.setWriteQueueNums(queueCount);
+        vo.setReadQueueNums(queueCount);
+        vo.setFileReservedTime(parseIntInRange(safeProps.getProperty("fileReservedTime"), 72, 1,
+                Integer.MAX_VALUE));
+        vo.setBrokerPermission(parseIntInRange(safeProps.getProperty("brokerPermission"), 6, 0, 7));
+        vo.setDeleteWhen(textOrDefault(safeProps.getProperty("deleteWhen"), "04"));
+        vo.setMsgTraceTopicName(textOrDefault(
+                safeProps.getProperty("msgTraceTopicName"), "RMQ_SYS_TRACE_TOPIC"));
         return vo;
     }
 
     private FlushDiskType parseFlushDiskType(String value) {
+        if (!StringUtils.hasText(value)) {
+            return FlushDiskType.ASYNC_FLUSH;
+        }
         try {
-            return FlushDiskType.valueOf(value);
+            return FlushDiskType.valueOf(value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return FlushDiskType.ASYNC_FLUSH;
         }
     }
 
-    private int parseIntSafe(String value, int defaultValue) {
-        if (value == null || value.isEmpty()) {
+    private boolean parseBoolean(String value, boolean defaultValue) {
+        if (!StringUtils.hasText(value)) {
+            return defaultValue;
+        }
+        String normalized = value.trim();
+        if ("true".equalsIgnoreCase(normalized)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(normalized)) {
+            return false;
+        }
+        return defaultValue;
+    }
+
+    private int parseIntInRange(String value, int defaultValue, int minimum, int maximum) {
+        if (!StringUtils.hasText(value)) {
             return defaultValue;
         }
         try {
-            return Integer.parseInt(value.trim());
+            int parsed = Integer.parseInt(value.trim());
+            return parsed >= minimum && parsed <= maximum ? parsed : defaultValue;
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private String textOrDefault(String value, String defaultValue) {
+        return StringUtils.hasText(value) ? value.trim() : defaultValue;
     }
 
     private String namesrvAddr() {
