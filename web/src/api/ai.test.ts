@@ -180,6 +180,30 @@ describe('AI API', () => {
         status: 400,
       } satisfies Partial<AiStreamError>);
     });
+
+    it('throws backend error messages from failed HTTP responses', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              code: 400,
+              message: 'Chat request is required',
+              data: null,
+            }),
+            { status: 400, statusText: 'Bad Request' },
+          ),
+        ),
+      );
+
+      await expect(
+        chatStream({ message: '', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toMatchObject({
+        name: 'AiStreamError',
+        message: 'Chat request is required',
+        status: 400,
+      } satisfies Partial<AiStreamError>);
+    });
   });
 
   describe('executeAiCommand', () => {

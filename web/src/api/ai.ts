@@ -110,6 +110,33 @@ function parseStreamError(payload: string): AiStreamError {
   }
 }
 
+async function parseHttpError(response: Response): Promise<AiStreamError> {
+  const fallback = response.statusText || `HTTP ${response.status}`;
+  try {
+    const payload = await response.text();
+    if (!payload.trim()) {
+      return new AiStreamError(
+        `AI chat failed: ${fallback}`,
+        undefined,
+        undefined,
+        response.status,
+      );
+    }
+    try {
+      const parsed = JSON.parse(payload) as AiStreamPayload;
+      const message = typeof parsed.message === 'string' ? parsed.message : payload;
+      const code = typeof parsed.code === 'string' ? parsed.code : undefined;
+      const hint = typeof parsed.hint === 'string' ? parsed.hint : undefined;
+      const status = typeof parsed.status === 'number' ? parsed.status : response.status;
+      return new AiStreamError(message, code, hint, status);
+    } catch {
+      return new AiStreamError(payload, undefined, undefined, response.status);
+    }
+  } catch {
+    return new AiStreamError(`AI chat failed: ${fallback}`, undefined, undefined, response.status);
+  }
+}
+
 function emitEvent(
   event: string,
   onChunk: (text: string) => void,
@@ -170,7 +197,10 @@ export async function chatStream(
     signal,
   });
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
+    throw await parseHttpError(response);
+  }
+  if (!response.body) {
     throw new Error(`AI chat failed: ${response.statusText}`);
   }
 
