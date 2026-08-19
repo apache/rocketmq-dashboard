@@ -53,11 +53,13 @@ public interface InstanceProvider {
     default PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search,
             int page, int pageSize) {
         List<TopicVO> topics = listTopics(instanceId, type, search);
-        int total = topics.size();
-        long offset = Pagination.pageOffset(page, pageSize);
+        List<TopicVO> safeTopics = topics == null ? List.of() : topics;
+        int safePageSize = Math.max(pageSize, 0);
+        int total = safeTopics.size();
+        long offset = Pagination.pageOffset(page, safePageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
-        return PageResult.of(topics.subList(from, to), total, page, pageSize);
+        int to = from + Math.min(safePageSize, total - from);
+        return PageResult.of(safeTopics.subList(from, to), total, page, safePageSize);
     }
 
     TopicVO createTopic(String instanceId, TopicVO topic);
@@ -70,15 +72,17 @@ public interface InstanceProvider {
 
     default TopicConsumerPageVO getTopicConsumersPage(String instanceId, String topicName, int page, int pageSize) {
         List<TopicConsumerVO> consumers = getTopicConsumers(instanceId, topicName);
-        int total = consumers.size();
-        long offset = Pagination.pageOffset(page, pageSize);
+        List<TopicConsumerVO> safeConsumers = consumers == null ? List.of() : consumers;
+        int safePageSize = Math.max(pageSize, 0);
+        int total = safeConsumers.size();
+        long offset = Pagination.pageOffset(page, safePageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
+        int to = from + Math.min(safePageSize, total - from);
         return TopicConsumerPageVO.builder()
-                .items(consumers.subList(from, to))
+                .items(safeConsumers.subList(from, to))
                 .total(total)
                 .page(page)
-                .pageSize(pageSize)
+                .pageSize(safePageSize)
                 .build();
     }
 

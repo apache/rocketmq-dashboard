@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.provider;
 
 import java.util.Arrays;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.junit.jupiter.api.Test;
@@ -44,4 +46,37 @@ public class InstanceProviderTest {
         assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
         assertThat(result.getPageSize()).isEqualTo(100);
     }
+
+    @Test
+    public void defaultPagesShouldNormalizeNullProviderCollectionsTest() {
+        InstanceProvider provider = mock(InstanceProvider.class);
+        when(provider.listTopics("instance-a", null, null)).thenReturn(null);
+        when(provider.listTopicsPage("instance-a", null, null, 1, 20)).thenCallRealMethod();
+        when(provider.getTopicConsumers("instance-a", "orders")).thenReturn(null);
+        when(provider.getTopicConsumersPage("instance-a", "orders", 1, 20)).thenCallRealMethod();
+
+        PageResult<TopicVO> topics = provider.listTopicsPage("instance-a", null, null, 1, 20);
+        TopicConsumerPageVO consumers = provider.getTopicConsumersPage("instance-a", "orders", 1, 20);
+
+        assertThat(topics.getItems()).isEmpty();
+        assertThat(topics.getTotal()).isZero();
+        assertThat(consumers.getItems()).isEmpty();
+        assertThat(consumers.getTotal()).isZero();
+    }
+
+    @Test
+    public void defaultPagesShouldTreatNegativePageSizeAsEmptyTest() {
+        InstanceProvider provider = mock(InstanceProvider.class);
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        when(provider.listTopics("instance-a", null, null)).thenReturn(Arrays.asList(topic));
+        when(provider.listTopicsPage("instance-a", null, null, 1, -1)).thenCallRealMethod();
+
+        PageResult<TopicVO> result = provider.listTopicsPage("instance-a", null, null, 1, -1);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getSize()).isZero();
+    }
+
 }
