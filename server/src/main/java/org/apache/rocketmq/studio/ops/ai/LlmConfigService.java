@@ -141,11 +141,11 @@ public class LlmConfigService {
                     "Use one of: openai, deepseek, tongyi, ollama.");
         }
         try {
-            llmClient.listModels(normalized);
+            List<LlmModelItemVO> models = llmClient.listModels(normalized);
+            return LlmOperationResultVO.successWithModels("Connection successful", models);
         } catch (LlmGatewayException exception) {
             return LlmOperationResultVO.failure(exception.getCode(), exception.getMessage(), exception.getHint());
         }
-        return LlmOperationResultVO.success("Connection successful");
     }
 
     private LlmOperationResultVO testCliEngine(String engine) {
@@ -209,7 +209,10 @@ public class LlmConfigService {
     }
 
     public LlmModelsResultVO listModels() {
-        LlmConfigVO config = getConfig();
+        return listModels(getConfig());
+    }
+
+    private LlmModelsResultVO listModels(LlmConfigVO config) {
         String provider = config.getProvider();
         // The token-plan gateway model set is curated locally; do not query the gateway.
         if (DEFAULT_PROVIDER.equals(provider)) {

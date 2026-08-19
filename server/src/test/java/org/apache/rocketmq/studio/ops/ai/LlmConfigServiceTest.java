@@ -338,6 +338,7 @@ class LlmConfigServiceTest {
 
         assertThat(result.getStatus()).isZero();
         assertThat(result.getMsg()).isEqualTo("Connection successful");
+        assertThat(result.getModels()).isEmpty();
     }
 
     @Test
