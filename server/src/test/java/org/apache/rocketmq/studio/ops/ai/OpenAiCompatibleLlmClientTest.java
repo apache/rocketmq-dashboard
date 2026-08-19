@@ -153,6 +153,26 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void streamShouldRejectOversizedEventsBeforeBufferingThem() {
+        client = new OpenAiCompatibleLlmClient(objectMapper) {
+            @Override
+            int streamEventLimitChars() {
+                return 1024;
+            }
+        };
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200,
+                "data: " + "x".repeat(1025) + "\n\n", "text/event-stream"));
+
+        assertThatThrownBy(() -> client.stream(
+                config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.stream_event_too_large");
+                    assertThat(exception.getMessage()).contains("1024 characters");
+                });
+    }
+
+    @Test
     void streamShouldExposeErrorEnvelopeFromSuccessfulResponse() {
         server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200, """
                 data: {"error":{"message":"quota exceeded"}}

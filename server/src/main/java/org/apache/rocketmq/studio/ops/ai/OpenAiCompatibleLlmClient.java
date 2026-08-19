@@ -23,11 +23,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
@@ -58,6 +58,7 @@ public class OpenAiCompatibleLlmClient {
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String MODELS_PATH = "/models";
     private static final int MAX_RESPONSE_BODY_BYTES = 5 * 1024 * 1024;
+    private static final int MAX_STREAM_EVENT_CHARS = 256 * 1024;
     private static final Set<String> SUPPORTED_PROVIDERS = Set.of("openai", "deepseek", "tongyi", "ollama");
 
     private final ObjectMapper objectMapper;
@@ -199,25 +200,56 @@ public class OpenAiCompatibleLlmClient {
 
     private void parseStream(InputStream input, Consumer<String> tokenConsumer)
             throws IOException {
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(input, StandardCharsets.UTF_8))) {
+        try (Reader reader = new InputStreamReader(input, StandardCharsets.UTF_8)) {
             List<String> dataLines = new ArrayList<>();
+            int eventChars = 0;
             String line;
-            while ((line = reader.readLine()) != null) {
+            while ((line = readStreamLine(reader)) != null) {
                 if (line.isEmpty()) {
                     if (emitStreamEvent(dataLines, tokenConsumer)) {
                         return;
                     }
                     dataLines.clear();
+                    eventChars = 0;
                     continue;
                 }
                 if (line.startsWith("data:")) {
                     String value = line.substring(5);
-                    dataLines.add(value.startsWith(" ") ? value.substring(1) : value);
+                    value = value.startsWith(" ") ? value.substring(1) : value;
+                    eventChars += value.length() + (dataLines.isEmpty() ? 0 : 1);
+                    if (eventChars > streamEventLimitChars()) {
+                        throw streamEventTooLarge();
+                    }
+                    dataLines.add(value);
                 }
             }
             emitStreamEvent(dataLines, tokenConsumer);
         }
+    }
+
+    private String readStreamLine(Reader reader) throws IOException {
+        StringBuilder line = new StringBuilder(Math.min(streamEventLimitChars(), 256));
+        int value;
+        while ((value = reader.read()) != -1 && value != '\n') {
+            if (line.length() >= streamEventLimitChars()) {
+                throw streamEventTooLarge();
+            }
+            line.append((char) value);
+        }
+        if (value == -1 && line.isEmpty()) {
+            return null;
+        }
+        if (!line.isEmpty() && line.charAt(line.length() - 1) == '\r') {
+            line.setLength(line.length() - 1);
+        }
+        return line.toString();
+    }
+
+    private LlmGatewayException streamEventTooLarge() {
+        return new LlmGatewayException(502, "llm.provider.stream_event_too_large",
+                "LLM provider stream event exceeded the maximum of "
+                        + streamEventLimitChars() + " characters",
+                "Reduce the provider stream event size and retry.");
     }
 
     private HttpResponse.BodyHandler<LimitedBody> limitedBodyHandler() {
@@ -246,6 +278,10 @@ public class OpenAiCompatibleLlmClient {
 
     int responseBodyLimitBytes() {
         return MAX_RESPONSE_BODY_BYTES;
+    }
+
+    int streamEventLimitChars() {
+        return MAX_STREAM_EVENT_CHARS;
     }
 
     private boolean emitStreamEvent(List<String> dataLines, Consumer<String> tokenConsumer) {
