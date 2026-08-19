@@ -49,7 +49,7 @@ import java.util.regex.Pattern;
 public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsProvider {
 
     private static final Pattern THREAD_HEADER =
-            Pattern.compile("^(?<name>.+?)\\s+TID:\\s+(?<id>\\d+)\\s+STATE:\\s+(?<state>\\S+)\\s*$");
+            Pattern.compile("^(?<name>.+?)\\s*TID:\\s+(?<id>\\d+)\\s+STATE:\\s+(?<state>\\S+)\\s*$");
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final MqAdminExtFactory adminFactory;
