@@ -59,7 +59,7 @@ import {
   getAclUserCredentials,
   examineBrokerClusterAclConfig,
   listAclRules,
-  listAclUsers,
+  pageAclUsers,
   updateAclRule,
   updateAclUser,
 } from '../../services/aclService';
@@ -122,6 +122,10 @@ const AclPageContent = ({
   const [users, setUsers] = useState<AclUser[]>([]);
   const [rulesLoading, setRulesLoading] = useState(hasSelectedInstance);
   const [usersLoading, setUsersLoading] = useState(hasSelectedInstance);
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(20);
+  const [userTotal, setUserTotal] = useState(0);
+  const [userKeyword, setUserKeyword] = useState('');
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
@@ -176,9 +180,17 @@ const AclPageContent = ({
         if (mounted) setRulesLoading(false);
       });
 
-    void listAclUsers({ instanceId: selectedInstanceId })
-      .then((nextUsers) => {
-        if (mounted) setUsers(nextUsers.map(normalizeUser));
+    void pageAclUsers({
+      instanceId: selectedInstanceId,
+      page: userPage,
+      pageSize: userPageSize,
+      keyword: userKeyword || undefined,
+    })
+      .then((result) => {
+        if (mounted) {
+          setUsers(result.items.map(normalizeUser));
+          setUserTotal(result.total);
+        }
       })
       .catch(() => {
         if (mounted) message.error(t('common.fetchDataFailed'));
@@ -190,7 +202,7 @@ const AclPageContent = ({
     return () => {
       mounted = false;
     };
-  }, [selectedInstanceId, t]);
+  }, [selectedInstanceId, t, userPage, userPageSize, userKeyword]);
 
   /* ─── Filtered rules ─── */
   const filteredRules = rules.filter((r) => {
@@ -1001,6 +1013,15 @@ const AclPageContent = ({
                       >
                         {t('acl.addUser')}
                       </Button>
+                      <Input.Search
+                        value={userKeyword}
+                        onChange={(event) => {
+                          setUserPage(1);
+                          setUserKeyword(event.target.value);
+                        }}
+                        allowClear
+                        style={{ width: 240 }}
+                      />
                     </Space>
                   </div>
 
@@ -1010,9 +1031,15 @@ const AclPageContent = ({
                     rowKey="id"
                     loading={usersLoading}
                     pagination={{
-                      pageSize: 20,
+                      current: userPage,
+                      pageSize: userPageSize,
+                      total: userTotal,
                       showSizeChanger: true,
                       showTotal: (total) => t('acl.totalUsers', { n: total }),
+                      onChange: (page, pageSize) => {
+                        setUserPage(page);
+                        setUserPageSize(pageSize);
+                      },
                     }}
                     size="small"
                   />

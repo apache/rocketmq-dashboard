@@ -21,9 +21,16 @@ export interface AclRuleQuery {
 }
 
 // Users list query
-interface AclUserQuery {
+export interface AclUserQuery {
   keyword?: string;
   instanceId?: string;
+}
+
+export interface AclUserPage {
+  items: AclUser[];
+  total: number;
+  page: number;
+  size: number;
 }
 
 export interface AclUser {

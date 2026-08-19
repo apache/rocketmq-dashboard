@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
@@ -84,6 +85,15 @@ public class AclController {
     public Result<List<AclUserVO>> listUsers(
             @RequestParam(required = false) String instanceId) {
         return Result.ok(aclService.listUsers(instanceId));
+    }
+
+    @GetMapping("/users/page")
+    public Result<PageResult<AclUserVO>> pageUsers(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String keyword) {
+        return Result.ok(aclService.pageUsers(instanceId, page, pageSize, keyword));
     }
 
     @GetMapping("/users/{id}/credentials")

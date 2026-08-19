@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.acl;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.util.EntityIds;
@@ -33,6 +34,7 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -127,6 +129,29 @@ public class AclService {
         return aclRepository.findUsers().stream()
                 .map(this::maskCredentials)
                 .toList();
+    }
+
+    public PageResult<AclUserVO> pageUsers(String instanceId, int page, int pageSize, String keyword) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "page must be >= 1 and pageSize must be between 1 and 100");
+        }
+        String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        List<AclUserVO> users = (isTencentInstance(instanceId)
+                ? tencentAclService.listUsers(instanceId) : aclRepository.findUsers()).stream()
+                .filter(user -> query.isEmpty()
+                        || containsIgnoreCase(user.getUsername(), query)
+                        || containsIgnoreCase(user.getAccessKey(), query))
+                .sorted(Comparator.comparing(AclUserVO::getGmtCreate, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(AclUserVO::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        int from = Math.min((page - 1) * pageSize, users.size());
+        int to = Math.min(from + pageSize, users.size());
+        return PageResult.of(users.subList(from, to).stream().map(this::maskCredentials).toList(),
+                users.size(), page, pageSize);
+    }
+
+    private boolean containsIgnoreCase(String value, String query) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(query);
     }
 
 
