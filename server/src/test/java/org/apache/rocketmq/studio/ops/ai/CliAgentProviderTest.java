@@ -12,6 +12,7 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -23,14 +24,26 @@ class CliAgentProviderTest {
     private static final class FakeCli extends CliAgentProvider {
         private final String script;
         private final int outputLimitBytes;
+        private final Map<String, String> environment;
 
         FakeCli(String script) {
             this(script, Integer.MAX_VALUE);
         }
 
         FakeCli(String script, int outputLimitBytes) {
+            this(script, outputLimitBytes, new CliProcessEnvironment(List.of()), Map.of());
+        }
+
+        FakeCli(String script, CliProcessEnvironment processEnvironment, Map<String, String> environment) {
+            this(script, Integer.MAX_VALUE, processEnvironment, environment);
+        }
+
+        FakeCli(String script, int outputLimitBytes, CliProcessEnvironment processEnvironment,
+                Map<String, String> environment) {
+            super(processEnvironment);
             this.script = script;
             this.outputLimitBytes = outputLimitBytes;
+            this.environment = environment;
         }
 
         @Override
@@ -45,7 +58,7 @@ class CliAgentProviderTest {
 
         @Override
         protected Map<String, String> childEnv(LlmConfigVO config) {
-            return Map.of();
+            return environment;
         }
 
         @Override
@@ -56,6 +69,23 @@ class CliAgentProviderTest {
         @Override
         int outputLimitBytes() {
             return outputLimitBytes;
+        }
+    }
+
+    private static final class RecordingEnvironment extends CliProcessEnvironment {
+        private final List<Map<String, String>> providerEnvironments = new ArrayList<>();
+        private final List<Map<String, String>> childEnvironments = new ArrayList<>();
+
+        RecordingEnvironment() {
+            super(List.of());
+        }
+
+        @Override
+        void apply(ProcessBuilder builder, Map<String, String> providerEnvironment) {
+            builder.environment().put("SERVER_SECRET", "must-not-cross-boundary");
+            super.apply(builder, providerEnvironment);
+            providerEnvironments.add(Map.copyOf(providerEnvironment));
+            childEnvironments.add(Map.copyOf(builder.environment()));
         }
     }
 
@@ -93,5 +123,22 @@ class CliAgentProviderTest {
         FakeCli cli = new FakeCli("yes x | head -c 1024", 1024);
 
         assertThat(cli.complete(null, "prompt", null)).isNotEmpty();
+    }
+
+    @Test
+    void availabilityAndCompletionUseTheIsolatedEnvironment() {
+        RecordingEnvironment processEnvironment = new RecordingEnvironment();
+        FakeCli cli = new FakeCli(
+                "printf '%s' \"$PROVIDER_TOKEN\"",
+                processEnvironment,
+                Map.of("PROVIDER_TOKEN", "request-token"));
+
+        assertThat(cli.complete(null, "prompt", null)).isEqualTo("request-token");
+        assertThat(processEnvironment.providerEnvironments)
+                .containsExactly(Map.of(), Map.of("PROVIDER_TOKEN", "request-token"));
+        assertThat(processEnvironment.childEnvironments).allSatisfy(environment ->
+                assertThat(environment).doesNotContainKey("SERVER_SECRET"));
+        assertThat(processEnvironment.childEnvironments.get(1))
+                .containsEntry("PROVIDER_TOKEN", "request-token");
     }
 }

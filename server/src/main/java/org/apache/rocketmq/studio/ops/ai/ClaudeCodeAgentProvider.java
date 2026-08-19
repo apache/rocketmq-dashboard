@@ -56,7 +56,8 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
     private final LlmProperties llmProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ClaudeCodeAgentProvider(LlmProperties llmProperties) {
+    public ClaudeCodeAgentProvider(LlmProperties llmProperties, CliProcessEnvironment processEnvironment) {
+        super(processEnvironment);
         this.llmProperties = llmProperties;
     }
 
@@ -95,7 +96,7 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         command.add("--include-partial-messages");
 
         ProcessBuilder builder = new ProcessBuilder(command);
-        builder.environment().putAll(childEnv(config));
+        processEnvironment().apply(builder, childEnv(config));
         builder.redirectErrorStream(false);
         try {
             Process process = builder.start();

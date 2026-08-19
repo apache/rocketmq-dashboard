@@ -25,6 +25,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -42,18 +43,28 @@ public abstract class CliAgentProvider implements AgentProvider {
     private static final long TIMEOUT_SECONDS = 180;
     private static final int MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
 
+    private final CliProcessEnvironment processEnvironment;
+
+    protected CliAgentProvider(CliProcessEnvironment processEnvironment) {
+        this.processEnvironment = Objects.requireNonNull(processEnvironment, "processEnvironment");
+    }
+
     protected abstract List<String> buildCommand(LlmConfigVO config, String prompt, String modelOverride);
 
     protected abstract Map<String, String> childEnv(LlmConfigVO config);
 
     protected abstract String binaryName();
 
+    protected final CliProcessEnvironment processEnvironment() {
+        return processEnvironment;
+    }
+
     @Override
     public boolean available() {
         try {
-            Process process = new ProcessBuilder("sh", "-c", "command -v " + binaryName())
-                    .redirectErrorStream(true)
-                    .start();
+            ProcessBuilder builder = new ProcessBuilder("sh", "-c", "command -v " + binaryName());
+            processEnvironment.apply(builder, Map.of());
+            Process process = builder.redirectErrorStream(true).start();
             boolean finished = process.waitFor(5, TimeUnit.SECONDS);
             return finished && process.exitValue() == 0;
         } catch (IOException | InterruptedException exception) {
@@ -73,8 +84,7 @@ public abstract class CliAgentProvider implements AgentProvider {
         }
         List<String> command = buildCommand(config, prompt, modelOverride);
         ProcessBuilder builder = new ProcessBuilder(command);
-        Map<String, String> env = builder.environment();
-        env.putAll(childEnv(config));
+        processEnvironment.apply(builder, childEnv(config));
         // Merge stderr into stdout and drain the stream on a background thread. Reading stdout
         // then stderr sequentially on the caller thread deadlocks once the child fills a pipe
         // buffer (64 KiB), and a timeout that runs only after both reads can never fire while the

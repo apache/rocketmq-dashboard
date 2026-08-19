@@ -33,6 +33,10 @@ public class QoderAgentProvider extends CliAgentProvider {
 
     public static final String ENGINE = "qoder";
 
+    public QoderAgentProvider(CliProcessEnvironment processEnvironment) {
+        super(processEnvironment);
+    }
+
     @Override
     public String engine() {
         return ENGINE;

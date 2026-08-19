@@ -19,14 +19,17 @@ package org.apache.rocketmq.studio.ops.ai;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * LLM credentials supplied through the environment. The token is a secret and
- * must never be persisted or logged; it is injected as RMQ_LLM_TOKEN into the
- * container and bound here at startup.
+ * LLM runtime settings supplied through the environment. Tokens and inherited
+ * CLI environment values must never be persisted or logged.
  */
 @Data
 @ConfigurationProperties(prefix = "studio.llm")
 public class LlmProperties {
     private String token;
     private String anthropicBaseUrl;
+    private List<String> cliAllowedEnvironment = new ArrayList<>();
 }
