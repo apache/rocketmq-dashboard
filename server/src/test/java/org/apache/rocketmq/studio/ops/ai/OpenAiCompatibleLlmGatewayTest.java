@@ -76,7 +76,7 @@ class OpenAiCompatibleLlmGatewayTest {
             testedGateway.chat(ChatDTO.builder().message("hello").build());
 
             assertThat(emitters).hasSize(1);
-            assertThat(emitters.get(0).timeoutMillis).isEqualTo(TimeUnit.MINUTES.toMillis(5));
+            assertThat(emitters.get(0).timeoutMillis).isEqualTo(TimeUnit.SECONDS.toMillis(125));
         } finally {
             testedGateway.destroy();
         }

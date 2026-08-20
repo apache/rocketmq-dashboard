@@ -63,7 +63,7 @@ public class OpenAiCompatibleLlmClient {
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String MODELS_PATH = "/models";
     private static final int MAX_RESPONSE_BODY_BYTES = 5 * 1024 * 1024;
-    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofMinutes(2);
     private static final Set<String> SUPPORTED_PROVIDERS = Set.of("openai", "deepseek", "tongyi", "ollama");
 
     private final ObjectMapper objectMapper;
