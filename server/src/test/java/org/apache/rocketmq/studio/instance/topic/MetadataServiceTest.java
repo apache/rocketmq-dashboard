@@ -67,6 +67,7 @@ class MetadataServiceTest {
     void routeBlankInstanceIdsToApacheProvider() {
         lenient().when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(apacheProvider);
         lenient().when(apacheProvider.vendor()).thenReturn(InstanceVendor.APACHE);
+        lenient().when(providerRegistry.byInstanceId("instance-a")).thenReturn(java.util.Optional.of(apacheProvider));
         lenient().when(instanceRepository.findByIdentifier(org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(java.util.Optional.empty());
     }
@@ -161,6 +162,22 @@ class MetadataServiceTest {
         metadataService.deleteTopic("topic-to-delete");
 
         verify(apacheProvider).deleteTopic(null, "topic-to-delete");
+    }
+
+    @Test
+    void deleteTopicShouldTrimTopicNameBeforeProviderResolution() {
+        metadataService.deleteTopic("instance-a", "  topic-to-delete  ");
+
+        verify(apacheProvider).deleteTopic("instance-a", "topic-to-delete");
+    }
+
+    @Test
+    void deleteTopicShouldRejectBlankNameBeforeProviderResolution() {
+        assertThatThrownBy(() -> metadataService.deleteTopic("instance-a", " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic name is required");
+
+        verifyNoInteractions(apacheProvider);
     }
 
     @Test
