@@ -47,7 +47,8 @@ import java.util.function.LongFunction;
 @Component
 public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
-    private static final long HTTP_STREAM_TIMEOUT_MILLIS = 60_000L;
+    // HTTP providers can spend more than a minute before emitting the first token.
+    private static final long HTTP_STREAM_TIMEOUT_MILLIS = 300_000L;
     private static final long CLI_STREAM_TIMEOUT_MILLIS = 300_000L;
     private static final int MAX_CONCURRENT_CHATS = 16;
 
