@@ -90,6 +90,20 @@ class DLQServiceTest {
     }
 
     @Test
+    void resendMessagesShouldNormalizeIdentifiersBeforeDelegatingTest() {
+        dlqService.resendMessages("instance-1", " group-1 ", 1000L, 2000L, " target-topic ");
+
+        verify(dlqProvider).resendMessages("instance-1", "group-1", 1000L, 2000L, "target-topic");
+    }
+
+    @Test
+    void resendMessagesShouldTreatBlankTargetTopicAsAbsentTest() {
+        dlqService.resendMessages("instance-1", "group-1", 1000L, 2000L, "   ");
+
+        verify(dlqProvider).resendMessages("instance-1", "group-1", 1000L, 2000L, null);
+    }
+
+    @Test
     void resendMessagesShouldAcceptNullTimeRange() {
         dlqService.resendMessages("instance-1", "group-1", null, null, "target-topic");
 
@@ -131,6 +145,13 @@ class DLQServiceTest {
     @Test
     void exportMessagesShouldDelegateToProviderTest() {
         dlqService.exportMessages("instance-1", "group-1", 1000L, 2000L, 100);
+
+        verify(dlqProvider).exportMessages("instance-1", "group-1", 1000L, 2000L, 100);
+    }
+
+    @Test
+    void exportMessagesShouldNormalizeGroupNameBeforeDelegatingTest() {
+        dlqService.exportMessages("instance-1", " group-1 ", 1000L, 2000L, 100);
 
         verify(dlqProvider).exportMessages("instance-1", "group-1", 1000L, 2000L, 100);
     }

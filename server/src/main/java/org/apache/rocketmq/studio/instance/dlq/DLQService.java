@@ -55,17 +55,22 @@ public class DLQService {
     public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              String targetTopic) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
-        log.info("Resending DLQ messages: group={}, targetTopic={}", groupName, targetTopic);
-        return dlqProvider.resendMessages(instanceId, groupName, startTime, endTime, targetTopic);
+        String normalizedGroupName = requireGroupName(groupName);
+        validateTimeRange(startTime, endTime);
+        String normalizedTargetTopic = normalizeOptional(targetTopic);
+        log.info("Resending DLQ messages: group={}, targetTopic={}",
+                normalizedGroupName, normalizedTargetTopic);
+        return dlqProvider.resendMessages(
+                instanceId, normalizedGroupName, startTime, endTime, normalizedTargetTopic);
     }
 
     public List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              Integer maxCount) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
-        log.info("Exporting DLQ messages: group={}, maxCount={}", groupName, maxCount);
-        return dlqProvider.exportMessages(instanceId, groupName, startTime, endTime, maxCount);
+        String normalizedGroupName = requireGroupName(groupName);
+        validateTimeRange(startTime, endTime);
+        log.info("Exporting DLQ messages: group={}, maxCount={}", normalizedGroupName, maxCount);
+        return dlqProvider.exportMessages(instanceId, normalizedGroupName, startTime, endTime, maxCount);
     }
 
     private void requireApacheInstance(String instanceId) {
@@ -76,10 +81,18 @@ public class DLQService {
         });
     }
 
-    private void validateResendRequest(String groupName, Long startTime, Long endTime) {
+    private String requireGroupName(String groupName) {
         if (!StringUtils.hasText(groupName)) {
             throw new BusinessException(400, "groupName is required");
         }
+        return groupName.trim();
+    }
+
+    private String normalizeOptional(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private void validateTimeRange(Long startTime, Long endTime) {
         if ((startTime == null) != (endTime == null)) {
             throw new BusinessException(400, "startTime and endTime must be provided together");
         }
