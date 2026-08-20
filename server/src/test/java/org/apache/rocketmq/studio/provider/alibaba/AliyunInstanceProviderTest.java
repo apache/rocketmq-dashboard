@@ -224,6 +224,32 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldTraversePastLegacyFivePageCapTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class))).thenAnswer(invocation -> {
+            ListConsumerGroupsRequest request = invocation.getArgument(0);
+            int pageNumber = request.getPageNumber();
+            if (pageNumber <= 5) {
+                String[] groupIds = IntStream.range(0, AliyunConverters.PAGE_SIZE)
+                        .mapToObj(index -> "GID_" + ((pageNumber - 1) * AliyunConverters.PAGE_SIZE + index))
+                        .toArray(String[]::new);
+                return CompletableFuture.completedFuture(groupsResponse(501L, groupIds));
+            }
+            return CompletableFuture.completedFuture(groupsResponse(501L, "GID_500"));
+        });
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).hasSize(501);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient, times(6)).listConsumerGroups(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageNumber)
+                .containsExactly(1, 2, 3, 4, 5, 6);
+    }
+
+    @Test
     void getGroupProgressShouldMapLagRowsTest() {
         stubInstance();
         stubCallThrough();

@@ -301,7 +301,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search) {
         Context ctx = resolve(instanceId);
         List<ListConsumerGroupsResponseBody.List> all = new ArrayList<>();
-        for (int page = 1; page <= AliyunConverters.MAX_PAGES; page++) {
+        for (int page = 1; ; page++) {
             ListConsumerGroupsRequest.Builder builder = ListConsumerGroupsRequest.builder()
                     .instanceId(ctx.cloudInstanceId())
                     .pageNumber(page)
@@ -319,7 +319,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 break;
             }
             all.addAll(list);
-            if (list.size() < AliyunConverters.PAGE_SIZE) {
+            if (hasFetchedAll(page, AliyunConverters.PAGE_SIZE, data.getTotalCount())
+                    || list.size() < AliyunConverters.PAGE_SIZE) {
                 break;
             }
         }
