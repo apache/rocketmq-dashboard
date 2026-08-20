@@ -218,6 +218,21 @@ class NameServerConfigDiffServiceTest {
     }
 
     @Test
+    void compareShouldDeduplicateDnsHostnamesIgnoringCase() throws Exception {
+        stubAdminFactory();
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                "ns.example.com:9876", List.of(nameServer("NS.EXAMPLE.COM:9876"))));
+        when(admin.getNameServerConfig(List.of("NS.EXAMPLE.COM:9876")))
+                .thenReturn(Map.of("NS.EXAMPLE.COM:9876", properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compare("cluster-a");
+
+        assertThat(result.getNodeCount()).isEqualTo(1);
+        assertThat(result.getReachableNodeCount()).isEqualTo(1);
+        verify(admin, times(1)).getNameServerConfig(List.of("NS.EXAMPLE.COM:9876"));
+    }
+
+    @Test
     void compareShouldMarkTheCheckIncompleteWhenEveryNodeIsUnavailable() throws Exception {
         stubAdminFactory();
         when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
