@@ -22,6 +22,8 @@ import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
 import org.apache.rocketmq.studio.cluster.nameserver.RestartNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
@@ -34,10 +36,10 @@ import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -45,6 +47,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.assertj.core.api.ThrowableAssert;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,13 +81,19 @@ class ClusterServiceTest {
     @Mock
     private AuditService auditService;
 
-    @InjectMocks
+    @Mock
+    private NameserverRegistryService registryService;
+
     private ClusterService clusterService;
+    private ExecutorService registryProbeExecutor;
 
     private ClusterVO sampleCluster;
 
     @BeforeEach
     void setUp() {
+        registryProbeExecutor = Executors.newFixedThreadPool(2);
+        clusterService = new ClusterService(clusterRepository, clusterProvider, brokerConfigService,
+                auditService, registryService, registryProbeExecutor, 1_000L);
         sampleCluster = ClusterVO.builder()
                 .name("test-cluster")
                 .nsClusterName("ns-test-cluster")
@@ -113,6 +127,69 @@ class ClusterServiceTest {
                 .groupCount(5)
                 .build();
         sampleCluster.setId("cluster-1");
+    }
+
+    @AfterEach
+    void tearDown() {
+        clusterService.shutdownRegistryProbeExecutor();
+    }
+
+    @Test
+    void listRegistryClustersShouldLimitConcurrentProbesTest() throws Exception {
+        when(registryService.list()).thenReturn(List.of(
+                registry("ns-1"), registry("ns-2"), registry("ns-3"), registry("ns-4")));
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger maxActive = new AtomicInteger();
+        CountDownLatch firstPairStarted = new CountDownLatch(2);
+        CountDownLatch release = new CountDownLatch(1);
+        when(clusterProvider.discoverClustersAt(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(invocation -> {
+                    int current = active.incrementAndGet();
+                    maxActive.accumulateAndGet(current, Math::max);
+                    firstPairStarted.countDown();
+                    try {
+                        release.await(2, TimeUnit.SECONDS);
+                    } finally {
+                        active.decrementAndGet();
+                    }
+                    return List.of(ClusterVO.builder().name("remote-cluster").build());
+                });
+
+        CompletableFuture<List<ClusterVO>> result =
+                CompletableFuture.supplyAsync(clusterService::listRegistryClusters);
+
+        assertThat(firstPairStarted.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(maxActive).hasValue(2);
+        release.countDown();
+        assertThat(result.get(2, TimeUnit.SECONDS)).hasSize(4);
+        assertThat(maxActive).hasValue(2);
+    }
+
+    @Test
+    void listRegistryClustersShouldCancelTimedOutProbeTest() throws Exception {
+        when(registryService.list()).thenReturn(List.of(registry("blocked")));
+        CountDownLatch interrupted = new CountDownLatch(1);
+        when(clusterProvider.discoverClustersAt("blocked:9876")).thenAnswer(invocation -> {
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException ex) {
+                interrupted.countDown();
+                Thread.currentThread().interrupt();
+            }
+            return List.of();
+        });
+        clusterService = new ClusterService(clusterRepository, clusterProvider, brokerConfigService,
+                auditService, registryService, registryProbeExecutor, 25L);
+
+        assertThat(clusterService.listRegistryClusters()).isEmpty();
+        assertThat(interrupted.await(1, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void shutdownShouldStopRegistryProbeExecutorTest() {
+        clusterService.shutdownRegistryProbeExecutor();
+
+        assertThat(registryProbeExecutor.isShutdown()).isTrue();
     }
 
     @Test
@@ -716,5 +793,12 @@ class ClusterServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining(message)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+    }
+
+    private NameserverRegistryVO registry(String name) {
+        return NameserverRegistryVO.builder()
+                .name(name)
+                .namesrvAddr(name + ":9876")
+                .build();
     }
 }
