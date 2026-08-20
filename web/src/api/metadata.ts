@@ -138,12 +138,6 @@ export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
   pageSize?: number;
 }
 
-export interface ResetConsumerOffsetRequest {
-  name: string;
-  timestamp: number;
-  topic: string;
-}
-
 // ─── Topic API ──────────────────────────────────────────────────
 export async function listTopics(params?: TopicQuery) {
   const res = await client.get<{ data: Topic[] }>('/topics', { params });

@@ -78,6 +78,7 @@ import {
 } from '../../utils/resourceCsvImport';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { parseMessageProperties } from '../../utils/messageProperties';
+import { formatNumber, formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
 
@@ -258,17 +259,6 @@ const RANDOM_BODY_GENERATORS = [
   { label: '通知消息', fn: randomNotificationBody },
   { label: '监控指标', fn: randomMetricsBody },
 ];
-
-// ─── Format helpers ───────────────────────────────────────────────
-const formatNumber = (n: number) => n.toLocaleString('zh-CN');
-
-const formatDateTime = (iso?: string): string => {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {

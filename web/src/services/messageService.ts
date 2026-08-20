@@ -1,6 +1,6 @@
 import { isMockMode } from './dataMode';
 import * as messageApi from '../api/message';
-import { sortMessagesByStoreTimeDesc } from '../api/message';
+import { sortMessagesByStoreTimeDesc, toStoreTimestamp } from '../api/message';
 import type {
   MessageQuery,
   MessageRecord,
@@ -23,13 +23,6 @@ const cloneTrace = (trace: TraceRecord): TraceRecord => ({
 });
 
 const cloneDLQGroup = (group: DLQGroup): DLQGroup => ({ ...group });
-
-const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
-  if (typeof storeTime === 'number') return storeTime;
-
-  const parsed = Date.parse(storeTime);
-  return Number.isNaN(parsed) ? 0 : parsed;
-};
 
 export async function queryMessages(params: MessageQuery): Promise<MessageRecord[]> {
   if (isMockMode()) {

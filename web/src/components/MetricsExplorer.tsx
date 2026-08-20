@@ -261,8 +261,9 @@ const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
 const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const { lang } = useLang();
   const queryErrorFallback = lang === 'zh' ? 'Prometheus 查询失败' : 'Prometheus query failed';
-  const copy =
-    lang === 'zh'
+  const copy = useMemo(
+    () =>
+      lang === 'zh'
       ? {
           title: 'Prometheus 指标',
           profile: '指标模板',
@@ -303,7 +304,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           connect: 'Connect',
           cancel: 'Cancel',
           required: 'This field is required',
-        };
+        },
+    [lang, queryErrorFallback],
+  );
   const [authForm] = Form.useForm<AuthFormValues>();
   const [profiles, setProfiles] = useState<MetricProfile[]>([]);
   const [profileId, setProfileId] = useState('');

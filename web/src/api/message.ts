@@ -44,7 +44,7 @@ export interface MessageQuery {
   endTime?: number;
 }
 
-const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
+export const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
   if (typeof storeTime === 'number') return storeTime;
 
   const parsed = Date.parse(storeTime);

@@ -15,19 +15,22 @@
  * limitations under the License.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function useVisiblePolling(
   enabled: boolean,
   intervalMs: number,
   poll: () => void | Promise<void>,
 ): void {
+  const pollRef = useRef(poll);
+  pollRef.current = poll;
+
   useEffect(() => {
     if (!enabled) return;
 
     const pollWhenVisible = () => {
       if (document.visibilityState === 'visible') {
-        void poll();
+        void pollRef.current();
       }
     };
     const intervalId = window.setInterval(pollWhenVisible, intervalMs);
@@ -37,5 +40,5 @@ export function useVisiblePolling(
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', pollWhenVisible);
     };
-  }, [enabled, intervalMs, poll]);
+  }, [enabled, intervalMs]);
 }

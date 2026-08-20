@@ -132,15 +132,10 @@ const DLQPage = () => {
   );
 
   // The retry dialog owns a group name that is meaningful only for the
-  // currently selected instance. Clear all instance-scoped state before
-  // starting the next request so an old group cannot be retried on a new
-  // instance while that request is in flight. Done as render-time state
-  // adjustment (rather than inside the load effect) so state is reset
-  // before the next fetch without cascading effect renders.
-  const scopeKey = `${selectedInstanceId}:${refreshKey}`;
-  const [prevScopeKey, setPrevScopeKey] = useState(scopeKey);
-  if (prevScopeKey !== scopeKey) {
-    setPrevScopeKey(scopeKey);
+  // currently selected instance. Clear all instance-scoped state when the
+  // selected instance or refresh key changes so an old group cannot be
+  // retried on a new instance while a request is in flight.
+  useEffect(() => {
     setGroups([]);
     setTotal(0);
     setPage(1);
@@ -152,7 +147,7 @@ const DLQPage = () => {
     setRetryError(null);
     setLoadError(null);
     setLoading(true);
-  }
+  }, [selectedInstanceId, refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
