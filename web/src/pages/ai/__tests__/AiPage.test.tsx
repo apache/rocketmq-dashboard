@@ -166,6 +166,22 @@ describe('AiPage tool runner', () => {
     });
   });
 
+  it('keeps the engine selected on the home page and exposes it in the AI toolbar', async () => {
+    vi.mocked(chatStream).mockResolvedValue(undefined);
+    renderPage({ prompt: '检查集群状态', engine: 'qoder' });
+
+    await waitFor(() => {
+      expect(chatStream).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '检查集群状态', engine: 'qoder' }),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        expect.any(Function),
+      );
+    });
+    expect(screen.getAllByTitle('执行引擎')[0]).toHaveTextContent('Qoder');
+    expect(useEngineStore.getState().engine).toBe('qoder');
+  });
+
   it('keeps prompt enhancement enabled after a home-page draft is opened', async () => {
     vi.mocked(chatStream).mockResolvedValue(undefined);
     renderPage({ prompt: '检查集群状态', enhance: true });
