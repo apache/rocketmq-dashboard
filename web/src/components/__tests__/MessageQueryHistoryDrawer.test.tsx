@@ -108,4 +108,48 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(screen.queryByText('order-1')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled();
   });
+
+  it('keeps the applied search visible after the drawer is reopened', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <App>
+        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+      </App>,
+    );
+    const searchInput = await screen.findByPlaceholderText('搜索 Topic、Message ID、Key 或操作者');
+
+    await user.type(searchInput, ' orders ');
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(listMessageQueryHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'orders' }),
+      ),
+    );
+    vi.mocked(listMessageQueryHistory).mockClear();
+
+    view.rerender(
+      <App>
+        <MessageQueryHistoryDrawer open={false} clusterId="instance-a" onClose={vi.fn()} />
+      </App>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByPlaceholderText('搜索 Topic、Message ID、Key 或操作者'),
+      ).not.toBeInTheDocument(),
+    );
+    view.rerender(
+      <App>
+        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+      </App>,
+    );
+
+    expect(await screen.findByPlaceholderText('搜索 Topic、Message ID、Key 或操作者')).toHaveValue(
+      'orders',
+    );
+    await waitFor(() =>
+      expect(listMessageQueryHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'orders' }),
+      ),
+    );
+  });
 });

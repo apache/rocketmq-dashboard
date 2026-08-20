@@ -32,6 +32,7 @@ const formatTime = (value?: string) => {
 const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
   const [tab, setTab] = useState<'messages' | 'traces'>('messages');
   const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -117,9 +118,13 @@ const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
       <Input.Search
         allowClear
         placeholder="搜索 Topic、Message ID、Key 或操作者"
+        value={searchInput}
+        onChange={(event) => setSearchInput(event.target.value)}
         onSearch={(value) => {
+          const normalized = value.trim();
           setPage(1);
-          setSearch(value.trim());
+          setSearchInput(normalized);
+          setSearch(normalized);
         }}
         style={{ marginBottom: 12, width: 420 }}
       />
