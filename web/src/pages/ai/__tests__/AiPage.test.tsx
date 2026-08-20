@@ -166,6 +166,21 @@ describe('AiPage tool runner', () => {
     });
   });
 
+  it('keeps prompt enhancement enabled after a home-page draft is opened', async () => {
+    vi.mocked(chatStream).mockResolvedValue(undefined);
+    renderPage({ prompt: '检查集群状态', enhance: true });
+
+    await waitFor(() => {
+      expect(chatStream).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '检查集群状态', enhance: true }),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        expect.any(Function),
+      );
+    });
+    expect(screen.getByTitle('发送前增强 Prompt')).toHaveStyle({ borderColor: '#1677ff' });
+  });
+
   it('starts a new conversation when the home-page draft requests it', async () => {
     useAiChatHistoryStore.setState({
       histories: {

@@ -563,6 +563,7 @@ const AiPage = () => {
         conversationIdRef.current = draft.conversationId;
       }
       if (draft.prompt) setInputValue(draft.prompt);
+      if (draft.enhance !== undefined) setEnhance(draft.enhance);
       const draftModel = draft.model;
       if (draftModel) {
         setSelectedModel(draftModel);
