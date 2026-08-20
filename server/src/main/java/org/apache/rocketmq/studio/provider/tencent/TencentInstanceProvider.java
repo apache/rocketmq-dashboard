@@ -75,6 +75,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -110,8 +111,13 @@ public class TencentInstanceProvider implements InstanceProvider {
     private static final DateTimeFormatter[] TENCENT_TIME_FORMATTERS = {
         TENCENT_TIME_FORMATTER,
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
-        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+    };
+    private static final DateTimeFormatter[] TENCENT_OFFSET_TIME_FORMATTERS = {
+        DateTimeFormatter.ISO_OFFSET_DATE_TIME,
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss,SSSZ")
     };
     private static final long ONE_HOUR_MILLIS = 60L * 60L * 1000L;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -800,8 +806,18 @@ public class TencentInstanceProvider implements InstanceProvider {
             return 0L;
         }
         String trimmed = value.trim();
+        for (DateTimeFormatter formatter : TENCENT_OFFSET_TIME_FORMATTERS) {
+            try {
+                return OffsetDateTime.parse(trimmed, formatter).toInstant().toEpochMilli();
+            } catch (Exception ignored) {
+                // try the next offset-aware format before falling back to legacy local times
+            }
+        }
         for (DateTimeFormatter formatter : TENCENT_TIME_FORMATTERS) {
             try {
+                // Tencent's legacy formats carry no offset. Preserve the existing policy of
+                // interpreting those values in the Studio JVM timezone, but never apply that
+                // timezone to values that explicitly identify their own offset.
                 return LocalDateTime.parse(trimmed, formatter)
                         .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
             } catch (Exception ignored) {

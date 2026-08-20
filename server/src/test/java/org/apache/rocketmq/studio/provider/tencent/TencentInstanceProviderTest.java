@@ -67,6 +67,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.TimeZone;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -648,6 +649,72 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
         assertThat(captor.getValue().getTopic()).isEqualTo("orders");
         assertThat(captor.getValue().getMsgId()).isEqualTo("MSG-1");
+    }
+
+    @Test
+    void getMessageTraceShouldPreserveOffsetsForAllTimestampedStagesTest() throws Exception {
+        MessageTraceItem produce = new MessageTraceItem();
+        produce.setStage("produce");
+        produce.setData("{\"Status\":0,\"ProduceTime\":\"2026-08-20T10:00:00.000+0800\"}");
+        MessageTraceItem persist = new MessageTraceItem();
+        persist.setStage("persist");
+        persist.setData("{\"Status\":0,\"PersistTime\":\"2026-08-20T10:00:01.000+0800\"}");
+        MessageTraceItem consume = new MessageTraceItem();
+        consume.setStage("consume");
+        consume.setData("{\"RocketMqConsumeLogs\":[{\"Status\":2,"
+                + "\"PushTime\":\"2026-08-20T10:00:02.000+0800\","
+                + "\"ConsumerGroup\":\"GID_test\"}]}");
+        DescribeMessageTraceResponse response = new DescribeMessageTraceResponse();
+        response.setData(new MessageTraceItem[]{produce, persist, consume});
+        when(client.DescribeMessageTrace(any())).thenReturn(response);
+
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+            TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-OFFSET", "orders");
+
+            assertThat(trace.getNodes()).extracting(TraceNodeVO::getTimestamp).containsExactly(
+                    java.time.Instant.parse("2026-08-20T02:00:00Z").toEpochMilli(),
+                    java.time.Instant.parse("2026-08-20T02:00:01Z").toEpochMilli(),
+                    java.time.Instant.parse("2026-08-20T02:00:02Z").toEpochMilli());
+            assertThat(trace.getConsumerStatus()).hasSize(1);
+            assertThat(trace.getConsumerStatus().get(0).getConsumeTime())
+                    .isEqualTo(java.time.Instant.parse("2026-08-20T02:00:02Z").toEpochMilli());
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void queryMessagesShouldPreserveExplicitTimestampOffsetsAcrossJvmTimezonesTest() throws Exception {
+        DescribeMessageResponse detail = new DescribeMessageResponse();
+        detail.setMessageId("MSG-OFFSET");
+        detail.setShowTopicName("orders");
+        when(client.DescribeMessage(any())).thenReturn(detail);
+
+        TimeZone original = TimeZone.getDefault();
+        long expected = java.time.Instant.parse("2026-08-20T02:00:00Z").toEpochMilli();
+        List<String> timestamps = List.of(
+                "2026-08-20T10:00:00.000+0800",
+                "2026-08-20T10:00:00,000+0800",
+                "2026-08-20T10:00:00.000+08:00",
+                "2026-08-20T02:00:00Z"
+        );
+        try {
+            for (String zone : List.of("UTC", "Asia/Shanghai")) {
+                TimeZone.setDefault(TimeZone.getTimeZone(zone));
+                for (String timestamp : timestamps) {
+                    detail.setProduceTime(timestamp);
+                    MessageRecordVO record = provider.queryMessages(
+                            STUDIO_INSTANCE_ID, "orders", "MSG-OFFSET", null, null, null, null).get(0);
+                    assertThat(record.getStoreTime())
+                            .as("timestamp %s in JVM timezone %s", timestamp, zone)
+                            .isEqualTo(expected);
+                }
+            }
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test
