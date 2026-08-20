@@ -169,6 +169,21 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
+    void findByIdentifierShouldNormalizeNamedInstanceTest() {
+        when(instanceMapper.selectOne(any(QueryWrapper.class)))
+                .thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER));
+
+        Optional<InstanceVO> result = repository.findByIdentifier("  instance-proxy-2  ");
+
+        assertThat(result).isPresent();
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectOne(query.capture());
+        assertThat(query.getValue().getSqlSegment()).contains("name =");
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .containsExactly("instance-proxy-2");
+    }
+
+    @Test
     void countTopicsByInstanceShouldDelegateToTopicMapperTest() {
         when(topicMapper.selectCount(any(QueryWrapper.class))).thenReturn(5L);
 

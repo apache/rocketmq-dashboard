@@ -43,12 +43,13 @@ public interface InstanceRepository {
         if (identifier == null || identifier.isBlank()) {
             return Optional.empty();
         }
-        Optional<InstanceVO> byName = findByName(identifier);
+        String normalizedIdentifier = identifier.trim();
+        Optional<InstanceVO> byName = findByName(normalizedIdentifier);
         if (byName.isPresent()) {
             return byName;
         }
         try {
-            return findById(Long.parseLong(identifier.trim()));
+            return findById(Long.parseLong(normalizedIdentifier));
         } catch (NumberFormatException ex) {
             return Optional.empty();
         }
