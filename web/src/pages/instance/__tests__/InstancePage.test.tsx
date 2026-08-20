@@ -45,6 +45,7 @@ vi.mock('../../../api/tencentCatalog', () => ({
 vi.mock('../../../services/instanceService', () => ({
   createInstance: vi.fn(),
   deleteInstance: vi.fn(),
+  deleteInstancesBatch: vi.fn(),
   importCloudInstances: vi.fn(),
   listInstances: vi.fn(),
   updateInstance: vi.fn(),
@@ -772,5 +773,35 @@ describe('InstancePage', () => {
     const apacheRow = screen.getByText('open-source-1').closest('tr')!;
     expect(within(apacheRow).getAllByText('-').length).toBeGreaterThan(0);
     expect(within(apacheRow).queryByText('cn-hangzhou')).not.toBeInTheDocument();
+  });
+
+  it('deletes selected instances through the toolbar batch delete button', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      instance(20, 'batch-a'),
+      instance(21, 'batch-b'),
+    ]);
+    vi.mocked(instanceService.deleteInstancesBatch).mockResolvedValue({ deleted: 1, failed: [] });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    renderPage();
+
+    await screen.findByText('batch-a');
+    const deleteButton = screen.getAllByRole('button', { name: /删除/ })[0];
+    expect(deleteButton).toBeDisabled();
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[1]);
+    await waitFor(() => expect(deleteButton).toBeEnabled());
+
+    await user.click(deleteButton);
+
+    await waitFor(() =>
+      expect(instanceService.deleteInstancesBatch).toHaveBeenCalledWith(['batch-a']),
+    );
+    expect(confirmSpy).toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

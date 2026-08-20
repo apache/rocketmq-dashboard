@@ -162,6 +162,24 @@ describe('API client response contract', () => {
     mock.onGet('http://[').reply(401, { code: 401, message: 'Unauthorized', data: null });
 
     await expect(client.get('http://[')).rejects.toMatchObject({ response: { status: 401 } });
+  });
 
+  it('surfaces an actionable hint when the server rejects the origin via CORS', async () => {
+    mock.onPost('/instances/delete').reply(403, 'Invalid CORS request');
+
+    await expect(client.post('/instances/delete', { id: 'x' })).rejects.toThrow(/CORS/);
+    expect(message.error).toHaveBeenCalledWith(
+      expect.stringContaining('STUDIO_CORS_ALLOWED_ORIGINS'),
+    );
+  });
+
+  it('does not treat a business-envelope 403 as a CORS rejection', async () => {
+    mock
+      .onPost('/instances/delete')
+      .reply(403, { code: 403, message: 'Admin permission required', data: null });
+
+    await expect(client.post('/instances/delete', { id: 'x' })).rejects.toThrow(
+      'Admin permission required',
+    );
   });
 });

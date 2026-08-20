@@ -718,6 +718,46 @@ class InstanceServiceTest {
     }
 
     @Test
+    void deleteInstanceShouldSkipResourceCheckForCloudInstancesTest() {
+        InstanceVO existing = InstanceVO.builder().name("cloud-inst").vendor(InstanceVendor.ALIYUN).build();
+        existing.setId(2L);
+        when(instanceRepository.findById(2L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.deleteById(2L)).thenReturn(true);
+
+        instanceService.deleteInstance(2L);
+
+        verify(instanceRepository).deleteById(2L);
+        verifyNoInteractions(providerRegistry);
+    }
+
+    @Test
+    void deleteInstancesShouldDeleteAndCollectFailuresTest() {
+        InstanceVO existing = InstanceVO.builder().name("inst-a").build();
+        existing.setId(1L);
+        when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findByIdentifier("missing"))
+                .thenReturn(Optional.empty());
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenReturn(0);
+        when(instanceProvider.countGroups("1")).thenReturn(0);
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "missing"));
+
+        assertThat(result.getDeleted()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("missing: Instance not found: missing");
+    }
+
+    @Test
+    void deleteInstancesShouldRejectEmptySelectionTest() {
+        assertThatThrownBy(() -> instanceService.deleteInstances(List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance IDs are required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
     void deleteInstanceShouldRejectInstanceWithTopics() {
         InstanceVO existing = InstanceVO.builder()
                 .name("with-topics")

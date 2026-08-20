@@ -519,4 +519,29 @@ describe('TopicPage', () => {
     );
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
   });
+
+  it('renders subscription group names as links in the topic detail modal', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-orders',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          consumeTps: 5,
+          diffTotal: 0,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const groupLink = await screen.findByText('cg-orders');
+    expect(groupLink.closest('a')).not.toBeNull();
+  });
 });

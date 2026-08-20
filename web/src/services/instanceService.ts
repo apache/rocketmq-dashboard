@@ -115,6 +115,21 @@ export async function importCloudInstances(data: {
   return instanceApi.importCloudInstances(data);
 }
 
+export async function deleteInstancesBatch(ids: string[]): Promise<instanceApi.BatchDeleteResult> {
+  if (isMockMode()) {
+    const known = new Set(mockInstances.map((instance) => instance.name));
+    const failed = ids
+      .filter((id) => !known.has(id))
+      .map((id) => `${id}: Instance not found: ${id}`);
+    for (const id of ids) {
+      const idx = mockInstances.findIndex((instance) => instance.name === id);
+      if (idx >= 0) mockInstances.splice(idx, 1);
+    }
+    return { deleted: ids.length - failed.length, failed };
+  }
+  return instanceApi.deleteInstancesBatch(ids);
+}
+
 export async function updateInstance(data: UpdateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
     const { instanceId, ...changes } = data;

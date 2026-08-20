@@ -46,6 +46,25 @@ function getBusinessError(data: unknown): string | null {
   return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
 }
 
+const CORS_REJECTION_HINT =
+  '请求被服务端 CORS 策略拒绝（Invalid CORS request）：当前访问地址不在后端白名单，请检查部署的 STUDIO_CORS_ALLOWED_ORIGINS 配置';
+
+/**
+ * Spring CORS rejects non-whitelisted origins with 403 and a plain-text body (often
+ * unreadable in the browser), while every application-level 403 carries the JSON
+ * business envelope — a 403 without that envelope is a CORS rejection.
+ */
+function isCorsRejection(error: unknown): boolean {
+  if (!axios.isAxiosError(error) || error.response?.status !== 403) {
+    return false;
+  }
+  const data = error.response.data;
+  if (data === undefined || data === null || data === '') {
+    return true;
+  }
+  return typeof data === 'string' && /cors/i.test(data);
+}
+
 function isPublicAuthRequest(url?: string): boolean {
   if (!url) return false;
   try {
@@ -81,6 +100,13 @@ client.interceptors.response.use(
       clearAiChatHistories();
       clearAuthSession();
       window.location.href = '/';
+      return Promise.reject(error);
+    }
+    if (isCorsRejection(error)) {
+      message.error(CORS_REJECTION_HINT);
+      if (error instanceof Error) {
+        error.message = CORS_REJECTION_HINT;
+      }
       return Promise.reject(error);
     }
     const errorMessage = getBusinessError(error.response?.data);

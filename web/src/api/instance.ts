@@ -124,6 +124,16 @@ export async function deleteInstance(instanceId: string) {
   await client.post('/instances/delete', { id: instanceId });
 }
 
+export interface BatchDeleteResult {
+  deleted: number;
+  failed: string[];
+}
+
+export async function deleteInstancesBatch(ids: string[]) {
+  const res = await client.post<{ data: BatchDeleteResult }>('/instances/delete-batch', { ids });
+  return res.data.data;
+}
+
 export async function importCloudInstances(data: { vendor: InstanceVendor; credentialId: number }) {
   const res = await client.post<{ data: CloudImportResult }>('/instances/import-cloud', data);
   return res.data.data;

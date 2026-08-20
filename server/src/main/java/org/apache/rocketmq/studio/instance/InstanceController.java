@@ -75,4 +75,9 @@ public class InstanceController {
         instanceService.deleteInstance(instanceService.resolveInstanceId(request.getId()));
         return Result.ok();
     }
+
+    @PostMapping("/delete-batch")
+    public Result<BatchDeleteResultVO> deleteInstances(@Valid @RequestBody BatchDeleteInstancesDTO request) {
+        return Result.ok(instanceService.deleteInstances(request.getIds()));
+    }
 }

@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Table,
@@ -273,6 +274,7 @@ const formatDateTime = (iso?: string): string => {
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
   const { t } = useLang();
+  const navigate = useNavigate();
   const {
     selectedInstanceId,
     selectedInstance,
@@ -666,7 +668,25 @@ const TopicPage = () => {
 
   // ─── Consumer table columns ───────────────────────────────────
   const consumerColumns: TableColumnsType<ConsumerGroupInfo> = [
-    { title: '消费者组', dataIndex: 'group', key: 'group' },
+    {
+      title: '消费者组',
+      dataIndex: 'group',
+      key: 'group',
+      render: (group: string) =>
+        selectedInstanceId ? (
+          <Typography.Link
+            onClick={() =>
+              navigate(
+                `/instance/${encodeURIComponent(selectedInstanceId)}/consumer?group=${encodeURIComponent(group)}`,
+              )
+            }
+          >
+            {group}
+          </Typography.Link>
+        ) : (
+          group
+        ),
+    },
     {
       title: '消费模式',
       dataIndex: 'messageModel',

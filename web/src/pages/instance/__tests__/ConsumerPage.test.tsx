@@ -200,6 +200,15 @@ describe('Consumer page', () => {
     });
   });
 
+  it('prefills the group search from the ?group= query parameter', async () => {
+    renderWithProviders(<ConsumerPage />, '/instance/consumer?group=remote-cg');
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith(
+      expect.objectContaining({ search: 'remote-cg' }),
+    );
+  });
+
   it('downloads the currently filtered consumer groups when exporting', async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());

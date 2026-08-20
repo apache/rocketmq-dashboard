@@ -448,14 +448,16 @@ public class InstanceService {
         InstanceVO existing = instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
 
-        InstanceProvider provider = providerRegistry.forVendor(
-                existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor());
-        int topicCount = provider.countTopics(String.valueOf(id));
-        int consumerGroupCount = provider.countGroups(String.valueOf(id));
-        if (topicCount > 0 || consumerGroupCount > 0) {
-            throw new BusinessException(409, String.format(
-                    "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
-                    topicCount, consumerGroupCount));
+        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
+        if (vendor == InstanceVendor.APACHE) {
+            InstanceProvider provider = providerRegistry.forVendor(InstanceVendor.APACHE);
+            int topicCount = provider.countTopics(String.valueOf(id));
+            int consumerGroupCount = provider.countGroups(String.valueOf(id));
+            if (topicCount > 0 || consumerGroupCount > 0) {
+                throw new BusinessException(409, String.format(
+                        "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
+                        topicCount, consumerGroupCount));
+            }
         }
         if (!instanceRepository.deleteById(id)) {
             throw new BusinessException(404, "InstanceVO not found: " + id);
@@ -464,6 +466,30 @@ public class InstanceService {
         releaseApacheEndpointIfUnused(existing, null);
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing));
+    }
+
+    /**
+     * Deletes the selected instances one by one, collecting per-instance failures (for example
+     * an APACHE instance that still owns topics/groups) instead of aborting the whole batch.
+     */
+    public BatchDeleteResultVO deleteInstances(List<String> instanceIds) {
+        if (instanceIds == null || instanceIds.isEmpty()) {
+            throw new BusinessException(400, "Instance IDs are required");
+        }
+        int deleted = 0;
+        List<String> failed = new ArrayList<>();
+        for (String instanceId : instanceIds) {
+            if (instanceId == null || instanceId.isBlank()) {
+                continue;
+            }
+            try {
+                deleteInstance(resolveInstanceId(instanceId.trim()));
+                deleted++;
+            } catch (BusinessException ex) {
+                failed.add(instanceId + ": " + ex.getMessage());
+            }
+        }
+        return BatchDeleteResultVO.builder().deleted(deleted).failed(failed).build();
     }
 
     private void removeDataSourceBindings(String instanceId) {

@@ -51,6 +51,7 @@ import { formatDateTime } from '../../utils/format';
 import {
   createInstance,
   deleteInstance,
+  deleteInstancesBatch,
   importCloudInstances,
   listInstances,
   updateInstance,
@@ -127,6 +128,7 @@ const InstancePage = () => {
   const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
   const listQueryRef = useRef<InstanceQuery>({});
@@ -406,9 +408,43 @@ const InstancePage = () => {
       await deleteInstance(instance.name);
       await loadInstances();
       message.success('已删除');
-    } catch {
-      message.error('删除实例失败，请稍后重试');
+    } catch (error) {
+      message.error(describeApiError(error, '删除实例失败，请稍后重试'));
     }
+  };
+
+  const handleBatchDelete = () => {
+    const names = selectedRowKeys.map(String);
+    if (names.length === 0) return;
+    const selected = instances.filter((instance) => names.includes(instance.name));
+    const hasCloud = selected.some(
+      (instance) => instance.vendor === 'ALIYUN' || instance.vendor === 'TENCENT',
+    );
+    Modal.confirm({
+      title: `确认删除选中的 ${names.length} 个实例？`,
+      content: hasCloud
+        ? '云厂商实例仅从 Studio 移除记录，不会释放云上的 RocketMQ 实例；仍有 Topic/Group 的开源实例无法删除。'
+        : '仍有 Topic/Group 的开源实例无法删除。',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const result = await deleteInstancesBatch(names);
+          await loadInstances();
+          setSelectedRowKeys([]);
+          const summary = `已删除 ${result.deleted} 个`;
+          if (result.failed.length > 0) {
+            message.warning(
+              `${summary}，${result.failed.length} 个未能删除：${result.failed.join('；')}`,
+            );
+          } else {
+            message.success(summary);
+          }
+        } catch (error) {
+          message.error(describeApiError(error, '批量删除失败，请稍后重试'));
+        }
+      },
+    });
   };
 
   const columns: ColumnsType<Instance> = [
@@ -436,7 +472,11 @@ const InstancePage = () => {
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (text: string) => (
-        <Text strong style={{ fontSize: 14 }}>
+        <Text
+          strong
+          style={{ fontSize: 14, cursor: 'pointer' }}
+          onClick={() => navigate(`/instance/${encodeURIComponent(text)}/topic`)}
+        >
           {text}
         </Text>
       ),
@@ -623,13 +663,23 @@ const InstancePage = () => {
             ]}
           />
         </Space>
-        <Button
-          type="primary"
-          icon={<Plus size={14} weight="bold" />}
-          onClick={() => setAddModalOpen(true)}
-        >
-          添加实例
-        </Button>
+        <Space size={12}>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            disabled={selectedRowKeys.length === 0}
+            onClick={handleBatchDelete}
+          >
+            删除
+          </Button>
+          <Button
+            type="primary"
+            icon={<Plus size={14} weight="bold" />}
+            onClick={() => setAddModalOpen(true)}
+          >
+            添加实例
+          </Button>
+        </Space>
       </Flex>
 
       {/* Table */}
@@ -639,14 +689,14 @@ const InstancePage = () => {
           columns={columns}
           dataSource={instances}
           loading={loading}
-          rowKey="id"
+          rowKey="name"
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+          }}
           pagination={false}
           size="small"
           tableLayout="fixed"
-          onRow={(record) => ({
-            style: { cursor: 'pointer' },
-            onClick: () => navigate(`/instance/${encodeURIComponent(record.name)}/topic`),
-          })}
         />
       </Card>
 
