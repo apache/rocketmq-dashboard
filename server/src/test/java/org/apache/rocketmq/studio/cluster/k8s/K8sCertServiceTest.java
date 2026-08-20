@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.BeforeEach;
@@ -110,6 +111,39 @@ class K8sCertServiceTest {
         List<K8sCertVO> result = k8sCertService.listCerts();
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void listCertsPageShouldReturnBoundedPageWithRefreshedExpiry() {
+        PageResult<K8sCertVO> repositoryPage = PageResult.of(List.of(sampleCert), 21, 2, 20);
+        sampleCert.setNotAfter(LocalDateTime.now(CLOCK).minusDays(1));
+        sampleCert.setStatus(CertStatus.valid);
+        sampleCert.setDaysRemaining(180);
+        when(k8sCertRepository.findPage("rocketmq", "prod-cluster", CertType.TLS,
+                CertStatus.expired, 2, 20)).thenReturn(repositoryPage);
+
+        PageResult<K8sCertVO> result = k8sCertService.listCerts(
+                " rocketmq ", " prod-cluster ", CertType.TLS, CertStatus.expired, 2, 20);
+
+        assertThat(result.getTotal()).isEqualTo(21);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(20);
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getStatus()).isEqualTo(CertStatus.expired);
+        assertThat(result.getItems().get(0).getDaysRemaining()).isEqualTo(-1);
+        verify(k8sCertRepository).findPage("rocketmq", "prod-cluster", CertType.TLS,
+                CertStatus.expired, 2, 20);
+    }
+
+    @Test
+    void listCertsPageShouldRejectInvalidPaginationBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> k8sCertService.listCerts(null, null, null, null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid page or pageSize");
+        assertThatThrownBy(() -> k8sCertService.listCerts(null, null, null, null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid page or pageSize");
+        verifyNoInteractions(k8sCertRepository);
     }
 
     @Test

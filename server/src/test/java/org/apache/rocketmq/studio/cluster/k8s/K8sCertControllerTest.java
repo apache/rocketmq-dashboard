@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.k8s;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -82,6 +84,33 @@ class K8sCertControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void listCertsPageShouldReturnPageContract() throws Exception {
+        K8sCertVO cert = buildCert(1L, "rocketmq-tls", CertType.TLS, CertStatus.valid);
+        cert.setCluster("prod-cluster");
+        when(k8sCertService.listCerts("rocketmq", "prod-cluster", CertType.TLS,
+                CertStatus.valid, 2, 20))
+                .thenReturn(PageResult.of(List.of(cert), 21, 2, 20));
+
+        mockMvc.perform(get("/api/k8s-certs/page")
+                        .param("search", "rocketmq")
+                        .param("cluster", "prod-cluster")
+                        .param("type", "TLS")
+                        .param("status", "valid")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(1))
+                .andExpect(jsonPath("$.data.items[0].k8sId").value("rocketmq-tls"))
+                .andExpect(jsonPath("$.data.total").value(21))
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(20));
+
+        verify(k8sCertService).listCerts("rocketmq", "prod-cluster", CertType.TLS,
+                CertStatus.valid, 2, 20);
     }
 
     @Test

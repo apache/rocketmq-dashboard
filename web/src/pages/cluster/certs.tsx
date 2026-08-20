@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Table,
   Tag,
@@ -36,7 +36,11 @@ import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
-import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
+import {
+  listK8sCertsPage,
+  createK8sCert,
+  deleteK8sCert,
+} from '../../services/clusterService';
 import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
@@ -56,39 +60,83 @@ const K8sCertsPage = () => {
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [certSearch, setCertSearch] = useState('');
+  const [clusterSearch, setClusterSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
+  const [certStatusFilter, setCertStatusFilter] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [createForm] = Form.useForm<CreateCertFormValues>();
+  const requestId = useRef(0);
+
+  const queryKey = `${certSearch}:${clusterSearch}:${certTypeFilter}:${certStatusFilter}:${page}:${pageSize}`;
+  const [prevQueryKey, setPrevQueryKey] = useState(queryKey);
+  if (prevQueryKey !== queryKey) {
+    setPrevQueryKey(queryKey);
+    setLoading(true);
+  }
 
   useEffect(() => {
     let active = true;
-    listK8sCerts()
+    const currentRequest = ++requestId.current;
+    listK8sCertsPage({
+      search: certSearch.trim() || undefined,
+      cluster: clusterSearch.trim() || undefined,
+      type: certTypeFilter || undefined,
+      status: certStatusFilter || undefined,
+      page,
+      pageSize,
+    })
       .then((data) => {
-        if (active) setCerts(data);
+        if (!active || currentRequest !== requestId.current) return;
+        setCerts(data.items);
+        setTotal(data.total);
+        if (data.items.length === 0 && data.total > 0 && data.page > 1) {
+          setPage(Math.max(1, Math.ceil(data.total / data.size)));
+        }
+        setLoading(false);
       })
       .catch((error: unknown) => {
-        if (active) message.error(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        if (active && currentRequest === requestId.current) {
+          message.error(getErrorMessage(error));
+          setLoading(false);
+        }
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [certSearch, clusterSearch, certTypeFilter, certStatusFilter, page, pageSize]);
 
-  const normalizedCertSearch = certSearch.trim().toLowerCase();
-  const filteredCerts = certs.filter((cert) => {
-    const matchSearch =
-      !normalizedCertSearch ||
-      [cert.k8sId, cert.cluster].some((value) =>
-        value.toLowerCase().includes(normalizedCertSearch),
-      );
-    const matchType = !certTypeFilter || cert.type === certTypeFilter;
-    return matchSearch && matchType;
-  });
+  const applyFilterChange = (setter: (value: string) => void, value: string) => {
+    setPage(1);
+    setter(value);
+  };
+
+  const reloadPage = async () => {
+    const currentRequest = ++requestId.current;
+    setLoading(true);
+    try {
+      const data = await listK8sCertsPage({
+        search: certSearch.trim() || undefined,
+        cluster: clusterSearch.trim() || undefined,
+        type: certTypeFilter || undefined,
+        status: certStatusFilter || undefined,
+        page,
+        pageSize,
+      });
+      if (currentRequest !== requestId.current) return;
+      setCerts(data.items);
+      setTotal(data.total);
+      if (data.items.length === 0 && data.total > 0 && data.page > 1) {
+        setPage(Math.max(1, Math.ceil(data.total / data.size)));
+      }
+    } finally {
+      if (currentRequest === requestId.current) setLoading(false);
+    }
+  };
 
   const handleCreate = async () => {
     let values: CreateCertFormValues;
@@ -106,7 +154,7 @@ const K8sCertsPage = () => {
         certPem: values.certPem?.trim() || undefined,
         keyPem: values.keyPem?.trim() || undefined,
       });
-      setCerts((previous) => [...previous, created]);
+      await reloadPage();
       message.success(`证书「${created.k8sId}」已添加`);
       setCreateModalOpen(false);
       createForm.resetFields();
@@ -121,7 +169,7 @@ const K8sCertsPage = () => {
     setDeletingId(cert.id);
     try {
       await deleteK8sCert(cert.id);
-      setCerts((previous) => previous.filter((item) => item.id !== cert.id));
+      await reloadPage();
       message.success(`证书「${cert.k8sId}」已删除`);
     } catch (error: unknown) {
       message.error(getErrorMessage(error));
@@ -247,7 +295,7 @@ const K8sCertsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title="K8s 证书管理" subtitle={`共 ${filteredCerts.length} 个证书`} />
+      <PageHeader title="K8s 证书管理" subtitle={`共 ${total} 个证书`} />
       <InfoBanner
         data-testid="k8s-cert-local-metadata-notice"
         title="当前证书记录仅保存为 Studio 本地元数据"
@@ -258,19 +306,37 @@ const K8sCertsPage = () => {
           <Input.Search
             placeholder="搜索 k8s ID 或集群"
             allowClear
-            onSearch={setCertSearch}
-            onChange={(e) => !e.target.value && setCertSearch('')}
+            onSearch={(value) => applyFilterChange(setCertSearch, value)}
+            onChange={(e) => !e.target.value && applyFilterChange(setCertSearch, '')}
             style={{ width: 320 }}
+          />
+          <Input.Search
+            placeholder="搜索集群"
+            allowClear
+            onSearch={(value) => applyFilterChange(setClusterSearch, value)}
+            onChange={(e) => !e.target.value && applyFilterChange(setClusterSearch, '')}
+            style={{ width: 200 }}
           />
           <Select
             value={certTypeFilter}
-            onChange={setCertTypeFilter}
+            onChange={(value) => applyFilterChange(setCertTypeFilter, value)}
             style={{ width: 160 }}
             options={[
               { value: '', label: '全部' },
               { value: 'TLS', label: 'TLS' },
               { value: 'mTLS', label: 'mTLS' },
               { value: 'ServiceAccount', label: 'ServiceAccount' },
+            ]}
+          />
+          <Select
+            value={certStatusFilter}
+            onChange={(value) => applyFilterChange(setCertStatusFilter, value)}
+            style={{ width: 140 }}
+            options={[
+              { value: '', label: '全部状态' },
+              { value: 'valid', label: '有效' },
+              { value: 'expiring', label: '即将过期' },
+              { value: 'expired', label: '已过期' },
             ]}
           />
         </Space>
@@ -281,10 +347,20 @@ const K8sCertsPage = () => {
       <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={certColumns}
-          dataSource={filteredCerts}
+          dataSource={certs}
           rowKey="id"
           loading={loading}
-          pagination={{ pageSize: 20 }}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            pageSizeOptions: [20, 50, 100],
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
+          }}
           size="small"
           scroll={{ x: 1400 }}
         />

@@ -125,6 +125,13 @@ export interface K8sCertInfo {
   keyPem?: string;
 }
 
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 export interface NameServerConfigValue {
   address: string;
   configured: boolean;
@@ -273,6 +280,18 @@ export async function restartProxy(data: { clusterId: string; addr: string }) {
 // ─── K8s Certs ──────────────────────────────────────────────────
 export async function listK8sCerts() {
   const res = await client.get<{ data: K8sCertInfo[] }>('/k8s-certs');
+  return res.data.data;
+}
+
+export async function listK8sCertsPage(params: {
+  search?: string;
+  cluster?: string;
+  type?: string;
+  status?: string;
+  page: number;
+  pageSize: number;
+}) {
+  const res = await client.get<{ data: PageResult<K8sCertInfo> }>('/k8s-certs/page', { params });
   return res.data.data;
 }
 

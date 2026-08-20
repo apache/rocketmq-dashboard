@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.extern.slf4j.Slf4j;
@@ -65,6 +66,22 @@ public class K8sCertService {
         return k8sCertRepository.findAll().stream()
                 .map(cert -> refreshExpirationState(cert, now))
                 .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    public PageResult<K8sCertVO> listCerts(String search, String cluster, CertType type,
+            CertStatus status, int page, int pageSize) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "Invalid page or pageSize");
+        }
+        log.info("Listing K8s certificates page={}, pageSize={}, cluster={}, type={}, status={}",
+                page, pageSize, cluster, type, status);
+        PageResult<K8sCertVO> result = k8sCertRepository.findPage(
+                normalizeFilter(search), normalizeFilter(cluster), type, status, page, pageSize);
+        LocalDateTime now = LocalDateTime.now(clock);
+        List<K8sCertVO> refreshed = result.getItems().stream()
+                .map(cert -> refreshExpirationState(cert, now))
+                .collect(Collectors.toCollection(ArrayList::new));
+        return PageResult.of(refreshed, result.getTotal(), page, pageSize);
     }
 
     public K8sCertVO createCert(CreateCertDTO command) {
@@ -203,6 +220,13 @@ public class K8sCertService {
             throw new BusinessException(400, "Certificate " + field + " cannot be blank");
         }
         return normalized;
+    }
+
+    private String normalizeFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private K8sCertVO refreshExpirationState(K8sCertVO cert, LocalDateTime now) {

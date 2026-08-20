@@ -20,9 +20,16 @@ package org.apache.rocketmq.studio.cluster.k8s;
 import java.util.List;
 import java.util.Optional;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
+import org.apache.rocketmq.studio.common.domain.enums.CertType;
+
 public interface K8sCertRepository {
 
     List<K8sCertVO> findAll();
+
+    PageResult<K8sCertVO> findPage(String search, String cluster, CertType type,
+            CertStatus status, int page, int pageSize);
 
     Optional<K8sCertVO> findById(Long id);
 

@@ -20,11 +20,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
-import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
+import {
+  listK8sCertsPage,
+  createK8sCert,
+  deleteK8sCert,
+} from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
 
 vi.mock('../../../services/clusterService', () => ({
-  listK8sCerts: vi.fn(),
+  listK8sCertsPage: vi.fn(),
   createK8sCert: vi.fn(),
   deleteK8sCert: vi.fn(),
 }));
@@ -76,7 +80,12 @@ beforeAll(() => {
 describe('K8sCertsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listK8sCerts).mockResolvedValue(certs);
+    vi.mocked(listK8sCertsPage).mockResolvedValue({
+      items: certs,
+      total: certs.length,
+      page: 1,
+      size: 20,
+    });
   });
 
   const renderPage = () =>
@@ -109,10 +118,23 @@ describe('K8sCertsPage', () => {
     ['staging-cluster', 'rocketmq-staging-tls', 'rocketmq-prod-tls'],
     ['prod-tls', 'rocketmq-prod-tls', 'rocketmq-staging-tls'],
   ])('searches certificate metadata by %s', async (query, expected, hidden) => {
+    vi.mocked(listK8sCertsPage).mockResolvedValue({
+      items: certs,
+      total: certs.length,
+      page: 1,
+      size: 20,
+    });
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByText('rocketmq-prod-tls');
+    vi.mocked(listK8sCertsPage).mockResolvedValue({
+      items: certs.filter((cert) =>
+        [cert.k8sId, cert.cluster].some((value) => value.toLowerCase().includes(query)),
+      ),
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     await user.type(screen.getByPlaceholderText('搜索 k8s ID 或集群'), `${query}{enter}`);
 
     expect(screen.getByText(expected)).toBeInTheDocument();
@@ -151,11 +173,24 @@ describe('K8sCertsPage', () => {
         }),
       ),
     );
-    expect(await screen.findByText('kubernetes-admin-client')).toBeInTheDocument();
+    await waitFor(() => expect(listK8sCertsPage).toHaveBeenCalledTimes(2));
   });
 
   it('deletes a certificate after confirmation', async () => {
     vi.mocked(deleteK8sCert).mockResolvedValue();
+    vi.mocked(listK8sCertsPage)
+      .mockResolvedValueOnce({
+        items: certs,
+        total: certs.length,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: certs.filter((cert) => cert.id !== 1),
+        total: 1,
+        page: 1,
+        size: 20,
+      });
     const user = userEvent.setup();
     renderPage();
 
@@ -167,5 +202,6 @@ describe('K8sCertsPage', () => {
 
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('rocketmq-staging-tls')).toBeInTheDocument());
   });
 });

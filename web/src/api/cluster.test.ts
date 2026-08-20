@@ -26,6 +26,7 @@ import {
   getNameServerConfigDiff,
   getCluster,
   listK8sCerts,
+  listK8sCertsPage,
   renewK8sCert,
   restartBroker,
   restartNameServer,
@@ -66,6 +67,31 @@ describe('K8s certificate API', () => {
     mock.onGet('/k8s-certs').reply(200, { code: 200, message: 'success', data: [cert] });
 
     await expect(listK8sCerts()).resolves.toEqual([cert]);
+  });
+
+  it('loads a filtered certificate page', async () => {
+    mock.onGet('/k8s-certs/page').reply((config) => {
+      expect(config.params).toEqual({
+        search: 'rocketmq',
+        cluster: 'prod',
+        type: 'TLS',
+        status: 'valid',
+        page: 2,
+        pageSize: 50,
+      });
+      return [200, { code: 200, message: 'success', data: { items: [cert], total: 21, page: 2, size: 50 } }];
+    });
+
+    await expect(
+      listK8sCertsPage({
+        search: 'rocketmq',
+        cluster: 'prod',
+        type: 'TLS',
+        status: 'valid',
+        page: 2,
+        pageSize: 50,
+      }),
+    ).resolves.toEqual({ items: [cert], total: 21, page: 2, size: 50 });
   });
 
   it('returns the certificate created by the backend', async () => {

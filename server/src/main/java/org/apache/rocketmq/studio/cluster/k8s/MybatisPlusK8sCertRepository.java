@@ -17,9 +17,11 @@
 package org.apache.rocketmq.studio.cluster.k8s;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -52,6 +54,24 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         return certMapper.selectList(new QueryWrapper<RmqK8sCertificate>().orderByAsc("k8s_id")).stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<K8sCertVO> findPage(String search, String cluster, CertType type,
+            CertStatus status, int page, int pageSize) {
+        String normalizedSearch = normalizeFilter(search);
+        String normalizedCluster = normalizeFilter(cluster);
+        QueryWrapper<RmqK8sCertificate> query = new QueryWrapper<RmqK8sCertificate>()
+                .like(normalizedSearch != null, "k8s_id", normalizedSearch)
+                .like(normalizedSearch != null, "cluster", normalizedSearch)
+                .eq(normalizedCluster != null, "cluster", normalizedCluster)
+                .eq(type != null, "cert_type", type == null ? null : type.name())
+                .eq(status != null, "status", status == null ? null : status.name())
+                .orderByDesc("gmt_modified", "id");
+
+        Page<RmqK8sCertificate> result = certMapper.selectPage(new Page<>(page, pageSize), query);
+        return PageResult.of(result.getRecords().stream().map(this::toVO).toList(),
+                result.getTotal(), page, pageSize);
     }
 
     @Override
@@ -175,5 +195,12 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Failed to serialize certificate SAN values", exception);
         }
+    }
+
+    private String normalizeFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

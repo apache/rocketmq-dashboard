@@ -17,6 +17,9 @@
 package org.apache.rocketmq.studio.cluster.k8s;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
+import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -38,6 +42,17 @@ public class K8sCertController {
     @GetMapping
     public Result<List<K8sCertVO>> listCerts() {
         return Result.ok(k8sCertService.listCerts());
+    }
+
+    @GetMapping("/page")
+    public Result<PageResult<K8sCertVO>> listCertsPage(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String cluster,
+            @RequestParam(required = false) CertType type,
+            @RequestParam(required = false) CertStatus status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(k8sCertService.listCerts(search, cluster, type, status, page, pageSize));
     }
 
     @PostMapping("/create")

@@ -145,6 +145,38 @@ export async function listK8sCerts(): Promise<K8sCertInfo[]> {
   return clusterApi.listK8sCerts();
 }
 
+export async function listK8sCertsPage(params: {
+  search?: string;
+  cluster?: string;
+  type?: string;
+  status?: string;
+  page: number;
+  pageSize: number;
+}): Promise<clusterApi.PageResult<K8sCertInfo>> {
+  if (isMockMode()) {
+    const search = params.search?.trim().toLowerCase() ?? '';
+    const cluster = params.cluster?.trim().toLowerCase() ?? '';
+    const filtered = mockCertStore.filter((cert) => {
+      const matchesSearch =
+        !search ||
+        cert.k8sId.toLowerCase().includes(search) ||
+        cert.cluster.toLowerCase().includes(search);
+      const matchesCluster = !cluster || cert.cluster.toLowerCase().includes(cluster);
+      const matchesType = !params.type || cert.type === params.type;
+      const matchesStatus = !params.status || cert.status === params.status;
+      return matchesSearch && matchesCluster && matchesType && matchesStatus;
+    });
+    const start = (params.page - 1) * params.pageSize;
+    return {
+      items: filtered.slice(start, start + params.pageSize).map((cert) => ({ ...cert })),
+      total: filtered.length,
+      page: params.page,
+      size: params.pageSize,
+    };
+  }
+  return clusterApi.listK8sCertsPage(params);
+}
+
 export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCertInfo> {
   if (isMockMode()) {
     const now = new Date();
