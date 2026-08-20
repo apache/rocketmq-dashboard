@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, normalizeApiBaseUrl } from './config';
 
 describe('config API base url', () => {
   it('defaults to a relative /api path when no env override is set', () => {
@@ -29,7 +29,20 @@ describe('config API base url', () => {
     expect(API_BASE_URL.startsWith('//localhost')).toBe(false);
   });
 
-  it('strips a single trailing slash', () => {
-    expect(API_BASE_URL.endsWith('/')).toBe(false);
+  it.each([
+    [undefined, '/api'],
+    ['', '/api'],
+    ['   ', '/api'],
+    ['/api', '/api'],
+    [' /api/ ', '/api'],
+    ['/api///', '/api'],
+    [' https://gateway.example.com/studio/api/// ', 'https://gateway.example.com/studio/api'],
+  ])('normalizes API base override %j to %j', (input, expected) => {
+    expect(normalizeApiBaseUrl(input)).toBe(expected);
+  });
+
+  it('represents a same-origin root override without a trailing slash', () => {
+    expect(normalizeApiBaseUrl('/')).toBe('');
+    expect(normalizeApiBaseUrl(' /// ')).toBe('');
   });
 });
