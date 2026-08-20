@@ -69,7 +69,12 @@ interface ProducerConnectionResponse {
 
 // ─── API ────────────────────────────────────────────────────────
 
-const hasText = (value?: string | null) => Boolean(value?.trim() && value.trim() !== 'null');
+const normalizeIdentity = (value?: string | null) => {
+  const normalized = value?.trim();
+  return normalized && normalized.toLowerCase() !== 'null' ? normalized : undefined;
+};
+
+const hasText = (value?: string | null) => Boolean(normalizeIdentity(value));
 
 const normalizeDimension = (value?: string | null) => (hasText(value) ? value!.trim() : 'UNKNOWN');
 
@@ -80,8 +85,8 @@ const countDistinct = (
   new Set(
     connections
       .map(extractor)
-      .filter(hasText)
-      .map((value) => value.trim()),
+      .map(normalizeIdentity)
+      .filter((value): value is string => Boolean(value)),
   ).size;
 
 const distribution = (
@@ -103,7 +108,7 @@ export function buildProducerConnectionSummary(
 ): ProducerConnectionSummary {
   const duplicateClientIds = [
     ...connections.reduce((counts, connection) => {
-      const clientId = connection.clientId?.trim();
+      const clientId = normalizeIdentity(connection.clientId);
       if (clientId) counts.set(clientId, (counts.get(clientId) ?? 0) + 1);
       return counts;
     }, new Map<string, number>()),
