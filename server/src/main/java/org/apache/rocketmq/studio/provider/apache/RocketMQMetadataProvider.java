@@ -18,19 +18,20 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
-import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -426,7 +427,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private List<QueueProgressVO> getGroupProgress(MQAdminExt admin, String name) {
         try {
-            ensureRetryTopicExists(admin, name);
             ConsumeStats stats = admin.examineConsumeStats(name);
             if (stats == null || stats.getOffsetTable() == null) {
                 return Collections.emptyList();
@@ -453,6 +453,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             });
             return progress;
         } catch (Exception e) {
+            if (isMissingRetryRoute(e)) {
+                log.info("Retry topic route for consumer group {} is not available yet", name);
+                return Collections.emptyList();
+            }
             log.warn("Failed to get progress for group {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get progress for group " + name + ": " + e.getMessage());
         }
@@ -471,7 +475,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private List<SubscriptionEntryVO> getGroupSubscriptions(MQAdminExt admin, String name) {
         try {
-            ensureRetryTopicExists(admin, name);
             ConsumerConnection conn = admin.examineConsumerConnectionInfo(name);
             if (conn == null || conn.getSubscriptionTable() == null) {
                 return Collections.emptyList();
@@ -489,11 +492,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             }
             return subscriptions;
         } catch (Exception e) {
-            if (isGroupNotOnline(e)) {
+            if (isGroupNotOnline(e) || isMissingRetryRoute(e)) {
                 // Consumers connected through a proxy never register with the broker, so
                 // the broker reports the group as offline; surface an empty subscription
-                // list instead of an error.
-                log.info("Consumer group {} not online on broker (likely proxy-connected): {}",
+                // list instead of an error. A group without a retry route has the same
+                // non-mutating diagnostic state until RocketMQ creates that route itself.
+                log.info("Consumer group {} has no broker diagnostics available: {}",
                         name, e.getMessage());
                 return Collections.emptyList();
             }
@@ -504,59 +508,24 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     private boolean isGroupNotOnline(Exception e) {
-        if (e instanceof org.apache.rocketmq.client.exception.MQBrokerException brokerException) {
-            return brokerException.getResponseCode()
-                    == org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE;
+        if (e instanceof MQBrokerException brokerException) {
+            return brokerException.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE;
         }
         String message = e.getMessage();
         return message != null && message.contains("not online");
     }
 
-    // ── Helper methods ──────────────────────────────────────────────────
-
-    /**
-     * examineConsumeStats / examineConsumerConnectionInfo locate brokers through the
-     * {@code %RETRY%<group>} topic route, but 5.x POP consumer groups only get their
-     * retry topic created once a retry actually happens, so brand-new groups fail with
-     * CODE 17. Create the standard retry topic on every master broker when missing
-     * (same shape the broker itself creates lazily); the call is idempotent.
-     */
-    private void ensureRetryTopicExists(MQAdminExt admin, String groupName) {
-        String retryTopic = MixAll.getRetryTopic(groupName);
-        try {
-            TopicRouteData route = admin.examineTopicRouteInfo(retryTopic);
-            if (route != null && route.getBrokerDatas() != null && !route.getBrokerDatas().isEmpty()) {
-                return;
-            }
-        } catch (Exception e) {
-            log.info("Retry topic {} not routable yet, creating it: {}", retryTopic, e.getMessage());
+    private boolean isMissingRetryRoute(Exception e) {
+        if (e instanceof MQClientException clientException) {
+            return clientException.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST;
         }
-        try {
-            ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-            if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-                return;
-            }
-            TopicConfig retryConfig = new TopicConfig();
-            retryConfig.setTopicName(retryTopic);
-            retryConfig.setReadQueueNums(1);
-            retryConfig.setWriteQueueNums(1);
-            retryConfig.setPerm(PermName.PERM_READ | PermName.PERM_WRITE);
-            for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-                String brokerAddr = brokerData.selectBrokerAddr();
-                if (brokerAddr == null || brokerAddr.isBlank()) {
-                    continue;
-                }
-                try {
-                    admin.createAndUpdateTopicConfig(brokerAddr, retryConfig);
-                } catch (Exception e) {
-                    log.warn("Failed to create retry topic {} on broker {}: {}",
-                            retryTopic, brokerAddr, e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to ensure retry topic {} exists: {}", retryTopic, e.getMessage());
+        if (e instanceof MQBrokerException brokerException) {
+            return brokerException.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST;
         }
+        return false;
     }
+
+    // ── Helper methods ──────────────────────────────────────────────────
 
     /**
      * Resolves the lag for a single queue without clamping the broker's {@code -1} "unknown"
