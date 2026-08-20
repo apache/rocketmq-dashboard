@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { App, Modal } from 'antd';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -217,6 +217,47 @@ describe('Consumer page', () => {
       pageSize: 20,
       search: undefined,
     });
+  });
+
+  it('submits the canonical global delivery order type', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+    const createButton = screen.getByRole('button', { name: '创建 Group' });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    await user.click(createButton);
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Group 名称'), 'cg-global-orders');
+
+    const dataTypeSelect = within(dialog).getByRole('combobox', { name: '订阅组类型' });
+    fireEvent.mouseDown(dataTypeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('顺序消息', { selector: '.ant-select-item-option-content' }),
+    );
+
+    const orderTypeSelect = within(dialog).getByRole('combobox', { name: '顺序类型' });
+    fireEvent.mouseDown(orderTypeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('全局顺序', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() =>
+      expect(consumerService.createConsumerGroup).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'cg-global-orders',
+          subscriptionDataType: 'FIFO',
+          deliveryOrderType: 'MESSAGES_ORDER',
+        }),
+      ),
+    );
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    confirmSpy.mockRestore();
   });
 
   it('prefills the group search from the ?group= query parameter', async () => {

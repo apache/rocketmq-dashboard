@@ -72,7 +72,7 @@ const TOPIC_PERMISSIONS = new Set(['RW', 'RO', 'WO']);
 const GROUP_SUBSCRIPTION_MODES = new Set(['Push', 'Pop']);
 const GROUP_CONSUME_TYPES = new Set(['CLUSTERING', 'BROADCASTING']);
 const GROUP_SUBSCRIPTION_DATA_TYPES = new Set(['NORMAL', 'FIFO', 'DELAY', 'TRANSACTION']);
-const GROUP_DELIVERY_ORDER_TYPES = new Set(['PARTITON_ORDER', 'PARTITION_ORDER', 'MESSAGES ORDER']);
+const GROUP_DELIVERY_ORDER_TYPES = new Set(['PARTITON_ORDER', 'PARTITION_ORDER', 'MESSAGES_ORDER']);
 
 const restoreFormulaSafeCell = (value: string): string =>
   value.replace(FORMULA_SAFE_PREFIX_PATTERN, '');
@@ -81,6 +81,9 @@ const normalizeHeader = (header: string): string => restoreFormulaSafeCell(heade
 
 const normalizeValue = (value: string | undefined): string =>
   restoreFormulaSafeCell(value ?? '').trim();
+
+const normalizeDeliveryOrderType = (value: string): string =>
+  value === 'MESSAGES ORDER' ? 'MESSAGES_ORDER' : value;
 
 const parseInteger = (
   value: string,
@@ -334,7 +337,9 @@ export const validateConsumerGroupCsvImport = (
     );
     const subscriptionDataType =
       normalizeValue(record.values['Subscription Data Type']) || 'NORMAL';
-    const deliveryOrderType = normalizeValue(record.values['Delivery Order Type']);
+    const deliveryOrderType = normalizeDeliveryOrderType(
+      normalizeValue(record.values['Delivery Order Type']),
+    );
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 

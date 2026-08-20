@@ -1824,7 +1824,7 @@ const ConsumerPageContent = ({
                     label: '分区顺序',
                   },
                   {
-                    value: 'MESSAGES ORDER',
+                    value: 'MESSAGES_ORDER',
                     label: '全局顺序',
                   },
                 ]}
