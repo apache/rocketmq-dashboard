@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Space, Switch, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Key, Plus } from '@phosphor-icons/react';
@@ -51,33 +51,57 @@ const UserManagementPage = () => {
   const clearAuth = useAuthStore((state) => state.logout);
   const [users, setUsers] = useState<StudioUser[]>([]);
   const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [updatingUsers, setUpdatingUsers] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
+  const mountedRef = useRef(true);
+  const loadRequestRef = useRef(0);
+  const createInFlightRef = useRef(false);
+  const passwordInFlightRef = useRef(false);
+  const updatingUsersRef = useRef<Set<number>>(new Set());
 
   const loadUsers = useCallback(async () => {
     if (!admin) return;
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     try {
-      setUsers(await listStudioUsers());
+      const loadedUsers = await listStudioUsers();
+      if (mountedRef.current && requestId === loadRequestRef.current) {
+        setUsers(loadedUsers);
+      }
     } catch {
-      message.error('加载用户列表失败');
+      if (mountedRef.current && requestId === loadRequestRef.current) {
+        message.error('加载用户列表失败');
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current && requestId === loadRequestRef.current) {
+        setLoading(false);
+      }
     }
   }, [admin]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const timer = window.setTimeout(() => {
       void loadUsers();
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      mountedRef.current = false;
+      loadRequestRef.current += 1;
+      window.clearTimeout(timer);
+    };
   }, [loadUsers]);
 
   const createUser = async () => {
-    const values = await createForm.validateFields();
+    if (createInFlightRef.current) return;
+    createInFlightRef.current = true;
+    setCreating(true);
     try {
+      const values = await createForm.validateFields();
       await createStudioUser(values);
       message.success('用户已创建');
       setCreateOpen(false);
@@ -85,23 +109,34 @@ const UserManagementPage = () => {
       await loadUsers();
     } catch {
       message.error('创建用户失败');
+    } finally {
+      createInFlightRef.current = false;
+      if (mountedRef.current) setCreating(false);
     }
   };
 
   const setEnabled = async (record: StudioUser, enabled: boolean) => {
+    if (updatingUsersRef.current.has(record.id)) return;
+    updatingUsersRef.current.add(record.id);
+    setUpdatingUsers(new Set(updatingUsersRef.current));
     try {
       await setStudioUserEnabled(record.id, enabled);
       message.success(enabled ? '用户已启用' : '用户已禁用，全部会话已注销');
       await loadUsers();
     } catch {
       message.error('更新用户状态失败');
+    } finally {
+      updatingUsersRef.current.delete(record.id);
+      if (mountedRef.current) setUpdatingUsers(new Set(updatingUsersRef.current));
     }
   };
 
   const updatePassword = async () => {
-    if (!passwordTarget) return;
-    const values = await passwordForm.validateFields();
+    if (!passwordTarget || passwordInFlightRef.current) return;
+    passwordInFlightRef.current = true;
+    setSavingPassword(true);
     try {
+      const values = await passwordForm.validateFields();
       if (passwordTarget.id === userId) {
         await changePassword(values.currentPassword ?? '', values.newPassword);
         clearAuth();
@@ -115,6 +150,9 @@ const UserManagementPage = () => {
       passwordForm.resetFields();
     } catch {
       message.error('修改密码失败');
+    } finally {
+      passwordInFlightRef.current = false;
+      if (mountedRef.current) setSavingPassword(false);
     }
   };
 
@@ -143,6 +181,7 @@ const UserManagementPage = () => {
           </Button>
           <Switch
             checked={record.enabled}
+            loading={updatingUsers.has(record.id)}
             checkedChildren="启用"
             unCheckedChildren="禁用"
             onChange={(enabled) => void setEnabled(record, enabled)}
@@ -195,6 +234,7 @@ const UserManagementPage = () => {
       <Modal
         title="新建 Studio 用户"
         open={createOpen}
+        confirmLoading={creating}
         onOk={() => void createUser()}
         onCancel={() => setCreateOpen(false)}
       >
@@ -222,6 +262,7 @@ const UserManagementPage = () => {
             : `重置 ${passwordTarget?.username ?? ''} 的密码`
         }
         open={passwordTarget !== null}
+        confirmLoading={savingPassword}
         onOk={() => void updatePassword()}
         onCancel={() => {
           setPasswordTarget(null);
