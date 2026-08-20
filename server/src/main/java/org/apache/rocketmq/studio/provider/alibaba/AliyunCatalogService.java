@@ -83,14 +83,16 @@ public class AliyunCatalogService implements CloudCatalogProvider {
     public List<CloudInstanceOptionVO> listCloudInstances(Long credentialId, String regionId, String search) {
         requireId(credentialId, "credentialId");
         requireNonBlank(regionId, "regionId");
-        List<ListInstancesResponseBody.List> all = fetchAllInstances(credentialId, regionId);
+        String normalizedRegionId = regionId.strip();
+        String normalizedSearch = search == null ? null : search.strip();
+        List<ListInstancesResponseBody.List> all = fetchAllInstances(credentialId, normalizedRegionId);
         List<CloudInstanceOptionVO> options = new ArrayList<>();
         for (ListInstancesResponseBody.List item : all) {
             if (item == null) {
                 continue;
             }
             CloudInstanceOptionVO vo = AliyunConverters.toInstanceOptionVO(item);
-            if (matchesSearch(search, vo)) {
+            if (matchesSearch(normalizedSearch, vo)) {
                 options.add(vo);
             }
         }
@@ -102,13 +104,15 @@ public class AliyunCatalogService implements CloudCatalogProvider {
         requireId(credentialId, "credentialId");
         requireNonBlank(regionId, "regionId");
         requireNonBlank(cloudInstanceId, "cloudInstanceId");
-        GetInstanceRequest request = GetInstanceRequest.builder().instanceId(cloudInstanceId).build();
-        GetInstanceResponse response = clientFactory.call(credentialId, regionId,
+        String normalizedRegionId = regionId.strip();
+        String normalizedCloudInstanceId = cloudInstanceId.strip();
+        GetInstanceRequest request = GetInstanceRequest.builder().instanceId(normalizedCloudInstanceId).build();
+        GetInstanceResponse response = clientFactory.call(credentialId, normalizedRegionId,
                 client -> client.getInstance(request));
         GetInstanceResponseBody body = response == null ? null : response.getBody();
         GetInstanceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
-            throw new BusinessException(404, "Aliyun instance not found: " + cloudInstanceId);
+            throw new BusinessException(404, "Aliyun instance not found: " + normalizedCloudInstanceId);
         }
         return AliyunConverters.toInstanceDetailVO(data);
     }
