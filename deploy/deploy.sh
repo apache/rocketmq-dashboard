@@ -29,7 +29,9 @@ REMOTE="${REMOTE_USER:-root}@$REMOTE_HOST"
 REMOTE_PATH="${REMOTE_PATH:-/opt/rocketmq-studio}"
 PUBLIC_PORT="${PUBLIC_PORT:-6789}"
 MAVEN_IMAGE="${MAVEN_IMAGE:-maven:3.9.16-eclipse-temurin-21}"
-SRC_TAR="/tmp/rocketmq-studio-src.tar.gz"
+SRC_TAR=""
+REMOTE_LOCK_DIR="$REMOTE_PATH/.rocketmq-studio-deploy.lock"
+LOCK_ACQUIRED="false"
 
 TARGET="${1:-all}"  # all | server | web
 case "$TARGET" in
@@ -38,6 +40,26 @@ case "$TARGET" in
 esac
 
 run_remote() { ssh "$REMOTE" "$@"; }
+
+acquire_deploy_lock() {
+  info "🔒 获取远端部署锁..."
+  if ! run_remote "mkdir '$REMOTE_LOCK_DIR'"; then
+    err "已有部署正在操作 ${REMOTE}:${REMOTE_PATH}，请稍后重试"
+  fi
+  LOCK_ACQUIRED="true"
+  run_remote "printf '%s\n' '$$' > '$REMOTE_LOCK_DIR/pid'"
+  log "远端部署锁已获取"
+}
+
+release_deploy_lock() {
+  [[ "$LOCK_ACQUIRED" == "true" ]] || return 0
+  if run_remote "rm -f '$REMOTE_LOCK_DIR/pid' && rmdir '$REMOTE_LOCK_DIR'"; then
+    LOCK_ACQUIRED="false"
+  else
+    warn "无法释放远端部署锁 $REMOTE_LOCK_DIR，请手动检查"
+    return 1
+  fi
+}
 
 check_prereqs() {
   info "🔎 检查前置条件..."
@@ -53,6 +75,7 @@ check_prereqs() {
 
 package_source() {
   info "📦 本地打包源码..."
+  SRC_TAR="$(mktemp "${TMPDIR:-/tmp}/rocketmq-studio-src.XXXXXX")"
   tar czf "$SRC_TAR" -C "$PROJECT_DIR" \
     --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
     server web deploy
@@ -128,7 +151,12 @@ verify() {
   log "🎉 部署完成 → http://$REMOTE_HOST:$PUBLIC_PORT/"
 }
 
-cleanup() { rm -f "$SRC_TAR"; }
+cleanup() {
+  local status=$?
+  release_deploy_lock || true
+  [[ -z "$SRC_TAR" ]] || rm -f -- "$SRC_TAR"
+  return "$status"
+}
 trap cleanup EXIT
 
 main() {
@@ -137,6 +165,7 @@ main() {
   echo "  目标: $TARGET | 远程: $REMOTE:$REMOTE_PATH"
   echo "═══════════════════════════════════════════"
   check_prereqs
+  acquire_deploy_lock
   package_source
   upload_source
   [[ "$TARGET" == "all" || "$TARGET" == "server" ]] && build_server
