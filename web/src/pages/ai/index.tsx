@@ -56,6 +56,7 @@ import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { formatRelativeTime, formatTimeOfDay } from '../../utils/format';
 import { useDataModeStore } from '../../stores/dataModeStore';
 import { useEngineStore } from '../../stores/engineStore';
+import InfoBanner from '../../components/InfoBanner';
 import useAuthStore from '../../stores/authStore';
 import {
   getRecentAiChatConversations,
@@ -935,18 +936,21 @@ const AiPage = () => {
         </Flex>
 
         {llmConfig && !llmReady && (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 12 }}
-            message="AI 助手未启用"
+          <InfoBanner
+            title="AI 助手未启用"
             description={t('ai.providerNotReadyDescription')}
-            action={
-              <Button size="small" onClick={() => navigate('/settings?tab=ai')}>
-                去配置
-              </Button>
-            }
-          />
+            style={{ marginBottom: 12 }}
+            data-testid="ai-not-ready-banner"
+          >
+            <Button
+              type="link"
+              size="small"
+              style={{ paddingLeft: 0, marginTop: 4 }}
+              onClick={() => navigate('/settings?tab=ai')}
+            >
+              去配置
+            </Button>
+          </InfoBanner>
         )}
         {!settingsHintDismissed && (
           <Alert

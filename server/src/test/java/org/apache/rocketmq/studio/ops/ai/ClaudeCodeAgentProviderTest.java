@@ -87,6 +87,7 @@ class ClaudeCodeAgentProviderTest {
         CountDownLatch waitStarted = new CountDownLatch(1);
         when(process.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
         when(process.getErrorStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
+        when(process.getOutputStream()).thenReturn(new java.io.ByteArrayOutputStream());
         doAnswer(invocation -> {
             waitStarted.countDown();
             new CountDownLatch(1).await();

@@ -94,7 +94,14 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     @Transactional
     public void saveGeneralSettings(GeneralSettingsVO settings) {
         try {
-            String json = objectMapper.writeValueAsString(settings);
+            com.fasterxml.jackson.databind.node.ObjectNode node =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.valueToTree(settings);
+            if (org.springframework.util.StringUtils.hasText(settings.getApiKey())) {
+                // apiKey is WRITE_ONLY (hidden from API responses), so plain serialization
+                // drops it; re-add it here or the configured LLM token is lost on restart.
+                node.put("apiKey", settings.getApiKey());
+            }
+            String json = objectMapper.writeValueAsString(node);
             RmqSettings entity = findSingletonSettings();
             if (entity == null) {
                 entity = new RmqSettings();

@@ -98,9 +98,20 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         ProcessBuilder builder = new ProcessBuilder(command);
         processEnvironment().apply(builder, childEnv(config));
         builder.redirectErrorStream(false);
+        // The claude CLI waits 3s for stdin and emits a warning that leaks into the
+        // reply unless stdin is explicitly /dev/null; fall back to closing the pipe
+        // on platforms without it.
+        java.io.File devNull = new java.io.File("/dev/null");
+        boolean devNullAvailable = devNull.exists();
+        if (devNullAvailable) {
+            builder.redirectInput(ProcessBuilder.Redirect.from(devNull));
+        }
         Process process = null;
         try {
             process = startProcess(builder);
+            if (!devNullAvailable) {
+                process.getOutputStream().close();
+            }
             AtomicBoolean emitted = new AtomicBoolean(false);
             StringBuilder resultText = new StringBuilder();
             CompletableFuture<Void> stdoutFuture = drainStdout(

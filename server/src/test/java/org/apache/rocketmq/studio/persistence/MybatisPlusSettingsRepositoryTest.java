@@ -128,4 +128,26 @@ class MybatisPlusSettingsRepositoryTest {
 
         assertThat(repository.replaceDataSource(replacement)).isFalse();
     }
+
+    @Test
+    void shouldPersistAndReloadLlmApiKeyTest() {
+        RmqSettings stored = new RmqSettings();
+        when(settingsMapper.selectOne(any())).thenReturn(null).thenReturn(stored);
+        when(settingsMapper.insert(any(RmqSettings.class))).thenAnswer(invocation -> {
+            RmqSettings entity = invocation.getArgument(0);
+            stored.setJson(entity.getJson());
+            return 1;
+        });
+
+        GeneralSettingsVO settings = GeneralSettingsVO.builder()
+                .theme("system")
+                .llmProvider("tongyi")
+                .llmEngine("claude-code")
+                .apiKey("sk-roundtrip-token")
+                .build();
+        repository.saveGeneralSettings(settings);
+
+        assertThat(stored.getJson()).contains("sk-roundtrip-token");
+        assertThat(repository.loadGeneralSettings().getApiKey()).isEqualTo("sk-roundtrip-token");
+    }
 }
