@@ -140,6 +140,25 @@ const renderWithProviders = (ui: React.ReactElement) =>
   );
 
 describe('Clients page', () => {
+  it('returns to the first page when the connection search changes', async () => {
+    const pagedConnections = Array.from({ length: 21 }, (_, index) => ({
+      ...connection,
+      clientId: `client-${String(index).padStart(2, '0')}`,
+      address: `10.0.1.${index + 1}:49152`,
+    }));
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(pagedConnections);
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('client-00');
+    await user.click(container.querySelector('.ant-pagination-next button')!);
+    expect(await screen.findByText('client-20')).toBeInTheDocument();
+    expect(screen.queryByText('client-00')).not.toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('搜索 Client ID 或地址'), 'client-00');
+    expect(await screen.findByText('client-00')).toBeInTheDocument();
+  });
+
   it('loads connections for the first online broker cluster', async () => {
     renderWithProviders(<ClientsPage />);
 

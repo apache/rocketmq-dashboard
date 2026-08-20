@@ -105,6 +105,43 @@ describe('GroupManagement Page', () => {
     vi.restoreAllMocks();
   });
 
+  it('returns to the first page when the group search changes', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue(
+      Array.from({ length: 11 }, (_, index) =>
+        makeGroup({ name: `group-${String(index).padStart(2, '0')}` }),
+      ),
+    );
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<GroupManagement />);
+
+    await screen.findByText('group-00');
+    await user.click(container.querySelector('.ant-pagination-next button')!);
+    expect(await screen.findByText('group-10')).toBeInTheDocument();
+    expect(screen.queryByText('group-00')).not.toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('搜索消费组'), 'group-00');
+    expect(await screen.findByText('group-00')).toBeInTheDocument();
+  });
+
+  it('clamps the current page when refreshed results have fewer pages', async () => {
+    const initialGroups = Array.from({ length: 21 }, (_, index) =>
+      makeGroup({ name: `group-${String(index).padStart(2, '0')}` }),
+    );
+    vi.mocked(consumerService.listConsumerGroups)
+      .mockResolvedValueOnce(initialGroups)
+      .mockResolvedValueOnce(initialGroups.slice(0, 11));
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<GroupManagement />);
+
+    await screen.findByText('group-00');
+    await user.click(container.querySelector('.ant-pagination-item-3 a')!);
+    expect(await screen.findByText('group-20')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /刷新/ }));
+    expect(await screen.findByText('group-10')).toBeInTheDocument();
+    expect(screen.queryByText('group-20')).not.toBeInTheDocument();
+  });
+
   it('should render the page title', () => {
     renderWithProviders(<GroupManagement />);
     expect(screen.getByText('消费组管理')).toBeInTheDocument();

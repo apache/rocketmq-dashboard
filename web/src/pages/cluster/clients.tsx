@@ -135,6 +135,8 @@ const ClientsPage = () => {
   const [registryLoadKey, setRegistryLoadKey] = useState(0);
   const [connectionLoadKey, setConnectionLoadKey] = useState(0);
   const [columnFilters, setColumnFilters] = useState<ClientTableFilters>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const selectedCluster = registryClusters.find((cluster) => cluster.endpoint === selectedEndpoint);
 
@@ -148,6 +150,7 @@ const ClientsPage = () => {
   );
 
   const handleNameserverChange = (endpoint: string) => {
+    setCurrentPage(1);
     setSelectedEndpoint(endpoint);
     setConnections([]);
     setClusterFilter('ALL');
@@ -281,6 +284,9 @@ const ClientsPage = () => {
         matches('language', connection.language),
     );
   }, [columnFilters, filtered]);
+
+  const lastPage = Math.max(1, Math.ceil(exportConnections.length / pageSize));
+  const clampedCurrentPage = Math.min(currentPage, lastPage);
 
   const handleExport = () => {
     const filename = `rocketmq-client-connections-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -479,7 +485,10 @@ const ClientsPage = () => {
           <Select
             aria-label={t('clients.cluster')}
             value={clusterFilter}
-            onChange={setClusterFilter}
+            onChange={(value) => {
+              setClusterFilter(value);
+              setCurrentPage(1);
+            }}
             style={{ width: 180 }}
             options={clusterOptions}
           />
@@ -487,8 +496,14 @@ const ClientsPage = () => {
             placeholder={t('clients.searchPlaceholder')}
             allowClear
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onSearch={setSearch}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            onSearch={(value) => {
+              setSearch(value);
+              setCurrentPage(1);
+            }}
             style={{ width: 280 }}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
@@ -572,10 +587,19 @@ const ClientsPage = () => {
             `${connection.type}:${connection.clientId}:${connection.groupOrTopic}`
           }
           loading={loading}
-          onChange={(_, filters) => setColumnFilters(filters)}
+          onChange={(pagination, filters, _sorter, extra) => {
+            setColumnFilters(filters);
+            if (extra.action === 'filter') {
+              setCurrentPage(1);
+              return;
+            }
+            setCurrentPage(pagination.current ?? 1);
+            setPageSize(pagination.pageSize ?? 20);
+          }}
           scroll={{ x: tableScrollX(columns) }}
           pagination={{
-            pageSize: 20,
+            current: clampedCurrentPage,
+            pageSize,
             showSizeChanger: true,
             showTotal: (total) => `${t('common.total')} ${total}`,
           }}
