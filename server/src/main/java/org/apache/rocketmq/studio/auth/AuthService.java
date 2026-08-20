@@ -187,6 +187,9 @@ public class AuthService {
     public RmqStudioUser setUserEnabled(Long userId, boolean enabled) {
         requireDatabaseBacked();
         RmqStudioUser user = getUser(userId);
+        if (Boolean.valueOf(enabled).equals(user.getEnabled())) {
+            return user;
+        }
         if (!enabled && Boolean.TRUE.equals(user.getAdmin()) && enabledAdminCount() <= 1) {
             throw new BusinessException(409, "The last enabled administrator cannot be disabled");
         }

@@ -108,6 +108,19 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void disablingAnAlreadyDisabledAdministratorIsIdempotent() {
+        RmqStudioUser user = user(1L, "retired-admin", true, false, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        RmqStudioUser result = authService.setUserEnabled(1L, false);
+
+        assertThat(result).isSameAs(user);
+        verify(userMapper, never()).selectCount(any(Wrapper.class));
+        verify(userMapper, never()).updateById(any(RmqStudioUser.class));
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
     void databaseAuthenticationThrottlesLastSeenWrites() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         RmqStudioSession session = activeSession(10L, 1L,
