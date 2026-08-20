@@ -135,7 +135,7 @@ const HomePage = () => {
         })),
       );
       setSelectedModel((current) =>
-        current && values.includes(current) ? current : values[0] || '',
+        current && values.includes(current) ? current : configuredModel || values[0] || '',
       );
     };
 
