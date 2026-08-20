@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.RegionNames;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
@@ -79,6 +80,9 @@ class InstanceServiceTest {
     @Mock
     private SettingsRepository settingsRepository;
 
+    @Mock
+    private RegionNames regionNames;
+
     @InjectMocks
     private InstanceService instanceService;
 
@@ -98,13 +102,31 @@ class InstanceServiceTest {
     }
 
     @Test
+    void listInstancesShouldResolveRegionDisplayNamesTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("cloud-1")
+                .vendor(InstanceVendor.ALIYUN)
+                .regionId("cn-hangzhou")
+                .build();
+        instance.setId(1L);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(regionNames.resolve("cn-hangzhou")).thenReturn("Hangzhou (CN)");
+
+        List<InstanceVO> result = instanceService.listInstances(null, null);
+
+        assertThat(result.get(0).getRegionName()).isEqualTo("Hangzhou (CN)");
+    }
+
+    @Test
     void listInstancesShouldSortApacheFirstThenCloudVendorsAlphabeticallyTest() {
         List<InstanceVO> instances = List.of(
-                InstanceVO.builder().name("z-aliyun").vendor(InstanceVendor.ALIYUN).build(),
+                InstanceVO.builder().name("z-aliyun").vendor(InstanceVendor.ALIYUN).regionId("cn-hangzhou").build(),
                 InstanceVO.builder().name("b-apache").vendor(InstanceVendor.APACHE).build(),
-                InstanceVO.builder().name("a-tencent").vendor(InstanceVendor.TENCENT).build(),
+                InstanceVO.builder().name("a-tencent").vendor(InstanceVendor.TENCENT).regionId("ap-chengdu").build(),
                 InstanceVO.builder().name("a-apache").build(),
-                InstanceVO.builder().name("a-aliyun").vendor(InstanceVendor.ALIYUN).build()
+                InstanceVO.builder().name("c-aliyun").vendor(InstanceVendor.ALIYUN).regionId("cn-beijing").build(),
+                InstanceVO.builder().name("a-aliyun").vendor(InstanceVendor.ALIYUN).regionId("cn-beijing").build()
         );
         when(instanceRepository.findAll()).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
@@ -112,7 +134,8 @@ class InstanceServiceTest {
         List<InstanceVO> result = instanceService.listInstances(null, null);
 
         assertThat(result).extracting(InstanceVO::getName)
-                .containsExactly("a-apache", "b-apache", "a-aliyun", "z-aliyun", "a-tencent");
+                .containsExactly("a-apache", "b-apache",
+                        "a-aliyun", "c-aliyun", "z-aliyun", "a-tencent");
     }
 
     @Test

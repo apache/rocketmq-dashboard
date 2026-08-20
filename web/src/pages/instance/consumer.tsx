@@ -170,6 +170,7 @@ const ConsumerPageContent = ({
   selectedInstance,
   selectInstance,
   instanceOptions,
+  instancesLoading,
 }: ConsumerPageContentProps) => {
   const { t } = useLang();
   const isCloudInstance =
@@ -177,7 +178,7 @@ const ConsumerPageContent = ({
   const hasSelectedInstance = Boolean(selectedInstanceId);
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
   const [totalGroups, setTotalGroups] = useState(0);
-  const [loading, setLoading] = useState(hasSelectedInstance);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -223,7 +224,15 @@ const ConsumerPageContent = ({
   useEffect(() => {
     if (!selectedInstanceId) {
       groupRequestIdRef.current += 1;
-      return;
+      const resetTimer = window.setTimeout(() => {
+        setGroups([]);
+        setTotalGroups(0);
+        setSelectedRowKeys([]);
+        setLoading(instancesLoading);
+      }, 0);
+      return () => {
+        window.clearTimeout(resetTimer);
+      };
     }
     const requestId = ++groupRequestIdRef.current;
     const timer = window.setTimeout(() => {
@@ -250,7 +259,7 @@ const ConsumerPageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [t, selectedInstanceId, search, page, pageSize]);
+  }, [t, selectedInstanceId, search, page, pageSize, instancesLoading]);
 
   const loadSubscriptions = useCallback(
     async (groupName: string, force = false) => {

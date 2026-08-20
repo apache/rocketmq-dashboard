@@ -690,13 +690,28 @@ describe('Consumer page', () => {
     );
   });
 
+  it('shows a spinner while the instance list is still resolving', async () => {
+    let resolveInstances!: (value: never[]) => void;
+    instanceServiceMocks.listInstances.mockReturnValue(
+      new Promise((resolve) => {
+        resolveInstances = resolve;
+      }),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    expect(document.querySelector('.ant-spin-spinning')).not.toBeNull();
+
+    resolveInstances([]);
+    await waitFor(() => expect(document.querySelector('.ant-spin-spinning')).toBeNull());
+  });
+
   it('disables Consumer Group writes until an instance is available', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([]);
     renderWithProviders(<ConsumerPage />);
 
     expect(await screen.findByText('选择实例')).toBeInTheDocument();
     expect(consumerService.listConsumerGroupPage).not.toHaveBeenCalled();
-    expect(document.querySelector('.ant-spin-spinning')).toBeNull();
+    await waitFor(() => expect(document.querySelector('.ant-spin-spinning')).toBeNull());
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '创建 Group' })).toBeDisabled();
   });

@@ -26,6 +26,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.RegionNames;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
@@ -34,6 +35,7 @@ import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -45,6 +47,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -57,6 +65,21 @@ public class InstanceService {
     private final MqAdminExtFactory adminFactory;
     private final OperationAuditService operationAuditService;
     private final SettingsRepository settingsRepository;
+    private final RegionNames regionNames;
+
+    static final int COUNT_PARALLELISM = 8;
+    static final long COUNT_TIMEOUT_SECONDS = 3;
+
+    private final ExecutorService countExecutor = Executors.newFixedThreadPool(COUNT_PARALLELISM, runnable -> {
+        Thread thread = new Thread(runnable, "instance-resource-counts");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    @PreDestroy
+    void shutdownCountExecutor() {
+        countExecutor.shutdownNow();
+    }
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -72,14 +95,50 @@ public class InstanceService {
         } else {
             instances = instanceRepository.findAll();
         }
-        instances.forEach(this::fillCounts);
+        fillCountsInParallel(instances);
+        instances.forEach(instance -> instance.setRegionName(regionNames.resolve(instance.getRegionId())));
         List<InstanceVO> sorted = new ArrayList<>(instances);
         sorted.sort(Comparator
                 .comparing((InstanceVO instance) ->
                         instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE ? 0 : 1)
                 .thenComparing(instance -> instance.getVendor() == null ? "" : instance.getVendor().name())
+                .thenComparing(instance -> instance.getRegionId() == null ? "" : instance.getRegionId())
                 .thenComparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER));
         return sorted;
+    }
+
+    /**
+     * Fans out per-instance resource counts on a bounded executor. Cloud vendors resolve counts
+     * through remote OpenAPIs, so a slow instance only degrades its own row (counts marked
+     * unavailable) instead of blocking the whole list response.
+     */
+    private void fillCountsInParallel(List<InstanceVO> instances) {
+        if (instances.isEmpty()) {
+            return;
+        }
+        List<InstanceVO> pending = new ArrayList<>(instances);
+        List<Future<?>> futures = new ArrayList<>(instances.size());
+        for (InstanceVO instance : pending) {
+            futures.add(countExecutor.submit(() -> fillCounts(instance)));
+        }
+        for (int i = 0; i < pending.size(); i++) {
+            InstanceVO instance = pending.get(i);
+            try {
+                futures.get(i).get(COUNT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (TimeoutException ex) {
+                futures.get(i).cancel(true);
+                instance.setResourceCountsAvailable(false);
+                log.warn("Resource counts timed out after {}s for instance {}",
+                        COUNT_TIMEOUT_SECONDS, instance.getId());
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                instance.setResourceCountsAvailable(false);
+            } catch (ExecutionException ex) {
+                instance.setResourceCountsAvailable(false);
+                log.warn("Failed to load resource counts for instance {}: {}",
+                        instance.getId(), ex.getMessage());
+            }
+        }
     }
 
     /**

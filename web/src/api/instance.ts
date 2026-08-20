@@ -39,6 +39,7 @@ export interface Instance {
   credentialId?: number;
   adminCredentialRef?: string;
   regionId?: string;
+  regionName?: string;
   topicCount: number;
   consumerGroupCount: number;
   resourceCountsAvailable?: boolean;

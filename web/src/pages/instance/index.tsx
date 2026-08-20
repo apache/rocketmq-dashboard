@@ -411,14 +411,28 @@ const InstancePage = () => {
     }
   };
 
-  const sortedInstances = [...instances].sort((a, b) => a.name.localeCompare(b.name));
-
   const columns: ColumnsType<Instance> = [
+    {
+      title: '地域',
+      dataIndex: 'regionId',
+      key: 'regionId',
+      width: 130,
+      ellipsis: true,
+      onHeaderCell: () => ({ style: { textAlign: 'left' } }),
+      sorter: (a, b) => (a.regionId ?? '').localeCompare(b.regionId ?? ''),
+      render: (regionId: string | undefined, record: Instance) => (
+        <Text type="secondary" style={{ fontSize: 14 }}>
+          {!record.vendor || record.vendor === 'APACHE' || !regionId
+            ? '-'
+            : record.regionName || regionId}
+        </Text>
+      ),
+    },
     {
       title: '实例 ID',
       dataIndex: 'name',
       key: 'name',
-      width: 180,
+      ellipsis: true,
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (text: string) => (
@@ -431,7 +445,6 @@ const InstancePage = () => {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
-      width: 240,
       ellipsis: { showTitle: false },
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
@@ -452,7 +465,7 @@ const InstancePage = () => {
       title: '厂商',
       dataIndex: 'vendor',
       key: 'vendor',
-      width: 140,
+      width: 100,
       align: 'center' as const,
       render: (value?: string) => {
         const option = VENDOR_OPTIONS.find((item) => item.key === (value || 'APACHE'));
@@ -471,7 +484,7 @@ const InstancePage = () => {
       title: '类型',
       dataIndex: 'type',
       key: 'type',
-      width: 130,
+      width: 110,
       align: 'center' as const,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
@@ -483,7 +496,7 @@ const InstancePage = () => {
       title: 'Topic',
       dataIndex: 'topicCount',
       key: 'topicCount',
-      width: 80,
+      width: 70,
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'topicCount', sortOrder),
       render: (count: number, record: Instance) =>
@@ -493,7 +506,7 @@ const InstancePage = () => {
       title: 'Group',
       dataIndex: 'consumerGroupCount',
       key: 'consumerGroupCount',
-      width: 80,
+      width: 70,
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
@@ -503,7 +516,7 @@ const InstancePage = () => {
       title: '创建时间',
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
-      width: 170,
+      width: 150,
       sorter: (a, b) => a.gmtCreate.localeCompare(b.gmtCreate),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
@@ -515,7 +528,7 @@ const InstancePage = () => {
       title: '修改时间',
       dataIndex: 'gmtModified',
       key: 'gmtModified',
-      width: 170,
+      width: 150,
       sorter: (a, b) => a.gmtModified.localeCompare(b.gmtModified),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
@@ -526,7 +539,7 @@ const InstancePage = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 160,
+      width: 150,
       render: (_: unknown, record: Instance) => (
         <Flex gap={6} onClick={(e) => e.stopPropagation()}>
           <Button
@@ -624,11 +637,12 @@ const InstancePage = () => {
         <Table
           className="instance-table"
           columns={columns}
-          dataSource={sortedInstances}
+          dataSource={instances}
           loading={loading}
           rowKey="id"
           pagination={false}
           size="small"
+          tableLayout="fixed"
           onRow={(record) => ({
             style: { cursor: 'pointer' },
             onClick: () => navigate(`/instance/${encodeURIComponent(record.name)}/topic`),

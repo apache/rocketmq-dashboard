@@ -171,9 +171,13 @@ describe('InstancePage', () => {
     await screen.findByText('unavailable-instance');
     const topicHeader = screen.getByRole('columnheader', { name: 'Topic' });
     const rowNames = () =>
-      Array.from(container.querySelectorAll('tbody tr')).map(
-        (row) => row.querySelector('td')?.textContent,
-      );
+      Array.from(container.querySelectorAll('tbody tr'))
+        .map((row) =>
+          ['zero-instance', 'many-instance', 'unavailable-instance'].find((name) =>
+            row.textContent?.includes(name),
+          ),
+        )
+        .filter((name): name is string => Boolean(name));
 
     fireEvent.click(topicHeader);
     await waitFor(() => {
@@ -744,10 +748,29 @@ describe('InstancePage', () => {
     renderPage();
 
     const name = await screen.findByText('instance-without-remark');
-    expect(within(name.closest('tr')!).getByText('-')).toBeInTheDocument();
+    expect(within(name.closest('tr')!).getAllByText('-').length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('columnheader', { name: /备注/ }));
     expect(screen.getByText('instance-without-remark')).toBeInTheDocument();
     expect(screen.getByText('instance-with-remark')).toBeInTheDocument();
+  });
+
+  it('renders the region column with regionId for cloud instances and a dash for open-source ones', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        ...instance(12, 'rmq-cloud-1', 'CLOUD', ''),
+        vendor: 'ALIYUN',
+        regionId: 'cn-hangzhou',
+      },
+      instance(13, 'open-source-1', 'DIRECT', ''),
+    ]);
+    renderPage();
+
+    expect(await screen.findByRole('columnheader', { name: '地域' })).toBeInTheDocument();
+    const cloudRow = (await screen.findByText('rmq-cloud-1')).closest('tr')!;
+    expect(within(cloudRow).getByText('cn-hangzhou')).toBeInTheDocument();
+    const apacheRow = screen.getByText('open-source-1').closest('tr')!;
+    expect(within(apacheRow).getAllByText('-').length).toBeGreaterThan(0);
+    expect(within(apacheRow).queryByText('cn-hangzhou')).not.toBeInTheDocument();
   });
 });

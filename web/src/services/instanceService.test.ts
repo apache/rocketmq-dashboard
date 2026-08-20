@@ -15,9 +15,12 @@
  * limitations under the License.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const dataModeMock = vi.hoisted(() => ({ isMockMode: vi.fn(() => true) }));
+vi.mock('./dataMode', () => dataModeMock);
+const instanceApiMock = vi.hoisted(() => ({ listInstances: vi.fn() }));
+vi.mock('../api/instance', () => instanceApiMock);
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
@@ -29,6 +32,7 @@ import {
   listInstances,
   updateInstance,
 } from './instanceService';
+import type { Instance } from '../api/instance';
 
 describe('instanceService mock instances', () => {
   it('returns defensive copies from list reads', async () => {
@@ -116,5 +120,49 @@ describe('instanceService mock instances', () => {
     await expect(getInstanceCapabilities('missing-instance')).rejects.toThrow(
       'Instance not found: missing-instance',
     );
+  });
+});
+
+describe('instanceService list request dedupe', () => {
+  beforeEach(() => {
+    dataModeMock.isMockMode.mockReturnValue(true);
+    instanceApiMock.listInstances.mockReset();
+  });
+
+  it('shares one inflight list request between concurrent callers', async () => {
+    dataModeMock.isMockMode.mockReturnValue(false);
+    const fixture: Instance[] = [
+      {
+        id: 1,
+        name: 'shared-instance',
+        remark: null,
+        type: 'PROXY_CLUSTER',
+        endpoint: '10.0.0.1:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ];
+    let resolveList!: (value: Instance[]) => void;
+    instanceApiMock.listInstances.mockImplementation(
+      () =>
+        new Promise<Instance[]>((resolve) => {
+          resolveList = resolve;
+        }),
+    );
+
+    const first = listInstances({});
+    const second = listInstances({ search: '   ' });
+    resolveList(fixture);
+
+    const [a, b] = await Promise.all([first, second]);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(1);
+    expect(a).toEqual(b);
+    expect(a).not.toBe(b);
+
+    instanceApiMock.listInstances.mockResolvedValue(fixture);
+    await listInstances({});
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
   });
 });

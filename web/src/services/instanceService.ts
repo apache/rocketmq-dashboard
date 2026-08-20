@@ -38,7 +38,20 @@ const CLOUD_CAPABILITIES: InstanceCapabilities['capabilities'] = [
   'ACL_MANAGEMENT',
 ];
 
-export async function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
+const inflightListRequests = new Map<string, Promise<Instance[]>>();
+
+export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
+  const key = JSON.stringify([query.type ?? null, query.search?.trim() || null]);
+  const inflight = inflightListRequests.get(key);
+  if (inflight) {
+    return inflight.then((items) => items.map(copyInstance));
+  }
+  const request = fetchInstances(query).finally(() => inflightListRequests.delete(key));
+  inflightListRequests.set(key, request);
+  return request.then((items) => items.map(copyInstance));
+}
+
+async function fetchInstances(query: InstanceQuery): Promise<Instance[]> {
   if (isMockMode()) {
     const search = query.search?.trim().toLowerCase();
     return mockInstances

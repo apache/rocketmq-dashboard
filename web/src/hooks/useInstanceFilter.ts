@@ -37,6 +37,7 @@ export function useInstanceFilter() {
   const section = scopedMatch?.[2] ?? staticMatch?.[1] ?? 'topic';
 
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instancesLoading, setInstancesLoading] = useState(true);
 
   // Keep the latest selected instance id in a ref so the instance *list* is only
   // fetched when needed (section / navigation changes) and not re-fetched every
@@ -54,7 +55,9 @@ export function useInstanceFilter() {
         if (cancelled) return;
         setInstances(nextInstances);
         const selectedInstanceId = routeInstanceIdRef.current;
-        const isKnownInstance = nextInstances.some((instance) => instance.name === selectedInstanceId);
+        const isKnownInstance = nextInstances.some(
+          (instance) => instance.name === selectedInstanceId,
+        );
         if (nextInstances.length > 0 && !isKnownInstance) {
           navigate(`/instance/${encodeURIComponent(nextInstances[0].name)}/${section}`, {
             replace: true,
@@ -63,6 +66,9 @@ export function useInstanceFilter() {
       })
       .catch(() => {
         // 实例列表加载失败时不做实例过滤，保持页面数据可用
+      })
+      .finally(() => {
+        if (!cancelled) setInstancesLoading(false);
       });
     return () => {
       cancelled = true;
@@ -86,6 +92,7 @@ export function useInstanceFilter() {
 
   return {
     instances,
+    instancesLoading,
     selectedInstanceId,
     selectedInstance,
     selectInstance,

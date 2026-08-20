@@ -273,8 +273,13 @@ const formatDateTime = (iso?: string): string => {
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
   const { t } = useLang();
-  const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
-    useInstanceFilter();
+  const {
+    selectedInstanceId,
+    selectedInstance,
+    selectInstance,
+    instanceOptions,
+    instancesLoading,
+  } = useInstanceFilter();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -282,7 +287,7 @@ const TopicPage = () => {
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
   const [totalTopics, setTotalTopics] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
   const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -329,7 +334,7 @@ const TopicPage = () => {
         setTopics([]);
         setTotalTopics(0);
         setSelectedRowKeys([]);
-        setLoading(false);
+        setLoading(instancesLoading);
       }, 0);
       return () => {
         window.clearTimeout(resetTimer);
@@ -363,7 +368,7 @@ const TopicPage = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId, typeFilter, searchText, tablePage, tablePageSize]);
+  }, [selectedInstanceId, typeFilter, searchText, tablePage, tablePageSize, instancesLoading]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
