@@ -19,7 +19,8 @@ const STORAGE_KEY = 'rocketmq-studio-ai-chat-history';
 
 async function loadStore(persisted?: object) {
   vi.resetModules();
-  if (persisted) sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ state: persisted, version: 0 }));
+  if (persisted)
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ state: persisted, version: 0 }));
   return (await import('./aiChatHistoryStore')).useAiChatHistoryStore;
 }
 
@@ -27,7 +28,47 @@ describe('aiChatHistoryStore', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.resetModules();
+    vi.restoreAllMocks();
     sessionStorage.clear();
+  });
+
+  it('keeps the in-memory store usable when session storage cannot be read', async () => {
+    vi.useFakeTimers();
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('storage disabled', 'SecurityError');
+    });
+
+    const store = await loadStore();
+    store
+      .getState()
+      .setMessages('real', 'conversation-1', [
+        { id: 'message-1', role: 'user', text: 'Inspect lag' },
+      ]);
+
+    expect(store.getState().histories.real.conversations[0]).toMatchObject({
+      id: 'conversation-1',
+      messages: [{ id: 'message-1', text: 'Inspect lag' }],
+    });
+    expect(getItem).toHaveBeenCalledWith(STORAGE_KEY);
+  });
+
+  it('keeps the in-memory store usable when session storage cannot be removed', async () => {
+    vi.useFakeTimers();
+    const store = await loadStore();
+    store
+      .getState()
+      .setMessages('real', 'conversation-1', [
+        { id: 'message-1', role: 'user', text: 'Inspect lag' },
+      ]);
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('storage disabled', 'SecurityError');
+    });
+
+    expect(() => store.persist.clearStorage()).not.toThrow();
+    expect(removeItem).toHaveBeenCalledWith(STORAGE_KEY);
+    store.getState().clearHistories();
+
+    expect(store.getState().histories.real.conversations).toEqual([]);
   });
 
   it('keeps multiple conversations independently for each data mode', async () => {
@@ -51,7 +92,10 @@ describe('aiChatHistoryStore', () => {
       messages: [{ id: 'message-2', role: 'ai', summary: '', pending: true }],
     });
 
-    expect(store.getState().histories.mock).toEqual({ conversations: [], activeConversationId: null });
+    expect(store.getState().histories.mock).toEqual({
+      conversations: [],
+      activeConversationId: null,
+    });
     expect(store.getState().histories.real.activeConversationId).toBe('conversation-2');
     expect(store.getState().histories.real.conversations[0]).toMatchObject({
       id: 'conversation-2',
@@ -94,17 +138,22 @@ describe('aiChatHistoryStore', () => {
       histories: { real: { conversations: { invalid: true }, activeConversationId: 'missing' } },
     });
 
-    expect(store.getState().histories.real).toEqual({ conversations: [], activeConversationId: null });
+    expect(store.getState().histories.real).toEqual({
+      conversations: [],
+      activeConversationId: null,
+    });
   });
 
   it('bounds a persisted message field before it can exhaust session storage', async () => {
     const { MAX_AI_CHAT_MESSAGE_FIELD_LENGTH } = await import('./aiChatHistoryStore');
     const store = await loadStore();
-    store.getState().setMessages('real', 'conversation-1', [{
-      id: 'answer',
-      role: 'ai',
-      summary: 'x'.repeat(MAX_AI_CHAT_MESSAGE_FIELD_LENGTH + 100),
-    }]);
+    store.getState().setMessages('real', 'conversation-1', [
+      {
+        id: 'answer',
+        role: 'ai',
+        summary: 'x'.repeat(MAX_AI_CHAT_MESSAGE_FIELD_LENGTH + 100),
+      },
+    ]);
 
     expect(store.getState().histories.real.conversations[0]?.messages[0]?.summary).toHaveLength(
       MAX_AI_CHAT_MESSAGE_FIELD_LENGTH + '\n\n[Truncated]'.length,
@@ -114,8 +163,11 @@ describe('aiChatHistoryStore', () => {
   it('clears pending throttled persistence when histories are cleared', async () => {
     vi.useFakeTimers();
     const store = await loadStore();
-    const { clearAiChatHistories, flushAiChatHistoryPersistence } = await import('./aiChatHistoryStore');
-    store.getState().setMessages('real', 'conversation-1', [{ id: 'message', role: 'user', text: 'secret' }]);
+    const { clearAiChatHistories, flushAiChatHistoryPersistence } =
+      await import('./aiChatHistoryStore');
+    store
+      .getState()
+      .setMessages('real', 'conversation-1', [{ id: 'message', role: 'user', text: 'secret' }]);
     clearAiChatHistories();
     flushAiChatHistoryPersistence();
 
