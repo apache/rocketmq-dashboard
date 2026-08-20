@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
+  Input,
   Descriptions,
   Flex,
   Form,
-  Input,
   Modal,
   Popconfirm,
   Select,
@@ -32,6 +32,7 @@ import {
 } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { MagnifyingGlass } from '@phosphor-icons/react';
 
 import {
   createCloudCredential,
@@ -57,6 +58,8 @@ const VENDOR_OPTIONS = [
   { value: 'TENCENT', label: '腾讯云' },
 ];
 
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
 interface CredentialFormValues {
   name: string;
   vendor: InstanceVendor;
@@ -67,28 +70,76 @@ interface CredentialFormValues {
 
 export const CloudCredentialTab = () => {
   const [credentials, setCredentials] = useState<CloudCredential[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [vendorFilter, setVendorFilter] = useState<InstanceVendor | undefined>();
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCredential, setEditingCredential] = useState<CloudCredential | null>(null);
   const [form] = Form.useForm<CredentialFormValues>();
   const [submitting, setSubmitting] = useState(false);
+  const requestSeqRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
-    void listCloudCredentials()
-      .then((result) => {
-        if (!cancelled) setCredentials(result.items);
-      })
-      .catch(() => {
-        if (!cancelled) message.error('云凭据加载失败，请稍后重试');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const loadCredentials = useCallback(() => {
+    const requestId = ++requestSeqRef.current;
+    Promise.resolve().then(() => {
+      if (requestId === requestSeqRef.current) {
+        setLoading(true);
+      }
+    });
+    return (async () => {
+      try {
+        const result = await listCloudCredentials(vendorFilter, debouncedSearch, page, pageSize);
+        if (requestId !== requestSeqRef.current) return;
+        if (result.items.length === 0 && result.total > 0 && page > 1) {
+          const lastPage = Math.max(1, Math.ceil(result.total / result.size));
+          if (page > lastPage) {
+            setPage(lastPage);
+            return;
+          }
+        }
+        setCredentials(result.items);
+        setTotal(result.total);
+      } catch {
+        if (requestId === requestSeqRef.current) {
+          message.error('云凭据加载失败，请稍后重试');
+        }
+      } finally {
+        if (requestId === requestSeqRef.current) {
+          setLoading(false);
+        }
+      }
+    })();
+  }, [debouncedSearch, page, pageSize, vendorFilter]);
+
+  useEffect(() => {
+    void loadCredentials();
+  }, [loadCredentials]);
+
+  useEffect(
+    () => () => {
+      requestSeqRef.current += 1;
+    },
+    [],
+  );
+
+  const changeVendorFilter = (value?: InstanceVendor) => {
+    setVendorFilter(value);
+    setPage(1);
+  };
+
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
 
   const closeModal = () => {
     setModalOpen(false);
@@ -126,16 +177,17 @@ export const CloudCredentialTab = () => {
         setCredentials((previous) => previous.map((item) => (item.id === saved.id ? saved : item)));
         message.success('云凭据已更新');
       } else {
-        const saved = await createCloudCredential({
+        await createCloudCredential({
           name: values.name,
           vendor: values.vendor,
           accessKey: values.accessKey ?? '',
           secretKey: values.secretKey ?? '',
           remark: values.remark,
         });
-        setCredentials((previous) => [...previous, saved]);
+        setPage(1);
         message.success('云凭据已添加');
       }
+      await loadCredentials();
       closeModal();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
@@ -150,7 +202,12 @@ export const CloudCredentialTab = () => {
   const handleDelete = async (credential: CloudCredential) => {
     try {
       await deleteCloudCredential(credential.id);
-      setCredentials((previous) => previous.filter((item) => item.id !== credential.id));
+      const remainingOnPage = credentials.length - 1;
+      if (remainingOnPage === 0 && page > 1) {
+        setPage(page - 1);
+      } else {
+        await loadCredentials();
+      }
       message.success('云凭据已删除');
     } catch {
       message.error('删除云凭据失败（可能仍被实例引用），请稍后重试');
@@ -200,7 +257,25 @@ export const CloudCredentialTab = () => {
 
   return (
     <>
-      <Flex justify="flex-end" style={{ marginBottom: 16 }}>
+      <Flex justify="space-between" align="center" gap={12} wrap style={{ marginBottom: 16 }}>
+        <Flex gap={12} align="center" wrap>
+          <Input
+            allowClear
+            prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
+            placeholder="搜索凭据名称"
+            style={{ width: 240 }}
+            value={search}
+            onChange={(event) => changeSearch(event.target.value)}
+          />
+          <Select<InstanceVendor>
+            allowClear
+            placeholder="全部云厂商"
+            style={{ width: 160 }}
+            value={vendorFilter}
+            onChange={changeVendorFilter}
+            options={VENDOR_OPTIONS}
+          />
+        </Flex>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} disabled={loading}>
           添加云凭据
         </Button>
@@ -211,7 +286,22 @@ export const CloudCredentialTab = () => {
         dataSource={credentials}
         rowKey="id"
         loading={loading}
-        pagination={false}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
+          showTotal: (count) => `共 ${count} 条`,
+          onChange: (nextPage, nextPageSize) => {
+            if (nextPageSize !== pageSize) {
+              setPage(1);
+              setPageSize(nextPageSize);
+            } else {
+              setPage(nextPage);
+            }
+          },
+        }}
         size="middle"
       />
 
