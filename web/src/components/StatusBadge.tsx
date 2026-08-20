@@ -22,19 +22,20 @@ import { useLang } from '../i18n/LangContext';
 const { Text } = Typography;
 
 interface StatusBadgeProps {
-  status: keyof typeof STATUS_MAP;
+  status: string;
   text?: string;
   showDot?: boolean;
 }
 
 const StatusBadge = ({ status, text, showDot = true }: StatusBadgeProps) => {
   const { t } = useLang();
-  const config = STATUS_MAP[status] || STATUS_MAP.offline;
-  const label = text || t(config.labelKey);
+  const config = STATUS_MAP[status];
+  const label = text || (config ? t(config.labelKey) : status);
+  const color = config?.color ?? '#8c8c8c';
   return (
     <Space size={4} role="status" aria-label={label}>
-      {showDot && <Badge color={config.dot} aria-hidden="true" />}
-      <Text style={{ color: config.color, fontSize: 14 }}>{label}</Text>
+      {showDot && <Badge color={config?.dot ?? color} aria-hidden="true" />}
+      <Text style={{ color, fontSize: 14 }}>{label}</Text>
     </Space>
   );
 };

@@ -56,10 +56,12 @@ describe('StatusBadge', () => {
     expect(screen.getByText('连接中')).toBeInTheDocument();
   });
 
-  it('falls back to offline config for unknown status', () => {
-    renderWithLang(<StatusBadge status="unknown_status" />);
-    // Should render offline label
-    expect(screen.getByText('离线')).toBeInTheDocument();
+  it('preserves an unknown backend status instead of reporting it as offline', () => {
+    renderWithLang(<StatusBadge status="degraded" />);
+
+    expect(screen.getByRole('status')).toHaveAccessibleName('degraded');
+    expect(screen.getByText('degraded')).toBeInTheDocument();
+    expect(screen.queryByText('离线')).not.toBeInTheDocument();
   });
 
   it('uses custom text when provided', () => {
