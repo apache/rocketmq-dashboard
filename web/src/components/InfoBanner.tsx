@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import type { CSSProperties, ReactNode } from 'react';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 import { theme } from 'antd';
 
 interface InfoBannerProps {
@@ -30,9 +30,13 @@ interface InfoBannerProps {
 // 颜色取 antd 主题 token，深色模式下自动适配（浅色模式观感等同 #fafafa/#f0f0f0）
 const InfoBanner = ({ title, description, children, style, ...rest }: InfoBannerProps) => {
   const { token } = theme.useToken();
+  const titleId = useId();
+
   return (
     <div
       {...rest}
+      role="note"
+      aria-labelledby={title ? titleId : undefined}
       style={{
         marginBottom: 16,
         padding: '12px 16px',
@@ -42,7 +46,11 @@ const InfoBanner = ({ title, description, children, style, ...rest }: InfoBanner
         ...style,
       }}
     >
-      {title && <div style={{ fontSize: 14, fontWeight: 500 }}>{title}</div>}
+      {title && (
+        <div id={titleId} style={{ fontSize: 14, fontWeight: 500 }}>
+          {title}
+        </div>
+      )}
       {description && (
         <div
           style={{
