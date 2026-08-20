@@ -56,6 +56,10 @@ import java.util.function.Consumer;
 @Component
 public class OpenAiCompatibleLlmClient {
 
+    private static final String MARKDOWN_SYSTEM_PROMPT = """
+            Format responses as valid CommonMark Markdown. Put a space after heading and list markers,
+            put code fence languages on their own line, and keep code contents inside fenced code blocks.
+            """;
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String MODELS_PATH = "/models";
     private static final int MAX_RESPONSE_BODY_BYTES = 5 * 1024 * 1024;
@@ -300,9 +304,9 @@ public class OpenAiCompatibleLlmClient {
                                             boolean stream) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", StringUtils.hasText(modelOverride) ? modelOverride.trim() : config.getModel().trim());
-        body.put("messages", List.of(Map.of(
-                "role", "user",
-                "content", StringUtils.hasText(prompt) ? prompt.trim() : "")));
+        body.put("messages", List.of(
+                Map.of("role", "system", "content", MARKDOWN_SYSTEM_PROMPT),
+                Map.of("role", "user", "content", StringUtils.hasText(prompt) ? prompt.trim() : "")));
         body.put("temperature", config.getTemperature());
         body.put("max_tokens", config.getMaxTokens());
         body.put("stream", stream);

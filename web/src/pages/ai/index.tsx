@@ -125,6 +125,12 @@ const quickActions = [
 
 const GLOBAL_TOOL_SCOPE = '__global__';
 
+export const normalizeAiMarkdown = (content: string): string =>
+  content
+    .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
+    .replace(/^([-+*])(?=\S)/gm, '$1 ')
+    .replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/gim, '```$1\n');
+
 const newConversationId = (): string =>
   `conversation-${typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
 
@@ -395,7 +401,9 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
         {/* Summary text */}
         {msg.summary && (
           <div className="ai-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.summary}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {normalizeAiMarkdown(msg.summary)}
+            </ReactMarkdown>
           </div>
         )}
 
