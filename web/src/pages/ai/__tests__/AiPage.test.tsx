@@ -26,6 +26,7 @@ import { listClusters, type ClusterInfo } from '../../../api/cluster';
 import { getLlmConfig, getLlmModels } from '../../../api/llm';
 import { useAiChatHistoryStore } from '../../../stores/aiChatHistoryStore';
 import useAuthStore from '../../../stores/authStore';
+import { useEngineStore } from '../../../stores/engineStore';
 import AiPage from '../index';
 
 const dataModeMocks = vi.hoisted(() => ({ useMock: false }));
