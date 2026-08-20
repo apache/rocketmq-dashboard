@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -193,6 +194,18 @@ public class SettingsService {
     public List<DataSourceVO> listDataSources() {
         log.debug("Listing all data sources");
         return settingsRepository.findAllDataSources();
+    }
+
+    public PageResult<DataSourceVO> listDataSources(String search, String type, int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than zero");
+        }
+        if (pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "pageSize must be between 1 and 100");
+        }
+        log.debug("Listing data sources, search={}, type={}, page={}, pageSize={}",
+                search, type, page, pageSize);
+        return settingsRepository.findDataSources(search, type, page, pageSize);
     }
 
 

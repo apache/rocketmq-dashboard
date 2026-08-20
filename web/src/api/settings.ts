@@ -57,6 +57,13 @@ export interface DataSource {
   instanceIds?: string[];
 }
 
+export interface DataSourcePage {
+  items: DataSource[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 // ─── General Settings ───────────────────────────────────────────
 export async function getGeneralSettings() {
   const res = await client.get<{ data: GeneralSettings }>('/settings/general');
@@ -81,6 +88,18 @@ export async function saveGeneralSettings(data: GeneralSettingsUpdate) {
 // ─── Data Sources ───────────────────────────────────────────────
 export async function listDataSources() {
   const res = await client.get<{ data: DataSource[] }>('/settings/datasources');
+  return res.data.data;
+}
+
+export async function listDataSourcesPage(params: {
+  search?: string;
+  type?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const res = await client.get<{ data: DataSourcePage }>('/settings/datasources/page', {
+    params,
+  });
   return res.data.data;
 }
 

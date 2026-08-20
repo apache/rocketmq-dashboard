@@ -19,8 +19,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import type { DataSource } from '../../../api/settings';
-import { createDataSource, listDataSources, testDataSource } from '../../../api/settings';
+import type { DataSource, DataSourcePage } from '../../../api/settings';
+import { createDataSource, listDataSourcesPage, testDataSource } from '../../../api/settings';
 import { LangProvider } from '../../../i18n/LangContext';
 import { DataSourceTab } from '../DataSourceTab';
 
@@ -28,7 +28,7 @@ vi.mock('../../../api/settings', () => ({
   createDataSource: vi.fn(),
   deleteDataSource: vi.fn(),
   getGeneralSettings: vi.fn(),
-  listDataSources: vi.fn(),
+  listDataSourcesPage: vi.fn(),
   saveGeneralSettings: vi.fn(),
   testDataSource: vi.fn(),
   updateDataSource: vi.fn(),
@@ -51,6 +51,13 @@ const sources: DataSource[] = [
     status: 'healthy',
   },
 ];
+
+const sourcePage: DataSourcePage = {
+  items: sources,
+  total: sources.length,
+  page: 1,
+  size: 20,
+};
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -81,12 +88,12 @@ beforeAll(() => {
 describe('DataSourceTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listDataSources).mockResolvedValue(sources);
+    vi.mocked(listDataSourcesPage).mockResolvedValue(sourcePage);
   });
 
   it('keeps data source creation disabled until the initial list is ready', async () => {
-    const initialList = deferred<DataSource[]>();
-    vi.mocked(listDataSources).mockReturnValue(initialList.promise);
+    const initialList = deferred<DataSourcePage>();
+    vi.mocked(listDataSourcesPage).mockReturnValue(initialList.promise);
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
@@ -99,7 +106,7 @@ describe('DataSourceTab', () => {
     await user.click(addButton);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    initialList.resolve(sources);
+    initialList.resolve(sourcePage);
 
     await waitFor(() => expect(addButton).toBeEnabled());
     await user.click(addButton);
@@ -149,9 +156,10 @@ describe('DataSourceTab', () => {
   });
 
   it('keeps each row loading until its own connection test finishes', async () => {
-    vi.mocked(listDataSources).mockResolvedValue(
-      sources.map((source) => ({ ...source, auth: 'None' })),
-    );
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      ...sourcePage,
+      items: sources.map((source) => ({ ...source, auth: 'None' })),
+    });
     let resolveFirst: (value: { success: boolean; message: string }) => void = () => undefined;
     let resolveSecond: (value: { success: boolean; message: string }) => void = () => undefined;
     vi.mocked(testDataSource)
@@ -267,6 +275,19 @@ describe('DataSourceTab', () => {
       auth: 'None',
       status: 'healthy',
     });
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      ...sourcePage,
+      items: [
+        {
+          key: 'mimir-prod',
+          name: 'Mimir prod',
+          type: 'Mimir',
+          url: 'http://mimir:9009',
+          auth: 'None',
+          status: 'healthy',
+        },
+      ],
+    });
 
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
@@ -275,7 +296,7 @@ describe('DataSourceTab', () => {
       </App>,
     );
 
-    await screen.findByText('Prometheus prod');
+    await waitFor(() => expect(listDataSourcesPage).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: /添加数据源/ }));
     await user.type(screen.getByLabelText('名称'), 'Mimir prod');
     await selectAntdOption(user, '类型', 'Grafana Mimir');
