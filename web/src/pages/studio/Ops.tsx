@@ -59,6 +59,8 @@ const OpsPage: React.FC = () => {
   const namesrvMutationInFlight = useRef(false);
   const vipUpdateInFlight = useRef(false);
   const tlsUpdateInFlight = useRef(false);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [reloadKey, setReloadKey] = useState(0);
   const [configurationAvailable, setConfigurationAvailable] = useState(false);
   const [unavailableReason, setUnavailableReason] = useState('');
   const writeOperationEnabled = configurationAvailable && (!userId || admin === true);
@@ -69,6 +71,7 @@ const OpsPage: React.FC = () => {
     let cancelled = false;
 
     const loadOpsData = async () => {
+      setLoadState('loading');
       try {
         const data = await queryOpsHomePage();
         if (!cancelled) {
@@ -79,10 +82,11 @@ const OpsPage: React.FC = () => {
           setCurrentNamesrv(data.currentNamesrv);
           setConfigurationAvailable(data.configurationAvailable);
           setUnavailableReason(data.unavailableReason || '');
+          setLoadState('ready');
         }
       } catch {
         if (!cancelled) {
-          message.error(fetchFailedMessage);
+          setLoadState('error');
         }
       }
     };
@@ -92,7 +96,7 @@ const OpsPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [fetchFailedMessage, message]);
+  }, [reloadKey]);
 
   const handleUpdateNameSvrAddr = async () => {
     if (namesrvMutationInFlight.current) return;
@@ -191,7 +195,20 @@ const OpsPage: React.FC = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      {!configurationAvailable && (
+      {loadState === 'error' && (
+        <Alert
+          type="error"
+          showIcon
+          message={fetchFailedMessage}
+          action={
+            <Button size="small" onClick={() => setReloadKey((key) => key + 1)}>
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 24 }}
+        />
+      )}
+      {loadState === 'ready' && !configurationAvailable && (
         <Alert
           type="info"
           showIcon

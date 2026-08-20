@@ -22,7 +22,12 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
-import { addNameSvrAddr, deleteNameSvrAddr, queryOpsHomePage, updateIsVIPChannel } from '../../../api/ops';
+import {
+  addNameSvrAddr,
+  deleteNameSvrAddr,
+  queryOpsHomePage,
+  updateIsVIPChannel,
+} from '../../../api/ops';
 import useAuthStore from '../../../stores/authStore';
 
 vi.mock('../../../api/ops', () => ({
@@ -83,6 +88,49 @@ describe('OpsPage', () => {
     expect(await screen.findByText('127.0.0.1:9876')).toBeInTheDocument();
     expect(screen.getAllByRole('switch')[0]).toBeChecked();
     expect(screen.getAllByRole('switch')[1]).not.toBeChecked();
+  });
+
+  it('does not report unsupported configuration while loading', async () => {
+    vi.mocked(queryOpsHomePage).mockImplementation(() => new Promise(() => {}));
+
+    renderWithProviders(<OpsPage />);
+
+    await waitFor(() => expect(queryOpsHomePage).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('运行时配置不可用')).not.toBeInTheDocument();
+  });
+
+  it('shows a retryable load error instead of an unsupported warning', async () => {
+    vi.mocked(queryOpsHomePage).mockRejectedValueOnce(new Error('network error'));
+    const user = userEvent.setup();
+
+    renderWithProviders(<OpsPage />);
+
+    expect(
+      await screen.findByText(/获取运维数据失败|Failed to fetch ops data/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('运行时配置不可用')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重\s*试|Retry/ }));
+
+    await waitFor(() => expect(queryOpsHomePage).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('127.0.0.1:9876')).toBeInTheDocument();
+    expect(screen.queryByText(/获取运维数据失败|Failed to fetch ops data/)).not.toBeInTheDocument();
+  });
+
+  it('reports unsupported configuration only after a successful response', async () => {
+    vi.mocked(queryOpsHomePage).mockResolvedValue({
+      namesvrAddrList: [],
+      configurationAvailable: false,
+      useVIPChannel: false,
+      useTLS: false,
+      currentNamesrv: '',
+      unavailableReason: 'Provider does not expose runtime settings',
+    });
+
+    renderWithProviders(<OpsPage />);
+
+    expect(await screen.findByText('运行时配置不可用')).toBeInTheDocument();
+    expect(screen.getByText('Provider does not expose runtime settings')).toBeInTheDocument();
   });
 
   it('prevents overlapping NameServer mutations', async () => {
