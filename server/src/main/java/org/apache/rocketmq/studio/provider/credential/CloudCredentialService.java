@@ -53,7 +53,8 @@ public class CloudCredentialService {
     }
     public PageResult<CloudCredentialVO> listMasked(InstanceVendor vendor, String search, int page, int pageSize) {
         if (page < 1 || pageSize < 1 || pageSize > 100) throw new BusinessException(400, "Invalid page or pageSize");
-        PageResult<CloudCredentialVO> result = credentialRepository.findPage(vendor, search, page, pageSize);
+        String normalizedSearch = StringUtils.hasText(search) ? search.strip() : null;
+        PageResult<CloudCredentialVO> result = credentialRepository.findPage(vendor, normalizedSearch, page, pageSize);
         return PageResult.of(result.getItems().stream().map(this::maskAccessKey).toList(), result.getTotal(), page, pageSize);
     }
 
@@ -70,6 +71,9 @@ public class CloudCredentialService {
         if (!StringUtils.hasText(credential.getAccessKey()) || !StringUtils.hasText(credential.getSecretKey())) {
             throw new BusinessException(400, "Cloud credential accessKey and secretKey are required");
         }
+        credential.setName(credential.getName().strip());
+        credential.setAccessKey(credential.getAccessKey().strip());
+        credential.setSecretKey(credential.getSecretKey().strip());
         credentialRepository.findByVendorAndAccessKey(credential.getVendor(), credential.getAccessKey())
                 .ifPresent(existing -> {
                     throw new BusinessException(400,
@@ -102,10 +106,10 @@ public class CloudCredentialService {
             throw new BusinessException(400, "Cloud credential name cannot be blank");
         }
         if (request.getName() != null) {
-            existing.setName(request.getName());
+            existing.setName(request.getName().strip());
         }
         if (request.getSecretKey() != null && !request.getSecretKey().isBlank()) {
-            existing.setSecretKey(request.getSecretKey());
+            existing.setSecretKey(request.getSecretKey().strip());
         }
         if (request.getRemark() != null) {
             existing.setRemark(request.getRemark());

@@ -16,9 +16,10 @@
  */
 package org.apache.rocketmq.studio.provider.credential;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
-import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
@@ -88,6 +89,18 @@ class CloudCredentialServiceTest {
         when(credentialRepository.findAll()).thenReturn(List.of(stored));
 
         assertThat(service.listMasked().get(0).getAccessKey()).isEqualTo("****");
+    }
+
+    @Test
+    void pagedListShouldNormalizeSearchTextTest() {
+        when(credentialRepository.findPage(InstanceVendor.ALIYUN, "production", 2, 20))
+                .thenReturn(PageResult.empty(2, 20));
+
+        PageResult<CloudCredentialVO> result = service.listMasked(
+                InstanceVendor.ALIYUN, "  production  ", 2, 20);
+
+        assertThat(result.getItems()).isEmpty();
+        verify(credentialRepository).findPage(InstanceVendor.ALIYUN, "production", 2, 20);
     }
 
     @Test
@@ -163,6 +176,25 @@ class CloudCredentialServiceTest {
     }
 
     @Test
+    void createShouldNormalizeCredentialIdentityTest() {
+        CloudCredentialVO request = new CloudCredentialVO();
+        request.setName("  production  ");
+        request.setVendor(InstanceVendor.ALIYUN);
+        request.setAccessKey("  LTAI5tNormalizedKey000001  ");
+        request.setSecretKey("  secret-value  ");
+        when(credentialRepository.findByVendorAndAccessKey(
+                InstanceVendor.ALIYUN, "LTAI5tNormalizedKey000001")).thenReturn(Optional.empty());
+        when(credentialRepository.save(any(CloudCredentialVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.create(request);
+
+        verify(credentialRepository).save(argThat(saved -> saved.getName().equals("production")
+                && saved.getAccessKey().equals("LTAI5tNormalizedKey000001")
+                && saved.getSecretKey().equals("secret-value")));
+    }
+
+    @Test
     void deleteShouldRejectWhenReferencedByInstanceTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
         stored.setId(1L);
@@ -194,6 +226,26 @@ class CloudCredentialServiceTest {
         verify(aliyunClientFactory).invalidateCredential(1L);
         verify(operationAuditService).record(eq("UPDATE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
                 eq("1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateShouldNormalizeEditableCredentialFieldsTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(1L);
+        stored.setVendor(InstanceVendor.TENCENT);
+        stored.setAccessKey("AKIDexample");
+        stored.setSecretKey("old-secret");
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
+        when(credentialRepository.replace(any(CloudCredentialVO.class))).thenReturn(true);
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId(1L);
+        request.setName("  renamed  ");
+        request.setSecretKey("  new-secret  ");
+
+        service.update(request);
+
+        verify(credentialRepository).replace(argThat(saved -> saved.getName().equals("renamed")
+                && saved.getSecretKey().equals("new-secret")));
     }
 
     @Test
