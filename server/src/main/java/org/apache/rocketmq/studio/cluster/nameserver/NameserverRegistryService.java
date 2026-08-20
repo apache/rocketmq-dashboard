@@ -38,14 +38,16 @@ public class NameserverRegistryService {
     }
 
     public NameserverRegistryVO create(CreateNameserverRegistryDTO command) {
+        String name = command.getName().strip();
+        String namesrvAddr = command.getNamesrvAddr().strip();
         Long existing = nameserverMapper.selectCount(new QueryWrapper<RmqNameserver>()
-                .eq("name", command.getName()));
+                .eq("name", name));
         if (existing != null && existing > 0) {
-            throw new BusinessException(400, "NameServer registry name already exists: " + command.getName());
+            throw new BusinessException(400, "NameServer registry name already exists: " + name);
         }
         RmqNameserver entity = new RmqNameserver();
-        entity.setName(command.getName());
-        entity.setNamesrvAddr(command.getNamesrvAddr());
+        entity.setName(name);
+        entity.setNamesrvAddr(namesrvAddr);
         entity.setK8sNamespace(command.getK8sNamespace());
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());
@@ -58,14 +60,16 @@ public class NameserverRegistryService {
         if (entity == null) {
             throw new BusinessException(404, "NameServer registry entry not found: " + command.getId());
         }
+        String name = command.getName().strip();
+        String namesrvAddr = command.getNamesrvAddr().strip();
         Long duplicates = nameserverMapper.selectCount(new QueryWrapper<RmqNameserver>()
-                .eq("name", command.getName())
+                .eq("name", name)
                 .ne("id", command.getId()));
         if (duplicates != null && duplicates > 0) {
-            throw new BusinessException(400, "NameServer registry name already exists: " + command.getName());
+            throw new BusinessException(400, "NameServer registry name already exists: " + name);
         }
-        entity.setName(command.getName());
-        entity.setNamesrvAddr(command.getNamesrvAddr());
+        entity.setName(name);
+        entity.setNamesrvAddr(namesrvAddr);
         entity.setK8sNamespace(command.getK8sNamespace());
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());

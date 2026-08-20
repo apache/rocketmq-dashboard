@@ -16,11 +16,13 @@
  */
 package org.apache.rocketmq.studio.cluster.nameserver;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -103,6 +105,37 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void createShouldNormalizeRegistryIdentityBeforeLookupAndPersistenceTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(9L);
+            return 1;
+        });
+        when(nameserverMapper.selectById(9L)).thenAnswer(invocation -> {
+            RmqNameserver stored = new RmqNameserver();
+            stored.setId(9L);
+            stored.setName("rocketmq3");
+            stored.setNamesrvAddr("rocketmq3-nameserver:9876");
+            return stored;
+        });
+
+        service.create(CreateNameserverRegistryDTO.builder()
+                .name("  rocketmq3  ")
+                .namesrvAddr("  rocketmq3-nameserver:9876  ")
+                .build());
+
+        ArgumentCaptor<QueryWrapper<RmqNameserver>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(nameserverMapper).selectCount(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("name =");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs()).containsValue("rocketmq3");
+        ArgumentCaptor<RmqNameserver> entityCaptor = ArgumentCaptor.forClass(RmqNameserver.class);
+        verify(nameserverMapper).insert(entityCaptor.capture());
+        assertThat(entityCaptor.getValue().getName()).isEqualTo("rocketmq3");
+        assertThat(entityCaptor.getValue().getNamesrvAddr()).isEqualTo("rocketmq3-nameserver:9876");
+    }
+
+    @Test
     void createShouldRejectDuplicateNameTest() {
         when(nameserverMapper.selectCount(any())).thenReturn(1L);
 
@@ -133,6 +166,29 @@ class NameserverRegistryServiceTest {
         assertThat(updated.getNamesrvAddr()).isEqualTo("rocketmq1-nameserver.svc:9876");
         verify(nameserverMapper).updateById(existing);
         assertThat(existing.getNamesrvAddr()).isEqualTo("rocketmq1-nameserver.svc:9876");
+    }
+
+    @Test
+    void updateShouldNormalizeRegistryIdentityBeforeLookupAndPersistenceTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        existing.setName("rocketmq1");
+        when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+
+        service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("  rocketmq1  ")
+                .namesrvAddr("  rocketmq1-nameserver.svc:9876  ")
+                .build());
+
+        ArgumentCaptor<QueryWrapper<RmqNameserver>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(nameserverMapper).selectCount(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("name =");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs()).containsValue("rocketmq1");
+        assertThat(existing.getName()).isEqualTo("rocketmq1");
+        assertThat(existing.getNamesrvAddr()).isEqualTo("rocketmq1-nameserver.svc:9876");
+        verify(nameserverMapper).updateById(existing);
     }
 
     @Test
