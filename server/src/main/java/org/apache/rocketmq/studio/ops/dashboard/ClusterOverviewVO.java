@@ -37,7 +37,8 @@ public class ClusterOverviewVO {
     private ClusterType type;
     private ClusterStatus status;
     private int brokers;
-    private int proxies;
+    /** Null means Studio cannot discover the Proxy count through the selected access path. */
+    private Integer proxies;
     private int topics;
     private int groups;
     private long tpsIn;

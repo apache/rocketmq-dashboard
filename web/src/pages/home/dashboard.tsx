@@ -29,6 +29,9 @@ import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
 
+const renderTopologyCount = (value: number | null) =>
+  value === null ? 'N/A' : value.toLocaleString();
+
 const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useLang();
@@ -144,7 +147,7 @@ const DashboardPage = () => {
       icon: <ClusterOutlined style={{ fontSize: 22, color: '#52c41a' }} />,
       color: '#52c41a',
       suffix: '',
-      detail: `${stats.totalBrokers} Brokers · ${stats.totalProxies} Proxy`,
+      detail: `${stats.totalBrokers} Brokers · ${renderTopologyCount(stats.totalProxies)} Proxy`,
     },
     {
       title: t('dashboard.topics'),
@@ -209,7 +212,7 @@ const DashboardPage = () => {
       key: 'brokers',
       width: 80,
       align: 'center' as const,
-      render: (v: number) => Math.max(0, v),
+      render: renderTopologyCount,
     },
     {
       title: t('dashboard.proxy'),
@@ -217,7 +220,7 @@ const DashboardPage = () => {
       key: 'proxies',
       width: 80,
       align: 'center' as const,
-      render: (v: number) => Math.max(0, v),
+      render: renderTopologyCount,
     },
     {
       title: t('dashboard.topic'),
