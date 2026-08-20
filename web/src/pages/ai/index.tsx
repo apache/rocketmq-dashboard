@@ -47,6 +47,7 @@ import {
   ClockCounterClockwise,
   SlidersHorizontal,
   Sparkle,
+  Stop,
 } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
@@ -1126,8 +1127,21 @@ const AiPage = () => {
                     <ArrowUp size={19} weight="bold" />
                   </button>
                   {loading && (
-                    <Button size="small" onClick={handleStop}>
-                      停止
+                    <Button
+                      danger
+                      type="primary"
+                      size="middle"
+                      icon={<Stop size={16} weight="fill" />}
+                      onClick={handleStop}
+                      title="停止生成"
+                      style={{
+                        height: 36,
+                        borderRadius: 8,
+                        fontWeight: 600,
+                        boxShadow: '0 2px 8px rgba(255, 77, 79, 0.24)',
+                      }}
+                    >
+                      停止生成
                     </Button>
                   )}
                 </div>

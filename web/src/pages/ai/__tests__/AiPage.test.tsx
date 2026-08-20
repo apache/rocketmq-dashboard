@@ -332,6 +332,7 @@ describe('AiPage tool runner', () => {
     renderPage({ prompt: 'Start streaming', newConversation: true });
 
     await waitFor(() => expect(requestSignal).toBeDefined());
+    expect(screen.getByRole('button', { name: '停止生成' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'AI 对话历史' }));
     const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
     await user.click(within(historyDrawer).getByRole('button', { name: /^Previous conversation/ }));
@@ -339,7 +340,7 @@ describe('AiPage tool runner', () => {
     expect(requestSignal?.aborted).toBe(true);
     expect(useAiChatHistoryStore.getState().histories.real.activeConversationId).toBe('previous');
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('button', { name: '停止生成' })).not.toBeInTheDocument(),
     );
   });
 
