@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { getGeneralSettings, saveGeneralSettings } from '../../../api/settings';
 import { ThemeProvider } from '../../../theme/ThemeProvider';
+import { useTheme } from '../../../theme/useTheme';
 import { GeneralSettingsTab } from '../GeneralSettingsTab';
 
 beforeAll(() => {
@@ -49,11 +50,22 @@ vi.mock('../../../api/settings', () => ({
   updateDataSource: vi.fn(),
 }));
 
+const ThemeProbe = () => {
+  const { themeMode, compact } = useTheme();
+  return (
+    <>
+      <span data-testid="theme-mode">{themeMode}</span>
+      <span data-testid="compact-mode">{String(compact)}</span>
+    </>
+  );
+};
+
 const renderTab = () =>
   render(
     <App>
       <ThemeProvider>
         <GeneralSettingsTab />
+        <ThemeProbe />
       </ThemeProvider>
     </App>,
   );
@@ -137,5 +149,69 @@ describe('GeneralSettingsTab', () => {
       ),
     );
     expect(localStorage.getItem('rocketmq-studio-theme')).toBe('dark');
+  });
+
+  it('rolls back the appearance preference when saving fails', async () => {
+    vi.mocked(saveGeneralSettings).mockRejectedValue(new Error('save failed'));
+    const user = userEvent.setup();
+    renderTab();
+
+    await screen.findByText('主题模式');
+    await user.click(screen.getByText('深色'));
+
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('theme-mode')).toHaveTextContent('system'));
+    expect(screen.getByRole('radio', { name: '跟随系统' })).toBeChecked();
+    expect(localStorage.getItem('rocketmq-studio-theme')).toBe('system');
+  });
+
+  it('rolls back compact mode when saving fails', async () => {
+    vi.mocked(saveGeneralSettings).mockRejectedValue(new Error('save failed'));
+    const user = userEvent.setup();
+    renderTab();
+
+    await screen.findByText('紧凑模式');
+    const compactSwitch = screen.getByRole('switch');
+    await user.click(compactSwitch);
+
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('compact-mode')).toHaveTextContent('false'));
+    expect(compactSwitch).not.toBeChecked();
+    expect(localStorage.getItem('rocketmq-studio-compact')).toBe('false');
+  });
+
+  it('serializes form saves and merges each patch into the latest settings', async () => {
+    let resolveFirstSave!: () => void;
+    vi.mocked(saveGeneralSettings)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirstSave = resolve;
+          }),
+      )
+      .mockResolvedValueOnce();
+    const user = userEvent.setup();
+    renderTab();
+
+    const timeout = await screen.findByDisplayValue('30');
+    const saveButtons = screen.getAllByRole('button', { name: '保存设置' });
+    await user.clear(timeout);
+    await user.type(timeout, '45');
+    fireEvent.submit(saveButtons[0].closest('form')!);
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
+
+    await user.type(screen.getByLabelText('钉钉机器人 Webhook'), 'https://example.test/notify');
+    fireEvent.submit(saveButtons[1].closest('form')!);
+    await waitFor(() => expect(saveButtons[1]).toHaveClass('ant-btn-loading'));
+    expect(saveGeneralSettings).toHaveBeenCalledTimes(1);
+
+    resolveFirstSave();
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(2));
+    expect(saveGeneralSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sessionTimeout: 45,
+        dingtalkWebhook: 'https://example.test/notify',
+      }),
+    );
   });
 });

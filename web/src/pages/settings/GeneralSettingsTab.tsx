@@ -69,6 +69,8 @@ export const GeneralSettingsTab = () => {
   const [savingPreference, setSavingPreference] = useState(false);
   const [savingSecurity, setSavingSecurity] = useState(false);
   const [savingNotification, setSavingNotification] = useState(false);
+  const settingsRef = useRef<GeneralSettings | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
   const [securityForm] = Form.useForm();
@@ -79,6 +81,7 @@ export const GeneralSettingsTab = () => {
     void getGeneralSettings()
       .then((loaded) => {
         if (cancelled) return;
+        settingsRef.current = loaded;
         setSettings(loaded);
         securityForm.setFieldsValue({ sessionTimeout: loaded.sessionTimeout });
         notifyForm.setFieldsValue({
@@ -100,31 +103,46 @@ export const GeneralSettingsTab = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const persistPreference = async (patch: Partial<GeneralSettings>) => {
-    if (!settings) return;
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    setSavingPreference(true);
-    try {
-      await saveGeneralSettings(buildPayload(next));
-      message.success('设置已保存');
-    } catch {
-      message.error('设置保存失败，请稍后重试');
-    } finally {
-      setSavingPreference(false);
-    }
+  const mergeAndSave = (patch: Partial<GeneralSettings>) => {
+    const operation = saveQueueRef.current.then(async () => {
+      const previous = settingsRef.current;
+      if (!previous) return { saved: false, previous: null };
+
+      const next = { ...previous, ...patch };
+      try {
+        await saveGeneralSettings(buildPayload(next));
+        settingsRef.current = next;
+        setSettings((current) => (current ? { ...current, ...patch } : next));
+        return { saved: true, previous };
+      } catch {
+        message.error('设置保存失败，请稍后重试');
+        return { saved: false, previous };
+      }
+    });
+    saveQueueRef.current = operation.then(() => undefined);
+    return operation;
   };
 
-  const mergeAndSave = async (patch: Partial<GeneralSettings>) => {
-    if (!settings) return false;
-    try {
-      await saveGeneralSettings(buildPayload({ ...settings, ...patch }));
-      setSettings({ ...settings, ...patch });
-      return true;
-    } catch {
-      message.error('设置保存失败，请稍后重试');
-      return false;
+  const persistPreference = async (patch: Partial<GeneralSettings>) => {
+    if (!settingsRef.current) return;
+    setSettings((current) => (current ? { ...current, ...patch } : current));
+    setSavingPreference(true);
+    const result = await mergeAndSave(patch);
+    if (result.saved) {
+      message.success('设置已保存');
+    } else if (result.previous) {
+      const rollback: Partial<GeneralSettings> = {};
+      if (patch.theme !== undefined) {
+        rollback.theme = result.previous.theme;
+        setThemeMode(toThemeMode(result.previous.theme));
+      }
+      if (patch.compact !== undefined) {
+        rollback.compact = result.previous.compact;
+        setCompact(result.previous.compact);
+      }
+      setSettings((current) => (current ? { ...current, ...rollback } : current));
     }
+    setSavingPreference(false);
   };
 
   const handleSecurityFinish = async (values: { sessionTimeout: number }) => {
@@ -132,7 +150,7 @@ export const GeneralSettingsTab = () => {
     securityInFlightRef.current = true;
     setSavingSecurity(true);
     try {
-      if (await mergeAndSave({ sessionTimeout: values.sessionTimeout })) {
+      if ((await mergeAndSave({ sessionTimeout: values.sessionTimeout })).saved) {
         message.success('设置已保存');
       }
     } finally {
@@ -150,7 +168,7 @@ export const GeneralSettingsTab = () => {
     notifyInFlightRef.current = true;
     setSavingNotification(true);
     try {
-      if (await mergeAndSave(values)) {
+      if ((await mergeAndSave(values)).saved) {
         message.success('设置已保存');
       }
     } finally {
