@@ -101,7 +101,7 @@ const selectedInstance = {
   id: 5,
   name: 'instance-proxy-1',
   remark: '',
-  type: 'PROXY' as const,
+  type: 'PROXY_CLUSTER' as const,
   endpoint: '10.0.2.21:8080',
   topicCount: 0,
   consumerGroupCount: 0,
@@ -157,7 +157,7 @@ describe('TopicPage', () => {
         id: 5,
         name: 'instance-proxy-1',
         remark: '',
-        type: 'PROXY',
+        type: 'PROXY_CLUSTER',
         endpoint: '10.0.2.21:8080',
         topicCount: 1,
         consumerGroupCount: 0,
@@ -258,9 +258,7 @@ describe('TopicPage', () => {
         gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
-    mockTopicsList(
-      buildTopics(25).map((topic) => ({ ...topic, instanceId: 'instance-a' })),
-    );
+    mockTopicsList(buildTopics(25).map((topic) => ({ ...topic, instanceId: 'instance-a' })));
     renderWithProviders('/instance/instance-a/topic');
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
@@ -355,7 +353,7 @@ describe('TopicPage', () => {
         id: 5,
         name: 'instance-proxy-1',
         remark: '',
-        type: 'PROXY',
+        type: 'PROXY_CLUSTER',
         endpoint: '10.0.2.21:8080',
         topicCount: 1,
         consumerGroupCount: 0,
@@ -366,7 +364,7 @@ describe('TopicPage', () => {
         id: 7,
         name: 'instance-proxy-2',
         remark: '',
-        type: 'PROXY',
+        type: 'PROXY_CLUSTER',
         endpoint: '10.0.2.22:8080',
         topicCount: 1,
         consumerGroupCount: 0,
@@ -415,9 +413,7 @@ describe('TopicPage', () => {
   it('does not call createTopic when imported topic CSV is invalid or duplicated', async () => {
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
-    mockTopicsList([
-      { ...buildTopics(1)[0], instanceId: 'instance-proxy-1' },
-    ]);
+    mockTopicsList([{ ...buildTopics(1)[0], instanceId: 'instance-proxy-1' }]);
     renderWithProviders('/instance/instance-proxy-1/topic');
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();

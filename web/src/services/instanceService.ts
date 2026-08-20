@@ -4,6 +4,7 @@ import type {
   Instance,
   CreateInstanceRequest,
   InstanceQuery,
+  InstanceVendor,
   UpdateInstanceRequest,
   InstanceCapabilities,
 } from '../api/instance';
@@ -17,7 +18,7 @@ function copyInstance(instance: Instance): Instance {
 
 function matchesType(instance: Instance, type?: Instance['type']) {
   if (!type) return true;
-  return type === 'PROXY' ? instance.type !== 'DIRECT' : instance.type === type;
+  return instance.type === type;
 }
 
 const APACHE_CAPABILITIES: InstanceCapabilities['capabilities'] = [
@@ -76,11 +77,7 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
       id: Date.now(),
       ...data,
       name: data.name || '',
-      type: cloudManaged
-        ? 'PROXY'
-        : data.type === 'PROXY'
-          ? 'PROXY_CLUSTER'
-          : data.type || 'PROXY_CLUSTER',
+      type: cloudManaged ? 'CLOUD' : data.type || 'PROXY_CLUSTER',
       endpoint: data.endpoint || '',
       vendor: data.vendor || 'APACHE',
       remark: data.remark || '',
@@ -93,6 +90,16 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
     return copyInstance(instance);
   }
   return instanceApi.createInstance(data);
+}
+
+export async function importCloudInstances(data: {
+  vendor: Exclude<InstanceVendor, 'APACHE'>;
+  credentialId: number;
+}): Promise<instanceApi.CloudImportResult> {
+  if (isMockMode()) {
+    return { discovered: 0, imported: 0, skipped: 0, failed: [] };
+  }
+  return instanceApi.importCloudInstances(data);
 }
 
 export async function updateInstance(data: UpdateInstanceRequest): Promise<Instance> {

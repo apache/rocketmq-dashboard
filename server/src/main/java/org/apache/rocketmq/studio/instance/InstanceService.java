@@ -26,7 +26,10 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
+import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
+import org.apache.rocketmq.studio.provider.CloudRegionVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
@@ -116,6 +119,78 @@ public class InstanceService {
         return saved;
     }
 
+    /**
+     * Imports every cloud instance visible to the credential by walking all catalog regions.
+     * Remarks are resolved from the cloud instance detail during creation. Instances whose
+     * resolved name already exists are skipped; per-instance failures are collected instead
+     * of aborting the batch.
+     */
+    public CloudImportResultVO importCloudInstances(InstanceVendor vendor, Long credentialId) {
+        if (vendor == null || vendor == InstanceVendor.APACHE) {
+            throw new BusinessException(400, "Import is only supported for cloud vendors");
+        }
+        if (credentialId == null) {
+            throw new BusinessException(400, "credentialId is required");
+        }
+        CloudCredentialVO credential = cloudCredentialRepository.findById(credentialId)
+                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + credentialId));
+        if (credential.getVendor() != vendor) {
+            throw new BusinessException(400, "Cloud credential vendor does not match " + vendor);
+        }
+        CloudCatalogProvider catalog = providerRegistry.catalogFor(vendor);
+
+        int discovered = 0;
+        int imported = 0;
+        int skipped = 0;
+        List<String> failed = new ArrayList<>();
+        for (CloudRegionVO region : catalog.listRegions(credentialId)) {
+            if (region == null || !StringUtils.hasText(region.getRegionId())) {
+                continue;
+            }
+            List<CloudInstanceOptionVO> options;
+            try {
+                options = catalog.listCloudInstances(credentialId, region.getRegionId(), null);
+            } catch (BusinessException ex) {
+                failed.add(region.getRegionId() + ": " + ex.getMessage());
+                continue;
+            }
+            for (CloudInstanceOptionVO option : options) {
+                if (option == null || !StringUtils.hasText(option.getInstanceId())) {
+                    continue;
+                }
+                discovered++;
+                InstanceVO request = InstanceVO.builder()
+                        .vendor(vendor)
+                        .credentialId(credentialId)
+                        .regionId(region.getRegionId())
+                        .cloudInstanceId(option.getInstanceId())
+                        .name(option.getInstanceId())
+                        .build();
+                try {
+                    createInstance(request);
+                    imported++;
+                } catch (BusinessException ex) {
+                    if (ex.getMessage() != null && ex.getMessage().startsWith("Instance name already exists")) {
+                        skipped++;
+                    } else {
+                        failed.add(option.getInstanceId() + ": " + ex.getMessage());
+                    }
+                }
+            }
+        }
+        log.info("Cloud import finished: vendor={}, credentialId={}, discovered={}, imported={}, skipped={}, failed={}",
+                vendor, credentialId, discovered, imported, skipped, failed.size());
+        recordAudit("IMPORT_CLOUD_INSTANCES", "INSTANCE", String.valueOf(credentialId), null,
+                "vendor=" + vendor + ", imported=" + imported + ", skipped=" + skipped
+                        + ", failed=" + failed.size());
+        return CloudImportResultVO.builder()
+                .discovered(discovered)
+                .imported(imported)
+                .skipped(skipped)
+                .failed(failed)
+                .build();
+    }
+
     private void requireUniqueInstanceName(String name, Long excludeId) {
         if (!StringUtils.hasText(name)) {
             return;
@@ -159,7 +234,9 @@ public class InstanceService {
         if (instance.getType() == null) {
             throw new BusinessException(400, "InstanceVO type is required");
         }
-        instance.setType(instance.getType().normalizeApacheType());
+        if (instance.getType() == InstanceType.CLOUD) {
+            throw new BusinessException(400, "CLOUD type is reserved for vendor-managed instances");
+        }
     }
 
     /**
@@ -189,12 +266,14 @@ public class InstanceService {
                     "Cloud instance details unavailable: " + instance.getCloudInstanceId());
         }
         if (!StringUtils.hasText(instance.getName())) {
-            instance.setName(detail.getInstanceName() != null && !detail.getInstanceName().isBlank()
-                    ? detail.getInstanceName() : detail.getInstanceId());
+            instance.setName(detail.getInstanceId());
         }
         instance.setName(requireInstanceName(instance.getName()));
-        instance.setType(InstanceType.PROXY);
+        instance.setType(InstanceType.CLOUD);
         instance.setEndpoint(resolveEndpoint(detail));
+        if (!StringUtils.hasText(instance.getRemark()) && StringUtils.hasText(detail.getRemark())) {
+            instance.setRemark(detail.getRemark());
+        }
     }
 
     private String resolveEndpoint(CloudInstanceDetailVO detail) {
@@ -275,7 +354,10 @@ public class InstanceService {
         }
         if (!cloudInstance) {
             if (instance.getType() != null) {
-                updated.setType(instance.getType().normalizeApacheType());
+                if (instance.getType() == InstanceType.CLOUD) {
+                    throw new BusinessException(400, "CLOUD type is reserved for vendor-managed instances");
+                }
+                updated.setType(instance.getType());
             }
             if (instance.getEndpoint() != null) {
                 updated.setEndpoint(requireValidEndpoint(instance.getEndpoint()));

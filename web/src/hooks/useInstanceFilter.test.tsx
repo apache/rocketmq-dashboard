@@ -39,7 +39,7 @@ describe('useInstanceFilter', () => {
         id: 7,
         name: 'instance-a',
         remark: '',
-        type: 'PROXY',
+        type: 'PROXY_CLUSTER',
         endpoint: '127.0.0.1:8080',
         topicCount: 0,
         consumerGroupCount: 0,

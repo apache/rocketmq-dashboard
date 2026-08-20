@@ -26,12 +26,15 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
+import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
+import org.apache.rocketmq.studio.provider.CloudRegionVO;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -146,15 +149,15 @@ class InstanceServiceTest {
     @Test
     void listInstancesShouldFilterByType() {
         List<InstanceVO> instances = List.of(
-                InstanceVO.builder().name("proxy-1").type(InstanceType.PROXY).build()
+                InstanceVO.builder().name("proxy-1").type(InstanceType.CLOUD).build()
         );
-        when(instanceRepository.findByType(InstanceType.PROXY)).thenReturn(instances);
+        when(instanceRepository.findByType(InstanceType.CLOUD)).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.PROXY, null);
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, null);
 
         assertThat(result).hasSize(1);
-        verify(instanceRepository).findByType(InstanceType.PROXY);
+        verify(instanceRepository).findByType(InstanceType.CLOUD);
     }
 
     @Test
@@ -188,29 +191,29 @@ class InstanceServiceTest {
     @Test
     void listInstancesShouldFilterByTypeAndSearch() {
         List<InstanceVO> instances = List.of(
-                InstanceVO.builder().name("production-proxy").type(InstanceType.PROXY).build()
+                InstanceVO.builder().name("production-proxy").type(InstanceType.CLOUD).build()
         );
-        when(instanceRepository.findByTypeAndSearch(InstanceType.PROXY, "prod")).thenReturn(instances);
+        when(instanceRepository.findByTypeAndSearch(InstanceType.CLOUD, "prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.PROXY, "prod");
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, "prod");
 
         assertThat(result).hasSize(1);
-        verify(instanceRepository).findByTypeAndSearch(InstanceType.PROXY, "prod");
+        verify(instanceRepository).findByTypeAndSearch(InstanceType.CLOUD, "prod");
     }
 
     @Test
     void listInstancesShouldTrimSearchKeywordWhenFilteringByType() {
         List<InstanceVO> instances = List.of(
-                InstanceVO.builder().name("production-proxy").type(InstanceType.PROXY).build()
+                InstanceVO.builder().name("production-proxy").type(InstanceType.CLOUD).build()
         );
-        when(instanceRepository.findByTypeAndSearch(InstanceType.PROXY, "prod")).thenReturn(instances);
+        when(instanceRepository.findByTypeAndSearch(InstanceType.CLOUD, "prod")).thenReturn(instances);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
-        List<InstanceVO> result = instanceService.listInstances(InstanceType.PROXY, " prod ");
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.CLOUD, " prod ");
 
         assertThat(result).hasSize(1);
-        verify(instanceRepository).findByTypeAndSearch(InstanceType.PROXY, "prod");
+        verify(instanceRepository).findByTypeAndSearch(InstanceType.CLOUD, "prod");
     }
 
     @Test
@@ -278,7 +281,7 @@ class InstanceServiceTest {
         InstanceVO input = InstanceVO.builder()
                 .name("new-instance")
                 .endpoint("10.0.1.1:8080")
-                .type(InstanceType.PROXY)
+                .type(InstanceType.PROXY_CLUSTER)
                 .build();
 
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> {
@@ -362,7 +365,7 @@ class InstanceServiceTest {
 
     @Test
     void createInstanceShouldTrimEndpointBeforeSaving() {
-        InstanceVO input = InstanceVO.builder().name("valid-name").type(InstanceType.PROXY)
+        InstanceVO input = InstanceVO.builder().name("valid-name").type(InstanceType.PROXY_CLUSTER)
                 .endpoint("  namesrv:9876  ").build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -371,7 +374,7 @@ class InstanceServiceTest {
 
     @Test
     void createInstanceShouldTrimNameBeforeSaving() {
-        InstanceVO input = InstanceVO.builder().name("  production  ").type(InstanceType.PROXY)
+        InstanceVO input = InstanceVO.builder().name("  production  ").type(InstanceType.PROXY_CLUSTER)
                 .endpoint("namesrv:9876").build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -380,7 +383,7 @@ class InstanceServiceTest {
 
     @Test
     void createApacheInstanceShouldTrimAndPersistOnlyAdminCredentialReference() {
-        InstanceVO input = InstanceVO.builder().name("production").type(InstanceType.PROXY)
+        InstanceVO input = InstanceVO.builder().name("production").type(InstanceType.PROXY_CLUSTER)
                 .endpoint("namesrv:9876").adminCredentialRef(" production-admin ").build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -391,7 +394,7 @@ class InstanceServiceTest {
 
     @Test
     void updateApacheInstanceShouldReleaseCachedClientWhenCredentialReferenceChanges() {
-        InstanceVO existing = InstanceVO.builder().name("production").type(InstanceType.PROXY)
+        InstanceVO existing = InstanceVO.builder().name("production").type(InstanceType.PROXY_CLUSTER)
                 .endpoint("namesrv:9876").adminCredentialRef("credential-a").build();
         existing.setId(1L);
         InstanceVO update = InstanceVO.builder().adminCredentialRef("credential-b").build();
@@ -412,7 +415,7 @@ class InstanceServiceTest {
         InstanceVO existing = InstanceVO.builder()
                 .name("old-name")
                 .endpoint("10.0.1.1:8080")
-                .type(InstanceType.PROXY)
+                .type(InstanceType.PROXY_CLUSTER)
                 .remark("old remark")
                 .topicCount(7)
                 .consumerGroupCount(3)
@@ -434,7 +437,7 @@ class InstanceServiceTest {
 
         assertThat(result.getName()).isEqualTo("old-name");
         assertThat(result.getEndpoint()).isEqualTo("10.0.1.1:8080");
-        assertThat(result.getType()).isEqualTo(InstanceType.PROXY);
+        assertThat(result.getType()).isEqualTo(InstanceType.PROXY_CLUSTER);
         assertThat(result.getRemark()).isEqualTo("new remark");
         assertThat(result.getTopicCount()).isEqualTo(7);
         assertThat(result.getConsumerGroupCount()).isEqualTo(3);
@@ -446,7 +449,7 @@ class InstanceServiceTest {
         assertThat(existing.getRemark()).isEqualTo("old remark");
         assertThat(existing.getGmtModified()).isEqualTo(originalUpdatedAt);
         verify(operationAuditService).record(eq("UPDATE_INSTANCE"), eq("INSTANCE"), eq("1"), eq(null),
-                eq("name=old-name, vendor=APACHE, type=PROXY"), eq("SUCCESS"), eq(null));
+                eq("name=old-name, vendor=APACHE, type=PROXY_CLUSTER"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -470,7 +473,7 @@ class InstanceServiceTest {
         InstanceVO stored = InstanceVO.builder()
                 .name("old-name")
                 .remark("old remark")
-                .type(InstanceType.PROXY)
+                .type(InstanceType.PROXY_CLUSTER)
                 .endpoint("10.0.1.1:8080")
                 .topicCount(7)
                 .consumerGroupCount(3)
@@ -497,7 +500,7 @@ class InstanceServiceTest {
 
         assertThat(stored.getName()).isEqualTo("old-name");
         assertThat(stored.getRemark()).isEqualTo("old remark");
-        assertThat(stored.getType()).isEqualTo(InstanceType.PROXY);
+        assertThat(stored.getType()).isEqualTo(InstanceType.PROXY_CLUSTER);
         assertThat(stored.getEndpoint()).isEqualTo("10.0.1.1:8080");
         assertThat(stored.getTopicCount()).isEqualTo(7);
         assertThat(stored.getConsumerGroupCount()).isEqualTo(3);
@@ -817,7 +820,7 @@ class InstanceServiceTest {
         InstanceVO instance = InstanceVO.builder()
                 .name("inst")
                 .endpoint("10.0.0.1:8080")
-                .type(InstanceType.PROXY)
+                .type(InstanceType.PROXY_CLUSTER)
                 .build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -852,6 +855,39 @@ class InstanceServiceTest {
         assertThatThrownBy(() -> instanceService.createInstance(instance))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("InstanceVO type is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
+    }
+
+    @Test
+    void createApacheInstanceShouldRejectCloudTypeTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("inst")
+                .endpoint("10.0.0.1:8080")
+                .type(InstanceType.CLOUD)
+                .build();
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("CLOUD type is reserved for vendor-managed instances")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
+    }
+
+    @Test
+    void updateApacheInstanceShouldRejectCloudTypeTest() {
+        InstanceVO existing = InstanceVO.builder().name("production").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").build();
+        existing.setId(1L);
+        InstanceVO update = InstanceVO.builder().type(InstanceType.CLOUD).build();
+        update.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> instanceService.updateInstance(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("CLOUD type is reserved for vendor-managed instances")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verify(instanceRepository, never()).save(any(InstanceVO.class));
@@ -926,9 +962,131 @@ class InstanceServiceTest {
 
         InstanceVO created = instanceService.createInstance(instance);
 
-        assertThat(created.getName()).isEqualTo("prod-mq");
+        assertThat(created.getName()).isEqualTo("rmq-cn-xxx");
         assertThat(created.getEndpoint()).isEqualTo("vpc:8080");
-        assertThat(created.getType()).isEqualTo(InstanceType.PROXY);
+        assertThat(created.getType()).isEqualTo(InstanceType.CLOUD);
+    }
+
+    @Test
+    void createInstanceShouldAutoFillRemarkFromCloudDetailTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId(1L)
+                .cloudInstanceId("rmq-cn-xxx")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-xxx");
+        detail.setInstanceName("prod-mq");
+        detail.setRemark("prod-link");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-cn-xxx")).thenReturn(detail);
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO created = instanceService.createInstance(instance);
+
+        assertThat(created.getRemark()).isEqualTo("prod-link");
+    }
+
+    @Test
+    void createInstanceShouldKeepExplicitRemarkOverCloudDetailTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId(1L)
+                .cloudInstanceId("rmq-cn-xxx")
+                .regionId("cn-hangzhou")
+                .remark("user-remark")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-xxx");
+        detail.setInstanceName("prod-mq");
+        detail.setRemark("cloud-remark");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-cn-xxx")).thenReturn(detail);
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO created = instanceService.createInstance(instance);
+
+        assertThat(created.getRemark()).isEqualTo("user-remark");
+    }
+
+    @Test
+    void importCloudInstancesShouldRejectApacheVendorTest() {
+        assertThatThrownBy(() -> instanceService.importCloudInstances(InstanceVendor.APACHE, 1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Import is only supported for cloud vendors")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldImportSkipAndCollectFailuresTest() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+
+        CloudRegionVO hangzhou = new CloudRegionVO();
+        hangzhou.setRegionId("cn-hangzhou");
+        CloudRegionVO broken = new CloudRegionVO();
+        broken.setRegionId("cn-broken");
+        when(catalog.listRegions(1L)).thenReturn(List.of(hangzhou, broken));
+
+        CloudInstanceOptionVO fresh = new CloudInstanceOptionVO();
+        fresh.setInstanceId("rmq-fresh");
+        CloudInstanceOptionVO duplicate = new CloudInstanceOptionVO();
+        duplicate.setInstanceId("rmq-dup");
+        when(catalog.listCloudInstances(1L, "cn-hangzhou", null)).thenReturn(List.of(fresh, duplicate));
+        when(catalog.listCloudInstances(1L, "cn-broken", null))
+                .thenThrow(new BusinessException(502, "catalog unavailable"));
+
+        CloudInstanceDetailVO freshDetail = new CloudInstanceDetailVO();
+        freshDetail.setInstanceId("rmq-fresh");
+        freshDetail.setInstanceName("inst-fresh");
+        freshDetail.setRemark("cloud-remark");
+        freshDetail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc-a:8080")));
+        CloudInstanceDetailVO duplicateDetail = new CloudInstanceDetailVO();
+        duplicateDetail.setInstanceId("rmq-dup");
+        duplicateDetail.setInstanceName("inst-dup");
+        duplicateDetail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc-b:8080")));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-fresh")).thenReturn(freshDetail);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-dup")).thenReturn(duplicateDetail);
+
+        when(instanceRepository.findByName("rmq-fresh")).thenReturn(Optional.empty());
+        InstanceVO existing = InstanceVO.builder().name("rmq-dup").build();
+        existing.setId(9L);
+        when(instanceRepository.findByName("rmq-dup")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isEqualTo(2);
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getSkipped()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("cn-broken: catalog unavailable");
+
+        ArgumentCaptor<InstanceVO> saved = ArgumentCaptor.forClass(InstanceVO.class);
+        verify(instanceRepository).save(saved.capture());
+        assertThat(saved.getValue().getName()).isEqualTo("rmq-fresh");
+        assertThat(saved.getValue().getRemark()).isEqualTo("cloud-remark");
+        assertThat(saved.getValue().getType()).isEqualTo(InstanceType.CLOUD);
+        assertThat(saved.getValue().getRegionId()).isEqualTo("cn-hangzhou");
     }
 
     @Test
@@ -1015,9 +1173,9 @@ class InstanceServiceTest {
 
         InstanceVO created = instanceService.createInstance(instance);
 
-        assertThat(created.getName()).isEqualTo("chengdu-prod");
+        assertThat(created.getName()).isEqualTo("rmq-abc");
         assertThat(created.getEndpoint()).isEqualTo("vpc.tencent:8080");
-        assertThat(created.getType()).isEqualTo(InstanceType.PROXY);
+        assertThat(created.getType()).isEqualTo(InstanceType.CLOUD);
         assertThat(created.getVendor()).isEqualTo(InstanceVendor.TENCENT);
     }
 
@@ -1029,7 +1187,7 @@ class InstanceServiceTest {
                 .cloudInstanceId("rmq-cn-xxx")
                 .credentialId(1L)
                 .regionId("cn-hangzhou")
-                .type(InstanceType.PROXY)
+                .type(InstanceType.CLOUD)
                 .endpoint("vpc:8080")
                 .build();
         existing.setId(1L);

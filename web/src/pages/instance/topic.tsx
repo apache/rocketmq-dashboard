@@ -82,15 +82,15 @@ import { parseMessageProperties } from '../../utils/messageProperties';
 const { Text } = Typography;
 
 const INSTANCE_ACCESS_LABEL: Record<Instance['type'], string> = {
-  PROXY: 'Proxy 模式（部署形态未标明）',
+  CLOUD: '云服务',
   PROXY_LOCAL: 'Proxy Local 模式',
   PROXY_CLUSTER: 'Proxy Cluster 模式',
   DIRECT: 'Direct 模式',
 };
 
 const INSTANCE_ACCESS_DESCRIPTION: Record<Instance['type'], string> = {
-  PROXY:
-    '接入点为 Proxy 地址，但该存量实例未标明 Local/Cluster 部署形态。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  CLOUD:
+    '接入点为云厂商托管实例的接入地址，由云实例目录解析得出。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
   PROXY_LOCAL:
     '接入点为与 Broker 同进程部署的 Proxy 地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
   PROXY_CLUSTER:

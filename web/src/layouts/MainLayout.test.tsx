@@ -175,7 +175,7 @@ describe('MainLayout authentication navigation', () => {
     instanceServiceMocks.getInstanceCapabilities.mockResolvedValue({
       instanceId: 'cloud-1',
       vendor: 'ALIYUN',
-      accessType: 'PROXY',
+      accessType: 'CLOUD',
       capabilities: ['TOPIC_MANAGEMENT'],
     });
 

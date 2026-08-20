@@ -15,12 +15,26 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.studio.common.domain.enums;
+package org.apache.rocketmq.studio.instance;
 
-public enum InstanceType {
-    /** Cloud-managed (vendor-hosted) instance selected from the vendor catalog. */
-    CLOUD,
-    PROXY_LOCAL,
-    PROXY_CLUSTER,
-    DIRECT;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class CloudImportResultVO {
+
+    private int discovered;
+
+    private int imported;
+
+    private int skipped;
+
+    private List<String> failed;
 }

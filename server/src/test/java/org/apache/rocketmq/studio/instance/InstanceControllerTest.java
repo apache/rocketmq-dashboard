@@ -65,7 +65,7 @@ class InstanceControllerTest {
 
     @Test
     void listInstancesShouldReturnAllInstances() throws Exception {
-        InstanceVO inst = buildInstance(1L, "production-proxy", InstanceType.PROXY, "10.0.1.1:8080");
+        InstanceVO inst = buildInstance(1L, "production-proxy", InstanceType.PROXY_CLUSTER, "10.0.1.1:8080");
 
         when(instanceService.listInstances(isNull(), isNull())).thenReturn(List.of(inst));
 
@@ -75,28 +75,28 @@ class InstanceControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].name").value("production-proxy"))
-                .andExpect(jsonPath("$.data[0].type").value("PROXY"))
+                .andExpect(jsonPath("$.data[0].type").value("PROXY_CLUSTER"))
                 .andExpect(jsonPath("$.data[0].endpoint").value("10.0.1.1:8080"));
     }
 
     @Test
     void listInstancesShouldFilterByType() throws Exception {
-        InstanceVO inst = buildInstance(1L, "proxy-1", InstanceType.PROXY, "10.0.1.1:8080");
+        InstanceVO inst = buildInstance(1L, "proxy-1", InstanceType.CLOUD, "10.0.1.1:8080");
 
-        when(instanceService.listInstances(eq(InstanceType.PROXY), isNull())).thenReturn(List.of(inst));
+        when(instanceService.listInstances(eq(InstanceType.CLOUD), isNull())).thenReturn(List.of(inst));
 
         mockMvc.perform(get("/api/instances")
-                        .param("type", "PROXY"))
+                        .param("type", "CLOUD"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].type").value("PROXY"));
+                .andExpect(jsonPath("$.data[0].type").value("CLOUD"));
 
-        verify(instanceService).listInstances(eq(InstanceType.PROXY), isNull());
+        verify(instanceService).listInstances(eq(InstanceType.CLOUD), isNull());
     }
 
     @Test
     void listInstancesShouldFilterBySearch() throws Exception {
-        InstanceVO inst = buildInstance(1L, "production", InstanceType.PROXY, "10.0.1.1:8080");
+        InstanceVO inst = buildInstance(1L, "production", InstanceType.PROXY_CLUSTER, "10.0.1.1:8080");
 
         when(instanceService.listInstances(isNull(), eq("prod"))).thenReturn(List.of(inst));
 
@@ -177,7 +177,7 @@ class InstanceControllerTest {
         InstanceVO updated = InstanceVO.builder()
                 .name("updated-name")
                 .endpoint("10.0.1.1:8080")
-                .type(InstanceType.PROXY)
+                .type(InstanceType.PROXY_CLUSTER)
                 .build();
         updated.setId(1L);
         updated.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));

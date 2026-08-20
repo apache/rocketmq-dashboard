@@ -15,12 +15,18 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.studio.common.domain.enums;
+package org.apache.rocketmq.studio.instance;
 
-public enum InstanceType {
-    /** Cloud-managed (vendor-hosted) instance selected from the vendor catalog. */
-    CLOUD,
-    PROXY_LOCAL,
-    PROXY_CLUSTER,
-    DIRECT;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+
+@Data
+public class ImportCloudInstancesDTO {
+
+    @NotNull
+    private InstanceVendor vendor;
+
+    @NotNull
+    private Long credentialId;
 }

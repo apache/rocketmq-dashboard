@@ -63,7 +63,7 @@ class MybatisPlusInstanceRepositoryTest {
     void findAllShouldMapEntitiesWithoutCountsTest() {
         when(instanceMapper.selectList(any(QueryWrapper.class)))
                 .thenReturn(List.of(entity(1L, "instance-direct-1", InstanceType.DIRECT),
-                        entity(2L, "instance-proxy-1", InstanceType.PROXY)));
+                        entity(2L, "instance-proxy-1", InstanceType.PROXY_CLUSTER)));
 
         List<InstanceVO> result = repository.findAll();
 
@@ -81,22 +81,19 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
-    void findByTypeShouldTreatLegacyProxyAsAllProxyAccessTypes() {
+    void findByTypeShouldMatchExactTypeNameTest() {
         when(instanceMapper.selectList(any(QueryWrapper.class)))
-                .thenReturn(List.of(
-                        entity(3L, "legacy", InstanceType.PROXY),
-                        entity(4L, "local", InstanceType.PROXY_LOCAL),
-                        entity(5L, "cluster", InstanceType.PROXY_CLUSTER)));
+                .thenReturn(List.of(entity(3L, "cloud-inst", InstanceType.CLOUD)));
 
-        List<InstanceVO> result = repository.findByType(InstanceType.PROXY);
+        List<InstanceVO> result = repository.findByType(InstanceType.CLOUD);
 
         assertThat(result).extracting(InstanceVO::getType)
-                .containsExactly(InstanceType.PROXY, InstanceType.PROXY_LOCAL, InstanceType.PROXY_CLUSTER);
+                .containsExactly(InstanceType.CLOUD);
         ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(instanceMapper).selectList(query.capture());
-        assertThat(query.getValue().getSqlSegment()).contains("type IN");
+        assertThat(query.getValue().getSqlSegment()).contains("type =");
         assertThat(query.getValue().getParamNameValuePairs().values())
-                .contains(InstanceType.PROXY.name(), InstanceType.PROXY_LOCAL.name(), InstanceType.PROXY_CLUSTER.name());
+                .containsExactly(InstanceType.CLOUD.name());
     }
 
     @Test
@@ -109,7 +106,7 @@ class MybatisPlusInstanceRepositoryTest {
                 .isEqualTo(InstanceType.PROXY_LOCAL);
         ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(instanceMapper).selectList(query.capture());
-        assertThat(query.getValue().getSqlSegment()).contains("type IN");
+        assertThat(query.getValue().getSqlSegment()).contains("type =");
     }
 
     @Test
@@ -137,7 +134,7 @@ class MybatisPlusInstanceRepositoryTest {
 
     @Test
     void findByIdShouldNotComputeCountsTest() {
-        when(instanceMapper.selectById(2L)).thenReturn(entity(2L, "instance-proxy-1", InstanceType.PROXY));
+        when(instanceMapper.selectById(2L)).thenReturn(entity(2L, "instance-proxy-1", InstanceType.PROXY_CLUSTER));
 
         Optional<InstanceVO> result = repository.findById(2L);
 
@@ -189,7 +186,7 @@ class MybatisPlusInstanceRepositoryTest {
 
     @Test
     void saveShouldInsertWhenInstanceAbsent() {
-        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY);
+        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER);
         when(instanceMapper.selectById(5L)).thenReturn(null);
 
         repository.save(vo);
@@ -202,8 +199,8 @@ class MybatisPlusInstanceRepositoryTest {
 
     @Test
     void saveShouldUpdateWhenInstanceExists() {
-        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY);
-        when(instanceMapper.selectById(5L)).thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY));
+        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER);
+        when(instanceMapper.selectById(5L)).thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER));
         when(instanceMapper.updateById(any(RmqInstance.class))).thenReturn(1);
 
         repository.save(vo);
@@ -214,9 +211,9 @@ class MybatisPlusInstanceRepositoryTest {
 
     @Test
     void saveShouldReportALostConcurrentUpdate() {
-        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY);
+        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER);
         when(instanceMapper.selectById(5L))
-                .thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY));
+                .thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER));
         when(instanceMapper.updateById(any(RmqInstance.class))).thenReturn(0);
 
         assertThatThrownBy(() -> repository.save(vo))

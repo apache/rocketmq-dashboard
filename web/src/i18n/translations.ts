@@ -179,7 +179,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'instance.count': { zh: '共 {n} 个实例', en: '{n} instances' },
   'instance.searchPlaceholder': { zh: '搜索实例 ID 或地址', en: 'Search instance ID or endpoint' },
   'instance.allTypes': { zh: '全部架构', en: 'All Types' },
-  'instance.proxyMode': { zh: 'Proxy 模式', en: 'Proxy Mode' },
   'instance.directMode': { zh: 'Direct 模式', en: 'Direct Mode' },
   'instance.addInstance': { zh: '添加实例', en: 'Add Instance' },
   'instance.instanceName': { zh: '实例 ID', en: 'Instance ID' },

@@ -57,7 +57,7 @@ class InstanceCapabilityServiceTest {
         InstanceVO instance = InstanceVO.builder()
                 .name("cloud-1")
                 .vendor(InstanceVendor.ALIYUN)
-                .type(InstanceType.PROXY)
+                .type(InstanceType.CLOUD)
                 .build();
         instance.setId(1L);
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(instance));
@@ -70,7 +70,7 @@ class InstanceCapabilityServiceTest {
 
         assertThat(result.instanceId()).isEqualTo("cloud-1");
         assertThat(result.vendor()).isEqualTo(InstanceVendor.ALIYUN);
-        assertThat(result.accessType()).isEqualTo(InstanceType.PROXY);
+        assertThat(result.accessType()).isEqualTo(InstanceType.CLOUD);
         assertThat(result.capabilities()).containsExactly(
                 InstanceCapability.TOPIC_MANAGEMENT,
                 InstanceCapability.MESSAGE_QUERY);

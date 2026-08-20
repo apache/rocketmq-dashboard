@@ -334,7 +334,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         return switch (instance.getType()) {
             case DIRECT -> ClusterType.V4_DIRECT;
             case PROXY_LOCAL -> ClusterType.V5_PROXY_LOCAL;
-            case PROXY, PROXY_CLUSTER -> ClusterType.V5_PROXY_CLUSTER;
+            case CLOUD, PROXY_CLUSTER -> ClusterType.V5_PROXY_CLUSTER;
         };
     }
 

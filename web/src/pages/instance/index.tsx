@@ -51,6 +51,7 @@ import { formatDateTime } from '../../utils/format';
 import {
   createInstance,
   deleteInstance,
+  importCloudInstances,
   listInstances,
   updateInstance,
 } from '../../services/instanceService';
@@ -65,7 +66,7 @@ const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
 
 /* ─── Helpers ─── */
 const typeLabel: Record<string, { text: string; color: string }> = {
-  PROXY: { text: 'Proxy 模式（部署形态未标明）', color: 'blue' },
+  CLOUD: { text: '云服务', color: 'blue' },
   PROXY_LOCAL: { text: 'Proxy Local 模式', color: 'cyan' },
   PROXY_CLUSTER: { text: 'Proxy Cluster 模式', color: 'blue' },
   DIRECT: { text: 'Direct 模式', color: 'orange' },
@@ -125,6 +126,7 @@ const InstancePage = () => {
   const [editForm] = Form.useForm();
   const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
   const [submitting, setSubmitting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
   const listQueryRef = useRef<InstanceQuery>({});
@@ -336,6 +338,38 @@ const InstancePage = () => {
     } finally {
       mutationInFlightRef.current = false;
       setSubmitting(false);
+    }
+  };
+
+  const handleImportAll = async () => {
+    if (importing || vendor === 'APACHE') return;
+    const credentialId = addForm.getFieldValue('credentialId') as number | undefined;
+    if (!credentialId) {
+      message.warning('请先选择云凭据');
+      return;
+    }
+    setImporting(true);
+    try {
+      const result = await importCloudInstances({ vendor, credentialId });
+      await loadInstances();
+      const summary =
+        result.imported > 0
+          ? `导入完成：共同步 ${result.imported + result.skipped} 个实例（新导入 ${result.imported}，已存在跳过 ${result.skipped}）`
+          : `云上实例均已在 Studio 中（共 ${result.skipped} 个），无需重复导入`;
+      if (result.failed.length > 0) {
+        message.warning(`${summary}，失败 ${result.failed.length} 个：${result.failed.join('；')}`);
+      } else {
+        message.success(summary);
+      }
+      setAddModalOpen(false);
+      addForm.resetFields();
+      setVendor(DEFAULT_VENDOR);
+      setRegions([]);
+      setCloudInstances([]);
+    } catch (error) {
+      message.error(describeApiError(error, '一键导入失败，请稍后重试'));
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -569,7 +603,7 @@ const InstancePage = () => {
             style={{ width: 140 }}
             options={[
               { value: 'ALL', label: '全部架构' },
-              { value: 'PROXY', label: '全部 Proxy 模式' },
+              { value: 'CLOUD', label: '云服务' },
               { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
               { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
               { value: 'DIRECT', label: 'Direct 模式' },
@@ -613,11 +647,36 @@ const InstancePage = () => {
           setRegions([]);
           setCloudInstances([]);
         }}
-        onOk={() => void handleCreate()}
-        confirmLoading={submitting}
-        okText="连接"
-        cancelText="取消"
         width={520}
+        footer={
+          <Flex justify="flex-end" gap={8}>
+            {vendor === 'ALIYUN' && (
+              <Tooltip title="遍历该凭据下全部地域，将所有云上实例导入（幂等，已存在的自动跳过），备注自动取自云上实例">
+                <Button
+                  loading={importing}
+                  disabled={!addCredentialId}
+                  onClick={() => void handleImportAll()}
+                >
+                  一键导入
+                </Button>
+              </Tooltip>
+            )}
+            <Button
+              onClick={() => {
+                setAddModalOpen(false);
+                addForm.resetFields();
+                setVendor(DEFAULT_VENDOR);
+                setRegions([]);
+                setCloudInstances([]);
+              }}
+            >
+              取消
+            </Button>
+            <Button type="primary" loading={submitting} onClick={() => void handleCreate()}>
+              连接
+            </Button>
+          </Flex>
+        }
       >
         <Tabs
           type="card"
@@ -638,92 +697,94 @@ const InstancePage = () => {
           {VENDOR_OPTIONS.find((option) => option.key === vendor)?.description}
         </Text>
         {cloudVendor ? (
-          <Form form={addForm} layout="vertical">
-            <Form.Item
-              label="云凭据"
-              name="credentialId"
-              rules={[{ required: true, message: '请选择云凭据' }]}
-              extra={
-                <span>
-                  凭据为{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，
-                  <Link to="/settings?tab=credential">前往「设置 - 云凭据管理」添加</Link>
-                </span>
-              }
-            >
-              <Select
-                placeholder="选择已录入的 AK/SK 凭据"
-                loading={credentialsLoading}
-                onChange={handleCredentialChange}
-                notFoundContent={
-                  credentialsLoading ? (
-                    '加载中…'
-                  ) : (
-                    <span>
-                      暂无{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}凭据，
-                      <Link to="/settings?tab=credential">去设置中添加</Link>
-                    </span>
-                  )
+          <>
+            <Form form={addForm} layout="vertical">
+              <Form.Item
+                label="云凭据"
+                name="credentialId"
+                rules={[{ required: true, message: '请选择云凭据' }]}
+                extra={
+                  <span>
+                    凭据为{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，
+                    <Link to="/settings?tab=credential">前往「设置 - 云凭据管理」添加</Link>
+                  </span>
                 }
-                options={credentials.map((item) => ({
-                  value: item.id,
-                  label: `${item.name}（${item.accessKey}）`,
-                }))}
-              />
-            </Form.Item>
-            <Form.Item
-              label="地域"
-              name="regionId"
-              rules={[{ required: true, message: '请选择地域' }]}
-            >
-              <Select
-                placeholder={addCredentialId ? '选择地域' : '请先选择云凭据'}
-                disabled={!addCredentialId}
-                loading={regionsLoading}
-                onChange={handleRegionChange}
-                options={regions.map((region) => ({
-                  value: region.regionId,
-                  label: `${region.regionName}（${region.regionId}）`,
-                }))}
-              />
-            </Form.Item>
-            <Form.Item
-              label="云上实例"
-              name="cloudInstanceId"
-              rules={[{ required: true, message: '请选择云上实例' }]}
-              extra="商业版实例来自云端目录，无法手工创建"
-            >
-              <Select
-                showSearch
-                optionFilterProp="label"
-                placeholder={addRegionId ? '选择云上实例' : '请先选择地域'}
-                disabled={!addRegionId}
-                loading={cloudInstancesLoading}
-                options={cloudInstances.map((item) => ({
-                  value: item.instanceId,
-                  label: `${item.instanceName || item.instanceId}（${item.instanceId}）`,
-                }))}
-                onChange={(value) => {
-                  const selected = cloudInstances.find((item) => item.instanceId === value);
-                  if (selected) {
-                    addForm.setFieldsValue({ name: selected.instanceId });
+              >
+                <Select
+                  placeholder="选择已录入的 AK/SK 凭据"
+                  loading={credentialsLoading}
+                  onChange={handleCredentialChange}
+                  notFoundContent={
+                    credentialsLoading ? (
+                      '加载中…'
+                    ) : (
+                      <span>
+                        暂无{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}凭据，
+                        <Link to="/settings?tab=credential">去设置中添加</Link>
+                      </span>
+                    )
                   }
-                }}
-              />
-            </Form.Item>
-            <Form.Item
-              label="实例 ID"
-              name="name"
-              rules={[
-                { required: true, message: '请输入实例 ID' },
-                { max: 64, message: '实例 ID 不能超过 64 个字符' },
-              ]}
-            >
-              <Input placeholder="默认取云上实例 ID" />
-            </Form.Item>
-            <Form.Item label="备注" name="remark">
-              <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
-            </Form.Item>
-          </Form>
+                  options={credentials.map((item) => ({
+                    value: item.id,
+                    label: `${item.name}（${item.accessKey}）`,
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item
+                label="地域"
+                name="regionId"
+                rules={[{ required: true, message: '请选择地域' }]}
+              >
+                <Select
+                  placeholder={addCredentialId ? '选择地域' : '请先选择云凭据'}
+                  disabled={!addCredentialId}
+                  loading={regionsLoading}
+                  onChange={handleRegionChange}
+                  options={regions.map((region) => ({
+                    value: region.regionId,
+                    label: `${region.regionName}（${region.regionId}）`,
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item
+                label="云上实例"
+                name="cloudInstanceId"
+                rules={[{ required: true, message: '请选择云上实例' }]}
+                extra="商业版实例来自云端目录，无法手工创建"
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder={addRegionId ? '选择云上实例' : '请先选择地域'}
+                  disabled={!addRegionId}
+                  loading={cloudInstancesLoading}
+                  options={cloudInstances.map((item) => ({
+                    value: item.instanceId,
+                    label: `${item.instanceName || item.instanceId}（${item.instanceId}）`,
+                  }))}
+                  onChange={(value) => {
+                    const selected = cloudInstances.find((item) => item.instanceId === value);
+                    if (selected) {
+                      addForm.setFieldsValue({ name: selected.instanceId });
+                    }
+                  }}
+                />
+              </Form.Item>
+              <Form.Item
+                label="实例 ID"
+                name="name"
+                rules={[
+                  { required: true, message: '请输入实例 ID' },
+                  { max: 64, message: '实例 ID 不能超过 64 个字符' },
+                ]}
+              >
+                <Input placeholder="默认取云上实例 ID" />
+              </Form.Item>
+              <Form.Item label="备注" name="remark">
+                <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
+              </Form.Item>
+            </Form>
+          </>
         ) : (
           <Form form={addForm} layout="vertical">
             <Form.Item
@@ -817,12 +878,15 @@ const InstancePage = () => {
             rules={[{ required: true, message: '请选择接入方式' }]}
           >
             <Select
-              options={[
-                { value: 'PROXY', label: 'Proxy 模式（部署形态未标明）' },
-                { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
-                { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
-                { value: 'DIRECT', label: 'Direct 模式' },
-              ]}
+              options={
+                editingInstance?.vendor && editingInstance.vendor !== 'APACHE'
+                  ? [{ value: 'CLOUD', label: '云服务' }]
+                  : [
+                      { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
+                      { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
+                      { value: 'DIRECT', label: 'Direct 模式' },
+                    ]
+              }
             />
           </Form.Item>
           <Form.Item
@@ -839,8 +903,8 @@ const InstancePage = () => {
             extra={
               editInstanceType === 'DIRECT'
                 ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
-                : editInstanceType === 'PROXY'
-                  ? 'Proxy 模式请填写 Proxy SLB 内网地址（如 proxy.mq.svc:8080）'
+                : editInstanceType === 'CLOUD'
+                  ? '云服务实例接入地址由云厂商目录解析，不支持手动修改'
                   : '请先选择接入方式'
             }
           >

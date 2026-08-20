@@ -31,7 +31,7 @@ const mock = new MockAdapter(client);
 const instance = {
   id: 1,
   name: 'orders',
-  type: 'PROXY' as const,
+  type: 'PROXY_CLUSTER' as const,
   endpoint: 'proxy:8080',
   remark: '',
   topicCount: 0,
@@ -67,11 +67,11 @@ describe('instance API', () => {
 
   it('sends normalized instance filters', async () => {
     mock.onGet('/instances').reply((config) => {
-      expect(config.params).toEqual({ type: 'PROXY', search: 'proxy:8080' });
+      expect(config.params).toEqual({ type: 'CLOUD', search: 'proxy:8080' });
       return [200, { code: 200, data: [instance] }];
     });
 
-    await expect(listInstances({ type: 'PROXY', search: '  proxy:8080  ' })).resolves.toEqual([
+    await expect(listInstances({ type: 'CLOUD', search: '  proxy:8080  ' })).resolves.toEqual([
       instance,
     ]);
   });
@@ -98,7 +98,7 @@ describe('instance API', () => {
     const capabilities = {
       instanceId: 'instance/proxy',
       vendor: 'APACHE' as const,
-      accessType: 'PROXY' as const,
+      accessType: 'PROXY_CLUSTER' as const,
       capabilities: ['TOPIC_MANAGEMENT', 'DLQ_MANAGEMENT'] as const,
     };
     mock.onGet('/instances/instance%2Fproxy/capabilities').reply(200, {

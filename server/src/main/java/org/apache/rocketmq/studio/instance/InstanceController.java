@@ -58,6 +58,11 @@ public class InstanceController {
         return Result.ok(instanceService.createInstance(request.toInstanceVO()));
     }
 
+    @PostMapping("/import-cloud")
+    public Result<CloudImportResultVO> importCloudInstances(@Valid @RequestBody ImportCloudInstancesDTO request) {
+        return Result.ok(instanceService.importCloudInstances(request.getVendor(), request.getCredentialId()));
+    }
+
     @PostMapping("/update")
     public Result<InstanceVO> updateInstance(@Valid @RequestBody UpdateInstanceDTO request) {
         InstanceVO vo = request.toInstanceVO();

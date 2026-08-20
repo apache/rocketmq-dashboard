@@ -45,6 +45,7 @@ vi.mock('../../../api/tencentCatalog', () => ({
 vi.mock('../../../services/instanceService', () => ({
   createInstance: vi.fn(),
   deleteInstance: vi.fn(),
+  importCloudInstances: vi.fn(),
   listInstances: vi.fn(),
   updateInstance: vi.fn(),
 }));
@@ -75,7 +76,7 @@ beforeAll(() => {
 const instance = (
   id: number,
   name: string,
-  type: Instance['type'] = 'PROXY',
+  type: Instance['type'] = 'PROXY_CLUSTER',
   remark: Instance['remark'] = '',
 ): Instance => ({
   id,
@@ -398,6 +399,56 @@ describe('InstancePage', () => {
     expect(within(dialog).getByText(/云凭据与云上实例完成接入/)).toBeInTheDocument();
   });
 
+  it('imports every Aliyun instance of the credential via one-click import', async () => {
+    const user = userEvent.setup();
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
+      cloudCredentialPage([
+        {
+          id: 101,
+          name: 'prod-account',
+          vendor: 'ALIYUN',
+          accessKey: 'LTAI-prod',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+      ]),
+    );
+    vi.mocked(instanceService.importCloudInstances).mockResolvedValue({
+      discovered: 3,
+      imported: 2,
+      skipped: 1,
+      failed: [],
+    });
+
+    renderPage();
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() => expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalled());
+
+    const importButton = within(dialog).getByRole('button', { name: /一键导入/ });
+    expect(importButton).toBeDisabled();
+
+    const credentialSelect = within(dialog).getAllByRole('combobox')[0];
+    fireEvent.mouseDown(credentialSelect.parentElement!);
+    await user.click(
+      await screen.findByText(/prod-account/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(importButton).toBeEnabled());
+
+    await user.click(importButton);
+
+    await waitFor(() =>
+      expect(instanceService.importCloudInstances).toHaveBeenCalledWith({
+        vendor: 'ALIYUN',
+        credentialId: 101,
+      }),
+    );
+    expect(
+      await screen.findByText(/导入完成：共同步 3 个实例（新导入 2，已存在跳过 1）/),
+    ).toBeInTheDocument();
+  });
+
   it('ignores a stale region response after the cloud credential changes', async () => {
     const user = userEvent.setup();
     const oldRegions = deferred<Array<{ regionId: string; regionName: string }>>();
@@ -687,8 +738,8 @@ describe('InstancePage', () => {
   it('sorts and renders instances without remarks', async () => {
     const user = userEvent.setup();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
-      instance(10, 'instance-without-remark', 'PROXY', null),
-      instance(11, 'instance-with-remark', 'PROXY', 'production'),
+      instance(10, 'instance-without-remark', 'PROXY_CLUSTER', null),
+      instance(11, 'instance-with-remark', 'PROXY_CLUSTER', 'production'),
     ]);
     renderPage();
 

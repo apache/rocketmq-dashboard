@@ -19,7 +19,7 @@ import client from './client';
 
 // ─── Types ──────────────────────────────────────────────────────
 export type InstanceVendor = 'APACHE' | 'ALIYUN' | 'TENCENT';
-export type InstanceType = 'PROXY' | 'PROXY_LOCAL' | 'PROXY_CLUSTER' | 'DIRECT';
+export type InstanceType = 'CLOUD' | 'PROXY_LOCAL' | 'PROXY_CLUSTER' | 'DIRECT';
 export type InstanceCapability =
   | 'TOPIC_MANAGEMENT'
   | 'CONSUMER_GROUP_MANAGEMENT'
@@ -112,6 +112,18 @@ export async function updateInstance(data: UpdateInstanceRequest) {
   return res.data.data;
 }
 
+export interface CloudImportResult {
+  discovered: number;
+  imported: number;
+  skipped: number;
+  failed: string[];
+}
+
 export async function deleteInstance(instanceId: string) {
   await client.post('/instances/delete', { id: instanceId });
+}
+
+export async function importCloudInstances(data: { vendor: InstanceVendor; credentialId: number }) {
+  const res = await client.post<{ data: CloudImportResult }>('/instances/import-cloud', data);
+  return res.data.data;
 }
