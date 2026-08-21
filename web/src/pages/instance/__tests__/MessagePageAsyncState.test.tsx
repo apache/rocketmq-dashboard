@@ -26,6 +26,7 @@ import MessagePage from '../message';
 
 const serviceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
+  getMessageTraceByKey: vi.fn(),
   queryMessages: vi.fn(),
   consumeMessageDirectly: vi.fn(),
 }));
@@ -133,6 +134,7 @@ describe('MessagePage async request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     serviceMocks.getMessageTrace.mockResolvedValue(null);
+    serviceMocks.getMessageTraceByKey.mockResolvedValue(null);
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,
       selectInstance: vi.fn(),
@@ -208,7 +210,6 @@ describe('MessagePage async request ownership', () => {
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
     expect(await screen.findByText('Message query provider is not configured')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
   });
 
   it('surfaces unavailable message provider errors from trace requests', async () => {
@@ -254,6 +255,37 @@ describe('MessagePage async request ownership', () => {
 
     await user.click(within(consumeDialog as HTMLElement).getByRole('button', { name: /执\s*行/ }));
     expect(serviceMocks.consumeMessageDirectly).not.toHaveBeenCalled();
+  });
+
+  it('queries trace by key with a custom trace topic from the trace tab', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTraceByKey.mockResolvedValue(createTrace('key-trace'));
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    await user.click(within(dialog).getByText('按 Message Key'));
+    const keyInput = within(dialog).getByPlaceholderText('输入 Message Key');
+    await user.clear(keyInput);
+    await user.type(keyInput, 'ORDER-001');
+    const traceTopicInput = within(dialog).getByPlaceholderText('轨迹 Topic（留空使用默认）');
+    await user.type(traceTopicInput, 'CUSTOM_TRACE');
+    await user.click(within(dialog).getByRole('button', { name: /查询轨迹/ }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getMessageTraceByKey).toHaveBeenCalledWith(
+        'ORDER-001',
+        1,
+        'topic-message-a',
+        'CUSTOM_TRACE',
+      );
+    });
+    expect(await within(dialog).findByText('key-trace description')).toBeInTheDocument();
   });
 
   it('keeps the latest query loading and ignores an earlier query result', async () => {

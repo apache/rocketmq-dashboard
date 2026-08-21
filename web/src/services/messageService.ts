@@ -77,12 +77,25 @@ export async function getMessageTrace(
   msgId: string,
   instanceId?: string,
   topic?: string,
+  traceTopic?: string,
 ): Promise<TraceRecord | null> {
   if (isMockMode()) {
     const trace = mockMessageTraces[msgId] as unknown as TraceRecord | undefined;
     return trace ? cloneTrace(trace) : null;
   }
-  return messageApi.getMessageTrace(msgId, instanceId, topic);
+  return messageApi.getMessageTrace(msgId, instanceId, topic, traceTopic);
+}
+
+export async function getMessageTraceByKey(
+  key: string,
+  instanceId?: string,
+  topic?: string,
+  traceTopic?: string,
+): Promise<TraceRecord | null> {
+  if (isMockMode()) {
+    return null;
+  }
+  return messageApi.getMessageTraceByKey(key, instanceId, topic, traceTopic);
 }
 
 export async function consumeMessageDirectly(
@@ -169,7 +182,12 @@ export async function resendDLQSelected(data: {
   targetTopic?: string;
 }): Promise<DLQResendResult> {
   if (isMockMode()) {
-    return { matched: data.msgIds.length, resent: data.msgIds.length, failed: 0, outcome: 'SUCCESS' };
+    return {
+      matched: data.msgIds.length,
+      resent: data.msgIds.length,
+      failed: 0,
+      outcome: 'SUCCESS',
+    };
   }
   return messageApi.resendDLQSelected(data);
 }

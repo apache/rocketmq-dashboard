@@ -122,6 +122,34 @@ public class MessageService {
         return result;
     }
 
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic, String traceTopic) {
+        if (!StringUtils.hasText(msgId)) {
+            throw new BusinessException(400, "msgId is required");
+        }
+        if (!StringUtils.hasText(traceTopic)) {
+            // No custom trace topic: fall back to the legacy 3-arg path so providers that
+            // only implement message-id tracing (Aliyun/Tencent) keep working unchanged.
+            return getMessageTrace(instanceId, msgId, topic);
+        }
+        log.info("Getting message trace: msgId={}, topic={}, traceTopic={}", msgId, topic, traceTopic);
+        TraceRecordVO result = providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.getMessageTrace(instanceId, msgId, topic, traceTopic))
+                .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic, traceTopic));
+        recordTraceQuery(instanceId, msgId, topic, result);
+        return result;
+    }
+
+    public TraceRecordVO getMessageTraceByKey(String instanceId, String key, String topic, String traceTopic) {
+        if (!StringUtils.hasText(key)) {
+            throw new BusinessException(400, "key is required");
+        }
+        log.info("Getting message trace by key: key={}, topic={}, traceTopic={}", key, topic, traceTopic);
+        // Trace query history is keyed by message id; key-based lookups are intentionally
+        // not recorded so the key is not misreported as a message id.
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.getMessageTraceByKey(instanceId, key, topic, traceTopic))
+                .orElseGet(() -> messageProvider.getMessageTraceByKey(instanceId, key, topic, traceTopic));
+    }
     private void recordMessageQuery(String instanceId, String topic, String msgId, String tag,
                                     String key, Long startTime, Long endTime, int resultCount) {
         String queryType = StringUtils.hasText(msgId) ? "MSG_ID" : StringUtils.hasText(key) ? "KEY" : "TOPIC";

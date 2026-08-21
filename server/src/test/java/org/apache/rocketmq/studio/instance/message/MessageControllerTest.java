@@ -91,14 +91,44 @@ class MessageControllerTest {
     @Test
     void messageTraceShouldPassInstanceId() throws Exception {
         TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
-        when(messageService.getMessageTrace("instance-a", "msg-001", "orders")).thenReturn(trace);
+        when(messageService.getMessageTrace("instance-a", "msg-001", "orders", null)).thenReturn(trace);
 
         mockMvc.perform(get("/api/messages/msg-001/trace").param("instanceId", "instance-a")
                 .param("topic", "orders"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(messageService).getMessageTrace("instance-a", "msg-001", "orders");
+        verify(messageService).getMessageTrace("instance-a", "msg-001", "orders", null);
+    }
+
+    @Test
+    void messageTraceShouldPassCustomTraceTopic() throws Exception {
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(messageService.getMessageTrace("instance-a", "msg-001", "orders", "MY_TRACE"))
+                .thenReturn(trace);
+
+        mockMvc.perform(get("/api/messages/msg-001/trace").param("instanceId", "instance-a")
+                .param("topic", "orders")
+                .param("traceTopic", "MY_TRACE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(messageService).getMessageTrace("instance-a", "msg-001", "orders", "MY_TRACE");
+    }
+
+    @Test
+    void traceByKeyShouldDelegateToService() throws Exception {
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(messageService.getMessageTraceByKey("instance-a", "ORDER-001", "orders", null))
+                .thenReturn(trace);
+
+        mockMvc.perform(get("/api/messages/trace-by-key").param("instanceId", "instance-a")
+                .param("key", "ORDER-001")
+                .param("topic", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(messageService).getMessageTraceByKey("instance-a", "ORDER-001", "orders", null);
     }
 
     @Test

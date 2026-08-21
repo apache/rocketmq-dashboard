@@ -139,10 +139,16 @@ export async function queryMessagePage(
   return { ...res.data.data, items: sortMessagesByStoreTimeDesc(res.data.data.items) };
 }
 
-export async function getMessageTrace(msgId: string, instanceId?: string, topic?: string) {
+export async function getMessageTrace(
+  msgId: string,
+  instanceId?: string,
+  topic?: string,
+  traceTopic?: string,
+) {
   const params: Record<string, string> = {};
   if (instanceId !== undefined) params.instanceId = instanceId;
   if (topic !== undefined) params.topic = topic;
+  if (traceTopic !== undefined && traceTopic.trim()) params.traceTopic = traceTopic.trim();
   const res = await client.get<{ data: TraceRecord }>(
     `/messages/${encodeURIComponent(msgId)}/trace`,
     { params },
@@ -155,6 +161,20 @@ export async function consumeMessageDirectly(data: DirectConsumeMessageRequest) 
     '/messages/direct-consume',
     data,
   );
+  return res.data.data;
+}
+
+export async function getMessageTraceByKey(
+  key: string,
+  instanceId?: string,
+  topic?: string,
+  traceTopic?: string,
+): Promise<TraceRecord | null> {
+  const params: Record<string, string> = { key };
+  if (instanceId !== undefined) params.instanceId = instanceId;
+  if (topic !== undefined) params.topic = topic;
+  if (traceTopic !== undefined && traceTopic.trim()) params.traceTopic = traceTopic.trim();
+  const res = await client.get<{ data: TraceRecord }>('/messages/trace-by-key', { params });
   return res.data.data;
 }
 
