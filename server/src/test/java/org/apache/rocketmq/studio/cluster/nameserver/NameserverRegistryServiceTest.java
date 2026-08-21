@@ -152,6 +152,41 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void createShouldNormalizeAddrBeforePersistTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(11L);
+            return 1;
+        });
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(11L);
+        stored.setName("prod");
+        stored.setNamesrvAddr("ns1:9876,ns2:9876");
+        when(nameserverMapper.selectById(11L)).thenReturn(stored);
+
+        service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr(" NS1:9876 ; ns2:9876 ")
+                .build());
+
+        ArgumentCaptor<RmqNameserver> captor = ArgumentCaptor.forClass(RmqNameserver.class);
+        verify(nameserverMapper).insert(captor.capture());
+        assertThat(captor.getValue().getNamesrvAddr()).isEqualTo("ns1:9876,ns2:9876");
+    }
+
+    @Test
+    void createShouldRejectMalformedAddrTest() {
+        assertThatThrownBy(() -> service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr("ns1")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("missing host:port");
+        verify(nameserverMapper, never()).insert(any(RmqNameserver.class));
+    }
+
+    @Test
     void createShouldMapUniqueIndexViolationToConflictTest() {
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
         when(nameserverMapper.insert(any(RmqNameserver.class)))
@@ -213,6 +248,22 @@ class NameserverRegistryServiceTest {
                 .build()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("already exists");
+        verify(nameserverMapper, never()).updateById(any(RmqNameserver.class));
+    }
+
+    @Test
+    void updateShouldRejectMalformedAddrTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(existing);
+
+        assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq1")
+                .namesrvAddr("ns1:0")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("out of range");
         verify(nameserverMapper, never()).updateById(any(RmqNameserver.class));
     }
 

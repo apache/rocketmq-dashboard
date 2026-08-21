@@ -47,7 +47,7 @@ public class NameserverRegistryService {
         }
         RmqNameserver entity = new RmqNameserver();
         entity.setName(name);
-        entity.setNamesrvAddr(command.getNamesrvAddr());
+        entity.setNamesrvAddr(NamesrvAddrParser.normalize(command.getNamesrvAddr()));
         entity.setK8sNamespace(command.getK8sNamespace());
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());
@@ -73,7 +73,7 @@ public class NameserverRegistryService {
             throw duplicateName(name);
         }
         entity.setName(name);
-        entity.setNamesrvAddr(command.getNamesrvAddr());
+        entity.setNamesrvAddr(NamesrvAddrParser.normalize(command.getNamesrvAddr()));
         entity.setK8sNamespace(command.getK8sNamespace());
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());
