@@ -36,6 +36,8 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigUpdateDTO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -558,6 +560,82 @@ public class RocketMQAdminClientImpl implements AdminClient {
             recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
             throw classifyBrokerFailure(e, "create consumer group");
         }
+    }
+
+    @Override
+    public ConsumerGroupConfigVO getConsumerGroupConfig(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId,
+                    admin -> getConsumerGroupConfig((MQAdminExt) admin, name));
+        }
+        return adminFactory.execute(namesrvAddr(), null, admin -> getConsumerGroupConfig(admin, name));
+    }
+
+    private ConsumerGroupConfigVO getConsumerGroupConfig(MQAdminExt admin, String name) throws Exception {
+        String clusterName = getClusterName(admin);
+        Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
+        if (brokerAddrs.isEmpty()) {
+            throw new BusinessException(500, "No broker available to read consumer group config");
+        }
+        SubscriptionGroupConfig config =
+                admin.examineSubscriptionGroupConfig(brokerAddrs.iterator().next(), name);
+        return toConfigVO(name, config);
+    }
+
+    @Override
+    public ConsumerGroupConfigVO updateConsumerGroupConfig(ConsumerGroupConfigUpdateDTO request) {
+        String instanceId = request.getInstanceId();
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId,
+                    admin -> updateConsumerGroupConfig((MQAdminExt) admin, request));
+        }
+        return adminFactory.execute(namesrvAddr(), null, admin -> updateConsumerGroupConfig(admin, request));
+    }
+
+    private ConsumerGroupConfigVO updateConsumerGroupConfig(MQAdminExt admin, ConsumerGroupConfigUpdateDTO request)
+            throws Exception {
+        String clusterName = getClusterName(admin);
+        Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
+        if (brokerAddrs.isEmpty()) {
+            throw new BusinessException(500, "No broker available to update consumer group config");
+        }
+        // Load the current config from the first master broker so fields that are not part of the
+        // partial update keep their existing broker values.
+        String firstAddr = brokerAddrs.iterator().next();
+        SubscriptionGroupConfig config = admin.examineSubscriptionGroupConfig(firstAddr, request.getName());
+        if (request.getRetryQueueNums() != null) {
+            config.setRetryQueueNums(request.getRetryQueueNums());
+        }
+        if (request.getRetryMaxTimes() != null) {
+            config.setRetryMaxTimes(request.getRetryMaxTimes());
+        }
+        if (request.getConsumeBroadcastEnable() != null) {
+            config.setConsumeBroadcastEnable(request.getConsumeBroadcastEnable());
+        }
+        if (request.getConsumeFromMinEnable() != null) {
+            config.setConsumeFromMinEnable(request.getConsumeFromMinEnable());
+        }
+        for (String addr : brokerAddrs) {
+            admin.createAndUpdateSubscriptionGroupConfig(addr, config);
+        }
+        recordAudit("UPDATE_GROUP_CONFIG", request.getName(),
+                "retryQueueNums=" + config.getRetryQueueNums()
+                        + ", retryMaxTimes=" + config.getRetryMaxTimes()
+                        + ", consumeBroadcastEnable=" + config.isConsumeBroadcastEnable(),
+                "SUCCESS");
+        return toConfigVO(request.getName(), config);
+    }
+
+    private ConsumerGroupConfigVO toConfigVO(String name, SubscriptionGroupConfig config) {
+        return ConsumerGroupConfigVO.builder()
+                .name(name)
+                .consumeEnable(config.isConsumeEnable())
+                .consumeBroadcastEnable(config.isConsumeBroadcastEnable())
+                .retryQueueNums(config.getRetryQueueNums())
+                .retryMaxTimes(config.getRetryMaxTimes())
+                .consumeFromMinEnable(config.isConsumeFromMinEnable())
+                .notifyConsumerIdsChangedEnable(config.isNotifyConsumerIdsChangedEnable())
+                .build();
     }
 
     @Override

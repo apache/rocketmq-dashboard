@@ -269,6 +269,39 @@ export async function getConsumerStack(name: string, clientId: string, instanceI
   return res.data.data;
 }
 
+export interface ConsumerGroupConfig {
+  name: string;
+  consumeEnable: boolean;
+  consumeBroadcastEnable: boolean;
+  retryQueueNums: number;
+  retryMaxTimes: number;
+  consumeFromMinEnable: boolean;
+  notifyConsumerIdsChangedEnable: boolean;
+}
+
+export async function getConsumerGroupConfig(name: string, instanceId?: string) {
+  const res = await client.get<{ data: ConsumerGroupConfig }>(
+    `/groups/${encodeURIComponent(name)}/config`,
+    { params: instanceId ? { instanceId } : {} },
+  );
+  return res.data.data;
+}
+
+export async function updateConsumerGroupConfig(data: {
+  instanceId: string;
+  name: string;
+  retryQueueNums?: number;
+  retryMaxTimes?: number;
+  consumeBroadcastEnable?: boolean;
+  consumeFromMinEnable?: boolean;
+}) {
+  const res = await client.post<{ data: ConsumerGroupConfig }>(
+    `/groups/${encodeURIComponent(data.name)}/config`,
+    data,
+  );
+  return res.data.data;
+}
+
 export async function createConsumerGroup(data: Partial<ConsumerGroup>) {
   const res = await client.post<{ data: ConsumerGroup }>('/groups/create', data);
   return res.data.data;

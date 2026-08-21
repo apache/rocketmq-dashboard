@@ -34,6 +34,7 @@ import {
   Statistic,
   Radio,
   InputNumber,
+  Switch,
   Typography,
   Row,
   Col,
@@ -54,6 +55,7 @@ import {
   ListBullets,
   Info,
   ArrowsClockwise,
+  GearSix,
 } from '@phosphor-icons/react';
 import { ImportOutlined, ExportOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -76,11 +78,13 @@ import {
   batchDeleteConsumerGroups,
   createConsumerGroup,
   deleteConsumerGroup,
+  getConsumerGroupConfig,
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
   listConsumerGroupPage,
   resetConsumerOffset,
+  updateConsumerGroupConfig,
 } from '../../services/consumerService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import {
@@ -94,6 +98,27 @@ import { tableScrollX } from '../../utils/table';
 const { Text } = Typography;
 
 /* ─── Helpers ─── */
+
+type ApiErrorLike = {
+  message?: unknown;
+  response?: {
+    data?: {
+      message?: unknown;
+    };
+  };
+};
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  const apiError = error as ApiErrorLike;
+  const responseMessage = apiError.response?.data?.message;
+  if (typeof responseMessage === 'string' && responseMessage.trim()) {
+    return responseMessage;
+  }
+  if (typeof apiError.message === 'string' && apiError.message.trim()) {
+    return apiError.message;
+  }
+  return fallback;
+};
 
 const lagColor = (lag: number): string => {
   if (lag >= 10_000) return '#ff4d4f';
@@ -200,6 +225,12 @@ const ConsumerPageContent = ({
   const [resetGroup, setResetGroup] = useState<ConsumerGroup | null>(null);
   const [resetTopic, setResetTopic] = useState<string>();
   const [resetTime, setResetTime] = useState<Dayjs>(dayjs().subtract(3, 'hour'));
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [configGroup, setConfigGroup] = useState<ConsumerGroup | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [configForm] = Form.useForm();
   const [subscriptionsByGroup, setSubscriptionsByGroup] = useState<
     Record<string, SubscriptionEntry[]>
   >({});
@@ -518,6 +549,53 @@ const ConsumerPageContent = ({
   ];
 
   /* ═══════════════════════════════════════════
+     Consumer Group Config Modal
+     ═══════════════════════════════════════════ */
+  const openConfigModal = async (group: ConsumerGroup) => {
+    setConfigGroup(group);
+    setConfigError(null);
+    setConfigModalOpen(true);
+    setConfigLoading(true);
+    try {
+      const config = await getConsumerGroupConfig(group.name, selectedInstanceId || undefined);
+      configForm.setFieldsValue({
+        retryQueueNums: config.retryQueueNums,
+        retryMaxTimes: config.retryMaxTimes,
+        consumeBroadcastEnable: config.consumeBroadcastEnable,
+        consumeFromMinEnable: config.consumeFromMinEnable,
+      });
+    } catch (error) {
+      setConfigError(getErrorMessage(error, '消费组配置加载失败，请稍后重试'));
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  const handleConfigSave = async () => {
+    if (!configGroup || !selectedInstanceId) return;
+    const values = await configForm.validateFields();
+    setConfigSaving(true);
+    setConfigError(null);
+    try {
+      await updateConsumerGroupConfig({
+        instanceId: selectedInstanceId,
+        name: configGroup.name,
+        retryQueueNums: values.retryQueueNums,
+        retryMaxTimes: values.retryMaxTimes,
+        consumeBroadcastEnable: values.consumeBroadcastEnable,
+        consumeFromMinEnable: values.consumeFromMinEnable,
+      });
+      message.success(`消费组 ${configGroup.name} 配置已更新`);
+      setConfigModalOpen(false);
+      setRefreshKey((key) => key + 1);
+    } catch (error) {
+      setConfigError(getErrorMessage(error, '消费组配置更新失败，请稍后重试'));
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  /* ═══════════════════════════════════════════
      Main Table Columns
      ═══════════════════════════════════════════ */
   const columns: ColumnsType<ConsumerGroup> = [
@@ -635,7 +713,7 @@ const ConsumerPageContent = ({
     {
       title: '操作',
       key: 'actions',
-      width: 210,
+      width: 300,
       render: (_: unknown, record: ConsumerGroup) => (
         <Flex gap={6}>
           <Button
@@ -648,6 +726,17 @@ const ConsumerPageContent = ({
             }}
           >
             详情
+          </Button>
+          <Button
+            size="small"
+            icon={<GearSix size={14} />}
+            style={{ borderColor: '#722ed1', color: '#722ed1' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              void openConfigModal(record);
+            }}
+          >
+            配置
           </Button>
           <Button
             size="small"
@@ -1858,6 +1947,78 @@ const ConsumerPageContent = ({
                 </Button>
               </Space>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ═══════════════════════════════════════════
+         Consumer Group Config Modal
+         ═══════════════════════════════════════════ */}
+      <Modal
+        title={
+          <Space>
+            <GearSix size={18} color="#722ed1" />
+            <span>消费组配置</span>
+          </Space>
+        }
+        open={configModalOpen}
+        onCancel={() => {
+          setConfigModalOpen(false);
+          setConfigGroup(null);
+          setConfigError(null);
+        }}
+        onOk={() => void handleConfigSave()}
+        confirmLoading={configSaving}
+        okText="保存配置"
+        cancelText="取消"
+        width={480}
+        destroyOnHidden
+      >
+        {configGroup && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                Group 名称
+              </Text>
+              <Text strong style={{ fontSize: 14, fontFamily: 'monospace' }}>
+                {configGroup.name}
+              </Text>
+            </div>
+            {configError && (
+              <Alert showIcon type="warning" message={configError} style={{ marginBottom: 16 }} />
+            )}
+            <Form form={configForm} layout="vertical" disabled={configLoading}>
+              <Form.Item
+                name="retryQueueNums"
+                label="重试队列数（retryQueueNums）"
+                tooltip="消费失败重试消息使用的队列数量"
+              >
+                <InputNumber min={1} max={32} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item
+                name="retryMaxTimes"
+                label="最大重试次数（retryMaxTimes）"
+                tooltip="消息进入死信队列前最多重试次数"
+              >
+                <InputNumber min={0} max={100} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item
+                name="consumeBroadcastEnable"
+                label="广播消费"
+                valuePropName="checked"
+                tooltip="开启后组内每个消费者都会收到每条消息"
+              >
+                <Switch />
+              </Form.Item>
+              <Form.Item
+                name="consumeFromMinEnable"
+                label="从最早消息开始消费"
+                valuePropName="checked"
+                tooltip="新组启动时从最小位点开始消费"
+              >
+                <Switch />
+              </Form.Item>
+            </Form>
           </div>
         )}
       </Modal>

@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigUpdateDTO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 
 
@@ -32,4 +34,6 @@ public interface AdminClient {
     ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group);
     void deleteConsumerGroup(String instanceId, String name);
     void resetOffset(String instanceId, String name, long timestamp, String topic);
+    ConsumerGroupConfigVO getConsumerGroupConfig(String instanceId, String name);
+    ConsumerGroupConfigVO updateConsumerGroupConfig(ConsumerGroupConfigUpdateDTO request);
 }

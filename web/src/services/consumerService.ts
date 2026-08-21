@@ -172,6 +172,43 @@ export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Pro
   return metadataApi.resetConsumerOffset(data);
 }
 
+export async function getConsumerGroupConfig(name: string, instanceId?: string) {
+  if (isMockMode()) {
+    return {
+      name,
+      consumeEnable: true,
+      consumeBroadcastEnable: false,
+      retryQueueNums: 1,
+      retryMaxTimes: 16,
+      consumeFromMinEnable: false,
+      notifyConsumerIdsChangedEnable: true,
+    };
+  }
+  return metadataApi.getConsumerGroupConfig(name, instanceId);
+}
+
+export async function updateConsumerGroupConfig(data: {
+  instanceId: string;
+  name: string;
+  retryQueueNums?: number;
+  retryMaxTimes?: number;
+  consumeBroadcastEnable?: boolean;
+  consumeFromMinEnable?: boolean;
+}) {
+  if (isMockMode()) {
+    return {
+      name: data.name,
+      consumeEnable: true,
+      consumeBroadcastEnable: data.consumeBroadcastEnable ?? false,
+      retryQueueNums: data.retryQueueNums ?? 1,
+      retryMaxTimes: data.retryMaxTimes ?? 16,
+      consumeFromMinEnable: data.consumeFromMinEnable ?? false,
+      notifyConsumerIdsChangedEnable: true,
+    };
+  }
+  return metadataApi.updateConsumerGroupConfig(data);
+}
+
 export interface BatchDeleteConsumerGroupsResult {
   deleted: string[];
   failed: string[];

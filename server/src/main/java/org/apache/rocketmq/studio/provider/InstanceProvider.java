@@ -18,8 +18,11 @@ package org.apache.rocketmq.studio.provider;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigUpdateDTO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
@@ -87,6 +90,14 @@ public interface InstanceProvider {
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
 
     void deleteConsumerGroup(String instanceId, String groupName);
+
+    default ConsumerGroupConfigVO getConsumerGroupConfig(String instanceId, String groupName) {
+        throw new BusinessException(501, "Consumer group config is not supported by this provider");
+    }
+
+    default ConsumerGroupConfigVO updateConsumerGroupConfig(ConsumerGroupConfigUpdateDTO request) {
+        throw new BusinessException(501, "Consumer group config is not supported by this provider");
+    }
 
     List<QueueProgressVO> getGroupProgress(String instanceId, String groupName);
 

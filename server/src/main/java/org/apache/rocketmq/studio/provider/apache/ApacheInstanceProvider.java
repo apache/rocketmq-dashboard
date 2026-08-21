@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigUpdateDTO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -128,6 +130,16 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public void deleteConsumerGroup(String instanceId, String groupName) {
         adminClient.deleteConsumerGroup(instanceId, groupName);
+    }
+
+    @Override
+    public ConsumerGroupConfigVO getConsumerGroupConfig(String instanceId, String groupName) {
+        return adminClient.getConsumerGroupConfig(instanceId, groupName);
+    }
+
+    @Override
+    public ConsumerGroupConfigVO updateConsumerGroupConfig(ConsumerGroupConfigUpdateDTO request) {
+        return adminClient.updateConsumerGroupConfig(request);
     }
 
     @Override

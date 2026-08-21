@@ -88,6 +88,21 @@ public class ConsumerGroupController {
         return Result.ok(consumerDiagnosticsService.getConsumerStack(instanceId, name, clientId));
     }
 
+    @GetMapping("/{name}/config")
+    public Result<ConsumerGroupConfigVO> getConsumerGroupConfig(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.getConsumerGroupConfig(instanceId, name));
+    }
+
+    @PostMapping("/{name}/config")
+    public Result<ConsumerGroupConfigVO> updateConsumerGroupConfig(
+            @PathVariable String name,
+            @Valid @RequestBody ConsumerGroupConfigUpdateDTO request) {
+        request.setName(name);
+        return Result.ok(metadataService.updateConsumerGroupConfig(request));
+    }
+
     @PostMapping("/create")
     public Result<ConsumerGroupVO> createConsumerGroup(@Valid @RequestBody CreateConsumerGroupDTO group) {
         ConsumerGroupVO vo = group.toConsumerGroupVO();

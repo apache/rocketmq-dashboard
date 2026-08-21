@@ -23,6 +23,8 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.util.StringUtils;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigUpdateDTO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupConfigVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -253,6 +255,17 @@ public class MetadataService {
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
         instanceId = normalizeInstanceId(instanceId);
         resolve(instanceId).resetOffset(instanceId, name, timestamp, topic);
+    }
+
+    public ConsumerGroupConfigVO getConsumerGroupConfig(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
+        return resolve(instanceId).getConsumerGroupConfig(instanceId, name);
+    }
+
+    public ConsumerGroupConfigVO updateConsumerGroupConfig(ConsumerGroupConfigUpdateDTO request) {
+        String instanceId = normalizeInstanceId(request.getInstanceId());
+        request.setInstanceId(instanceId);
+        return resolve(instanceId).updateConsumerGroupConfig(request);
     }
 
 
