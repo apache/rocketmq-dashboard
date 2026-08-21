@@ -506,6 +506,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
         Context ctx = resolve(instanceId);
         GetTraceRequest request = GetTraceRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
+                .topicName(topic)
                 .messageId(msgId)
                 .build();
         GetTraceResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),

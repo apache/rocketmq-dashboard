@@ -46,6 +46,7 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
+import { tableScrollX } from '../../utils/table';
 
 const emptyFilterOptions: AuditFilterOptions = {
   operationTypes: [],
@@ -372,7 +373,7 @@ const AuditPage: React.FC = () => {
           dataSource={records}
           rowKey="id"
           loading={loading}
-          scroll={{ x: 1470 }}
+          scroll={{ x: tableScrollX(columns) }}
           pagination={{
             current: page,
             pageSize,

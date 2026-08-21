@@ -218,7 +218,11 @@ describe('DLQ page', () => {
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
-    await user.click(screen.getByText('最近入队时间'));
+    // A horizontally scrollable table also renders antd's hidden measure row, which repeats the
+    // column titles, so the sort trigger has to be looked up inside the visible header.
+    const header = document.querySelector('thead');
+    if (!header) throw new Error('DLQ table header not found');
+    await user.click(within(header as HTMLElement).getByText('最近入队时间'));
 
     expect(screen.getByText('-')).toBeInTheDocument();
   });

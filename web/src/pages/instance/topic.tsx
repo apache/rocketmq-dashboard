@@ -79,6 +79,7 @@ import {
 } from '../../utils/resourceCsvImport';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { parseMessageProperties } from '../../utils/messageProperties';
+import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 
@@ -1204,6 +1205,7 @@ const TopicPage = () => {
               },
             }}
             size="small"
+            scroll={{ x: tableScrollX(columns, { selection: true }) }}
             onRow={(record) => ({
               onClick: () => void openDetail(record),
               style: { cursor: 'pointer' },

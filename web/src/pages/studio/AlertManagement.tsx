@@ -56,6 +56,7 @@ import {
 } from '../../api/alertManagement';
 import type { AlertRule as PersistedAlertRule, AlertRuleRequest } from '../../api/alertManagement';
 import { downloadBlob } from '../../utils/download';
+import { tableScrollX } from '../../utils/table';
 
 const { TextArea } = Input;
 
@@ -759,7 +760,7 @@ const AlertManagementPage: React.FC = () => {
             showSizeChanger: true,
             showTotal: (total) => `${t('common.total')} ${total}`,
           }}
-          scroll={{ x: 1200 }}
+          scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
 

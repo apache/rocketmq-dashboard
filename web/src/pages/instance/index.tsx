@@ -48,6 +48,7 @@ import {
 } from '../../api/aliyunCatalog';
 import { listTencentInstances, listTencentRegions } from '../../api/tencentCatalog';
 import { formatDateTime } from '../../utils/format';
+import { tableScrollX } from '../../utils/table';
 import {
   createInstance,
   deleteInstance,
@@ -458,9 +459,9 @@ const InstancePage = () => {
       sorter: (a, b) => (a.regionId ?? '').localeCompare(b.regionId ?? ''),
       render: (regionId: string | undefined, record: Instance) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {!record.vendor || record.vendor === 'APACHE' || !regionId
-            ? '-'
-            : record.regionName || regionId}
+          {!record.vendor || record.vendor === 'APACHE'
+            ? '开源版'
+            : record.regionName || regionId || '-'}
         </Text>
       ),
     },
@@ -697,6 +698,7 @@ const InstancePage = () => {
           pagination={false}
           size="small"
           tableLayout="fixed"
+          scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
 

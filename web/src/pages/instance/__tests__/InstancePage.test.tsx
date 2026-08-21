@@ -771,7 +771,7 @@ describe('InstancePage', () => {
     const cloudRow = (await screen.findByText('rmq-cloud-1')).closest('tr')!;
     expect(within(cloudRow).getByText('cn-hangzhou')).toBeInTheDocument();
     const apacheRow = screen.getByText('open-source-1').closest('tr')!;
-    expect(within(apacheRow).getAllByText('-').length).toBeGreaterThan(0);
+    expect(within(apacheRow).getAllByText('开源版').length).toBeGreaterThan(0);
     expect(within(apacheRow).queryByText('cn-hangzhou')).not.toBeInTheDocument();
   });
 
