@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -38,18 +39,24 @@ public class NameserverRegistryService {
     }
 
     public NameserverRegistryVO create(CreateNameserverRegistryDTO command) {
+        String name = normalizeName(command.getName());
         Long existing = nameserverMapper.selectCount(new QueryWrapper<RmqNameserver>()
-                .eq("name", command.getName()));
+                .eq("name", name));
         if (existing != null && existing > 0) {
-            throw new BusinessException(400, "NameServer registry name already exists: " + command.getName());
+            throw duplicateName(name);
         }
         RmqNameserver entity = new RmqNameserver();
-        entity.setName(command.getName());
+        entity.setName(name);
         entity.setNamesrvAddr(command.getNamesrvAddr());
         entity.setK8sNamespace(command.getK8sNamespace());
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());
-        nameserverMapper.insert(entity);
+        try {
+            nameserverMapper.insert(entity);
+        } catch (DataIntegrityViolationException exception) {
+            // The unique index is the final guard against concurrent duplicate creates.
+            throw duplicateName(name);
+        }
         return toVO(nameserverMapper.selectById(entity.getId()));
     }
 
@@ -58,19 +65,41 @@ public class NameserverRegistryService {
         if (entity == null) {
             throw new BusinessException(404, "NameServer registry entry not found: " + command.getId());
         }
+        String name = normalizeName(command.getName());
         Long duplicates = nameserverMapper.selectCount(new QueryWrapper<RmqNameserver>()
-                .eq("name", command.getName())
+                .eq("name", name)
                 .ne("id", command.getId()));
         if (duplicates != null && duplicates > 0) {
-            throw new BusinessException(400, "NameServer registry name already exists: " + command.getName());
+            throw duplicateName(name);
         }
-        entity.setName(command.getName());
+        entity.setName(name);
         entity.setNamesrvAddr(command.getNamesrvAddr());
         entity.setK8sNamespace(command.getK8sNamespace());
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());
-        nameserverMapper.updateById(entity);
+        try {
+            nameserverMapper.updateById(entity);
+        } catch (DataIntegrityViolationException exception) {
+            // The unique index is the final guard against concurrent rename collisions.
+            throw duplicateName(name);
+        }
         return toVO(nameserverMapper.selectById(entity.getId()));
+    }
+
+    /**
+     * Registry names are compared and displayed as-is, so surrounding whitespace must not
+     * create near-duplicate entries ("prod" vs "prod ").
+     */
+    private static String normalizeName(String raw) {
+        String name = raw == null ? "" : raw.trim();
+        if (name.isEmpty()) {
+            throw new BusinessException(400, "name must not be blank");
+        }
+        return name;
+    }
+
+    private static BusinessException duplicateName(String name) {
+        return new BusinessException(409, "NameServer registry name already exists: " + name);
     }
 
     public void delete(Long id) {
