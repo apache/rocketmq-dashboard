@@ -84,6 +84,27 @@ const metricData = {
   warnings: [],
 };
 
+const histogramOnlyData = {
+  resultType: 'matrix',
+  series: [
+    {
+      labels: { cluster: 'prod', node_id: 'broker-a' },
+      values: [],
+      histograms: [
+        {
+          timestamp: 1_799_996_400,
+          histogram: { count: '10', sum: '250', buckets: [] },
+        },
+        {
+          timestamp: 1_800_000_000,
+          histogram: { count: '20', sum: '600', buckets: [] },
+        },
+      ],
+    },
+  ],
+  warnings: [],
+};
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -257,12 +278,63 @@ describe('MetricsExplorer', () => {
     expect(await screen.findByText('Prometheus base URL is not configured')).toBeInTheDocument();
   });
 
-  it('shows an empty state when Prometheus returns no scalar samples', async () => {
+  it('shows an empty state when Prometheus returns no samples at all', async () => {
     vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: [] });
 
     renderWithProviders(<MetricsExplorer />);
 
-    expect(await screen.findByText('暂无标量数据')).toBeInTheDocument();
+    expect(await screen.findByText('暂无数据')).toBeInTheDocument();
+  });
+
+  it('renders histogram-only series from observed sums instead of an empty state', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue(histogramOnlyData);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(
+      await screen.findByRole('img', { name: 'Message In TPS time series' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('600 messages/s')).toBeInTheDocument();
+    expect(screen.getByText('直方图')).toBeInTheDocument();
+    expect(screen.queryByText('暂无数据')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the observation count when the histogram sum is missing', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...histogramOnlyData,
+      series: [
+        {
+          ...histogramOnlyData.series[0],
+          histograms: [
+            { timestamp: 1_800_000_000, histogram: { count: '20', sum: '', buckets: [] } },
+          ],
+        },
+      ],
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('20 messages/s')).toBeInTheDocument();
+  });
+
+  it('prefers scalar samples when a series has both values and histograms', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          histograms: [
+            { timestamp: 1_800_000_000, histogram: { count: '99', sum: '999', buckets: [] } },
+          ],
+        },
+      ],
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
+    expect(screen.queryByText('999 messages/s')).not.toBeInTheDocument();
+    expect(screen.queryByText('直方图')).not.toBeInTheDocument();
   });
 
   it('queries the selected data source through the datasource endpoint', async () => {
