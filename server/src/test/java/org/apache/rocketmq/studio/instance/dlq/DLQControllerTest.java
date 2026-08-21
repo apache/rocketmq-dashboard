@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -109,6 +110,43 @@ class DLQControllerTest {
                 .andExpect(jsonPath("$.data.size").value(50));
 
         verify(dlqService).listDLQGroups(eq("instance-1"), eq("order"), eq(2), eq(50));
+    }
+
+    @Test
+    void listMessagesShouldPassQueryParameters() throws Exception {
+        when(dlqService.listMessages("instance-1", "test-group", 1000L, 2000L, 2, 20))
+                .thenReturn(DLQMessagePageVO.builder().items(List.of()).total(0).page(2).size(20).build());
+
+        mockMvc.perform(get("/api/dlq/messages")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("startTime", "1000")
+                        .param("endTime", "2000")
+                        .param("page", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(2));
+
+        verify(dlqService).listMessages("instance-1", "test-group", 1000L, 2000L, 2, 20);
+    }
+
+    @Test
+    void selectedResendShouldPassStableMessageReferences() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "instance-1", "groupName", "test-group", "messages",
+                List.of(Map.of("msgId", "msg-1", "queueId", 0, "offset", 5)));
+
+        mockMvc.perform(post("/api/dlq/messages/resend").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<List<DLQMessageRefDTO>> messages = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(dlqService).resendSelectedMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(),
+                isNull(), messages.capture());
+        assertThat(messages.getValue()).singleElement().satisfies(reference -> {
+            assertThat(reference.getMsgId()).isEqualTo("msg-1");
+            assertThat(reference.getQueueId()).isZero();
+            assertThat(reference.getOffset()).isEqualTo(5L);
+        });
     }
 
     @Test

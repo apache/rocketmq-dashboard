@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { listDLQGroups, resendDLQ } from './message';
+import { listDLQGroups, listDLQMessages, resendDLQ, resendSelectedDLQMessages } from './message';
 import type { DLQGroup } from './message';
 
 const mock = new MockAdapter(client);
@@ -88,5 +88,27 @@ describe('DLQ API', () => {
     });
 
     await expect(resendDLQ(payload)).resolves.toEqual(result);
+  });
+
+  it('uses the detail and selected-resend contracts', async () => {
+    const params = { instanceId: 'instance-1', groupName: group.groupName, page: 1, pageSize: 20 };
+    const page = {
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+      scanIncomplete: false,
+      failedQueueCount: 0,
+    };
+    mock.onGet('/dlq/messages', { params }).reply(200, { code: 200, data: page });
+    await expect(listDLQMessages(params)).resolves.toEqual(page);
+
+    const payload = { ...params, messages: [{ msgId: 'msg-1', queueId: 0, offset: 5 }] };
+    const result = { matched: 1, resent: 1, failed: 0, outcome: 'SUCCESS' };
+    mock.onPost('/dlq/messages/resend').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(payload);
+      return [200, { code: 200, data: result }];
+    });
+    await expect(resendSelectedDLQMessages(payload)).resolves.toEqual(result);
   });
 });

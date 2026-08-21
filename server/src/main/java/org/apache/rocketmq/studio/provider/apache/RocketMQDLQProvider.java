@@ -37,6 +37,8 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessagePageVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessageRefDTO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -240,6 +242,75 @@ public class RocketMQDLQProvider implements DLQProvider {
         int cap = maxCount == null || maxCount <= 0 ? RESEND_HARD_CAP : Math.min(maxCount, RESEND_HARD_CAP);
         DeadLetterScanResult scanResult = collectDeadLetters(endpoint, credentialHook, dlqTopic, begin, end, cap);
         return scanResult.messages().stream().map(this::toExportVO).toList();
+    }
+
+    @Override
+    public DLQMessagePageVO listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                          int page, int pageSize) {
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
+        long end = endTime != null ? endTime : System.currentTimeMillis();
+        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        DeadLetterScanResult scanResult = collectDeadLetters(endpoint, credentialHook,
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName, begin, end, RESEND_HARD_CAP);
+        List<DLQMessageVO> messages = scanResult.messages().stream().map(this::toExportVO)
+                .sorted(Comparator.comparingLong(DLQMessageVO::getStoreTime).reversed()).toList();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, messages.size());
+        int to = (int) Math.min(offset + pageSize, messages.size());
+        return DLQMessagePageVO.builder().items(messages.subList(from, to)).total(messages.size()).page(page)
+                .size(pageSize).scanIncomplete(scanResult.scanIncomplete())
+                .failedQueueCount(scanResult.failedQueueCount()).build();
+    }
+
+    @Override
+    public DLQResendResultVO resendSelectedMessages(String instanceId, String groupName, Long startTime,
+                                                     Long endTime, String targetTopic,
+                                                     List<DLQMessageRefDTO> messages) {
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
+        long end = endTime != null ? endTime : System.currentTimeMillis();
+        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+        DeadLetterScanResult scanResult = collectDeadLetters(endpoint, credentialHook, dlqTopic, begin, end,
+                RESEND_HARD_CAP);
+        Set<String> selected = messages.stream().map(this::selectionKey).collect(java.util.stream.Collectors.toSet());
+        List<MessageExt> matches = scanResult.messages().stream()
+                .filter(message -> selected.contains(selectionKey(message))).toList();
+        int resent = 0;
+        int failed = 0;
+        if (!matches.isEmpty()) {
+            DefaultMQProducer producer = newProducer(endpoint, credentialHook);
+            try {
+                producer.start();
+                for (MessageExt deadLetter : matches) {
+                    if (resendOne(producer, deadLetter, targetTopic)) {
+                        resent++;
+                    } else {
+                        failed++;
+                    }
+                }
+            } catch (Exception exception) {
+                failed += matches.size() - resent;
+            } finally {
+                producer.shutdown();
+            }
+        }
+        String outcome = classifyOutcome(matches.size(), resent, failed, scanResult.scanIncomplete());
+        String detail = String.format("instanceId=%s, group=%s, selected=%d, matched=%d, resent=%d, failed=%d, "
+                        + "scanIncomplete=%s, scanFailedQueues=%d", instanceId, groupName, messages.size(),
+                matches.size(), resent, failed, scanResult.scanIncomplete(), scanResult.failedQueueCount());
+        recordAudit(groupName, detail, outcome);
+        return DLQResendResultVO.builder().matched(matches.size()).resent(resent).failed(failed).outcome(outcome)
+                .scanIncomplete(scanResult.scanIncomplete()).failedQueueCount(scanResult.failedQueueCount()).build();
+    }
+
+    private String selectionKey(DLQMessageRefDTO reference) {
+        return reference.getMsgId() + ':' + reference.getQueueId() + ':' + reference.getOffset();
+    }
+
+    private String selectionKey(MessageExt message) {
+        return message.getMsgId() + ":" + message.getQueueId() + ":" + message.getQueueOffset();
     }
 
     private DLQMessageVO toExportVO(MessageExt message) {

@@ -81,6 +81,26 @@ export interface DLQResendResult {
   failedQueueCount?: number;
 }
 
+export interface DLQMessage {
+  msgId: string;
+  topic: string;
+  queueId: number;
+  offset: number;
+  storeTime: number;
+  keys?: string | null;
+  body?: string | null;
+  bodyBase64?: string | null;
+}
+
+export interface DLQMessagePage {
+  items: DLQMessage[];
+  total: number;
+  page: number;
+  size: number;
+  scanIncomplete: boolean;
+  failedQueueCount: number;
+}
+
 // ─── Messages ───────────────────────────────────────────────────
 export async function queryMessages(params: MessageQuery) {
   const res = await client.get<{ data: MessageRecord[] }>('/messages', { params });
@@ -114,6 +134,30 @@ export async function resendDLQ(data: {
   targetTopic?: string;
 }): Promise<DLQResendResult> {
   const res = await client.post<{ data: DLQResendResult }>('/dlq/resend', data);
+  return res.data.data;
+}
+
+export async function listDLQMessages(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  page?: number;
+  pageSize?: number;
+}): Promise<DLQMessagePage> {
+  const res = await client.get<{ data: DLQMessagePage }>('/dlq/messages', { params });
+  return res.data.data;
+}
+
+export async function resendSelectedDLQMessages(data: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  targetTopic?: string;
+  messages: Array<Pick<DLQMessage, 'msgId' | 'queueId' | 'offset'>>;
+}): Promise<DLQResendResult> {
+  const res = await client.post<{ data: DLQResendResult }>('/dlq/messages/resend', data);
   return res.data.data;
 }
 

@@ -58,6 +58,19 @@ public class DLQProviderStub implements DLQProvider {
         throw unsupported();
     }
 
+    @Override
+    public DLQMessagePageVO listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                          int page, int pageSize) {
+        throw unsupported();
+    }
+
+    @Override
+    public DLQResendResultVO resendSelectedMessages(String instanceId, String groupName, Long startTime,
+                                                     Long endTime, String targetTopic,
+                                                     List<DLQMessageRefDTO> messages) {
+        throw unsupported();
+    }
+
     private BusinessException unsupported() {
         return new BusinessException(501, "DLQ provider is not configured");
     }

@@ -51,11 +51,30 @@ public class DLQController {
         return Result.ok(dlqService.listDLQGroups(instanceId, search, page, pageSize));
     }
 
+    @GetMapping("/messages")
+    public Result<DLQMessagePageVO> listMessages(@RequestParam String instanceId, @RequestParam String groupName,
+                                                   @RequestParam(required = false) Long startTime,
+                                                   @RequestParam(required = false) Long endTime,
+                                                   @RequestParam(defaultValue = "1") int page,
+                                                   @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(dlqService.listMessages(instanceId, groupName, startTime, endTime, page, pageSize));
+    }
+
     @PostMapping("/resend")
     public Result<DLQResendResultVO> resendMessages(@Valid @RequestBody(required = false) DLQResendRequestDTO request) {
         requireRequest(request);
         return Result.ok(dlqService.resendMessages(request.getInstanceId(), request.getGroupName(),
                 request.getStartTime(), request.getEndTime(), request.getTargetTopic()));
+    }
+
+    @PostMapping("/messages/resend")
+    public Result<DLQResendResultVO> resendSelectedMessages(
+            @Valid @RequestBody(required = false) DLQSelectedResendRequestDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "DLQ selected resend request is required");
+        }
+        return Result.ok(dlqService.resendSelectedMessages(request.getInstanceId(), request.getGroupName(),
+                request.getStartTime(), request.getEndTime(), request.getTargetTopic(), request.getMessages()));
     }
 
     @GetMapping("/export")

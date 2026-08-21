@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Key } from 'react';
 import {
   Alert,
   Card,
@@ -36,8 +36,14 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
-import type { DLQGroup } from '../../api/message';
-import { exportDLQMessages, listDLQGroups, resendDLQ } from '../../services/messageService';
+import type { DLQGroup, DLQMessage } from '../../api/message';
+import {
+  exportDLQMessages,
+  listDLQGroups,
+  listDLQMessages,
+  resendDLQ,
+  resendSelectedDLQMessages,
+} from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { tableScrollX } from '../../utils/table';
@@ -91,6 +97,19 @@ const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
   downloadCsv(filename, buildCsv(DLQ_EXPORT_COLUMNS, groups));
 };
 
+const messageKey = (message: DLQMessage) => `${message.msgId}:${message.queueId}:${message.offset}`;
+
+const DLQ_MESSAGE_EXPORT_COLUMNS: CsvColumn<DLQMessage>[] = [
+  { header: 'Message ID', value: (message) => message.msgId },
+  { header: 'Topic', value: (message) => message.topic },
+  { header: 'Queue ID', value: (message) => message.queueId },
+  { header: 'Offset', value: (message) => message.offset },
+  { header: 'Store Time', value: (message) => new Date(message.storeTime).toISOString() },
+  { header: 'Keys', value: (message) => message.keys },
+  { header: 'Body', value: (message) => message.body },
+  { header: 'Body Base64', value: (message) => message.bodyBase64 },
+];
+
 /* ═══════════════════════════════════════════
    DLQPage
    ═══════════════════════════════════════════ */
@@ -120,6 +139,14 @@ const DLQPage = () => {
   const [retryTargetTopic, setRetryTargetTopic] = useState('');
   const [retrySubmitting, setRetrySubmitting] = useState(false);
   const [detailGroup, setDetailGroup] = useState<DLQGroup | null>(null);
+  const [detailMessages, setDetailMessages] = useState<DLQMessage[]>([]);
+  const [detailTotal, setDetailTotal] = useState(0);
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailIncomplete, setDetailIncomplete] = useState(false);
+  const [detailFailedQueues, setDetailFailedQueues] = useState(0);
+  const [selectedMessageKeys, setSelectedMessageKeys] = useState<Key[]>([]);
+  const [selectedResendSubmitting, setSelectedResendSubmitting] = useState(false);
   const [selectedGroupNames, setSelectedGroupNames] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -216,6 +243,65 @@ const DLQPage = () => {
     setRetryTargetTopic('');
     setRetryError(null);
     setRetryModalOpen(true);
+  };
+
+  const loadDetailMessages = async (group: DLQGroup, nextPage = 1) => {
+    if (!selectedInstanceId) return;
+    setDetailLoading(true);
+    try {
+      const result = await listDLQMessages({
+        instanceId: selectedInstanceId,
+        groupName: group.groupName,
+        startTime: exportRange[0].valueOf(),
+        endTime: exportRange[1].valueOf(),
+        page: nextPage,
+        pageSize: 20,
+      });
+      setDetailMessages(result.items);
+      setDetailTotal(result.total);
+      setDetailPage(result.page);
+      setDetailIncomplete(result.scanIncomplete);
+      setDetailFailedQueues(result.failedQueueCount);
+    } catch (error) {
+      message.error(getErrorMessage(error, '加载死信消息失败，请稍后重试'));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const openDetailModal = (group: DLQGroup) => {
+    setDetailGroup(group);
+    setDetailMessages([]);
+    setDetailTotal(0);
+    setDetailPage(1);
+    setSelectedMessageKeys([]);
+    void loadDetailMessages(group);
+  };
+
+  const handleSelectedResend = async () => {
+    if (!detailGroup || !selectedInstanceId) return;
+    const selected = detailMessages.filter((item) =>
+      selectedMessageKeys.includes(messageKey(item)),
+    );
+    if (selected.length === 0) return;
+    setSelectedResendSubmitting(true);
+    try {
+      const result = await resendSelectedDLQMessages({
+        instanceId: selectedInstanceId,
+        groupName: detailGroup.groupName,
+        startTime: exportRange[0].valueOf(),
+        endTime: exportRange[1].valueOf(),
+        messages: selected.map(({ msgId, queueId, offset }) => ({ msgId, queueId, offset })),
+      });
+      message.success(`已直接重投 ${result.resent} 条死信消息`);
+      setSelectedMessageKeys([]);
+      void loadDetailMessages(detailGroup, detailPage);
+      setRefreshKey((key) => key + 1);
+    } catch (error) {
+      message.error(getErrorMessage(error, '重投选中的死信消息失败，请稍后重试'));
+    } finally {
+      setSelectedResendSubmitting(false);
+    }
   };
 
   const handleRetry = async () => {
@@ -360,7 +446,7 @@ const DLQPage = () => {
             size="small"
             icon={<Eye size={14} />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => setDetailGroup(record)}
+            onClick={() => openDetailModal(record)}
           >
             查看详情
           </Button>
@@ -578,65 +664,103 @@ const DLQPage = () => {
         title="死信队列详情"
         open={Boolean(detailGroup)}
         onCancel={() => setDetailGroup(null)}
-        footer={<Button onClick={() => setDetailGroup(null)}>关闭</Button>}
-        width={560}
+        footer={null}
+        width={1080}
         destroyOnHidden
       >
         {detailGroup && (
           <div style={{ marginTop: 8 }}>
-            <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                Group 名称
-              </Text>
-              <Text strong copyable style={{ fontSize: 14, fontFamily: 'monospace' }}>
-                {detailGroup.groupName}
-              </Text>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                DLQ Topic
-              </Text>
-              <Text copyable style={{ fontSize: 14, fontFamily: 'monospace' }}>
-                {detailGroup.dlqTopic}
-              </Text>
-            </div>
-            <Flex gap={24} wrap="wrap">
-              <div>
-                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                  死信数量
+            <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+              <Space direction="vertical" size={0}>
+                <Text strong copyable style={{ fontFamily: 'monospace' }}>
+                  {detailGroup.groupName}
                 </Text>
-                <Text
-                  strong
-                  style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}
+                <Text type="secondary" copyable style={{ fontFamily: 'monospace' }}>
+                  {detailGroup.dlqTopic}
+                </Text>
+                <Space size={4}>
+                  <Text type="secondary">状态：</Text>
+                  <Text>
+                    {detailGroup.statsAvailable === false ? '统计不可用' : detailGroup.status}
+                  </Text>
+                </Space>
+              </Space>
+              <Space>
+                <Button
+                  icon={<Download size={14} />}
+                  disabled={detailMessages.length === 0}
+                  onClick={() =>
+                    downloadCsv(
+                      `${detailGroup.groupName}-dlq-messages.csv`,
+                      buildCsv(DLQ_MESSAGE_EXPORT_COLUMNS, detailMessages),
+                    )
+                  }
                 >
-                  {detailGroup.statsAvailable === false
-                    ? '不可用'
-                    : detailGroup.messageCount.toLocaleString()}
-                </Text>
-              </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                  重试次数
-                </Text>
-                <Text>{detailGroup.retryCount.toLocaleString()}</Text>
-              </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                  状态
-                </Text>
-                <Text>
-                  {detailGroup.statsAvailable === false ? '统计不可用' : detailGroup.status}
-                </Text>
-              </div>
+                  导出当前页
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<ArrowsCounterClockwise size={14} />}
+                  loading={selectedResendSubmitting}
+                  disabled={selectedMessageKeys.length === 0}
+                  onClick={() => void handleSelectedResend()}
+                >
+                  重投选中消息{selectedMessageKeys.length ? ` (${selectedMessageKeys.length})` : ''}
+                </Button>
+              </Space>
             </Flex>
-            <div style={{ marginTop: 16 }}>
-              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                最近入队时间
-              </Text>
-              <Text style={{ fontFamily: 'monospace' }}>
-                {formatDateTime(detailGroup.lastEnqueueTime)}
-              </Text>
-            </div>
+            {detailIncomplete && (
+              <Alert
+                showIcon
+                type="warning"
+                message={`扫描不完整，${detailFailedQueues} 个队列无法读取或结果达到上限。`}
+                style={{ marginBottom: 12 }}
+              />
+            )}
+            <Table<DLQMessage>
+              rowKey={messageKey}
+              size="small"
+              loading={detailLoading}
+              dataSource={detailMessages}
+              rowSelection={{
+                selectedRowKeys: selectedMessageKeys,
+                onChange: setSelectedMessageKeys,
+              }}
+              columns={[
+                {
+                  title: '消息 ID',
+                  dataIndex: 'msgId',
+                  width: 220,
+                  render: (value: string) => (
+                    <Text copyable style={{ fontFamily: 'monospace' }}>
+                      {value}
+                    </Text>
+                  ),
+                },
+                { title: '队列', dataIndex: 'queueId', width: 70 },
+                { title: 'Offset', dataIndex: 'offset', width: 100 },
+                {
+                  title: '存储时间',
+                  dataIndex: 'storeTime',
+                  width: 170,
+                  render: (value: number) => formatDateTime(new Date(value).toISOString()),
+                },
+                { title: 'Keys', dataIndex: 'keys', width: 160, ellipsis: true },
+                {
+                  title: '消息体',
+                  dataIndex: 'body',
+                  ellipsis: true,
+                  render: (value?: string) => value || '-',
+                },
+              ]}
+              pagination={{
+                current: detailPage,
+                pageSize: 20,
+                total: detailTotal,
+                onChange: (nextPage) => void loadDetailMessages(detailGroup, nextPage),
+              }}
+              scroll={{ x: 1000 }}
+            />
           </div>
         )}
       </Modal>

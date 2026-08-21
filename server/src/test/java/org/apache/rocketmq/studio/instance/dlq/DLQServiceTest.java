@@ -163,6 +163,32 @@ class DLQServiceTest {
     }
 
     @Test
+    void listMessagesShouldDelegatePagedQuery() {
+        DLQMessagePageVO result = DLQMessagePageVO.builder().items(List.of()).total(0).page(2).size(20).build();
+        when(dlqProvider.listMessages("instance-1", "group-1", 1000L, 2000L, 2, 20)).thenReturn(result);
+
+        assertThat(dlqService.listMessages("instance-1", "group-1", 1000L, 2000L, 2, 20)).isSameAs(result);
+
+        verify(dlqProvider).listMessages("instance-1", "group-1", 1000L, 2000L, 2, 20);
+    }
+
+    @Test
+    void selectedResendShouldRejectMoreThanOneHundredMessages() {
+        List<DLQMessageRefDTO> messages = java.util.stream.IntStream.range(0, 101)
+                .mapToObj(index -> {
+                    DLQMessageRefDTO reference = new DLQMessageRefDTO();
+                    reference.setMsgId("msg-" + index);
+                    return reference;
+                }).toList();
+
+        assertThatThrownBy(() -> dlqService.resendSelectedMessages("instance-1", "group-1", 1000L,
+                2000L, null, messages)).isInstanceOf(BusinessException.class)
+                .hasMessage("messages must contain between 1 and 100 entries");
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
     void listDLQGroupsShouldDelegatePagedQueryWithTrimmedSearch() {
         PageResult<DLQGroupVO> page = PageResult.of(List.of(), 0, 2, 50);
         when(dlqProvider.listDLQGroups("instance-1", "order", 2, 50)).thenReturn(page);

@@ -33,6 +33,7 @@ import java.util.List;
 public class DLQService {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_SELECTED_MESSAGES = 100;
 
     private final DLQProvider dlqProvider;
     private final InstanceProviderRegistry providerRegistry;
@@ -66,6 +67,28 @@ public class DLQService {
         validateResendRequest(groupName, startTime, endTime);
         log.info("Exporting DLQ messages: group={}, maxCount={}", groupName, maxCount);
         return dlqProvider.exportMessages(instanceId, groupName, startTime, endTime, maxCount);
+    }
+
+    public DLQMessagePageVO listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                          int page, int pageSize) {
+        requireApacheInstance(instanceId);
+        validateResendRequest(groupName, startTime, endTime);
+        if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(400, "Invalid page or pageSize");
+        }
+        return dlqProvider.listMessages(instanceId, groupName.trim(), startTime, endTime, page, pageSize);
+    }
+
+    public DLQResendResultVO resendSelectedMessages(String instanceId, String groupName, Long startTime,
+                                                      Long endTime, String targetTopic,
+                                                      List<DLQMessageRefDTO> messages) {
+        requireApacheInstance(instanceId);
+        validateResendRequest(groupName, startTime, endTime);
+        if (messages == null || messages.isEmpty() || messages.size() > MAX_SELECTED_MESSAGES) {
+            throw new BusinessException(400, "messages must contain between 1 and 100 entries");
+        }
+        return dlqProvider.resendSelectedMessages(instanceId, groupName.trim(), startTime, endTime, targetTopic,
+                messages);
     }
 
     private void requireApacheInstance(String instanceId) {

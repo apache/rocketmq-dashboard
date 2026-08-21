@@ -29,4 +29,10 @@ public interface DLQProvider {
                                      String targetTopic);
     List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                       Integer maxCount);
+
+    DLQMessagePageVO listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                  int page, int pageSize);
+
+    DLQResendResultVO resendSelectedMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                              String targetTopic, List<DLQMessageRefDTO> messages);
 }
