@@ -272,7 +272,7 @@ describe('Cluster page', () => {
     vi.restoreAllMocks();
   });
 
-  it('surfaces instance bootstrap failures and retries without querying a default cluster', async () => {
+  it('auto-retries instance bootstrap failures without querying a default cluster', async () => {
     instanceServiceMocks.listInstances
       .mockRejectedValueOnce(new Error('managed instances unavailable'))
       .mockResolvedValueOnce([
@@ -289,16 +289,15 @@ describe('Cluster page', () => {
           gmtModified: '',
         },
       ]);
-    const user = userEvent.setup();
     renderWithProviders(<ClusterPage />);
 
-    const alert = await screen.findByRole('alert');
     expect(clusterServiceMocks.listClusters).not.toHaveBeenCalled();
 
-    await user.click(within(alert).getByRole('button', { name: /重\s*试/ }));
-    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
-    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith('instance-1');
-  });
+    await waitFor(
+      () => expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith('instance-1'),
+      { timeout: 6000 },
+    );
+  }, 10000);
 
   it('opens proxy detail dialog from the proxy table', async () => {
     const user = userEvent.setup();

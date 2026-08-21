@@ -60,6 +60,7 @@ import { getMessageTrace, queryMessages } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import { tableScrollX } from '../../utils/table';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -946,6 +947,7 @@ const MessagePageContent = ({
             showTotal: (total) => `共 ${total} 条消息`,
           }}
           size="small"
+          scroll={{ x: tableScrollX(columns) }}
         />
       </Card>
 

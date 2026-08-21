@@ -65,6 +65,7 @@ import {
 } from '../../services/aclService';
 import type { AclRule, AclUser, AclClusterConfig, PlainAccessConfig } from '../../api/acl';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import { tableScrollX } from '../../utils/table';
 
 type AclRuleFormValues = Pick<
   AclRule,
@@ -1054,6 +1055,7 @@ const AclPageContent = ({
                       },
                     }}
                     size="small"
+                    scroll={{ x: tableScrollX(ruleColumns) }}
                   />
                 </div>
               ),
@@ -1106,6 +1108,7 @@ const AclPageContent = ({
                       },
                     }}
                     size="small"
+                    scroll={{ x: tableScrollX(userColumns) }}
                   />
                 </div>
               ),

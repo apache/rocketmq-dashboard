@@ -74,6 +74,7 @@ import {
 import { listInstances } from '../../services/instanceService';
 import { supportsApacheRuntime } from '../../api/instance';
 import { isMockMode } from '../../services/dataMode';
+import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 
@@ -312,6 +313,7 @@ const ClusterPage = () => {
   );
   const tRef = useRef(t);
   const selectedInstanceIdRef = useRef<string | undefined>(undefined);
+  const instanceLoadRetryRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,6 +327,7 @@ const ClusterPage = () => {
           ? requestedInstanceId
           : apacheInstances[0]?.name;
         selectedInstanceIdRef.current = initialInstanceId;
+        instanceLoadRetryRef.current = 0;
         setInstanceLoadError(null);
         if (initialInstanceId) void requestRefreshRef.current('manual');
       })
@@ -333,10 +336,15 @@ const ClusterPage = () => {
         selectedInstanceIdRef.current = undefined;
         setClusters([]);
         setSelectedProxy(null);
-        setInstanceLoadError(tRef.current('common.fetchDataFailed'));
         setLoading(false);
-        setAutoRefresh(false);
-        autoRefreshRef.current = false;
+        if (instanceLoadRetryRef.current < 3) {
+          instanceLoadRetryRef.current += 1;
+          window.setTimeout(() => setInstanceLoadKey((key) => key + 1), 3000);
+        } else {
+          setInstanceLoadError(tRef.current('common.fetchDataFailed'));
+          setAutoRefresh(false);
+          autoRefreshRef.current = false;
+        }
       });
     return () => {
       cancelled = true;
@@ -687,6 +695,7 @@ const ClusterPage = () => {
             rowKey="addr"
             pagination={{ pageSize: 20 }}
             size="small"
+            scroll={{ x: tableScrollX(brokerColumns) }}
           />
         </Card>
 
@@ -912,6 +921,7 @@ const ClusterPage = () => {
             rowKey="id"
             pagination={{ pageSize: 20 }}
             size="small"
+            scroll={{ x: tableScrollX(registryColumns) }}
           />
         </Card>
       </div>
@@ -1066,6 +1076,7 @@ const ClusterPage = () => {
             rowKey={(r) => `${r.clusterName}-${r.addr}`}
             pagination={{ pageSize: 20 }}
             size="small"
+            scroll={{ x: tableScrollX(proxyColumns) }}
           />
         </Card>
       </div>

@@ -38,6 +38,7 @@ import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { formatDateTime } from '../../utils/format';
+import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 
@@ -286,7 +287,7 @@ const K8sCertsPage = () => {
           loading={loading}
           pagination={{ pageSize: 20 }}
           size="small"
-          scroll={{ x: 1400 }}
+          scroll={{ x: tableScrollX(certColumns) }}
         />
       </Card>
 

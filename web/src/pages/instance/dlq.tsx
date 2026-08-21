@@ -40,6 +40,7 @@ import type { DLQGroup } from '../../api/message';
 import { exportDLQMessages, listDLQGroups, resendDLQ } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -477,6 +478,7 @@ const DLQPage = () => {
             },
           }}
           size="small"
+          scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
 

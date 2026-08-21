@@ -48,6 +48,7 @@ import {
   updateAlertRule,
 } from '../../services/opsService';
 import { attachThresholdUnit } from './alertRulePayload';
+import { tableScrollX } from '../../utils/table';
 
 const { TextArea } = Input;
 
@@ -440,6 +441,7 @@ const AlertsPage = () => {
           loading={loading}
           rowSelection={rowSelection}
           pagination={false}
+          scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
 

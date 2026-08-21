@@ -44,6 +44,7 @@ import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
@@ -572,7 +573,7 @@ const ClientsPage = () => {
           }
           loading={loading}
           onChange={(_, filters) => setColumnFilters(filters)}
-          scroll={{ x: 1320 }}
+          scroll={{ x: tableScrollX(columns) }}
           pagination={{
             pageSize: 20,
             showSizeChanger: true,
