@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -290,6 +291,34 @@ class SettingsServiceTest {
         List<DataSourceVO> result = settingsService.listDataSources();
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void listDataSourcesShouldValidatePaginationBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> settingsService.listDataSources(null, null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than zero");
+        assertThatThrownBy(() -> settingsService.listDataSources(null, null, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+        assertThatThrownBy(() -> settingsService.listDataSources(null, null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+
+        verifyNoInteractions(settingsRepository);
+    }
+
+    @Test
+    void listDataSourcesShouldDelegateBoundedInventoryQuery() {
+        PageResult<DataSourceVO> page = PageResult.of(List.of(), 0, 2, 20);
+        when(settingsRepository.findDataSources(" prod ", " prometheus ", 2, 20))
+                .thenReturn(page);
+
+        PageResult<DataSourceVO> result = settingsService.listDataSources(
+                " prod ", " prometheus ", 2, 20);
+
+        assertThat(result).isSameAs(page);
+        verify(settingsRepository).findDataSources(" prod ", " prometheus ", 2, 20);
     }
 
     @Test

@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.persistence;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
@@ -125,6 +127,20 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         return dataSourceMapper.selectList(new QueryWrapper<RmqDataSource>().orderByAsc("id")).stream()
                 .map(this::toDataSourceVO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<DataSourceVO> findDataSources(String search, String type, int page, int pageSize) {
+        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
+        String normalizedType = type == null || type.isBlank() ? null : type.trim();
+        QueryWrapper<RmqDataSource> query = new QueryWrapper<RmqDataSource>()
+                .like(normalizedSearch != null, "json", normalizedSearch)
+                .apply(normalizedType != null,
+                        "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%')", normalizedType)
+                .orderByDesc("gmt_modified", "id");
+        Page<RmqDataSource> result = dataSourceMapper.selectPage(new Page<>(page, pageSize), query);
+        return PageResult.of(result.getRecords().stream().map(this::toDataSourceVO).toList(),
+                result.getTotal(), page, pageSize);
     }
 
     @Override

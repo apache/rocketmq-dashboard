@@ -52,6 +52,14 @@ const credentials: CloudCredentialPage = {
   size: 20,
 };
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+};
+
 const renderTab = () =>
   render(
     <App>
@@ -91,6 +99,62 @@ describe('CloudCredentialTab', () => {
     expect(screen.getByText('阿里云')).toBeInTheDocument();
   });
 
+  it('loads the first page and sends the selected filters', async () => {
+    renderTab();
+
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledWith(undefined, '', 1, 20));
+  });
+
+  it('resets to the first page and queries filters after they change', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalled());
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('阿里云', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(screen.getByPlaceholderText('搜索凭据名称'), 'prod');
+
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledWith('ALIYUN', 'prod', 1, 20));
+  });
+
+  it('does not let a stale credential response overwrite the latest filters', async () => {
+    const initial = deferred<CloudCredentialPage>();
+    const latest = deferred<CloudCredentialPage>();
+    vi.mocked(listCloudCredentials)
+      .mockReturnValueOnce(initial.promise)
+      .mockReturnValueOnce(latest.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(await screen.findByText('腾讯云'));
+    await waitFor(() =>
+      expect(listCloudCredentials).toHaveBeenLastCalledWith('TENCENT', '', 1, 20),
+    );
+
+    latest.resolve({
+      items: [
+        {
+          id: 9,
+          name: 'latest-credential',
+          vendor: 'TENCENT',
+          accessKey: 'AKID****9999',
+          gmtCreate: '2026-08-18T12:00:00',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    await screen.findByText('latest-credential');
+
+    initial.resolve(credentials);
+    await waitFor(() => expect(screen.getByText('latest-credential')).toBeInTheDocument());
+    expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
+  });
+
   it('creates a credential from the modal form', async () => {
     vi.mocked(createCloudCredential).mockResolvedValue({
       id: 2,
@@ -106,9 +170,8 @@ describe('CloudCredentialTab', () => {
     await user.click(screen.getByRole('button', { name: /添加云凭据/ }));
 
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByPlaceholderText(/请输入凭据名称|例如/), 'tencent-prod');
-    // fill name field explicitly (placeholder shared with example text)
-    await user.click(within(dialog).getByLabelText('云厂商'));
+    await user.type(within(dialog).getByPlaceholderText(/例如/), 'tencent-prod');
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
     await user.click(await screen.findByText('腾讯云'));
     await user.type(screen.getByPlaceholderText('LTAI...'), 'AKID000000009999');
     await user.type(screen.getByPlaceholderText('请输入 SecretKey'), 'secret-9999');
@@ -123,7 +186,9 @@ describe('CloudCredentialTab', () => {
         remark: undefined,
       }),
     );
-    await waitFor(() => expect(screen.getByText('tencent-prod')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, '', 1, 20),
+    );
   });
 
   it('updates name and remark while keeping the secret unchanged when blank', async () => {
@@ -155,7 +220,9 @@ describe('CloudCredentialTab', () => {
         remark: '新备注',
       }),
     );
-    await waitFor(() => expect(screen.getByText('aliyun-renamed')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, '', 1, 20),
+    );
   });
 
   it('deletes a credential after confirmation', async () => {
@@ -168,6 +235,8 @@ describe('CloudCredentialTab', () => {
     await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
 
     await waitFor(() => expect(deleteCloudCredential).toHaveBeenCalledWith(1));
-    await waitFor(() => expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, '', 1, 20),
+    );
   });
 });

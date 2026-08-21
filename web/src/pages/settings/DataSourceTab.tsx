@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Flex,
@@ -30,6 +30,7 @@ import {
   Typography,
   message,
 } from 'antd';
+import { MagnifyingGlass } from '@phosphor-icons/react';
 import { ApiOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -38,7 +39,7 @@ import StatusBadge from '../../components/StatusBadge';
 import {
   createDataSource,
   deleteDataSource,
-  listDataSources,
+  listDataSourcesPage,
   testDataSource,
   updateDataSource,
 } from '../../api/settings';
@@ -69,6 +70,8 @@ const DATA_SOURCE_TYPE_OPTIONS = [
   { value: 'ARMS', label: 'ARMS' },
 ];
 
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
 type DataSourceFormValues = Partial<DataSource>;
 
 const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
@@ -91,6 +94,12 @@ const withoutSecrets = (values: DataSourceFormValues): Partial<DataSource> => {
 export const DataSourceTab = () => {
   const { t } = useLang();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string | undefined>();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -99,24 +108,60 @@ export const DataSourceTab = () => {
   const authValue = Form.useWatch('auth', dsForm);
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
+  const requestSeqRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
-    void listDataSources()
-      .then((sources) => {
-        if (!cancelled) setDataSources(sources);
-      })
-      .catch(() => {
-        if (!cancelled) message.error('数据源加载失败，请稍后重试');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const loadDataSources = useCallback(() => {
+    const requestId = ++requestSeqRef.current;
+    Promise.resolve().then(() => {
+      if (requestId === requestSeqRef.current) {
+        setLoading(true);
+      }
+    });
+    return (async () => {
+      try {
+        const result = await listDataSourcesPage({
+          search: debouncedSearch,
+          type: typeFilter,
+          page,
+          pageSize,
+        });
+        if (requestId !== requestSeqRef.current) return;
+        if (result.items.length === 0 && result.total > 0 && page > 1) {
+          const lastPage = Math.max(1, Math.ceil(result.total / result.size));
+          if (page > lastPage) {
+            setPage(lastPage);
+            return;
+          }
+        }
+        setDataSources(result.items);
+        setTotal(result.total);
+      } catch {
+        if (requestId === requestSeqRef.current) {
+          message.error('数据源加载失败，请稍后重试');
+        }
+      } finally {
+        if (requestId === requestSeqRef.current) {
+          setLoading(false);
+        }
+      }
+    })();
+  }, [debouncedSearch, page, pageSize, typeFilter]);
+
+  useEffect(() => {
+    void loadDataSources();
+  }, [loadDataSources]);
+
+  useEffect(
+    () => () => {
+      requestSeqRef.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -177,11 +222,14 @@ export const DataSourceTab = () => {
       const saved = editingDataSource
         ? await updateDataSource({ ...editingDataSource, ...dataSourceValues })
         : await createDataSource(dataSourceValues);
-      setDataSources((previous) =>
-        editingDataSource
-          ? previous.map((dataSource) => (dataSource.key === saved.key ? saved : dataSource))
-          : [...previous, saved],
-      );
+      if (editingDataSource) {
+        setDataSources((previous) =>
+          previous.map((dataSource) => (dataSource.key === saved.key ? saved : dataSource)),
+        );
+      } else {
+        setPage(1);
+      }
+      await loadDataSources();
       message.success(editingDataSource ? '数据源已更新' : '数据源已添加');
       setModalOpen(false);
       dsForm.resetFields();
@@ -198,7 +246,11 @@ export const DataSourceTab = () => {
   const handleDelete = async (dataSource: DataSource) => {
     try {
       await deleteDataSource(dataSource.key);
-      setDataSources((previous) => previous.filter((item) => item.key !== dataSource.key));
+      if (dataSources.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        await loadDataSources();
+      }
       message.success('数据源已删除');
     } catch {
       message.error('删除数据源失败，请稍后重试');
@@ -285,7 +337,31 @@ export const DataSourceTab = () => {
 
   return (
     <>
-      <Flex justify="flex-end" style={{ marginBottom: 16 }}>
+      <Flex justify="space-between" align="center" gap={12} wrap style={{ marginBottom: 16 }}>
+        <Flex gap={12} align="center" wrap>
+          <Input
+            allowClear
+            prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
+            placeholder="搜索数据源名称"
+            style={{ width: 240 }}
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+          />
+          <Select
+            allowClear
+            placeholder="全部类型"
+            style={{ width: 160 }}
+            value={typeFilter}
+            onChange={(value) => {
+              setTypeFilter(value);
+              setPage(1);
+            }}
+            options={DATA_SOURCE_TYPE_OPTIONS}
+          />
+        </Flex>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} disabled={loading}>
           添加数据源
         </Button>
@@ -296,7 +372,22 @@ export const DataSourceTab = () => {
         dataSource={dataSources}
         rowKey="key"
         loading={loading}
-        pagination={false}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
+          showTotal: (count) => `共 ${count} 条`,
+          onChange: (nextPage, nextPageSize) => {
+            if (nextPageSize !== pageSize) {
+              setPage(1);
+              setPageSize(nextPageSize);
+            } else {
+              setPage(nextPage);
+            }
+          },
+        }}
         size="middle"
       />
 
