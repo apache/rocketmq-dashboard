@@ -114,7 +114,11 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     @Transactional
     public InstanceVO save(InstanceVO instance) {
         RmqInstance entity = toEntity(instance);
-        if (entity.getId() != null && instanceMapper.selectById(entity.getId()) != null) {
+        if (entity.getId() != null) {
+            // A non-null id identifies an existing instance, so the update path must only
+            // update. If the row vanished (concurrent delete), a zero-row update is a
+            // conflict; re-inserting here would resurrect the deleted instance under its
+            // old id.
             if (instanceMapper.updateById(entity) == 0) {
                 throw new BusinessException(409,
                         "Instance update was not applied: " + entity.getId());
