@@ -1,0 +1,10 @@
+# Keep the Docker build context lean: node_modules alone is hundreds of MB.
+node_modules
+dist
+.git
+.github
+*.log
+.DS_Store
+.env
+.env.local
+coverage
