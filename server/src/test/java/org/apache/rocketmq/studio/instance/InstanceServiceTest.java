@@ -41,6 +41,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -49,6 +50,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -287,6 +289,33 @@ class InstanceServiceTest {
 
         assertThat(result.get(0).getTopicCount()).isZero();
         assertThat(result.get(0).getConsumerGroupCount()).isZero();
+    }
+
+    @Test
+    void listInstancesShouldApplyASingleDeadlineToSlowCountsTest() throws InterruptedException {
+        // Three hung providers: waiting per future would cost 3s each (9s total); a shared
+        // deadline must bound the whole batch to roughly one timeout.
+        List<InstanceVO> slow = new ArrayList<>();
+        for (long id = 20L; id < 23L; id++) {
+            InstanceVO vo = InstanceVO.builder().name("slow-" + id).build();
+            vo.setId(id);
+            slow.add(vo);
+        }
+        when(instanceRepository.findAll()).thenReturn(slow);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics(anyString())).thenAnswer(invocation -> {
+            Thread.sleep(10_000);
+            return 0;
+        });
+
+        long start = System.nanoTime();
+        List<InstanceVO> result = instanceService.listInstances(null, null);
+        long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+        assertThat(elapsedMillis)
+                .as("batch must not wait one timeout per instance")
+                .isLessThan(2L * InstanceService.COUNT_TIMEOUT_SECONDS * 1000);
+        assertThat(result).allSatisfy(vo -> assertThat(vo.isResourceCountsAvailable()).isFalse());
     }
 
     @Test
