@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_message (
   end_time BIGINT,
   result_count INT DEFAULT 0,
   cluster_id VARCHAR(255),
-  queried_by VARCHAR(64),
+  queried_by VARCHAR(128),
   PRIMARY KEY (`id`),
   INDEX idx_message_query_gmt_create (gmt_create),
   INDEX idx_topic (topic)
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_trace (
   node_count INT DEFAULT 0,
   consumer_count INT DEFAULT 0,
   cluster_id VARCHAR(255),
-  queried_by VARCHAR(64),
+  queried_by VARCHAR(128),
   PRIMARY KEY (`id`),
   INDEX idx_msg_id (msg_id),
   INDEX idx_trace_query_gmt_create (gmt_create)
@@ -288,3 +288,10 @@ CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
   PRIMARY KEY (`id`),
   UNIQUE KEY uk_vendor_access_key (vendor, access_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Idempotent upgrades for databases created before the corresponding CREATE statements
+-- were widened. Safe to re-run: on fresh databases the columns already match, and on
+-- existing databases the MODIFY below only grows the column width. Usernames may be up
+-- to 128 characters (see AuthService), so query-history owner columns must match.
+ALTER TABLE rmq_instance_message MODIFY queried_by VARCHAR(128);
+ALTER TABLE rmq_instance_trace MODIFY queried_by VARCHAR(128);
