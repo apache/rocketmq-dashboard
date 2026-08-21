@@ -91,9 +91,18 @@ public abstract class CliAgentProvider implements AgentProvider {
         // child stays alive. With the merged stream drained in the background, waitFor can enforce
         // the timeout and a hung child is destroyed instead of leaking the caller thread.
         builder.redirectErrorStream(true);
+        // CLIs wait for piped stdin and emit a warning that leaks into the reply unless
+        // stdin is explicitly /dev/null; fall back to closing the pipe where unavailable.
+        boolean devNullAvailable = new java.io.File("/dev/null").exists();
+        if (devNullAvailable) {
+            builder.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")));
+        }
         Process process;
         try {
             process = builder.start();
+            if (!devNullAvailable) {
+                process.getOutputStream().close();
+            }
         } catch (IOException exception) {
             throw new LlmGatewayException(502, "llm.provider.io_error",
                     "Failed to execute " + binaryName() + " CLI",
