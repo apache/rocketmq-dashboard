@@ -85,6 +85,8 @@ import {
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import {
   parseCsvTable,
+  RESOURCE_NAME_MAX_LENGTH,
+  RESOURCE_NAME_PATTERN,
   validateConsumerGroupCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
@@ -1607,8 +1609,12 @@ const ConsumerPageContent = ({
             rules={[
               { required: true, message: '请输入 Group 名称' },
               {
-                pattern: /^[a-zA-Z][a-zA-Z0-9_-]*$/,
-                message: '名称以字母开头，仅包含字母、数字、下划线和短横线',
+                pattern: RESOURCE_NAME_PATTERN,
+                message: '仅支持字母、数字、下划线、短横线、% 和 |',
+              },
+              {
+                max: RESOURCE_NAME_MAX_LENGTH.group,
+                message: `名称不能超过 ${RESOURCE_NAME_MAX_LENGTH.group} 个字符`,
               },
             ]}
           >

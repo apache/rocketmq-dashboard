@@ -44,8 +44,28 @@ interface ParsedCsvRow {
 }
 
 const FORMULA_SAFE_PREFIX_PATTERN = /^'(?=[=+\-@\t\r\n])/;
-const TOPIC_NAME_PATTERN = /^[a-zA-Z0-9_\-/*]+$/;
-const GROUP_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+
+// Aligned with RocketMQ's TopicValidator/GroupValidator: a shared character set (letters,
+// digits, underscore, hyphen, % and |) with per-kind length caps. Topics cap at 127 and
+// consumer groups at 120; both may start with a digit or symbol, so no leading-letter rule.
+export const RESOURCE_NAME_PATTERN = /^[%|a-zA-Z0-9_-]+$/;
+export const RESOURCE_NAME_MAX_LENGTH = { topic: 127, group: 120 } as const;
+
+export type ResourceNameKind = keyof typeof RESOURCE_NAME_MAX_LENGTH;
+
+export const validateResourceName = (name: string, kind: ResourceNameKind): string | null => {
+  if (!name) {
+    return 'Name 不能为空';
+  }
+  const maxLength = RESOURCE_NAME_MAX_LENGTH[kind];
+  if (name.length > maxLength) {
+    return `Name 长度不能超过 ${maxLength} 个字符`;
+  }
+  if (!RESOURCE_NAME_PATTERN.test(name)) {
+    return 'Name 仅支持字母、数字、下划线、短横线、% 和 |';
+  }
+  return null;
+};
 
 const TOPIC_TYPES = new Set(['NORMAL', 'FIFO', 'DELAY', 'TRANSACTION', 'LITE']);
 const TOPIC_PERMISSIONS = new Set(['RW', 'RO', 'WO']);
@@ -260,10 +280,9 @@ export const validateTopicCsvImport = (
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 
-    if (!name) {
-      rowErrors.push('Name 不能为空');
-    } else if (!TOPIC_NAME_PATTERN.test(name)) {
-      rowErrors.push('Name 仅支持字母、数字、下划线、中划线、斜杠和星号');
+    const nameError = validateResourceName(name, 'topic');
+    if (nameError) {
+      rowErrors.push(nameError);
     }
     if (!TOPIC_TYPES.has(type)) {
       rowErrors.push(`Type 不支持：${type}`);
@@ -319,10 +338,9 @@ export const validateConsumerGroupCsvImport = (
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 
-    if (!name) {
-      rowErrors.push('Name 不能为空');
-    } else if (!GROUP_NAME_PATTERN.test(name)) {
-      rowErrors.push('Name 需以字母开头，仅包含字母、数字、下划线和短横线');
+    const nameError = validateResourceName(name, 'group');
+    if (nameError) {
+      rowErrors.push(nameError);
     }
     if (!GROUP_SUBSCRIPTION_MODES.has(subscriptionMode)) {
       rowErrors.push(`Subscription Mode 不支持：${subscriptionMode}`);

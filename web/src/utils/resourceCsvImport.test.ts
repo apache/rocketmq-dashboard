@@ -20,6 +20,7 @@ import {
   parseCsvTable,
   RESOURCE_IMPORT_ROW_LIMIT,
   validateConsumerGroupCsvImport,
+  validateResourceName,
   validateTopicCsvImport,
 } from './resourceCsvImport';
 
@@ -124,5 +125,46 @@ describe('resourceCsvImport', () => {
       subscribedTopics: [],
       instanceId: 'instance-2',
     });
+  });
+
+  it('aligns topic and group names with the RocketMQ validators', () => {
+    const topicStatus = (name: string) =>
+      validateTopicCsvImport(parseCsvTable(['"Name"', `"${name}"`].join('\n'))).rows[0].status;
+    const groupStatus = (name: string) =>
+      validateConsumerGroupCsvImport(parseCsvTable(['"Name"', `"${name}"`].join('\n'))).rows[0]
+        .status;
+
+    // RocketMQ accepts % and | in both topic and group names
+    expect(topicStatus('100%topic')).toBe('pending');
+    expect(topicStatus('topic|pipe')).toBe('pending');
+    expect(groupStatus('cg|pipe')).toBe('pending');
+    // Groups may start with a digit (no leading-letter rule)
+    expect(groupStatus('1cg')).toBe('pending');
+    // / and * are not part of the RocketMQ name character set
+    expect(topicStatus('topic/with-slash')).toBe('invalid');
+    expect(topicStatus('topic*star')).toBe('invalid');
+  });
+
+  it('applies the RocketMQ length caps to imported names', () => {
+    const topicStatus = (name: string) =>
+      validateTopicCsvImport(parseCsvTable(['"Name"', `"${name}"`].join('\n'))).rows[0].status;
+    const groupStatus = (name: string) =>
+      validateConsumerGroupCsvImport(parseCsvTable(['"Name"', `"${name}"`].join('\n'))).rows[0]
+        .status;
+
+    expect(topicStatus('t'.repeat(127))).toBe('pending');
+    expect(topicStatus('t'.repeat(128))).toBe('invalid');
+    expect(groupStatus('g'.repeat(120))).toBe('pending');
+    expect(groupStatus('g'.repeat(121))).toBe('invalid');
+  });
+
+  it('reports the RocketMQ-oriented name error messages', () => {
+    expect(validateResourceName('', 'topic')).toBe('Name 不能为空');
+    expect(validateResourceName('a'.repeat(128), 'topic')).toBe('Name 长度不能超过 127 个字符');
+    expect(validateResourceName('a'.repeat(121), 'group')).toBe('Name 长度不能超过 120 个字符');
+    expect(validateResourceName('bad/name', 'topic')).toBe(
+      'Name 仅支持字母、数字、下划线、短横线、% 和 |',
+    );
+    expect(validateResourceName('ok-name|100%', 'group')).toBeNull();
   });
 });
