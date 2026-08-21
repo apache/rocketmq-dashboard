@@ -80,7 +80,7 @@ describe('AiAssistantTab', () => {
     renderPage();
 
     expect(await screen.findByText('密钥已配置')).toBeInTheDocument();
-    expect(screen.getByText('qwen3.8-max')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('qwen3.8-max')).toBeInTheDocument();
   });
 
   it('saves without sending an apiKey when the input stays empty', async () => {
@@ -139,7 +139,9 @@ describe('AiAssistantTab', () => {
     await user.click(screen.getByRole('button', { name: /保\s*存/ }));
 
     await waitFor(() => expect(llmApiMocks.getLlmModels).toHaveBeenCalledTimes(2));
-    await user.click(screen.getAllByRole('combobox')[2]);
+    const modelBox = screen.getAllByRole('combobox')[2];
+    await user.click(modelBox);
+    await user.clear(modelBox);
     expect(
       await screen.findByText('qwen-plus-latest', { selector: '.ant-select-item-option-content' }),
     ).toBeInTheDocument();
@@ -162,7 +164,9 @@ describe('AiAssistantTab', () => {
     expect(llmApiMocks.testLlmConnection).toHaveBeenCalledWith(
       expect.objectContaining({ apiKey: 'sk-preview', provider: 'tongyi' }),
     );
-    await user.click(screen.getAllByRole('combobox')[2]);
+    const modelBox = screen.getAllByRole('combobox')[2];
+    await user.click(modelBox);
+    await user.clear(modelBox);
     expect(
       await screen.findByText('qwen-plus-latest', { selector: '.ant-select-item-option-content' }),
     ).toBeInTheDocument();

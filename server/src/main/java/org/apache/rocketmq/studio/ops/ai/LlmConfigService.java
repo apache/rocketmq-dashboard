@@ -40,6 +40,7 @@ import java.util.Map;
 public class LlmConfigService {
 
     private static final String OPENAI = "openai";
+    private static final String ANTHROPIC = "anthropic";
     private static final String DEFAULT_PROVIDER = "tongyi";
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final int DEFAULT_MAX_TOKENS = 4096;
@@ -47,12 +48,21 @@ public class LlmConfigService {
     private static final int MAX_TOKENS_LIMIT = 200_000;
     private static final Map<String, List<LlmModelItemVO>> PROVIDER_MODELS = Map.of(
             OPENAI, List.of(
-                    new LlmModelItemVO("gpt-4o", "GPT-4o"),
-                    new LlmModelItemVO("gpt-4-turbo", "GPT-4 Turbo"),
-                    new LlmModelItemVO("gpt-4", "GPT-4")),
+                    new LlmModelItemVO("gpt-5.6-sol", "GPT-5.6 Sol"),
+                    new LlmModelItemVO("gpt-5.6-terra", "GPT-5.6 Terra"),
+                    new LlmModelItemVO("gpt-5.6-luna", "GPT-5.6 Luna")),
             "azure", List.of(
-                    new LlmModelItemVO("gpt-4o", "GPT-4o"),
-                    new LlmModelItemVO("gpt-4", "GPT-4")),
+                    new LlmModelItemVO("gpt-5.6-sol", "GPT-5.6 Sol"),
+                    new LlmModelItemVO("gpt-5.6-terra", "GPT-5.6 Terra"),
+                    new LlmModelItemVO("gpt-5.6-luna", "GPT-5.6 Luna")),
+            ANTHROPIC, List.of(
+                    new LlmModelItemVO("claude-fable-5", "Claude Fable 5"),
+                    new LlmModelItemVO("claude-opus-5", "Claude Opus 5"),
+                    new LlmModelItemVO("claude-opus-4-8", "Claude Opus 4.8"),
+                    new LlmModelItemVO("claude-opus-4-7", "Claude Opus 4.7"),
+                    new LlmModelItemVO("claude-sonnet-5", "Claude Sonnet 5"),
+                    new LlmModelItemVO("claude-sonnet-4-6", "Claude Sonnet 4.6"),
+                    new LlmModelItemVO("claude-haiku-4-5", "Claude Haiku 4.5")),
             "deepseek", List.of(
                     new LlmModelItemVO("deepseek-chat", "DeepSeek Chat"),
                     new LlmModelItemVO("deepseek-reasoner", "DeepSeek Reasoner")),
@@ -69,8 +79,11 @@ public class LlmConfigService {
                     new LlmModelItemVO("mistral", "Mistral"),
                     new LlmModelItemVO("qwen2.5", "Qwen 2.5")),
             "bedrock", List.of(
-                    new LlmModelItemVO("anthropic.claude-3-sonnet", "Claude 3 Sonnet"),
-                    new LlmModelItemVO("anthropic.claude-3-haiku", "Claude 3 Haiku"),
+                    new LlmModelItemVO("anthropic.claude-fable-5", "Claude Fable 5"),
+                    new LlmModelItemVO("anthropic.claude-opus-5", "Claude Opus 5"),
+                    new LlmModelItemVO("anthropic.claude-opus-4-8", "Claude Opus 4.8"),
+                    new LlmModelItemVO("anthropic.claude-sonnet-5", "Claude Sonnet 5"),
+                    new LlmModelItemVO("anthropic.claude-haiku-4-5", "Claude Haiku 4.5"),
                     new LlmModelItemVO("meta.llama3-70b", "Llama 3 70B")));
 
     private final SettingsService settingsService;
@@ -332,6 +345,7 @@ public class LlmConfigService {
         return switch (provider) {
             case "deepseek" -> "https://api.deepseek.com/v1";
             case "tongyi" -> "https://dashscope.aliyuncs.com/compatible-mode/v1";
+            case ANTHROPIC -> "https://api.anthropic.com";
             case "ollama" -> "http://localhost:11434/v1";
             default -> "https://api.openai.com/v1";
         };

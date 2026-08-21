@@ -16,8 +16,17 @@
  */
 
 export const FALLBACK_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-  azure: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
+  openai: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+  azure: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+  anthropic: [
+    'claude-fable-5',
+    'claude-opus-5',
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+    'claude-sonnet-5',
+    'claude-sonnet-4-6',
+    'claude-haiku-4-5',
+  ],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
   tongyi: [
     'qwen3.8-max',
@@ -29,7 +38,14 @@ export const FALLBACK_MODELS: Record<string, string[]> = {
     'glm-5.2',
   ],
   ollama: ['llama3', 'mistral', 'gemma2', 'qwen2.5'],
-  bedrock: ['anthropic.claude-3-sonnet', 'anthropic.claude-3-haiku', 'meta.llama3-70b'],
+  bedrock: [
+    'anthropic.claude-fable-5',
+    'anthropic.claude-opus-5',
+    'anthropic.claude-opus-4-8',
+    'anthropic.claude-sonnet-5',
+    'anthropic.claude-haiku-4-5',
+    'meta.llama3-70b',
+  ],
 };
 
 export function fallbackModelOptions(provider: string, model?: string) {

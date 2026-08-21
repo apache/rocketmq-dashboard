@@ -48,6 +48,7 @@ import { fallbackModelOptions } from '../studio/llmModelOptions';
 const PROVIDER_OPTIONS = [
   { value: 'tongyi', label: '通义千问（DashScope）' },
   { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic（Claude）' },
   { value: 'azure', label: 'Azure OpenAI' },
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'ollama', label: 'Ollama（本地）' },
@@ -63,6 +64,7 @@ const ENGINE_OPTIONS = [
 const DEFAULT_BASE_URL: Record<string, string> = {
   tongyi: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
   deepseek: 'https://api.deepseek.com/v1',
   ollama: 'http://localhost:11434/v1',
 };
@@ -83,6 +85,13 @@ const BASE_URL_PRESETS: Record<string, { value: string; label: string }[]> = {
     },
   ],
   openai: [{ value: 'https://api.openai.com/v1', label: 'OpenAI 官方' }],
+  anthropic: [
+    { value: 'https://api.anthropic.com', label: 'Anthropic 官方' },
+    {
+      value: 'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic',
+      label: 'Token Plan 网关（Anthropic 兼容）',
+    },
+  ],
   deepseek: [{ value: 'https://api.deepseek.com/v1', label: 'DeepSeek 官方' }],
   ollama: [{ value: 'http://localhost:11434/v1', label: 'Ollama 本地' }],
 };
@@ -321,10 +330,19 @@ export const AiAssistantTab = () => {
               label="模型"
               name="model"
               rules={[{ required: true, message: '请选择或输入模型' }]}
-              extra="默认使用 qwen3.8-max"
+              extra="可从下拉选择，也可直接输入自定义模型 ID"
               style={{ marginBottom: 0 }}
             >
-              <Select showSearch options={modelOptions} placeholder="选择模型" />
+              <AutoComplete
+                options={modelOptions}
+                placeholder="选择或输入模型"
+                filterOption={(input, option) =>
+                  String(option?.value ?? '')
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+                allowClear
+              />
             </Form.Item>
           </Card>
 

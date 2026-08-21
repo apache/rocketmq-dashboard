@@ -72,9 +72,9 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                     .notifySound(false)
                     .sessionTimeout(30)
                     .requireLogin(false)
-                    .llmProvider("openai")
+                    .llmProvider("tongyi")
                     .apiKey("")
-                    .model("gpt-4")
+                    .model("qwen3.8-max")
                     .baseUrl("")
                     .build();
         }
