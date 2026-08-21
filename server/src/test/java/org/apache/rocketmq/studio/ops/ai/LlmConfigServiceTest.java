@@ -571,7 +571,7 @@ class LlmConfigServiceTest {
         LlmModelsResultVO result = llmConfigService.listModels();
 
         assertThat(result.getStatus()).isZero();
-        assertThat(result.getData()).extracting("id").contains("gpt-4o", "gpt-4");
+        assertThat(result.getData()).extracting("id").contains("gpt-5.6-sol", "gpt-5.6-luna");
         assertThat(result.getSource()).isEqualTo(LlmModelsResultVO.SOURCE_FALLBACK);
         assertThat(result.getWarningCode()).isEqualTo("llm.provider.io_error");
         assertThat(result.getWarning()).contains("Failed to list LLM provider models");
