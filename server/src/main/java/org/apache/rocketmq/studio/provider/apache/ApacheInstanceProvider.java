@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageResendResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
@@ -154,5 +155,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return messageProvider.getMessageTrace(instanceId, msgId, topic);
+    }
+
+    @Override
+    public MessageResendResultVO resendMessage(String instanceId, String topic, String msgId,
+                                               String consumerGroup, String clientId) {
+        return messageProvider.resendMessage(instanceId, topic, msgId, consumerGroup, clientId);
     }
 }

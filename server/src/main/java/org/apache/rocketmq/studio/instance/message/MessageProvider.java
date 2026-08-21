@@ -24,4 +24,17 @@ public interface MessageProvider {
                                         Long endTime);
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
+
+    /**
+     * Ask the broker to re-deliver a stored message directly to a consumer group, bypassing the
+     * normal rebalance path. Equivalent to the classic dashboard {@code consumeMessageDirectly.do}.
+     *
+     * @param instanceId    the selected instance identifier
+     * @param topic         the topic that owns the message
+     * @param msgId         the stored message id
+     * @param consumerGroup the consumer group that should receive the re-delivery
+     * @param clientId      optional client id within the group; when empty the broker picks one
+     */
+    MessageResendResultVO resendMessage(String instanceId, String topic, String msgId,
+                                        String consumerGroup, String clientId);
 }

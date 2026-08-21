@@ -55,8 +55,12 @@ import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
 import { useLang } from '../../i18n/LangContext';
-import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
-import { getMessageTrace, queryMessagePage } from '../../services/messageService';
+import type { MessageQuery, MessageRecord, MessageResendResult, TraceRecord } from '../../api/message';
+import {
+  getMessageTrace,
+  queryMessagePage,
+  resendMessage,
+} from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
@@ -87,7 +91,7 @@ type ApiErrorLike = {
 
 const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
 const MAX_QUERY_HISTORY = 5;
-const RESEND_UNAVAILABLE_MESSAGE = '当前版本尚未接入普通消息重新发送接口';
+const DEFAULT_RESEND_ERROR = '重新发送失败，请稍后重试';
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const, label: '按 Topic 查询' },
@@ -326,6 +330,12 @@ const MessagePageContent = ({
   const [traceError, setTraceError] = useState<string | null>(null);
   const [recentQueries, setRecentQueries] = useState<RecentQuery[]>(loadRecentQueries);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [resendOpen, setResendOpen] = useState(false);
+  const [resendGroup, setResendGroup] = useState('');
+  const [resendClientId, setResendClientId] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendResult, setResendResult] = useState<MessageResendResult | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
 
@@ -532,6 +542,40 @@ const MessagePageContent = ({
     setModalOpen(false);
     setTraceLoading(false);
     setTraceError(null);
+  };
+
+  const openResendModal = (record: MessageRecord) => {
+    setSelectedMsg(record);
+    setResendGroup('');
+    setResendClientId('');
+    setResendResult(null);
+    setResendError(null);
+    setResendOpen(true);
+  };
+
+  const submitResend = async () => {
+    if (!selectedMsg || !selectedInstanceId) return;
+    const groupName = resendGroup.trim();
+    if (!groupName) {
+      setResendError('请输入消费组名称');
+      return;
+    }
+    setResendLoading(true);
+    setResendError(null);
+    try {
+      const result = await resendMessage({
+        instanceId: selectedInstanceId,
+        topic: selectedMsg.topic,
+        msgId: selectedMsg.msgId,
+        consumerGroup: groupName,
+        clientId: resendClientId.trim() || undefined,
+      });
+      setResendResult(result);
+    } catch (error) {
+      setResendError(getErrorMessage(error, DEFAULT_RESEND_ERROR));
+    } finally {
+      setResendLoading(false);
+    }
   };
 
   const handleDownload = (record: MessageRecord) => {
@@ -997,8 +1041,10 @@ const MessagePageContent = ({
             <Button
               type="primary"
               icon={<SendOutlined />}
-              disabled
-              title={RESEND_UNAVAILABLE_MESSAGE}
+              disabled={!selectedMsg}
+              onClick={() => {
+                if (selectedMsg) openResendModal(selectedMsg);
+              }}
             >
               重新发送
             </Button>
@@ -1006,6 +1052,59 @@ const MessagePageContent = ({
         }
       >
         <Tabs activeKey={modalTab} onChange={setModalTab} items={modalTabs} />
+      </Modal>
+
+      {/* ── Resend Modal ── */}
+      <Modal
+        title="重新发送消息"
+        width={560}
+        open={resendOpen}
+        onCancel={() => setResendOpen(false)}
+        destroyOnHidden
+        footer={
+          <Flex justify="flex-end" gap={8}>
+            <Button onClick={() => setResendOpen(false)}>关闭</Button>
+            <Button type="primary" loading={resendLoading} onClick={() => void submitResend()}>
+              确认发送
+            </Button>
+          </Flex>
+        }
+      >
+        <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="Topic">{selectedMsg?.topic ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="Message ID">{selectedMsg?.msgId ?? '-'}</Descriptions.Item>
+        </Descriptions>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Input
+            placeholder="消费组名称（必填）"
+            value={resendGroup}
+            onChange={(event) => setResendGroup(event.target.value)}
+            onPressEnter={() => void submitResend()}
+          />
+          <Input
+            placeholder="Client ID（可选，留空则由 Broker 选择）"
+            value={resendClientId}
+            onChange={(event) => setResendClientId(event.target.value)}
+          />
+        </Space>
+        {resendError && (
+          <Alert showIcon type="error" message={resendError} style={{ marginTop: 12 }} />
+        )}
+        {resendResult && (
+          <Alert
+            showIcon
+            type={resendResult.consumeResult === 'CR_SUCCESS' ? 'success' : 'warning'}
+            message={`发送结果：${resendResult.consumeResult ?? '未知'}`}
+            description={
+              <Space direction="vertical" size={0}>
+                <span>消费组：{resendResult.consumerGroup}</span>
+                {resendResult.remark ? <span>备注：{resendResult.remark}</span> : null}
+                <span>自动提交：{resendResult.autoCommit ? '是' : '否'}</span>
+              </Space>
+            }
+            style={{ marginTop: 12 }}
+          />
+        )}
       </Modal>
     </div>
   );

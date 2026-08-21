@@ -52,6 +52,15 @@ export interface MessageQueryPage {
   resultMayBeTruncated: boolean;
 }
 
+export interface MessageResendResult {
+  msgId: string;
+  topic: string;
+  consumerGroup: string;
+  consumeResult: string | null;
+  remark: string | null;
+  autoCommit: boolean;
+}
+
 const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
   if (typeof storeTime === 'number') return storeTime;
 
@@ -110,6 +119,17 @@ export async function getMessageTrace(msgId: string, instanceId?: string, topic?
     `/messages/${encodeURIComponent(msgId)}/trace`,
     { params },
   );
+  return res.data.data;
+}
+
+export async function resendMessage(data: {
+  instanceId: string;
+  topic: string;
+  msgId: string;
+  consumerGroup: string;
+  clientId?: string;
+}): Promise<MessageResendResult> {
+  const res = await client.post<{ data: MessageResendResult }>('/messages/resend', data);
   return res.data.data;
 }
 

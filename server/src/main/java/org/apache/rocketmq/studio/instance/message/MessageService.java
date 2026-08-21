@@ -76,6 +76,21 @@ public class MessageService {
         return result;
     }
 
+    public MessageResendResultVO resendMessage(String instanceId, String topic, String msgId,
+                                               String consumerGroup, String clientId) {
+        if (!StringUtils.hasText(msgId)) {
+            throw new BusinessException(400, "msgId is required");
+        }
+        if (!StringUtils.hasText(consumerGroup)) {
+            throw new BusinessException(400, "consumerGroup is required");
+        }
+        log.info("Re-delivering message: topic={}, msgId={}, consumerGroup={}, clientId={}",
+                topic, msgId, consumerGroup, clientId);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.resendMessage(instanceId, topic, msgId, consumerGroup, clientId))
+                .orElseGet(() -> messageProvider.resendMessage(instanceId, topic, msgId, consumerGroup, clientId));
+    }
+
     private void recordMessageQuery(String instanceId, String topic, String msgId, String tag,
                                     String key, Long startTime, Long endTime, int resultCount) {
         String queryType = StringUtils.hasText(msgId) ? "MSG_ID" : StringUtils.hasText(key) ? "KEY" : "TOPIC";

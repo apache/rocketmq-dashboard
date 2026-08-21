@@ -27,6 +27,7 @@ import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -34,6 +35,7 @@ import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageResendResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -418,6 +420,35 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .nodes(nodes)
                 .consumerStatus(consumerStatus)
                 .build();
+    }
+
+    @Override
+    public MessageResendResultVO resendMessage(String instanceId, String topic, String msgId,
+                                               String consumerGroup, String clientId) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> resendMessage((DefaultMQAdminExt) adminExt, topic, msgId, consumerGroup, clientId));
+    }
+
+    private MessageResendResultVO resendMessage(DefaultMQAdminExt adminExt, String topic, String msgId,
+                                                String consumerGroup, String clientId) {
+        try {
+            ConsumeMessageDirectlyResult result =
+                    adminExt.consumeMessageDirectly(consumerGroup, clientId, topic, msgId);
+            MessageResendResultVO vo = new MessageResendResultVO();
+            vo.setMsgId(msgId);
+            vo.setTopic(topic);
+            vo.setConsumerGroup(consumerGroup);
+            if (result != null) {
+                vo.setConsumeResult(result.getConsumeResult() == null ? null : result.getConsumeResult().name());
+                vo.setRemark(result.getRemark());
+                vo.setAutoCommit(result.isAutoCommit());
+            }
+            return vo;
+        } catch (Exception e) {
+            log.warn("consumeMessageDirectly(topic={}, msgId={}, group={}) failed: {}",
+                    topic, msgId, consumerGroup, e.getMessage());
+            throw new BusinessException(502, "Failed to re-deliver message " + msgId + ": " + e.getMessage());
+        }
     }
 
     /**

@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
@@ -28,13 +29,16 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.protocol.body.CMResult;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageResendResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -748,5 +752,54 @@ class RocketMQMessageProviderTest {
                 .mapToObj(index -> topicMessage("msg-" + index, storeTimeBase + index))
                 .toList();
         return new PullResult(PullStatus.FOUND, batchEnd, 0L, endOffsetExclusive, messages);
+    }
+
+    @Test
+    void resendMessageDelegatesToConsumeMessageDirectly() throws Exception {
+        ConsumeMessageDirectlyResult directResult = new ConsumeMessageDirectlyResult();
+        directResult.setConsumeResult(CMResult.CR_SUCCESS);
+        directResult.setRemark("re-delivered");
+        directResult.setAutoCommit(true);
+        when(adminExt.consumeMessageDirectly("group-a", null, "TopicA", "MSG0001"))
+                .thenReturn(directResult);
+
+        MessageResendResultVO result =
+                provider.resendMessage("instance-a", "TopicA", "MSG0001", "group-a", null);
+
+        assertThat(result.getMsgId()).isEqualTo("MSG0001");
+        assertThat(result.getTopic()).isEqualTo("TopicA");
+        assertThat(result.getConsumerGroup()).isEqualTo("group-a");
+        assertThat(result.getConsumeResult()).isEqualTo("CR_SUCCESS");
+        assertThat(result.getRemark()).isEqualTo("re-delivered");
+        assertThat(result.isAutoCommit()).isTrue();
+        verify(adminExt).consumeMessageDirectly("group-a", null, "TopicA", "MSG0001");
+    }
+
+    @Test
+    void resendMessageWithClientIdAndFailedResult() throws Exception {
+        ConsumeMessageDirectlyResult directResult = new ConsumeMessageDirectlyResult();
+        directResult.setConsumeResult(CMResult.CR_THROW_EXCEPTION);
+        directResult.setRemark("consume exception");
+        directResult.setAutoCommit(false);
+        when(adminExt.consumeMessageDirectly("group-a", "client-1", "TopicA", "MSG0002"))
+                .thenReturn(directResult);
+
+        MessageResendResultVO result =
+                provider.resendMessage("instance-a", "TopicA", "MSG0002", "group-a", "client-1");
+
+        assertThat(result.getConsumeResult()).isEqualTo("CR_THROW_EXCEPTION");
+        assertThat(result.getRemark()).isEqualTo("consume exception");
+        assertThat(result.isAutoCommit()).isFalse();
+        verify(adminExt).consumeMessageDirectly("group-a", "client-1", "TopicA", "MSG0002");
+    }
+
+    @Test
+    void resendMessageThrowsWhenBrokerRejects() throws Exception {
+        when(adminExt.consumeMessageDirectly("group-a", null, "TopicA", "MSG0003"))
+                .thenThrow(new MQClientException("broker unavailable", null));
+
+        assertThatThrownBy(() -> provider.resendMessage("instance-a", "TopicA", "MSG0003", "group-a", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to re-deliver message");
     }
 }

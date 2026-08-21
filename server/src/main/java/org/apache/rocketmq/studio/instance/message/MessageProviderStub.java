@@ -41,6 +41,13 @@ public class MessageProviderStub implements MessageProvider {
         throw unsupported();
     }
 
+    @Override
+    public MessageResendResultVO resendMessage(String instanceId, String topic, String msgId,
+                                               String consumerGroup, String clientId) {
+        log.warn("MessageProviderStub.resendMessage called but no real message provider is configured");
+        throw unsupported();
+    }
+
     private BusinessException unsupported() {
         return new BusinessException(501, "Message query provider is not configured");
     }

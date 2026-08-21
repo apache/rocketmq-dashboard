@@ -5,6 +5,7 @@ import type {
   MessageQuery,
   MessageQueryPage,
   MessageRecord,
+  MessageResendResult,
   TraceRecord,
   DLQGroup,
   DLQGroupPage,
@@ -79,6 +80,26 @@ export async function getMessageTrace(
     return trace ? cloneTrace(trace) : null;
   }
   return messageApi.getMessageTrace(msgId, instanceId, topic);
+}
+
+export async function resendMessage(data: {
+  instanceId: string;
+  topic: string;
+  msgId: string;
+  consumerGroup: string;
+  clientId?: string;
+}): Promise<MessageResendResult> {
+  if (isMockMode()) {
+    return {
+      msgId: data.msgId,
+      topic: data.topic,
+      consumerGroup: data.consumerGroup,
+      consumeResult: 'CR_SUCCESS',
+      remark: 'mock re-delivery',
+      autoCommit: true,
+    };
+  }
+  return messageApi.resendMessage(data);
 }
 
 export async function listDLQGroups(

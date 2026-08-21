@@ -18,11 +18,13 @@ package org.apache.rocketmq.studio.provider;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageResendResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
@@ -98,4 +100,13 @@ public interface InstanceProvider {
                                         String tag, String key, Long startTime, Long endTime);
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
+
+    /**
+     * Re-deliver a stored message directly to a consumer group. Only providers that support the
+     * underlying broker API override this; cloud providers reject the call by default.
+     */
+    default MessageResendResultVO resendMessage(String instanceId, String topic, String msgId,
+                                                String consumerGroup, String clientId) {
+        throw new BusinessException(501, "Message resend is not supported by this provider");
+    }
 }

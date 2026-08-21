@@ -27,6 +27,7 @@ import MessagePage from '../message';
 const serviceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
   queryMessages: vi.fn(),
+  resendMessage: vi.fn(),
 }));
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
@@ -226,8 +227,16 @@ describe('MessagePage async request ownership', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps normal message resend disabled until a real API is wired', async () => {
+  it('opens the resend dialog with the selected message details', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.resendMessage.mockResolvedValue({
+      msgId: 'message-a',
+      topic: 'topic-a',
+      consumerGroup: 'group-a',
+      consumeResult: 'CR_SUCCESS',
+      remark: 're-delivered',
+      autoCommit: true,
+    });
     const user = userEvent.setup();
     renderPage();
     await selectTopic(user);
@@ -238,8 +247,23 @@ describe('MessagePage async request ownership', () => {
 
     const dialog = await screen.findByRole('dialog', { name: '消息详情' });
     const resendButton = within(dialog).getByRole('button', { name: /重新发送/ });
-    expect(resendButton).toBeDisabled();
-    expect(resendButton).toHaveAttribute('title', '当前版本尚未接入普通消息重新发送接口');
+    expect(resendButton).toBeEnabled();
+    await user.click(resendButton);
+
+    // antd renders both dialogs as siblings; the resend modal is the one after the detail modal.
+    const resendDialog = (await screen.findAllByRole('dialog'))[1];
+    expect(within(resendDialog).getByText('message-a')).toBeInTheDocument();
+    await user.type(within(resendDialog).getByPlaceholderText(/消费组名称/), 'group-a');
+    await user.click(within(resendDialog).getByRole('button', { name: /确认发送/ }));
+
+    expect(serviceMocks.resendMessage).toHaveBeenCalledWith({
+      instanceId: 1,
+      topic: 'topic-message-a',
+      msgId: 'message-a',
+      consumerGroup: 'group-a',
+      clientId: undefined,
+    });
+    expect(await within(resendDialog).findByText(/发送结果：CR_SUCCESS/)).toBeInTheDocument();
   });
 
   it('keeps the latest query loading and ignores an earlier query result', async () => {

@@ -17,9 +17,12 @@
 package org.apache.rocketmq.studio.instance.message;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -61,5 +64,11 @@ public class MessageController {
                                                  // provider requires a non-empty topic (DescribeMessageTrace).
                                                  @RequestParam(required = false) String topic) {
         return Result.ok(messageService.getMessageTrace(instanceId, msgId, topic));
+    }
+
+    @PostMapping("/resend")
+    public Result<MessageResendResultVO> resendMessage(@Valid @RequestBody MessageResendRequestDTO request) {
+        return Result.ok(messageService.resendMessage(request.getInstanceId(), request.getTopic(),
+                request.getMsgId(), request.getConsumerGroup(), request.getClientId()));
     }
 }
