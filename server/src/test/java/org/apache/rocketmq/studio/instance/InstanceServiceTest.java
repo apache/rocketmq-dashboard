@@ -758,6 +758,32 @@ class InstanceServiceTest {
     }
 
     @Test
+    void deleteInstancesShouldDeduplicateTrimmedIdentifiersTest() {
+        InstanceVO existing = InstanceVO.builder().name("inst-a").build();
+        existing.setId(1L);
+        when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenReturn(0);
+        when(instanceProvider.countGroups("1")).thenReturn(0);
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", " inst-a ", "inst-a"));
+
+        assertThat(result.getDeleted()).isEqualTo(1);
+        assertThat(result.getFailed()).isEmpty();
+        verify(instanceRepository).deleteById(1L);
+    }
+
+    @Test
+    void deleteInstancesShouldRejectAllBlankIdentifiersTest() {
+        assertThatThrownBy(() -> instanceService.deleteInstances(Arrays.asList(" ", null, "")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance IDs are required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
     void deleteInstanceShouldRejectInstanceWithTopics() {
         InstanceVO existing = InstanceVO.builder()
                 .name("with-topics")

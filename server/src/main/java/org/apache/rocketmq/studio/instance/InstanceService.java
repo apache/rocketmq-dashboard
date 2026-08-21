@@ -476,14 +476,20 @@ public class InstanceService {
         if (instanceIds == null || instanceIds.isEmpty()) {
             throw new BusinessException(400, "Instance IDs are required");
         }
+        List<String> normalizedIds = instanceIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(instanceId -> !instanceId.isEmpty())
+                .distinct()
+                .toList();
+        if (normalizedIds.isEmpty()) {
+            throw new BusinessException(400, "Instance IDs are required");
+        }
         int deleted = 0;
         List<String> failed = new ArrayList<>();
-        for (String instanceId : instanceIds) {
-            if (instanceId == null || instanceId.isBlank()) {
-                continue;
-            }
+        for (String instanceId : normalizedIds) {
             try {
-                deleteInstance(resolveInstanceId(instanceId.trim()));
+                deleteInstance(resolveInstanceId(instanceId));
                 deleted++;
             } catch (BusinessException ex) {
                 failed.add(instanceId + ": " + ex.getMessage());
