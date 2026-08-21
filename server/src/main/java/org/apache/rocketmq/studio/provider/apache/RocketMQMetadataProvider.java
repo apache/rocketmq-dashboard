@@ -45,6 +45,7 @@ import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
@@ -68,6 +69,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Real MetadataProvider implementation.
@@ -98,6 +105,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProxyConsumerResolver proxyConsumerResolver;
 
     /**
      * Default proxy stats source until a real proxy transport is wired in. It reports the unknown
@@ -226,12 +236,105 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             vo.setGmtCreate(entity.getGmtCreate());
             vo.setGmtModified(entity.getGmtModified());
 
-            // Live connection info (online instances, lag) is intentionally NOT fetched
-            // during list operations to avoid N+1 admin API calls. It is loaded on
-            // demand when viewing a single group's detail page.
+            // Live stats (online clients, lag, delay) are enriched in parallel below with a
+            // bounded executor and per-group timeout instead of blocking the listing.
             result.add(vo);
         }
+        enrichLiveStats(instanceId, result);
         return result;
+    }
+
+    private static final int ONLINE_ENRICHMENT_THREADS = 8;
+    private static final long ONLINE_ENRICHMENT_TIMEOUT_SECONDS = 3;
+
+    private final ExecutorService onlineEnrichmentExecutor = Executors.newFixedThreadPool(
+            ONLINE_ENRICHMENT_THREADS, runnable -> {
+                Thread thread = new Thread(runnable, "group-online-enrichment");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    @jakarta.annotation.PreDestroy
+    void shutdownOnlineEnrichmentExecutor() {
+        onlineEnrichmentExecutor.shutdownNow();
+    }
+
+    private void enrichLiveStats(String instanceId, List<ConsumerGroupVO> groups) {
+        boolean noLiveSource = !StringUtils.hasText(instanceId) && !hasAdmin();
+        if (groups.isEmpty() || noLiveSource) {
+            return;
+        }
+        List<Future<?>> futures = new ArrayList<>(groups.size());
+        for (ConsumerGroupVO vo : groups) {
+            futures.add(onlineEnrichmentExecutor.submit(() -> enrichGroupLiveStats(instanceId, vo)));
+        }
+        for (int i = 0; i < groups.size(); i++) {
+            try {
+                futures.get(i).get(ONLINE_ENRICHMENT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                futures.get(i).cancel(true);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (ExecutionException e) {
+                // leave the stats at zero
+            }
+        }
+    }
+
+    private void enrichGroupLiveStats(String instanceId, ConsumerGroupVO vo) {
+        // The detail modal reuses the listed group as-is, so the online instance list has to be
+        // filled here too; both fields come from the same connection set to stay consistent.
+        List<ConsumerInstanceVO> instances = ConsumerConnections.toInstances(
+                resolveConsumerConnection(instanceId, vo.getName()));
+        vo.setInstances(instances);
+        vo.setOnlineInstances(instances.size());
+        try {
+            ConsumeStats stats;
+            if (StringUtils.hasText(instanceId)) {
+                stats = runtimeAdminClientResolver.execute(instanceId,
+                        admin -> admin.examineConsumeStats(vo.getName()));
+            } else {
+                stats = adminExecute(admin -> admin.examineConsumeStats(vo.getName()));
+            }
+            if (stats == null || stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
+                return;
+            }
+            long totalLag = 0;
+            long newestConsumedTimestamp = 0;
+            for (OffsetWrapper wrapper : stats.getOffsetTable().values()) {
+                long diff = wrapper.getBrokerOffset() - wrapper.getConsumerOffset();
+                if (diff > 0) {
+                    totalLag += diff;
+                }
+                long lastTimestamp = wrapper.getLastTimestamp();
+                if (lastTimestamp > newestConsumedTimestamp) {
+                    newestConsumedTimestamp = lastTimestamp;
+                }
+            }
+            vo.setTotalLag(totalLag);
+            if (newestConsumedTimestamp > 0) {
+                long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
+            }
+        } catch (Exception e) {
+            // No consume stats (e.g. POP-only group without an offset table): keep zeros.
+        }
+    }
+
+    private ConsumerConnection resolveConsumerConnection(String instanceId, String group) {
+        try {
+            if (StringUtils.hasText(instanceId)) {
+                return runtimeAdminClientResolver.execute(instanceId,
+                        admin -> admin.examineConsumerConnectionInfo(group));
+            }
+            return adminExecute(admin -> admin.examineConsumerConnectionInfo(group));
+        } catch (Exception e) {
+            if (isGroupNotOnline(e) && proxyConsumerResolver != null) {
+                return proxyConsumerResolver.resolveConsumerConnection(instanceId, group);
+            }
+            return null;
+        }
     }
 
     private String normalizeMetadataScope(String instanceId) {
@@ -439,6 +542,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 long diff = resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
 
                 progress.add(QueueProgressVO.builder()
+                        .topic(mq.getTopic())
                         .broker(mq.getBrokerName())
                         .queueId(mq.getQueueId())
                         .brokerOffset(ow.getBrokerOffset())
@@ -453,6 +557,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             });
             return progress;
         } catch (Exception e) {
+            if (isGroupNotOnline(e)) {
+                // The group has no consume stats on the broker (consumer not online);
+                // that is a business state, not a connectivity failure.
+                log.info("Consumer group {} not online, no consume stats: {}", name, e.getMessage());
+                return Collections.emptyList();
+            }
             log.warn("Failed to get progress for group {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get progress for group " + name + ": " + e.getMessage());
         }
@@ -461,15 +571,16 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String name) {
         if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId, admin -> getGroupSubscriptions(admin, name));
+            return runtimeAdminClientResolver.execute(instanceId,
+                    admin -> getGroupSubscriptions(admin, instanceId, name));
         }
         if (!hasAdmin()) {
             return Collections.emptyList();
         }
-        return adminExecute(admin -> getGroupSubscriptions(admin, name));
+        return adminExecute(admin -> getGroupSubscriptions(admin, null, name));
     }
 
-    private List<SubscriptionEntryVO> getGroupSubscriptions(MQAdminExt admin, String name) {
+    private List<SubscriptionEntryVO> getGroupSubscriptions(MQAdminExt admin, String instanceId, String name) {
         try {
             ensureRetryTopicExists(admin, name);
             ConsumerConnection conn = admin.examineConsumerConnectionInfo(name);
@@ -477,30 +588,53 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 return Collections.emptyList();
             }
 
-            List<SubscriptionEntryVO> subscriptions = new ArrayList<>();
-            for (Map.Entry<String, SubscriptionData> entry : conn.getSubscriptionTable().entrySet()) {
-                SubscriptionData sd = entry.getValue();
-                subscriptions.add(SubscriptionEntryVO.builder()
-                        .topic(sd.getTopic())
-                        .expression(sd.getSubString())
-                        .type(sd.getExpressionType())
-                        .filterMode(filterMode(sd.getExpressionType()))
-                        .build());
-            }
-            return subscriptions;
+            return toSubscriptionEntries(conn, conn.getConnectionSet() != null && !conn.getConnectionSet().isEmpty());
         } catch (Exception e) {
             if (isGroupNotOnline(e)) {
-                // Consumers connected through a proxy never register with the broker, so
-                // the broker reports the group as offline; surface an empty subscription
-                // list instead of an error.
+                // Consumers connected through a proxy never register with the broker, so the
+                // broker reports the group as offline; the proxy's client manager still knows
+                // them, so fall back to it before surfacing an empty subscription list.
                 log.info("Consumer group {} not online on broker (likely proxy-connected): {}",
                         name, e.getMessage());
+                List<SubscriptionEntryVO> viaProxy = subscriptionsViaProxy(instanceId, name);
+                if (!viaProxy.isEmpty()) {
+                    return viaProxy;
+                }
                 return Collections.emptyList();
             }
             log.warn("Failed to get subscriptions for group {}: {}", name, e.getMessage());
             throw new BusinessException(502,
                     "Failed to get subscriptions for group " + name + ": " + e.getMessage());
         }
+    }
+
+    private List<SubscriptionEntryVO> subscriptionsViaProxy(String instanceId, String group) {
+        if (proxyConsumerResolver == null) {
+            return Collections.emptyList();
+        }
+        ConsumerConnection conn = proxyConsumerResolver.resolveConsumerConnection(instanceId, group);
+        if (conn == null || conn.getSubscriptionTable() == null) {
+            return Collections.emptyList();
+        }
+        return toSubscriptionEntries(conn, conn.getConnectionSet() != null && !conn.getConnectionSet().isEmpty());
+    }
+
+    private List<SubscriptionEntryVO> toSubscriptionEntries(ConsumerConnection conn, boolean anyClientOnline) {
+        List<SubscriptionEntryVO> subscriptions = new ArrayList<>();
+        for (Map.Entry<String, SubscriptionData> entry : conn.getSubscriptionTable().entrySet()) {
+            SubscriptionData sd = entry.getValue();
+            subscriptions.add(SubscriptionEntryVO.builder()
+                    .topic(sd.getTopic())
+                    .expression(sd.getSubString())
+                    .type(sd.getExpressionType())
+                    .filterMode(filterMode(sd.getExpressionType()))
+                    // The broker/proxy expose the group's merged subscription set only; with at
+                    // least one client connected that merged view is the consistent observable
+                    // state. Without connections the consistency status stays unknown (null).
+                    .consistency(anyClientOnline ? "consistent" : null)
+                    .build());
+        }
+        return subscriptions;
     }
 
     private boolean isGroupNotOnline(Exception e) {

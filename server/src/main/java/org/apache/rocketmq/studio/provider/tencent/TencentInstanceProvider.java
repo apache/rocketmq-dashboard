@@ -497,6 +497,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 continue;
             }
             rows.add(QueueProgressVO.builder()
+                    .topic(subscription.getTopic())
                     .broker("topic:" + subscription.getTopic())
                     .queueId(0)
                     .brokerOffset(0L)

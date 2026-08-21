@@ -39,6 +39,7 @@ import {
   Col,
   Flex,
   DatePicker,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -54,7 +55,7 @@ import {
   Info,
   ArrowsClockwise,
 } from '@phosphor-icons/react';
-import { ImportOutlined, ExportOutlined, DeleteOutlined } from '@ant-design/icons';
+import { ImportOutlined, ExportOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -88,6 +89,7 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 
@@ -212,6 +214,7 @@ const ConsumerPageContent = ({
   const [stackModalOpen, setStackModalOpen] = useState(false);
   const [stackLoading, setStackLoading] = useState(false);
   const [selectedStack, setSelectedStack] = useState<ConsumerStackTrace | null>(null);
+  const [stackError, setStackError] = useState<string | null>(null);
   const [selectedStackClient, setSelectedStackClient] = useState<ConsumerInstance | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -222,6 +225,14 @@ const ConsumerPageContent = ({
 
   const groupRequestIdRef = useRef(0);
   const stackRequestIdRef = useRef(0);
+
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const silentRefreshRef = useRef(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const triggerRefresh = useCallback((silent: boolean) => {
+    silentRefreshRef.current = silent;
+    setRefreshKey((key) => key + 1);
+  }, []);
 
   useEffect(() => {
     if (!selectedInstanceId) {
@@ -236,9 +247,11 @@ const ConsumerPageContent = ({
         window.clearTimeout(resetTimer);
       };
     }
+    const silent = silentRefreshRef.current;
+    silentRefreshRef.current = false;
     const requestId = ++groupRequestIdRef.current;
     const timer = window.setTimeout(() => {
-      setLoading(true);
+      if (!silent) setLoading(true);
       void listConsumerGroupPage({
         instanceId: selectedInstanceId,
         search: search.trim() || undefined,
@@ -261,7 +274,15 @@ const ConsumerPageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [t, selectedInstanceId, search, page, pageSize, instancesLoading]);
+  }, [t, selectedInstanceId, search, page, pageSize, instancesLoading, refreshKey]);
+
+  useEffect(() => {
+    if (!autoRefresh || !selectedInstanceId) {
+      return undefined;
+    }
+    const interval = window.setInterval(() => triggerRefresh(true), 2000);
+    return () => window.clearInterval(interval);
+  }, [autoRefresh, selectedInstanceId, triggerRefresh]);
 
   const loadSubscriptions = useCallback(
     async (groupName: string, force = false) => {
@@ -317,9 +338,13 @@ const ConsumerPageContent = ({
   }, [groups, modeFilter, sortKey]);
 
   /* ─── Open detail modal ─── */
-  const openModal = (group: ConsumerGroup) => {
+  const [detailTab, setDetailTab] = useState('overview');
+  const [progressTopic, setProgressTopic] = useState<string | undefined>(undefined);
+  const openModal = (group: ConsumerGroup, tab = 'overview', topic?: string) => {
     setSelectedGroup(group);
     setShowOnlyInconsistent(false);
+    setDetailTab(tab);
+    setProgressTopic(topic);
     setModalOpen(true);
     void loadSubscriptions(group.name);
     void loadProgress(group.name);
@@ -350,6 +375,24 @@ const ConsumerPageContent = ({
     ? inconsistentSubscriptions
     : selectedSubscriptions;
   const selectedProgress = selectedGroup ? (progressByGroup[selectedDiagnosticKey] ?? []) : [];
+  const progressTopicOptions = useMemo(
+    () => Array.from(new Set(selectedProgress.map((q) => q.topic).filter(Boolean))).sort(),
+    [selectedProgress],
+  );
+  const visibleProgress = useMemo(() => {
+    const base =
+      progressTopic && progressTopicOptions.includes(progressTopic)
+        ? selectedProgress.filter((q) => q.topic === progressTopic)
+        : selectedProgress;
+    return [...base].sort((a, b) => {
+      const byTopic = (a.topic ?? '').localeCompare(b.topic ?? '');
+      if (byTopic !== 0) return byTopic;
+      const byBroker = (a.broker ?? '').localeCompare(b.broker ?? '');
+      if (byBroker !== 0) return byBroker;
+      return (a.queueId ?? 0) - (b.queueId ?? 0);
+    });
+  }, [selectedProgress, progressTopic, progressTopicOptions]);
+  const visibleProgressLag = visibleProgress.reduce((sum, q) => sum + (q.diffTotal ?? 0), 0);
 
   const openStackModal = async (consumerInstance: ConsumerInstance) => {
     if (!selectedGroup) return;
@@ -357,6 +400,7 @@ const ConsumerPageContent = ({
     const groupName = selectedGroup.name;
     setSelectedStackClient(consumerInstance);
     setSelectedStack(null);
+    setStackError(null);
     setStackModalOpen(true);
     setStackLoading(true);
     try {
@@ -366,9 +410,11 @@ const ConsumerPageContent = ({
         selectedInstanceId || undefined,
       );
       if (requestId === stackRequestIdRef.current) setSelectedStack(stack);
-    } catch {
+    } catch (error) {
+      // The API client already surfaces the server message as a toast; keep the reason in the
+      // modal so the operator can tell "capture unsupported" apart from "client went offline".
       if (requestId === stackRequestIdRef.current) {
-        message.error(`客户端 ${consumerInstance.clientId} 线程栈获取失败`);
+        setStackError(error instanceof Error ? error.message : '');
       }
     } finally {
       if (requestId === stackRequestIdRef.current) setStackLoading(false);
@@ -479,19 +525,49 @@ const ConsumerPageContent = ({
       title: 'Group 名称',
       dataIndex: 'name',
       key: 'name',
-      width: 220,
+      width: 190,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Text strong style={{ fontSize: 14 }}>
-          {name}
-        </Text>
+        <Tooltip title="点击复制名称">
+          <Text
+            strong
+            style={{ fontSize: 14, cursor: 'pointer' }}
+            onClick={() => {
+              const done = () => message.success(`已复制：${name}`);
+              const failed = () => message.error('复制失败，请手动复制');
+              if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(name).then(done, failed);
+              } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = name;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                  if (document.execCommand('copy')) {
+                    done();
+                  } else {
+                    failed();
+                  }
+                } catch {
+                  failed();
+                } finally {
+                  document.body.removeChild(textarea);
+                }
+              }
+            }}
+          >
+            {name}
+          </Text>
+        </Tooltip>
       ),
     },
     {
       title: '订阅组类型',
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
-      width: 110,
+      width: 100,
       sorter: (a, b) => (a.subscriptionDataType ?? '').localeCompare(b.subscriptionDataType ?? ''),
       render: (type: string) => {
         const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
@@ -502,7 +578,7 @@ const ConsumerPageContent = ({
       title: '订阅模式',
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
-      width: 90,
+      width: 84,
       sorter: (a, b) => (a.subscriptionMode ?? '').localeCompare(b.subscriptionMode ?? ''),
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
@@ -510,7 +586,7 @@ const ConsumerPageContent = ({
       title: '在线客户端',
       dataIndex: 'onlineInstances',
       key: 'onlineInstances',
-      width: 130,
+      width: 100,
       align: 'center',
       sorter: (a, b) => (a.onlineInstances ?? 0) - (b.onlineInstances ?? 0),
     },
@@ -518,7 +594,8 @@ const ConsumerPageContent = ({
       title: '总堆积量',
       dataIndex: 'totalLag',
       key: 'totalLag',
-      width: 120,
+      width: 96,
+      align: 'right',
       sorter: (a, b) => (a.totalLag ?? 0) - (b.totalLag ?? 0),
       render: (lag: number) => (lag ?? 0).toLocaleString(),
     },
@@ -526,7 +603,8 @@ const ConsumerPageContent = ({
       title: '消费延迟',
       dataIndex: 'delaySeconds',
       key: 'delaySeconds',
-      width: 160,
+      width: 100,
+      align: 'right',
       sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
       render: (seconds: number) => formatDelay(seconds ?? 0),
     },
@@ -534,7 +612,7 @@ const ConsumerPageContent = ({
       title: '创建时间',
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
-      width: 170,
+      width: 156,
       sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
@@ -546,7 +624,7 @@ const ConsumerPageContent = ({
       title: '修改时间',
       dataIndex: 'gmtModified',
       key: 'gmtModified',
-      width: 170,
+      width: 156,
       sorter: (a, b) => (a.gmtModified ?? '').localeCompare(b.gmtModified ?? ''),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
@@ -557,7 +635,7 @@ const ConsumerPageContent = ({
     {
       title: '操作',
       key: 'actions',
-      width: 240,
+      width: 210,
       render: (_: unknown, record: ConsumerGroup) => (
         <Flex gap={6}>
           <Button
@@ -617,7 +695,7 @@ const ConsumerPageContent = ({
   /* ═══════════════════════════════════════════
      Expandable Sub-table: Subscription Details
      ═══════════════════════════════════════════ */
-  const subscriptionSubColumns: ColumnsType<SubscriptionEntry> = [
+  const subscriptionSubColumns = (groupName: string): ColumnsType<SubscriptionEntry> => [
     {
       title: 'Topic 主题',
       dataIndex: 'topic',
@@ -673,13 +751,16 @@ const ConsumerPageContent = ({
       title: '',
       key: 'action',
       width: 100,
-      render: () => (
+      render: (_: unknown, record: SubscriptionEntry) => (
         <Button
           size="small"
           icon={<Eye size={14} />}
-          disabled
-          title="队列分布暂未支持"
+          title="查看该 Topic 的队列分布"
           style={{ borderColor: '#1677ff', color: '#1677ff' }}
+          onClick={() => {
+            const group = groups.find((g) => g.name === groupName) ?? selectedGroup;
+            if (group) openModal(group, 'progress', record.topic);
+          }}
         >
           查看分布
         </Button>
@@ -695,7 +776,7 @@ const ConsumerPageContent = ({
       title: 'Client ID',
       dataIndex: 'clientId',
       key: 'clientId',
-      width: 220,
+      width: 210,
       render: (id: string) => (
         <Text copyable style={{ fontSize: 14 }}>
           {id}
@@ -706,7 +787,7 @@ const ConsumerPageContent = ({
       title: '协议',
       dataIndex: 'protocol',
       key: 'protocol',
-      width: 100,
+      width: 80,
       render: (protocol: string) => {
         const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
@@ -716,7 +797,7 @@ const ConsumerPageContent = ({
       title: '地址',
       dataIndex: 'address',
       key: 'address',
-      width: 180,
+      width: 150,
       render: (addr: string) => (
         <Text code style={{ fontSize: 14 }}>
           {addr}
@@ -727,7 +808,7 @@ const ConsumerPageContent = ({
       title: '最后心跳',
       dataIndex: 'lastHeartbeat',
       key: 'lastHeartbeat',
-      width: 170,
+      width: 150,
       render: (time: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(time)}
@@ -737,7 +818,7 @@ const ConsumerPageContent = ({
     {
       title: '诊断',
       key: 'diagnostics',
-      width: 110,
+      width: 90,
       render: (_: unknown, record: ConsumerInstance) => (
         <Button
           size="small"
@@ -754,6 +835,18 @@ const ConsumerPageContent = ({
      Modal: Queue Progress Tab
      ═══════════════════════════════════════════ */
   const queueColumns: ColumnsType<QueueProgress> = [
+    {
+      title: 'Topic 主题',
+      dataIndex: 'topic',
+      key: 'topic',
+      width: 280,
+      ellipsis: true,
+      render: (topic: string) => (
+        <Text strong style={{ fontSize: 14 }} title={topic || '-'}>
+          {topic || '-'}
+        </Text>
+      ),
+    },
     {
       title: 'Broker',
       dataIndex: 'broker',
@@ -940,6 +1033,21 @@ const ConsumerPageContent = ({
           >
             创建 Group
           </Button>
+          <Tooltip title="开启后每 2 秒自动刷新列表">
+            <Button
+              icon={<SyncOutlined spin={autoRefresh} />}
+              type={autoRefresh ? 'primary' : 'default'}
+              ghost={autoRefresh}
+              disabled={!hasSelectedInstance}
+              onClick={() => {
+                const next = !autoRefresh;
+                setAutoRefresh(next);
+                if (next) triggerRefresh(true);
+              }}
+            >
+              自动刷新
+            </Button>
+          </Tooltip>
         </Space>
       </Flex>
 
@@ -967,6 +1075,7 @@ const ConsumerPageContent = ({
             },
           }}
           size="small"
+          scroll={{ x: tableScrollX(columns, { selection: true, expandable: true }) }}
           expandable={{
             onExpand: (expanded, record) => {
               if (expanded) void loadSubscriptions(record.name);
@@ -974,7 +1083,7 @@ const ConsumerPageContent = ({
             expandedRowRender: (record) => (
               <div style={{ padding: '8px 0' }}>
                 <Table
-                  columns={subscriptionSubColumns}
+                  columns={subscriptionSubColumns(record.name)}
                   dataSource={
                     subscriptionsByGroup[diagnosticCacheKey(selectedInstanceId, record.name)] ?? []
                   }
@@ -1011,13 +1120,14 @@ const ConsumerPageContent = ({
           setSelectedGroup(null);
           setShowOnlyInconsistent(false);
         }}
-        width={800}
+        width={detailTab === 'progress' ? 1080 : 800}
         destroyOnHidden
         footer={null}
       >
         {selectedGroup && (
           <Tabs
-            defaultActiveKey="overview"
+            activeKey={detailTab}
+            onChange={setDetailTab}
             items={[
               /* ─── 概览 Tab ─── */
               {
@@ -1145,6 +1255,24 @@ const ConsumerPageContent = ({
                       </Descriptions.Item>
                     </Descriptions>
 
+                    {/* 在线实例 */}
+                    <div style={{ marginTop: 24 }}>
+                      <Flex align="center" gap={6} style={{ marginBottom: 12 }}>
+                        <Users size={15} color="#52c41a" />
+                        <Text strong style={{ fontSize: 14 }}>
+                          在线实例 ({(selectedGroup.instances ?? []).length})
+                        </Text>
+                      </Flex>
+                      <Table
+                        columns={instanceColumns}
+                        dataSource={selectedGroup.instances ?? []}
+                        rowKey="clientId"
+                        pagination={false}
+                        size="small"
+                        scroll={{ x: tableScrollX(instanceColumns) }}
+                      />
+                    </div>
+
                     {/* 订阅关系 */}
                     <div style={{ marginTop: 24 }}>
                       <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
@@ -1204,7 +1332,7 @@ const ConsumerPageContent = ({
                         style={{ marginBottom: 12 }}
                       />
                       <Table
-                        columns={subscriptionSubColumns}
+                        columns={subscriptionSubColumns(selectedGroup?.name ?? '')}
                         dataSource={visibleSubscriptions}
                         rowKey={(record) =>
                           `${record.topic}-${record.filterMode}-${record.expression}`
@@ -1215,26 +1343,6 @@ const ConsumerPageContent = ({
                       />
                     </div>
                   </div>
-                ),
-              },
-              /* ─── 在线实例 Tab ─── */
-              {
-                key: 'instances',
-                label: (
-                  <Space size={4}>
-                    <Users size={14} />
-                    <span>在线实例 ({(selectedGroup.instances ?? []).length})</span>
-                  </Space>
-                ),
-                children: (
-                  <Table
-                    columns={instanceColumns}
-                    dataSource={selectedGroup.instances ?? []}
-                    rowKey="clientId"
-                    pagination={false}
-                    size="small"
-                    scroll={{ y: 400 }}
-                  />
                 ),
               },
               /* ─── 消费进度 Tab ─── */
@@ -1248,6 +1356,27 @@ const ConsumerPageContent = ({
                 ),
                 children: (
                   <div>
+                    {progressTopicOptions.length > 0 && (
+                      <Flex align="center" gap={8} style={{ marginBottom: 12 }}>
+                        <Text type="secondary">Topic 筛选:</Text>
+                        <Select
+                          size="small"
+                          style={{ minWidth: 240 }}
+                          allowClear
+                          placeholder="全部 Topic"
+                          value={
+                            progressTopic && progressTopicOptions.includes(progressTopic)
+                              ? progressTopic
+                              : undefined
+                          }
+                          onChange={(value) => setProgressTopic(value)}
+                          options={progressTopicOptions.map((topic) => ({
+                            label: topic,
+                            value: topic,
+                          }))}
+                        />
+                      </Flex>
+                    )}
                     <Card
                       size="small"
                       style={{
@@ -1260,21 +1389,21 @@ const ConsumerPageContent = ({
                       <Space size={24}>
                         <Space size={4}>
                           <Text type="secondary">总 Broker 数:</Text>
-                          <Text strong>{new Set(selectedProgress.map((q) => q.broker)).size}</Text>
+                          <Text strong>{new Set(visibleProgress.map((q) => q.broker)).size}</Text>
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总 Queue 数:</Text>
-                          <Text strong>{selectedProgress.length}</Text>
+                          <Text strong>{visibleProgress.length}</Text>
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总堆积:</Text>
                           <Text
                             strong
                             style={{
-                              color: lagColor(selectedGroup.totalLag),
+                              color: lagColor(visibleProgressLag),
                             }}
                           >
-                            {selectedGroup.totalLag.toLocaleString()}
+                            {visibleProgressLag.toLocaleString()}
                           </Text>
                         </Space>
                       </Space>
@@ -1282,11 +1411,12 @@ const ConsumerPageContent = ({
 
                     <Table
                       columns={queueColumns}
-                      dataSource={selectedProgress}
-                      rowKey={(r) => `${r.broker}-${r.queueId}`}
+                      dataSource={visibleProgress}
+                      rowKey={(r) => `${r.topic}-${r.broker}-${r.queueId}`}
                       pagination={false}
                       size="small"
-                      scroll={{ y: 380 }}
+                      scroll={{ x: tableScrollX(queueColumns), y: 380 }}
+                      locale={{ emptyText: '消费组不在线，暂无队列进度数据' }}
                     />
                   </div>
                 ),
@@ -1311,6 +1441,7 @@ const ConsumerPageContent = ({
           stackRequestIdRef.current += 1;
           setStackModalOpen(false);
           setSelectedStack(null);
+          setStackError(null);
           setSelectedStackClient(null);
         }}
         footer={null}
@@ -1375,8 +1506,19 @@ const ConsumerPageContent = ({
             <Alert
               type="info"
               showIcon
-              message="暂无线程栈数据"
-              description="客户端在线但没有返回可展示的 jstack 内容，或该客户端暂时无法采集线程信息。"
+              message="暂不支持采集该客户端的线程栈"
+              description={
+                <>
+                  <div>
+                    经 Proxy 接入的客户端（gRPC、经 Proxy 的 Remoting）只在 Proxy 侧保持连接，Broker
+                    看不到它们；而 Proxy 目前未开放线程栈采集接口，因此这类客户端暂时无法采集。 直连
+                    Broker 的客户端可正常查看。
+                  </div>
+                  {stackError && (
+                    <div style={{ marginTop: 8, color: 'rgba(0,0,0,0.45)' }}>{stackError}</div>
+                  )}
+                </>
+              }
             />
           )}
         </Space>

@@ -17,7 +17,9 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.client.exception.MQBrokerException;
-import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
@@ -79,6 +81,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private final AuditService auditService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProxyConsumerResolver proxyConsumerResolver;
+
     @Override
     public TopicVO getTopic(String name) {
         return adminFactory.execute(namesrvAddr(), null, admin -> {
@@ -104,34 +109,108 @@ public class RocketMQAdminClientImpl implements AdminClient {
     @Override
     public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
         if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId, admin -> getConsumerGroup(admin, name));
+            return runtimeAdminClientResolver.execute(instanceId, admin -> getConsumerGroup(admin, instanceId, name));
         }
-        return adminFactory.execute(namesrvAddr(), null, admin -> getConsumerGroup(admin, name));
+        return adminFactory.execute(namesrvAddr(), null, admin -> getConsumerGroup(admin, null, name));
     }
 
-    private ConsumerGroupVO getConsumerGroup(MQAdminExt admin, String name) {
+    private ConsumerGroupVO getConsumerGroup(MQAdminExt admin, String instanceId, String name) {
         ConsumerGroupVO vo = new ConsumerGroupVO();
         vo.setName(name);
         try {
             var conn = admin.examineConsumerConnectionInfo(name);
             if (conn != null) {
                 if (conn.getConnectionSet() != null) {
-                    vo.setOnlineInstances(conn.getConnectionSet().size());
+                    vo.setInstances(ConsumerConnections.toInstances(conn));
+                    vo.setOnlineInstances(vo.getInstances().size());
                 }
                 if (conn.getSubscriptionTable() != null) {
                     vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
                 }
             }
-        } catch (MQClientException exception) {
-            if (exception.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
-                log.debug("Consumer group {} is offline", name);
-                return vo;
-            }
-            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
         } catch (Exception exception) {
-            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
+            if (isConsumerNotOnline(exception)) {
+                log.debug("Consumer group {} is offline on broker", name);
+                applyProxyFallback(instanceId, name, vo);
+            } else {
+                throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
+            }
         }
+        fillConsumeStats(admin, vo, name);
         return vo;
+    }
+
+    /**
+     * Fills totalLag and delaySeconds from the broker consume stats. Proxy-connected groups
+     * still maintain broker-side offset tables (the proxy forwards offset updates), so this
+     * works even when the connection lookup reports the group offline; groups without any
+     * offset table (e.g. pure POP) simply keep the zero defaults.
+     *
+     * <p>delaySeconds is derived from the newest consumed-message timestamp (the consumption
+     * frontier). Using the oldest timestamp is misleading for POP groups, where untouched
+     * queues keep frozen stale timestamps.
+     */
+    private void fillConsumeStats(MQAdminExt admin, ConsumerGroupVO vo, String name) {
+        try {
+            ConsumeStats stats = admin.examineConsumeStats(name);
+            if (stats == null || stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
+                return;
+            }
+            long totalLag = 0;
+            long newestConsumedTimestamp = 0;
+            for (OffsetWrapper wrapper : stats.getOffsetTable().values()) {
+                long diff = wrapper.getBrokerOffset() - wrapper.getConsumerOffset();
+                if (diff > 0) {
+                    totalLag += diff;
+                }
+                long lastTimestamp = wrapper.getLastTimestamp();
+                if (lastTimestamp > newestConsumedTimestamp) {
+                    newestConsumedTimestamp = lastTimestamp;
+                }
+            }
+            vo.setTotalLag(totalLag);
+            if (newestConsumedTimestamp > 0) {
+                long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
+            }
+        } catch (Exception e) {
+            log.debug("No consume stats for group {}: {}", name, e.getMessage());
+        }
+    }
+
+    /**
+     * Groups whose clients connect through a proxy are invisible to broker-side stats; the
+     * proxy's own client manager still knows them, so fill the offline detail from there.
+     */
+    private void applyProxyFallback(String instanceId, String group, ConsumerGroupVO vo) {
+        if (proxyConsumerResolver == null) {
+            return;
+        }
+        ConsumerConnection viaProxy = proxyConsumerResolver.resolveConsumerConnection(instanceId, group);
+        if (viaProxy == null) {
+            return;
+        }
+        if (viaProxy.getConnectionSet() != null) {
+            vo.setInstances(ConsumerConnections.toInstances(viaProxy));
+            vo.setOnlineInstances(vo.getInstances().size());
+        }
+        if (viaProxy.getSubscriptionTable() != null) {
+            vo.setSubscribedTopics(new ArrayList<>(viaProxy.getSubscriptionTable().keySet()));
+        }
+    }
+
+    /**
+     * examineConsumerConnectionInfo wraps the broker-side CODE 206 into an MQClientException
+     * whose response code is lost (the code only survives in the message text), so match on
+     * both the typed code and the message.
+     */
+    private static boolean isConsumerNotOnline(Exception exception) {
+        if (exception instanceof MQBrokerException brokerException
+                && brokerException.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
+            return true;
+        }
+        String message = exception.getMessage();
+        return message != null && (message.contains("not online") || message.contains("CODE: 206"));
     }
 
     @Override

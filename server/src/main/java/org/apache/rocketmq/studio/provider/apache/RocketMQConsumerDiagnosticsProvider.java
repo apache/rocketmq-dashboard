@@ -55,8 +55,20 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProxyConsumerResolver proxyConsumerResolver;
+
     @Override
     public ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId) {
+        // Clients that connect through a proxy keep their channel on the proxy and never register
+        // on a broker, so ask the proxy first; the broker only knows directly connected clients
+        // and answers "not online" for everyone else.
+        ConsumerRunningInfo viaProxy = proxyConsumerResolver == null
+                ? null
+                : proxyConsumerResolver.resolveConsumerRunningInfo(instanceId, groupName, clientId);
+        if (viaProxy != null) {
+            return toStackTrace(groupName, clientId, viaProxy);
+        }
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId,
                     admin -> getConsumerStack(admin, groupName, clientId));
@@ -74,19 +86,12 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
             if (runningInfo == null) {
                 throw new BusinessException(404, "Consumer client not found: " + clientId);
             }
-            List<ConsumerThreadStackVO> threads = parseJstack(runningInfo.getJstack());
-            return ConsumerStackTraceVO.builder()
-                    .groupName(groupName)
-                    .clientId(clientId)
-                    .capturedAt(LocalDateTime.now())
-                    .threadCount(threads.size())
-                    .threads(threads)
-                    .build();
+            return toStackTrace(groupName, clientId, runningInfo);
         } catch (BusinessException e) {
             throw e;
         } catch (MQClientException e) {
             if (e.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
-                throw new BusinessException(404, "Consumer client is not online: " + clientId);
+                throw new BusinessException(404, notReachable(clientId));
             }
             throw diagnosticsFailure(groupName, clientId, e);
         } catch (Exception e) {
@@ -94,11 +99,32 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
         }
     }
 
+    private ConsumerStackTraceVO toStackTrace(String groupName, String clientId, ConsumerRunningInfo runningInfo) {
+        List<ConsumerThreadStackVO> threads = parseJstack(runningInfo.getJstack());
+        return ConsumerStackTraceVO.builder()
+                .groupName(groupName)
+                .clientId(clientId)
+                .capturedAt(LocalDateTime.now())
+                .threadCount(threads.size())
+                .threads(threads)
+                .build();
+    }
+
+    private String notReachable(String clientId) {
+        return "Consumer client is not reachable from any proxy or broker: " + clientId;
+    }
+
     private BusinessException diagnosticsFailure(String groupName, String clientId, Exception exception) {
         log.warn("Failed to get consumer stack, groupName={}, clientId={}: {}",
                 groupName, clientId, exception.getMessage());
+        String rootMessage = rootMessage(exception);
+        // The broker answers "not online" for every proxy-connected client; surface that as the
+        // business state it is instead of a raw broker error the operator cannot act on.
+        if (rootMessage != null && rootMessage.contains("not online")) {
+            return new BusinessException(404, notReachable(clientId));
+        }
         return new BusinessException(502,
-                "Failed to get consumer stack for " + clientId + ": " + rootMessage(exception));
+                "Failed to get consumer stack for " + clientId + ": " + rootMessage);
     }
 
     private String rootMessage(Exception exception) {
