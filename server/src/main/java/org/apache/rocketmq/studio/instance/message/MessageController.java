@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.instance.message;
 import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -76,5 +78,11 @@ public class MessageController {
                                                        @RequestParam int queueId,
                                                        @RequestParam long offset) {
         return Result.ok(messageService.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset));
+    }
+
+    @PostMapping("/direct-consume")
+    public Result<DirectConsumeMessageResultVO> consumeMessageDirectly(
+            @jakarta.validation.Valid @RequestBody DirectConsumeMessageDTO request) {
+        return Result.ok(messageService.consumeMessageDirectly(request));
     }
 }

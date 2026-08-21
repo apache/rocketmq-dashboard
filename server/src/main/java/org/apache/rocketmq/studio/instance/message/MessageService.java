@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -37,6 +38,7 @@ public class MessageService {
     private final MessageProvider messageProvider;
     private final InstanceProviderRegistry providerRegistry;
     private final QueryHistoryService queryHistoryService;
+    private final OperationAuditService operationAuditService;
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
@@ -98,6 +100,17 @@ public class MessageService {
             throw new BusinessException(400, "offset must not be negative");
         }
         return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
+    }
+
+    public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        DirectConsumeMessageResultVO result = providerRegistry.byInstanceId(request.getInstanceId())
+                .map(provider -> provider.consumeMessageDirectly(request))
+                .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
+        operationAuditService.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", request.getMsgId(), request.getInstanceId(),
+                "topic=" + request.getTopic() + ", consumerGroup=" + request.getConsumerGroup()
+                        + ", clientId=" + request.getClientId() + ", result=" + result.getConsumeResult(),
+                "SUCCESS", null);
+        return result;
     }
 
     private void recordMessageQuery(String instanceId, String topic, String msgId, String tag,

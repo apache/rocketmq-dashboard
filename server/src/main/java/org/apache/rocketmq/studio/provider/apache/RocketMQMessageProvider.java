@@ -36,6 +36,8 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -423,6 +425,19 @@ public class RocketMQMessageProvider implements MessageProvider {
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return runtimeAdminClientResolver.execute(instanceId,
                 adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId, topic));
+    }
+
+    @Override
+    public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        return runtimeAdminClientResolver.execute(request.getInstanceId(), admin -> {
+            org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult result =
+                    ((DefaultMQAdminExt) admin).consumeMessageDirectly(request.getConsumerGroup(), request.getClientId(),
+                            request.getTopic(), request.getMsgId());
+            return DirectConsumeMessageResultVO.builder()
+                    .consumeResult(result.getConsumeResult() == null ? "UNKNOWN" : result.getConsumeResult().name())
+                    .remark(result.getRemark()).spentTimeMillis(result.getSpentTimeMills())
+                    .order(result.isOrder()).autoCommit(result.isAutoCommit()).build();
+        });
     }
 
     private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId, String topic) {

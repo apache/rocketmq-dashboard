@@ -23,6 +23,8 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
@@ -98,4 +100,8 @@ public interface InstanceProvider {
                                         String tag, String key, Long startTime, Long endTime);
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
+
+    default DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        throw new UnsupportedOperationException("Direct message consumption is not supported");
+    }
 }

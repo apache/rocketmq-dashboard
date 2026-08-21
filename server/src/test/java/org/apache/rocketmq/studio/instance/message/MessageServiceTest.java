@@ -13,6 +13,7 @@ package org.apache.rocketmq.studio.instance.message;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -47,7 +48,7 @@ class MessageServiceTest {
     void rejectsKeyQueryWithoutTopicBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
 
         assertThatThrownBy(() -> service.queryMessages(null, null, null, null, "order-1", null, null))
                 .isInstanceOf(BusinessException.class)
@@ -60,7 +61,7 @@ class MessageServiceTest {
     void rejectsMessageIdQueryWithoutTopicBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
 
         assertThatThrownBy(() -> service.queryMessages(null, null, "msg-001", null, null, null, null))
                 .isInstanceOf(BusinessException.class)
@@ -73,7 +74,7 @@ class MessageServiceTest {
     void rejectsBlankMessageTraceIdBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
 
         assertThatThrownBy(() -> service.getMessageTrace("instance-a", "  ", null))
                 .isInstanceOf(BusinessException.class)
@@ -86,7 +87,7 @@ class MessageServiceTest {
     void rejectsReversedTopicQueryWindowBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 200L, 100L))
                 .isInstanceOf(BusinessException.class)
@@ -99,7 +100,7 @@ class MessageServiceTest {
     void rejectsTopicQueryWindowLongerThanSevenDaysBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 0L,
                 8L * 24 * 60 * 60 * 1000))
@@ -115,7 +116,7 @@ class MessageServiceTest {
         InstanceProvider provider = mock(InstanceProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(fallback, registry, history);
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
         when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
         when(provider.queryMessages("cloud-instance", "orders", null, null, "ORDER-1", null, null))
                 .thenReturn(List.of(MessageRecordVO.builder().msgId("msg-1").build()));
@@ -128,10 +129,36 @@ class MessageServiceTest {
     }
 
     @Test
+    void directsMessageConsumptionThroughSelectedProviderAndAuditsIt() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("instance-a");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        DirectConsumeMessageResultVO expected = DirectConsumeMessageResultVO.builder()
+                .consumeResult("CR_SUCCESS").build();
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.consumeMessageDirectly(request)).thenReturn(expected);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit);
+
+        org.assertj.core.api.Assertions.assertThat(service.consumeMessageDirectly(request)).isSameAs(expected);
+
+        verify(audit).record(org.mockito.ArgumentMatchers.eq("DIRECT_CONSUME_MESSAGE"),
+                org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
+                org.mockito.ArgumentMatchers.eq("instance-a"), org.mockito.ArgumentMatchers.contains("billing"),
+                org.mockito.ArgumentMatchers.eq("SUCCESS"), org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
     void rejectsOverflowingTopicQueryWindowBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null,
                 0L, Long.MAX_VALUE))

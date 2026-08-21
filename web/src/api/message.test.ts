@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getMessageTrace, queryMessagePage, queryMessages } from './message';
+import { consumeMessageDirectly, getMessageTrace, queryMessagePage, queryMessages } from './message';
 
 const mock = new MockAdapter(client);
 
@@ -139,5 +139,24 @@ describe('message API', () => {
     await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual(
       trace,
     );
+  });
+
+  it('posts direct consumption to the message API', async () => {
+    const request = {
+      instanceId: 'instance-1',
+      topic: 'orders',
+      msgId: 'msg-1',
+      consumerGroup: 'billing',
+      clientId: 'client-a',
+    };
+    const result = {
+      consumeResult: 'CR_SUCCESS',
+      spentTimeMillis: 8,
+      order: false,
+      autoCommit: true,
+    };
+    mock.onPost('/messages/direct-consume', request).reply(200, { code: 200, data: result });
+
+    await expect(consumeMessageDirectly(request)).resolves.toEqual(result);
   });
 });

@@ -4,6 +4,8 @@ import { sortMessagesByStoreTimeDesc } from '../api/message';
 import type {
   MessageQuery,
   MessageQueryPage,
+  DirectConsumeMessageRequest,
+  DirectConsumeMessageResult,
   MessageRecord,
   TraceRecord,
   DLQGroup,
@@ -81,6 +83,21 @@ export async function getMessageTrace(
     return trace ? cloneTrace(trace) : null;
   }
   return messageApi.getMessageTrace(msgId, instanceId, topic);
+}
+
+export async function consumeMessageDirectly(
+  request: DirectConsumeMessageRequest,
+): Promise<DirectConsumeMessageResult> {
+  if (isMockMode()) {
+    return {
+      consumeResult: 'CR_SUCCESS',
+      remark: 'Mock mode: request was not sent to a broker',
+      spentTimeMillis: 0,
+      order: false,
+      autoCommit: true,
+    };
+  }
+  return messageApi.consumeMessageDirectly(request);
 }
 
 export async function listDLQGroups(

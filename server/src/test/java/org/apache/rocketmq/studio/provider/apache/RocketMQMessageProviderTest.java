@@ -28,6 +28,8 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.remoting.protocol.body.CMResult;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
@@ -35,6 +37,7 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -134,6 +137,30 @@ class RocketMQMessageProviderTest {
 
         assertThat(messages).isEmpty();
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
+    }
+
+    @Test
+    void directlyConsumesMessageForTheExplicitGroupAndClient() throws Exception {
+        ConsumeMessageDirectlyResult brokerResult = new ConsumeMessageDirectlyResult();
+        brokerResult.setConsumeResult(CMResult.CR_SUCCESS);
+        brokerResult.setRemark("consumed");
+        brokerResult.setSpentTimeMills(12);
+        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", "msg-1"))
+                .thenReturn(brokerResult);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("instance-a");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+
+        org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO result =
+                provider.consumeMessageDirectly(request);
+
+        assertThat(result.getConsumeResult()).isEqualTo("CR_SUCCESS");
+        assertThat(result.getRemark()).isEqualTo("consumed");
+        assertThat(result.getSpentTimeMillis()).isEqualTo(12);
+        verify(adminExt).consumeMessageDirectly("billing", "client-a", "orders", "msg-1");
     }
 
     @Test

@@ -55,6 +55,22 @@ export interface MessageQueryPage {
   resultMayBeTruncated: boolean;
 }
 
+export interface DirectConsumeMessageRequest {
+  instanceId: string;
+  topic: string;
+  msgId: string;
+  consumerGroup: string;
+  clientId: string;
+}
+
+export interface DirectConsumeMessageResult {
+  consumeResult: string;
+  remark?: string;
+  spentTimeMillis: number;
+  order: boolean;
+  autoCommit: boolean;
+}
+
 const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
   if (typeof storeTime === 'number') return storeTime;
 
@@ -130,6 +146,14 @@ export async function getMessageTrace(msgId: string, instanceId?: string, topic?
   const res = await client.get<{ data: TraceRecord }>(
     `/messages/${encodeURIComponent(msgId)}/trace`,
     { params },
+  );
+  return res.data.data;
+}
+
+export async function consumeMessageDirectly(data: DirectConsumeMessageRequest) {
+  const res = await client.post<{ data: DirectConsumeMessageResult }>(
+    '/messages/direct-consume',
+    data,
   );
   return res.data.data;
 }
