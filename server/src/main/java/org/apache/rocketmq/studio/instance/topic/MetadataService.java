@@ -117,7 +117,7 @@ public class MetadataService {
 
     public void deleteTopic(String instanceId, String name) {
         instanceId = normalizeInstanceId(instanceId);
-        resolve(instanceId).deleteTopic(instanceId, name);
+        resolve(instanceId).deleteTopic(instanceId, requireName(name, "topic name"));
     }
 
 
