@@ -48,7 +48,7 @@ import {
   HistoryOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
@@ -56,7 +56,7 @@ import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
-import { getMessageTrace, queryMessages } from '../../services/messageService';
+import { getMessageTrace, queryMessagesPage } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
@@ -313,6 +313,9 @@ const MessagePageContent = ({
   const [msgIdInput, setMsgIdInput] = useState('');
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [queryLoading, setQueryLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTab, setModalTab] = useState('content');
   const [selectedMsg, setSelectedMsg] = useState<MessageRecord | null>(null);
@@ -358,6 +361,8 @@ const MessagePageContent = ({
     setMessages([]);
     setQueryError(null);
     setQueryLoading(false);
+    setPage(1);
+    setTotal(0);
   };
 
   const saveRecentQuery = (mode: QueryMode, params: MessageQuery) => {
@@ -377,7 +382,13 @@ const MessagePageContent = ({
     });
   };
 
-  const executeQuery = async (mode: QueryMode, params: MessageQuery) => {
+  const runQuery = async (
+    mode: QueryMode,
+    params: MessageQuery,
+    nextPage = 1,
+    nextPageSize = pageSize,
+    saveHistory = true,
+  ) => {
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
     if (!selectedInstanceId) {
@@ -395,12 +406,22 @@ const MessagePageContent = ({
     setQueryLoading(true);
     setQueryError(null);
     try {
-      const result = await queryMessages({ ...normalizedParams, instanceId: selectedInstanceId });
+      const result = await queryMessagesPage({
+        ...normalizedParams,
+        instanceId: selectedInstanceId,
+        page: nextPage,
+        pageSize: nextPageSize,
+      });
       if (queryGenerationRef.current !== requestGeneration) return;
-      setMessages(result);
+      setMessages(result.items);
+      setTotal(result.total);
+      setPage(result.page);
+      setPageSize(result.size);
       setQueryError(null);
-      saveRecentQuery(mode, normalizedParams);
-      message.success(`查询完成，共 ${result.length} 条`);
+      if (saveHistory) {
+        saveRecentQuery(mode, normalizedParams);
+        message.success(`查询完成，共 ${result.total} 条`);
+      }
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
         setQueryError(getErrorMessage(error, DEFAULT_QUERY_ERROR));
@@ -413,7 +434,17 @@ const MessagePageContent = ({
   };
 
   const handleQuery = async () => {
-    await executeQuery(queryMode, currentQueryParams);
+    await runQuery(queryMode, currentQueryParams, 1, pageSize, true);
+  };
+
+  const handleTableChange = (pagination: TablePaginationConfig) => {
+    void runQuery(
+      queryMode,
+      currentQueryParams,
+      pagination.current ?? 1,
+      pagination.pageSize ?? pageSize,
+      false,
+    );
   };
 
   const replayRecentQuery = (recentQuery: RecentQuery) => {
@@ -425,7 +456,7 @@ const MessagePageContent = ({
     if (mode === 'topic' && params.startTime !== undefined && params.endTime !== undefined) {
       setDateRange([dayjs(params.startTime), dayjs(params.endTime)]);
     }
-    void executeQuery(mode, params);
+    void runQuery(mode, params, 1, pageSize, true);
   };
 
   const clearRecentQueries = () => {
@@ -942,10 +973,13 @@ const MessagePageContent = ({
           loading={queryLoading}
           rowKey="msgId"
           pagination={{
-            pageSize: 50,
+            current: page,
+            pageSize,
+            total,
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条消息`,
+            showTotal: (totalCount) => `共 ${totalCount} 条消息`,
           }}
+          onChange={handleTableChange}
           size="small"
           scroll={{ x: tableScrollX(columns) }}
         />

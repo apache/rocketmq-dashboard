@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.message;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,6 +44,21 @@ public class MessageController {
             @RequestParam(required = false) Long startTime,
             @RequestParam(required = false) Long endTime) {
         return Result.ok(messageService.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
+    }
+
+    @GetMapping("/page")
+    public Result<PageResult<MessageRecordVO>> queryMessagesPage(
+            @RequestParam String instanceId,
+            @RequestParam(required = false) String topic,
+            @RequestParam(required = false) String msgId,
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) String key,
+            @RequestParam(required = false) Long startTime,
+            @RequestParam(required = false) Long endTime,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(messageService.queryMessagesPage(instanceId, topic, msgId, tag, key,
+                startTime, endTime, page, pageSize));
     }
 
     @GetMapping("/{msgId}/trace")

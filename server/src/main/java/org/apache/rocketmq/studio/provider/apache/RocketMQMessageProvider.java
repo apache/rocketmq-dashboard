@@ -29,8 +29,10 @@ import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
@@ -105,6 +107,18 @@ public class RocketMQMessageProvider implements MessageProvider {
         return runtimeAdminClientResolver.execute(instanceId,
                 adminExt -> queryMessages(instanceId, (DefaultMQAdminExt) adminExt, endpoint,
                         credentialHook, topic, msgId, tag, key, startTime, endTime));
+    }
+
+    @Override
+    public PageResult<MessageRecordVO> queryMessagesPage(String instanceId, String topic, String msgId,
+                                                         String tag, String key, Long startTime, Long endTime,
+                                                         int page, int pageSize) {
+        List<MessageRecordVO> all =
+                queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime);
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, all.size());
+        int to = (int) Math.min(offset + pageSize, all.size());
+        return PageResult.of(all.subList(from, to), all.size(), page, pageSize);
     }
 
     private List<MessageRecordVO> queryMessages(String instanceId, DefaultMQAdminExt adminExt, String endpoint,

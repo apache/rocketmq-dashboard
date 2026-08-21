@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.message;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.springframework.stereotype.Service;
@@ -44,6 +45,22 @@ public class MessageService {
                 .map(provider -> provider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime))
                 .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
         recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.size());
+        return result;
+    }
+
+    public PageResult<MessageRecordVO> queryMessagesPage(
+            String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime,
+            int page, int pageSize) {
+        validateTopicQueryWindow(topic, msgId, key, startTime, endTime);
+        log.info("Querying messages (page): topic={}, msgId={}, tag={}, key={}, page={}, pageSize={}",
+                topic, msgId, tag, key, page, pageSize);
+        PageResult<MessageRecordVO> result = providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.queryMessagesPage(instanceId, topic, msgId, tag, key,
+                        startTime, endTime, page, pageSize))
+                .orElseGet(() -> messageProvider.queryMessagesPage(instanceId, topic, msgId, tag, key,
+                        startTime, endTime, page, pageSize));
+        recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime,
+                Math.toIntExact(result.getTotal()));
         return result;
     }
 

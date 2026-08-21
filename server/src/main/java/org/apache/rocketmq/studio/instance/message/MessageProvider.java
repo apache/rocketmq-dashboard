@@ -18,10 +18,22 @@ package org.apache.rocketmq.studio.instance.message;
 
 
 import java.util.List;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 
 public interface MessageProvider {
     List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key, Long startTime,
                                         Long endTime);
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
+
+    /**
+     * Server-side paged message query. Implementations may cap the underlying scan; the page is
+     * computed over whatever the provider was able to resolve within the query window.
+     */
+    default PageResult<MessageRecordVO> queryMessagesPage(String instanceId, String topic, String msgId,
+                                                          String tag, String key, Long startTime, Long endTime,
+                                                          int page, int pageSize) {
+        throw new BusinessException(501, "Paged message query is not supported by this provider");
+    }
 }

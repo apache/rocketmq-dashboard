@@ -152,6 +152,14 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public PageResult<MessageRecordVO> queryMessagesPage(String instanceId, String topic, String msgId,
+                                                         String tag, String key, Long startTime, Long endTime,
+                                                         int page, int pageSize) {
+        return messageProvider.queryMessagesPage(instanceId, topic, msgId, tag, key, startTime, endTime,
+                page, pageSize);
+    }
+
+    @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return messageProvider.getMessageTrace(instanceId, msgId, topic);
     }

@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -96,6 +97,12 @@ public interface InstanceProvider {
 
     List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                         String tag, String key, Long startTime, Long endTime);
+
+    default PageResult<MessageRecordVO> queryMessagesPage(String instanceId, String topic, String msgId,
+                                                          String tag, String key, Long startTime, Long endTime,
+                                                          int page, int pageSize) {
+        throw new BusinessException(501, "Paged message query is not supported by this provider");
+    }
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
 }

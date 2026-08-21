@@ -20,13 +20,14 @@ import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MessageRecord, TraceRecord } from '../../../api/message';
+import type { MessagePageResult, MessageRecord, TraceRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import MessagePage from '../message';
 
 const serviceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
   queryMessages: vi.fn(),
+  queryMessagesPage: vi.fn(),
 }));
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
@@ -132,25 +133,30 @@ describe('MessagePage async request ownership', () => {
   });
 
   it('does not restore query results after the user resets an in-flight query', async () => {
-    const query = createDeferred<MessageRecord[]>();
-    serviceMocks.queryMessages.mockReturnValue(query.promise);
+    const query = createDeferred<MessagePageResult>();
+    serviceMocks.queryMessagesPage.mockReturnValue(query.promise);
     const user = userEvent.setup();
     renderPage();
     await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
-    await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(serviceMocks.queryMessagesPage).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole('button', { name: /重置/ }));
 
     await act(async () => {
-      query.resolve([createMessage('late-after-reset')]);
+      query.resolve({ items: [createMessage('late-after-reset')], total: 1, page: 1, size: 20 });
     });
 
     expect(screen.queryByText('late-after-reset')).not.toBeInTheDocument();
   });
 
   it('clears query results and message details when the selected instance changes', async () => {
-    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-from-instance-a')]);
+    serviceMocks.queryMessagesPage.mockResolvedValue({
+      items: [createMessage('message-from-instance-a')],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     let currentInstanceId = 1;
     const selectInstance = vi.fn((id: number) => {
       currentInstanceId = id;
@@ -184,7 +190,7 @@ describe('MessagePage async request ownership', () => {
     expect(selectInstance).toHaveBeenCalledWith(2, expect.anything());
   });
   it('surfaces unavailable message provider errors from query requests', async () => {
-    serviceMocks.queryMessages.mockRejectedValue(
+    serviceMocks.queryMessagesPage.mockRejectedValue(
       new Error('Message query provider is not configured'),
     );
     const user = userEvent.setup();
@@ -198,7 +204,12 @@ describe('MessagePage async request ownership', () => {
   });
 
   it('surfaces unavailable message provider errors from trace requests', async () => {
-    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.queryMessagesPage.mockResolvedValue({
+      items: [createMessage('message-a')],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     serviceMocks.getMessageTrace.mockRejectedValue(
       new Error('Message query provider is not configured'),
     );
@@ -217,7 +228,12 @@ describe('MessagePage async request ownership', () => {
   });
 
   it('keeps normal message resend disabled until a real API is wired', async () => {
-    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.queryMessagesPage.mockResolvedValue({
+      items: [createMessage('message-a')],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     const user = userEvent.setup();
     renderPage();
     await selectTopic(user);
@@ -233,9 +249,9 @@ describe('MessagePage async request ownership', () => {
   });
 
   it('keeps the latest query loading and ignores an earlier query result', async () => {
-    const firstQuery = createDeferred<MessageRecord[]>();
-    const secondQuery = createDeferred<MessageRecord[]>();
-    serviceMocks.queryMessages
+    const firstQuery = createDeferred<MessagePageResult>();
+    const secondQuery = createDeferred<MessagePageResult>();
+    serviceMocks.queryMessagesPage
       .mockReturnValueOnce(firstQuery.promise)
       .mockReturnValueOnce(secondQuery.promise);
     const user = userEvent.setup();
@@ -245,17 +261,27 @@ describe('MessagePage async request ownership', () => {
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
     await user.click(queryButton);
     await user.click(queryButton);
-    await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(serviceMocks.queryMessagesPage).toHaveBeenCalledTimes(2));
 
     await act(async () => {
-      firstQuery.resolve([createMessage('stale-first-query')]);
+      firstQuery.resolve({
+        items: [createMessage('stale-first-query')],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
     });
 
     expect(screen.queryByText('stale-first-query')).not.toBeInTheDocument();
     expect(document.querySelector('.ant-table-wrapper .ant-spin-spinning')).toBeInTheDocument();
 
     await act(async () => {
-      secondQuery.resolve([createMessage('latest-second-query')]);
+      secondQuery.resolve({
+        items: [createMessage('latest-second-query')],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
     });
 
     expect(await screen.findByText('latest-second-query')).toBeInTheDocument();
@@ -270,7 +296,12 @@ describe('MessagePage async request ownership', () => {
     'invalidates a trace request when the detail closes before a late %s',
     async (settlement) => {
       const trace = createDeferred<TraceRecord | null>();
-      serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+      serviceMocks.queryMessagesPage.mockResolvedValue({
+        items: [createMessage('message-a')],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
       serviceMocks.getMessageTrace.mockReturnValue(trace.promise);
       const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
       const user = userEvent.setup();
@@ -304,10 +335,12 @@ describe('MessagePage async request ownership', () => {
   it('keeps the current trace loading when an earlier trace finishes first', async () => {
     const firstTrace = createDeferred<TraceRecord | null>();
     const secondTrace = createDeferred<TraceRecord | null>();
-    serviceMocks.queryMessages.mockResolvedValue([
-      createMessage('message-a'),
-      createMessage('message-b'),
-    ]);
+    serviceMocks.queryMessagesPage.mockResolvedValue({
+      items: [createMessage('message-a'), createMessage('message-b')],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
     serviceMocks.getMessageTrace.mockImplementation((msgId: string) =>
       msgId === 'message-a' ? firstTrace.promise : secondTrace.promise,
     );
@@ -344,10 +377,12 @@ describe('MessagePage async request ownership', () => {
   it('does not display a late trace from a previously closed message detail', async () => {
     const firstTrace = createDeferred<TraceRecord | null>();
     const secondTrace = createDeferred<TraceRecord | null>();
-    serviceMocks.queryMessages.mockResolvedValue([
-      createMessage('message-a'),
-      createMessage('message-b'),
-    ]);
+    serviceMocks.queryMessagesPage.mockResolvedValue({
+      items: [createMessage('message-a'), createMessage('message-b')],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
     serviceMocks.getMessageTrace.mockImplementation((msgId: string) =>
       msgId === 'message-a' ? firstTrace.promise : secondTrace.promise,
     );

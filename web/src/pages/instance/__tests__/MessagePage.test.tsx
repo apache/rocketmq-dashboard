@@ -27,6 +27,7 @@ import { LangProvider } from '../../../i18n/LangContext';
 const messageServiceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
   queryMessages: vi.fn(),
+  queryMessagesPage: vi.fn(),
 }));
 const topicServiceMocks = vi.hoisted(() => ({
   listTopics: vi.fn(),
@@ -91,7 +92,9 @@ describe('Message page query history', () => {
   beforeEach(() => {
     localStorage.clear();
     messageServiceMocks.getMessageTrace.mockReset().mockResolvedValue(null);
-    messageServiceMocks.queryMessages.mockReset().mockResolvedValue([]);
+    messageServiceMocks.queryMessagesPage
+      .mockReset()
+      .mockResolvedValue({ items: [], total: 0, page: 1, size: 20 });
     topicServiceMocks.listTopics
       .mockReset()
       .mockResolvedValue([
@@ -132,17 +135,19 @@ describe('Message page query history', () => {
     const keyInput = screen.getByPlaceholderText('输入 Message Key');
     await user.type(keyInput, '   ');
     expect(queryButton).toBeDisabled();
-    expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+    expect(messageServiceMocks.queryMessagesPage).not.toHaveBeenCalled();
 
     await user.clear(keyInput);
     await user.type(keyInput, '  ORDER-001  ');
     expect(queryButton).toBeEnabled();
     await user.click(queryButton);
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+      expect(messageServiceMocks.queryMessagesPage).toHaveBeenLastCalledWith({
         topic: 'order-create',
         key: 'ORDER-001',
         instanceId: 1,
+        page: 1,
+        pageSize: 20,
       });
     });
 
@@ -159,10 +164,12 @@ describe('Message page query history', () => {
     expect(queryButton).toBeEnabled();
     await user.click(queryButton);
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+      expect(messageServiceMocks.queryMessagesPage).toHaveBeenLastCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
         instanceId: 1,
+        page: 1,
+        pageSize: 20,
       });
     });
   });
@@ -198,7 +205,7 @@ describe('Message page query history', () => {
     await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-001');
     expect(queryButton).toBeDisabled();
     expect(queryButton).toHaveAttribute('title', '请选择 Topic');
-    expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+    expect(messageServiceMocks.queryMessagesPage).not.toHaveBeenCalled();
   });
 
   it('ignores stored queries that are missing fields required by their mode', () => {
@@ -214,7 +221,7 @@ describe('Message page query history', () => {
     renderWithProviders(<MessagePage />);
 
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
-    expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+    expect(messageServiceMocks.queryMessagesPage).not.toHaveBeenCalled();
   });
 
   it('persists successful queries for replay and allows clearing the history', async () => {
@@ -229,16 +236,18 @@ describe('Message page query history', () => {
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+      expect(messageServiceMocks.queryMessagesPage).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
         instanceId: 1,
+        page: 1,
+        pageSize: 20,
       });
       expect(screen.getByRole('button', { name: /最近查询/ })).toBeEnabled();
     });
 
     firstView.unmount();
-    messageServiceMocks.queryMessages.mockClear();
+    messageServiceMocks.queryMessagesPage.mockClear();
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
@@ -246,24 +255,22 @@ describe('Message page query history', () => {
 
     expect(screen.getByPlaceholderText('输入 Message ID')).toHaveValue('MID-001');
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+      expect(messageServiceMocks.queryMessagesPage).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
         instanceId: 1,
+        page: 1,
+        pageSize: 20,
       });
     });
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
     // Clearing requires confirmation: the dialog is commanded imperatively, so spy on it
     // and drive the confirm callback instead of depending on portal rendering in jsdom.
-    const confirmSpy = vi
-      .spyOn(Modal, 'confirm')
-      .mockImplementation((config) => {
-        config.onOk?.();
-        return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<
-          typeof Modal.confirm
-        >;
-      });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
     await user.click(await screen.findByText('清空历史'));
     expect(confirmSpy).toHaveBeenCalled();
     confirmSpy.mockRestore();
@@ -273,7 +280,7 @@ describe('Message page query history', () => {
 
   it('does not save failed queries', async () => {
     const user = userEvent.setup();
-    messageServiceMocks.queryMessages.mockRejectedValue(new Error('network error'));
+    messageServiceMocks.queryMessagesPage.mockRejectedValue(new Error('network error'));
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
@@ -283,10 +290,12 @@ describe('Message page query history', () => {
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+      expect(messageServiceMocks.queryMessagesPage).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-FAILED',
         instanceId: 1,
+        page: 1,
+        pageSize: 20,
       });
     });
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
@@ -307,7 +316,7 @@ describe('Message page query history', () => {
       await user.type(messageIdInput, `MID-${index}`);
       await user.click(queryButton);
       await waitFor(() => {
-        expect(messageServiceMocks.queryMessages).toHaveBeenCalledTimes(index);
+        expect(messageServiceMocks.queryMessagesPage).toHaveBeenCalledTimes(index);
       });
     }
 
@@ -328,7 +337,7 @@ describe('Message page query history', () => {
     await user.type(messageIdInput, 'MID-3');
     await user.click(queryButton);
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenCalledTimes(7);
+      expect(messageServiceMocks.queryMessagesPage).toHaveBeenCalledTimes(7);
     });
 
     const updatedHistory = JSON.parse(localStorage.getItem(storageKey!) || '[]') as Array<{
@@ -369,22 +378,26 @@ describe('Message page query history', () => {
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
     await user.click(await screen.findByText('Topic: order-create'));
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+      expect(messageServiceMocks.queryMessagesPage).toHaveBeenLastCalledWith({
         topic: 'order-create',
         tag: 'vip',
         startTime: 1_700_000_000_000,
         endTime: 1_700_003_600_000,
         instanceId: 1,
+        page: 1,
+        pageSize: 20,
       });
     });
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
     await user.click(await screen.findByText('Key: ORDER-001 · Topic: payment-callback'));
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+      expect(messageServiceMocks.queryMessagesPage).toHaveBeenLastCalledWith({
         topic: 'payment-callback',
         key: 'ORDER-001',
         instanceId: 1,
+        page: 1,
+        pageSize: 20,
       });
       expect(screen.getByPlaceholderText('输入 Message Key')).toHaveValue('ORDER-001');
     });
@@ -411,7 +424,12 @@ describe('Message page query history', () => {
 
   it('does not report consume verification success without a backend API', async () => {
     const user = userEvent.setup();
-    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-CONSUME-VERIFY-001')]);
+    messageServiceMocks.queryMessagesPage.mockResolvedValue({
+      items: [createMessage('MID-CONSUME-VERIFY-001')],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
@@ -431,10 +449,15 @@ describe('Message page query history', () => {
 
   it('sorts and renders messages without tags or keys', async () => {
     const user = userEvent.setup();
-    messageServiceMocks.queryMessages.mockResolvedValue([
-      { ...createMessage('MID-NULL-FIELDS'), tag: null, key: null },
-      { ...createMessage('MID-FULL-FIELDS'), tag: 'vip', key: 'order-001' },
-    ]);
+    messageServiceMocks.queryMessagesPage.mockResolvedValue({
+      items: [
+        { ...createMessage('MID-NULL-FIELDS'), tag: null, key: null },
+        { ...createMessage('MID-FULL-FIELDS'), tag: 'vip', key: 'order-001' },
+      ],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
@@ -467,7 +490,7 @@ describe('Message page query history', () => {
 
     expect(screen.getByRole('button', { name: /^search查询$/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
-    expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+    expect(messageServiceMocks.queryMessagesPage).not.toHaveBeenCalled();
   });
 
   it('loads topic options only for the selected instance', async () => {

@@ -2,6 +2,7 @@ import { isMockMode } from './dataMode';
 import * as messageApi from '../api/message';
 import { sortMessagesByStoreTimeDesc } from '../api/message';
 import type {
+  MessagePageResult,
   MessageQuery,
   MessageRecord,
   TraceRecord,
@@ -49,6 +50,23 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
   return messageApi.queryMessages(params);
 }
 
+export async function queryMessagesPage(
+  params: MessageQuery & { page?: number; pageSize?: number },
+): Promise<MessagePageResult> {
+  if (isMockMode()) {
+    const filtered = await queryMessages(params);
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 20;
+    return {
+      items: filtered.slice((page - 1) * pageSize, page * pageSize),
+      total: filtered.length,
+      page,
+      size: pageSize,
+    };
+  }
+  return messageApi.queryMessagesPage(params);
+}
+
 export async function getMessageTrace(
   msgId: string,
   instanceId?: string,
@@ -69,8 +87,7 @@ export async function listDLQGroups(
 ): Promise<DLQGroupPage> {
   if (isMockMode()) {
     const groups = (mockDLQGroups as unknown as DLQGroup[]).filter(
-      (group) =>
-        !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
+      (group) => !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
     );
     const from = Math.min((page - 1) * pageSize, groups.length);
     return {
