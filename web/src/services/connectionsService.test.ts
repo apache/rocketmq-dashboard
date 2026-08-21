@@ -25,9 +25,31 @@ vi.mock('../config', () => ({
 import { listConnections } from './connectionsService';
 
 describe('connectionsService mock connections', () => {
-  it('returns defensive copies after applying filters', async () => {
+  it('isolates client inventories by the required NameServer address', async () => {
+    const production = await listConnections({ namesrvAddr: '10.101.2.1:9876' });
+    const preproduction = await listConnections({ namesrvAddr: '10.102.5.1:9876' });
+
+    expect(production).not.toHaveLength(0);
+    expect(preproduction).not.toHaveLength(0);
+    expect(production.every((connection) => connection.clusterName === 'ns-prod')).toBe(true);
+    expect(preproduction.every((connection) => connection.clusterName === 'ns-pre')).toBe(true);
+    expect(new Set(production.map((connection) => connection.clientId))).not.toEqual(
+      new Set(preproduction.map((connection) => connection.clientId)),
+    );
+  });
+
+  it('returns an empty inventory for an unknown NameServer address', async () => {
+    await expect(listConnections({ namesrvAddr: '10.103.9.1:9876' })).resolves.toEqual([]);
+  });
+
+  it('requires the same NameServer parameter as the real endpoint', async () => {
+    await expect(listConnections()).rejects.toThrow('namesrvAddr is required');
+    await expect(listConnections({ namesrvAddr: '  ' })).rejects.toThrow('namesrvAddr is required');
+  });
+
+  it('returns defensive copies after applying NameServer, cluster, and type filters', async () => {
     const connections = await listConnections({
-      namesrvAddr: 'namesrv-1:9876',
+      namesrvAddr: '10.101.2.1:9876',
       clusterId: 'ns-prod',
       type: 'Consumer',
     });
@@ -38,7 +60,7 @@ describe('connectionsService mock connections', () => {
     connections[0].address = '127.0.0.1:8081';
 
     const fresh = await listConnections({
-      namesrvAddr: 'namesrv-1:9876',
+      namesrvAddr: '10.101.2.1:9876',
       clusterId: 'ns-prod',
       type: 'Consumer',
     });
@@ -48,5 +70,11 @@ describe('connectionsService mock connections', () => {
     expect(fresh[0]).not.toBe(connections[0]);
     expect(fresh.every((connection) => connection.clusterName === 'ns-prod')).toBe(true);
     expect(fresh.every((connection) => connection.type === 'Consumer')).toBe(true);
+  });
+
+  it('does not leak another NameServer when a conflicting cluster filter is supplied', async () => {
+    await expect(
+      listConnections({ namesrvAddr: '10.101.2.1:9876', clusterId: 'ns-pre' }),
+    ).resolves.toEqual([]);
   });
 });

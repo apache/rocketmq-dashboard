@@ -1,7 +1,7 @@
 import { isMockMode } from './dataMode';
 import * as connApi from '../api/connections';
 import type { ClientConnection, ClientConnectionQuery } from '../api/connections';
-import { mockClients } from '../mock/clients';
+import { mockClientClusterByNamesrvAddr, mockClients } from '../mock/clients';
 
 function copyConnection(connection: ClientConnection): ClientConnection {
   return { ...connection };
@@ -9,7 +9,14 @@ function copyConnection(connection: ClientConnection): ClientConnection {
 
 export async function listConnections(params?: ClientConnectionQuery): Promise<ClientConnection[]> {
   if (isMockMode()) {
-    let result = [...mockClients];
+    const namesrvAddr = params?.namesrvAddr?.trim();
+    if (!namesrvAddr) {
+      throw new Error('namesrvAddr is required');
+    }
+    const instanceCluster = mockClientClusterByNamesrvAddr[namesrvAddr];
+    if (!instanceCluster) return [];
+
+    let result = mockClients.filter((connection) => connection.clusterName === instanceCluster);
     if (params?.clusterId)
       result = result.filter((connection) => connection.clusterName === params.clusterId);
     if (params?.type) result = result.filter((c) => c.type === params.type);

@@ -30,4 +30,68 @@ class CredentialUtilsTest {
 
         assertThat(CredentialUtils.decodeBase64(legacyValue)).isEqualTo(legacyValue);
     }
+
+    @Test
+    void maskShouldPreserveAsciiBehavior() {
+        assertThat(CredentialUtils.mask("abcdefghijklmnopq"))
+                .isEqualTo("abcd****nopq");
+        assertThat(CredentialUtils.mask("abcdefghijklmnop"))
+                .isEqualTo("****");
+    }
+
+    @Test
+    void maskShouldUseSupplementaryCodePointBoundaries() {
+        String value = "abc🚀" + "123456789" + "🛰xyz";
+
+        String masked = CredentialUtils.mask(value);
+
+        assertThat(masked).isEqualTo("abc🚀****🛰xyz");
+        assertThat(hasIsolatedSurrogate(masked)).isFalse();
+    }
+
+    @Test
+    void maskShouldKeepFourCodePointsAtEachEnd() {
+        String value = "🚀abc" + "123456789" + "xyz🛰";
+
+        assertThat(CredentialUtils.mask(value)).isEqualTo("🚀abc****xyz🛰");
+    }
+
+    @Test
+    void maskShouldMeasureShortValuesInCodePoints() {
+        assertThat(CredentialUtils.mask("🚀".repeat(16))).isEqualTo("****");
+        assertThat(CredentialUtils.mask("🚀".repeat(17)))
+                .isEqualTo("🚀".repeat(4) + "****" + "🚀".repeat(4));
+    }
+
+    @Test
+    void maskShouldPreserveNullAndEmptyValues() {
+        assertThat(CredentialUtils.mask(null)).isNull();
+        assertThat(CredentialUtils.mask("")).isEmpty();
+    }
+
+    @Test
+    void maskShouldFullyHideMalformedUtf16WithoutLeakingSurrogates() {
+        String malformed = "abcd" + '\uD83D' + "1234567890123456";
+
+        String masked = CredentialUtils.mask(malformed);
+
+        assertThat(masked).isEqualTo("****");
+        assertThat(hasIsolatedSurrogate(masked)).isFalse();
+    }
+
+    private static boolean hasIsolatedSurrogate(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            if (Character.isHighSurrogate(current)) {
+                if (index + 1 >= value.length()
+                        || !Character.isLowSurrogate(value.charAt(index + 1))) {
+                    return true;
+                }
+                index++;
+            } else if (Character.isLowSurrogate(current)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

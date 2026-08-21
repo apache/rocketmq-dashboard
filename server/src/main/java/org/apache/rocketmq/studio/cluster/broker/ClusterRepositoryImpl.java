@@ -70,7 +70,7 @@ public class ClusterRepositoryImpl implements ClusterRepository {
         // observe a partially updated snapshot (new config, old updatedAt).
         store.computeIfPresent(clusterId, (id, cluster) -> {
             ClusterVO updated = defensiveCopy(cluster);
-            updated.setConfig(config);
+            updated.setConfig(copyConfig(config));
             updated.setGmtModified(LocalDateTime.now());
             log.info("Config updated for cluster: {}", clusterId);
             return updated;
@@ -89,11 +89,15 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .endpoint(cluster.getEndpoint())
                 .status(cluster.getStatus())
                 .version(cluster.getVersion())
-                // new ArrayList forces a fresh list even when the source is already immutable
-                // (List.copyOf would return the source reference for immutable inputs).
-                .brokers(cluster.getBrokers() == null ? null : new ArrayList<>(cluster.getBrokers()))
-                .proxies(cluster.getProxies() == null ? null : new ArrayList<>(cluster.getProxies()))
-                .nameServers(cluster.getNameServers() == null ? null : new ArrayList<>(cluster.getNameServers()))
+                .brokers(cluster.getBrokers() == null ? null : new ArrayList<>(cluster.getBrokers().stream()
+                        .map(this::copyBroker)
+                        .toList()))
+                .proxies(cluster.getProxies() == null ? null : new ArrayList<>(cluster.getProxies().stream()
+                        .map(this::copyProxy)
+                        .toList()))
+                .nameServers(cluster.getNameServers() == null ? null : new ArrayList<>(cluster.getNameServers().stream()
+                        .map(this::copyNameServer)
+                        .toList()))
                 .config(copyConfig(cluster.getConfig()))
                 .topicCount(cluster.getTopicCount())
                 .groupCount(cluster.getGroupCount())
@@ -103,6 +107,45 @@ public class ClusterRepositoryImpl implements ClusterRepository {
         copy.setGmtCreate(cluster.getGmtCreate());
         copy.setGmtModified(cluster.getGmtModified());
         return copy;
+    }
+
+    private BrokerVO copyBroker(BrokerVO broker) {
+        if (broker == null) {
+            return null;
+        }
+        return BrokerVO.builder()
+                .name(broker.getName())
+                .addr(broker.getAddr())
+                .version(broker.getVersion())
+                .status(broker.getStatus())
+                .diskUsage(broker.getDiskUsage())
+                .tpsIn(broker.getTpsIn())
+                .tpsOut(broker.getTpsOut())
+                .runtimeStatsAvailable(broker.isRuntimeStatsAvailable())
+                .build();
+    }
+
+    private ProxyVO copyProxy(ProxyVO proxy) {
+        if (proxy == null) {
+            return null;
+        }
+        return ProxyVO.builder()
+                .addr(proxy.getAddr())
+                .status(proxy.getStatus())
+                .connections(proxy.getConnections())
+                .grpcPort(proxy.getGrpcPort())
+                .remotingPort(proxy.getRemotingPort())
+                .build();
+    }
+
+    private NameServerVO copyNameServer(NameServerVO nameServer) {
+        if (nameServer == null) {
+            return null;
+        }
+        return NameServerVO.builder()
+                .addr(nameServer.getAddr())
+                .status(nameServer.getStatus())
+                .build();
     }
 
     private ClusterConfigVO copyConfig(ClusterConfigVO config) {
