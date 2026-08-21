@@ -377,6 +377,9 @@ class RocketMQDashboardProviderTest {
 
         assertThat(dashboard.getClusters()).hasSize(1);
         assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V4_DIRECT);
+        assertThat(dashboard.getClusters().get(0).getProxies()).isZero();
+        assertThat(dashboard.getStats().getTotalProxies()).isZero();
+        assertThat(dashboard.getStats().getTotalNameServers()).isEqualTo(1);
         verify(resolver).execute(eq(instance), any());
     }
 
@@ -401,6 +404,45 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters()).singleElement()
                 .extracting(cluster -> cluster.getType())
                 .isEqualTo(ClusterType.V5_PROXY_LOCAL);
+        assertThat(dashboard.getClusters().get(0).getProxies()).isNull();
+        assertThat(dashboard.getStats().getTotalProxies()).isNull();
+        assertThat(dashboard.getStats().getTotalNameServers()).isNull();
+    }
+
+    @Test
+    void dashboardShouldCountConfiguredDirectNameServerEndpoints() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.DIRECT)
+                .endpoint(" ns-a:9876 ; ns-b:9876,ns-a:9876 ;; ")
+                .build();
+        instance.setId(1L);
+        when(resolver.resolveInstance("instance-direct")).thenReturn(instance);
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-direct");
+
+        assertThat(dashboard.getStats().getTotalNameServers()).isEqualTo(2);
+    }
+
+    @Test
+    void dashboardShouldReportUnconfiguredLegacyTopologyAsUnavailable() {
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr(" ");
+        RocketMQDashboardProvider provider = new RocketMQDashboardProvider(
+                mock(MqAdminExtFactory.class), properties, mock(RuntimeAdminClientResolver.class));
+
+        DashboardDataVO dashboard = provider.getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalClusters()).isZero();
+        assertThat(dashboard.getStats().getTotalProxies()).isNull();
+        assertThat(dashboard.getStats().getTotalNameServers()).isNull();
+        assertThat(dashboard.getClusters()).isEmpty();
     }
 
     @Test

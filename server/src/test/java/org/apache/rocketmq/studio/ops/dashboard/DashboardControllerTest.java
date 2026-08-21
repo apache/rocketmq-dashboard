@@ -90,6 +90,8 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.data.stats.totalClusters").value(2))
                 .andExpect(jsonPath("$.data.stats.healthyClusters").value(2))
                 .andExpect(jsonPath("$.data.stats.totalBrokers").value(6))
+                .andExpect(jsonPath("$.data.stats.totalProxies").value(2))
+                .andExpect(jsonPath("$.data.stats.totalNameServers").value(4))
                 .andExpect(jsonPath("$.data.stats.totalTopics").value(80))
                 .andExpect(jsonPath("$.data.stats.messagesPerSecond").value(250))
                 .andExpect(jsonPath("$.data.clusters").isArray())
@@ -99,6 +101,36 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.data.clusters[0].version").value("5.1.0"));
 
         verify(dashboardService).getDashboard(isNull());
+    }
+
+    @Test
+    void getDashboardShouldPreserveUnavailableTopologyCounts() throws Exception {
+        DashboardStatsVO stats = DashboardStatsVO.builder()
+                .totalClusters(1)
+                .healthyClusters(1)
+                .totalBrokers(2)
+                .totalProxies(null)
+                .totalNameServers(null)
+                .build();
+        ClusterOverviewVO cluster = ClusterOverviewVO.builder()
+                .id("proxy-cluster")
+                .name("proxy-cluster")
+                .type(ClusterType.V5_PROXY_CLUSTER)
+                .status(ClusterStatus.healthy)
+                .brokers(2)
+                .proxies(null)
+                .build();
+        DashboardDataVO data = DashboardDataVO.builder()
+                .stats(stats)
+                .clusters(List.of(cluster))
+                .build();
+        when(dashboardService.getDashboard(isNull())).thenReturn(data);
+
+        mockMvc.perform(get("/api/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.totalProxies").doesNotExist())
+                .andExpect(jsonPath("$.data.stats.totalNameServers").doesNotExist())
+                .andExpect(jsonPath("$.data.clusters[0].proxies").doesNotExist());
     }
 
     @Test

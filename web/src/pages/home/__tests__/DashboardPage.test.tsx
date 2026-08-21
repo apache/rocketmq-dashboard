@@ -6,7 +6,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -50,6 +50,19 @@ const dashboard = (name: string): DashboardData => ({
       throughput: [1],
     },
   ],
+});
+
+const unavailableTopologyDashboard = (): DashboardData => ({
+  ...dashboard('proxy-cluster'),
+  stats: {
+    ...dashboard('proxy-cluster').stats,
+    totalProxies: null,
+    totalNameServers: null,
+  },
+  clusters: dashboard('proxy-cluster').clusters.map((cluster) => ({
+    ...cluster,
+    proxies: null,
+  })),
 });
 
 const deferred = <T,>() => {
@@ -119,6 +132,18 @@ beforeEach(() => {
 });
 
 describe('DashboardPage', () => {
+  it('renders unavailable Proxy topology counts as N/A instead of zero', async () => {
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(unavailableTopologyDashboard());
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('proxy-cluster');
+    expect(await screen.findByText(/1 Brokers · N\/A Proxy/u)).toBeInTheDocument();
+    expect(screen.queryByText('0 Proxy')).not.toBeInTheDocument();
+    const row = screen.getByText('proxy-cluster').closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getAllByText('N/A').length).toBeGreaterThanOrEqual(1);
+  });
+
   it('does not show dashboard data from the previous instance while loading a new selection', async () => {
     const instanceA = deferred<DashboardData>();
     vi.mocked(dashboardService.getDashboard)

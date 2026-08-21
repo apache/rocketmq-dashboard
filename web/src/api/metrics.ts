@@ -10,8 +10,8 @@ export interface DashboardStats {
   totalClusters: number;
   healthyClusters: number;
   totalBrokers: number;
-  totalProxies: number;
-  totalNameServers: number;
+  totalProxies: number | null;
+  totalNameServers: number | null;
   totalTopics: number;
   totalConsumerGroups: number;
   totalMessagesToday: number;
@@ -26,7 +26,7 @@ export interface ClusterOverview {
   type: string;
   status: string;
   brokers: number;
-  proxies: number;
+  proxies: number | null;
   topics: number;
   groups: number;
   tpsIn: number;

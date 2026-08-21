@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -34,6 +35,7 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
@@ -69,20 +71,23 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         String namesrvAddr = properties.getNamesrvAddr();
         if (!StringUtils.hasText(namesrvAddr)) {
             log.warn("NameServer address not configured, returning empty dashboard");
-            return emptyDashboard();
+            return unavailableTopologyDashboard();
         }
         return adminFactory.execute(namesrvAddr, null,
-                admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER));
+                admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER, countEndpoints(namesrvAddr)));
     }
 
     @Override
     public DashboardDataVO getDashboardData(String instanceId) {
         InstanceVO instance = runtimeAdminClientResolver.resolveInstance(instanceId);
+        Integer configuredNameServers = instance.getType() == InstanceType.DIRECT
+                ? countEndpoints(instance.getEndpoint()) : null;
         return runtimeAdminClientResolver.execute(instance,
-                admin -> collectDashboardData(admin, clusterTypeFor(instance)));
+                admin -> collectDashboardData(admin, clusterTypeFor(instance), configuredNameServers));
     }
 
-    private DashboardDataVO collectDashboardData(MQAdminExt admin, ClusterType clusterType) {
+    private DashboardDataVO collectDashboardData(
+            MQAdminExt admin, ClusterType clusterType, Integer configuredNameServers) {
         int totalClusters = 0;
         int totalBrokers = 0;
         int totalTopics = 0;
@@ -286,7 +291,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         .type(clusterType)
                         .status(runtimeMetricsUnavailable ? ClusterStatus.warning : ClusterStatus.healthy)
                         .brokers(clusterBrokers)
-                        .proxies(0)
+                        .proxies(clusterType == ClusterType.V4_DIRECT ? 0 : null)
                         .topics(topicsByCluster.getOrDefault(clusterName, Set.of()).size())
                         .groups(groupsByCluster.getOrDefault(clusterName, Set.of()).size())
                         .tpsIn(clusterTpsIn)
@@ -314,8 +319,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .totalClusters(totalClusters)
                 .healthyClusters(healthyClusters)
                 .totalBrokers(totalBrokers)
-                .totalProxies(0)
-                .totalNameServers(0)
+                .totalProxies(clusterType == ClusterType.V4_DIRECT ? 0 : null)
+                .totalNameServers(configuredNameServers)
                 .totalTopics(totalTopics)
                 .totalConsumerGroups(totalGroups)
                 .totalMessagesToday(messagesToday)
@@ -338,13 +343,13 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         };
     }
 
-    private DashboardDataVO emptyDashboard() {
+    private DashboardDataVO unavailableTopologyDashboard() {
         DashboardStatsVO stats = DashboardStatsVO.builder()
                 .totalClusters(0)
                 .healthyClusters(0)
                 .totalBrokers(0)
-                .totalProxies(0)
-                .totalNameServers(0)
+                .totalProxies(null)
+                .totalNameServers(null)
                 .totalTopics(0)
                 .totalConsumerGroups(0)
                 .totalMessagesToday(0)
@@ -356,6 +361,17 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .stats(stats)
                 .clusters(List.of())
                 .build();
+    }
+
+    private int countEndpoints(String endpoint) {
+        if (!StringUtils.hasText(endpoint)) {
+            return 0;
+        }
+        return (int) Arrays.stream(endpoint.split("[;,]"))
+                .map(String::trim)
+                .filter(address -> !address.isEmpty())
+                .distinct()
+                .count();
     }
 
     /**
