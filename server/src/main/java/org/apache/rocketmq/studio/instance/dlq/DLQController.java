@@ -35,12 +35,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/dlq")
 @RequiredArgsConstructor
 public class DLQController {
+
+    private static final String HEADER_EXPORT_TRUNCATED = "X-DLQ-Export-Truncated";
+    private static final String HEADER_EXPORT_FAILED_QUEUES = "X-DLQ-Export-FailedQueues";
+    private static final String HEADER_EXPORT_LIMIT = "X-DLQ-Export-Limit";
 
     private final DLQService dlqService;
     private final ObjectMapper objectMapper;
@@ -66,11 +69,11 @@ public class DLQController {
                                                     @RequestParam(required = false) Long startTime,
                                                     @RequestParam(required = false) Long endTime,
                                                     @RequestParam(required = false) Integer maxCount) {
-        List<DLQMessageVO> messages = dlqService.exportMessages(
+        DLQExportResultVO result = dlqService.exportMessages(
                 instanceId, groupName, startTime, endTime, maxCount);
         byte[] body;
         try {
-            body = objectMapper.writeValueAsBytes(messages);
+            body = objectMapper.writeValueAsBytes(result.getMessages());
         } catch (JsonProcessingException exception) {
             throw new BusinessException(500, "Failed to serialize DLQ export");
         }
@@ -86,6 +89,9 @@ public class DLQController {
         ContentDisposition disposition = builder.build();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .header(HEADER_EXPORT_TRUNCATED, String.valueOf(result.isTruncated()))
+                .header(HEADER_EXPORT_FAILED_QUEUES, String.valueOf(result.getFailedQueueCount()))
+                .header(HEADER_EXPORT_LIMIT, String.valueOf(result.getLimit()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body);
     }

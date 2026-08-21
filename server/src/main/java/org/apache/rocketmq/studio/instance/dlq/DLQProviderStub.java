@@ -52,8 +52,8 @@ public class DLQProviderStub implements DLQProvider {
     }
 
     @Override
-    public List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
-                                             Integer maxCount) {
+    public DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                            Integer maxCount) {
         log.warn("DLQProviderStub.exportMessages called but no real DLQ provider is configured. group={}", groupName);
         throw unsupported();
     }

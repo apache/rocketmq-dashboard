@@ -135,15 +135,29 @@ export async function resendDLQ(data: {
   return res.data.data;
 }
 
+export interface DLQExportMeta {
+  truncated: boolean;
+  failedQueueCount: number;
+  limit: number;
+}
+
 export async function exportDLQMessages(params: {
   instanceId: string;
   groupName: string;
   startTime?: number;
   endTime?: number;
   maxCount?: number;
-}): Promise<Blob> {
+}): Promise<{ blob: Blob; meta: DLQExportMeta }> {
   const res = await client.get<Blob>('/dlq/export', { params, responseType: 'blob' });
-  return res.data;
+  const header = (name: string): string => String(res.headers[name] ?? '');
+  return {
+    blob: res.data,
+    meta: {
+      truncated: header('x-dlq-export-truncated') === 'true',
+      failedQueueCount: Number.parseInt(header('x-dlq-export-failedqueues'), 10) || 0,
+      limit: Number.parseInt(header('x-dlq-export-limit'), 10) || 0,
+    },
+  };
 }
 
 // ─── Queue Browser ─────────────────────────────────────────────────

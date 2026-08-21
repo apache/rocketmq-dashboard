@@ -205,17 +205,22 @@ class DLQControllerTest {
     @Test
     void exportDLQMessagesShouldReturnJsonAttachment() throws Exception {
         when(dlqService.exportMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(
-                        DLQMessageVO.builder()
-                                .msgId("msg-1")
-                                .topic("%DLQ%test-group")
-                                .queueId(0)
-                                .offset(5L)
-                                .storeTime(150L)
-                                .keys("key-a")
-                                .body("hello dlq")
-                                .bodyBase64("aGVsbG8gZGxx")
-                                .build()));
+                .thenReturn(DLQExportResultVO.builder()
+                        .messages(List.of(
+                                DLQMessageVO.builder()
+                                        .msgId("msg-1")
+                                        .topic("%DLQ%test-group")
+                                        .queueId(0)
+                                        .offset(5L)
+                                        .storeTime(150L)
+                                        .keys("key-a")
+                                        .body("hello dlq")
+                                        .bodyBase64("aGVsbG8gZGxx")
+                                        .build()))
+                        .truncated(false)
+                        .failedQueueCount(0)
+                        .limit(5000)
+                        .build());
 
         mockMvc.perform(get("/api/dlq/export")
                         .param("instanceId", "instance-1")
@@ -223,6 +228,9 @@ class DLQControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"dlq-test-group.json\""))
+                .andExpect(header().string("X-DLQ-Export-Truncated", "false"))
+                .andExpect(header().string("X-DLQ-Export-FailedQueues", "0"))
+                .andExpect(header().string("X-DLQ-Export-Limit", "5000"))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$[0].msgId").value("msg-1"))
                 .andExpect(jsonPath("$[0].body").value("hello dlq"));
@@ -233,7 +241,12 @@ class DLQControllerTest {
     @Test
     void exportDLQMessagesShouldPassTimeRangeTest() throws Exception {
         when(dlqService.exportMessages(eq("instance-1"), eq("test-group"), eq(1000L), eq(2000L), eq(100)))
-                .thenReturn(List.of());
+                .thenReturn(DLQExportResultVO.builder()
+                        .messages(List.of())
+                        .truncated(false)
+                        .failedQueueCount(0)
+                        .limit(100)
+                        .build());
 
         mockMvc.perform(get("/api/dlq/export")
                         .param("instanceId", "instance-1")
@@ -244,15 +257,42 @@ class DLQControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"dlq-test-group.json\""))
+                .andExpect(header().string("X-DLQ-Export-Limit", "100"))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
 
         verify(dlqService).exportMessages(eq("instance-1"), eq("test-group"), eq(1000L), eq(2000L), eq(100));
     }
 
     @Test
+    void exportDLQMessagesShouldExposeIncompleteScanMetadata() throws Exception {
+        when(dlqService.exportMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
+                .thenReturn(DLQExportResultVO.builder()
+                        .messages(List.of())
+                        .truncated(true)
+                        .failedQueueCount(2)
+                        .limit(5000)
+                        .build());
+
+        mockMvc.perform(get("/api/dlq/export")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-DLQ-Export-Truncated", "true"))
+                .andExpect(header().string("X-DLQ-Export-FailedQueues", "2"))
+                .andExpect(header().string("X-DLQ-Export-Limit", "5000"))
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
     void exportDLQMessagesShouldSanitizeHeaderUnsafeGroupNameCharacters() throws Exception {
         when(dlqService.exportMessages(eq("instance-1"), eq("we\"ird\\group"), isNull(), isNull(), isNull()))
-                .thenReturn(List.of());
+                .thenReturn(DLQExportResultVO.builder()
+                        .messages(List.of())
+                        .truncated(false)
+                        .failedQueueCount(0)
+                        .limit(5000)
+                        .build());
 
         mockMvc.perform(get("/api/dlq/export")
                         .param("instanceId", "instance-1")
@@ -267,7 +307,12 @@ class DLQControllerTest {
         // CJK group name written as unicode escapes because checkstyle rejects raw chinese characters.
         String cjkGroup = "\u8BA2\u5355";
         when(dlqService.exportMessages(eq("instance-1"), eq(cjkGroup), isNull(), isNull(), isNull()))
-                .thenReturn(List.of());
+                .thenReturn(DLQExportResultVO.builder()
+                        .messages(List.of())
+                        .truncated(false)
+                        .failedQueueCount(0)
+                        .limit(5000)
+                        .build());
 
         mockMvc.perform(get("/api/dlq/export")
                         .param("instanceId", "instance-1")

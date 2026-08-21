@@ -34,6 +34,7 @@ import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -513,11 +514,14 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
         when(pullConsumer.pull(eq(queue), eq("*"), eq(0L), eq(32))).thenReturn(pullResult);
-        List<DLQMessageVO> exported =
+        DLQExportResultVO exported =
                 provider.exportMessages("instance-a", "group-a", 100L, 200L, 1000);
 
-        assertThat(exported).hasSize(1);
-        DLQMessageVO vo = exported.get(0);
+        assertThat(exported.isTruncated()).isFalse();
+        assertThat(exported.getFailedQueueCount()).isZero();
+        assertThat(exported.getLimit()).isEqualTo(1000);
+        assertThat(exported.getMessages()).hasSize(1);
+        DLQMessageVO vo = exported.getMessages().get(0);
         assertThat(vo.getMsgId()).isEqualTo("msg-1");
         assertThat(vo.getTopic()).isEqualTo(dlqTopic);
         assertThat(vo.getQueueId()).isEqualTo(0);
@@ -538,8 +542,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.pull(eq(queue), eq("*"), eq(0L), eq(32)))
                 .thenReturn(new PullResult(PullStatus.NO_NEW_MSG, 1L, 0L, 0L, List.of()));
         // maxCount=0 falls back to the hard cap instead of failing; scan still completes.
-        List<DLQMessageVO> exported =
+        DLQExportResultVO exported =
                 provider.exportMessages("instance-a", "group-a", 100L, 200L, 0);
-        assertThat(exported).isEmpty();
+        assertThat(exported.getMessages()).isEmpty();
+        assertThat(exported.getLimit()).isEqualTo(5000);
     }
 }

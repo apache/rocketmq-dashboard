@@ -9,6 +9,7 @@ import type {
   DLQGroup,
   DLQGroupPage,
   DLQResendResult,
+  DLQExportMeta,
 } from '../api/message';
 import { mockMessages, mockMessageTraces } from '../mock/messages';
 import { mockDLQGroups } from '../mock/dlq';
@@ -119,7 +120,12 @@ export async function exportDLQMessages(params: {
   startTime?: number;
   endTime?: number;
   maxCount?: number;
-}): Promise<Blob> {
-  if (isMockMode()) return new Blob(['[]'], { type: 'application/json' });
+}): Promise<{ blob: Blob; meta: DLQExportMeta }> {
+  if (isMockMode()) {
+    return {
+      blob: new Blob(['[]'], { type: 'application/json' }),
+      meta: { truncated: false, failedQueueCount: 0, limit: 5000 },
+    };
+  }
   return messageApi.exportDLQMessages(params);
 }
