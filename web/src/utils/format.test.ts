@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatRelativeTime, formatTimeOfDay } from './format';
+import {
+  formatBytes,
+  formatDate,
+  formatDateTime,
+  formatDelay,
+  formatNumber,
+  formatPercent,
+  formatRelativeTime,
+  formatTimeOfDay,
+} from './format';
 
 describe('formatBytes', () => {
   it('formats zero', () => {
@@ -22,6 +31,24 @@ describe('formatBytes', () => {
     expect(formatBytes(Number.NaN)).toBe('-');
     expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatBytes(Number.NEGATIVE_INFINITY)).toBe('-');
+  });
+
+  it('bounds invalid precision arguments', () => {
+    expect(formatBytes(1536, Number.POSITIVE_INFINITY)).toBe('1.5 KB');
+    expect(formatBytes(1536, -2)).toBe('2 KB');
+    expect(formatPercent(12.345, Number.NaN)).toBe('12.3%');
+    expect(formatPercent(12.345, -1)).toBe('12%');
+  });
+
+  it('uses a placeholder for invalid dates and numeric values', () => {
+    expect(formatDate('not-a-date')).toBe('-');
+    expect(formatDateTime(new Date(Number.NaN))).toBe('-');
+    expect(formatRelativeTime(Number.NaN, 'en', (key) => key)).toBe('-');
+    expect(formatRelativeTime(Date.now(), 'en', (key) => key, Number.POSITIVE_INFINITY)).toBe('-');
+    expect(formatTimeOfDay(Number.POSITIVE_INFINITY)).toBe('-');
+    expect(formatNumber(Number.NaN)).toBe('-');
+    expect(formatDelay(Number.POSITIVE_INFINITY, 'en')).toBe('-');
+    expect(formatPercent(Number.NEGATIVE_INFINITY)).toBe('-');
   });
 
   it('formats recent timestamps for compact conversation history', () => {

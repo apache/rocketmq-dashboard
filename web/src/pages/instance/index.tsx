@@ -148,6 +148,8 @@ const InstancePage = () => {
       const nextInstances = await listInstances(query);
       if (requestId === requestIdRef.current) {
         setInstances(nextInstances);
+        const availableNames = new Set(nextInstances.map((instance) => instance.name));
+        setSelectedRowKeys((keys) => keys.filter((key) => availableNames.has(String(key))));
       }
     } catch {
       if (requestId === requestIdRef.current) {
@@ -415,17 +417,22 @@ const InstancePage = () => {
   };
 
   const handleBatchDelete = () => {
-    const names = selectedRowKeys.map(String);
-    if (names.length === 0) return;
-    const selected = instances.filter((instance) => names.includes(instance.name));
+    const selectedNames = new Set(selectedRowKeys.map(String));
+    const selected = instances.filter((instance) => selectedNames.has(instance.name));
+    const names = selected.map((instance) => instance.name);
+    if (names.length === 0) {
+      setSelectedRowKeys([]);
+      return;
+    }
     const hasCloud = selected.some(
       (instance) => instance.vendor === 'ALIYUN' || instance.vendor === 'TENCENT',
     );
+    const warning = hasCloud
+      ? '云厂商实例仅从 Studio 移除记录，不会释放云上的 RocketMQ 实例；仍有 Topic/Group 的开源实例无法删除。'
+      : '仍有 Topic/Group 的开源实例无法删除。';
     Modal.confirm({
       title: `确认删除选中的 ${names.length} 个实例？`,
-      content: hasCloud
-        ? '云厂商实例仅从 Studio 移除记录，不会释放云上的 RocketMQ 实例；仍有 Topic/Group 的开源实例无法删除。'
-        : '仍有 Topic/Group 的开源实例无法删除。',
+      content: `将删除：${names.join('、')}。${warning}`,
       okText: '删除',
       okButtonProps: { danger: true },
       onOk: async () => {

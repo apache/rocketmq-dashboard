@@ -22,7 +22,7 @@ interface ParsedProperties {
 
 // 解析批量粘贴的用户属性串：key=value 按换行或逗号分隔，等号只取第一个
 export const parseMessageProperties = (text: string): ParsedProperties => {
-  const properties: Record<string, string> = {};
+  const entries = new Map<string, string>();
   const errors: string[] = [];
   for (const line of text.split(/[\n,]+/)) {
     const trimmed = line.trim();
@@ -35,11 +35,11 @@ export const parseMessageProperties = (text: string): ParsedProperties => {
     const key = trimmed.slice(0, eqIndex).trim();
     if (!key) {
       errors.push(`“${trimmed}”的属性名不能为空`);
-    } else if (Object.prototype.hasOwnProperty.call(properties, key)) {
+    } else if (entries.has(key)) {
       errors.push(`属性名“${key}”重复`);
     } else {
-      properties[key] = trimmed.slice(eqIndex + 1).trim();
+      entries.set(key, trimmed.slice(eqIndex + 1).trim());
     }
   }
-  return { properties, errors };
+  return { properties: Object.fromEntries(entries), errors };
 };

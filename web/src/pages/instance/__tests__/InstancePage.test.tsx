@@ -801,7 +801,88 @@ describe('InstancePage', () => {
     await waitFor(() =>
       expect(instanceService.deleteInstancesBatch).toHaveBeenCalledWith(['batch-a']),
     );
-    expect(confirmSpy).toHaveBeenCalled();
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '确认删除选中的 1 个实例？',
+        content: expect.stringContaining('将删除：batch-a。'),
+      }),
+    );
+    confirmSpy.mockRestore();
+  });
+
+  it('clears selections hidden by a search result', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances)
+      .mockResolvedValueOnce([instance(22, 'search-selected'), instance(23, 'search-visible')])
+      .mockResolvedValueOnce([instance(23, 'search-visible')]);
+    renderPage();
+
+    const selectedName = await screen.findByText('search-selected');
+    const selectedCheckbox = within(selectedName.closest('tr')!).getByRole('checkbox');
+    await user.click(selectedCheckbox);
+    const deleteButton = screen.getAllByRole('button', { name: /删除/ })[0];
+    expect(deleteButton).toBeEnabled();
+
+    await user.type(screen.getByPlaceholderText('搜索实例 ID 或地址'), 'visible');
+
+    await waitFor(() =>
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ search: 'visible' }),
+    );
+    await waitFor(() => expect(screen.queryByText('search-selected')).not.toBeInTheDocument());
+    expect(deleteButton).toBeDisabled();
+  });
+
+  it('clears selections hidden by a type-filter result', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances)
+      .mockResolvedValueOnce([
+        instance(24, 'proxy-selected'),
+        instance(25, 'direct-visible', 'DIRECT'),
+      ])
+      .mockResolvedValueOnce([instance(25, 'direct-visible', 'DIRECT')]);
+    renderPage();
+
+    const selectedName = await screen.findByText('proxy-selected');
+    await user.click(within(selectedName.closest('tr')!).getByRole('checkbox'));
+    const deleteButton = screen.getAllByRole('button', { name: /删除/ })[0];
+    expect(deleteButton).toBeEnabled();
+
+    const typeSelect = screen.getByRole('combobox');
+    fireEvent.mouseDown(typeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+    );
+    await waitFor(() => expect(screen.queryByText('proxy-selected')).not.toBeInTheDocument());
+    expect(deleteButton).toBeDisabled();
+  });
+
+  it('reconciles selections when a mutation refresh removes an instance', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances)
+      .mockResolvedValueOnce([instance(26, 'refresh-selected'), instance(27, 'refresh-trigger')])
+      .mockResolvedValueOnce([instance(27, 'refresh-trigger')]);
+    vi.mocked(instanceService.deleteInstance).mockResolvedValue();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    renderPage();
+
+    const selectedName = await screen.findByText('refresh-selected');
+    await user.click(within(selectedName.closest('tr')!).getByRole('checkbox'));
+    const deleteButton = screen.getAllByRole('button', { name: /删除/ })[0];
+    expect(deleteButton).toBeEnabled();
+
+    const triggerName = screen.getByText('refresh-trigger');
+    await user.click(within(triggerName.closest('tr')!).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() => expect(instanceService.listInstances).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('refresh-selected')).not.toBeInTheDocument());
+    expect(deleteButton).toBeDisabled();
     confirmSpy.mockRestore();
   });
 });
