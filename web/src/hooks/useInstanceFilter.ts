@@ -23,6 +23,15 @@ import type { Instance } from '../api/instance';
 const INSTANCE_SCOPED_PATH = /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq)$/;
 const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq)$/;
 
+function decodeRouteSegment(segment: string | undefined) {
+  if (segment === undefined) return undefined;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * 实例维度页面的公共筛选逻辑：从 /instance/:instanceId/<section> 路由解析当前实例，
  * 无实例参数时重定向到第一个实例；实例列表加载失败时降级为不过滤。
@@ -33,7 +42,7 @@ export function useInstanceFilter() {
 
   const scopedMatch = pathname.match(INSTANCE_SCOPED_PATH);
   const staticMatch = pathname.match(STATIC_SECTION_PATH);
-  const routeInstanceId = scopedMatch ? decodeURIComponent(scopedMatch[1]) : undefined;
+  const routeInstanceId = decodeRouteSegment(scopedMatch?.[1]);
   const section = scopedMatch?.[2] ?? staticMatch?.[1] ?? 'topic';
 
   const [instances, setInstances] = useState<Instance[]>([]);
