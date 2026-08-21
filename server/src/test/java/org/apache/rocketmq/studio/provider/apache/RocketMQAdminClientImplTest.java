@@ -16,6 +16,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
@@ -31,6 +32,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -111,6 +113,101 @@ class RocketMQAdminClientImplTest {
 
         assertThat(group.getName()).isEqualTo("orders");
         assertThat(group.getOnlineInstances()).isZero();
+    }
+
+    @Test
+    void getConsumerGroupReturnsOfflineDetailWhenCode206OnlySurvivesInTheMessageTest() throws Exception {
+        when(adminExt.examineConsumerConnectionInfo("orders"))
+                .thenThrow(new MQClientException(
+                        "CODE: 206  DESC: the consumer group[orders] not online BROKER: 10.0.4.69:10911",
+                        (Throwable) null));
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.getName()).isEqualTo("orders");
+        assertThat(group.getOnlineInstances()).isZero();
+    }
+
+    @Test
+    void getConsumerGroupFillsProxySideConnectionsWhenBrokerReportsOfflineTest() throws Exception {
+        when(adminExt.examineConsumerConnectionInfo("orders"))
+                .thenThrow(new MQClientException(
+                        "CODE: 206  DESC: the consumer group[orders] not online BROKER: 10.0.4.69:10911",
+                        (Throwable) null));
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        ConsumerConnection viaProxy = new ConsumerConnection();
+        java.util.HashSet<org.apache.rocketmq.remoting.protocol.body.Connection> connections = new java.util.HashSet<>();
+        org.apache.rocketmq.remoting.protocol.body.Connection connection =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        connection.setClientId("client-1");
+        connection.setClientAddr("10.0.3.104:50124");
+        connections.add(connection);
+        viaProxy.setConnectionSet(connections);
+        java.util.concurrent.ConcurrentHashMap<String,
+                org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData> table =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData subscription =
+                new org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData();
+        subscription.setTopic("studio-normal");
+        table.put("studio-normal", subscription);
+        viaProxy.setSubscriptionTable(table);
+        when(resolver.resolveConsumerConnection("instance-a", "orders")).thenReturn(viaProxy);
+        org.springframework.test.util.ReflectionTestUtils.setField(adminClient, "proxyConsumerResolver", resolver);
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup("instance-a", "orders");
+
+        assertThat(group.getOnlineInstances()).isEqualTo(1);
+        assertThat(group.getSubscribedTopics()).containsExactly("studio-normal");
+    }
+
+    @Test
+    void getConsumerGroupComputesLagAndDelayFromConsumeStatsTest() throws Exception {
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        connection.setConnectionSet(new java.util.HashSet<>());
+        when(adminExt.examineConsumerConnectionInfo("orders")).thenReturn(connection);
+
+        org.apache.rocketmq.remoting.protocol.admin.ConsumeStats stats =
+                new org.apache.rocketmq.remoting.protocol.admin.ConsumeStats();
+        org.apache.rocketmq.common.message.MessageQueue queue =
+                new org.apache.rocketmq.common.message.MessageQueue("orders-topic", "broker-a", 0);
+        org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper wrapper =
+                new org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper();
+        wrapper.setBrokerOffset(100);
+        wrapper.setConsumerOffset(60);
+        wrapper.setLastTimestamp(System.currentTimeMillis() - 5_000);
+        stats.getOffsetTable().put(queue, wrapper);
+        when(adminExt.examineConsumeStats("orders")).thenReturn(stats);
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.getTotalLag()).isEqualTo(40);
+        assertThat(group.getDelaySeconds()).isBetween(4, 30);
+    }
+
+    @Test
+    void getConsumerGroupFillsOnlineInstanceListFromConnectionsTest() throws Exception {
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        java.util.HashSet<org.apache.rocketmq.remoting.protocol.body.Connection> connections =
+                new java.util.HashSet<>();
+        org.apache.rocketmq.remoting.protocol.body.Connection conn =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        conn.setClientId("client-1");
+        conn.setClientAddr("10.0.3.104:50124");
+        connections.add(conn);
+        connection.setConnectionSet(connections);
+        when(adminExt.examineConsumerConnectionInfo("orders")).thenReturn(connection);
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.getOnlineInstances()).isEqualTo(1);
+        assertThat(group.getInstances())
+                .extracting(ConsumerInstanceVO::getClientId, ConsumerInstanceVO::getAddress)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("client-1", "10.0.3.104:50124"));
     }
 
     @Test

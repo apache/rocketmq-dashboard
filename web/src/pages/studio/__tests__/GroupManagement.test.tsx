@@ -225,6 +225,7 @@ describe('GroupManagement Page', () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockRejectedValue(new Error('unavailable'));
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
       {
+        topic: 'orders',
         broker: 'broker-a',
         queueId: 0,
         brokerOffset: 20,

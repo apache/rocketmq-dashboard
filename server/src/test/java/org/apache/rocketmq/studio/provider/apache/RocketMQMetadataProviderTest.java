@@ -397,6 +397,18 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getGroupProgressShouldReturnEmptyWhenConsumerNotOnlineTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumeStats("group-offline")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQBrokerException(
+                        org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group consume stats, because return offset table is empty, "
+                                + "maybe the consumer not online"));
+
+        assertThat(newLiveProvider(admin).getGroupProgress(null, "group-offline")).isEmpty();
+    }
+
+    @Test
     void getGroupSubscriptionsSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.examineConsumerConnectionInfo("group-a"))
@@ -466,6 +478,174 @@ class RocketMQMetadataProviderTest {
                         "the consumer group[group-proxy] not online BROKER: 10.0.0.11:10911"));
 
         assertThat(newLiveProvider(admin).getGroupSubscriptions(null, "group-proxy")).isEmpty();
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldFallBackToProxyConnectionsTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.route.TopicRouteData route =
+                new org.apache.rocketmq.remoting.protocol.route.TopicRouteData();
+        java.util.HashMap<Long, String> brokerAddrs = new java.util.HashMap<>();
+        brokerAddrs.put(0L, "10.0.0.11:10911");
+        route.setBrokerDatas(List.of(new org.apache.rocketmq.remoting.protocol.route.BrokerData(
+                "cluster-a", "broker-a", brokerAddrs)));
+        when(admin.examineTopicRouteInfo("%RETRY%group-proxy")).thenReturn(route);
+        when(admin.examineConsumerConnectionInfo("group-proxy")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQBrokerException(
+                        org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
+                        "the consumer group[group-proxy] not online BROKER: 10.0.0.11:10911"));
+
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection viaProxy =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        java.util.concurrent.ConcurrentHashMap<String,
+                org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData> table =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData subscription =
+                new org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData();
+        subscription.setTopic("studio-normal");
+        subscription.setSubString("*");
+        subscription.setExpressionType("TAG");
+        table.put("studio-normal", subscription);
+        viaProxy.setSubscriptionTable(table);
+        java.util.HashSet<org.apache.rocketmq.remoting.protocol.body.Connection> proxyConnections =
+                new java.util.HashSet<>();
+        org.apache.rocketmq.remoting.protocol.body.Connection proxyConnection =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        proxyConnection.setClientId("client-1");
+        proxyConnection.setClientAddr("10.0.3.104:50124");
+        proxyConnections.add(proxyConnection);
+        viaProxy.setConnectionSet(proxyConnections);
+        when(resolver.resolveConsumerConnection(null, "group-proxy")).thenReturn(viaProxy);
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                provider, "proxyConsumerResolver", resolver);
+
+        List<SubscriptionEntryVO> subscriptions = provider.getGroupSubscriptions(null, "group-proxy");
+
+        assertThat(subscriptions).extracting(SubscriptionEntryVO::getTopic)
+                .containsExactly("studio-normal");
+        assertThat(subscriptions).extracting(SubscriptionEntryVO::getConsistency)
+                .containsExactly("consistent");
+    }
+
+    @Test
+    void listConsumerGroupsShouldEnrichOnlineInstancesFromBrokerConnectionsTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-online");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        java.util.HashSet<org.apache.rocketmq.remoting.protocol.body.Connection> connections =
+                new java.util.HashSet<>();
+        org.apache.rocketmq.remoting.protocol.body.Connection connA =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        connA.setClientId("client-a");
+        connA.setClientAddr("10.0.0.20:10000");
+        connections.add(connA);
+        org.apache.rocketmq.remoting.protocol.body.Connection connB =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        connB.setClientId("client-b");
+        connB.setClientAddr("10.0.0.21:10000");
+        connections.add(connB);
+        connection.setConnectionSet(connections);
+        when(admin.examineConsumerConnectionInfo("cg-online")).thenReturn(connection);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).getOnlineInstances()).isEqualTo(2);
+        assertThat(groups.get(0).getInstances())
+                .extracting(org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO::getClientId)
+                .containsExactlyInAnyOrder("client-a", "client-b");
+    }
+
+    @Test
+    void listConsumerGroupsShouldEnrichOnlineInstancesViaProxyFallbackTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-proxy");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo("cg-proxy")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQBrokerException(
+                        org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
+                        "the consumer group[cg-proxy] not online BROKER: 10.0.0.11:10911"));
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection viaProxy =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        java.util.HashSet<org.apache.rocketmq.remoting.protocol.body.Connection> connections =
+                new java.util.HashSet<>();
+        org.apache.rocketmq.remoting.protocol.body.Connection conn =
+                new org.apache.rocketmq.remoting.protocol.body.Connection();
+        conn.setClientId("client-1");
+        conn.setClientAddr("10.0.3.104:50124");
+        connections.add(conn);
+        viaProxy.setConnectionSet(connections);
+        when(resolver.resolveConsumerConnection("instance-a", "cg-proxy")).thenReturn(viaProxy);
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                provider, "proxyConsumerResolver", resolver);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).getOnlineInstances()).isEqualTo(1);
+        assertThat(groups.get(0).getInstances())
+                .extracting(org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO::getAddress)
+                .containsExactly("10.0.3.104:50124");
+    }
+
+    @Test
+    void listConsumerGroupsShouldEnrichLagAndDelayFromConsumeStatsTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-lag");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        connection.setConnectionSet(new java.util.HashSet<>());
+        when(admin.examineConsumerConnectionInfo("cg-lag")).thenReturn(connection);
+
+        org.apache.rocketmq.remoting.protocol.admin.ConsumeStats stats =
+                new org.apache.rocketmq.remoting.protocol.admin.ConsumeStats();
+        org.apache.rocketmq.common.message.MessageQueue queue =
+                new org.apache.rocketmq.common.message.MessageQueue("studio-normal", "broker-a", 0);
+        org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper wrapper =
+                new org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper();
+        wrapper.setBrokerOffset(100);
+        wrapper.setConsumerOffset(60);
+        wrapper.setLastTimestamp(System.currentTimeMillis() - 5_000);
+        stats.getOffsetTable().put(queue, wrapper);
+        when(admin.examineConsumeStats("cg-lag")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).getTotalLag()).isEqualTo(40);
+        assertThat(groups.get(0).getDelaySeconds()).isBetween(4, 30);
     }
 
     private RocketMQMetadataProvider newLiveProvider(MQAdminExt admin) throws Exception {

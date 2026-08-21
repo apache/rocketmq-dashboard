@@ -147,7 +147,52 @@ class RocketMQConsumerDiagnosticsProviderTest {
 
         assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Consumer client is not online: client-1")
+                .hasMessage("Consumer client is not reachable from any proxy or broker: client-1")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void getConsumerStackShouldPreferProxyOverBrokerTest() {
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
+        runningInfo.setJstack("""
+                ConsumeMessageThread_1                   TID: 7 STATE: RUNNABLE
+                ConsumeMessageThread_1                   com.example.Listener.consume(Listener.java:20)
+                """);
+        when(resolver.resolveConsumerRunningInfo("instance-a", "cg-orders", "client-1")).thenReturn(runningInfo);
+        org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
+
+        ConsumerStackTraceVO result = provider.getConsumerStack("instance-a", "cg-orders", "client-1");
+
+        assertThat(result.getThreadCount()).isEqualTo(1);
+        assertThat(result.getThreads().get(0).getThreadName()).isEqualTo("ConsumeMessageThread_1");
+        verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
+    }
+
+    @Test
+    void getConsumerStackShouldFallBackToBrokerWhenNoProxyAnswersTest() throws Exception {
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        when(resolver.resolveConsumerRunningInfo("instance-a", "cg-orders", "client-1")).thenReturn(null);
+        org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
+        ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
+        runningInfo.setJstack("PullMessageService                       TID: 9 STATE: WAITING\n");
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(runningInfo);
+
+        ConsumerStackTraceVO result = provider.getConsumerStack("instance-a", "cg-orders", "client-1");
+
+        assertThat(result.getThreadCount()).isEqualTo(1);
+        verify(adminExt).getConsumerRunningInfo("cg-orders", "client-1", true);
+    }
+
+    @Test
+    void getConsumerStackShouldMapBrokerNotOnlineRemarkToNotFoundTest() throws Exception {
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true))
+                .thenThrow(new MQClientException(1,
+                        "The Consumer <cg-orders> <client-1> not online"));
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Consumer client is not reachable from any proxy or broker: client-1")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
 

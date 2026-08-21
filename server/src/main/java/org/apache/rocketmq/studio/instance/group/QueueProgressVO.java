@@ -26,6 +26,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class QueueProgressVO {
+    private String topic;
     private String broker;
     private int queueId;
     private long brokerOffset;

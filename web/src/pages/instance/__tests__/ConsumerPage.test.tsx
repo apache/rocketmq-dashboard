@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -139,11 +139,20 @@ describe('Consumer page', () => {
     );
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
       {
+        topic: 'remote-topic',
         broker: 'broker-a',
         queueId: 0,
         brokerOffset: 100,
         consumerOffset: 90,
         diffTotal: 10,
+      },
+      {
+        topic: '%RETRY%remote-cg',
+        broker: 'broker-a',
+        queueId: 0,
+        brokerOffset: 5,
+        consumerOffset: 5,
+        diffTotal: 0,
       },
     ]);
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
@@ -281,6 +290,40 @@ describe('Consumer page', () => {
     );
     expect(consumerService.getConsumerGroup).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
+  });
+
+  it('filters queue progress to the topic of the clicked distribution button', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: '*',
+        type: 'NORMAL',
+        filterMode: '全量',
+        consistency: '一致',
+      },
+      {
+        topic: '%RETRY%remote-cg',
+        expression: '*',
+        type: 'RETRY',
+        filterMode: '全量',
+        consistency: '一致',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    // Click 查看分布 on the retry-topic subscription row.
+    await waitFor(() => expect(screen.getAllByText('%RETRY%remote-cg').length).toBeGreaterThan(0));
+    const retryRow = screen.getByText('%RETRY%remote-cg').closest('tr') as HTMLElement;
+    await user.click(within(retryRow).getByRole('button', { name: /查看分布/ }));
+
+    // The progress tab should now only show the retry topic's queue, not the normal topic.
+    const progressPanel = await screen.findByRole('tabpanel', { name: /消费进度/ });
+    await waitFor(() =>
+      expect(within(progressPanel).getAllByText('%RETRY%remote-cg').length).toBeGreaterThan(0),
+    );
+    expect(within(progressPanel).queryByText('remote-topic')).not.toBeInTheDocument();
   });
 
   it('passes the selected instance to group diagnostics', async () => {
@@ -494,7 +537,8 @@ describe('Consumer page', () => {
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
-    await user.click(await screen.findByRole('tab', { name: /在线实例/ }));
+    // The online instance table now lives inside the overview tab, so its 线程栈 buttons are
+    // available as soon as the detail dialog opens — no separate tab click.
     const stackButtons = await screen.findAllByRole('button', { name: /线程栈/ });
     await user.click(stackButtons[0]);
     await user.click(stackButtons[1]);
@@ -528,7 +572,6 @@ describe('Consumer page', () => {
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
-    await user.click(await screen.findByRole('tab', { name: /在线实例/ }));
     await user.click(await screen.findByRole('button', { name: /线程栈/ }));
 
     await waitFor(() =>

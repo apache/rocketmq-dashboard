@@ -182,6 +182,7 @@ final class AliyunConverters {
                 long ready = entry.getValue() == null || entry.getValue().getReadyCount() == null
                         ? 0L : entry.getValue().getReadyCount();
                 rows.add(QueueProgressVO.builder()
+                        .topic(entry.getKey())
                         .broker("topic:" + entry.getKey())
                         .queueId(0)
                         .brokerOffset(0L)

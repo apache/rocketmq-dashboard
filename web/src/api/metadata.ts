@@ -112,6 +112,7 @@ export interface ConsumerGroupDetail extends ConsumerGroup {
 }
 
 export interface QueueProgress {
+  topic: string;
   broker: string;
   queueId: number;
   brokerOffset: number;
