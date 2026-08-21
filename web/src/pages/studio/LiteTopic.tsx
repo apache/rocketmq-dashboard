@@ -113,6 +113,8 @@ const LiteTopicPage: React.FC = () => {
   const [namespaceFilter, setNamespaceFilter] = useState('');
   const [ttlStatusFilter, setTTLStatusFilter] = useState('');
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Session drawer
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
@@ -240,6 +242,7 @@ const LiteTopicPage: React.FC = () => {
   }, [fetchData]);
 
   const handleSearch = () => {
+    setCurrentPage(1);
     void fetchData(patternFilter || undefined, namespaceFilter || undefined);
   };
 
@@ -250,6 +253,7 @@ const LiteTopicPage: React.FC = () => {
   const handleNamespaceChange = (val: string | undefined) => {
     const namespace = val || undefined;
     setNamespaceFilter(namespace || '');
+    setCurrentPage(1);
     void fetchData(patternFilter || undefined, namespace, { clear: true });
   };
 
@@ -313,6 +317,9 @@ const LiteTopicPage: React.FC = () => {
     }
     return item.ttlStatus === ttlStatusFilter;
   });
+
+  const lastPage = Math.max(1, Math.ceil(filteredTopicList.length / pageSize));
+  const clampedCurrentPage = Math.min(currentPage, lastPage);
 
   // ─── Columns ─────────────────────────────────────────────────
 
@@ -756,7 +763,10 @@ const LiteTopicPage: React.FC = () => {
             aria-label={t('liteTopic.status')}
             placeholder={t('liteTopic.status')}
             value={ttlStatusFilter || undefined}
-            onChange={(value) => setTTLStatusFilter(value || '')}
+            onChange={(value) => {
+              setTTLStatusFilter(value || '');
+              setCurrentPage(1);
+            }}
             style={{ width: 160 }}
             allowClear
             options={[
@@ -780,7 +790,12 @@ const LiteTopicPage: React.FC = () => {
           rowKey={(record) => JSON.stringify([record.namespace, record.topicPattern])}
           loading={loading}
           pagination={{
-            pageSize: 10,
+            current: clampedCurrentPage,
+            pageSize,
+            onChange: (page, nextPageSize) => {
+              setCurrentPage(page);
+              setPageSize(nextPageSize);
+            },
             showTotal: (total) => t('liteTopic.total').replace('{total}', String(total)),
             showSizeChanger: true,
           }}

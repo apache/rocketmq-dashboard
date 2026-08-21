@@ -71,6 +71,8 @@ const GroupManagementPage = () => {
   const [progressLoading, setProgressLoading] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const listRequestId = useRef(0);
   const listInFlight = useRef<Promise<void> | null>(null);
   const listRefreshQueued = useRef(false);
@@ -187,6 +189,9 @@ const GroupManagementPage = () => {
       ),
     [groups, normalizedSearchText],
   );
+
+  const lastPage = Math.max(1, Math.ceil(filteredGroupData.length / pageSize));
+  const clampedCurrentPage = Math.min(currentPage, lastPage);
 
   const columns = [
     {
@@ -317,7 +322,10 @@ const GroupManagementPage = () => {
             placeholder={t('groupMgmt.searchPlaceholder')}
             prefix={<MagnifyingGlass size={14} />}
             value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
+            onChange={(e) => {
+              setSearchText(e.target.value);
+              setCurrentPage(1);
+            }}
             style={{ width: 240 }}
             allowClear
           />
@@ -346,7 +354,12 @@ const GroupManagementPage = () => {
           }
           loading={loading}
           pagination={{
-            pageSize: 10,
+            current: clampedCurrentPage,
+            pageSize,
+            onChange: (page, nextPageSize) => {
+              setCurrentPage(page);
+              setPageSize(nextPageSize);
+            },
             showTotal: (total) => `${t('common.total')} ${total} Group`,
             showSizeChanger: true,
           }}

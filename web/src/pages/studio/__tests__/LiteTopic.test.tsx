@@ -103,6 +103,30 @@ describe('LiteTopic Page', () => {
     });
   });
 
+  it('returns to the first page when the local TTL filter changes', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      ...Array.from({ length: 11 }, (_, index) => ({
+        namespace: 'default',
+        topicPattern: `active-${String(index).padStart(2, '0')}*`,
+        ttlStatus: 'ACTIVE' as const,
+      })),
+      { namespace: 'default', topicPattern: 'expired-*', ttlStatus: 'EXPIRED' },
+    ]);
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    await screen.findByText('active-00*');
+    await user.click(container.querySelector('.ant-pagination-next button')!);
+    expect(await screen.findByText('expired-*')).toBeInTheDocument();
+    expect(screen.queryByText('active-00*')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '状态' }));
+    await user.click(
+      await screen.findByText('活跃', { selector: '.ant-select-item-option-content' }),
+    );
+    expect(await screen.findByText('active-00*')).toBeInTheDocument();
+  });
+
   it('displays the session POP progress returned by the API as a percentage', async () => {
     const user = userEvent.setup();
     renderPage();
