@@ -36,6 +36,20 @@ user-management page; browsers authenticate with an `HttpOnly` session cookie, a
 request a bearer token explicitly. Disabling login protection only skips API interception for local
 development.
 
+## Screenshots
+
+**Dashboard · AI chat** — a single entry point that switches between AI chat, cluster diagnosis, resource management, and message query, with model selection and MCP tool calls.
+
+![Dashboard AI chat](docs/pics/home-ai-chat.png)
+
+**Consumer group management** — the group list shows subscription mode, online clients, total lag, and consumption delay; expanding a row reveals per-Topic subscription consistency and filter expressions, alongside offset reset and config import/export.
+
+![Consumer group management](docs/pics/group-list.png)
+
+**Message query** — search messages by Topic / Message Key / Message ID within a time range, then inspect details, trace, verification, or download a single message.
+
+![Message query](docs/pics/message-query.png)
+
 ## Features
 
 | Module | Capabilities |
@@ -68,6 +82,7 @@ development.
 - **Commit Format** — Conventional Commits (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `perf:`)
 - **Architecture Tests** — `mvn test` runs ArchUnit hexagonal architecture constraint checks
 - **i18n** — New frontend text must include both Chinese and English translations (`web/src/i18n/`)
+- **Table Width** — Tables must not show a horizontal scrollbar by default (only allowed when the window/container is manually narrowed); use `tableScrollX(columns)` from `web/src/utils/table.ts` to compute `scroll.x` from declared column widths instead of hardcoded magic numbers; when a modal contains a wide table, adjust the modal `width` dynamically per active tab (e.g., Group detail: Overview 800 / Progress 1080) so that container width ≥ table width; long-text columns (e.g., long Topic names) should use `ellipsis: true` + `title` for hover-to-see-full-name truncation (no wrapping)
 
 ## License
 

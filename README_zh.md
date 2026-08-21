@@ -28,6 +28,20 @@ cd .. && docker compose up -d --build
 `STUDIO_AUTH_ADMIN_PASSWORD` 开启登录保护。登录接口仅接受已配置用户；
 关闭登录保护只会跳过本地开发场景下的 API 拦截。
 
+## 界面预览
+
+**首页 · AI 对话** — 统一入口，可切换 AI 对话 / 集群诊断 / 资源管理 / 消息查询四类场景，支持多模型选择与 MCP 工具调用。
+
+![首页 AI 对话](docs/pics/home-ai-chat.png)
+
+**Group 管理** — 消费组列表展示订阅模式、在线客户端数、总堆积量与消费延迟，展开行可查看订阅 Topic 的订阅一致性与过滤表达式，并支持重置位点、导入导出。
+
+![Group 管理](docs/pics/group-list.png)
+
+**消息查询** — 按 Topic / Message Key / Message ID 结合时间范围检索消息，单条消息可查看详情、轨迹、校验与下载。
+
+![消息查询](docs/pics/message-query.png)
+
 ## 功能概览
 
 | 模块 | 能力 |
@@ -60,6 +74,7 @@ cd .. && docker compose up -d --build
 - **Commit 格式** — 遵循 Conventional Commits（`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `perf:`）
 - **架构测试** — 后端 `mvn test` 自动运行 ArchUnit 六边形架构约束检查
 - **国际化** — 新增前端文案需同时提供中英文翻译（`web/src/i18n/`）
+- **表格宽度** — 表格默认不出横向滚动条（仅窗口/容器被人为缩窄时才出现）；列宽用 `web/src/utils/table.ts` 的 `tableScrollX(columns)` 按声明列宽自动累加算出 `scroll.x`，禁止写死魔术数字；弹窗内表格列多或内容长时，按当前 Tab 动态调整弹窗 `width`（如 Group 详情弹窗：概览 800、消费进度 1080）使容器宽 ≥ 表宽；长文本列（如长 Topic 名）用列 `ellipsis: true` + `title` 悬停显示全名截断，允许显示不全、不换行
 
 ## License
 
