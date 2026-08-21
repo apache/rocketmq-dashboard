@@ -22,12 +22,17 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,15 +40,20 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/dlq")
 @RequiredArgsConstructor
+@Validated
 public class DLQController {
 
     private static final String HEADER_EXPORT_TRUNCATED = "X-DLQ-Export-Truncated";
     private static final String HEADER_EXPORT_FAILED_QUEUES = "X-DLQ-Export-FailedQueues";
     private static final String HEADER_EXPORT_LIMIT = "X-DLQ-Export-Limit";
+    private static final String EXCEL_MEDIA_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    private static final int MAX_SELECTED_MESSAGES = 100;
 
     private final DLQService dlqService;
     private final ObjectMapper objectMapper;
@@ -63,6 +73,46 @@ public class DLQController {
                 request.getStartTime(), request.getEndTime(), request.getTargetTopic()));
     }
 
+    @PostMapping("/resend-selected")
+    public Result<DLQResendResultVO> resendSelectedMessages(
+            @Valid @RequestBody(required = false) DLQResendSelectedRequestDTO request) {
+        requireSelectedRequest(request);
+        return Result.ok(dlqService.resendSelectedMessages(request.getInstanceId(), request.getGroupName(),
+                request.getMsgIds(), request.getTargetTopic()));
+    }
+
+    @GetMapping("/{groupName}/messages")
+    public Result<PageResult<DLQMessageVO>> listDLQMessages(@PathVariable String groupName,
+            @RequestParam String instanceId,
+            @RequestParam(required = false) Long startTime,
+            @RequestParam(required = false) Long endTime,
+            @Min(value = 1, message = "page must be at least 1")
+            @RequestParam(defaultValue = "1") int page,
+            @Min(value = 1, message = "pageSize must be at least 1")
+            @Max(value = 100, message = "pageSize must not exceed 100")
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(dlqService.listMessages(instanceId, groupName, startTime, endTime, page, pageSize));
+    }
+
+    @GetMapping("/export-excel")
+    public ResponseEntity<byte[]> exportDLQExcel(@RequestParam String instanceId,
+                                                 @RequestParam String groupName,
+                                                 @RequestParam(required = false) Long startTime,
+                                                 @RequestParam(required = false) Long endTime,
+                                                 @Size(max = MAX_SELECTED_MESSAGES,
+                                                         message = "At most 100 msgIds are allowed per export")
+                                                 @RequestParam(required = false) List<String> msgIds) {
+        DLQExcelExportResultVO result = dlqService.exportExcel(instanceId, groupName, startTime, endTime, msgIds);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        attachmentDisposition("dlq-" + sanitizeForFilename(groupName) + ".xlsx").toString())
+                .header(HEADER_EXPORT_TRUNCATED, String.valueOf(result.isTruncated()))
+                .header(HEADER_EXPORT_FAILED_QUEUES, String.valueOf(result.getFailedQueueCount()))
+                .header(HEADER_EXPORT_LIMIT, String.valueOf(result.getLimit()))
+                .contentType(MediaType.parseMediaType(EXCEL_MEDIA_TYPE))
+                .body(result.getData());
+    }
+
     @GetMapping("/export")
     public ResponseEntity<byte[]> exportDLQMessages(@RequestParam String instanceId,
                                                     @RequestParam String groupName,
@@ -77,23 +127,29 @@ public class DLQController {
         } catch (JsonProcessingException exception) {
             throw new BusinessException(500, "Failed to serialize DLQ export");
         }
-        String fileName = "dlq-" + sanitizeForFilename(groupName) + ".json";
-        ContentDisposition.Builder builder = ContentDisposition.attachment();
-        if (fileName.chars().allMatch(ch -> ch < 128)) {
-            builder.filename(fileName);
-        } else {
-            // Non-ASCII names need the RFC 5987 filename* parameter so browsers keep the
-            // original characters instead of the lossy ASCII fallback.
-            builder.filename(fileName, StandardCharsets.UTF_8);
-        }
-        ContentDisposition disposition = builder.build();
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        attachmentDisposition("dlq-" + sanitizeForFilename(groupName) + ".json").toString())
                 .header(HEADER_EXPORT_TRUNCATED, String.valueOf(result.isTruncated()))
                 .header(HEADER_EXPORT_FAILED_QUEUES, String.valueOf(result.getFailedQueueCount()))
                 .header(HEADER_EXPORT_LIMIT, String.valueOf(result.getLimit()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body);
+    }
+
+    /**
+     * Builds an {@code attachment} Content-Disposition; non-ASCII names need the RFC 5987
+     * {@code filename*} parameter so browsers keep the original characters instead of the
+     * lossy ASCII fallback.
+     */
+    private static ContentDisposition attachmentDisposition(String fileName) {
+        ContentDisposition.Builder builder = ContentDisposition.attachment();
+        if (fileName.chars().allMatch(ch -> ch < 128)) {
+            builder.filename(fileName);
+        } else {
+            builder.filename(fileName, StandardCharsets.UTF_8);
+        }
+        return builder.build();
     }
 
     /**
@@ -111,6 +167,12 @@ public class DLQController {
     }
 
     private void requireRequest(DLQResendRequestDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "DLQ resend request is required");
+        }
+    }
+
+    private void requireSelectedRequest(DLQResendSelectedRequestDTO request) {
         if (request == null) {
             throw new BusinessException(400, "DLQ resend request is required");
         }

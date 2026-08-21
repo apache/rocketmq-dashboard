@@ -16,9 +16,10 @@
  */
 
 import MockAdapter from 'axios-mock-adapter';
+import type { InternalAxiosRequestConfig } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { exportDLQMessages, listDLQGroups, resendDLQ } from './message';
+import { exportDLQExcel, exportDLQMessages, listDLQGroups, resendDLQ } from './message';
 import type { DLQGroup } from './message';
 
 const mock = new MockAdapter(client);
@@ -121,5 +122,58 @@ describe('DLQ API', () => {
     });
 
     expect(meta).toEqual({ truncated: false, failedQueueCount: 0, limit: 0 });
+  });
+
+  it('serializes selected msgIds as repeated params so Spring binds them', async () => {
+    // axios's default serializer emits `msgIds[]=a&msgIds[]=b`, which Spring's
+    // @RequestParam List<String> does not bind — the backend would silently fall
+    // back to exporting the whole time window. Capture the request config that
+    // exportDLQExcel actually sends and lock its repeated-param serialization.
+    let capturedConfig: InternalAxiosRequestConfig | null = null;
+    const originalAdapter = client.defaults.adapter;
+    client.defaults.adapter = (config) => {
+      capturedConfig = config;
+      return Promise.resolve({
+        data: new Blob(['xlsx']),
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      } as never);
+    };
+    try {
+      await exportDLQExcel({
+        instanceId: 'instance-1',
+        groupName: group.groupName,
+        msgIds: ['msg-1', 'msg-2'],
+      });
+    } finally {
+      client.defaults.adapter = originalAdapter;
+    }
+    expect(capturedConfig).not.toBeNull();
+    const serialized = client.getUri(capturedConfig as never);
+    expect(serialized).toContain('msgIds=msg-1&msgIds=msg-2');
+    expect(serialized).not.toContain('msgIds[]');
+  });
+
+  it('returns the Excel export blob with completeness metadata from the response headers', async () => {
+    const payload = new Blob(['xlsx'], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    mock.onGet('/dlq/export-excel').reply(200, payload, {
+      'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'content-disposition': 'attachment; filename="dlq-order-consumer.xlsx"',
+      'x-dlq-export-truncated': 'true',
+      'x-dlq-export-failedqueues': '2',
+      'x-dlq-export-limit': '5000',
+    });
+
+    const { blob, meta } = await exportDLQExcel({
+      instanceId: 'instance-1',
+      groupName: group.groupName,
+    });
+
+    await expect(blob.text()).resolves.toBe('xlsx');
+    expect(meta).toEqual({ truncated: true, failedQueueCount: 2, limit: 5000 });
   });
 });

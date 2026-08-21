@@ -8,6 +8,7 @@ import type {
   TraceRecord,
   DLQGroup,
   DLQGroupPage,
+  DLQMessagePage,
   DLQResendResult,
   DLQExportMeta,
 } from '../api/message';
@@ -128,4 +129,48 @@ export async function exportDLQMessages(params: {
     };
   }
   return messageApi.exportDLQMessages(params);
+}
+
+export async function listDLQMessages(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  page?: number;
+  pageSize?: number;
+}): Promise<DLQMessagePage> {
+  if (isMockMode()) {
+    return { items: [], total: 0, page: params.page ?? 1, size: params.pageSize ?? 20 };
+  }
+  return messageApi.listDLQMessages(params);
+}
+
+export async function resendDLQSelected(data: {
+  instanceId: string;
+  groupName: string;
+  msgIds: string[];
+  targetTopic?: string;
+}): Promise<DLQResendResult> {
+  if (isMockMode()) {
+    return { matched: data.msgIds.length, resent: data.msgIds.length, failed: 0, outcome: 'SUCCESS' };
+  }
+  return messageApi.resendDLQSelected(data);
+}
+
+export async function exportDLQExcel(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  msgIds?: string[];
+}): Promise<{ blob: Blob; meta: DLQExportMeta }> {
+  if (isMockMode()) {
+    return {
+      blob: new Blob([''], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+      meta: { truncated: false, failedQueueCount: 0, limit: 5000 },
+    };
+  }
+  return messageApi.exportDLQExcel(params);
 }

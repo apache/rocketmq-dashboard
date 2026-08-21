@@ -92,6 +92,24 @@ export interface DLQResendResult {
   failedQueueCount?: number;
 }
 
+export interface DLQMessage {
+  msgId: string;
+  topic: string;
+  queueId: number;
+  offset: number;
+  storeTime: number;
+  keys: string | null;
+  body: string | null;
+  bodyBase64: string | null;
+}
+
+export interface DLQMessagePage {
+  items: DLQMessage[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 // ─── Messages ───────────────────────────────────────────────────
 export async function queryMessages(params: MessageQuery) {
   const res = await client.get<{ data: MessageRecord[] }>('/messages', { params });
@@ -184,4 +202,55 @@ export async function pullMessageAtOffset(params: {
     params,
   });
   return res.data.data;
+}
+
+export async function listDLQMessages(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  page?: number;
+  pageSize?: number;
+}): Promise<DLQMessagePage> {
+  const res = await client.get<{ data: DLQMessagePage }>(
+    `/dlq/${encodeURIComponent(params.groupName)}/messages`,
+    { params },
+  );
+  return res.data.data;
+}
+
+export async function resendDLQSelected(data: {
+  instanceId: string;
+  groupName: string;
+  msgIds: string[];
+  targetTopic?: string;
+}): Promise<DLQResendResult> {
+  const res = await client.post<{ data: DLQResendResult }>('/dlq/resend-selected', data);
+  return res.data.data;
+}
+
+export async function exportDLQExcel(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  msgIds?: string[];
+}): Promise<{ blob: Blob; meta: DLQExportMeta }> {
+  const res = await client.get<Blob>('/dlq/export-excel', {
+    params,
+    responseType: 'blob',
+    // Repeat the parameter name per item (`msgIds=a&msgIds=b`) instead of axios's default
+    // bracketed form (`msgIds[]=a`), which Spring's @RequestParam List<String> would not
+    // bind — the request would silently fall back to exporting the whole time window.
+    paramsSerializer: { indexes: null },
+  });
+  const header = (name: string): string => String(res.headers[name] ?? '');
+  return {
+    blob: res.data,
+    meta: {
+      truncated: header('x-dlq-export-truncated') === 'true',
+      failedQueueCount: Number.parseInt(header('x-dlq-export-failedqueues'), 10) || 0,
+      limit: Number.parseInt(header('x-dlq-export-limit'), 10) || 0,
+    },
+  };
 }

@@ -21,7 +21,7 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DLQGroup, DLQGroupPage, DLQResendResult } from '../../../api/message';
+import type { DLQGroup, DLQGroupPage, DLQMessagePage, DLQResendResult } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as messageService from '../../../services/messageService';
 import DLQPage from '../dlq';
@@ -30,6 +30,9 @@ vi.mock('../../../services/messageService', () => ({
   listDLQGroups: vi.fn(),
   resendDLQ: vi.fn(),
   exportDLQMessages: vi.fn(),
+  listDLQMessages: vi.fn(),
+  resendDLQSelected: vi.fn(),
+  exportDLQExcel: vi.fn(),
 }));
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([
@@ -124,6 +127,9 @@ describe('DLQ page', () => {
     vi.mocked(messageService.listDLQGroups).mockReset();
     vi.mocked(messageService.resendDLQ).mockReset();
     vi.mocked(messageService.exportDLQMessages).mockReset();
+    vi.mocked(messageService.listDLQMessages).mockReset();
+    vi.mocked(messageService.resendDLQSelected).mockReset();
+    vi.mocked(messageService.exportDLQExcel).mockReset();
     createObjectURL = vi.fn().mockReturnValue('blob:dlq');
     revokeObjectURL = vi.fn();
     Object.defineProperty(URL, 'createObjectURL', {
@@ -136,6 +142,12 @@ describe('DLQ page', () => {
     });
     clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup]));
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+    } satisfies DLQMessagePage);
   });
 
   afterEach(() => {
@@ -227,23 +239,24 @@ describe('DLQ page', () => {
     expect(screen.getByText('-')).toBeInTheDocument();
   });
 
-  it('opens a detail dialog with the selected group metadata', async () => {
+  it('opens a message detail drawer with the selected group metadata', async () => {
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
-    await user.click(screen.getByRole('button', { name: /查看详情/ }));
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
 
-    expect(await screen.findByText('死信队列详情')).toBeInTheDocument();
-    expect(screen.getAllByText('cg-order')).toHaveLength(2);
-    expect(screen.getAllByText('%DLQ%cg-order')).toHaveLength(2);
-    expect(screen.getByText('ACTIVE')).toBeInTheDocument();
+    expect(await screen.findByText('DLQ 消息明细 · cg-order')).toBeInTheDocument();
+    expect(screen.getAllByText('%DLQ%cg-order').length).toBeGreaterThanOrEqual(2);
+    expect(messageService.listDLQMessages).toHaveBeenCalledWith(
+      expect.objectContaining({ instanceId: 'instance-1', groupName: 'cg-order' }),
+    );
   });
 
-  it('exports the dead-letter messages of a group as JSON', async () => {
-    vi.mocked(messageService.exportDLQMessages).mockResolvedValue({
-      blob: new Blob(['[{"msgId":"m1","topic":"%DLQ%cg-order","queueId":0,"offset":5}]'], {
-        type: 'application/json',
+  it('exports the dead-letter messages of a group as Excel', async () => {
+    vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
+      blob: new Blob(['xlsx-bytes'], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       }),
       meta: { truncated: false, failedQueueCount: 0, limit: 5000 },
     });
@@ -253,8 +266,8 @@ describe('DLQ page', () => {
     await screen.findByText('cg-order');
     await user.click(screen.getByRole('button', { name: '导出' }));
 
-    expect(messageService.exportDLQMessages).toHaveBeenCalledTimes(1);
-    const exportParams = vi.mocked(messageService.exportDLQMessages).mock.calls[0][0];
+    expect(messageService.exportDLQExcel).toHaveBeenCalledTimes(1);
+    const exportParams = vi.mocked(messageService.exportDLQExcel).mock.calls[0][0];
     expect(exportParams.instanceId).toBe('instance-1');
     expect(exportParams.groupName).toBe('cg-order');
     expect(typeof exportParams.startTime).toBe('number');
@@ -262,15 +275,15 @@ describe('DLQ page', () => {
     // Default export window is the last day, mirroring the visible range picker.
     expect(exportParams.endTime! - exportParams.startTime!).toBeGreaterThan(23 * 3600_000);
     expect(createObjectURL).toHaveBeenCalledTimes(1);
-    const blob = createObjectURL.mock.calls[0][0] as Blob;
-    await expect(blob.text()).resolves.toContain('"msgId":"m1"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
 
   it('warns when the export scan is incomplete', async () => {
-    vi.mocked(messageService.exportDLQMessages).mockResolvedValue({
-      blob: new Blob(['[]'], { type: 'application/json' }),
+    vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
+      blob: new Blob([''], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
       meta: { truncated: true, failedQueueCount: 2, limit: 100 },
     });
     const user = userEvent.setup();

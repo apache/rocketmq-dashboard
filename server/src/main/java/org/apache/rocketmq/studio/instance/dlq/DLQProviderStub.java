@@ -58,6 +58,28 @@ public class DLQProviderStub implements DLQProvider {
         throw unsupported();
     }
 
+    @Override
+    public PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                                 int page, int pageSize) {
+        log.warn("DLQProviderStub.listMessages called but no real DLQ provider is configured. group={}", groupName);
+        throw unsupported();
+    }
+
+    @Override
+    public DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
+                                             String targetTopic) {
+        log.warn("DLQProviderStub.resendMessages(selected) called but no real DLQ provider is configured. group={}",
+                groupName);
+        throw unsupported();
+    }
+
+    @Override
+    public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
+                                              List<String> msgIds) {
+        log.warn("DLQProviderStub.exportExcel called but no real DLQ provider is configured. group={}", groupName);
+        throw unsupported();
+    }
+
     private BusinessException unsupported() {
         return new BusinessException(501, "DLQ provider is not configured");
     }

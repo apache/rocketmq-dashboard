@@ -25,6 +25,7 @@ import {
   Space,
   Flex,
   Modal,
+  Drawer,
   DatePicker,
   Typography,
   message,
@@ -34,10 +35,17 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
-import type { DLQGroup } from '../../api/message';
-import { exportDLQMessages, listDLQGroups, resendDLQ } from '../../services/messageService';
+import type { DLQGroup, DLQMessage } from '../../api/message';
+import {
+  exportDLQExcel,
+  listDLQGroups,
+  listDLQMessages,
+  resendDLQ,
+  resendDLQSelected,
+} from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
 import { tableScrollX } from '../../utils/table';
@@ -123,11 +131,22 @@ const DLQPage = () => {
   const [selectedGroupNames, setSelectedGroupNames] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailMessages, setDetailMessages] = useState<DLQMessage[]>([]);
+  const [detailTotal, setDetailTotal] = useState(0);
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailPageSize, setDetailPageSize] = useState(20);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailSelectedMsgIds, setDetailSelectedMsgIds] = useState<string[]>([]);
+  const [detailResending, setDetailResending] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const detailRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
 
   useEffect(
     () => () => {
       retryRequestIdRef.current += 1;
+      detailRequestIdRef.current += 1;
     },
     [],
   );
@@ -266,13 +285,13 @@ const DLQPage = () => {
 
   const handleExport = async (group: DLQGroup) => {
     try {
-      const { blob, meta } = await exportDLQMessages({
+      const { blob, meta } = await exportDLQExcel({
         instanceId: selectedInstanceId,
         groupName: group.groupName,
         startTime: exportRange[0].valueOf(),
         endTime: exportRange[1].valueOf(),
       });
-      downloadBlob(blob, `${group.groupName}-dlq-messages.json`);
+      downloadBlob(blob, `${group.groupName}-dlq-messages.xlsx`);
       if (meta.truncated || meta.failedQueueCount > 0) {
         message.warning(
           `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
@@ -288,6 +307,97 @@ const DLQPage = () => {
   const handleBatchExport = () => {
     if (selectedGroups.length === 0) return;
     exportDLQGroups(selectedGroups, 'dlq-groups.csv');
+  };
+
+  /* ─── DLQ Message Details Drawer ─── */
+  const openDetailDrawer = (group: DLQGroup) => {
+    setDetailGroup(group);
+    setDetailOpen(true);
+    setDetailPage(1);
+    setDetailSelectedMsgIds([]);
+    setDetailError(null);
+    void loadDetailMessages(group, 1, detailPageSize);
+  };
+
+  const loadDetailMessages = async (group: DLQGroup, page: number, pageSize: number) => {
+    if (!selectedInstanceId) return;
+    const requestId = detailRequestIdRef.current + 1;
+    detailRequestIdRef.current = requestId;
+    setDetailLoading(true);
+    setDetailError(null);
+    try {
+      const result = await listDLQMessages({
+        instanceId: selectedInstanceId,
+        groupName: group.groupName,
+        startTime: exportRange[0].valueOf(),
+        endTime: exportRange[1].valueOf(),
+        page,
+        pageSize,
+      });
+      if (detailRequestIdRef.current !== requestId) return;
+      setDetailMessages(result.items);
+      setDetailTotal(result.total);
+      setDetailPage(page);
+    } catch (error) {
+      if (detailRequestIdRef.current === requestId) {
+        setDetailError(getErrorMessage(error, '死信消息明细加载失败，请稍后重试'));
+      }
+    } finally {
+      if (detailRequestIdRef.current === requestId) {
+        setDetailLoading(false);
+      }
+    }
+  };
+
+  const resendSelectedMessages = async (msgIds: string[]) => {
+    if (!selectedInstanceId || !detailGroup || msgIds.length === 0) return;
+    setDetailResending(true);
+    setDetailError(null);
+    try {
+      const result = await resendDLQSelected({
+        instanceId: selectedInstanceId,
+        groupName: detailGroup.groupName,
+        msgIds,
+      });
+      if (result.outcome === 'FAILED' && result.failed > 0) {
+        message.error(`重发失败：成功 ${result.resent}，失败 ${result.failed}`);
+      } else if (result.resent > 0 && result.failed > 0) {
+        message.warning(`重发部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+      } else {
+        message.success(`重发完成：成功 ${result.resent} 条`);
+      }
+      setDetailSelectedMsgIds([]);
+      await loadDetailMessages(detailGroup, detailPage, detailPageSize);
+    } catch (error) {
+      setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
+    } finally {
+      setDetailResending(false);
+    }
+  };
+
+  const exportDetailExcel = async () => {
+    if (!selectedInstanceId || !detailGroup) return;
+    try {
+      const { blob, meta } = await exportDLQExcel({
+        instanceId: selectedInstanceId,
+        groupName: detailGroup.groupName,
+        startTime: exportRange[0].valueOf(),
+        endTime: exportRange[1].valueOf(),
+        msgIds: detailSelectedMsgIds.length > 0 ? detailSelectedMsgIds : undefined,
+      });
+      downloadBlob(blob, `${detailGroup.groupName}-dlq-messages.xlsx`);
+      if (meta.truncated || meta.failedQueueCount > 0) {
+        message.warning(
+          `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
+        );
+      } else {
+        message.success(
+          `已导出 ${detailSelectedMsgIds.length > 0 ? `选中的 ${detailSelectedMsgIds.length} 条` : '全部'}死信消息（${blob.size} 字节）`,
+        );
+      }
+    } catch (error) {
+      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+    }
   };
 
   /* ─── Table Columns ─── */
@@ -361,9 +471,9 @@ const DLQPage = () => {
             size="small"
             icon={<Eye size={14} />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => setDetailGroup(record)}
+            onClick={() => openDetailDrawer(record)}
           >
-            查看详情
+            消息明细
           </Button>
           <Button
             size="small"
@@ -384,6 +494,82 @@ const DLQPage = () => {
             导出
           </Button>
         </Flex>
+      ),
+    },
+  ];
+
+  /* ─── Detail Drawer Columns ─── */
+  const detailColumns: ColumnsType<DLQMessage> = [
+    {
+      title: 'Message ID',
+      dataIndex: 'msgId',
+      key: 'msgId',
+      width: 240,
+      render: (msgId: string) => (
+        <Text copyable style={{ fontFamily: 'monospace', fontSize: 14 }}>
+          {msgId}
+        </Text>
+      ),
+    },
+    {
+      title: 'Queue',
+      key: 'queue',
+      width: 90,
+      render: (_: unknown, record: DLQMessage) => (
+        <Text style={{ fontFamily: 'monospace' }}>{record.queueId}</Text>
+      ),
+    },
+    {
+      title: 'Offset',
+      dataIndex: 'offset',
+      key: 'offset',
+      width: 90,
+      render: (offset: number) => <Text style={{ fontFamily: 'monospace' }}>{offset}</Text>,
+    },
+    {
+      title: '入队时间',
+      dataIndex: 'storeTime',
+      key: 'storeTime',
+      width: 160,
+      render: (storeTime: number) => (
+        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>
+          {formatDateTime(new Date(storeTime).toISOString())}
+        </Text>
+      ),
+    },
+    {
+      title: 'Keys',
+      dataIndex: 'keys',
+      key: 'keys',
+      width: 140,
+      ellipsis: true,
+      render: (keys: string | null) => keys ?? '-',
+    },
+    {
+      title: 'Body',
+      dataIndex: 'body',
+      key: 'body',
+      width: 220,
+      ellipsis: true,
+      render: (body: string | null) => (
+        <Text type="secondary" style={{ fontSize: 14 }}>
+          {body && body.length > 80 ? `${body.slice(0, 80)}…` : body ?? '-'}
+        </Text>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 100,
+      render: (_: unknown, record: DLQMessage) => (
+        <Button
+          size="small"
+          icon={<ArrowsCounterClockwise size={13} />}
+          loading={detailResending}
+          onClick={() => void resendSelectedMessages([record.msgId])}
+        >
+          重发
+        </Button>
       ),
     },
   ];
@@ -575,72 +761,123 @@ const DLQPage = () => {
         )}
       </Modal>
 
-      <Modal
-        title="死信队列详情"
-        open={Boolean(detailGroup)}
-        onCancel={() => setDetailGroup(null)}
-        footer={<Button onClick={() => setDetailGroup(null)}>关闭</Button>}
-        width={560}
+      {/* ═══════════════════════════════════════════
+         Message Detail Drawer
+         ═══════════════════════════════════════════ */}
+      <Drawer
+        title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
+        width={1080}
+        open={detailOpen}
+        onClose={() => {
+          detailRequestIdRef.current += 1;
+          setDetailOpen(false);
+          setDetailGroup(null);
+          setDetailMessages([]);
+          setDetailSelectedMsgIds([]);
+          setDetailError(null);
+        }}
         destroyOnHidden
       >
         {detailGroup && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                Group 名称
-              </Text>
-              <Text strong copyable style={{ fontSize: 14, fontFamily: 'monospace' }}>
-                {detailGroup.groupName}
-              </Text>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                DLQ Topic
-              </Text>
-              <Text copyable style={{ fontSize: 14, fontFamily: 'monospace' }}>
-                {detailGroup.dlqTopic}
-              </Text>
-            </div>
-            <Flex gap={24} wrap="wrap">
-              <div>
-                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                  死信数量
-                </Text>
-                <Text
-                  strong
-                  style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}
-                >
-                  {detailGroup.statsAvailable === false
-                    ? '不可用'
-                    : detailGroup.messageCount.toLocaleString()}
-                </Text>
-              </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                  重试次数
-                </Text>
-                <Text>{detailGroup.retryCount.toLocaleString()}</Text>
-              </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                  状态
-                </Text>
-                <Text>
-                  {detailGroup.statsAvailable === false ? '统计不可用' : detailGroup.status}
-                </Text>
-              </div>
+          <>
+            <Flex
+              justify="space-between"
+              align="flex-start"
+              wrap="wrap"
+              gap={12}
+              style={{ marginBottom: 16 }}
+            >
+              <Space size={24} wrap>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                    DLQ Topic
+                  </Text>
+                  <Text copyable style={{ fontFamily: 'monospace' }}>
+                    {detailGroup.dlqTopic}
+                  </Text>
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                    死信数量
+                  </Text>
+                  <Text strong style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}>
+                    {detailGroup.statsAvailable === false
+                      ? '不可用'
+                      : detailGroup.messageCount.toLocaleString()}
+                  </Text>
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                    最近入队时间
+                  </Text>
+                  <Text style={{ fontFamily: 'monospace' }}>
+                    {formatDateTime(detailGroup.lastEnqueueTime)}
+                  </Text>
+                </div>
+              </Space>
+              <Button
+                icon={<Download size={15} />}
+                disabled={detailTotal === 0}
+                onClick={() => void exportDetailExcel()}
+              >
+                {detailSelectedMsgIds.length > 0
+                  ? `导出选中 (${detailSelectedMsgIds.length})`
+                  : '导出全部'}
+              </Button>
             </Flex>
-            <div style={{ marginTop: 16 }}>
-              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                最近入队时间
-              </Text>
-              <Text style={{ fontFamily: 'monospace' }}>
-                {formatDateTime(detailGroup.lastEnqueueTime)}
-              </Text>
-            </div>
-          </div>
+
+            <InfoBanner
+              description={`明细按「导出时间范围」查询（${exportRange[0].format('YYYY-MM-DD HH:mm:ss')} ~ ${exportRange[1].format('YYYY-MM-DD HH:mm:ss')}）。勾选后可单条或批量重发、导出 Excel。`}
+            />
+
+            {detailError && (
+              <Alert showIcon type="warning" message={detailError} style={{ marginBottom: 16 }} />
+            )}
+
+            <Table<DLQMessage>
+              rowKey="msgId"
+              size="small"
+              loading={detailLoading}
+              dataSource={detailMessages}
+              rowSelection={{
+                selectedRowKeys: detailSelectedMsgIds,
+                onChange: (keys) => setDetailSelectedMsgIds(keys.map(String)),
+              }}
+              pagination={{
+                current: detailPage,
+                pageSize: detailPageSize,
+                total: detailTotal,
+                showSizeChanger: true,
+                pageSizeOptions: [10, 20, 50],
+                showTotal: (totalCount) => `共 ${totalCount} 条消息`,
+                onChange: (nextPage, nextPageSize) => {
+                  setDetailPage(nextPage);
+                  setDetailPageSize(nextPageSize);
+                  setDetailSelectedMsgIds([]);
+                  if (detailGroup) {
+                    void loadDetailMessages(detailGroup, nextPage, nextPageSize);
+                  }
+                },
+              }}
+              scroll={{ x: tableScrollX(detailColumns, { selection: true }) }}
+              columns={detailColumns}
+            />
+
+            {detailSelectedMsgIds.length > 0 && (
+              <Flex justify="flex-end" style={{ marginTop: 16 }}>
+                <Button
+                  type="primary"
+                  icon={<ArrowsCounterClockwise size={15} />}
+                  loading={detailResending}
+                  onClick={() => void resendSelectedMessages(detailSelectedMsgIds)}
+                >
+                  批量重发选中 ({detailSelectedMsgIds.length})
+                </Button>
+              </Flex>
+            )}
+          </>
         )}
-      </Modal>
+      </Drawer>
     </div>
   );
 };
