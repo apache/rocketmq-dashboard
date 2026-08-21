@@ -27,6 +27,9 @@ public class PasswordHasher {
     private static final int SALT_LENGTH = 16;
     private static final int MIN_ITERATIONS = 100_000;
     private static final int MAX_ITERATIONS = 1_000_000;
+    private static final int DIGEST_LENGTH = KEY_LENGTH / Byte.SIZE;
+    private static final int ENCODED_SALT_LENGTH = 24;
+    private static final int ENCODED_DIGEST_LENGTH = 44;
 
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -51,8 +54,15 @@ public class PasswordHasher {
             if (iterations < MIN_ITERATIONS || iterations > MAX_ITERATIONS) {
                 return false;
             }
+            if (parts[2].length() != ENCODED_SALT_LENGTH
+                    || parts[3].length() != ENCODED_DIGEST_LENGTH) {
+                return false;
+            }
             byte[] salt = Base64.getDecoder().decode(parts[2]);
             byte[] expected = Base64.getDecoder().decode(parts[3]);
+            if (salt.length != SALT_LENGTH || expected.length != DIGEST_LENGTH) {
+                return false;
+            }
             return MessageDigest.isEqual(expected, derive(password.toCharArray(), salt, iterations));
         } catch (IllegalArgumentException exception) {
             return false;

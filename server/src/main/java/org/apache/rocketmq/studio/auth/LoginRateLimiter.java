@@ -35,16 +35,23 @@ public class LoginRateLimiter {
     static final int MAX_FAILED_ATTEMPTS = 5;
     static final Duration FAILURE_WINDOW = Duration.ofMinutes(5);
     static final Duration LOCK_DURATION = Duration.ofMinutes(5);
+    static final int MAX_TRACKED_USERNAMES = 10_000;
 
     private final Map<String, AttemptState> attempts = new ConcurrentHashMap<>();
     private final Clock clock;
+    private final int maxTrackedUsernames;
 
     public LoginRateLimiter() {
         this(Clock.systemUTC());
     }
 
     LoginRateLimiter(Clock clock) {
+        this(clock, MAX_TRACKED_USERNAMES);
+    }
+
+    LoginRateLimiter(Clock clock, int maxTrackedUsernames) {
         this.clock = clock;
+        this.maxTrackedUsernames = maxTrackedUsernames;
     }
 
     /**
@@ -65,9 +72,16 @@ public class LoginRateLimiter {
         attempts.remove(key, state);
     }
 
-    public void recordFailure(String username) {
+    public synchronized void recordFailure(String username) {
         String key = key(username);
         long now = clock.millis();
+        if (!attempts.containsKey(key) && attempts.size() >= maxTrackedUsernames) {
+            removeExpiredAttempts(now);
+            if (attempts.size() >= maxTrackedUsernames) {
+                log.debug("Login rate limiter is at capacity; ignoring a new username");
+                return;
+            }
+        }
         AttemptState state = attempts.compute(key, (ignored, current) -> {
             AttemptState base = current;
             if (base == null || base.lockedUntilMillis() != 0
@@ -88,6 +102,20 @@ public class LoginRateLimiter {
 
     public void recordSuccess(String username) {
         attempts.remove(key(username));
+    }
+
+    int trackedUsernameCount() {
+        return attempts.size();
+    }
+
+    private void removeExpiredAttempts(long now) {
+        attempts.entrySet().removeIf(entry -> {
+            AttemptState state = entry.getValue();
+            if (state.lockedUntilMillis() != 0) {
+                return state.lockedUntilMillis() <= now;
+            }
+            return now - state.windowStartMillis() >= FAILURE_WINDOW.toMillis();
+        });
     }
 
     private String key(String username) {
