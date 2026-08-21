@@ -49,8 +49,17 @@ RocketMQ、Prometheus 和云 API 故障由 Studio 的运行态诊断页面展示
 故障触发 Studio 容器反复重启。
 
 默认 schema 只创建 Studio 所需的表，不会写入实例、Topic、消费组或 ACL 示例数据。需要演示数据时，
-请在开发环境中显式导入 `deploy/mysql/upgrade-demo-instance.sql` 和
-`deploy/mysql/upgrade-demo-acl.sql`，不要在生产环境导入这些脚本。
+请先初始化当前 `server/src/main/resources/db/schema.sql`，再在开发环境中按顺序导入：
+
+```bash
+docker exec -i rocketmq-studio-mysql mysql -uroot -pstudio123 rocketmq \
+  < deploy/mysql/upgrade-demo-instance.sql
+docker exec -i rocketmq-studio-mysql mysql -uroot -pstudio123 rocketmq \
+  < deploy/mysql/upgrade-demo-acl.sql
+```
+
+两个脚本均按当前 numeric-ID schema 写入并可重复执行；它们只负责演示数据，不创建或迁移业务表，
+不要在生产环境导入。
 ## 开启登录保护
 
 `studio.auth.login-required` 默认为 `false`，便于本地开发和演示环境直接访问。共享环境建议在

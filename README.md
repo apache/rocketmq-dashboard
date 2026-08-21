@@ -20,7 +20,9 @@ The first command starts the bundled RocketMQ topology and creates the
 is healthy before starting Studio with `docker compose ps` from `deploy/rocketmq`.
 The default schema creates only Studio tables. It does not seed instances, topics, consumer groups, or ACL
 records. Development-only sample data can be imported explicitly from `deploy/mysql/`; it is not part of the
-default deployment.
+default deployment. Import `upgrade-demo-instance.sql` first and then `upgrade-demo-acl.sql`; both scripts
+target the current numeric-ID schema and are idempotent. They are sample-data loaders, not upgrade migrations,
+and should never be imported into a production database.
 
 **Studio ports:** Frontend 6789 (Nginx), Backend 8888 (Spring Boot)
 
