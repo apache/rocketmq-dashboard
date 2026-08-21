@@ -74,6 +74,8 @@ import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import type { Instance } from '../../api/instance';
 import {
   parseCsvTable,
+  RESOURCE_NAME_MAX_LENGTH,
+  RESOURCE_NAME_PATTERN,
   validateTopicCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
@@ -1329,8 +1331,12 @@ const TopicPage = () => {
             rules={[
               { required: true, message: '请输入 Topic 名称' },
               {
-                pattern: /^[a-zA-Z0-9_\-/*]+$/,
-                message: '仅支持字母、数字、下划线、中划线、斜杠和星号',
+                pattern: RESOURCE_NAME_PATTERN,
+                message: '仅支持字母、数字、下划线、短横线、% 和 |',
+              },
+              {
+                max: RESOURCE_NAME_MAX_LENGTH.topic,
+                message: `名称不能超过 ${RESOURCE_NAME_MAX_LENGTH.topic} 个字符`,
               },
             ]}
           >
