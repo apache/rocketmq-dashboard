@@ -79,6 +79,13 @@ public class ConsumerGroupController {
                 request.getRetryQueueNums(), request.getRetryMaxTimes()));
     }
 
+    @GetMapping("/{name}/refresh")
+    public Result<ConsumerGroupVO> refreshConsumerGroup(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.refreshConsumerGroup(instanceId, name));
+    }
+
     @GetMapping("/{name}/progress")
     public Result<List<QueueProgressVO>> getGroupProgress(
             @PathVariable String name,

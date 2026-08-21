@@ -56,7 +56,13 @@ import {
   ArrowsClockwise,
   SlidersHorizontal,
 } from '@phosphor-icons/react';
-import { ImportOutlined, ExportOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
+import {
+  ImportOutlined,
+  ExportOutlined,
+  DeleteOutlined,
+  SyncOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -81,6 +87,7 @@ import {
   getConsumerStack,
   getConsumerSubscriptions,
   listConsumerGroupPage,
+  refreshConsumerGroup,
   resetConsumerOffset,
   getConsumerGroupSettings,
   updateConsumerGroupSettings,
@@ -326,6 +333,33 @@ const ConsumerPageContent = ({
     },
     [progressByGroup, t, selectedInstanceId],
   );
+
+  const [refreshingGroup, setRefreshingGroup] = useState<string | null>(null);
+
+  const handleRefreshGroup = async (record: ConsumerGroup) => {
+    if (refreshingGroup) return;
+    setRefreshingGroup(record.name);
+    try {
+      const refreshed = await refreshConsumerGroup(record.name, selectedInstanceId || undefined);
+      if (!refreshed) {
+        // 组不存在（业务状态为空）：保留原行数据，不弹错。
+        return;
+      }
+      setGroups((prev) => prev.map((group) => (group.name === record.name ? refreshed : group)));
+      // Invalidate the cached progress so the detail modal re-fetches it on next open.
+      setProgressByGroup((prev) => {
+        const next = { ...prev };
+        delete next[diagnosticCacheKey(selectedInstanceId, record.name)];
+        return next;
+      });
+      message.success(`消费组 ${record.name} 已刷新`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '';
+      message.error(detail || `刷新消费组 ${record.name} 失败`);
+    } finally {
+      setRefreshingGroup(null);
+    }
+  };
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
@@ -683,7 +717,7 @@ const ConsumerPageContent = ({
     {
       title: '操作',
       key: 'actions',
-      width: 210,
+      width: 360,
       render: (_: unknown, record: ConsumerGroup) => (
         <Flex gap={6}>
           <Button
@@ -696,6 +730,18 @@ const ConsumerPageContent = ({
             }}
           >
             配置
+          </Button>
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            loading={refreshingGroup === record.name}
+            disabled={refreshingGroup !== null && refreshingGroup !== record.name}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleRefreshGroup(record);
+            }}
+          >
+            刷新
           </Button>
           <Button
             size="small"

@@ -335,4 +335,26 @@ class MetadataServiceTest {
                 .hasMessage("pageSize must be between 1 and 100");
     }
 
+    @Test
+    void refreshConsumerGroupShouldExactMatchWithinProviderSearchResults() {
+        ConsumerGroupVO similar = new ConsumerGroupVO();
+        similar.setName("cg-order-archive");
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-order");
+        when(apacheProvider.listConsumerGroups("instance-a", "cg-order"))
+                .thenReturn(List.of(similar, group));
+
+        ConsumerGroupVO result = metadataService.refreshConsumerGroup("instance-a", " cg-order ");
+
+        assertThat(result).isSameAs(group);
+        verify(apacheProvider).listConsumerGroups("instance-a", "cg-order");
+    }
+
+    @Test
+    void refreshConsumerGroupShouldReturnNullWhenGroupMissingInsteadOfError() {
+        when(apacheProvider.listConsumerGroups("instance-a", "cg-gone")).thenReturn(List.of());
+
+        assertThat(metadataService.refreshConsumerGroup("instance-a", "cg-gone")).isNull();
+    }
+
 }

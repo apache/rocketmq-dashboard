@@ -36,6 +36,7 @@ vi.mock('../../../services/consumerService', () => ({
   getConsumerStack: vi.fn(),
   getConsumerSubscriptions: vi.fn(),
   listConsumerGroupPage: vi.fn(),
+  refreshConsumerGroup: vi.fn(),
   resetConsumerOffset: vi.fn(),
 }));
 const instanceServiceMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
@@ -121,6 +122,11 @@ describe('Consumer page', () => {
       },
     ]);
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
+    vi.mocked(consumerService.refreshConsumerGroup).mockResolvedValue({
+      ...group,
+      totalLag: 42,
+      delaySeconds: 7,
+    });
     vi.mocked(consumerService.createConsumerGroup).mockImplementation(
       async (data: Partial<ConsumerGroup>) =>
         ({
@@ -766,5 +772,19 @@ describe('Consumer page', () => {
     await waitFor(() => expect(document.querySelector('.ant-spin-spinning')).toBeNull());
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '创建 Group' })).toBeDisabled();
+  });
+
+  it('refreshes a single consumer group row without reloading the list', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    expect(within(row).getByText('10')).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: /刷\s*新/ }));
+
+    await waitFor(() => {
+      expect(consumerService.refreshConsumerGroup).toHaveBeenCalledWith('remote-cg', 'instance-1');
+    });
+    expect(await within(row).findByText('42')).toBeInTheDocument();
   });
 });
