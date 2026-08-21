@@ -78,12 +78,20 @@ public class NameserverRegistryService {
         entity.setK8sId(command.getK8sId());
         entity.setDescription(command.getDescription());
         try {
-            nameserverMapper.updateById(entity);
+            int updated = nameserverMapper.updateById(entity);
+            if (updated == 0) {
+                throw concurrentlyDeleted(command.getId());
+            }
         } catch (DataIntegrityViolationException exception) {
             // The unique index is the final guard against concurrent rename collisions.
             throw duplicateName(name);
         }
-        return toVO(nameserverMapper.selectById(entity.getId()));
+        RmqNameserver stored = nameserverMapper.selectById(entity.getId());
+        if (stored == null) {
+            // The row vanished between the update and the reload; do not convert null to a VO.
+            throw concurrentlyDeleted(command.getId());
+        }
+        return toVO(stored);
     }
 
     /**
@@ -106,7 +114,14 @@ public class NameserverRegistryService {
         if (nameserverMapper.selectById(id) == null) {
             throw new BusinessException(404, "NameServer registry entry not found: " + id);
         }
-        nameserverMapper.deleteById(id);
+        if (nameserverMapper.deleteById(id) == 0) {
+            // A concurrent delete already removed the row; report it instead of a false success.
+            throw concurrentlyDeleted(id);
+        }
+    }
+
+    private static BusinessException concurrentlyDeleted(Long id) {
+        return new BusinessException(404, "NameServer registry entry was deleted concurrently: " + id);
     }
 
     private NameserverRegistryVO toVO(RmqNameserver entity) {

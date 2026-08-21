@@ -207,6 +207,7 @@ class NameserverRegistryServiceTest {
         existing.setName("rocketmq1");
         when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
 
         NameserverRegistryVO updated = service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
@@ -304,14 +305,61 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void updateShouldThrowWhenEntryDeletedAfterReadTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq1")
+                .namesrvAddr("x:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("deleted concurrently");
+    }
+
+    @Test
+    void updateShouldThrowWhenEntryVanishesBeforeReloadTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(null);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+
+        assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq1")
+                .namesrvAddr("x:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("deleted concurrently");
+    }
+
+    @Test
     void deleteShouldRemoveExistingEntryTest() {
         RmqNameserver stored = new RmqNameserver();
         stored.setId(1L);
         when(nameserverMapper.selectById(1L)).thenReturn(stored);
+        when(nameserverMapper.deleteById(1L)).thenReturn(1);
 
         service.delete(1L);
 
         verify(nameserverMapper).deleteById(1L);
+    }
+
+    @Test
+    void deleteShouldThrowWhenEntryDeletedConcurrentlyTest() {
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(stored);
+        when(nameserverMapper.deleteById(1L)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.delete(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("deleted concurrently");
     }
 
     @Test
