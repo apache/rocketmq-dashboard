@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -246,5 +247,39 @@ class DLQControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
 
         verify(dlqService).exportMessages(eq("instance-1"), eq("test-group"), eq(1000L), eq(2000L), eq(100));
+    }
+
+    @Test
+    void exportDLQMessagesShouldSanitizeHeaderUnsafeGroupNameCharacters() throws Exception {
+        when(dlqService.exportMessages(eq("instance-1"), eq("we\"ird\\group"), isNull(), isNull(), isNull()))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/dlq/export")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "we\"ird\\group"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"dlq-we_ird_group.json\""));
+    }
+
+    @Test
+    void exportDLQMessagesShouldEmitRfc5987FilenameForNonAsciiGroupName() throws Exception {
+        // CJK group name written as unicode escapes because checkstyle rejects raw chinese characters.
+        String cjkGroup = "\u8BA2\u5355";
+        when(dlqService.exportMessages(eq("instance-1"), eq(cjkGroup), isNull(), isNull(), isNull()))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/dlq/export")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", cjkGroup))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    String disposition = result.getResponse().getHeader(HttpHeaders.CONTENT_DISPOSITION);
+                    Assertions.assertNotNull(disposition);
+                    Assertions.assertTrue(
+                            disposition.matches(
+                                    "attachment; filename=\"[^\"]*\"; filename\\*=UTF-8''dlq-%E8%AE%A2%E5%8D%95\\.json"),
+                            "unexpected content disposition: " + disposition);
+                });
     }
 }
