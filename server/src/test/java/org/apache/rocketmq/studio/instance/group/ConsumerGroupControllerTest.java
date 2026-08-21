@@ -168,6 +168,35 @@ class ConsumerGroupControllerTest {
     }
 
     @Test
+    void consumerGroupSettingsShouldUseTheSelectedInstance() throws Exception {
+        ConsumerGroupSettingsVO settings = ConsumerGroupSettingsVO.builder().groupName("cg-orders")
+                .retryQueueNums(2).retryMaxTimes(8).build();
+        when(metadataService.getConsumerGroupSettings("instance-a", "cg-orders")).thenReturn(settings);
+
+        mockMvc.perform(get("/api/groups/cg-orders/settings").param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retryQueueNums").value(2));
+
+        verify(metadataService).getConsumerGroupSettings("instance-a", "cg-orders");
+    }
+
+    @Test
+    void consumerGroupSettingsUpdateShouldValidateAndDelegate() throws Exception {
+        Map<String, Object> body = Map.of("instanceId", "instance-a", "name", "cg-orders",
+                "retryQueueNums", 2, "retryMaxTimes", 8);
+        when(metadataService.updateConsumerGroupSettings("instance-a", "cg-orders", 2, 8))
+                .thenReturn(ConsumerGroupSettingsVO.builder().groupName("cg-orders").retryQueueNums(2)
+                        .retryMaxTimes(8).build());
+
+        mockMvc.perform(post("/api/groups/settings").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retryMaxTimes").value(8));
+
+        verify(metadataService).updateConsumerGroupSettings("instance-a", "cg-orders", 2, 8);
+    }
+
+    @Test
     void getConsumerStackShouldReturnStackTrace() throws Exception {
         ConsumerThreadStackVO thread = ConsumerThreadStackVO.builder()
                 .threadName("ConsumeMessageThread_1")

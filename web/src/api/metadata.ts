@@ -111,6 +111,12 @@ export interface ConsumerGroupDetail extends ConsumerGroup {
   instances: ConsumerInstance[];
 }
 
+export interface ConsumerGroupSettings {
+  groupName: string;
+  retryQueueNums: number;
+  retryMaxTimes: number;
+}
+
 export interface QueueProgress {
   topic: string;
   broker: string;
@@ -271,6 +277,21 @@ export async function getConsumerStack(name: string, clientId: string, instanceI
 
 export async function createConsumerGroup(data: Partial<ConsumerGroup>) {
   const res = await client.post<{ data: ConsumerGroup }>('/groups/create', data);
+  return res.data.data;
+}
+
+export async function getConsumerGroupSettings(name: string, instanceId: string) {
+  const res = await client.get<{ data: ConsumerGroupSettings }>(
+    `/groups/${encodeURIComponent(name)}/settings`,
+    { params: { instanceId } },
+  );
+  return res.data.data;
+}
+
+export async function updateConsumerGroupSettings(
+  data: Omit<ConsumerGroupSettings, 'groupName'> & { instanceId: string; name: string },
+) {
+  const res = await client.post<{ data: ConsumerGroupSettings }>('/groups/settings', data);
   return res.data.data;
 }
 

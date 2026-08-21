@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
@@ -235,6 +236,20 @@ public class MetadataService {
         return resolve(instanceId).createConsumerGroup(instanceId, group);
     }
 
+    public ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
+        requireApacheInstance(instanceId);
+        return adminClient.getConsumerGroupSettings(instanceId, requireName(name, "consumer group name"));
+    }
+
+    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name, int retryQueueNums,
+                                                                 int retryMaxTimes) {
+        instanceId = normalizeInstanceId(instanceId);
+        requireApacheInstance(instanceId);
+        return adminClient.updateConsumerGroupSettings(instanceId, requireName(name, "consumer group name"),
+                retryQueueNums, retryMaxTimes);
+    }
+
 
     public void deleteConsumerGroup(String name) {
         deleteConsumerGroup(null, name);
@@ -263,6 +278,12 @@ public class MetadataService {
     private InstanceProvider resolve(String instanceId) {
         return providerRegistry.byInstanceId(instanceId)
                 .orElseGet(() -> providerRegistry.forVendor(InstanceVendor.APACHE));
+    }
+
+    private void requireApacheInstance(String instanceId) {
+        if (resolve(instanceId).vendor() != InstanceVendor.APACHE) {
+            throw new BusinessException(501, "Consumer group settings are not supported for cloud instances");
+        }
     }
 
     private String normalizeFilter(String value) {

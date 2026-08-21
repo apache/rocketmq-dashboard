@@ -4,6 +4,7 @@ import type {
   ConsumerGroup,
   ConsumerGroupPageQuery,
   ConsumerGroupQuery,
+  ConsumerGroupSettings,
   ConsumerGroupDetail,
   ConsumerStackTrace,
   PageResult,
@@ -102,6 +103,26 @@ export async function getConsumerGroup(
     return copyConsumerGroup(group as unknown as ConsumerGroupDetail) as ConsumerGroupDetail;
   }
   return normalizeConsumerGroup(await metadataApi.getConsumerGroup(name, instanceId));
+}
+
+export async function getConsumerGroupSettings(
+  name: string,
+  instanceId: string,
+): Promise<ConsumerGroupSettings> {
+  if (isMockMode()) return { groupName: name, retryQueueNums: 1, retryMaxTimes: 16 };
+  return metadataApi.getConsumerGroupSettings(name, instanceId);
+}
+
+export async function updateConsumerGroupSettings(
+  data: Omit<ConsumerGroupSettings, 'groupName'> & { instanceId: string; name: string },
+) {
+  if (isMockMode())
+    return {
+      groupName: data.name,
+      retryQueueNums: data.retryQueueNums,
+      retryMaxTimes: data.retryMaxTimes,
+    };
+  return metadataApi.updateConsumerGroupSettings(data);
 }
 
 export async function getConsumerSubscriptions(
