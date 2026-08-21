@@ -141,6 +141,24 @@ class AclControllerTest {
     }
 
     @Test
+    void listRulesShouldRejectPageSizeAboveTheInventoryLimit() throws Exception {
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
+                eq(1), eq(101))).thenThrow(new BusinessException(400,
+                "page must be >= 1 and pageSize must be between 1 and 100"));
+
+        mockMvc.perform(get("/api/acl/rules")
+                        .param("page", "1")
+                        .param("pageSize", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value("page must be >= 1 and pageSize must be between 1 and 100"));
+
+        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
+                eq(1), eq(101));
+    }
+
+    @Test
     void createRuleShouldReturnCreatedRule() throws Exception {
         AclRuleVO input = AclRuleVO.builder()
                 .principal("user1")

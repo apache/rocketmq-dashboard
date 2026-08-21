@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +52,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -65,6 +67,9 @@ class AclServiceTest {
 
     @Mock
     private InstanceRepository instanceRepository;
+
+    @Mock
+    private TencentAclService tencentAclService;
 
     @InjectMocks
     private AclService aclService;
@@ -143,13 +148,43 @@ class AclServiceTest {
     }
 
     @Test
-    void listRulesShouldNormalizeInvalidPaginationBounds() {
-        when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
-                .thenReturn(PageResult.empty(1, 20));
+    void listRulesShouldRejectInvalidPaginationBeforeQueryingRules() {
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+                null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be >= 1 and pageSize must be between 1 and 100")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+                null, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+                null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
 
-        aclService.listRules(null, null, null, null, null, null, 0, 0);
+        verifyNoInteractions(aclRepository);
+    }
 
-        verify(aclRepository).findRulePage(null, null, null, null, null, 1, 20);
+    @Test
+    void listRulesShouldAcceptTheMaximumPageSizeForApacheRules() {
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 100))
+                .thenReturn(PageResult.empty(1, 100));
+
+        aclService.listRules(null, null, null, null, null, null, 1, 100);
+
+        verify(aclRepository).findRulePage(null, null, null, null, null, 1, 100);
+    }
+
+    @Test
+    void listRulesShouldRejectInvalidPaginationBeforeTencentRuleDiscovery() {
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+                "tencent-instance", 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
+
+        verifyNoInteractions(instanceRepository);
+        verifyNoInteractions(tencentAclService);
     }
 
     @Test

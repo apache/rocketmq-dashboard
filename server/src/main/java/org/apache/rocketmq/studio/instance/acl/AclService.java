@@ -46,6 +46,7 @@ public class AclService {
 
     private static final SecureRandom CREDENTIAL_RANDOM = new SecureRandom();
     private static final int DEFAULT_RULE_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final AclRepository aclRepository;
     private final OperationAuditService operationAuditService;
@@ -70,8 +71,8 @@ public class AclService {
 
     public PageResult<AclRuleVO> listRules(String principal, String resource, String scope, String decision,
             String aclVersion, String instanceId, Integer page, Integer pageSize) {
-        int normalizedPage = normalizePage(page);
-        int normalizedPageSize = normalizePageSize(pageSize);
+        int normalizedPage = requireValidPage(page);
+        int normalizedPageSize = requireValidPageSize(pageSize);
         if (isTencentInstance(instanceId)) {
             List<AclRuleVO> filtered = tencentAclService.listRules(instanceId, principal).stream()
                     .filter(rule -> containsIgnoreCase(rule.getResource(), resource))
@@ -356,6 +357,25 @@ public class AclService {
 
     private static int normalizePageSize(Integer pageSize) {
         return pageSize == null || pageSize < 1 ? DEFAULT_RULE_PAGE_SIZE : pageSize;
+    }
+
+    private static int requireValidPage(Integer page) {
+        if (page != null && page < 1) {
+            throw invalidPagination();
+        }
+        return normalizePage(page);
+    }
+
+    private static int requireValidPageSize(Integer pageSize) {
+        if (pageSize != null && (pageSize < 1 || pageSize > MAX_PAGE_SIZE)) {
+            throw invalidPagination();
+        }
+        return normalizePageSize(pageSize);
+    }
+
+    private static BusinessException invalidPagination() {
+        return new BusinessException(400,
+                "page must be >= 1 and pageSize must be between 1 and " + MAX_PAGE_SIZE);
     }
 
     private static boolean containsIgnoreCase(String value, String expectedFragment) {
