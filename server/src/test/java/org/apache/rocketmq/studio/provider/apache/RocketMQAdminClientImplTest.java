@@ -480,6 +480,34 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void updateTopicAppliesExplicitQueueCounts() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+        topic.setReadQueues(12);
+
+        TopicVO updated = adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> topicConfigCaptor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), topicConfigCaptor.capture());
+        assertThat(topicConfigCaptor.getValue().getWriteQueueNums()).isEqualTo(16);
+        assertThat(topicConfigCaptor.getValue().getReadQueueNums()).isEqualTo(12);
+        assertThat(existing.getWriteQueueNums()).isEqualTo(16);
+        assertThat(existing.getReadQueueNums()).isEqualTo(12);
+        assertThat(updated.getWriteQueues()).isEqualTo(16);
+        assertThat(updated.getReadQueues()).isEqualTo(12);
+    }
+
+    @Test
     void topicDeleteUsesSelectedInstanceAndScopesMetadataToClusterAndInstance() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
