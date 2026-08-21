@@ -76,7 +76,7 @@ class TencentAclServiceTest {
     @Test
     void updateUserUsesUsernameAsRoleNameTest() throws Exception {
         AclUserVO updated = service.updateUser(INSTANCE_ID, AclUserVO.builder()
-                .username("reader-role")
+                .username("  reader-role  ")
                 .permRead(false)
                 .permWrite(true)
                 .build());
@@ -89,6 +89,30 @@ class TencentAclServiceTest {
         assertThat(request.getPermWrite()).isTrue();
         assertThat(updated.getId()).isNull();
         assertThat(updated.getUsername()).isEqualTo("reader-role");
+    }
+
+    @Test
+    void listUsersShouldSkipRolesWithoutNamesTest() throws Exception {
+        RoleItem blank = new RoleItem();
+        blank.setRoleName("  ");
+        RoleItem valid = new RoleItem();
+        valid.setRoleName("reader-role");
+        DescribeRoleListResponse response = new DescribeRoleListResponse();
+        response.setData(new RoleItem[]{null, blank, valid});
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThat(service.listUsers(INSTANCE_ID))
+                .extracting(AclUserVO::getUsername)
+                .containsExactly("reader-role");
+        assertThat(service.getUserCredentials(INSTANCE_ID, "  reader-role  ").getUsername())
+                .isEqualTo("reader-role");
+    }
+
+    @Test
+    void createUserShouldRejectNullPayloadTest() {
+        assertThatThrownBy(() -> service.createUser(INSTANCE_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL username is required");
     }
 
     @Test

@@ -36,6 +36,7 @@ import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -156,6 +157,44 @@ class RocketMQClusterProviderTest {
     }
 
     @Test
+    void discoverClustersShouldRejectNonFiniteRuntimeMetrics() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        KVTable runtime = runtimeStats("1 NaN 3", "1 Infinity 3");
+        runtime.getTable().put("commitLogDiskRatio", "NaN");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement().satisfies(broker -> {
+            assertThat(broker.getTpsIn()).isZero();
+            assertThat(broker.getTpsOut()).isZero();
+            assertThat(broker.getDiskUsage()).isZero();
+        });
+    }
+
+    @Test
+    void discoverClustersShouldUseFirstNonBlankBrokerAddress() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        ClusterInfo info = clusterInfo();
+        LinkedHashMap<Long, String> addrs = new LinkedHashMap<>();
+        addrs.put(0L, "  ");
+        addrs.put(1L, null);
+        addrs.put(2L, " 10.0.0.12:10911 ");
+        info.getBrokerAddrTable().put(
+                "broker-a", new BrokerData("DefaultCluster", "broker-a", addrs));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(broker -> broker.getAddr())
+                .isEqualTo("10.0.0.12:10911");
+    }
+
+    @Test
     void discoverClustersShouldDiscoverProxiesViaHeartbeatSyncerTest() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = newProvider(adminExt);
@@ -177,6 +216,28 @@ class RocketMQClusterProviderTest {
         assertThat(clusters.get(0).getProxies().get(0).getAddr()).isEqualTo("10.0.3.5:8080");
         assertThat(clusters.get(0).getProxies().get(0).getGrpcPort()).isEqualTo(8081);
         assertThat(clusters.get(0).getProxies().get(0).getStatus()).isEqualTo(ClusterStatus.healthy);
+    }
+
+    @Test
+    void discoverClustersShouldIgnoreNullHeartbeatConnectionsTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        Connection valid = new Connection();
+        valid.setClientAddr("10.0.3.5:54321");
+        java.util.HashSet<Connection> connections = new java.util.HashSet<>();
+        connections.add(null);
+        connections.add(valid);
+        ConsumerConnection consumerConnection = new ConsumerConnection();
+        consumerConnection.setConnectionSet(connections);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(consumerConnection);
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters.get(0).getProxies()).singleElement()
+                .extracting(proxy -> proxy.getAddr())
+                .isEqualTo("10.0.3.5:8080");
     }
 
     private RocketMQClusterProvider newProvider(DefaultMQAdminExt adminExt) {

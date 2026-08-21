@@ -118,7 +118,7 @@ public class TencentCatalogService implements CloudCatalogProvider {
         request.setInstanceId(cloudInstanceId);
         DescribeInstanceResponse response = clientFactory.call(credentialId, regionId,
                 client -> client.DescribeInstance(request));
-        if (response == null || response.getInstanceId() == null) {
+        if (response == null || response.getInstanceId() == null || response.getInstanceId().isBlank()) {
             throw new BusinessException(404, "Tencent Cloud RocketMQ 5.x instance not found: " + cloudInstanceId);
         }
         CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
@@ -149,9 +149,10 @@ public class TencentCatalogService implements CloudCatalogProvider {
             return result;
         }
         for (Endpoint endpoint : endpoints) {
-            if (endpoint != null && "OPEN".equalsIgnoreCase(endpoint.getStatus())) {
+            if (endpoint != null && "OPEN".equalsIgnoreCase(endpoint.getStatus())
+                    && endpoint.getEndpointUrl() != null && !endpoint.getEndpointUrl().isBlank()) {
                 result.add(new CloudInstanceDetailVO.CloudEndpoint(
-                        endpointType(endpoint.getType()), endpoint.getEndpointUrl()));
+                        endpointType(endpoint.getType()), endpoint.getEndpointUrl().trim()));
             }
         }
         return result;
@@ -168,14 +169,23 @@ public class TencentCatalogService implements CloudCatalogProvider {
     }
 
     private static Integer toInteger(Long value) {
-        return value == null ? null : Math.toIntExact(value);
+        if (value == null) {
+            return null;
+        }
+        if (value > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        if (value < 0) {
+            return 0;
+        }
+        return value.intValue();
     }
 
     private static boolean matchesSearch(String search, CloudInstanceOptionVO option) {
         if (search == null || search.isBlank()) {
             return true;
         }
-        String needle = search.toLowerCase(Locale.ROOT);
+        String needle = search.trim().toLowerCase(Locale.ROOT);
         return containsIgnoreCase(option.getInstanceId(), needle)
                 || containsIgnoreCase(option.getInstanceName(), needle);
     }

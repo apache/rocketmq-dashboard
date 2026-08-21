@@ -86,6 +86,26 @@ class TencentCatalogServiceTest {
     }
 
     @Test
+    void listCloudInstancesShouldNormalizeOutOfRangeCountsAndTrimSearchTest() {
+        InstanceItem item = new InstanceItem();
+        item.setInstanceId("rmq-abc");
+        item.setInstanceName("chengdu-prod");
+        item.setTopicNum(Long.MAX_VALUE);
+        item.setGroupNum(-1L);
+        DescribeInstanceListResponse response = new DescribeInstanceListResponse();
+        response.setData(new InstanceItem[]{item});
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        List<CloudInstanceOptionVO> instances = service.listCloudInstances(
+                CREDENTIAL_ID, REGION, "  PROD  ");
+
+        assertThat(instances).singleElement().satisfies(instance -> {
+            assertThat(instance.getTopicCount()).isEqualTo(Integer.MAX_VALUE);
+            assertThat(instance.getGroupCount()).isZero();
+        });
+    }
+
+    @Test
     void listCloudInstancesShouldSkipNullItemsTest() {
         InstanceItem item = new InstanceItem();
         item.setInstanceId("rmq-valid");
@@ -118,6 +138,24 @@ class TencentCatalogServiceTest {
         assertThat(detail.getEndpoints()).hasSize(2);
         assertThat(detail.getEndpoints().get(0).getEndpointType()).isEqualTo("TCP_VPC");
         assertThat(detail.getEndpoints().get(1).getEndpointType()).isEqualTo("TCP_INTERNET");
+    }
+
+    @Test
+    void getCloudInstanceShouldSkipBlankOpenEndpointsTest() {
+        Endpoint blank = endpoint("PUBLIC", "OPEN", "  ");
+        Endpoint missing = endpoint("VPC", "OPEN", null);
+        Endpoint valid = endpoint("VPC", "OPEN", "  vpc.tencent:8080  ");
+        DescribeInstanceResponse response = new DescribeInstanceResponse();
+        response.setInstanceId("rmq-abc");
+        response.setEndpointList(new Endpoint[]{blank, missing, valid});
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        CloudInstanceDetailVO detail = service.getCloudInstance(CREDENTIAL_ID, REGION, "rmq-abc");
+
+        assertThat(detail.getEndpoints()).singleElement().satisfies(endpoint -> {
+            assertThat(endpoint.getEndpointType()).isEqualTo("TCP_VPC");
+            assertThat(endpoint.getEndpointUrl()).isEqualTo("vpc.tencent:8080");
+        });
     }
 
     private static Endpoint endpoint(String type, String status, String url) {
