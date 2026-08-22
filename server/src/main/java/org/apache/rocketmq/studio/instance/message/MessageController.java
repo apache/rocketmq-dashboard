@@ -45,6 +45,16 @@ public class MessageController {
         return Result.ok(messageService.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
     }
 
+    @GetMapping("/page")
+    public Result<MessageQueryPageVO> queryMessagesPage(@RequestParam String instanceId,
+            @RequestParam(required = false) String topic, @RequestParam(required = false) String msgId,
+            @RequestParam(required = false) String tag, @RequestParam(required = false) String key,
+            @RequestParam(required = false) Long startTime, @RequestParam(required = false) Long endTime,
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int pageSize) {
+        return Result.ok(messageService.queryMessagesPage(instanceId, topic, msgId, tag, key, startTime, endTime,
+                page, pageSize));
+    }
+
     @GetMapping("/{msgId}/trace")
     public Result<TraceRecordVO> getMessageTrace(@PathVariable String msgId, @RequestParam String instanceId,
                                                  // Optional for the Apache/Aliyun providers; the Tencent

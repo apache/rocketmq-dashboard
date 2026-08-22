@@ -56,7 +56,7 @@ import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
-import { getMessageTrace, queryMessages } from '../../services/messageService';
+import { getMessageTrace, queryMessagePage } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
@@ -312,6 +312,10 @@ const MessagePageContent = ({
   const [keyInput, setKeyInput] = useState('');
   const [msgIdInput, setMsgIdInput] = useState('');
   const [messages, setMessages] = useState<MessageRecord[]>([]);
+  const [messageTotal, setMessageTotal] = useState(0);
+  const [messagePage, setMessagePage] = useState(1);
+  const [messagePageSize, setMessagePageSize] = useState(50);
+  const [resultMayBeTruncated, setResultMayBeTruncated] = useState(false);
   const [queryLoading, setQueryLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTab, setModalTab] = useState('content');
@@ -377,7 +381,13 @@ const MessagePageContent = ({
     });
   };
 
-  const executeQuery = async (mode: QueryMode, params: MessageQuery) => {
+  const executeQuery = async (
+    mode: QueryMode,
+    params: MessageQuery,
+    page = 1,
+    pageSize = messagePageSize,
+    saveHistory = true,
+  ) => {
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
     if (!selectedInstanceId) {
@@ -395,12 +405,23 @@ const MessagePageContent = ({
     setQueryLoading(true);
     setQueryError(null);
     try {
-      const result = await queryMessages({ ...normalizedParams, instanceId: selectedInstanceId });
+      const result = await queryMessagePage({
+        ...normalizedParams,
+        instanceId: selectedInstanceId,
+        page,
+        pageSize,
+      });
       if (queryGenerationRef.current !== requestGeneration) return;
-      setMessages(result);
+      setMessages(result.items);
+      setMessageTotal(result.total);
+      setMessagePage(result.page);
+      setMessagePageSize(result.size);
+      setResultMayBeTruncated(result.resultMayBeTruncated);
       setQueryError(null);
-      saveRecentQuery(mode, normalizedParams);
-      message.success(`查询完成，共 ${result.length} 条`);
+      if (saveHistory) {
+        saveRecentQuery(mode, normalizedParams);
+        message.success(`查询完成，共 ${result.total} 条`);
+      }
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
         setQueryError(getErrorMessage(error, DEFAULT_QUERY_ERROR));
@@ -933,6 +954,14 @@ const MessagePageContent = ({
       {queryError && (
         <Alert showIcon type="warning" message={queryError} style={{ marginBottom: 16 }} />
       )}
+      {resultMayBeTruncated && (
+        <Alert
+          showIcon
+          type="warning"
+          message="查询结果达到服务端扫描上限，当前总数可能不完整。"
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       {/* ── Results Table ── */}
       <Card styles={{ body: { padding: 0 } }}>
@@ -942,9 +971,13 @@ const MessagePageContent = ({
           loading={queryLoading}
           rowKey="msgId"
           pagination={{
-            pageSize: 50,
+            current: messagePage,
+            pageSize: messagePageSize,
+            total: messageTotal,
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 条消息`,
+            onChange: (page, pageSize) =>
+              void executeQuery(queryMode, currentQueryParams, page, pageSize, false),
           }}
           size="small"
           scroll={{ x: tableScrollX(columns) }}

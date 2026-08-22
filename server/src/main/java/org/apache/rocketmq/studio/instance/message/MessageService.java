@@ -31,6 +31,8 @@ import java.util.List;
 public class MessageService {
 
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000;
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int TOPIC_QUERY_RESULT_LIMIT = 200;
 
     private final MessageProvider messageProvider;
     private final InstanceProviderRegistry providerRegistry;
@@ -45,6 +47,21 @@ public class MessageService {
                 .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
         recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.size());
         return result;
+    }
+
+    public MessageQueryPageVO queryMessagesPage(String instanceId, String topic, String msgId, String tag,
+                                                 String key, Long startTime, Long endTime, int page, int pageSize) {
+        if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(400, "page must be positive and pageSize must be between 1 and 100");
+        }
+        List<MessageRecordVO> result = queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime);
+        long offset = (long) (page - 1) * pageSize;
+        int from = (int) Math.min(offset, result.size());
+        int to = Math.min(from + pageSize, result.size());
+        boolean topicQuery = StringUtils.hasText(topic) && !StringUtils.hasText(msgId)
+                && !StringUtils.hasText(key);
+        return MessageQueryPageVO.builder().items(result.subList(from, to)).total(result.size()).page(page)
+                .size(pageSize).resultMayBeTruncated(topicQuery && result.size() >= TOPIC_QUERY_RESULT_LIMIT).build();
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {

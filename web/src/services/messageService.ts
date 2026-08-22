@@ -3,6 +3,7 @@ import * as messageApi from '../api/message';
 import { sortMessagesByStoreTimeDesc } from '../api/message';
 import type {
   MessageQuery,
+  MessageQueryPage,
   MessageRecord,
   TraceRecord,
   DLQGroup,
@@ -49,6 +50,25 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
   return messageApi.queryMessages(params);
 }
 
+export async function queryMessagePage(
+  params: MessageQuery & { page?: number; pageSize?: number },
+): Promise<MessageQueryPage> {
+  if (isMockMode()) {
+    const items = await queryMessages(params);
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 50;
+    const from = Math.min((page - 1) * pageSize, items.length);
+    return {
+      items: items.slice(from, from + pageSize),
+      total: items.length,
+      page,
+      size: pageSize,
+      resultMayBeTruncated: false,
+    };
+  }
+  return messageApi.queryMessagePage(params);
+}
+
 export async function getMessageTrace(
   msgId: string,
   instanceId?: string,
@@ -69,8 +89,7 @@ export async function listDLQGroups(
 ): Promise<DLQGroupPage> {
   if (isMockMode()) {
     const groups = (mockDLQGroups as unknown as DLQGroup[]).filter(
-      (group) =>
-        !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
+      (group) => !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
     );
     const from = Math.min((page - 1) * pageSize, groups.length);
     return {

@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
@@ -122,5 +123,24 @@ class MessageServiceTest {
                 .hasMessage("topic query time range must not exceed 7 days");
 
         verifyNoInteractions(provider, registry);
+    }
+
+    @Test
+    void pageQuerySlicesProviderResultAndSignalsBoundedTopicResult() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(provider, registry, history);
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessages("instance-a", "TopicA", null, null, null, 1000L, 2000L))
+                .thenReturn(java.util.stream.IntStream.range(0, 200)
+                        .mapToObj(index -> MessageRecordVO.builder().msgId("msg-" + index).build()).toList());
+
+        MessageQueryPageVO page = service.queryMessagesPage("instance-a", "TopicA", null, null, null,
+                1000L, 2000L, 2, 50);
+
+        assertThat(page.getItems()).hasSize(50);
+        assertThat(page.getTotal()).isEqualTo(200);
+        assertThat(page.isResultMayBeTruncated()).isTrue();
     }
 }
