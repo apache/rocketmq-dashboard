@@ -79,7 +79,7 @@ public class TencentAclService {
                 break;
             }
             for (RoleItem role : data) {
-                if (role != null) {
+                if (role != null && StringUtils.hasText(role.getRoleName())) {
                     users.add(toUser(role, context.cloudInstanceId()));
                 }
             }
@@ -92,6 +92,7 @@ public class TencentAclService {
 
     public List<AclRuleVO> listRules(String instanceId, String principal) {
         Context context = resolve(instanceId);
+        String requestedPrincipal = StringUtils.hasText(principal) ? principal.trim() : null;
         List<AclRuleVO> rules = new ArrayList<>();
         for (int page = 0; page < MAX_PAGES; page++) {
             DescribeRoleListRequest request = new DescribeRoleListRequest();
@@ -105,11 +106,11 @@ public class TencentAclService {
                 break;
             }
             for (RoleItem role : data) {
-                if (role == null) {
+                if (role == null || !StringUtils.hasText(role.getRoleName())) {
                     continue;
                 }
-                if (StringUtils.hasText(principal)
-                        && !principal.equals(role.getRoleName())) {
+                if (requestedPrincipal != null
+                        && !requestedPrincipal.equals(role.getRoleName())) {
                     continue;
                 }
                 rules.add(toRule(role));
@@ -123,21 +124,19 @@ public class TencentAclService {
 
     public AclUserVO createUser(String instanceId, AclUserVO user) {
         Context context = resolve(instanceId);
-        if (!StringUtils.hasText(user.getUsername())) {
-            throw new BusinessException(400, "ACL username is required");
-        }
+        String roleName = requireRoleName(user == null ? null : user.getUsername(), "ACL username");
         CreateRoleRequest request = new CreateRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
-        request.setRole(user.getUsername());
+        request.setRole(roleName);
         request.setPermRead(user.getPermRead() == null || user.getPermRead());
         request.setPermWrite(user.getPermWrite() == null || user.getPermWrite());
-        request.setRemark(user.getUsername());
+        request.setRemark(roleName);
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.CreateRole(request));
         // The created role is not returned by the API; reconstruct from the known inputs.
         // Tencent roles have no database row; the role name lives in username, id stays null.
         return AclUserVO.builder()
-                .username(user.getUsername())
+                .username(roleName)
                 .accessKey(null)
                 .secretKey(null)
                 .admin(false)
@@ -152,10 +151,7 @@ public class TencentAclService {
         Context context = resolve(instanceId);
         // Tencent roles have no database row; username is the stable role-name source (id is the
         // numeric ACL-user primary key and stays null for Tencent roles).
-        String roleName = user.getUsername();
-        if (!StringUtils.hasText(roleName)) {
-            throw new BusinessException(400, "ACL username is required");
-        }
+        String roleName = requireRoleName(user == null ? null : user.getUsername(), "ACL username");
         RoleItem existing = user.getPermRead() == null || user.getPermWrite() == null
                 ? findRole(context, roleName) : null;
         boolean permRead = user.getPermRead() == null
@@ -207,12 +203,10 @@ public class TencentAclService {
 
     public void deleteUser(String instanceId, String username) {
         Context context = resolve(instanceId);
-        if (!StringUtils.hasText(username)) {
-            throw new BusinessException(400, "ACL username is required");
-        }
+        String roleName = requireRoleName(username, "ACL username");
         DeleteRoleRequest request = new DeleteRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
-        request.setRole(username);
+        request.setRole(roleName);
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.DeleteRole(request));
     }
@@ -224,17 +218,17 @@ public class TencentAclService {
      */
     public AclRuleVO createRule(String instanceId, AclRuleVO rule) {
         Context context = resolve(instanceId);
-        requireRulePrincipal(rule);
+        String principal = requireRulePrincipal(rule);
         boolean permRead = hasAction(rule, "SUB");
         boolean permWrite = hasAction(rule, "PUB");
         ModifyRoleRequest request = new ModifyRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
-        request.setRole(rule.getPrincipal());
+        request.setRole(principal);
         request.setPermRead(permRead);
         request.setPermWrite(permWrite);
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.ModifyRole(request));
-        return toRule(rule.getPrincipal(), permRead, permWrite);
+        return toRule(principal, permRead, permWrite);
     }
 
     public AclRuleVO updateRule(String instanceId, AclRuleVO rule) {
@@ -243,20 +237,23 @@ public class TencentAclService {
 
     public void deleteRule(String instanceId, String principal) {
         Context context = resolve(instanceId);
-        if (!StringUtils.hasText(principal)) {
-            throw new BusinessException(400, "ACL principal is required");
-        }
+        String roleName = requireRoleName(principal, "ACL principal");
         DeleteRoleRequest request = new DeleteRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
-        request.setRole(principal);
+        request.setRole(roleName);
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.DeleteRole(request));
     }
 
-    private static void requireRulePrincipal(AclRuleVO rule) {
-        if (rule == null || !StringUtils.hasText(rule.getPrincipal())) {
-            throw new BusinessException(400, "ACL principal is required");
+    private static String requireRulePrincipal(AclRuleVO rule) {
+        return requireRoleName(rule == null ? null : rule.getPrincipal(), "ACL principal");
+    }
+
+    private static String requireRoleName(String value, String label) {
+        if (!StringUtils.hasText(value)) {
+            throw new BusinessException(400, label + " is required");
         }
+        return value.trim();
     }
 
     private static boolean hasAction(AclRuleVO rule, String action) {
@@ -289,10 +286,11 @@ public class TencentAclService {
      * available from DescribeRoleList, so re-fetch and match by role name.
      */
     public AclUserVO getUserCredentials(String instanceId, String username) {
+        String roleName = requireRoleName(username, "ACL username");
         return listUsers(instanceId).stream()
-                .filter(user -> user.getUsername().equals(username))
+                .filter(user -> roleName.equals(user.getUsername()))
                 .findFirst()
-                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + username));
+                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + roleName));
     }
 
     private Context resolve(String instanceId) {

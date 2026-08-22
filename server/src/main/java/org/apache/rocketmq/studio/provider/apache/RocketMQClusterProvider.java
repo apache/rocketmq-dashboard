@@ -209,12 +209,16 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
             // Use master address (brokerId = 0) preferentially
             String masterAddr = brokerData.getBrokerAddrs().get(0L);
-            if (masterAddr == null && !brokerData.getBrokerAddrs().isEmpty()) {
-                masterAddr = brokerData.getBrokerAddrs().values().iterator().next();
+            if (!StringUtils.hasText(masterAddr)) {
+                masterAddr = brokerData.getBrokerAddrs().values().stream()
+                        .filter(StringUtils::hasText)
+                        .findFirst()
+                        .orElse(null);
             }
-            if (masterAddr == null) {
+            if (!StringUtils.hasText(masterAddr)) {
                 continue;
             }
+            masterAddr = masterAddr.trim();
 
             BrokerVO.BrokerVOBuilder builder = BrokerVO.builder()
                     .name(brokerName)
@@ -270,7 +274,10 @@ public class RocketMQClusterProvider implements ClusterProvider {
             String diskRatio = table.get("commitLogDiskRatio");
             if (diskRatio != null && !diskRatio.isEmpty()) {
                 try {
-                    builder.diskUsage(Double.parseDouble(diskRatio));
+                    double parsedRatio = Double.parseDouble(diskRatio);
+                    if (Double.isFinite(parsedRatio) && parsedRatio >= 0) {
+                        builder.diskUsage(parsedRatio);
+                    }
                 } catch (NumberFormatException ignored) {
                     // keep default
                 }
@@ -283,7 +290,8 @@ public class RocketMQClusterProvider implements ClusterProvider {
     }
 
     private boolean hasUnavailableRuntimeStats(List<BrokerVO> brokers) {
-        return brokers != null && brokers.stream().anyMatch(broker -> !broker.isRuntimeStatsAvailable());
+        return brokers != null && brokers.stream()
+                .anyMatch(broker -> broker == null || !broker.isRuntimeStatsAvailable());
     }
 
     /**
@@ -293,12 +301,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
     private long parseTpsValue(String tpsStr) {
         try {
             String[] parts = tpsStr.trim().split("\\s+");
-            if (parts.length >= 2) {
-                return (long) Double.parseDouble(parts[1]);
+            String selected = parts.length >= 2 ? parts[1] : parts[0];
+            double value = Double.parseDouble(selected);
+            if (!Double.isFinite(value) || value <= 0) {
+                return 0;
             }
-            if (parts.length == 1) {
-                return (long) Double.parseDouble(parts[0]);
-            }
+            return value >= Long.MAX_VALUE ? Long.MAX_VALUE : (long) value;
         } catch (NumberFormatException ignored) {
             // fall through
         }
@@ -329,6 +337,9 @@ public class RocketMQClusterProvider implements ClusterProvider {
             }
             Set<String> proxyIps = new TreeSet<>();
             for (Connection conn : connection.getConnectionSet()) {
+                if (conn == null) {
+                    continue;
+                }
                 String clientAddr = conn.getClientAddr();
                 if (clientAddr == null || clientAddr.isBlank()) {
                     continue;
