@@ -56,12 +56,8 @@ import { listClusters } from '../../api/cluster';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { formatRelativeTime, formatTimeOfDay } from '../../utils/format';
 import { useDataModeStore } from '../../stores/dataModeStore';
-<<<<<<< HEAD
 import { useEngineStore, type AgentEngine } from '../../stores/engineStore';
 import InfoBanner from '../../components/InfoBanner';
-=======
-import { useEngineStore, type AgentEngine } from '../../stores/engineStore';
->>>>>>> fb5e3566 (fix: retain engine selection when opening AI chat)
 import useAuthStore from '../../stores/authStore';
 import {
   getRecentAiChatConversations,
