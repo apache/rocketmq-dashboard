@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance;
 
 import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import jakarta.validation.Valid;
@@ -45,6 +46,15 @@ public class InstanceController {
             @RequestParam(required = false) InstanceType type,
             @RequestParam(required = false) String search) {
         return Result.ok(instanceService.listInstances(type, search));
+    }
+
+    @GetMapping("/page")
+    public Result<PageResult<InstanceVO>> listInstancesPage(
+            @RequestParam(required = false) InstanceType type,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(instanceService.listInstances(type, search, page, pageSize));
     }
 
     @GetMapping("/{instanceId}/capabilities")

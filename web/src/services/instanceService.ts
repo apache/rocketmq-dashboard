@@ -4,6 +4,7 @@ import type {
   Instance,
   CreateInstanceRequest,
   InstanceQuery,
+  InstancePage,
   InstanceVendor,
   UpdateInstanceRequest,
   InstanceCapabilities,
@@ -49,6 +50,12 @@ export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
   const request = fetchInstances(query).finally(() => inflightListRequests.delete(key));
   inflightListRequests.set(key, request);
   return request.then((items) => items.map(copyInstance));
+}
+
+export function listInstancesPage(
+  query: InstanceQuery & { page?: number; pageSize?: number } = {},
+): Promise<InstancePage> {
+  return instanceApi.listInstancesPage(query);
 }
 
 async function fetchInstances(query: InstanceQuery): Promise<Instance[]> {

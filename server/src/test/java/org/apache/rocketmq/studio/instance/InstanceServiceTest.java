@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -46,6 +47,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -101,6 +103,47 @@ class InstanceServiceTest {
 
         assertThat(result).hasSize(2);
         verify(instanceRepository).findAll();
+    }
+
+    @Test
+    void listInstancesPageShouldReturnTheRequestedSlice() {
+        InstanceVO first = InstanceVO.builder()
+                .name("apache-instance")
+                .vendor(InstanceVendor.APACHE)
+                .regionId("cn-hangzhou")
+                .build();
+        first.setId(1L);
+        InstanceVO second = InstanceVO.builder()
+                .name("cloud-instance")
+                .vendor(InstanceVendor.ALIYUN)
+                .regionId("cn-shanghai")
+                .build();
+        second.setId(2L);
+        when(instanceRepository.count(InstanceType.DIRECT, "inst")).thenReturn(2L);
+        when(instanceRepository.findByTypeAndSearch(InstanceType.DIRECT, "inst"))
+                .thenReturn(List.of(second, first));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+
+        PageResult<InstanceVO> result = instanceService.listInstances(
+                InstanceType.DIRECT, " inst ", 2, 1);
+
+        assertThat(result.getItems()).containsExactly(second);
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(1);
+    }
+
+    @Test
+    void listInstancesPageShouldRejectInvalidPaginationBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> instanceService.listInstances(null, null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than zero");
+        assertThatThrownBy(() -> instanceService.listInstances(null, null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+
+        verifyNoInteractions(instanceRepository, providerRegistry, regionNames);
     }
 
     @Test

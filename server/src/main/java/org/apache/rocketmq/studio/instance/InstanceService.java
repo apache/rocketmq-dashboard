@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -69,6 +70,7 @@ public class InstanceService {
 
     static final int COUNT_PARALLELISM = 8;
     static final long COUNT_TIMEOUT_SECONDS = 3;
+    private static final int MAX_INSTANCE_PAGE_SIZE = 100;
 
     private final ExecutorService countExecutor = Executors.newFixedThreadPool(COUNT_PARALLELISM, runnable -> {
         Thread thread = new Thread(runnable, "instance-resource-counts");
@@ -105,6 +107,30 @@ public class InstanceService {
                 .thenComparing(instance -> instance.getRegionId() == null ? "" : instance.getRegionId())
                 .thenComparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER));
         return sorted;
+    }
+
+    public PageResult<InstanceVO> listInstances(InstanceType type, String search, int page,
+                                                int pageSize) {
+        validateListPagination(page, pageSize);
+        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
+        long total = instanceRepository.count(type, normalizedSearch);
+        if (total == 0) {
+            return PageResult.empty(page, pageSize);
+        }
+        List<InstanceVO> sorted = listInstances(type, normalizedSearch);
+        int fromIndex = (int) Math.min((long) (page - 1) * pageSize, sorted.size());
+        int toIndex = Math.min(fromIndex + pageSize, sorted.size());
+        return PageResult.of(new ArrayList<>(sorted.subList(fromIndex, toIndex)), total, page, pageSize);
+    }
+
+    private static void validateListPagination(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than zero");
+        }
+        if (pageSize < 1 || pageSize > MAX_INSTANCE_PAGE_SIZE) {
+            throw new BusinessException(400,
+                    "pageSize must be between 1 and " + MAX_INSTANCE_PAGE_SIZE);
+        }
     }
 
     /**

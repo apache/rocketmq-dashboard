@@ -25,11 +25,15 @@ import java.util.Optional;
 public interface InstanceRepository {
     List<InstanceVO> findAll();
 
+    long countAll();
+
     List<InstanceVO> findByType(InstanceType type);
 
     List<InstanceVO> search(String keyword);
 
     List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
+
+    long count(InstanceType type, String keyword);
 
     Optional<InstanceVO> findById(Long id);
 

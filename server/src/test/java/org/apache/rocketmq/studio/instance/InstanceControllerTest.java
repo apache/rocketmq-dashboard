@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.instance;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
@@ -77,6 +78,25 @@ class InstanceControllerTest {
                 .andExpect(jsonPath("$.data[0].name").value("production-proxy"))
                 .andExpect(jsonPath("$.data[0].type").value("PROXY_CLUSTER"))
                 .andExpect(jsonPath("$.data[0].endpoint").value("10.0.1.1:8080"));
+    }
+
+    @Test
+    void listInstancesPageShouldReturnBoundedPage() throws Exception {
+        InstanceVO inst = buildInstance(1L, "production-proxy", InstanceType.PROXY_CLUSTER,
+                "10.0.1.1:8080");
+        when(instanceService.listInstances(isNull(), isNull(), eq(2), eq(20)))
+                .thenReturn(PageResult.of(List.of(inst), 21, 2, 20));
+
+        mockMvc.perform(get("/api/instances/page")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].name").value("production-proxy"))
+                .andExpect(jsonPath("$.data.total").value(21))
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(20));
+
+        verify(instanceService).listInstances(isNull(), isNull(), eq(2), eq(20));
     }
 
     @Test

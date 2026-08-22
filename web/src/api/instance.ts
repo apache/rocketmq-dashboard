@@ -73,6 +73,13 @@ export interface InstanceQuery {
   search?: string;
 }
 
+export interface InstancePage {
+  items: Instance[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 /** Whether an instance can use Apache MQAdmin-backed runtime diagnostics. */
 export function supportsApacheRuntime(instance: Pick<Instance, 'vendor'>): boolean {
   return instance.vendor === undefined || instance.vendor === 'APACHE';
@@ -93,6 +100,20 @@ export async function listInstances(query: InstanceQuery = {}) {
     ...(search ? { search } : {}),
   };
   const res = await client.get<{ data: Instance[] }>('/instances', { params });
+  return res.data.data;
+}
+
+export async function listInstancesPage(
+  query: InstanceQuery & { page?: number; pageSize?: number } = {},
+) {
+  const search = query.search?.trim();
+  const params = {
+    ...(query.type ? { type: query.type } : {}),
+    ...(search ? { search } : {}),
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 20,
+  };
+  const res = await client.get<{ data: InstancePage }>('/instances/page', { params });
   return res.data.data;
 }
 

@@ -51,6 +51,11 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     @Override
+    public long countAll() {
+        return instanceMapper.selectCount(null);
+    }
+
+    @Override
     public List<InstanceVO> findByType(InstanceType type) {
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
@@ -83,6 +88,15 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
+    }
+
+    @Override
+    public long count(InstanceType type, String keyword) {
+        return instanceMapper.selectCount(new QueryWrapper<RmqInstance>()
+                .eq(type != null, "type", type == null ? null : type.name())
+                .and(keyword != null, w -> w.like("name", keyword)
+                        .or().like("endpoint", keyword)
+                        .or().like("remark", keyword)));
     }
 
     @Override

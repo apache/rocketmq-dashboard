@@ -54,7 +54,7 @@ import {
   deleteInstance,
   deleteInstancesBatch,
   importCloudInstances,
-  listInstances,
+  listInstancesPage,
   updateInstance,
 } from '../../services/instanceService';
 import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOptions';
@@ -65,6 +65,7 @@ const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
   ALIYUN: 'cn-hangzhou',
   TENCENT: 'ap-chengdu',
 };
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 /* ─── Helpers ─── */
 const typeLabel: Record<string, { text: string; color: string }> = {
@@ -107,6 +108,9 @@ const InstancePage = () => {
   const { t } = useLang();
   const navigate = useNavigate();
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -132,7 +136,10 @@ const InstancePage = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
-  const listQueryRef = useRef<InstanceQuery>({});
+  const listQueryRef = useRef<InstanceQuery & { page: number; pageSize: number }>({
+    page: 1,
+    pageSize: 20,
+  });
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -145,10 +152,11 @@ const InstancePage = () => {
 
     setLoading(true);
     try {
-      const nextInstances = await listInstances(query);
+      const result = await listInstancesPage(query);
       if (requestId === requestIdRef.current) {
-        setInstances(nextInstances);
-        const availableNames = new Set(nextInstances.map((instance) => instance.name));
+        setInstances(result.items);
+        setTotal(result.total);
+        const availableNames = new Set(result.items.map((instance) => instance.name));
         setSelectedRowKeys((keys) => keys.filter((key) => availableNames.has(String(key))));
       }
     } catch {
@@ -166,6 +174,8 @@ const InstancePage = () => {
     listQueryRef.current = {
       ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
       ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      page,
+      pageSize,
     };
     const timer = window.setTimeout(() => void loadInstances(), 0);
 
@@ -173,7 +183,7 @@ const InstancePage = () => {
       window.clearTimeout(timer);
       requestIdRef.current += 1;
     };
-  }, [debouncedSearch, loadInstances, typeFilter]);
+  }, [debouncedSearch, loadInstances, page, pageSize, typeFilter]);
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
 
@@ -654,13 +664,19 @@ const InstancePage = () => {
             placeholder="搜索实例 ID 或地址"
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             style={{ width: 240 }}
             allowClear
           />
           <Select<InstanceTypeFilter>
             value={typeFilter}
-            onChange={setTypeFilter}
+            onChange={(value) => {
+              setTypeFilter(value);
+              setPage(1);
+            }}
             style={{ width: 140 }}
             options={[
               { value: 'ALL', label: '全部架构' },
@@ -702,7 +718,22 @@ const InstancePage = () => {
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys),
           }}
-          pagination={false}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
+            showTotal: (count) => `共 ${count} 个实例`,
+            onChange: (nextPage, nextPageSize) => {
+              if (nextPageSize !== pageSize) {
+                setPage(1);
+                setPageSize(nextPageSize);
+              } else {
+                setPage(nextPage);
+              }
+            },
+          }}
           size="small"
           tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
