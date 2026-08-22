@@ -16,6 +16,8 @@
  */
 
 const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
+const safeDecimals = (decimals: number): number =>
+  Number.isFinite(decimals) ? Math.min(100, Math.max(0, Math.trunc(decimals))) : 1;
 
 /**
  * Format a date string or Date object to 'YYYY-MM-DD HH:mm:ss'.
@@ -23,7 +25,7 @@ const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
 export function formatDateTime(date: string | Date | null | undefined): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return String(date);
+  if (isNaN(d.getTime())) return '-';
   return (
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
     `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
@@ -36,7 +38,7 @@ export function formatDateTime(date: string | Date | null | undefined): string {
 export function formatDate(date: string | Date | null | undefined): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return String(date);
+  if (isNaN(d.getTime())) return '-';
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
@@ -51,6 +53,7 @@ export function formatRelativeTime(
   t: RelativeTimeTranslator,
   now = Date.now(),
 ): string {
+  if (!Number.isFinite(timestamp) || !Number.isFinite(now)) return '-';
   if (!timestamp) return t('ai.history.justNow');
 
   const elapsed = Math.max(0, now - timestamp);
@@ -62,7 +65,11 @@ export function formatRelativeTime(
   const current = new Date(now);
   const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
   if (updatedAt.toDateString() === current.toDateString()) {
-    return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hour12: false }).format(updatedAt);
+    return new Intl.DateTimeFormat(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(updatedAt);
   }
   return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(updatedAt);
 }
@@ -71,7 +78,9 @@ export function formatRelativeTime(
  * Format a message timestamp for a compact chat bubble footer.
  */
 export function formatTimeOfDay(timestamp: number): string {
+  if (!Number.isFinite(timestamp)) return '-';
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '-';
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
@@ -92,7 +101,7 @@ export function formatBytes(bytes: number, decimals = 1): string {
     value /= k;
     i += 1;
   }
-  return `${value.toFixed(decimals)} ${units[i]}`;
+  return `${value.toFixed(safeDecimals(decimals))} ${units[i]}`;
 }
 
 /**
@@ -100,7 +109,7 @@ export function formatBytes(bytes: number, decimals = 1): string {
  * e.g. 1234567 → '1,234,567'
  */
 export function formatNumber(num: number): string {
-  return num.toLocaleString('en-US');
+  return Number.isFinite(num) ? num.toLocaleString('en-US') : '-';
 }
 
 /**
@@ -109,6 +118,7 @@ export function formatNumber(num: number): string {
  * e.g. 82500 → zh: "22小时55分钟", en: "22h 55m"
  */
 export function formatDelay(totalSeconds: number, lang: 'zh' | 'en' = 'zh'): string {
+  if (!Number.isFinite(totalSeconds)) return '-';
   if (totalSeconds <= 0) return lang === 'zh' ? '0秒' : '0s';
 
   const days = Math.floor(totalSeconds / 86400);
@@ -139,5 +149,6 @@ export function formatDelay(totalSeconds: number, lang: 'zh' | 'en' = 'zh'): str
  * Format a percentage value (0-100) with fixed decimals.
  */
 export function formatPercent(value: number, decimals = 1): string {
-  return `${value.toFixed(decimals)}%`;
+  if (!Number.isFinite(value)) return '-';
+  return `${value.toFixed(safeDecimals(decimals))}%`;
 }
