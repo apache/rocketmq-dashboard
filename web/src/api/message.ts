@@ -44,6 +44,14 @@ export interface MessageQuery {
   endTime?: number;
 }
 
+export interface MessageQueryPage {
+  items: MessageRecord[];
+  total: number;
+  page: number;
+  size: number;
+  resultMayBeTruncated: boolean;
+}
+
 const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
   if (typeof storeTime === 'number') return storeTime;
 
@@ -85,6 +93,13 @@ export interface DLQResendResult {
 export async function queryMessages(params: MessageQuery) {
   const res = await client.get<{ data: MessageRecord[] }>('/messages', { params });
   return sortMessagesByStoreTimeDesc(res.data.data);
+}
+
+export async function queryMessagePage(
+  params: MessageQuery & { page?: number; pageSize?: number },
+) {
+  const res = await client.get<{ data: MessageQueryPage }>('/messages/page', { params });
+  return { ...res.data.data, items: sortMessagesByStoreTimeDesc(res.data.data.items) };
 }
 
 export async function getMessageTrace(msgId: string, instanceId?: string, topic?: string) {

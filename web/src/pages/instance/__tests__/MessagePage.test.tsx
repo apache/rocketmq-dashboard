@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal } from 'antd';
+import { App, message, Modal } from 'antd';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -37,7 +37,17 @@ const instanceFilterMocks = vi.hoisted(() => ({
 
 const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
 
-vi.mock('../../../services/messageService', () => messageServiceMocks);
+vi.mock('../../../services/messageService', () => ({
+  ...messageServiceMocks,
+  queryMessagePage: ({ page = 1, pageSize = 50, ...params }: Record<string, unknown>) =>
+    Promise.resolve(messageServiceMocks.queryMessages(params)).then((items) => ({
+      items,
+      total: items.length,
+      page,
+      size: pageSize,
+      resultMayBeTruncated: false,
+    })),
+}));
 vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 
 vi.mock('../../../services/instanceService', () => ({
@@ -256,14 +266,10 @@ describe('Message page query history', () => {
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
     // Clearing requires confirmation: the dialog is commanded imperatively, so spy on it
     // and drive the confirm callback instead of depending on portal rendering in jsdom.
-    const confirmSpy = vi
-      .spyOn(Modal, 'confirm')
-      .mockImplementation((config) => {
-        config.onOk?.();
-        return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<
-          typeof Modal.confirm
-        >;
-      });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
     await user.click(await screen.findByText('清空历史'));
     expect(confirmSpy).toHaveBeenCalled();
     confirmSpy.mockRestore();
@@ -341,6 +347,40 @@ describe('Message page query history', () => {
       'MID-4',
       'MID-2',
     ]);
+  });
+
+  it('does not rewrite query history or repeat the success toast when paginating', async () => {
+    const user = userEvent.setup();
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    const historyWrites = () =>
+      setItemSpy.mock.calls.filter(([key]) => key === QUERY_HISTORY_STORAGE_KEY);
+    const successSpy = vi.spyOn(message, 'success').mockImplementation(vi.fn());
+    messageServiceMocks.queryMessages.mockResolvedValue(
+      Array.from({ length: 60 }, (_, index) => createMessage(`MID-PAGE-${index + 1}`)),
+    );
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-PAGE');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    await waitFor(() => {
+      expect(messageServiceMocks.queryMessages).toHaveBeenCalledTimes(1);
+    });
+    expect(historyWrites()).toHaveLength(1);
+    expect(successSpy).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTitle('2'));
+    await waitFor(() => {
+      expect(messageServiceMocks.queryMessages).toHaveBeenCalledTimes(2);
+    });
+
+    // Paging only navigates the result set: the explicit query is written to history once and
+    // the success toast is not re-announced on every page change.
+    expect(historyWrites()).toHaveLength(1);
+    expect(successSpy).toHaveBeenCalledTimes(1);
   });
 
   it('replays topic and key queries with their saved parameters', async () => {

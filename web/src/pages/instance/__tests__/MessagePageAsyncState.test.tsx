@@ -32,7 +32,17 @@ const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
 }));
 
-vi.mock('../../../services/messageService', () => serviceMocks);
+vi.mock('../../../services/messageService', () => ({
+  ...serviceMocks,
+  queryMessagePage: ({ page = 1, pageSize = 50, ...params }: Record<string, unknown>) =>
+    Promise.resolve(serviceMocks.queryMessages(params)).then((items) => ({
+      items,
+      total: items.length,
+      page,
+      size: pageSize,
+      resultMayBeTruncated: false,
+    })),
+}));
 vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 
 vi.mock('../../../services/instanceService', () => ({

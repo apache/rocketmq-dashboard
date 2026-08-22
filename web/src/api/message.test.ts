@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getMessageTrace, queryMessages } from './message';
+import { getMessageTrace, queryMessagePage, queryMessages } from './message';
 
 const mock = new MockAdapter(client);
 
@@ -85,6 +85,17 @@ describe('message API', () => {
       { msgId: 'msg-new' },
       { msgId: 'msg-old' },
     ]);
+  });
+
+  it('uses the paged query contract and preserves its truncation state', async () => {
+    const params = { instanceId: 'instance-1', topic: 'orders', page: 2, pageSize: 50 };
+    const page = { items: [], total: 200, page: 2, size: 50, resultMayBeTruncated: true };
+    mock.onGet('/messages/page').reply((config) => {
+      expect(config.params).toEqual(params);
+      return [200, { code: 200, data: page }];
+    });
+
+    await expect(queryMessagePage(params)).resolves.toEqual(page);
   });
 
   it('unwraps trace records with numeric timestamps', async () => {

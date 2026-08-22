@@ -72,6 +72,22 @@ class MessageControllerTest {
     }
 
     @Test
+    void pagedQueryShouldPassPageAndReturnTruncationState() throws Exception {
+        MessageQueryPageVO page = MessageQueryPageVO.builder().items(List.of()).total(200).page(2).size(50)
+                .resultMayBeTruncated(true).build();
+        when(messageService.queryMessagesPage("instance-a", "orders", null, null, null, 1000L, 2000L, 2, 50))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/messages/page").param("instanceId", "instance-a").param("topic", "orders")
+                        .param("startTime", "1000").param("endTime", "2000").param("page", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(200))
+                .andExpect(jsonPath("$.data.resultMayBeTruncated").value(true));
+
+        verify(messageService).queryMessagesPage("instance-a", "orders", null, null, null, 1000L, 2000L, 2, 50);
+    }
+
+    @Test
     void messageTraceShouldPassInstanceId() throws Exception {
         TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
         when(messageService.getMessageTrace("instance-a", "msg-001", "orders")).thenReturn(trace);
