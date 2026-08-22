@@ -17,6 +17,9 @@
 package org.apache.rocketmq.studio.auth;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioSession;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
@@ -37,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -61,6 +65,50 @@ class AuthServiceDatabaseTest {
         authService = new AuthService(authProperties, settingsRepository,
                 Clock.fixed(Instant.parse("2026-08-13T00:00:00Z"), ZoneOffset.UTC), userMapper,
                 sessionMapper, passwordHasher);
+    }
+
+    @Test
+    void listUsersReturnsTheRequestedFilteredPage() {
+        RmqStudioUser operator = user(2L, "operator", false, true, "password-1");
+        Page<RmqStudioUser> databasePage = new Page<>(2, 20, 41);
+        databasePage.setRecords(List.of(operator));
+        when(userMapper.selectPage(any(Page.class), any(Wrapper.class))).thenReturn(databasePage);
+
+        PageResult<RmqStudioUser> result = authService.listUsers(
+                " oper ", false, true, 2, 20);
+
+        assertThat(result.getItems()).containsExactly(operator);
+        assertThat(result.getTotal()).isEqualTo(41);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(20);
+        org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioUser>> queryCaptor =
+                org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(userMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("username", "admin", "enabled", "ORDER BY username ASC,id ASC");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains("%oper%", false, true);
+    }
+
+    @Test
+    void listUsersRejectsInvalidPaginationBeforeDatabaseAccess() {
+        assertThatThrownBy(() -> authService.listUsers(null, null, null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than zero");
+        assertThatThrownBy(() -> authService.listUsers(null, null, null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+
+        verifyNoInteractions(userMapper, sessionMapper);
+    }
+
+    @Test
+    void listUsersRejectsOversizedSearchBeforeDatabaseAccess() {
+        assertThatThrownBy(() -> authService.listUsers("x".repeat(129), null, null, 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("search must not exceed 128 characters");
+
+        verifyNoInteractions(userMapper, sessionMapper);
     }
 
     @Test

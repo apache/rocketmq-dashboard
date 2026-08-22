@@ -19,7 +19,9 @@ package org.apache.rocketmq.studio.auth;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioSession;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
@@ -65,6 +67,8 @@ public class AuthService {
     private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
     private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
     private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);
+    private static final int MAX_USER_PAGE_SIZE = 100;
+    private static final int MAX_USER_SEARCH_LENGTH = 128;
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
 
@@ -159,9 +163,29 @@ public class AuthService {
         });
     }
 
-    public List<RmqStudioUser> listUsers() {
+    public PageResult<RmqStudioUser> listUsers(String search, Boolean admin, Boolean enabled,
+                                               int page, int pageSize) {
         requireDatabaseBacked();
-        return userMapper.selectList(new QueryWrapper<RmqStudioUser>().orderByAsc("username"));
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than zero");
+        }
+        if (pageSize < 1 || pageSize > MAX_USER_PAGE_SIZE) {
+            throw new BusinessException(400,
+                    "pageSize must be between 1 and " + MAX_USER_PAGE_SIZE);
+        }
+        String normalizedSearch = search == null ? "" : search.trim();
+        if (normalizedSearch.length() > MAX_USER_SEARCH_LENGTH) {
+            throw new BusinessException(400,
+                    "search must not exceed " + MAX_USER_SEARCH_LENGTH + " characters");
+        }
+        QueryWrapper<RmqStudioUser> query = new QueryWrapper<RmqStudioUser>()
+                .like(!normalizedSearch.isEmpty(), "username", normalizedSearch)
+                .eq(admin != null, "admin", admin)
+                .eq(enabled != null, "enabled", enabled)
+                .orderByAsc("username")
+                .orderByAsc("id");
+        Page<RmqStudioUser> result = userMapper.selectPage(new Page<>(page, pageSize), query);
+        return PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
     }
 
     public RmqStudioUser createUser(String username, String password, boolean admin) {

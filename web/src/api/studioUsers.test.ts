@@ -1,0 +1,62 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import MockAdapter from 'axios-mock-adapter';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import client from './client';
+import { listStudioUsers } from './studioUsers';
+
+const mock = new MockAdapter(client);
+
+describe('studio users API', () => {
+  beforeEach(() => mock.reset());
+  afterEach(() => mock.reset());
+
+  it('requests and returns the filtered server page', async () => {
+    mock.onGet('/studio-users').reply((config) => [
+      200,
+      {
+        code: 200,
+        data: {
+          items: [{ id: 7, username: 'operator', admin: false, enabled: true }],
+          total: 21,
+          page: 2,
+          size: 20,
+        },
+        receivedParams: config.params,
+      },
+    ]);
+
+    const page = await listStudioUsers({
+      search: 'oper',
+      admin: false,
+      enabled: true,
+      page: 2,
+      pageSize: 20,
+    });
+
+    expect(page.items[0].username).toBe('operator');
+    expect(page.total).toBe(21);
+    expect(mock.history.get[0].params).toEqual({
+      search: 'oper',
+      admin: false,
+      enabled: true,
+      page: 2,
+      pageSize: 20,
+    });
+  });
+});
