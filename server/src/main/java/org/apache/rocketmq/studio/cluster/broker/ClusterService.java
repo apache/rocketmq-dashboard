@@ -35,6 +35,7 @@ import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,10 +43,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -53,18 +50,28 @@ import java.util.concurrent.TimeUnit;
 public class ClusterService {
 
     private static final long REGISTRY_PROBE_TIMEOUT_SECONDS = 15;
-
-    private static final ExecutorService REGISTRY_PROBE_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
-        Thread thread = new Thread(runnable, "nameserver-registry-probe");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final int REGISTRY_PROBE_MAX_CONCURRENCY = 8;
+    private static final int REGISTRY_PROBE_QUEUE_CAPACITY = 32;
 
     private final ClusterRepository clusterRepository;
     private final ClusterProvider clusterProvider;
     private final RocketMQBrokerConfigService brokerConfigService;
     private final AuditService auditService;
     private final NameserverRegistryService registryService;
+
+    // Bounded so blocked probes cannot accumulate threads; replaceable in unit tests.
+    private RegistryProbeRunner registryProbeRunner = new RegistryProbeRunner(
+            REGISTRY_PROBE_MAX_CONCURRENCY, REGISTRY_PROBE_QUEUE_CAPACITY,
+            REGISTRY_PROBE_TIMEOUT_SECONDS * 1000L);
+
+    void setRegistryProbeRunner(RegistryProbeRunner registryProbeRunner) {
+        this.registryProbeRunner = registryProbeRunner;
+    }
+
+    @PreDestroy
+    void closeRegistryProbeRunner() {
+        registryProbeRunner.close();
+    }
 
     public List<ClusterVO> listClusters() {
         log.info("Listing all clusters");
@@ -82,25 +89,13 @@ public class ClusterService {
      * logged and skipped without affecting the other entries.
      */
     public List<ClusterVO> listRegistryClusters() {
-        List<NameserverRegistryVO> entries = registryService.list();
-        if (entries.isEmpty()) {
+        List<NameserverRegistryVO> probeable = registryService.list().stream()
+                .filter(entry -> entry.getNamesrvAddr() != null && !entry.getNamesrvAddr().isBlank())
+                .toList();
+        if (probeable.isEmpty()) {
             return List.of();
         }
-        List<CompletableFuture<List<ClusterVO>>> futures = entries.stream()
-                .filter(entry -> entry.getNamesrvAddr() != null && !entry.getNamesrvAddr().isBlank())
-                .map(entry -> CompletableFuture
-                        .supplyAsync(() -> probeRegistryEntry(entry), REGISTRY_PROBE_EXECUTOR)
-                        .orTimeout(REGISTRY_PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                        .exceptionally(ex -> {
-                            log.warn("NameServer registry probe timed out or failed for {} ({}): {}",
-                                    entry.getName(), entry.getNamesrvAddr(), ex.getMessage());
-                            return List.of();
-                        }))
-                .toList();
-        return futures.stream()
-                .map(CompletableFuture::join)
-                .flatMap(List::stream)
-                .toList();
+        return registryProbeRunner.probeAll(probeable, this::probeRegistryEntry);
     }
 
     private List<ClusterVO> probeRegistryEntry(NameserverRegistryVO entry) {

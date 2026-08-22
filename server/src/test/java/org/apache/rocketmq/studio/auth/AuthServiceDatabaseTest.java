@@ -100,11 +100,39 @@ class AuthServiceDatabaseTest {
     void disablingLastEnabledAdministratorIsRejected() {
         RmqStudioUser user = user(1L, "admin", true, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);
-        when(userMapper.selectCount(any(Wrapper.class))).thenReturn(1L);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(user));
 
         assertThatThrownBy(() -> authService.setUserEnabled(1L, false))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("The last enabled administrator cannot be disabled");
+    }
+
+    @Test
+    void disablingAnAdministratorKeepsTheOtherEnabledAdministratorTest() {
+        RmqStudioUser target = user(1L, "admin-one", true, true, "password-1");
+        RmqStudioUser other = user(2L, "admin-two", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(target);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(target, other));
+
+        RmqStudioUser result = authService.setUserEnabled(1L, false);
+
+        assertThat(result.getEnabled()).isFalse();
+        verify(userMapper).updateById(any(RmqStudioUser.class));
+    }
+
+    @Test
+    void disablingAnAlreadyDisabledAdministratorIsNotRejectedByTheOtherAdminTest() {
+        // A concurrent request disabled the target first, so it no longer appears among the
+        // enabled administrators; the stale read must not be mistaken for "last admin".
+        RmqStudioUser target = user(1L, "admin-one", true, true, "password-1");
+        RmqStudioUser other = user(2L, "admin-two", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(target);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(other));
+
+        RmqStudioUser result = authService.setUserEnabled(1L, false);
+
+        assertThat(result.getEnabled()).isFalse();
+        verify(userMapper).updateById(any(RmqStudioUser.class));
     }
 
     @Test

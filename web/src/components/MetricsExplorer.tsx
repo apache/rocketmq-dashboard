@@ -57,12 +57,48 @@ interface NumericSample {
   value: number;
 }
 
-const toNumericSamples = (series: MetricSeries): NumericSample[] =>
-  series.values
-    .map((sample, index) => ({ timestamp: sample.timestamp, value: Number(sample.value), index }))
+const sortAndStrip = (
+  samples: { timestamp: number; value: number; index: number }[],
+): NumericSample[] =>
+  samples
     .filter((sample) => Number.isFinite(sample.timestamp) && Number.isFinite(sample.value))
     .sort((left, right) => left.timestamp - right.timestamp || left.index - right.index)
     .map(({ timestamp, value }) => ({ timestamp, value }));
+
+const toScalarSamples = (series: MetricSeries): NumericSample[] =>
+  sortAndStrip(
+    series.values.map((sample, index) => ({
+      timestamp: sample.timestamp,
+      value: Number(sample.value),
+      index,
+    })),
+  );
+
+// Native histograms carry no scalar samples. To avoid plotting them as "no data", derive a
+// trend value per histogram: the observed sum (in the metric's unit), falling back to the
+// observation count when the sum is absent or non-finite.
+const toHistogramSamples = (series: MetricSeries): NumericSample[] =>
+  sortAndStrip(
+    series.histograms.map((sample, index) => {
+      // An empty string parses to 0, so treat a blank field as missing rather than zero.
+      const sumText = sample.histogram.sum?.trim();
+      const countText = sample.histogram.count?.trim();
+      const sum = sumText ? Number(sumText) : Number.NaN;
+      const count = countText ? Number(countText) : Number.NaN;
+      const value = Number.isFinite(sum) ? sum : count;
+      return { timestamp: sample.timestamp, value, index };
+    }),
+  );
+
+const toNumericSamples = (
+  series: MetricSeries,
+): { samples: NumericSample[]; fromHistogram: boolean } => {
+  const scalar = toScalarSamples(series);
+  if (scalar.length > 0) {
+    return { samples: scalar, fromHistogram: false };
+  }
+  return { samples: toHistogramSamples(series), fromHistogram: true };
+};
 
 const seriesLabel = (series: MetricSeries, fallback: string) => {
   const labels = Object.entries(series.labels)
@@ -80,15 +116,28 @@ interface MetricChartProps {
   metric: MetricMapping;
   locale: string;
   noSamples: string;
+  histogramLabel: string;
+  histogramTooltip: string;
 }
 
-const MetricChart = ({ data, metric, locale, noSamples }: MetricChartProps) => {
+const MetricChart = ({
+  data,
+  metric,
+  locale,
+  noSamples,
+  histogramLabel,
+  histogramTooltip,
+}: MetricChartProps) => {
   const chartSeries = data.series
-    .map((series, index) => ({
-      color: SERIES_COLORS[index % SERIES_COLORS.length],
-      label: seriesLabel(series, metric.name),
-      samples: toNumericSamples(series),
-    }))
+    .map((series, index) => {
+      const { samples, fromHistogram } = toNumericSamples(series);
+      return {
+        color: SERIES_COLORS[index % SERIES_COLORS.length],
+        label: seriesLabel(series, metric.name),
+        samples,
+        fromHistogram,
+      };
+    })
     .filter((series) => series.samples.length > 0);
 
   if (chartSeries.length === 0) {
@@ -205,6 +254,13 @@ const MetricChart = ({ data, metric, locale, noSamples }: MetricChartProps) => {
               <Text ellipsis={{ tooltip: series.label }} style={{ maxWidth: 220 }}>
                 {series.label}
               </Text>
+              {series.fromHistogram ? (
+                <Tooltip title={histogramTooltip}>
+                  <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                    {histogramLabel}
+                  </Tag>
+                </Tooltip>
+              ) : null}
               <Text strong>
                 {formatMetricValue(latest.value)} {metric.unit}
               </Text>
@@ -272,7 +328,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           profileError: '指标模板加载失败',
           queryError: queryErrorFallback,
           noProfiles: '暂无指标模板',
-          noSamples: '暂无标量数据',
+          noSamples: '暂无数据',
+          histogram: '直方图',
+          histogramTooltip: '无标量样本，趋势由直方图观测值推导',
           defaultDataSource: '默认数据源',
           authTitle: '数据源认证',
           authDescription: '凭据仅用于当前数据源，离开该数据源后会被清除。',
@@ -292,7 +350,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           profileError: 'Failed to load metric profiles',
           queryError: queryErrorFallback,
           noProfiles: 'No metric profiles',
-          noSamples: 'No scalar samples',
+          noSamples: 'No samples',
+          histogram: 'Histogram',
+          histogramTooltip: 'No scalar samples; trend derived from histogram observations',
           defaultDataSource: 'Default source',
           authTitle: 'Data source authentication',
           authDescription:
@@ -607,6 +667,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             metric={selectedMetric}
             locale={lang === 'zh' ? 'zh-CN' : 'en-US'}
             noSamples={copy.noSamples}
+            histogramLabel={copy.histogram}
+            histogramTooltip={copy.histogramTooltip}
           />
         </>
       ) : null}

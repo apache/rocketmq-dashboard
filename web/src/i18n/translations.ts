@@ -753,10 +753,6 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Topic "{name}" created successfully',
   },
   'topic.topicNamePlaceholder': { zh: '请输入 Topic 名称', en: 'Enter topic name' },
-  'topic.topicNameRule': {
-    zh: '仅支持字母、数字、下划线、中划线、斜杠和星号',
-    en: 'Only letters, numbers, underscore, hyphen, slash and asterisk',
-  },
   'topic.topicNameRequired': { zh: '请输入 Topic 名称', en: 'Please enter topic name' },
   'topic.queueExtra': { zh: '每个 Broker 节点 8 个队列', en: '8 queues per Broker node' },
   'topic.remarkPlaceholder': {
