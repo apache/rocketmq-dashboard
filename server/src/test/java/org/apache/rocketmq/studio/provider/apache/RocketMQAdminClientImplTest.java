@@ -27,11 +27,13 @@ import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -574,6 +576,43 @@ class RocketMQAdminClientImplTest {
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).selectOne(captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "instance_id", "name");
+    }
+
+    @Test
+    void updateConsumerGroupSettingsPreservesBrokerConfiguration() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of("cluster-1", new HashSet<>(List.of("broker-1")))));
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
+        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+        config.setGroupName("cg-orders");
+        config.setConsumeEnable(false);
+        config.setRetryQueueNums(1);
+        config.setRetryMaxTimes(16);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(selectedAdmin.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(config);
+        when(groupMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(selectedAdmin).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+
+        ConsumerGroupSettingsVO settings = adminClient.updateConsumerGroupSettings("instance-a", "cg-orders", 2, 8);
+
+        assertThat(settings.getRetryQueueNums()).isEqualTo(2);
+        assertThat(settings.getRetryMaxTimes()).isEqualTo(8);
+        ArgumentCaptor<SubscriptionGroupConfig> captor = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), captor.capture());
+        assertThat(captor.getValue().isConsumeEnable()).isFalse();
+        assertThat(captor.getValue().getRetryQueueNums()).isEqualTo(2);
+        assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
     }
 
     @Test

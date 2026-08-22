@@ -54,6 +54,7 @@ import {
   ListBullets,
   Info,
   ArrowsClockwise,
+  SlidersHorizontal,
 } from '@phosphor-icons/react';
 import { ImportOutlined, ExportOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -81,6 +82,8 @@ import {
   getConsumerSubscriptions,
   listConsumerGroupPage,
   resetConsumerOffset,
+  getConsumerGroupSettings,
+  updateConsumerGroupSettings,
 } from '../../services/consumerService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import {
@@ -193,6 +196,10 @@ const ConsumerPageContent = ({
   const [sortKey, setSortKey] = useState<string>('name_asc');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
+  const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSubmitting, setSettingsSubmitting] = useState(false);
+  const [settingsForm] = Form.useForm<{ retryQueueNums: number; retryMaxTimes: number }>();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [dataTypeValue, setDataTypeValue] = useState<string | undefined>(undefined);
@@ -348,6 +355,47 @@ const ConsumerPageContent = ({
     setModalOpen(true);
     void loadSubscriptions(group.name);
     void loadProgress(group.name);
+  };
+
+  const openSettingsModal = async (group: ConsumerGroup) => {
+    if (!selectedInstanceId) return;
+    setSettingsGroup(group);
+    setSettingsLoading(true);
+    try {
+      const settings = await getConsumerGroupSettings(group.name, selectedInstanceId);
+      settingsForm.setFieldsValue(settings);
+    } catch {
+      setSettingsGroup(null);
+      message.error('加载消费组配置失败，请稍后重试');
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const saveSettings = async () => {
+    if (!settingsGroup || !selectedInstanceId) return;
+    const values = await settingsForm.validateFields();
+    setSettingsSubmitting(true);
+    try {
+      const saved = await updateConsumerGroupSettings({
+        instanceId: selectedInstanceId,
+        name: settingsGroup.name,
+        ...values,
+      });
+      setGroups((current) =>
+        current.map((group) =>
+          group.name === settingsGroup.name
+            ? { ...group, retryMaxTimes: saved.retryMaxTimes }
+            : group,
+        ),
+      );
+      message.success('消费组配置已保存');
+      setSettingsGroup(null);
+    } catch {
+      message.error('保存消费组配置失败，请稍后重试');
+    } finally {
+      setSettingsSubmitting(false);
+    }
   };
 
   const selectedDiagnosticKey = selectedGroup
@@ -638,6 +686,17 @@ const ConsumerPageContent = ({
       width: 210,
       render: (_: unknown, record: ConsumerGroup) => (
         <Flex gap={6}>
+          <Button
+            size="small"
+            icon={<SlidersHorizontal size={14} />}
+            disabled={isCloudInstance}
+            onClick={(e) => {
+              e.stopPropagation();
+              void openSettingsModal(record);
+            }}
+          >
+            配置
+          </Button>
           <Button
             size="small"
             icon={<Eye size={14} />}
@@ -1424,6 +1483,37 @@ const ConsumerPageContent = ({
             ]}
           />
         )}
+      </Modal>
+
+      <Modal
+        title="消费组配置"
+        open={Boolean(settingsGroup)}
+        onCancel={() => setSettingsGroup(null)}
+        onOk={() => void saveSettings()}
+        confirmLoading={settingsSubmitting}
+        okText="保存"
+        cancelText="取消"
+        destroyOnHidden
+      >
+        <Form form={settingsForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label="Group 名称">
+            <Text strong>{settingsGroup?.name}</Text>
+          </Form.Item>
+          <Form.Item
+            label="重试队列数"
+            name="retryQueueNums"
+            rules={[{ required: true, message: '请输入重试队列数' }]}
+          >
+            <InputNumber min={1} max={128} style={{ width: '100%' }} disabled={settingsLoading} />
+          </Form.Item>
+          <Form.Item
+            label="最大重试次数"
+            name="retryMaxTimes"
+            rules={[{ required: true, message: '请输入最大重试次数' }]}
+          >
+            <InputNumber min={1} max={128} style={{ width: '100%' }} disabled={settingsLoading} />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* ═══════════════════════════════════════════

@@ -37,6 +37,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -497,6 +498,70 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     admin -> createConsumerGroup(admin, group));
         }
         return adminFactory.execute(namesrvAddr(), null, admin -> createConsumerGroup(admin, group));
+    }
+
+    @Override
+    public ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name) {
+        return executeForInstance(instanceId, admin -> {
+            try {
+                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, getClusterName(admin));
+                if (brokerAddrs.isEmpty()) {
+                    throw new BusinessException(502, "No broker available to get consumer group settings");
+                }
+                SubscriptionGroupConfig config = admin.examineSubscriptionGroupConfig(brokerAddrs.iterator().next(), name);
+                if (config == null) {
+                    throw new BusinessException(404, "Consumer group not found: " + name);
+                }
+                return ConsumerGroupSettingsVO.builder().groupName(name).retryQueueNums(config.getRetryQueueNums())
+                        .retryMaxTimes(config.getRetryMaxTimes()).build();
+            } catch (BusinessException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw classifyBrokerFailure(exception, "get consumer group settings");
+            }
+        });
+    }
+
+    @Override
+    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name, int retryQueueNums,
+                                                                 int retryMaxTimes) {
+        return executeForInstance(instanceId, admin -> {
+            try {
+                String clusterName = getClusterName(admin);
+                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
+                if (brokerAddrs.isEmpty()) {
+                    throw new BusinessException(502, "No broker available to update consumer group settings");
+                }
+                for (String brokerAddr : brokerAddrs) {
+                    SubscriptionGroupConfig config = admin.examineSubscriptionGroupConfig(brokerAddr, name);
+                    if (config == null) {
+                        throw new BusinessException(404, "Consumer group not found: " + name);
+                    }
+                    config.setRetryQueueNums(retryQueueNums);
+                    config.setRetryMaxTimes(retryMaxTimes);
+                    admin.createAndUpdateSubscriptionGroupConfig(brokerAddr, config);
+                }
+                RmqGroup group = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
+                        .eq(RmqGroup::getClusterId, clusterName)
+                        .eq(RmqGroup::getInstanceId, metadataScope(instanceId))
+                        .eq(RmqGroup::getName, name));
+                if (group != null) {
+                    group.setMaxRetry(retryMaxTimes);
+                    group.setGmtModified(LocalDateTime.now());
+                    groupMapper.updateById(group);
+                }
+                recordAudit("UPDATE_GROUP_SETTINGS", name, "retryQueueNums=" + retryQueueNums
+                        + ", retryMaxTimes=" + retryMaxTimes, "SUCCESS");
+                return ConsumerGroupSettingsVO.builder().groupName(name).retryQueueNums(retryQueueNums)
+                        .retryMaxTimes(retryMaxTimes).build();
+            } catch (BusinessException exception) {
+                recordAudit("UPDATE_GROUP_SETTINGS", name, exception.getMessage(), "FAILED");
+                throw exception;
+            } catch (Exception exception) {
+                recordAudit("UPDATE_GROUP_SETTINGS", name, exception.getMessage(), "FAILED");
+                throw classifyBrokerFailure(exception, "update consumer group settings");
+            }
+        });
     }
 
     private ConsumerGroupVO createConsumerGroup(MQAdminExt admin, ConsumerGroupVO group) {

@@ -66,6 +66,19 @@ public class ConsumerGroupController {
         return Result.ok(metadataService.getConsumerGroup(instanceId, name));
     }
 
+    @GetMapping("/{name}/settings")
+    public Result<ConsumerGroupSettingsVO> getConsumerGroupSettings(@PathVariable String name,
+                                                                      @RequestParam String instanceId) {
+        return Result.ok(metadataService.getConsumerGroupSettings(instanceId, name));
+    }
+
+    @PostMapping("/settings")
+    public Result<ConsumerGroupSettingsVO> updateConsumerGroupSettings(
+            @Valid @RequestBody UpdateConsumerGroupSettingsDTO request) {
+        return Result.ok(metadataService.updateConsumerGroupSettings(request.getInstanceId(), request.getName(),
+                request.getRetryQueueNums(), request.getRetryMaxTimes()));
+    }
+
     @GetMapping("/{name}/progress")
     public Result<List<QueueProgressVO>> getGroupProgress(
             @PathVariable String name,

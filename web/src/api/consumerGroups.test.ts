@@ -20,12 +20,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
 import {
   getConsumerGroup,
+  getConsumerGroupSettings,
   getConsumerProgress,
   getConsumerSubscriptions,
   listConsumerGroupPage,
   listConsumerGroups,
   deleteConsumerGroup,
   resetConsumerOffset,
+  updateConsumerGroupSettings,
 } from './metadata';
 
 const mock = new MockAdapter(client);
@@ -123,5 +125,27 @@ describe('consumer groups API contract', () => {
     });
 
     await expect(deleteConsumerGroup(group.name, 'instance-1')).resolves.toBeUndefined();
+  });
+
+  it('gets and updates settings in the selected Apache instance', async () => {
+    const settings = { groupName: group.name, retryQueueNums: 2, retryMaxTimes: 8 };
+    mock
+      .onGet(`/groups/${encodeURIComponent(group.name)}/settings`, {
+        params: { instanceId: 'instance-1' },
+      })
+      .reply(200, { code: 200, data: settings });
+    await expect(getConsumerGroupSettings(group.name, 'instance-1')).resolves.toEqual(settings);
+
+    const payload = {
+      instanceId: 'instance-1',
+      name: group.name,
+      retryQueueNums: 2,
+      retryMaxTimes: 8,
+    };
+    mock.onPost('/groups/settings').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(payload);
+      return [200, { code: 200, data: settings }];
+    });
+    await expect(updateConsumerGroupSettings(payload)).resolves.toEqual(settings);
   });
 });
