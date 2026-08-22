@@ -27,6 +27,7 @@ import {
   listGrafanaDashboards,
 } from '../services/grafanaService';
 import type { GrafanaDashboardInfo } from '../api/metrics';
+import { downloadBlob } from '../utils/download';
 
 const { Paragraph, Text } = Typography;
 
@@ -103,22 +104,11 @@ export const GrafanaDashboardList: React.FC = () => {
     setViewLoading(false);
   };
 
-  const triggerDownload = (filename: string, content: Blob | string) => {
-    const blob =
-      typeof content === 'string' ? new Blob([content], { type: 'application/json' }) : content;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleExport = async (info: GrafanaDashboardInfo) => {
     setExportingUids((current) => new Set(current).add(info.uid));
     try {
       const blob = await exportGrafanaDashboard(info.uid);
-      triggerDownload(`${info.uid}.json`, blob);
+      downloadBlob(blob, `${info.uid}.json`);
       message.success(t('grafana.exported'));
     } catch {
       message.error(t('grafana.exportFailed'));
@@ -135,7 +125,7 @@ export const GrafanaDashboardList: React.FC = () => {
     setExportingAll(true);
     try {
       const download = await exportGrafanaDashboards();
-      triggerDownload(download.filename, download.blob);
+      downloadBlob(download.blob, download.filename);
       message.success(t('grafana.exportAllDone'));
     } catch {
       message.error(t('grafana.exportAllFailed'));

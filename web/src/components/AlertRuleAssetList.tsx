@@ -26,6 +26,7 @@ import {
   listAlertRuleAssets,
 } from '../services/alertRuleAssetService';
 import type { AlertRuleAssetInfo } from '../api/alertRuleAssets';
+import { downloadBlob } from '../utils/download';
 
 const { Text } = Typography;
 
@@ -107,21 +108,11 @@ export const AlertRuleAssetList: React.FC = () => {
     setViewLoading(false);
   };
 
-  const triggerDownload = (name: string, content: Blob | string) => {
-    const blob = typeof content === 'string' ? new Blob([content], { type: 'text/yaml' }) : content;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${name}.yaml`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleExport = async (info: AlertRuleAssetInfo) => {
     setExportingNames((current) => new Set(current).add(info.name));
     try {
       const blob = await exportAlertRuleAsset(info.name);
-      triggerDownload(info.name, blob);
+      downloadBlob(blob, `${info.name}.yaml`);
       message.success(t('alertAssets.exported'));
     } catch {
       message.error(t('alertAssets.exportFailed'));
