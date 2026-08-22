@@ -118,6 +118,37 @@ class RocketMQConsumerDiagnosticsProviderTest {
     }
 
     @Test
+    void getConsumerStackShouldIgnoreOverflowingThreadIdsTest() throws Exception {
+        ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
+        runningInfo.setJstack("""
+                first TID: 12 STATE: RUNNABLE
+                first com.example.First.run(First.java:1)
+                malformed TID: 999999999999999999999999999999 STATE: WAITING
+                malformed ignored.frame(Line.java:2)
+                second TID: 13 STATE: WAITING
+                second com.example.Second.run(Second.java:3)
+                """);
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(runningInfo);
+
+        ConsumerStackTraceVO result = provider.getConsumerStack("instance-a", "cg-orders", "client-1");
+
+        assertThat(result.getThreads()).extracting(thread -> thread.getThreadName())
+                .containsExactly("first", "second");
+    }
+
+    @Test
+    void getConsumerStackShouldRejectOversizedJstackTest() throws Exception {
+        ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
+        runningInfo.setJstack("x".repeat(RocketMQConsumerDiagnosticsProvider.MAX_JSTACK_CHARS + 1));
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(runningInfo);
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(502))
+                .hasMessageContaining("exceeds the supported size");
+    }
+
+    @Test
     void getConsumerStackShouldUseDefaultNameServerWhenInstanceIsBlank() throws Exception {
         ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
         runningInfo.setJstack("");
