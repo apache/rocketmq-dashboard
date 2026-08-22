@@ -53,6 +53,8 @@ class DemoDataSqlCompatibilityTest {
             assertThat(count(connection, "rmq_acl_user")).isEqualTo(8);
             assertThat(countOrphanedMetadata(connection, "rmq_instance_topic")).isZero();
             assertThat(countOrphanedMetadata(connection, "rmq_instance_group")).isZero();
+            assertThat(countNumericMetadataReferences(connection, "rmq_instance_topic")).isZero();
+            assertThat(countNumericMetadataReferences(connection, "rmq_instance_group")).isZero();
             assertThat(allIdsAreNumeric(connection, "rmq_instance")).isTrue();
             assertThat(allIdsAreNumeric(connection, "rmq_acl_rule")).isTrue();
             assertThat(allIdsAreNumeric(connection, "rmq_acl_user")).isTrue();
@@ -113,8 +115,17 @@ class DemoDataSqlCompatibilityTest {
     private static long countOrphanedMetadata(Connection connection, String table) throws SQLException {
         try (Statement statement = connection.createStatement();
              ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM " + table
-                     + " child LEFT JOIN rmq_instance parent ON parent.id = child.instance_id"
+                     + " child LEFT JOIN rmq_instance parent ON parent.name = child.instance_id"
                      + " WHERE parent.id IS NULL")) {
+            result.next();
+            return result.getLong(1);
+        }
+    }
+
+    private static long countNumericMetadataReferences(Connection connection, String table) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM " + table
+                     + " child JOIN rmq_instance parent ON CAST(parent.id AS VARCHAR) = child.instance_id")) {
             result.next();
             return result.getLong(1);
         }
