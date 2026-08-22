@@ -39,7 +39,7 @@ import { useLang } from '../../i18n/LangContext';
 import type { DLQGroup } from '../../api/message';
 import { exportDLQMessages, listDLQGroups, resendDLQ } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -272,12 +272,7 @@ const DLQPage = () => {
         startTime: exportRange[0].valueOf(),
         endTime: exportRange[1].valueOf(),
       });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${group.groupName}-dlq-messages.json`;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${group.groupName}-dlq-messages.json`);
       message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
     } catch (error) {
       message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));

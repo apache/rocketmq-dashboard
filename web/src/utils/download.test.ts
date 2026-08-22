@@ -38,11 +38,13 @@ describe('buildCsv', () => {
 
 describe('downloadBlob', () => {
   afterEach(() => {
+    vi.useRealTimers();
     document.body.innerHTML = '';
     vi.restoreAllMocks();
   });
 
-  it('clicks an attached temporary anchor and removes it after download', () => {
+  it('defers object URL revocation until the browser can start the download', () => {
+    vi.useFakeTimers();
     const createObjectURL = vi.fn(() => 'blob:download');
     const revokeObjectURL = vi.fn();
     Object.defineProperty(URL, 'createObjectURL', {
@@ -68,6 +70,34 @@ describe('downloadBlob', () => {
     expect(createObjectURL).toHaveBeenCalledWith(blob);
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(document.querySelector('a[download="export.csv"]')).not.toBeInTheDocument();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    vi.runAllTimers();
+
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:download');
+  });
+
+  it('still removes the anchor and schedules cleanup when the click fails', () => {
+    vi.useFakeTimers();
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: vi.fn(() => 'blob:failed-download'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {
+      throw new Error('download blocked');
+    });
+
+    expect(() => downloadBlob(new Blob(['content']), 'export.csv')).toThrow('download blocked');
+    expect(document.querySelector('a[download="export.csv"]')).not.toBeInTheDocument();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    vi.runAllTimers();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:failed-download');
   });
 });

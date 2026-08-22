@@ -22,9 +22,12 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   anchor.download = filename;
   anchor.style.display = 'none';
   document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 };
 
 export interface CsvColumn<T> {
