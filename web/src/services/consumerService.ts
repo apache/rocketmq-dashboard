@@ -125,6 +125,18 @@ export async function updateConsumerGroupSettings(
   return metadataApi.updateConsumerGroupSettings(data);
 }
 
+export async function refreshConsumerGroup(
+  name: string,
+  instanceId?: string,
+): Promise<ConsumerGroup | null> {
+  if (isMockMode()) {
+    const group = mockConsumerGroups.find((item) => item.name === name);
+    return group ? copyConsumerGroup(group) : null;
+  }
+  const data = await metadataApi.refreshConsumerGroup(name, instanceId);
+  return data ? normalizeConsumerGroup(data) : null;
+}
+
 export async function getConsumerSubscriptions(
   name: string,
   instanceId?: string,

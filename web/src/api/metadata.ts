@@ -251,6 +251,14 @@ export async function getConsumerGroup(name: string, instanceId?: string) {
   return res.data.data;
 }
 
+export async function refreshConsumerGroup(name: string, instanceId?: string) {
+  const res = await client.get<{ data: ConsumerGroup | null }>(
+    `/groups/${encodeURIComponent(name)}/refresh`,
+    { params: instanceId ? { instanceId } : {} },
+  );
+  return res.data.data;
+}
+
 export async function getConsumerProgress(name: string, instanceId?: string) {
   const res = await client.get<{ data: QueueProgress[] }>(
     `/groups/${encodeURIComponent(name)}/progress`,

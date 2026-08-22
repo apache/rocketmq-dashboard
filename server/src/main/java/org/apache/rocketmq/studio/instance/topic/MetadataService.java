@@ -208,6 +208,26 @@ public class MetadataService {
         return adminClient.getConsumerGroup(instanceId, groupName);
     }
 
+    /**
+     * Re-reads a single consumer group so an operator can refresh one row without reloading the
+     * whole group list. Implementation queries the provider's list path with the group name as
+     * the search filter and then exact-matches the name among the returned entries (no direct
+     * per-group lookup exists that works for every vendor).
+     *
+     * <p>Returns {@code null} when the group no longer exists: a missing group is an empty
+     * business state, not an RPC error, so the endpoint responds 200 with empty data and the
+     * frontend keeps the existing row unchanged.
+     */
+    public ConsumerGroupVO refreshConsumerGroup(String instanceId, String name) {
+        instanceId = normalizeInstanceId(instanceId);
+        String groupName = requireName(name, "consumer group name");
+        return listConsumerGroups(instanceId, null, normalizeFilter(groupName))
+                .stream()
+                .filter(group -> groupName.equals(group.getName()))
+                .findFirst()
+                .orElse(null);
+    }
+
 
     public List<QueueProgressVO> getGroupProgress(String name) {
         return getGroupProgress(null, name);
