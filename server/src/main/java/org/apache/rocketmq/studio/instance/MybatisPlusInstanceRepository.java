@@ -18,6 +18,8 @@
 package org.apache.rocketmq.studio.instance;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -97,6 +99,23 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
                 .and(keyword != null, w -> w.like("name", keyword)
                         .or().like("endpoint", keyword)
                         .or().like("remark", keyword)));
+    }
+
+    @Override
+    public PageResult<InstanceVO> findPage(InstanceType type, String keyword, int page,
+                                            int pageSize) {
+        Page<RmqInstance> result = instanceMapper.selectPage(
+                new Page<>(page, pageSize),
+                new QueryWrapper<RmqInstance>()
+                        .eq(type != null, "type", type == null ? null : type.name())
+                        .and(keyword != null, w -> w.like("name", keyword)
+                                .or().like("endpoint", keyword)
+                                .or().like("remark", keyword))
+                        .orderByAsc("id"));
+        List<InstanceVO> items = result.getRecords().stream()
+                .map(this::toVO)
+                .toList();
+        return PageResult.of(items, result.getTotal(), page, pageSize);
     }
 
     @Override

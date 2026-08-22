@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.instance;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -34,6 +36,8 @@ public interface InstanceRepository {
     List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
 
     long count(InstanceType type, String keyword);
+
+    PageResult<InstanceVO> findPage(InstanceType type, String keyword, int page, int pageSize);
 
     Optional<InstanceVO> findById(Long id);
 

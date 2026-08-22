@@ -18,6 +18,8 @@
 package org.apache.rocketmq.studio.instance;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -94,6 +96,32 @@ class MybatisPlusInstanceRepositoryTest {
         assertThat(query.getValue().getSqlSegment()).contains("type =");
         assertThat(query.getValue().getParamNameValuePairs().values())
                 .containsExactly(InstanceType.CLOUD.name());
+    }
+
+    @Test
+    void findPageShouldApplyDatabasePaginationAndFilters() {
+        Page<RmqInstance> databasePage = new Page<>(2, 1, 21);
+        databasePage.setRecords(List.of(entity(2L, "instance-proxy-1", InstanceType.PROXY_CLUSTER)));
+        when(instanceMapper.selectPage(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(databasePage);
+
+        PageResult<InstanceVO> result = repository.findPage(
+                InstanceType.PROXY_CLUSTER, "proxy", 2, 1);
+
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getName()).isEqualTo("instance-proxy-1");
+        assertThat(result.getTotal()).isEqualTo(21);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(1);
+
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query =
+                ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectPage(any(Page.class), query.capture());
+        assertThat(query.getValue().getSqlSegment())
+                .contains("type =", "name LIKE", "endpoint LIKE", "remark LIKE", "ORDER BY id ASC");
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .contains(InstanceType.PROXY_CLUSTER.name(), "%proxy%");
+        verify(instanceMapper, never()).selectList(any(QueryWrapper.class));
     }
 
     @Test

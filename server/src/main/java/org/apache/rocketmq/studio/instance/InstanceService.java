@@ -113,14 +113,12 @@ public class InstanceService {
                                                 int pageSize) {
         validateListPagination(page, pageSize);
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
-        long total = instanceRepository.count(type, normalizedSearch);
-        if (total == 0) {
-            return PageResult.empty(page, pageSize);
-        }
-        List<InstanceVO> sorted = listInstances(type, normalizedSearch);
-        int fromIndex = (int) Math.min((long) (page - 1) * pageSize, sorted.size());
-        int toIndex = Math.min(fromIndex + pageSize, sorted.size());
-        return PageResult.of(new ArrayList<>(sorted.subList(fromIndex, toIndex)), total, page, pageSize);
+        PageResult<InstanceVO> result = instanceRepository.findPage(
+                type, normalizedSearch, page, pageSize);
+        fillCountsInParallel(result.getItems());
+        result.getItems().forEach(instance ->
+                instance.setRegionName(regionNames.resolve(instance.getRegionId())));
+        return result;
     }
 
     private static void validateListPagination(int page, int pageSize) {

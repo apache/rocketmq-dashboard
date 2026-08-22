@@ -119,10 +119,8 @@ class InstanceServiceTest {
                 .regionId("cn-shanghai")
                 .build();
         second.setId(2L);
-        when(instanceRepository.count(InstanceType.DIRECT, "inst")).thenReturn(2L);
-        when(instanceRepository.findByTypeAndSearch(InstanceType.DIRECT, "inst"))
-                .thenReturn(List.of(second, first));
-        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceRepository.findPage(InstanceType.DIRECT, "inst", 2, 1))
+                .thenReturn(PageResult.of(List.of(second), 2, 2, 1));
         when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
 
         PageResult<InstanceVO> result = instanceService.listInstances(
@@ -132,6 +130,31 @@ class InstanceServiceTest {
         assertThat(result.getTotal()).isEqualTo(2);
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(1);
+        verify(instanceRepository).findPage(InstanceType.DIRECT, "inst", 2, 1);
+        verify(instanceRepository, never()).findByTypeAndSearch(InstanceType.DIRECT, "inst");
+    }
+
+    @Test
+    void listInstancesPageShouldOnlyResolveResourceCountsForCurrentPage() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("cloud-instance")
+                .vendor(InstanceVendor.ALIYUN)
+                .regionId("cn-shanghai")
+                .build();
+        instance.setId(7L);
+        when(instanceRepository.findPage(null, null, 1, 20))
+                .thenReturn(PageResult.of(List.of(instance), 21, 1, 20));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(regionNames.resolve("cn-shanghai")).thenReturn("Shanghai (CN)");
+
+        PageResult<InstanceVO> result = instanceService.listInstances(null, null, 1, 20);
+
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getTotal()).isEqualTo(21);
+        assertThat(result.getItems().get(0).getRegionName()).isEqualTo("Shanghai (CN)");
+        verify(instanceRepository).findPage(null, null, 1, 20);
+        verify(instanceRepository, never()).findAll();
+        verify(providerRegistry, never()).forVendor(InstanceVendor.APACHE);
     }
 
     @Test
