@@ -185,9 +185,8 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
-    void saveShouldInsertWhenInstanceAbsent() {
-        InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER);
-        when(instanceMapper.selectById(5L)).thenReturn(null);
+    void saveShouldInsertWhenInstanceIdIsAbsent() {
+        InstanceVO vo = vo(null, "instance-proxy-2", InstanceType.PROXY_CLUSTER);
 
         repository.save(vo);
 
@@ -200,7 +199,6 @@ class MybatisPlusInstanceRepositoryTest {
     @Test
     void saveShouldUpdateWhenInstanceExists() {
         InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER);
-        when(instanceMapper.selectById(5L)).thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER));
         when(instanceMapper.updateById(any(RmqInstance.class))).thenReturn(1);
 
         repository.save(vo);
@@ -210,16 +208,17 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
-    void saveShouldReportALostConcurrentUpdate() {
+    void saveShouldNotResurrectAnInstanceDeletedDuringUpdate() {
+        // The service read the instance (id 5) and another request deleted it before this
+        // write: the update touches zero rows and must fail instead of re-inserting id 5.
         InstanceVO vo = vo(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER);
-        when(instanceMapper.selectById(5L))
-                .thenReturn(entity(5L, "instance-proxy-2", InstanceType.PROXY_CLUSTER));
         when(instanceMapper.updateById(any(RmqInstance.class))).thenReturn(0);
 
         assertThatThrownBy(() -> repository.save(vo))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Instance update was not applied: 5")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+        verify(instanceMapper, never()).insert(any(RmqInstance.class));
     }
 
     @Test
