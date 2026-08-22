@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -32,13 +33,11 @@ public class AiService {
 
     private final LlmGateway llmGateway;
     private final McpServerRegistry mcpServerRegistry;
+    private final ObjectMapper objectMapper;
 
 
     public SseEmitter chat(ChatDTO request) {
-        if (request == null) {
-            log.warn("Chat request body is missing");
-            throw new BusinessException(400, "Chat request is required");
-        }
+        AiPayloadGuard.validateChat(request);
         log.info("Chat request received: mode={}, conversationId={}", request.getMode(), request.getConversationId());
         return llmGateway.chat(request);
     }
@@ -50,6 +49,14 @@ public class AiService {
             return AiExecuteResultVO.builder()
                     .success(false)
                     .result("Command request is required")
+                    .build();
+        }
+        try {
+            AiPayloadGuard.validateCommand(command, objectMapper);
+        } catch (BusinessException exception) {
+            return AiExecuteResultVO.builder()
+                    .success(false)
+                    .result(exception.getMessage())
                     .build();
         }
         log.info("Executing AI command: {}", command.getCommand());
@@ -80,6 +87,7 @@ public class AiService {
     }
 
     public Object executeTool(String name, Map<String, Object> input) {
+        AiPayloadGuard.validateToolInvocation(name, input, objectMapper);
         log.info("Executing registered AI tool: {}", name);
         return mcpServerRegistry.execute(name, input);
     }

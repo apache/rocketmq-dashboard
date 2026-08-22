@@ -371,6 +371,45 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void streamShouldRejectOversizedSuccessfulResponse() {
+        client = clientWithLimit(1024);
+        String body = "data: {\"choices\":[{\"delta\":{\"content\":\""
+                + "x".repeat(1024)
+                + "\"}}]}\n\n";
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, body, "text/event-stream"));
+
+        assertThatThrownBy(() -> client.stream(config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.response_too_large");
+                    assertThat(exception.getMessage()).contains("1024 bytes");
+                });
+    }
+
+    @Test
+    void completeShouldRejectOversizedPromptBeforeCallingUpstream() {
+        assertThatThrownBy(() -> client.complete(
+                config("openai", "sk-test"),
+                "x".repeat(AiPayloadGuard.MAX_OUTBOUND_PROMPT_BYTES + 1),
+                null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getCode()).isEqualTo("llm.request.payload_too_large");
+                });
+    }
+
+    @Test
+    void completeShouldRejectOversizedConfiguredModel() {
+        LlmConfigVO config = config("openai", "sk-test");
+        config.setModel("x".repeat(AiPayloadGuard.MAX_MODEL_BYTES + 1));
+
+        assertThatThrownBy(() -> client.complete(config, "hello", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("llm.request.payload_too_large"));
+    }
+
+    @Test
     void completeShouldExposeTimeoutAsGatewayTimeout() {
         OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
                 objectMapper,
