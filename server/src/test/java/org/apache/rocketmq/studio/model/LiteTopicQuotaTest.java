@@ -25,12 +25,34 @@ class LiteTopicQuotaTest {
     }
 
     @Test
-    void quotaShouldBeExceededWhenCurrentReachesMax() {
+    void nonPositiveLimitsShouldRemainUnavailableInsteadOfExceeded() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxTopicCount(0);
+        quota.setCurrentTopicCount(1);
+        quota.setMaxSessionCount(-1);
+        quota.setCurrentSessionCount(1);
+
+        assertThat(quota.getUsageRate()).isZero();
+        assertThat(quota.getSessionUsageRate()).isZero();
+        assertThat(quota.isQuotaExceeded()).isFalse();
+        assertThat(quota.getRemainingQuota()).isZero();
+    }
+
+    @Test
+    void quotaShouldBeExceededOnlyAtOrAbovePositiveMax() {
         LiteTopicQuota quota = new LiteTopicQuota();
         quota.setMaxTopicCount(10);
-        quota.setCurrentTopicCount(10);
 
+        quota.setCurrentTopicCount(9);
+        assertThat(quota.isQuotaExceeded()).isFalse();
+        assertThat(quota.getRemainingQuota()).isEqualTo(1);
+
+        quota.setCurrentTopicCount(10);
         assertThat(quota.isQuotaExceeded()).isTrue();
+
+        quota.setCurrentTopicCount(11);
+        assertThat(quota.isQuotaExceeded()).isTrue();
+        assertThat(quota.getRemainingQuota()).isZero();
     }
 
     @Test
