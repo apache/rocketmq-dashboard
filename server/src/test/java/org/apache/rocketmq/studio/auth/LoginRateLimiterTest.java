@@ -116,6 +116,40 @@ class LoginRateLimiterTest {
         assertThatThrownBy(() -> limiter.checkAllowed("OPERATOR")).isInstanceOf(BusinessException.class);
     }
 
+    @Test
+    void boundsTrackedUsernamesWithoutEvictingActiveLocksTest() {
+        limiter = new LoginRateLimiter(clock, 2);
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("operator");
+        }
+        limiter.recordFailure("second-user");
+
+        for (int suffix = 0; suffix < 20; suffix++) {
+            limiter.recordFailure("attacker-" + suffix);
+        }
+
+        assertThat(limiter.trackedUsernameCount()).isEqualTo(2);
+        assertThatThrownBy(() -> limiter.checkAllowed("operator"))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void reclaimsExpiredAttemptsBeforeAdmittingNewUsernamesTest() {
+        limiter = new LoginRateLimiter(clock, 2);
+        limiter.recordFailure("first-user");
+        limiter.recordFailure("second-user");
+        clock.advance(LoginRateLimiter.FAILURE_WINDOW.plusSeconds(1));
+
+        limiter.recordFailure("third-user");
+
+        assertThat(limiter.trackedUsernameCount()).isEqualTo(1);
+        for (int attempt = 1; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("third-user");
+        }
+        assertThatThrownBy(() -> limiter.checkAllowed("third-user"))
+                .isInstanceOf(BusinessException.class);
+    }
+
     private static final class MutableClock extends Clock {
 
         private Instant now;

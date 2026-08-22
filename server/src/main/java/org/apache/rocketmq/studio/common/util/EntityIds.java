@@ -38,7 +38,11 @@ public final class EntityIds {
             throw new BusinessException(400, "id is required");
         }
         try {
-            return Long.parseLong(value.trim());
+            long id = Long.parseLong(value.trim());
+            if (id <= 0) {
+                throw new BusinessException(400, "id must be a positive numeric value: " + value);
+            }
+            return id;
         } catch (NumberFormatException ex) {
             throw new BusinessException(400, "id must be a numeric value: " + value);
         }
