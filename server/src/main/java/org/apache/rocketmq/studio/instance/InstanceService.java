@@ -47,12 +47,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -116,27 +116,41 @@ public class InstanceService {
         if (instances.isEmpty()) {
             return;
         }
-        List<InstanceVO> pending = new ArrayList<>(instances);
-        List<Future<?>> futures = new ArrayList<>(instances.size());
-        for (InstanceVO instance : pending) {
-            futures.add(countExecutor.submit(() -> fillCounts(instance)));
+        List<Callable<Void>> tasks = instances.stream()
+                .<Callable<Void>>map(instance -> () -> {
+                    fillCounts(instance);
+                    return null;
+                })
+                .toList();
+        List<Future<Void>> futures;
+        try {
+            // A single deadline for the whole batch. Waiting per future would let one hung
+            // vendor add COUNT_TIMEOUT_SECONDS to the response for every instance.
+            futures = countExecutor.invokeAll(tasks, COUNT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            instances.forEach(instance -> instance.setResourceCountsAvailable(false));
+            return;
         }
-        for (int i = 0; i < pending.size(); i++) {
-            InstanceVO instance = pending.get(i);
-            try {
-                futures.get(i).get(COUNT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            } catch (TimeoutException ex) {
-                futures.get(i).cancel(true);
+        for (int i = 0; i < futures.size(); i++) {
+            InstanceVO instance = instances.get(i);
+            Future<Void> future = futures.get(i);
+            if (future.isCancelled()) {
+                // Missed the shared deadline; invokeAll already interrupted the task.
                 instance.setResourceCountsAvailable(false);
                 log.warn("Resource counts timed out after {}s for instance {}",
                         COUNT_TIMEOUT_SECONDS, instance.getId());
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                instance.setResourceCountsAvailable(false);
-            } catch (ExecutionException ex) {
-                instance.setResourceCountsAvailable(false);
-                log.warn("Failed to load resource counts for instance {}: {}",
-                        instance.getId(), ex.getMessage());
+            } else {
+                try {
+                    future.get();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    instance.setResourceCountsAvailable(false);
+                } catch (ExecutionException ex) {
+                    instance.setResourceCountsAvailable(false);
+                    log.warn("Failed to load resource counts for instance {}: {}",
+                            instance.getId(), ex.getMessage());
+                }
             }
         }
     }
