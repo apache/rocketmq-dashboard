@@ -178,7 +178,7 @@ describe('TopicPage', () => {
 
     renderWithProviders('/instance/instance-proxy-1/topic');
 
-    expect(await screen.findByText(/Proxy Local 模式/)).toBeInTheDocument();
+    expect(await screen.findByText(/Proxy Local/)).toBeInTheDocument();
     expect(screen.getByText(/与 Broker 同进程部署的 Proxy 地址/)).toBeInTheDocument();
   });
 

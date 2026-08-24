@@ -485,7 +485,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldQueryPrometheusEndpoint() {
+    void connectionShouldQueryPrometheusEndpointTest() {
         prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
@@ -501,7 +501,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldApplyBasicAuthentication() {
+    void connectionShouldApplyBasicAuthenticationTest() {
         String expectedAuthorization = "Basic "
                 + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8));
         prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
@@ -522,7 +522,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldNormalizeIdentifiersIndependentlyOfDefaultLocale() {
+    void connectionShouldNormalizeIdentifiersIndependentlyOfDefaultLocaleTest() {
         String expectedAuthorization = "Basic "
                 + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8));
         prometheusServer.expect(requestTo(MIMIR_QUERY_URL))
@@ -550,7 +550,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldApplyBearerAuthentication() {
+    void connectionShouldApplyBearerAuthenticationTest() {
         prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))
@@ -568,7 +568,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectLocalhostHostname() {
+    void connectionShouldRejectLocalhostHostnameTest() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("http://localhost:9090")
                 .type("Prometheus")
@@ -581,7 +581,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectLoopbackIpv4Address() {
+    void connectionShouldRejectLoopbackIpv4AddressTest() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("http://127.0.0.1:9090")
                 .type("Prometheus")
@@ -594,7 +594,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectLinkLocalMetadataAddress() {
+    void connectionShouldRejectLinkLocalMetadataAddressTest() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("http://169.254.169.254/latest/meta-data/")
                 .type("Prometheus")
@@ -607,7 +607,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectAwsImdsIpv6Address() {
+    void connectionShouldRejectAwsImdsIpv6AddressTest() {
         DataSourceTestDTO compressedRequest = DataSourceTestDTO.builder()
                 .url("http://[fd00:ec2::254]/latest/meta-data/")
                 .type("Prometheus")
@@ -627,7 +627,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectAlibabaCloudMetadataAddress() {
+    void connectionShouldRejectAlibabaCloudMetadataAddressTest() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("http://100.100.100.200/latest/meta-data/")
                 .type("Prometheus")
@@ -667,7 +667,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectIncompleteBasicAuthentication() {
+    void connectionShouldRejectIncompleteBasicAuthenticationTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
@@ -681,7 +681,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectMissingBearerToken() {
+    void connectionShouldRejectMissingBearerTokenTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
@@ -693,7 +693,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldReturnPrometheusErrorDetails() {
+    void connectionShouldReturnPrometheusErrorDetailsTest() {
         prometheusServer.expect(requestTo(VICTORIA_METRICS_QUERY_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withStatus(HttpStatus.UNPROCESSABLE_ENTITY)
@@ -712,7 +712,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectInvalidUrl() {
+    void connectionShouldRejectInvalidUrlTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url("ftp://example.com")
                 .type("Prometheus")
@@ -724,7 +724,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectUnsupportedType() {
+    void connectionShouldRejectUnsupportedTypeTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url(PROMETHEUS_BASE_URL)
                 .type("rocketmq")

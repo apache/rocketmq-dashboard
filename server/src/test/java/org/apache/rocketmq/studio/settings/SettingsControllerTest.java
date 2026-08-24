@@ -462,7 +462,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void testDataSourceShouldReturnTestResult() throws Exception {
+    void dataSourceShouldReturnTestResultTest() throws Exception {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("localhost:9876")
                 .type("rocketmq")
@@ -483,7 +483,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void testDataSourceShouldRejectMissingType() throws Exception {
+    void dataSourceShouldRejectMissingTypeTest() throws Exception {
         mockMvc.perform(post("/api/settings/datasources/test")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

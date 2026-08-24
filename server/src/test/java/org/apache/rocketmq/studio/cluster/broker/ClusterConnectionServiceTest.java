@@ -51,7 +51,7 @@ class ClusterConnectionServiceTest {
     }
 
     @Test
-    void testConnectionShouldSummariseTopology() {
+    void connectionShouldSummariseTopologyTest() {
         when(clusterProvider.describeCluster(eq("10.0.0.1:9876")))
                 .thenReturn(clusterWith("broker-a", "broker-b"));
 
@@ -67,7 +67,7 @@ class ClusterConnectionServiceTest {
     }
 
     @Test
-    void testConnectionShouldPropagateProviderFailure() {
+    void connectionShouldPropagateProviderFailureTest() {
         when(clusterProvider.describeCluster(eq("10.0.0.9:9876")))
                 .thenThrow(new BusinessException(502, "Failed to connect NameServer"));
 

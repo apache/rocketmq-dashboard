@@ -45,7 +45,6 @@ const ProxyPage = lazy(() => import('./pages/studio/Proxy'));
 const LiteTopicPage = lazy(() => import('./pages/studio/LiteTopic'));
 const GroupManagementPage = lazy(() => import('./pages/studio/GroupManagement'));
 const BrokerClusterPage = lazy(() => import('./pages/studio/BrokerCluster'));
-const SslSettingsPage = lazy(() => import('./pages/studio/SslSettings'));
 const GrafanaDashboardsPage = lazy(() => import('./pages/studio/GrafanaDashboards'));
 const ProducerPage = lazy(() => import('./pages/studio/Producer'));
 const OpsPage = lazy(() => import('./pages/studio/Ops'));
@@ -194,7 +193,6 @@ function App() {
             <Route path="studio/lite-topic" element={<LiteTopicPage />} />
             <Route path="studio/group-management" element={<GroupManagementPage />} />
             <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
-            <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
             <Route path="studio/alert-management" element={<Navigate to="/ops/alerts" replace />} />
             <Route path="studio/producer" element={<ProducerPage />} />
             <Route path="studio/ops" element={<OpsPage />} />

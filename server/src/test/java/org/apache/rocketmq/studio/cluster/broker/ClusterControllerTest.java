@@ -88,7 +88,7 @@ class ClusterControllerTest {
     }
 
     @Test
-    void testConnectionShouldReturnProbeResult() throws Exception {
+    void connectionShouldReturnProbeResultTest() throws Exception {
         ClusterProbeResult probe = ClusterProbeResult.builder()
                 .connected(true)
                 .namesrvAddr("10.0.0.1:9876")
@@ -116,7 +116,7 @@ class ClusterControllerTest {
     }
 
     @Test
-    void testConnectionShouldRejectBlankNamesrvAddr() throws Exception {
+    void connectionShouldRejectBlankNamesrvAddrTest() throws Exception {
         ObjectNode command = objectMapper.createObjectNode().put("namesrvAddr", " ");
 
         mockMvc.perform(post("/api/clusters/test-connection")
