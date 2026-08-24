@@ -161,6 +161,63 @@ class ProxyControllerTest {
     }
 
     @Test
+    void addProxyAddressShouldReturnUpdatedAddressState() throws Exception {
+        ProxyAddressDTO request = ProxyAddressDTO.builder()
+                .addr("10.0.0.10:8081")
+                .build();
+        when(proxyAddressService.getHomePage())
+                .thenReturn(ProxyHomeVO.builder()
+                        .proxyAddrList(List.of("127.0.0.1:8081", "10.0.0.10:8081"))
+                        .currentProxyAddr("127.0.0.1:8081")
+                        .build());
+
+        mockMvc.perform(post("/api/proxies/addresses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.proxyAddrList[1]").value("10.0.0.10:8081"));
+
+        verify(proxyAddressService).addProxyAddr(eq("10.0.0.10:8081"));
+        verify(proxyAddressService).getHomePage();
+    }
+
+    @Test
+    void addProxyAddressShouldRejectBlankAddress() throws Exception {
+        ProxyAddressDTO request = ProxyAddressDTO.builder()
+                .addr(" ")
+                .build();
+
+        mockMvc.perform(post("/api/proxies/addresses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("addr is required"));
+
+        verifyNoInteractions(proxyAddressService);
+    }
+
+    @Test
+    void removeProxyAddressShouldReturnUpdatedAddressState() throws Exception {
+        when(proxyAddressService.getHomePage())
+                .thenReturn(ProxyHomeVO.builder()
+                        .proxyAddrList(List.of("127.0.0.1:8081"))
+                        .currentProxyAddr("127.0.0.1:8081")
+                        .build());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/proxies/addresses")
+                        .param("addr", "10.0.0.10:8081"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.proxyAddrList[0]").value("127.0.0.1:8081"));
+
+        verify(proxyAddressService).removeProxyAddr(eq("10.0.0.10:8081"));
+        verify(proxyAddressService).getHomePage();
+    }
+
+    @Test
     void reloadProxyConfigShouldReturnSuccess() throws Exception {
         RestartProxyDTO request = RestartProxyDTO.builder()
                 .clusterId("cluster-1")

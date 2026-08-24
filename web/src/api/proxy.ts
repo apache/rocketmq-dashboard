@@ -60,6 +60,18 @@ export async function getProxyTopology(): Promise<ProxyTopologyNode[]> {
   return res.data.data;
 }
 
+export async function addProxyAddress(addr: string): Promise<ProxyHomePageData> {
+  const res = await client.post<{ data: ProxyHomePageData }>('/proxies/addresses', { addr });
+  return res.data.data;
+}
+
+export async function removeProxyAddress(addr: string): Promise<ProxyHomePageData> {
+  const res = await client.delete<{ data: ProxyHomePageData }>('/proxies/addresses', {
+    params: { addr },
+  });
+  return res.data.data;
+}
+
 /**
  * Trigger a configuration hot-reload for a proxy.
  * Uses the same DTO as restartProxy ({ clusterId, addr }).
