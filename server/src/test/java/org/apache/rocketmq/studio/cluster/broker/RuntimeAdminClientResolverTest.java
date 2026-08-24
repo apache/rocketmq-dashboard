@@ -50,6 +50,9 @@ class RuntimeAdminClientResolverTest {
     @Mock
     private MqAdminExtFactory adminFactory;
 
+    @Mock
+    private MqClientPool clientPool;
+
     @Test
     void resolvesTrimmedEndpointFromSelectedInstance() {
         InstanceVO instance = InstanceVO.builder().endpoint(" namesrv-a:9876 ").build();
@@ -57,7 +60,7 @@ class RuntimeAdminClientResolverTest {
         when(instanceRepository.findByIdentifier("instance-a")).thenReturn(Optional.of(instance));
 
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties());
+                new MqAdminProperties(), clientPool);
 
         assertThat(resolver.resolveEndpoint("instance-a")).isEqualTo("namesrv-a:9876");
     }
@@ -65,7 +68,7 @@ class RuntimeAdminClientResolverTest {
     @Test
     void rejectsUnknownOrUnconfiguredInstances() {
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties());
+                new MqAdminProperties(), clientPool);
         when(instanceRepository.findByIdentifier("missing")).thenReturn(Optional.empty());
         InstanceVO noEndpoint = InstanceVO.builder().endpoint(" ").build();
         when(instanceRepository.findByIdentifier("no-endpoint")).thenReturn(Optional.of(noEndpoint));
@@ -84,7 +87,7 @@ class RuntimeAdminClientResolverTest {
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         when(adminFactory.execute(eq("namesrv-b:9876"), isNull(), isNull(), any())).thenReturn("done");
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties());
+                new MqAdminProperties(), clientPool);
 
         String result = resolver.execute("instance-b", admin -> "unused");
         assertThat(result).isEqualTo("done");
@@ -100,7 +103,7 @@ class RuntimeAdminClientResolverTest {
         instance.setId(2L);
         when(instanceRepository.findByIdentifier("cloud-instance")).thenReturn(Optional.of(instance));
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties());
+                new MqAdminProperties(), clientPool);
 
         assertThatThrownBy(() -> resolver.resolveEndpoint("cloud-instance"))
                 .isInstanceOf(BusinessException.class)
@@ -127,7 +130,7 @@ class RuntimeAdminClientResolverTest {
         when(adminFactory.execute(eq("namesrv-b:9876"), any(), eq("production-admin"), any()))
                 .thenReturn("done");
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                properties);
+                properties, clientPool);
 
         String result = resolver.execute("instance-b", ignored -> "unused");
 
@@ -155,7 +158,7 @@ class RuntimeAdminClientResolverTest {
         properties.getCredentials().put("production-admin", credential);
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                properties);
+                properties, clientPool);
 
         org.apache.rocketmq.acl.common.AclClientRPCHook hook =
                 (org.apache.rocketmq.acl.common.AclClientRPCHook) resolver.resolveCredentialHook("instance-b");
@@ -171,7 +174,7 @@ class RuntimeAdminClientResolverTest {
         instance.setId(5L);
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties());
+                new MqAdminProperties(), clientPool);
 
         assertThat(resolver.resolveCredentialHook("instance-b")).isNull();
         verifyNoInteractions(adminFactory);
@@ -192,7 +195,7 @@ class RuntimeAdminClientResolverTest {
         instance.setId(3L);
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                properties);
+                properties, clientPool);
 
         assertThatThrownBy(() -> resolver.execute("instance-b", ignored -> "unused"))
                 .isInstanceOf(BusinessException.class)

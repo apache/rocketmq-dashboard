@@ -300,7 +300,8 @@ class RocketMQClusterProviderTest {
         credential.setSecretKey("admin-sk");
         adminProperties.getCredentials().put("cluster-admin", credential);
         RuntimeAdminClientResolver resolver =
-                new RuntimeAdminClientResolver(instanceRepository, adminFactory, adminProperties);
+                new RuntimeAdminClientResolver(instanceRepository, adminFactory, adminProperties,
+                        org.mockito.Mockito.mock(org.apache.rocketmq.studio.cluster.broker.MqClientPool.class));
         when(adminFactory.execute(eq("10.0.0.2:9876"), any(), eq("cluster-admin"), any()))
                 .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3)
                         .apply(adminExt));
