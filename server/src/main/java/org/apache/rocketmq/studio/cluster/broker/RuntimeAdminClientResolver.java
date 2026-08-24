@@ -9,6 +9,8 @@ package org.apache.rocketmq.studio.cluster.broker;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
+import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -24,6 +26,7 @@ public class RuntimeAdminClientResolver {
     private final InstanceRepository instanceRepository;
     private final MqAdminExtFactory adminFactory;
     private final MqAdminProperties adminProperties;
+    private final MqClientPool clientPool;
 
     public InstanceVO resolveInstance(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
@@ -62,6 +65,31 @@ public class RuntimeAdminClientResolver {
         String credentialRef = credentialRef(instance);
         return adminFactory.execute(instance.getEndpoint().trim(), resolveCredential(credentialRef),
                 credentialRef, action);
+    }
+
+    /** Runs an action on a pooled, long-lived pull consumer bound to the instance endpoint. */
+    public <T> T executePullConsumer(String instanceId,
+                                     MqClientPool.ClientAction<DefaultMQPullConsumer, T> action) {
+        InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
+        String credentialRef = credentialRef(instance);
+        return clientPool.withPullConsumer(requireEndpoint(instance), resolveCredential(credentialRef),
+                credentialRef, action);
+    }
+
+    /** Runs an action on a pooled, long-lived producer bound to the instance endpoint. */
+    public <T> T executeProducer(String instanceId,
+                                 MqClientPool.ClientAction<DefaultMQProducer, T> action) {
+        InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
+        String credentialRef = credentialRef(instance);
+        return clientPool.withProducer(requireEndpoint(instance), resolveCredential(credentialRef),
+                credentialRef, action);
+    }
+
+    private String requireEndpoint(InstanceVO instance) {
+        if (instance == null || !StringUtils.hasText(instance.getEndpoint())) {
+            throw new BusinessException(400, "Instance endpoint is required");
+        }
+        return instance.getEndpoint().trim();
     }
 
     private String credentialRef(InstanceVO instance) {

@@ -22,13 +22,13 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.message.Message;
-import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -48,11 +48,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.MockedConstruction;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -65,13 +63,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -93,6 +91,10 @@ class RocketMQAdminClientImplTest {
     private AuditService auditService;
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
+    @Mock
+    private MqClientPool clientPool;
+    @Mock
+    private DefaultMQProducer sendProducer;
 
     private RocketMQAdminClientImpl adminClient;
 
@@ -101,8 +103,12 @@ class RocketMQAdminClientImplTest {
         lenient().when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
         lenient().when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        lenient().when(clientPool.withProducer(any(), any(), any(), any())).thenAnswer(invocation ->
+                invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(3).apply(sendProducer));
+        lenient().when(runtimeAdminClientResolver.executeProducer(any(), any())).thenAnswer(invocation ->
+                invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(1).apply(sendProducer));
         adminClient = new RocketMQAdminClientImpl(adminFactory, properties, topicMapper, groupMapper, auditService,
-                runtimeAdminClientResolver);
+                runtimeAdminClientResolver, clientPool);
     }
 
     @Test
@@ -729,26 +735,20 @@ class RocketMQAdminClientImplTest {
 
     @Test
     void sendMessageShouldNotFailWhenAuditRecordingFails() throws Exception {
-        when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
         doThrow(new RuntimeException("audit db down")).when(auditService)
                 .record(anyString(), anyString(), anyString(), any(), anyString(), anyString());
-        try (MockedConstruction<DefaultMQProducer> mockedProducers =
-                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
-                         doNothing().when(producer).start();
-                         SendResult sendResult = new SendResult();
-                         sendResult.setSendStatus(SendStatus.SEND_OK);
-                         sendResult.setMsgId("msg-1");
-                         sendResult.setOffsetMsgId("offset-1");
-                         when(producer.send(any(Message.class))).thenReturn(sendResult);
-                         doNothing().when(producer).shutdown();
-                     })) {
-            SendMessageDTO request = new SendMessageDTO();
-            request.setTopic("TopicA");
-            request.setBody("hello");
-            SendMessageVO result = adminClient.sendMessage(request);
-            // The message was already delivered; an audit failure must not turn this into an error.
-            assertThat(result.getMsgId()).isEqualTo("msg-1");
-        }
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        sendResult.setMsgId("msg-1");
+        sendResult.setOffsetMsgId("offset-1");
+        when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setBody("hello");
+        SendMessageVO result = adminClient.sendMessage(request);
+        // The message was already delivered; an audit failure must not turn this into an error.
+        assertThat(result.getMsgId()).isEqualTo("msg-1");
     }
 
     @Test
@@ -758,16 +758,13 @@ class RocketMQAdminClientImplTest {
         request.setTopic("TopicA");
         request.setBody("\u754c".repeat((4 * 1024 * 1024 / 3) + 1));
 
-        try (MockedConstruction<DefaultMQProducer> mockedProducers =
-                     mockConstruction(DefaultMQProducer.class)) {
-            assertThatThrownBy(() -> adminClient.sendMessage(request))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("exceeds the maximum")
-                    .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> adminClient.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("exceeds the maximum")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
 
-            assertThat(mockedProducers.constructed()).isEmpty();
-        }
         verifyNoInteractions(runtimeAdminClientResolver);
+        verifyNoInteractions(clientPool);
         verify(properties, never()).getNamesrvAddr();
         verify(auditService).record("SEND_MESSAGE", "MESSAGE", "TopicA", null,
                 "Message body size 4194306 exceeds the maximum of 4194304 bytes", "FAILED");
@@ -775,112 +772,75 @@ class RocketMQAdminClientImplTest {
 
     @Test
     void sendMessageShouldAllowBodyAtMaximumSize() throws Exception {
-        when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
-        List<List<?>> constructorArguments = new ArrayList<>();
-        try (MockedConstruction<DefaultMQProducer> mockedProducers =
-                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
-                         constructorArguments.add(context.arguments());
-                         doNothing().when(producer).start();
-                         SendResult sendResult = new SendResult();
-                         sendResult.setSendStatus(SendStatus.SEND_OK);
-                         sendResult.setMsgId("msg-1");
-                         sendResult.setOffsetMsgId("offset-1");
-                         when(producer.send(any(Message.class))).thenReturn(sendResult);
-                         doNothing().when(producer).shutdown();
-                     })) {
-            SendMessageDTO request = new SendMessageDTO();
-            request.setTopic("TopicA");
-            request.setBody("x".repeat(4 * 1024 * 1024));
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        sendResult.setMsgId("msg-1");
+        sendResult.setOffsetMsgId("offset-1");
+        when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
 
-            SendMessageVO result = adminClient.sendMessage(request);
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setBody("x".repeat(4 * 1024 * 1024));
 
-            assertThat(result.getMsgId()).isEqualTo("msg-1");
-            DefaultMQProducer producer = mockedProducers.constructed().getFirst();
-            ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-            verify(producer).send(messageCaptor.capture());
-            assertThat(messageCaptor.getValue().getBody()).hasSize(4 * 1024 * 1024);
-            assertThat(constructorArguments).singleElement();
-            assertThat(constructorArguments.get(0)).hasSize(2);
-            assertThat(constructorArguments.get(0).get(1)).isNull();
-        }
+        SendMessageVO result = adminClient.sendMessage(request);
+
+        assertThat(result.getMsgId()).isEqualTo("msg-1");
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(messageCaptor.capture());
+        assertThat(messageCaptor.getValue().getBody()).hasSize(4 * 1024 * 1024);
+        verify(clientPool).withProducer(eq("10.0.0.1:9876"), isNull(), isNull(), any());
     }
 
     @Test
-    void sendMessageUsesSelectedInstanceEndpointAndCredentialHook() throws Exception {
-        RPCHook credentialHook = mock(RPCHook.class);
-        List<List<?>> constructorArguments = new ArrayList<>();
-        when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
-        when(runtimeAdminClientResolver.resolveCredentialHook("instance-a")).thenReturn(credentialHook);
-        try (MockedConstruction<DefaultMQProducer> mockedProducers =
-                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
-                         constructorArguments.add(context.arguments());
-                         doNothing().when(producer).start();
-                         SendResult sendResult = new SendResult();
-                         sendResult.setSendStatus(SendStatus.SEND_OK);
-                         sendResult.setMsgId("msg-1");
-                         sendResult.setOffsetMsgId("offset-1");
-                         when(producer.send(any(Message.class))).thenReturn(sendResult);
-                         doNothing().when(producer).shutdown();
-                     })) {
-            SendMessageDTO request = new SendMessageDTO();
-            request.setTopic("TopicA");
-            request.setBody("hello");
-            request.setInstanceId("instance-a");
+    void sendMessageUsesSelectedInstancePooledProducer() throws Exception {
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        sendResult.setMsgId("msg-1");
+        sendResult.setOffsetMsgId("offset-1");
+        when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
 
-            adminClient.sendMessage(request);
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setBody("hello");
+        request.setInstanceId("instance-a");
 
-            DefaultMQProducer producer = mockedProducers.constructed().getFirst();
-            verify(producer).setNamesrvAddr("10.0.0.2:9876");
-            assertThat(constructorArguments).singleElement();
-            assertThat(constructorArguments.get(0)).hasSize(2);
-            assertThat(constructorArguments.get(0).get(1)).isSameAs(credentialHook);
-        }
-        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
+        adminClient.sendMessage(request);
+
+        verify(runtimeAdminClientResolver).executeProducer(eq("instance-a"), any());
+        verify(clientPool, never()).withProducer(any(), any(), any(), any());
     }
 
     @Test
     void sendMessageShouldRejectNonSuccessfulSendStatus() throws Exception {
-        when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
-        try (MockedConstruction<DefaultMQProducer> mockedProducers =
-                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
-                         doNothing().when(producer).start();
-                         SendResult sendResult = new SendResult();
-                         sendResult.setSendStatus(SendStatus.FLUSH_DISK_TIMEOUT);
-                         when(producer.send(any(Message.class))).thenReturn(sendResult);
-                         doNothing().when(producer).shutdown();
-                     })) {
-            SendMessageDTO request = new SendMessageDTO();
-            request.setTopic("TopicA");
-            request.setBody("hello");
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.FLUSH_DISK_TIMEOUT);
+        when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
 
-            assertThatThrownBy(() -> adminClient.sendMessage(request))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("FLUSH_DISK_TIMEOUT");
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setBody("hello");
 
-            verify(auditService).record("SEND_MESSAGE", "MESSAGE", "TopicA", null,
-                    "Message send did not succeed: FLUSH_DISK_TIMEOUT", "FAILED");
-        }
+        assertThatThrownBy(() -> adminClient.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("FLUSH_DISK_TIMEOUT");
+
+        verify(auditService).record("SEND_MESSAGE", "MESSAGE", "TopicA", null,
+                "Message send did not succeed: FLUSH_DISK_TIMEOUT", "FAILED");
     }
 
     @Test
     void sendMessageShouldRejectNullSendResult() throws Exception {
-        when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
-        try (MockedConstruction<DefaultMQProducer> mockedProducers =
-                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
-                         doNothing().when(producer).start();
-                         when(producer.send(any(Message.class))).thenReturn(null);
-                         doNothing().when(producer).shutdown();
-                     })) {
-            SendMessageDTO request = new SendMessageDTO();
-            request.setTopic("TopicA");
-            request.setBody("hello");
+        when(sendProducer.send(any(Message.class))).thenReturn(null);
 
-            assertThatThrownBy(() -> adminClient.sendMessage(request))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("null");
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setBody("hello");
 
-            verify(auditService).record("SEND_MESSAGE", "MESSAGE", "TopicA", null,
-                    "Message send did not succeed: null", "FAILED");
-        }
+        assertThatThrownBy(() -> adminClient.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("null");
+
+        verify(auditService).record("SEND_MESSAGE", "MESSAGE", "TopicA", null,
+                "Message send did not succeed: null", "FAILED");
     }
 }

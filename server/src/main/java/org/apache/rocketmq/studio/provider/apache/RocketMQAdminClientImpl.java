@@ -26,12 +26,12 @@ import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
-import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
@@ -71,7 +71,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class RocketMQAdminClientImpl implements AdminClient {
 
-    private static final String MESSAGE_SENDER_GROUP_PREFIX = "studio-msg-sender";
     private static final int MAX_MESSAGE_SIZE = 4 * 1024 * 1024; // 4 MB default broker limit
     private static final String LEGACY_METADATA_SCOPE = "";
 
@@ -81,6 +80,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private final RmqGroupMapper groupMapper;
     private final AuditService auditService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final MqClientPool clientPool;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
@@ -441,16 +441,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             throw new BusinessException(400, message);
         }
 
-        String namesrvAddr = namesrvAddr(request.getInstanceId());
-        RPCHook credentialHook = credentialHook(request.getInstanceId());
-
-        DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup(), credentialHook);
-        producer.setNamesrvAddr(namesrvAddr);
-        producer.setSendMsgTimeout(5000);
-
-        try {
-            producer.start();
-
+        MqClientPool.ClientAction<DefaultMQProducer, SendMessageVO> sendAction = producer -> {
             Message msg = new Message(topic, tag, key, bodyBytes);
 
             // Add custom properties
@@ -476,19 +467,18 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .sendTime(System.currentTimeMillis())
                     .offsetMsgId(sendResult.getOffsetMsgId())
                     .build();
+        };
+        try {
+            return StringUtils.hasText(request.getInstanceId())
+                    ? runtimeAdminClientResolver.executeProducer(request.getInstanceId(), sendAction)
+                    : clientPool.withProducer(namesrvAddr(), null, null, sendAction);
         } catch (BusinessException e) {
             recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw e;
         } catch (Exception e) {
             recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to send message: " + e.getMessage());
-        } finally {
-            producer.shutdown();
         }
-    }
-
-    static String nextMessageSenderGroup() {
-        return ShortLivedClientName.next(MESSAGE_SENDER_GROUP_PREFIX);
     }
 
     @Override
@@ -747,12 +737,6 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
                 : namesrvAddr();
-    }
-
-    private RPCHook credentialHook(String instanceId) {
-        return StringUtils.hasText(instanceId)
-                ? runtimeAdminClientResolver.resolveCredentialHook(instanceId)
-                : null;
     }
 
     private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {

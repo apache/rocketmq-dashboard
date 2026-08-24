@@ -27,10 +27,10 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
-import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
@@ -45,7 +45,6 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.InetSocketAddress;
@@ -67,11 +66,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -85,6 +81,9 @@ class RocketMQMessageProviderTest {
 
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
+
+    @Mock
+    private DefaultMQPullConsumer pullConsumer;
 
     private RocketMQMessageProvider provider;
 
@@ -105,61 +104,36 @@ class RocketMQMessageProviderTest {
         });
         lenient().when(adminExt.examineBrokerClusterInfo())
                 .thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        lenient().when(runtimeAdminClientResolver.executePullConsumer(anyString(), any()))
+                .thenAnswer(invocation -> {
+                    MqClientPool.ClientAction<DefaultMQPullConsumer, Object> action =
+                            invocation.getArgument(1);
+                    return action.apply(pullConsumer);
+                });
         provider = new RocketMQMessageProvider(runtimeAdminClientResolver);
     }
 
     @Test
     void queryByTopicReturnsEmptyListWhenQueueSetIsNull() throws Exception {
-        List<List<?>> constructorArguments = new ArrayList<>();
-        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         constructorArguments.add(context.arguments());
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(null);
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            List<MessageRecordVO> messages = provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(null);
 
-            assertThat(messages).isEmpty();
-            assertThat(mockedConsumers.constructed()).hasSize(1);
-            DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
-            assertThat(constructorArguments).singleElement();
-            assertThat(constructorArguments.get(0)).hasSize(2);
-            assertThat(constructorArguments.get(0).get(0)).isEqualTo("studio-msg-query-group");
-            assertThat(constructorArguments.get(0).get(1)).isNull();
-            verify(consumer).setNamesrvAddr("namesrv-a:9876");
-            verify(consumer).start();
-            verify(consumer).fetchSubscribeMessageQueues("TopicA");
-            verify(consumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
-            verify(consumer).shutdown();
-        }
-        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
-        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
+        List<MessageRecordVO> messages = provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).isEmpty();
+        verify(pullConsumer).fetchSubscribeMessageQueues("TopicA");
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+        verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
     }
 
     @Test
-    void queryByTopicUsesSelectedInstanceCredentialHook() throws Exception {
-        RPCHook credentialHook = mock(RPCHook.class);
-        List<List<?>> constructorArguments = new ArrayList<>();
-        when(runtimeAdminClientResolver.resolveCredentialHook("instance-a")).thenReturn(credentialHook);
+    void queryByTopicReturnsEmptyListWhenNoQueuesExist() throws Exception {
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of());
 
-        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         constructorArguments.add(context.arguments());
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of());
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L);
+        List<MessageRecordVO> messages = provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L);
 
-            assertThat(mockedConsumers.constructed()).singleElement();
-            assertThat(constructorArguments).singleElement();
-            assertThat(constructorArguments.get(0)).hasSize(2);
-            assertThat(constructorArguments.get(0).get(0)).isEqualTo("studio-msg-query-group");
-            assertThat(constructorArguments.get(0).get(1)).isSameAs(credentialHook);
-        }
-        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
+        assertThat(messages).isEmpty();
+        verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
     }
 
     @Test
@@ -170,7 +144,6 @@ class RocketMQMessageProviderTest {
                 .hasMessage("Message query start time must be before end time")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
 
-        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
     }
@@ -183,7 +156,6 @@ class RocketMQMessageProviderTest {
                 .hasMessage("Message query start time must be before end time")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
 
-        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
     }
@@ -244,17 +216,14 @@ class RocketMQMessageProviderTest {
 
     @Test
     void queryByTopicSurfacesPullConsumerFailure() throws Exception {
-        try (MockedConstruction<DefaultMQPullConsumer> ignored =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         doThrow(new IllegalStateException("nameserver unavailable")).when(consumer).start();
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            assertThatThrownBy(() -> provider.queryMessages(
-                    "instance-a", "TopicA", null, null, null, 100L, 200L))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessage("Failed to query messages by topic: nameserver unavailable")
-                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
-        }
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA"))
+                .thenThrow(new IllegalStateException("nameserver unavailable"));
+
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query messages by topic: nameserver unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
     @Test
@@ -262,20 +231,15 @@ class RocketMQMessageProviderTest {
     void queryByTopicStopsWhenPullOffsetDoesNotAdvance() throws Exception {
         MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
         PullResult stalledResult = new PullResult(PullStatus.FOUND, 10, 0, 10, List.of());
-        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
-                         mockQueueWindow(consumer, queue, 100L, 200L, 10L, 10L, 11L, 11L);
-                         when(consumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            List<MessageRecordVO> messages = provider.queryMessages(
-                    "instance-a", "TopicA", null, null, null, 100L, 200L);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
 
-            assertThat(messages).isEmpty();
-            verify(mockedConsumers.constructed().get(0), times(1)).pull(queue, "*", 10L, 32);
-        }
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).isEmpty();
+        verify(pullConsumer, times(1)).pull(queue, "*", 10L, 32);
     }
 
     @Test
@@ -286,23 +250,18 @@ class RocketMQMessageProviderTest {
                 List.of(topicMessage("older", 150L)));
         PullResult newerPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
                 List.of(topicMessage("newer", 250L)));
-        try (MockedConstruction<DefaultMQPullConsumer> ignored =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA"))
-                                 .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
-                         mockQueueWindow(consumer, olderQueue, 100L, 300L, 10L, 10L, 11L, 11L);
-                         mockQueueWindow(consumer, newerQueue, 100L, 300L, 10L, 10L, 11L, 11L);
-                         when(consumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
-                         when(consumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            List<MessageRecordVO> messages = provider.queryMessages(
-                    "instance-a", "TopicA", null, null, null, 100L, 300L);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA"))
+                .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
+        mockQueueWindow(pullConsumer, olderQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+        mockQueueWindow(pullConsumer, newerQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
+        when(pullConsumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
 
-            assertThat(messages).extracting(MessageRecordVO::getMsgId)
-                    .containsExactly("newer", "older");
-        }
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 300L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId)
+                .containsExactly("newer", "older");
     }
 
     @Test
@@ -316,25 +275,19 @@ class RocketMQMessageProviderTest {
         PullResult illegalOffset = new PullResult(PullStatus.OFFSET_ILLEGAL, 20L, 0L, 30L, null);
         PullResult foundAfterCorrection = new PullResult(PullStatus.FOUND, 40L, 20L, 30L, List.of(message));
         PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 40L, List.of());
-        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
-                         mockQueueWindow(consumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
-                         when(consumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(illegalOffset);
-                         when(consumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterCorrection);
-                         when(consumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            List<MessageRecordVO> messages = provider.queryMessages(
-                    "instance-a", "TopicA", null, null, null, 100L, 200L);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(illegalOffset);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterCorrection);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
 
-            assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-correction");
-            DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
-            verify(consumer).pull(queue, "*", 10L, 32);
-            verify(consumer).pull(queue, "*", 20L, 32);
-            verify(consumer).pull(queue, "*", 40L, 32);
-        }
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-correction");
+        verify(pullConsumer).pull(queue, "*", 10L, 32);
+        verify(pullConsumer).pull(queue, "*", 20L, 32);
+        verify(pullConsumer).pull(queue, "*", 40L, 32);
     }
 
     @Test
@@ -347,25 +300,20 @@ class RocketMQMessageProviderTest {
                         .toList());
         PullResult newerPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
                 List.of(topicMessage("newer", 250L)));
-        try (MockedConstruction<DefaultMQPullConsumer> ignored =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA"))
-                                 .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
-                         mockQueueWindow(consumer, olderQueue, 100L, 300L, 10L, 10L, 11L, 11L);
-                         mockQueueWindow(consumer, newerQueue, 100L, 300L, 10L, 10L, 11L, 11L);
-                         when(consumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
-                         when(consumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            List<MessageRecordVO> messages = provider.queryMessages(
-                    "instance-a", "TopicA", null, null, null, 100L, 300L);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA"))
+                .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
+        mockQueueWindow(pullConsumer, olderQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+        mockQueueWindow(pullConsumer, newerQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
+        when(pullConsumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
 
-            assertThat(messages).hasSize(200);
-            assertThat(messages.get(0).getMsgId()).isEqualTo("newer");
-            assertThat(messages).extracting(MessageRecordVO::getMsgId)
-                    .contains("newer");
-        }
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 300L);
+
+        assertThat(messages).hasSize(200);
+        assertThat(messages.get(0).getMsgId()).isEqualTo("newer");
+        assertThat(messages).extracting(MessageRecordVO::getMsgId)
+                .contains("newer");
     }
 
     @Test
@@ -376,23 +324,18 @@ class RocketMQMessageProviderTest {
                 List.of(topicMessage("message-a", 250L)));
         PullResult secondPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
                 List.of(topicMessage("message-b", 250L)));
-        try (MockedConstruction<DefaultMQPullConsumer> ignored =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA"))
-                                 .thenReturn(new LinkedHashSet<>(List.of(firstQueue, secondQueue)));
-                         mockQueueWindow(consumer, firstQueue, 100L, 300L, 10L, 10L, 11L, 11L);
-                         mockQueueWindow(consumer, secondQueue, 100L, 300L, 10L, 10L, 11L, 11L);
-                         when(consumer.pull(firstQueue, "*", 10L, 32)).thenReturn(firstPullResult);
-                         when(consumer.pull(secondQueue, "*", 10L, 32)).thenReturn(secondPullResult);
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            List<MessageRecordVO> messages = provider.queryMessages(
-                    "instance-a", "TopicA", null, null, null, 100L, 300L);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA"))
+                .thenReturn(new LinkedHashSet<>(List.of(firstQueue, secondQueue)));
+        mockQueueWindow(pullConsumer, firstQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+        mockQueueWindow(pullConsumer, secondQueue, 100L, 300L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(firstQueue, "*", 10L, 32)).thenReturn(firstPullResult);
+        when(pullConsumer.pull(secondQueue, "*", 10L, 32)).thenReturn(secondPullResult);
 
-            assertThat(messages).extracting(MessageRecordVO::getMsgId)
-                    .containsExactly("message-b", "message-a");
-        }
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 300L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId)
+                .containsExactly("message-b", "message-a");
     }
 
     @Test
@@ -637,25 +580,19 @@ class RocketMQMessageProviderTest {
         long begin = 10_000L;
         long end = 49_999L;
         long maxOffsetExclusive = 40_000L;
-        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
-                         mockQueueWindow(consumer, queue, begin, end, 0L, 0L, maxOffsetExclusive, maxOffsetExclusive);
-                         when(consumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
-                                 .thenAnswer(invocation -> topicPullBatch(invocation.getArgument(2), maxOffsetExclusive, begin));
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            List<MessageRecordVO> messages = provider.queryMessages(
-                    "instance-a", "TopicA", null, null, null, begin, end);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, begin, end, 0L, 0L, maxOffsetExclusive, maxOffsetExclusive);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
+                .thenAnswer(invocation -> topicPullBatch(invocation.getArgument(2), maxOffsetExclusive, begin));
 
-            assertThat(messages).hasSize(200);
-            assertThat(messages.get(0).getMsgId()).isEqualTo("msg-39999");
-            assertThat(messages.get(199).getMsgId()).isEqualTo("msg-39800");
-            DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
-            verify(consumer).pull(queue, "*", 8_000L, 32);
-            verify(consumer, never()).pull(queue, "*", 0L, 32);
-        }
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, begin, end);
+
+        assertThat(messages).hasSize(200);
+        assertThat(messages.get(0).getMsgId()).isEqualTo("msg-39999");
+        assertThat(messages.get(199).getMsgId()).isEqualTo("msg-39800");
+        verify(pullConsumer).pull(queue, "*", 8_000L, 32);
+        verify(pullConsumer, never()).pull(queue, "*", 0L, 32);
     }
 
     @Test
@@ -665,27 +602,22 @@ class RocketMQMessageProviderTest {
         long end = 69_999L;
         long maxOffsetExclusive = 50_000L;
         List<Long> pulledOffsets = new ArrayList<>();
-        try (MockedConstruction<DefaultMQPullConsumer> ignored =
-                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
-                         doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
-                         mockQueueWindow(consumer, queue, begin, end, 0L, 0L, maxOffsetExclusive, maxOffsetExclusive);
-                         when(consumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
-                                 .thenAnswer(invocation -> {
-                                     long offset = invocation.getArgument(2);
-                                     pulledOffsets.add(offset);
-                                     return topicPullBatch(offset, maxOffsetExclusive, begin);
-                                 });
-                         doNothing().when(consumer).shutdown();
-                     })) {
-            List<MessageRecordVO> messages = provider.queryMessages(
-                    "instance-a", "TopicA", null, null, null, begin, end);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, begin, end, 0L, 0L, maxOffsetExclusive, maxOffsetExclusive);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
+                .thenAnswer(invocation -> {
+                    long offset = invocation.getArgument(2);
+                    pulledOffsets.add(offset);
+                    return topicPullBatch(offset, maxOffsetExclusive, begin);
+                });
 
-            assertThat(messages).hasSize(200);
-            assertThat(pulledOffsets).isNotEmpty();
-            assertThat(pulledOffsets.get(0)).isEqualTo(18_000L);
-            assertThat(pulledOffsets).allMatch(offset -> offset >= 18_000L);
-        }
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, begin, end);
+
+        assertThat(messages).hasSize(200);
+        assertThat(pulledOffsets).isNotEmpty();
+        assertThat(pulledOffsets.get(0)).isEqualTo(18_000L);
+        assertThat(pulledOffsets).allMatch(offset -> offset >= 18_000L);
     }
 
     private MQClientAPIImpl mockOffsetLookupClient() {

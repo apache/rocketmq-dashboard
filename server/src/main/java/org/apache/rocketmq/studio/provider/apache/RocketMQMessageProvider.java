@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
@@ -25,15 +26,18 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
-import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -87,7 +91,7 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7 * ONE_DAY_MILLIS;
-    private static final int MAX_PULLS_PER_QUEUE = 1_000;
+    private static final int MAX_PULLS_PER_QUEUE = 32;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final int MAX_TOPIC_SCAN_MESSAGES_PER_QUEUE = MAX_PULLS_PER_QUEUE * TOPIC_PULL_BATCH_SIZE;
     private static final int MAX_PULL_ATTEMPTS_PER_QUEUE = MAX_PULLS_PER_QUEUE + MAX_CONSECUTIVE_OFFSET_ILLEGAL;
@@ -100,15 +104,12 @@ public class RocketMQMessageProvider implements MessageProvider {
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
                                                Long startTime, Long endTime) {
-        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
-        RPCHook credentialHook = runtimeAdminClientResolver.resolveCredentialHook(instanceId);
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> queryMessages(instanceId, (DefaultMQAdminExt) adminExt, endpoint,
-                        credentialHook, topic, msgId, tag, key, startTime, endTime));
+                adminExt -> queryMessages(instanceId, (DefaultMQAdminExt) adminExt, topic, msgId, tag, key,
+                        startTime, endTime));
     }
 
-    private List<MessageRecordVO> queryMessages(String instanceId, DefaultMQAdminExt adminExt, String endpoint,
-                                                 RPCHook credentialHook,
+    private List<MessageRecordVO> queryMessages(String instanceId, DefaultMQAdminExt adminExt,
                                                  String topic, String msgId, String tag, String key,
                                                  Long startTime, Long endTime) {
 
@@ -127,7 +128,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
                 throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
             }
-            result = queryByTopic(endpoint, credentialHook, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
+            result = queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         } else {
             log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
             return Collections.emptyList();
@@ -240,91 +241,139 @@ public class RocketMQMessageProvider implements MessageProvider {
         }
     }
 
-    /**
-     * Scan a topic within a time range using a short-lived pull consumer, mirroring the approach
-     * used by the RocketMQ dashboard for time-range topic queries.
-     */
-    private List<MessageRecordVO> queryByTopic(String endpoint, RPCHook credentialHook, String topic, String tag,
-                                                long begin, long end, int limit) {
-        DefaultMQPullConsumer consumer = newPullConsumer("studio-msg-query", endpoint, credentialHook);
-        int resultLimit = Math.min(limit, TOPIC_QUERY_HARD_CAP);
-        PriorityQueue<MessageRecordVO> newestMessages = new PriorityQueue<>(TOPIC_QUERY_ORDER);
-        try {
-            consumer.start();
-            Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
-            if (queues == null || queues.isEmpty()) {
-                return Collections.emptyList();
+    @Override
+    public List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic) {
+        return runtimeAdminClientResolver.execute(instanceId, adminExt -> {
+            List<QueueOffsetVO> result = new ArrayList<>();
+            try {
+                TopicRouteData route = adminExt.examineTopicRouteInfo(topic);
+                if (route == null || route.getQueueDatas() == null) {
+                    return Collections.emptyList();
+                }
+                for (QueueData queueData : route.getQueueDatas()) {
+                    for (int queueId = 0; queueId < queueData.getWriteQueueNums(); queueId++) {
+                        MessageQueue queue = new MessageQueue(topic, queueData.getBrokerName(), queueId);
+                        result.add(QueueOffsetVO.builder()
+                                .brokerName(queue.getBrokerName())
+                                .queueId(queue.getQueueId())
+                                .minOffset(adminExt.minOffset(queue))
+                                .maxOffset(adminExt.maxOffset(queue))
+                                .build());
+                    }
+                }
+                result.sort(Comparator.comparing(QueueOffsetVO::getBrokerName)
+                        .thenComparingInt(QueueOffsetVO::getQueueId));
+            } catch (Exception e) {
+                log.warn("getQueueOffsets(topic={}) failed: {}", topic, e.getMessage());
+                throw new BusinessException(502, "Failed to get queue offsets: " + e.getMessage());
             }
-            for (MessageQueue queue : queues) {
-                TopicQueueScanPlan scanPlan = buildTopicQueueScanPlan(consumer, queue, begin, end);
-                if (scanPlan.isEmpty()) {
-                    continue;
+            return result;
+        });
+    }
+
+    @Override
+    public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
+                                                int queueId, long offset) {
+        return runtimeAdminClientResolver.executePullConsumer(instanceId, consumer -> {
+            try {
+                MessageQueue queue = new MessageQueue(topic, brokerName, queueId);
+                PullResult pullResult = consumer.pull(queue, "*", offset, 1);
+                if (pullResult == null || pullResult.getPullStatus() != PullStatus.FOUND
+                        || pullResult.getMsgFoundList() == null || pullResult.getMsgFoundList().isEmpty()) {
+                    return null;
                 }
-                if (scanPlan.truncated()) {
-                    log.info("Truncate topic query for {} queue {} to offsets [{}..{}) within the guarded tail budget",
-                            topic, queue, scanPlan.startOffset(), scanPlan.endOffsetExclusive());
+                return toRecordVO(pullResult.getMsgFoundList().get(0), brokerName);
+            } catch (Exception e) {
+                log.warn("pullMessageAtOffset(topic={}, broker={}, queue={}, offset={}) failed: {}",
+                        topic, brokerName, queueId, offset, e.getMessage());
+                throw new BusinessException(502, "Failed to pull message at offset: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Scan a topic within a time range on the pooled long-lived pull consumer, mirroring the
+     * approach used by the RocketMQ dashboard for time-range topic queries.
+     */
+    private List<MessageRecordVO> queryByTopic(String instanceId, String topic, String tag,
+                                                long begin, long end, int limit) {
+        int resultLimit = Math.min(limit, TOPIC_QUERY_HARD_CAP);
+        return runtimeAdminClientResolver.executePullConsumer(instanceId, consumer -> {
+            PriorityQueue<MessageRecordVO> newestMessages = new PriorityQueue<>(TOPIC_QUERY_ORDER);
+            try {
+                Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
+                if (queues == null || queues.isEmpty()) {
+                    return Collections.emptyList();
                 }
-                int consecutiveIllegalOffsets = 0;
-                int pullAttempts = 0;
-                for (long offset = scanPlan.startOffset(); offset < scanPlan.endOffsetExclusive(); ) {
-                    if (++pullAttempts > MAX_PULL_ATTEMPTS_PER_QUEUE) {
-                        log.warn("Stop topic query for {} because queue {} exhausted the guarded pull budget at offset {}",
-                                topic, queue, offset);
-                        break;
-                    }
-                    PullResult pullResult = consumer.pull(queue, "*", offset, TOPIC_PULL_BATCH_SIZE);
-                    if (pullResult == null) {
-                        log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
-                        break;
-                    }
-                    long nextOffset = pullResult.getNextBeginOffset();
-                    if (nextOffset <= offset) {
-                        log.warn("Stop topic query for {} because queue {} did not advance offset {}", topic, queue, offset);
-                        break;
-                    }
-                    offset = Math.min(nextOffset, scanPlan.endOffsetExclusive());
-                    if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL) {
-                        // The broker returned a corrected offset in nextBeginOffset because
-                        // the requested offset is no longer valid (expired, compacted, or
-                        // before the queue's minimum offset). Retry from the corrected
-                        // position instead of abandoning the queue -- otherwise messages
-                        // that still exist after the corrected offset are silently dropped.
-                        if (++consecutiveIllegalOffsets > MAX_CONSECUTIVE_OFFSET_ILLEGAL) {
-                            log.warn("Stop topic query for {} because queue {} returned OFFSET_ILLEGAL "
-                                    + "{} times consecutively, giving up at offset {}", topic, queue,
-                                    consecutiveIllegalOffsets, offset);
-                            break;
-                        }
-                        log.debug("Offset was illegal for queue {} in topic {}, retrying from {}",
-                                queue, topic, offset);
+                for (MessageQueue queue : queues) {
+                    TopicQueueScanPlan scanPlan = buildTopicQueueScanPlan(consumer, queue, begin, end);
+                    if (scanPlan.isEmpty()) {
                         continue;
                     }
-                    if (pullResult.getPullStatus() != PullStatus.FOUND
-                            || pullResult.getMsgFoundList() == null) {
-                        break;
+                    if (scanPlan.truncated()) {
+                        log.info("Truncate topic query for {} queue {} to offsets [{}..{}) within the guarded tail budget",
+                                topic, queue, scanPlan.startOffset(), scanPlan.endOffsetExclusive());
                     }
-                    consecutiveIllegalOffsets = 0;
-                    for (MessageExt messageExt : pullResult.getMsgFoundList()) {
-                        if (messageExt.getStoreTimestamp() < begin
-                                || messageExt.getStoreTimestamp() > end) {
+                    int consecutiveIllegalOffsets = 0;
+                    int pullAttempts = 0;
+                    for (long offset = scanPlan.startOffset(); offset < scanPlan.endOffsetExclusive(); ) {
+                        if (++pullAttempts > MAX_PULL_ATTEMPTS_PER_QUEUE) {
+                            log.warn("Stop topic query for {} because queue {} exhausted the guarded pull budget at offset {}",
+                                    topic, queue, offset);
+                            break;
+                        }
+                        PullResult pullResult = consumer.pull(queue, "*", offset, TOPIC_PULL_BATCH_SIZE);
+                        if (pullResult == null) {
+                            log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
+                            break;
+                        }
+                        long nextOffset = pullResult.getNextBeginOffset();
+                        if (nextOffset <= offset) {
+                            log.warn("Stop topic query for {} because queue {} did not advance offset {}", topic, queue, offset);
+                            break;
+                        }
+                        offset = Math.min(nextOffset, scanPlan.endOffsetExclusive());
+                        if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL) {
+                            // The broker returned a corrected offset in nextBeginOffset because
+                            // the requested offset is no longer valid (expired, compacted, or
+                            // before the queue's minimum offset). Retry from the corrected
+                            // position instead of abandoning the queue -- otherwise messages
+                            // that still exist after the corrected offset are silently dropped.
+                            if (++consecutiveIllegalOffsets > MAX_CONSECUTIVE_OFFSET_ILLEGAL) {
+                                log.warn("Stop topic query for {} because queue {} returned OFFSET_ILLEGAL "
+                                        + "{} times consecutively, giving up at offset {}", topic, queue,
+                                        consecutiveIllegalOffsets, offset);
+                                break;
+                            }
+                            log.debug("Offset was illegal for queue {} in topic {}, retrying from {}",
+                                    queue, topic, offset);
                             continue;
                         }
-                        if (!matchesTag(messageExt, tag)) {
-                            continue;
+                        if (pullResult.getPullStatus() != PullStatus.FOUND
+                                || pullResult.getMsgFoundList() == null) {
+                            break;
                         }
-                        addTopicQueryCandidate(newestMessages, toRecordVO(messageExt), resultLimit);
+                        consecutiveIllegalOffsets = 0;
+                        for (MessageExt messageExt : pullResult.getMsgFoundList()) {
+                            if (messageExt.getStoreTimestamp() < begin
+                                    || messageExt.getStoreTimestamp() > end) {
+                                continue;
+                            }
+                            if (!matchesTag(messageExt, tag)) {
+                                continue;
+                            }
+                            addTopicQueryCandidate(newestMessages, toRecordVO(messageExt, queue.getBrokerName()), resultLimit);
+                        }
                     }
                 }
+            } catch (Exception e) {
+                log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
+                throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
-            throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
-        } finally {
-            consumer.shutdown();
-        }
-        return newestMessages.stream()
-                .sorted(TOPIC_QUERY_ORDER.reversed())
-                .toList();
+            return newestMessages.stream()
+                    .sorted(TOPIC_QUERY_ORDER.reversed())
+                    .toList();
+        });
     }
 
     private TopicQueueScanPlan buildTopicQueueScanPlan(DefaultMQPullConsumer consumer, MessageQueue queue,
@@ -410,6 +459,13 @@ public class RocketMQMessageProvider implements MessageProvider {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
+            if (isTraceTopicAbsent(e)) {
+                // The cluster has no trace topic route (trace dispatch disabled): the RPC
+                // succeeded but there is no business data, so return an empty trace instead
+                // of surfacing an error (exception-grading convention).
+                log.info("Trace topic not available on this cluster (msgId={}), returning empty trace", msgId);
+                return emptyTrace();
+            }
             log.warn("Trace query for msgId={} failed: {}", msgId, e.getMessage());
             throw new BusinessException(502, "Failed to query message trace: " + e.getMessage());
         }
@@ -418,6 +474,18 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .nodes(nodes)
                 .consumerStatus(consumerStatus)
                 .build();
+    }
+
+    private static boolean isTraceTopicAbsent(Throwable error) {
+        Throwable cause = error;
+        while (cause != null) {
+            if (cause instanceof MQClientException clientException
+                    && clientException.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
+                return true;
+            }
+            cause = cause.getCause() == cause ? null : cause.getCause();
+        }
+        return false;
     }
 
     /**
@@ -601,6 +669,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     MessageRecordVO toRecordVO(MessageExt messageExt) {
+        return toRecordVO(messageExt, null);
+    }
+
+    MessageRecordVO toRecordVO(MessageExt messageExt, String brokerName) {
         byte[] body = messageExt.getBody();
         DisplayBody displayBody = displayBody(body);
         Map<String, String> properties = messageExt.getProperties();
@@ -610,6 +682,9 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .topic(messageExt.getTopic())
                 .tag(messageExt.getTags())
                 .key(messageExt.getKeys())
+                .brokerName(brokerName)
+                .queueId(messageExt.getQueueId())
+                .queueOffset(messageExt.getQueueOffset())
                 .body(displayBody.value())
                 .bodyEncoding(displayBody.encoding())
                 .bodyTruncated(displayBody.truncated())
@@ -683,13 +758,6 @@ public class RocketMQMessageProvider implements MessageProvider {
             return true;
         }
         return tag.equals(messageExt.getTags());
-    }
-
-    private DefaultMQPullConsumer newPullConsumer(String groupPrefix, String endpoint, RPCHook credentialHook) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(groupPrefix + "-group", credentialHook);
-        consumer.setInstanceName(ShortLivedClientName.next(groupPrefix));
-        consumer.setNamesrvAddr(endpoint);
-        return consumer;
     }
 
     private static TraceRecordVO emptyTrace() {
