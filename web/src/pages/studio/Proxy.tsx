@@ -33,6 +33,7 @@ import {
   App,
   Typography,
   Input,
+  Popconfirm,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -42,13 +43,18 @@ import {
   CheckCircle,
   XCircle,
   Warning,
+  Plus,
+  Trash,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import {
+  addProxyAddress,
   getProxyTopology,
+  removeProxyAddress,
   queryProxyHomePage,
   reloadProxyConfig,
+  type ProxyHomePageData,
   type ProxyNode,
 } from '../../api/proxy';
 
@@ -71,6 +77,9 @@ const ProxyPage: React.FC = () => {
   const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [newProxyAddress, setNewProxyAddress] = useState('');
+  const [addressMutationLoading, setAddressMutationLoading] = useState(false);
+  const [removingProxyAddress, setRemovingProxyAddress] = useState<string | null>(null);
   const [clusterId, setClusterId] = useState<string>(
     localStorage.getItem('clusterId') || 'DefaultCluster',
   );
@@ -83,12 +92,8 @@ const ProxyPage: React.FC = () => {
     totalTPS: null as number | null,
   });
 
-  const loadProxyNodes = useCallback(async () => {
-    const requestId = ++loadRequestId.current;
-    setLoading(true);
-    try {
-      const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
-      if (requestId !== loadRequestId.current) return false;
+  const applyProxyHome = useCallback(
+    async ({ proxyAddrList, currentProxyAddr }: ProxyHomePageData, requestId: number) => {
       const baseNodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
         key: addr,
         address: addr,
@@ -107,9 +112,7 @@ const ProxyPage: React.FC = () => {
       try {
         const topology = await getProxyTopology();
         if (requestId !== loadRequestId.current) return false;
-        const statusByAddr = new Map(
-          topology.map((node) => [node.proxyAddr, node.status]),
-        );
+        const statusByAddr = new Map(topology.map((node) => [node.proxyAddr, node.status]));
         nodes = baseNodes.map((node) => {
           const probeStatus = statusByAddr.get(node.address);
           const status: ProxyNode['status'] =
@@ -136,6 +139,17 @@ const ProxyPage: React.FC = () => {
 
       persistProxyAddress(currentProxyAddr || proxyAddrList?.[0]);
       return true;
+    },
+    [],
+  );
+
+  const loadProxyNodes = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
+    setLoading(true);
+    try {
+      const home = await queryProxyHomePage();
+      if (requestId !== loadRequestId.current) return false;
+      return await applyProxyHome(home, requestId);
     } catch {
       if (requestId !== loadRequestId.current) return false;
       message.error(t('proxy.fetchListFailed'));
@@ -145,7 +159,7 @@ const ProxyPage: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [message, t]);
+  }, [applyProxyHome, message, t]);
 
   useEffect(() => {
     const requestId = loadRequestId.current;
@@ -172,6 +186,58 @@ const ProxyPage: React.FC = () => {
     setClusterId(value);
     if (value) {
       localStorage.setItem('clusterId', value);
+    }
+  };
+
+  const handleAddProxyAddress = async () => {
+    const addr = newProxyAddress.trim();
+    if (!addr) {
+      message.warning(t('proxy.addressRequired'));
+      return;
+    }
+    const requestId = ++loadRequestId.current;
+    setAddressMutationLoading(true);
+    setLoading(true);
+    try {
+      const home = await addProxyAddress(addr);
+      if (requestId !== loadRequestId.current) return;
+      await applyProxyHome(home, requestId);
+      setNewProxyAddress('');
+      message.success(t('proxy.addAddressSuccess'));
+    } catch {
+      if (requestId === loadRequestId.current) {
+        message.error(t('proxy.addAddressFailed'));
+      }
+    } finally {
+      if (requestId === loadRequestId.current) {
+        setAddressMutationLoading(false);
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleRemoveProxyAddress = async (addr: string) => {
+    const requestId = ++loadRequestId.current;
+    setRemovingProxyAddress(addr);
+    setLoading(true);
+    try {
+      const home = await removeProxyAddress(addr);
+      if (requestId !== loadRequestId.current) return;
+      await applyProxyHome(home, requestId);
+      if (selectedNode?.address === addr) {
+        setSelectedNode(null);
+        setConfigModalOpen(false);
+      }
+      message.success(t('proxy.removeAddressSuccess'));
+    } catch {
+      if (requestId === loadRequestId.current) {
+        message.error(t('proxy.removeAddressFailed'));
+      }
+    } finally {
+      if (requestId === loadRequestId.current) {
+        setRemovingProxyAddress(null);
+        setLoading(false);
+      }
     }
   };
 
@@ -340,6 +406,22 @@ const ProxyPage: React.FC = () => {
               onClick={() => handleReloadConfig(record)}
             />
           </Tooltip>
+          <Popconfirm
+            title={t('proxy.removeAddressConfirm', { addr: record.address })}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+            disabled={removingProxyAddress === record.address}
+            onConfirm={() => void handleRemoveProxyAddress(record.address)}
+          >
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<Trash size={14} />}
+              aria-label={t('common.delete')}
+              loading={removingProxyAddress === record.address}
+            />
+          </Popconfirm>
         </Space>
       ),
     },
@@ -354,6 +436,22 @@ const ProxyPage: React.FC = () => {
 
         extra={
           <Space>
+            <Input
+              placeholder={t('proxy.addressPlaceholder')}
+              value={newProxyAddress}
+              onChange={(e) => setNewProxyAddress(e.target.value)}
+              onPressEnter={() => void handleAddProxyAddress()}
+              style={{ width: 220 }}
+              aria-label={t('proxy.address')}
+              disabled={addressMutationLoading}
+            />
+            <Button
+              icon={<Plus size={14} />}
+              onClick={() => void handleAddProxyAddress()}
+              loading={addressMutationLoading}
+            >
+              {t('common.add')}
+            </Button>
             <Input
               placeholder={t('proxy.clusterIdPlaceholder')}
               value={clusterId}
