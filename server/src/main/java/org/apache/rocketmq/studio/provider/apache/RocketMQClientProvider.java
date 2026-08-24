@@ -130,6 +130,35 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private List<ClientConnectionVO> findProducerConnections(MQAdminExt adminExt, String topic, String producerGroup) {
+        if (producerGroup == null || producerGroup.isBlank()) {
+            return findProducerConnectionsForActiveGroups(adminExt, topic);
+        }
+        return findProducerConnectionsForGroup(adminExt, topic, producerGroup);
+    }
+
+    private List<ClientConnectionVO> findProducerConnectionsForActiveGroups(MQAdminExt adminExt, String topic) {
+        List<String> producerGroups = findProducerGroups(adminExt, topic, null, Integer.MAX_VALUE);
+        if (producerGroups.isEmpty()) {
+            return List.of();
+        }
+        List<ClientConnectionVO> connections = new ArrayList<>();
+        int successfulGroupQueries = 0;
+        for (String producerGroup : producerGroups) {
+            try {
+                connections.addAll(findProducerConnectionsForGroup(adminExt, topic, producerGroup));
+                successfulGroupQueries++;
+            } catch (BusinessException e) {
+                log.warn("Failed to query producer connections for group={}, skipping", producerGroup, e);
+            }
+        }
+        if (successfulGroupQueries == 0) {
+            throw new BusinessException(502, "Failed to query producer connections from all groups");
+        }
+        return connections;
+    }
+
+    private List<ClientConnectionVO> findProducerConnectionsForGroup(
+            MQAdminExt adminExt, String topic, String producerGroup) {
         try {
             ProducerConnection producerConnection =
                     adminExt.examineProducerConnectionInfo(producerGroup, topic);

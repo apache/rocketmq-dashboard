@@ -1238,6 +1238,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'producer.language': { zh: '语言', en: 'Language' },
   'producer.selectTopic': { zh: '请选择 Topic', en: 'Select a topic' },
   'producer.inputGroup': { zh: '请输入生产者组', en: 'Input producer group' },
+  'producer.inputGroupOptional': {
+    zh: '输入生产者组，留空查询全部活跃组',
+    en: 'Input producer group, or leave empty for all active groups',
+  },
   'producer.fetchTopicFailed': { zh: '获取 Topic 列表失败', en: 'Failed to fetch topic list' },
   'producer.fetchConnectionFailed': {
     zh: '获取生产者连接失败',

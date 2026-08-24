@@ -62,6 +62,8 @@ class ProducerConnectionServiceTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getClientId()).isEqualTo("producer-1");
         assertThat(result.get(0).getClientAddr()).isEqualTo("10.0.0.1:38888");
+        assertThat(result.get(0).getTopic()).isEqualTo("order-topic");
+        assertThat(result.get(0).getProducerGroup()).isEqualTo("pg-order");
         assertThat(result.get(0).getLanguage()).isEqualTo("Java");
         assertThat(result.get(0).getVersionDesc()).isEqualTo("5.1.0");
         verify(clientProvider).findProducerConnections("instance-1", "order-topic", "pg-order");
@@ -77,12 +79,15 @@ class ProducerConnectionServiceTest {
     }
 
     @Test
-    void listConnectionsShouldRejectMissingProducerGroup() {
-        assertThatThrownBy(() -> producerConnectionService.listConnections("instance-1", "order-topic", null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("producerGroup is required")
-                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
-        verifyNoInteractions(clientProvider);
+    void listConnectionsShouldAllowMissingProducerGroupForAllGroupScan() {
+        when(clientProvider.findProducerConnections("instance-1", "order-topic", null))
+                .thenReturn(List.of());
+
+        List<ProducerConnectionVO> result =
+                producerConnectionService.listConnections("instance-1", "order-topic", " ");
+
+        assertThat(result).isEmpty();
+        verify(clientProvider).findProducerConnections("instance-1", "order-topic", null);
     }
 
     @Test

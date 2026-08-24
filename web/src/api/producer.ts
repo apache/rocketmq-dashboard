@@ -21,6 +21,8 @@ import client from './client';
 export interface ProducerConnection {
   clientId: string;
   clientAddr: string;
+  topic?: string;
+  producerGroup?: string;
   language: string;
   versionDesc: string;
 }
@@ -178,7 +180,7 @@ export async function fetchProducerGroups(
 export async function queryProducerConnection(
   instanceId: string,
   topic: string,
-  producerGroup: string,
+  producerGroup?: string,
 ): Promise<ProducerConnectionResult> {
   const res = await client.get<ProducerConnectionResponse>('/producer/connection', {
     params: { instanceId, topic, producerGroup },
