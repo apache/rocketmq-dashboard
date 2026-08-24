@@ -31,7 +31,7 @@ import java.util.List;
 public class MessageService {
 
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000;
-    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_PAGE_SIZE = 200;
     private static final int TOPIC_QUERY_RESULT_LIMIT = 200;
 
     private final MessageProvider messageProvider;
@@ -52,7 +52,7 @@ public class MessageService {
     public MessageQueryPageVO queryMessagesPage(String instanceId, String topic, String msgId, String tag,
                                                  String key, Long startTime, Long endTime, int page, int pageSize) {
         if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
-            throw new BusinessException(400, "page must be positive and pageSize must be between 1 and 100");
+            throw new BusinessException(400, "page must be positive and pageSize must be between 1 and 200");
         }
         List<MessageRecordVO> result = queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime);
         long offset = (long) (page - 1) * pageSize;
@@ -74,6 +74,24 @@ public class MessageService {
                 .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic));
         recordTraceQuery(instanceId, msgId, topic, result);
         return result;
+    }
+
+    public List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic) {
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "topic is required");
+        }
+        return messageProvider.getQueueOffsets(instanceId, topic);
+    }
+
+    public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
+                                                int queueId, long offset) {
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "topic is required");
+        }
+        if (!StringUtils.hasText(brokerName)) {
+            throw new BusinessException(400, "brokerName is required");
+        }
+        return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
     }
 
     private void recordMessageQuery(String instanceId, String topic, String msgId, String tag,

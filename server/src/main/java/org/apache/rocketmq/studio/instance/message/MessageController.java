@@ -62,4 +62,19 @@ public class MessageController {
                                                  @RequestParam(required = false) String topic) {
         return Result.ok(messageService.getMessageTrace(instanceId, msgId, topic));
     }
+
+    @GetMapping("/queues")
+    public Result<List<QueueOffsetVO>> getQueueOffsets(@RequestParam String instanceId,
+                                                       @RequestParam String topic) {
+        return Result.ok(messageService.getQueueOffsets(instanceId, topic));
+    }
+
+    @GetMapping("/queue-message")
+    public Result<MessageRecordVO> pullMessageAtOffset(@RequestParam String instanceId,
+                                                       @RequestParam String topic,
+                                                       @RequestParam String brokerName,
+                                                       @RequestParam int queueId,
+                                                       @RequestParam long offset) {
+        return Result.ok(messageService.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset));
+    }
 }

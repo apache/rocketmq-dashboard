@@ -33,10 +33,8 @@ import {
   Input,
   Space,
   Flex,
-  Dropdown,
   message,
 } from 'antd';
-import type { MenuProps } from 'antd';
 import {
   SearchOutlined,
   ReloadOutlined,
@@ -46,7 +44,6 @@ import {
   CheckCircleOutlined,
   DownloadOutlined,
   HistoryOutlined,
-  DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -54,6 +51,12 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
+import {
+  useQueueBrowser,
+  QueueBrowserControls,
+  QueueBrowserResults,
+} from '../../components/QueueBrowser';
+import type { MessageQueryHistory, TraceQueryHistory } from '../../api/messageHistory';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import { getMessageTrace, queryMessagePage } from '../../services/messageService';
@@ -69,12 +72,7 @@ const DEFAULT_TRACE_ERROR = '消息轨迹加载失败，请稍后重试';
 
 /* ─── Constants ─── */
 
-type QueryMode = 'topic' | 'key' | 'msgid';
-
-type RecentQuery = {
-  mode: QueryMode;
-  params: MessageQuery;
-};
+type QueryMode = 'topic' | 'key' | 'msgid' | 'queue';
 
 type ApiErrorLike = {
   message?: unknown;
@@ -85,14 +83,13 @@ type ApiErrorLike = {
   };
 };
 
-const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
-const MAX_QUERY_HISTORY = 5;
 const RESEND_UNAVAILABLE_MESSAGE = '当前版本尚未接入普通消息重新发送接口';
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const, label: '按 Topic 查询' },
   { value: 'key' as const, label: '按 Message Key' },
   { value: 'msgid' as const, label: '按 Message ID' },
+  { value: 'queue' as const, label: '按队列浏览' },
 ];
 
 const DELIVERY_STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -135,28 +132,6 @@ const formatBody = (body: string): string => {
   }
 };
 
-const isQueryMode = (value: unknown): value is QueryMode =>
-  value === 'topic' || value === 'key' || value === 'msgid';
-
-const isOptionalString = (value: unknown): value is string | undefined =>
-  value === undefined || typeof value === 'string';
-
-const isOptionalTimestamp = (value: unknown): value is number | undefined =>
-  value === undefined || (typeof value === 'number' && Number.isFinite(value));
-
-const isMessageQuery = (value: unknown): value is MessageQuery => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const params = value as MessageQuery;
-  return (
-    isOptionalString(params.topic) &&
-    isOptionalString(params.tag) &&
-    isOptionalString(params.key) &&
-    isOptionalString(params.msgId) &&
-    isOptionalTimestamp(params.startTime) &&
-    isOptionalTimestamp(params.endTime)
-  );
-};
-
 const getQueryValidationError = (mode: QueryMode, params: MessageQuery): string | null => {
   if (!params.topic?.trim()) return '请选择 Topic';
   if (mode === 'key' && !params.key?.trim()) return '请输入 Message Key';
@@ -189,42 +164,6 @@ const normalizeMessageQuery = (mode: QueryMode, params: MessageQuery): MessageQu
     return { ...commonParams, ...(key ? { key } : {}) };
   }
   return commonParams;
-};
-
-const isRecentQuery = (value: unknown): value is RecentQuery => {
-  if (typeof value !== 'object' || value === null) return false;
-  const query = value as RecentQuery;
-  return (
-    isQueryMode(query.mode) &&
-    isMessageQuery(query.params) &&
-    getQueryValidationError(query.mode, normalizeMessageQuery(query.mode, query.params)) === null
-  );
-};
-
-const loadRecentQueries = (): RecentQuery[] => {
-  try {
-    const stored = localStorage.getItem(QUERY_HISTORY_STORAGE_KEY);
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(isRecentQuery)
-      .map(({ mode, params }) => ({ mode, params: normalizeMessageQuery(mode, params) }))
-      .slice(0, MAX_QUERY_HISTORY);
-  } catch {
-    return [];
-  }
-};
-
-const querySignature = (query: RecentQuery): string => JSON.stringify(query);
-
-const queryLabel = ({ mode, params }: RecentQuery): string => {
-  if (mode === 'msgid')
-    return `Message ID: ${params.msgId || '全部'} · Topic: ${params.topic || '全部'}`;
-  if (mode === 'key') {
-    return `Key: ${params.key || '全部'}${params.topic ? ` · Topic: ${params.topic}` : ''}`;
-  }
-  return `Topic: ${params.topic || '全部'}`;
 };
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
@@ -307,6 +246,7 @@ const MessagePageContent = ({
     };
   }, [loadTopicOptions]);
   const [queryMode, setQueryMode] = useState<QueryMode>('topic');
+  const queueBrowser = useQueueBrowser(selectedInstanceId);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
   const [keyInput, setKeyInput] = useState('');
@@ -324,7 +264,6 @@ const MessagePageContent = ({
   const [traceLoading, setTraceLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
-  const [recentQueries, setRecentQueries] = useState<RecentQuery[]>(loadRecentQueries);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
@@ -364,29 +303,11 @@ const MessagePageContent = ({
     setQueryLoading(false);
   };
 
-  const saveRecentQuery = (mode: QueryMode, params: MessageQuery) => {
-    const nextQuery = { mode, params };
-    const signature = querySignature(nextQuery);
-    setRecentQueries((current) => {
-      const next = [
-        nextQuery,
-        ...current.filter((item) => querySignature(item) !== signature),
-      ].slice(0, MAX_QUERY_HISTORY);
-      try {
-        localStorage.setItem(QUERY_HISTORY_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // Query history remains available for the current session when storage is unavailable.
-      }
-      return next;
-    });
-  };
-
   const executeQuery = async (
     mode: QueryMode,
     params: MessageQuery,
     page = 1,
     pageSize = messagePageSize,
-    saveHistory = true,
   ) => {
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
@@ -418,10 +339,7 @@ const MessagePageContent = ({
       setMessagePageSize(result.size);
       setResultMayBeTruncated(result.resultMayBeTruncated);
       setQueryError(null);
-      if (saveHistory) {
-        saveRecentQuery(mode, normalizedParams);
-        message.success(`查询完成，共 ${result.total} 条`);
-      }
+      message.success(`查询完成，共 ${result.total} 条`);
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
         setQueryError(getErrorMessage(error, DEFAULT_QUERY_ERROR));
@@ -437,66 +355,33 @@ const MessagePageContent = ({
     await executeQuery(queryMode, currentQueryParams);
   };
 
-  const replayRecentQuery = (recentQuery: RecentQuery) => {
-    const { mode, params } = recentQuery;
+  const replayHistoryRecord = (record: MessageQueryHistory) => {
+    const modeMap: Record<string, QueryMode> = { TOPIC: 'topic', KEY: 'key', MSG_ID: 'msgid' };
+    const mode = modeMap[record.queryType] || 'topic';
+    const params: MessageQuery = {
+      topic: record.topic,
+      msgId: record.msgId || undefined,
+      key: record.messageKey || undefined,
+      startTime: record.startTime,
+      endTime: record.endTime,
+    };
     setQueryMode(mode);
-    setSelectedTopic(params.topic);
-    setKeyInput(params.key || '');
-    setMsgIdInput(params.msgId || '');
-    if (mode === 'topic' && params.startTime !== undefined && params.endTime !== undefined) {
-      setDateRange([dayjs(params.startTime), dayjs(params.endTime)]);
+    setSelectedTopic(record.topic);
+    setKeyInput(record.messageKey || '');
+    setMsgIdInput(record.msgId || '');
+    if (mode === 'topic' && record.startTime !== undefined && record.endTime !== undefined) {
+      setDateRange([dayjs(record.startTime), dayjs(record.endTime)]);
     }
+    setHistoryDrawerOpen(false);
     void executeQuery(mode, params);
   };
 
-  const clearRecentQueries = () => {
-    setRecentQueries([]);
-    try {
-      localStorage.removeItem(QUERY_HISTORY_STORAGE_KEY);
-    } catch {
-      // Ignore storage failures after clearing the in-memory history.
-    }
-  };
-
-  const recentQueryMenuItems: MenuProps['items'] = [
-    ...recentQueries.map((recentQuery, index) => {
-      const label = queryLabel(recentQuery);
-      return {
-        key: String(index),
-        label: (
-          <Text ellipsis={{ tooltip: label }} style={{ maxWidth: 360 }}>
-            {label}
-          </Text>
-        ),
-      };
-    }),
-    ...(recentQueries.length > 0
-      ? [
-          { type: 'divider' as const },
-          {
-            key: 'clear',
-            danger: true,
-            icon: <DeleteOutlined />,
-            label: '清空历史',
-          },
-        ]
-      : []),
-  ];
-
-  const handleRecentQueryMenuClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'clear') {
-      Modal.confirm({
-        title: '清空查询历史',
-        content: '确定要清空全部查询历史吗？此操作不可恢复。',
-        okText: '清空',
-        okType: 'danger',
-        cancelText: '取消',
-        onOk: clearRecentQueries,
-      });
-      return;
-    }
-    const recentQuery = recentQueries[Number(key)];
-    if (recentQuery) replayRecentQuery(recentQuery);
+  const replayTraceRecord = (record: TraceQueryHistory) => {
+    setQueryMode('msgid');
+    setSelectedTopic(record.topic);
+    setMsgIdInput(record.msgId);
+    setHistoryDrawerOpen(false);
+    void executeQuery('msgid', { topic: record.topic, msgId: record.msgId });
   };
 
   const handleVerifyConsume = () => {
@@ -547,6 +432,7 @@ const MessagePageContent = ({
       dataIndex: 'topic',
       key: 'topic',
       width: 170,
+      ellipsis: true,
       sorter: (a, b) => a.topic.localeCompare(b.topic),
       render: (topic: string) => (
         <Text strong style={{ fontSize: 14 }}>
@@ -559,7 +445,6 @@ const MessagePageContent = ({
       dataIndex: 'tag',
       key: 'tag',
       width: 80,
-      sorter: (a, b) => (a.tag ?? '').localeCompare(b.tag ?? ''),
       render: (tag: string | null) => <Tag>{tag || '-'}</Tag>,
     },
     {
@@ -567,7 +452,7 @@ const MessagePageContent = ({
       dataIndex: 'key',
       key: 'key',
       width: 120,
-      sorter: (a, b) => (a.key ?? '').localeCompare(b.key ?? ''),
+      ellipsis: true,
       render: (key: string | null) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{key || '-'}</span>
       ),
@@ -576,11 +461,15 @@ const MessagePageContent = ({
       title: 'Message ID',
       dataIndex: 'msgId',
       key: 'msgId',
-      sorter: (a, b) => a.msgId.localeCompare(b.msgId),
+      width: 260,
       render: (id: string) => (
-        <Paragraph copyable style={{ fontSize: 14, marginBottom: 0, fontFamily: 'monospace' }}>
+        <Text
+          copyable={{ text: id }}
+          ellipsis={{ tooltip: id }}
+          style={{ fontSize: 14, fontFamily: 'monospace', width: '100%', display: 'block' }}
+        >
           {id}
-        </Paragraph>
+        </Text>
       ),
     },
     {
@@ -601,7 +490,6 @@ const MessagePageContent = ({
       key: 'size',
       width: 80,
       align: 'right',
-      sorter: (a, b) => a.size - b.size,
       render: (size: number) => formatSize(size),
     },
     {
@@ -818,118 +706,119 @@ const MessagePageContent = ({
             />
           </Space>
 
-          <Space wrap size={12}>
-            {queryMode === 'topic' && (
-              <>
-                <Select
-                  placeholder="选择 Topic"
-                  style={{ width: 360 }}
-                  value={selectedTopic}
-                  onChange={setSelectedTopic}
-                  allowClear
-                  showSearch
-                  loading={topicLoading}
-                  disabled={topicLoading || Boolean(topicError)}
-                  options={topicOptions.map((t) => ({
-                    value: t,
-                    label: t,
-                  }))}
-                />
-                <RangePicker
-                  showTime
-                  style={{ width: 400 }}
-                  value={dateRange}
-                  onChange={(vals) => {
-                    if (vals && vals[0] && vals[1]) {
-                      setDateRange([vals[0], vals[1]]);
-                    }
-                  }}
-                />
-              </>
-            )}
+          {queryMode !== 'queue' && (
+            <Space wrap size={12}>
+              {queryMode === 'topic' && (
+                <>
+                  <Select
+                    placeholder="选择 Topic"
+                    style={{ width: 360 }}
+                    value={selectedTopic}
+                    onChange={setSelectedTopic}
+                    allowClear
+                    showSearch
+                    loading={topicLoading}
+                    disabled={topicLoading || Boolean(topicError)}
+                    options={topicOptions.map((t) => ({
+                      value: t,
+                      label: t,
+                    }))}
+                  />
+                  <RangePicker
+                    showTime
+                    style={{ width: 400 }}
+                    value={dateRange}
+                    onChange={(vals) => {
+                      if (vals && vals[0] && vals[1]) {
+                        setDateRange([vals[0], vals[1]]);
+                      }
+                    }}
+                  />
+                </>
+              )}
 
-            {queryMode === 'key' && (
-              <>
-                <Select
-                  placeholder="选择 Topic"
-                  style={{ width: 360 }}
-                  value={selectedTopic}
-                  onChange={setSelectedTopic}
-                  allowClear
-                  showSearch
-                  loading={topicLoading}
-                  disabled={topicLoading || Boolean(topicError)}
-                  options={topicOptions.map((t) => ({
-                    value: t,
-                    label: t,
-                  }))}
-                />
-                <Input
-                  placeholder="输入 Message Key"
-                  style={{ width: 240 }}
-                  value={keyInput}
-                  onChange={(e) => setKeyInput(e.target.value)}
-                />
-              </>
-            )}
+              {queryMode === 'key' && (
+                <>
+                  <Select
+                    placeholder="选择 Topic"
+                    style={{ width: 360 }}
+                    value={selectedTopic}
+                    onChange={setSelectedTopic}
+                    allowClear
+                    showSearch
+                    loading={topicLoading}
+                    disabled={topicLoading || Boolean(topicError)}
+                    options={topicOptions.map((t) => ({
+                      value: t,
+                      label: t,
+                    }))}
+                  />
+                  <Input
+                    placeholder="输入 Message Key"
+                    style={{ width: 240 }}
+                    value={keyInput}
+                    onChange={(e) => setKeyInput(e.target.value)}
+                  />
+                </>
+              )}
 
-            {queryMode === 'msgid' && (
-              <>
-                <Select
-                  placeholder="选择 Topic"
-                  style={{ width: 360 }}
-                  value={selectedTopic}
-                  onChange={setSelectedTopic}
-                  allowClear
-                  showSearch
-                  loading={topicLoading}
-                  disabled={topicLoading || Boolean(topicError)}
-                  options={topicOptions.map((t) => ({
-                    value: t,
-                    label: t,
-                  }))}
-                />
-                <Input
-                  placeholder="输入 Message ID"
-                  style={{ width: 400 }}
-                  value={msgIdInput}
-                  onChange={(e) => setMsgIdInput(e.target.value)}
-                />
-              </>
-            )}
+              {queryMode === 'msgid' && (
+                <>
+                  <Select
+                    placeholder="选择 Topic"
+                    style={{ width: 360 }}
+                    value={selectedTopic}
+                    onChange={setSelectedTopic}
+                    allowClear
+                    showSearch
+                    loading={topicLoading}
+                    disabled={topicLoading || Boolean(topicError)}
+                    options={topicOptions.map((t) => ({
+                      value: t,
+                      label: t,
+                    }))}
+                  />
+                  <Input
+                    placeholder="输入 Message ID"
+                    style={{ width: 400 }}
+                    value={msgIdInput}
+                    onChange={(e) => setMsgIdInput(e.target.value)}
+                  />
+                </>
+              )}
 
-            <Button
-              type="primary"
-              icon={<SearchOutlined />}
-              disabled={Boolean(queryDisabledReason)}
-              title={queryDisabledReason || undefined}
-              onClick={() => {
-                void handleQuery();
-              }}
-            >
-              查询
-            </Button>
-            <Dropdown
-              menu={{ items: recentQueryMenuItems, onClick: handleRecentQueryMenuClick }}
-              trigger={['click']}
-              disabled={recentQueries.length === 0 || !selectedInstanceId}
-            >
               <Button
-                icon={<HistoryOutlined />}
-                disabled={recentQueries.length === 0 || !selectedInstanceId}
+                type="primary"
+                icon={<SearchOutlined />}
+                disabled={Boolean(queryDisabledReason)}
+                title={queryDisabledReason || undefined}
+                onClick={() => {
+                  void handleQuery();
+                }}
               >
-                最近查询
+                查询
               </Button>
-            </Dropdown>
-            <Button icon={<ReloadOutlined />} onClick={handleReset}>
-              重置
-            </Button>
-            <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
-              服务端历史
-            </Button>
-          </Space>
+              <Button icon={<ReloadOutlined />} onClick={handleReset}>
+                重置
+              </Button>
+              <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
+                服务端历史
+              </Button>
+            </Space>
+          )}
+
+          {queryMode === 'queue' && (
+            <QueueBrowserControls
+              instanceId={selectedInstanceId}
+              state={queueBrowser}
+              topicOptions={topicOptions.map((t) => ({ label: t, value: t }))}
+              topicLoading={topicLoading}
+            />
+          )}
         </Space>
       </Card>
+
+      {queryMode === 'queue' && <QueueBrowserResults state={queueBrowser} />}
 
       {topicError && (
         <Alert
@@ -949,12 +838,14 @@ const MessagePageContent = ({
         open={historyDrawerOpen}
         clusterId={selectedInstanceId}
         onClose={() => setHistoryDrawerOpen(false)}
+        onSelectMessage={replayHistoryRecord}
+        onSelectTrace={replayTraceRecord}
       />
 
       {queryError && (
         <Alert showIcon type="warning" message={queryError} style={{ marginBottom: 16 }} />
       )}
-      {resultMayBeTruncated && (
+      {queryMode !== 'queue' && resultMayBeTruncated && (
         <Alert
           showIcon
           type="warning"
@@ -964,25 +855,27 @@ const MessagePageContent = ({
       )}
 
       {/* ── Results Table ── */}
-      <Card styles={{ body: { padding: 0 } }}>
-        <Table
-          columns={columns}
-          dataSource={messages}
-          loading={queryLoading}
-          rowKey="msgId"
-          pagination={{
-            current: messagePage,
-            pageSize: messagePageSize,
-            total: messageTotal,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条消息`,
-            onChange: (page, pageSize) =>
-              void executeQuery(queryMode, currentQueryParams, page, pageSize, false),
-          }}
-          size="small"
-          scroll={{ x: tableScrollX(columns) }}
-        />
-      </Card>
+      {queryMode !== 'queue' && (
+        <Card styles={{ body: { padding: 0 } }}>
+          <Table
+            columns={columns}
+            dataSource={messages}
+            loading={queryLoading}
+            rowKey="msgId"
+            pagination={{
+              current: messagePage,
+              pageSize: messagePageSize,
+              total: messageTotal,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条消息`,
+              onChange: (page, pageSize) =>
+                void executeQuery(queryMode, currentQueryParams, page, pageSize),
+            }}
+            size="small"
+            scroll={{ x: tableScrollX(columns) }}
+          />
+        </Card>
+      )}
 
       {/* ── Message Detail Modal ── */}
       <Modal

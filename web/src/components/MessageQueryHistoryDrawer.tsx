@@ -20,6 +20,8 @@ interface Props {
   open: boolean;
   clusterId?: string;
   onClose: () => void;
+  onSelectMessage?: (record: MessageQueryHistory) => void;
+  onSelectTrace?: (record: TraceQueryHistory) => void;
 }
 
 const PAGE_SIZE = 20;
@@ -29,7 +31,13 @@ const formatTime = (value?: string) => {
   return Number.isNaN(timestamp.getTime()) ? '-' : timestamp.toLocaleString();
 };
 
-const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
+const MessageQueryHistoryDrawer = ({
+  open,
+  clusterId,
+  onClose,
+  onSelectMessage,
+  onSelectTrace,
+}: Props) => {
   const [tab, setTab] = useState<'messages' | 'traces'>('messages');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -154,6 +162,14 @@ const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
                 columns={messageColumns}
                 dataSource={messageRows}
                 pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage }}
+                onRow={
+                  onSelectMessage
+                    ? (record) => ({
+                        onClick: () => onSelectMessage(record),
+                        style: { cursor: 'pointer' },
+                      })
+                    : undefined
+                }
               />
             ),
           },
@@ -167,6 +183,14 @@ const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
                 columns={traceColumns}
                 dataSource={traceRows}
                 pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage }}
+                onRow={
+                  onSelectTrace
+                    ? (record) => ({
+                        onClick: () => onSelectTrace(record),
+                        style: { cursor: 'pointer' },
+                      })
+                    : undefined
+                }
               />
             ),
           },
