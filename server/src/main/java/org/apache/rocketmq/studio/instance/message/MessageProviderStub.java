@@ -41,6 +41,19 @@ public class MessageProviderStub implements MessageProvider {
         throw unsupported();
     }
 
+    @Override
+    public List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic) {
+        log.warn("MessageProviderStub.getQueueOffsets called but no real message provider is configured");
+        throw unsupported();
+    }
+
+    @Override
+    public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
+                                                int queueId, long offset) {
+        log.warn("MessageProviderStub.pullMessageAtOffset called but no real message provider is configured");
+        throw unsupported();
+    }
+
     private BusinessException unsupported() {
         return new BusinessException(501, "Message query provider is not configured");
     }

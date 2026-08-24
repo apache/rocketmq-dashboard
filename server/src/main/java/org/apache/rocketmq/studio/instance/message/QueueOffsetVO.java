@@ -16,16 +16,18 @@
  */
 package org.apache.rocketmq.studio.instance.message;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.List;
-
-public interface MessageProvider {
-    List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key, Long startTime,
-                                        Long endTime);
-
-    TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
-
-    List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic);
-
-    MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName, int queueId, long offset);
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class QueueOffsetVO {
+    private String brokerName;
+    private int queueId;
+    private long minOffset;
+    private long maxOffset;
 }

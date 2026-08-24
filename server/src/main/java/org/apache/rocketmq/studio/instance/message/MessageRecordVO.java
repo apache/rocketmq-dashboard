@@ -32,6 +32,9 @@ public class MessageRecordVO {
     private String topic;
     private String tag;
     private String key;
+    private String brokerName;
+    private Integer queueId;
+    private Long queueOffset;
     private String body;
     private String bodyEncoding;
     private boolean bodyTruncated;

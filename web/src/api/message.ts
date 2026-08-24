@@ -6,6 +6,9 @@ export interface MessageRecord {
   topic: string;
   tag: string | null;
   key: string | null;
+  brokerName: string | null;
+  queueId: number | null;
+  queueOffset: number | null;
   body: string;
   storeTime: number | string;
   bornHost: string;
@@ -141,4 +144,30 @@ export async function exportDLQMessages(params: {
 }): Promise<Blob> {
   const res = await client.get<Blob>('/dlq/export', { params, responseType: 'blob' });
   return res.data;
+}
+
+// ─── Queue Browser ─────────────────────────────────────────────────
+export interface QueueOffset {
+  brokerName: string;
+  queueId: number;
+  minOffset: number;
+  maxOffset: number;
+}
+
+export async function getQueueOffsets(params: { instanceId: string; topic: string }) {
+  const res = await client.get<{ data: QueueOffset[] }>('/messages/queues', { params });
+  return res.data.data;
+}
+
+export async function pullMessageAtOffset(params: {
+  instanceId: string;
+  topic: string;
+  brokerName: string;
+  queueId: number;
+  offset: number;
+}) {
+  const res = await client.get<{ data: MessageRecord | null }>('/messages/queue-message', {
+    params,
+  });
+  return res.data.data;
 }
