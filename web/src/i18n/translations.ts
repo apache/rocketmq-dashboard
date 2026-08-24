@@ -395,6 +395,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '它们尚不会下发到所选 RocketMQ 实例。实例级 ACL Provider 接入完成前，请在集群侧管理实际 ACL 策略。',
     en: 'They are not applied to the selected RocketMQ instance. Manage the effective ACL policy on the cluster until instance-scoped provider support is available.',
   },
+  'acl.tencentRoleNotice': {
+    zh: '当前 ACL 用户和规则由 Tencent Cloud Role 实时驱动',
+    en: 'Current ACL users and rules are backed by Tencent Cloud roles',
+  },
+  'acl.tencentRoleDescription': {
+    zh: 'Tencent Cloud Role 只支持集群级允许规则，资源固定为 *，权限通过 PUB/SUB 映射为写/读角色权限。',
+    en: 'Tencent Cloud roles only support cluster-wide allow rules on resource *, with PUB/SUB mapped to write/read role permissions.',
+  },
   'acl.addRule': { zh: '添加规则', en: 'Add Rule' },
   'acl.addUser': { zh: '添加用户', en: 'Add User' },
   'acl.ruleTab': { zh: 'ACL 规则', en: 'ACL Rules' },

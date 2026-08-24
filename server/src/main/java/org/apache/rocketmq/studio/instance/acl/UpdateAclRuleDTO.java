@@ -17,15 +17,14 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
 
 @Data
 public class UpdateAclRuleDTO {
-    @NotNull(message = "id is required")
-    private Long id;
+    @NotBlank(message = "id is required")
+    private String id;
     @NotBlank(message = "principal is required")
     private String principal;
     @NotBlank(message = "resource is required")
@@ -41,7 +40,7 @@ public class UpdateAclRuleDTO {
 
     public AclRuleVO toAclRuleVO() {
         return AclRuleVO.builder()
-                .id(id)
+                .id(numericIdOrNull())
                 .principal(principal)
                 .resource(resource)
                 .resourceType(resourceType)
@@ -51,5 +50,16 @@ public class UpdateAclRuleDTO {
                 .scope(scope)
                 .aclVersion(aclVersion)
                 .build();
+    }
+
+    private Long numericIdOrNull() {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(id.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 }
