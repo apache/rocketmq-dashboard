@@ -187,7 +187,7 @@ const ProducerPage = () => {
     }
   };
 
-  const onFinish = async (values: { selectedTopic: string; producerGroup: string }) => {
+  const onFinish = async (values: { selectedTopic: string; producerGroup?: string }) => {
     if (queryInFlightRef.current !== null) return;
     if (!selectedInstanceId) {
       message.error('Select an instance before querying producer connections.');
@@ -227,6 +227,13 @@ const ProducerPage = () => {
 
   const columns = [
     { title: 'Client ID', dataIndex: 'clientId', key: 'clientId', align: 'center' as const },
+    {
+      title: 'Producer Group',
+      dataIndex: 'producerGroup',
+      key: 'producerGroup',
+      align: 'center' as const,
+      render: (value?: string) => value || '-',
+    },
     {
       title: t('common.address'),
       dataIndex: 'clientAddr',
@@ -276,8 +283,8 @@ const ProducerPage = () => {
     const rows = connectionList.map((connection) => ({
       ...connection,
       instanceId: selectedInstanceId ?? '',
-      topic: selectedTopic,
-      producerGroup,
+      topic: connection.topic ?? selectedTopic,
+      producerGroup: connection.producerGroup ?? producerGroup,
       readiness: connectionSummary?.readiness,
       warnings,
     }));
@@ -330,14 +337,10 @@ const ProducerPage = () => {
               options={topicList.map((topic) => ({ value: topic, label: topic }))}
             />
           </Form.Item>
-          <Form.Item
-            label="PRODUCER GROUP"
-            name="producerGroup"
-            rules={[{ required: true, whitespace: true, message: t('producer.inputGroup') }]}
-          >
+          <Form.Item label="PRODUCER GROUP" name="producerGroup">
             <AutoComplete
               allowClear
-              placeholder={t('producer.inputGroup')}
+              placeholder={t('producer.inputGroupOptional')}
               style={{ width: 300 }}
               options={producerGroups.map((group) => ({ value: group }))}
               onFocus={() => {
@@ -435,7 +438,9 @@ const ProducerPage = () => {
         <Table
           dataSource={connectionList}
           columns={columns}
-          rowKey={(record) => `${record.clientId}:${record.clientAddr}`}
+          rowKey={(record) =>
+            `${record.producerGroup ?? ''}:${record.clientId}:${record.clientAddr}`
+          }
           pagination={false}
           bordered
           size="middle"

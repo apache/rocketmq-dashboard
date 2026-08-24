@@ -38,7 +38,7 @@ public class ProducerConnectionService {
                 instanceId, topic, producerGroup);
         String normalizedInstanceId = requireFilter(instanceId, "instanceId");
         String normalizedTopic = requireFilter(topic, "topic");
-        String normalizedProducerGroup = requireFilter(producerGroup, "producerGroup");
+        String normalizedProducerGroup = normalizeOptionalFilter(producerGroup);
         return clientProvider.findProducerConnections(normalizedInstanceId, normalizedTopic, normalizedProducerGroup)
                 .stream()
                 .map(this::toProducerConnection)
@@ -58,6 +58,8 @@ public class ProducerConnectionService {
         return ProducerConnectionVO.builder()
                 .clientId(connection.getClientId())
                 .clientAddr(connection.getAddress())
+                .topic(connection.getGroupOrTopic())
+                .producerGroup(connection.getProducerGroup())
                 .language(connection.getLanguage() == null ? null : connection.getLanguage().name())
                 .versionDesc(connection.getVersion())
                 .build();

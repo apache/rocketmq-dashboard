@@ -219,7 +219,19 @@ describe('ProducerPage', () => {
     expect(screen.getByText('就绪')).toBeInTheDocument();
   });
 
-  it('does not query without a producer group', async () => {
+  it('queries all active producer groups when producer group is empty', async () => {
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-all-1',
+          clientAddr: '192.168.1.10',
+          topic: 'order-events',
+          producerGroup: 'pg-order',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);
 
@@ -231,10 +243,11 @@ describe('ProducerPage', () => {
     );
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
-    expect(
-      await screen.findByText('请输入生产者组', { selector: '.ant-form-item-explain-error' }),
-    ).toBeInTheDocument();
-    expect(queryProducerConnection).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(queryProducerConnection).toHaveBeenCalledWith('instance-1', 'order-events', undefined);
+    });
+    expect(await screen.findByText('producer-all-1')).toBeInTheDocument();
+    expect(screen.getByText('pg-order')).toBeInTheDocument();
   });
 
   it('renders producer connection warnings from the summary', async () => {
@@ -307,6 +320,8 @@ describe('ProducerPage', () => {
         {
           clientId: '@producer-a',
           clientAddr: '192.168.1.10',
+          topic: 'order-events',
+          producerGroup: 'order-producer',
           language: 'JAVA',
           versionDesc: '5.1.0',
         },
