@@ -23,6 +23,7 @@ import com.tencentcloudapi.trocket.v20230308.models.RoleItem;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.acl.AclRuleVO;
 import org.apache.rocketmq.studio.instance.acl.AclUserVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -149,5 +151,64 @@ class TencentAclServiceTest {
                 .build()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("ACL user not found: ghost-role");
+    }
+
+    @Test
+    void createRuleShouldExpandAllActionToReadAndWritePermissionsTest() throws Exception {
+        AclRuleVO rule = AclRuleVO.builder()
+                .principal("reader-role")
+                .resource("*")
+                .resourceType("Cluster")
+                .resourcePattern("LITERAL")
+                .actions(List.of("ALL"))
+                .decision("ALLOW")
+                .scope("cluster")
+                .build();
+
+        AclRuleVO created = service.createRule(INSTANCE_ID, rule);
+
+        ArgumentCaptor<ModifyRoleRequest> requestCaptor = ArgumentCaptor.forClass(ModifyRoleRequest.class);
+        verify(client).ModifyRole(requestCaptor.capture());
+        ModifyRoleRequest request = requestCaptor.getValue();
+        assertThat(request.getRole()).isEqualTo("reader-role");
+        assertThat(request.getPermRead()).isTrue();
+        assertThat(request.getPermWrite()).isTrue();
+        assertThat(created.getActions()).containsExactly("PUB", "SUB");
+    }
+
+    @Test
+    void createRuleShouldRejectResourceScopedTencentRulesTest() {
+        AclRuleVO rule = AclRuleVO.builder()
+                .principal("reader-role")
+                .resource("orders-*")
+                .resourceType("Topic")
+                .resourcePattern("PREFIX")
+                .actions(List.of("SUB"))
+                .decision("ALLOW")
+                .scope("cluster")
+                .build();
+
+        assertThatThrownBy(() -> service.createRule(INSTANCE_ID, rule))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Tencent Cloud roles only support cluster-wide ACL rules on resource *")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void createRuleShouldRejectDenyTencentRulesTest() {
+        AclRuleVO rule = AclRuleVO.builder()
+                .principal("reader-role")
+                .resource("*")
+                .resourceType("Cluster")
+                .resourcePattern("LITERAL")
+                .actions(List.of("SUB"))
+                .decision("DENY")
+                .scope("cluster")
+                .build();
+
+        assertThatThrownBy(() -> service.createRule(INSTANCE_ID, rule))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Tencent Cloud roles only support ALLOW ACL rules")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
     }
 }

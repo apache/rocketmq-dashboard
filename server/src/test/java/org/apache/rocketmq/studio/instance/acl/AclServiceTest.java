@@ -474,7 +474,7 @@ class AclServiceTest {
     @Test
     void updateUserShouldSaveExistingUser() {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId(1L);
+        input.setId("1");
         input.setUsername("newuser");
         input.setAdmin(true);
 
@@ -507,7 +507,7 @@ class AclServiceTest {
                 .clusters(List.of("cluster-a"))
                 .build();
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId(1L);
+        input.setId("1");
         input.setUsername("renamed");
         // admin intentionally left null: the existing admin flag must survive the partial update.
 
@@ -526,7 +526,7 @@ class AclServiceTest {
     @Test
     void updateUserShouldRejectBlankUsernameWithoutSaving() {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId(1L);
+        input.setId("1");
         input.setUsername("   ");
 
         when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
@@ -541,7 +541,7 @@ class AclServiceTest {
     @Test
     void updateUserShouldThrowWhenUserDoesNotExist() {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId(999L);
+        input.setId("999");
         input.setUsername("ghost");
 
         when(aclRepository.findUserById(999L)).thenReturn(Optional.empty());
@@ -556,7 +556,7 @@ class AclServiceTest {
     @Test
     void updateUserShouldRejectConcurrentDeletion() {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId(1L);
+        input.setId("1");
         input.setUsername("renamed");
         when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
         when(aclRepository.replaceUser(any(AclUserVO.class))).thenReturn(Optional.empty());
@@ -640,7 +640,7 @@ class AclServiceTest {
         AclUserVO listed = aclService.listUsers(null).get(0);
 
         UpdateAclUserDTO update = new UpdateAclUserDTO();
-        update.setId(listed.getId());
+        update.setId(String.valueOf(listed.getId()));
         update.setUsername("orders-admin");
         update.setAdmin(true);
         update.setClusters(listed.getClusters());

@@ -219,8 +219,9 @@ public class TencentAclService {
     public AclRuleVO createRule(String instanceId, AclRuleVO rule) {
         Context context = resolve(instanceId);
         String principal = requireRulePrincipal(rule);
-        boolean permRead = hasAction(rule, "SUB");
-        boolean permWrite = hasAction(rule, "PUB");
+        requireClusterWideAllowRule(rule);
+        boolean permRead = hasPermissionAction(rule, "SUB");
+        boolean permWrite = hasPermissionAction(rule, "PUB");
         ModifyRoleRequest request = new ModifyRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
         request.setRole(principal);
@@ -259,6 +260,28 @@ public class TencentAclService {
     private static boolean hasAction(AclRuleVO rule, String action) {
         return rule.getActions() != null && rule.getActions().stream()
                 .anyMatch(a -> action.equalsIgnoreCase(a));
+    }
+
+    private static boolean hasPermissionAction(AclRuleVO rule, String action) {
+        return hasAction(rule, "ALL") || hasAction(rule, action);
+    }
+
+    private static void requireClusterWideAllowRule(AclRuleVO rule) {
+        if (!isOptionalValue(rule.getResourceType(), RESOURCE_TYPE)
+                || !isOptionalValue(rule.getResource(), RESOURCE)
+                || !isOptionalValue(rule.getResourcePattern(), RESOURCE_PATTERN)
+                || !isOptionalValue(rule.getScope(), SCOPE)) {
+            throw new BusinessException(400,
+                    "Tencent Cloud roles only support cluster-wide ACL rules on resource *");
+        }
+        if (!isOptionalValue(rule.getDecision(), DECISION)) {
+            throw new BusinessException(400,
+                    "Tencent Cloud roles only support ALLOW ACL rules");
+        }
+    }
+
+    private static boolean isOptionalValue(String actual, String expected) {
+        return !StringUtils.hasText(actual) || expected.equalsIgnoreCase(actual.trim());
     }
 
     private static AclRuleVO toRule(String principal, boolean permRead, boolean permWrite) {

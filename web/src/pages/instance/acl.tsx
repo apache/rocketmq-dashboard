@@ -67,6 +67,7 @@ import type { AclRule, AclUser, AclClusterConfig, PlainAccessConfig } from '../.
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { tableScrollX } from '../../utils/table';
 
+type AclEntityId = AclRule['id'];
 type AclRuleFormValues = Pick<
   AclRule,
   'principal' | 'resource' | 'resourceType' | 'resourcePattern' | 'actions' | 'decision' | 'scope'
@@ -75,6 +76,7 @@ type AclUserFormValues = Pick<AclUser, 'username' | 'admin' | 'clusters'>;
 
 const normalizeRule = (rule: AclRule): AclRule => ({
   ...rule,
+  id: rule.id ?? rule.principal,
   principal: rule.principal ?? '',
   resource: rule.resource ?? '',
   resourceType: rule.resourceType ?? '',
@@ -90,6 +92,7 @@ const normalizeRule = (rule: AclRule): AclRule => ({
 
 const normalizeUser = (user: AclUser): AclUser => ({
   ...user,
+  id: user.id ?? user.username,
   username: user.username ?? '',
   accessKey: user.accessKey ?? '',
   secretKey: user.secretKey ?? '',
@@ -117,6 +120,8 @@ const AclPageContent = ({
 }: AclPageContentProps) => {
   const { t } = useLang();
   const hasSelectedInstance = Boolean(selectedInstanceId);
+  const selectedInstance = instances.find((instance) => instance.name === selectedInstanceId);
+  const tencentRoleMode = selectedInstance?.vendor === 'TENCENT';
 
   /* ─── State ─── */
   const [rules, setRules] = useState<AclRule[]>([]);
@@ -153,12 +158,12 @@ const AclPageContent = ({
   const [userForm] = Form.useForm();
 
   // Secret key reveal
-  const [revealedKeys, setRevealedKeys] = useState<Set<number>>(new Set());
-  const [adminUpdatingIds, setAdminUpdatingIds] = useState<Set<number>>(() => new Set());
-  const adminUpdateInFlightRef = useRef<Set<number>>(new Set());
-  const revealRequestGenerationRef = useRef<Record<number, number>>({});
+  const [revealedKeys, setRevealedKeys] = useState<Set<AclEntityId>>(new Set());
+  const [adminUpdatingIds, setAdminUpdatingIds] = useState<Set<AclEntityId>>(() => new Set());
+  const adminUpdateInFlightRef = useRef<Set<AclEntityId>>(new Set());
+  const revealRequestGenerationRef = useRef<Record<string, number>>({});
   const [credentialsByUser, setCredentialsByUser] = useState<
-    Record<number, { accessKey: string; secretKey: string }>
+    Record<string, { accessKey: string; secretKey: string }>
   >({});
 
   // Cluster ACL config (examineBrokerClusterAclConfig)
@@ -256,7 +261,9 @@ const AclPageContent = ({
     setEditingRule(null);
     ruleForm.resetFields();
     ruleForm.setFieldsValue({
-      resourcePattern: 'PREFIX',
+      resourceType: tencentRoleMode ? 'Cluster' : undefined,
+      resource: tencentRoleMode ? '*' : undefined,
+      resourcePattern: tencentRoleMode ? 'LITERAL' : 'PREFIX',
       actions: ['PUB'],
       decision: 'ALLOW',
       scope: 'cluster',
@@ -281,18 +288,28 @@ const AclPageContent = ({
   const handleRuleSubmit = async () => {
     try {
       const values = (await ruleForm.validateFields()) as AclRuleFormValues;
+      const normalizedValues = tencentRoleMode
+        ? {
+            ...values,
+            resourceType: 'Cluster',
+            resource: '*',
+            resourcePattern: 'LITERAL',
+            decision: 'ALLOW',
+            scope: 'cluster',
+          }
+        : values;
       setRuleSubmitting(true);
       if (editingRule) {
         await updateAclRule({
           ...editingRule,
-          ...values,
+          ...normalizedValues,
           instanceId: selectedInstanceId,
         });
         message.success(t('acl.ruleUpdated'));
       } else {
         await createAclRule({
-          ...values,
-          aclVersion: '2.0',
+          ...normalizedValues,
+          aclVersion: tencentRoleMode ? '1.0' : '2.0',
           instanceId: selectedInstanceId,
         });
         setRulePage(1);
@@ -308,7 +325,7 @@ const AclPageContent = ({
     }
   };
 
-  const handleDeleteRule = async (id: number) => {
+  const handleDeleteRule = async (id: AclEntityId) => {
     try {
       await deleteAclRule(id, selectedInstanceId);
       if (rules.length === 1 && rulePage > 1) {
@@ -323,10 +340,11 @@ const AclPageContent = ({
   };
 
   /* ─── User helpers ─── */
-  const toggleRevealKey = async (userId: number) => {
+  const toggleRevealKey = async (userId: AclEntityId) => {
+    const userKey = String(userId);
     const revealing = !revealedKeys.has(userId);
-    const revealGeneration = (revealRequestGenerationRef.current[userId] ?? 0) + 1;
-    revealRequestGenerationRef.current[userId] = revealGeneration;
+    const revealGeneration = (revealRequestGenerationRef.current[userKey] ?? 0) + 1;
+    revealRequestGenerationRef.current[userKey] = revealGeneration;
     setRevealedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) {
@@ -336,19 +354,19 @@ const AclPageContent = ({
       }
       return next;
     });
-    if (!revealing || credentialsByUser[userId]) return;
+    if (!revealing || credentialsByUser[userKey]) return;
     try {
       const credentials = await getAclUserCredentials(userId, selectedInstanceId);
-      if (revealRequestGenerationRef.current[userId] !== revealGeneration) return;
+      if (revealRequestGenerationRef.current[userKey] !== revealGeneration) return;
       setCredentialsByUser((prev) => ({
         ...prev,
-        [userId]: {
+        [userKey]: {
           accessKey: credentials.accessKey,
           secretKey: credentials.secretKey,
         },
       }));
     } catch {
-      if (revealRequestGenerationRef.current[userId] !== revealGeneration) return;
+      if (revealRequestGenerationRef.current[userKey] !== revealGeneration) return;
       setRevealedKeys((prev) => {
         const next = new Set(prev);
         next.delete(userId);
@@ -409,7 +427,7 @@ const AclPageContent = ({
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
+  const handleDeleteUser = async (id: AclEntityId) => {
     try {
       await deleteAclUser(id, selectedInstanceId);
       setUsers((prev) => prev.filter((u) => u.id !== id));
@@ -420,6 +438,7 @@ const AclPageContent = ({
   };
 
   const handleToggleAdmin = async (user: AclUser, checked: boolean) => {
+    if (tencentRoleMode) return;
     if (adminUpdateInFlightRef.current.has(user.id)) return;
     adminUpdateInFlightRef.current.add(user.id);
     setAdminUpdatingIds((current) => new Set(current).add(user.id));
@@ -705,7 +724,7 @@ const AclPageContent = ({
       sorter: (a, b) => a.accessKey.localeCompare(b.accessKey),
       render: (text: string, record: AclUser) => {
         const revealed = revealedKeys.has(record.id);
-        const fullAccessKey = credentialsByUser[record.id]?.accessKey ?? text;
+        const fullAccessKey = credentialsByUser[String(record.id)]?.accessKey ?? text;
         return (
           <Space size={8}>
             <Typography.Text
@@ -725,7 +744,7 @@ const AclPageContent = ({
       width: 240,
       render: (_: string, record: AclUser) => {
         const revealed = revealedKeys.has(record.id);
-        const secret = credentialsByUser[record.id]?.secretKey;
+        const secret = credentialsByUser[String(record.id)]?.secretKey;
         return (
           <Space size={8}>
             <Typography.Text
@@ -755,7 +774,7 @@ const AclPageContent = ({
           checked={val}
           size="small"
           loading={adminUpdatingIds.has(record.id)}
-          disabled={adminUpdatingIds.has(record.id)}
+          disabled={tencentRoleMode || adminUpdatingIds.has(record.id)}
           onChange={(checked) => handleToggleAdmin(record, checked)}
         />
       ),
@@ -935,8 +954,10 @@ const AclPageContent = ({
 
       <InfoBanner
         data-testid="acl-local-metadata-notice"
-        title={t('acl.localMetadataNotice')}
-        description={t('acl.localMetadataDescription')}
+        title={t(tencentRoleMode ? 'acl.tencentRoleNotice' : 'acl.localMetadataNotice')}
+        description={t(
+          tencentRoleMode ? 'acl.tencentRoleDescription' : 'acl.localMetadataDescription',
+        )}
       />
 
       <Card variant="borderless" styles={{ body: { padding: 0 } }}>
@@ -1250,11 +1271,16 @@ const AclPageContent = ({
           >
             <Select
               placeholder={t('acl.selectResourceType')}
-              options={[
-                { value: 'Topic', label: 'Topic' },
-                { value: 'Group', label: 'Group' },
-                { value: 'Cluster', label: 'Cluster' },
-              ]}
+              disabled={tencentRoleMode}
+              options={
+                tencentRoleMode
+                  ? [{ value: 'Cluster', label: 'Cluster' }]
+                  : [
+                      { value: 'Topic', label: 'Topic' },
+                      { value: 'Group', label: 'Group' },
+                      { value: 'Cluster', label: 'Cluster' },
+                    ]
+              }
             />
           </Form.Item>
 
@@ -1265,11 +1291,11 @@ const AclPageContent = ({
               { required: true, message: t('acl.inputRequired', { field: t('acl.resourceName') }) },
             ]}
           >
-            <Input placeholder={t('acl.resourceNamePlaceholder')} />
+            <Input placeholder={t('acl.resourceNamePlaceholder')} disabled={tencentRoleMode} />
           </Form.Item>
 
           <Form.Item name="resourcePattern" label={t('acl.matchPattern')}>
-            <Radio.Group>
+            <Radio.Group disabled={tencentRoleMode}>
               <Radio.Button value="LITERAL">{t('acl.literal')}</Radio.Button>
               <Radio.Button value="PREFIX">{t('acl.prefix')}</Radio.Button>
             </Radio.Group>
@@ -1292,7 +1318,7 @@ const AclPageContent = ({
           </Form.Item>
 
           <Form.Item name="decision" label={t('acl.decision')}>
-            <Radio.Group>
+            <Radio.Group disabled={tencentRoleMode}>
               <Radio.Button value="ALLOW">
                 <span style={{ color: '#52c41a' }}>{t('acl.allowDesc')}</span>
               </Radio.Button>
@@ -1305,6 +1331,7 @@ const AclPageContent = ({
           <Form.Item name="scope" label={t('acl.effectScope')}>
             <Select
               placeholder={t('acl.selectEffectScope')}
+              disabled={tencentRoleMode}
               options={[{ value: 'cluster', label: t('acl.clusterScope') }]}
             />
           </Form.Item>
@@ -1339,7 +1366,11 @@ const AclPageContent = ({
           </Form.Item>
 
           <Form.Item name="admin" label={t('acl.admin')} valuePropName="checked">
-            <Switch checkedChildren={t('common.yes')} unCheckedChildren={t('common.no')} />
+            <Switch
+              checkedChildren={t('common.yes')}
+              unCheckedChildren={t('common.no')}
+              disabled={tencentRoleMode}
+            />
           </Form.Item>
 
           <Form.Item name="clusters" label={t('acl.associatedClusters')}>
@@ -1347,6 +1378,7 @@ const AclPageContent = ({
               mode="tags"
               tokenSeparators={[',']}
               allowClear
+              disabled={tencentRoleMode}
               options={instances.map((instance) => ({
                 value: instance.cloudInstanceId ?? instance.name,
                 label: instance.name,
