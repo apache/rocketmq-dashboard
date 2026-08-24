@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.instance;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -75,6 +76,9 @@ class InstanceServiceTest {
 
     @Mock
     private MqAdminExtFactory adminFactory;
+
+    @Mock
+    private MqClientPool clientPool;
 
     @Mock
     private OperationAuditService operationAuditService;
@@ -304,7 +308,7 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(slow);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
         when(instanceProvider.countTopics(anyString())).thenAnswer(invocation -> {
-            Thread.sleep(10_000);
+            Thread.sleep(4_000);
             return 0;
         });
 

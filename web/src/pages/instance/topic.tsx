@@ -87,9 +87,9 @@ const { Text } = Typography;
 
 const INSTANCE_ACCESS_LABEL: Record<Instance['type'], string> = {
   CLOUD: '云服务',
-  PROXY_LOCAL: 'Proxy Local 模式',
-  PROXY_CLUSTER: 'Proxy Cluster 模式',
-  DIRECT: 'Direct 模式',
+  PROXY_LOCAL: 'Proxy Local',
+  PROXY_CLUSTER: 'Proxy Cluster',
+  DIRECT: 'Direct',
 };
 
 const INSTANCE_ACCESS_DESCRIPTION: Record<Instance['type'], string> = {

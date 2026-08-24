@@ -69,9 +69,9 @@ const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
 /* ─── Helpers ─── */
 const typeLabel: Record<string, { text: string; color: string }> = {
   CLOUD: { text: '云服务', color: 'blue' },
-  PROXY_LOCAL: { text: 'Proxy Local 模式', color: 'cyan' },
-  PROXY_CLUSTER: { text: 'Proxy Cluster 模式', color: 'blue' },
-  DIRECT: { text: 'Direct 模式', color: 'orange' },
+  PROXY_LOCAL: { text: 'Proxy Local', color: 'cyan' },
+  PROXY_CLUSTER: { text: 'Proxy Cluster', color: 'blue' },
+  DIRECT: { text: 'Direct', color: 'orange' },
 };
 
 function describeApiError(error: unknown, fallback: string): string {

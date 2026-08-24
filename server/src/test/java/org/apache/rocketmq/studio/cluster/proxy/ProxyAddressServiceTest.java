@@ -286,7 +286,7 @@ class ProxyAddressServiceTest {
             boolean hang = "10.0.0.21".equals(host) ? port == 8081 : "10.0.0.22".equals(host);
             if (hang) {
                 try {
-                    Thread.sleep(5_000L);
+                    Thread.sleep(1_000L);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }

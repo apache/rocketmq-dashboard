@@ -189,7 +189,7 @@ class OpenAiCompatibleLlmClientTest {
 
                         """.getBytes(StandardCharsets.UTF_8));
                 exchange.getResponseBody().flush();
-                Thread.sleep(1_500);
+                Thread.sleep(500);
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
             } finally {

@@ -35,6 +35,8 @@ vi.mock('../../../services/consumerService', () => ({
   getConsumerProgress: vi.fn(),
   getConsumerStack: vi.fn(),
   getConsumerSubscriptions: vi.fn(),
+  getConsumerGroupSettings: vi.fn(),
+  updateConsumerGroupSettings: vi.fn(),
   listConsumerGroupPage: vi.fn(),
   refreshConsumerGroup: vi.fn(),
   resetConsumerOffset: vi.fn(),
@@ -774,17 +776,73 @@ describe('Consumer page', () => {
     expect(screen.getByRole('button', { name: '创建 Group' })).toBeDisabled();
   });
 
-  it('refreshes a single consumer group row without reloading the list', async () => {
+  it('auto-refreshes the selected group while the detail modal is open', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
+    expect(within(row).queryByRole('button', { name: /刷\s*新/ })).not.toBeInTheDocument();
     expect(within(row).getByText('10')).toBeInTheDocument();
-    await user.click(within(row).getByRole('button', { name: /刷\s*新/ }));
+
+    await user.click(within(row).getByRole('button', { name: /详\s*情/ }));
+    await screen.findByRole('dialog', { name: /remote-cg/ });
+
+    await waitFor(
+      () => {
+        expect(consumerService.refreshConsumerGroup).toHaveBeenCalledWith(
+          'remote-cg',
+          'instance-1',
+        );
+      },
+      { timeout: 4000 },
+    );
+    expect(await within(row).findByText('42')).toBeInTheDocument();
+  });
+
+  it('edits retry settings from the detail modal settings tab', async () => {
+    vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
+      groupName: 'remote-cg',
+      retryQueueNums: 1,
+      retryMaxTimes: 16,
+    });
+    vi.mocked(consumerService.updateConsumerGroupSettings).mockResolvedValue({
+      groupName: 'remote-cg',
+      retryQueueNums: 2,
+      retryMaxTimes: 8,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    expect(within(row).queryByRole('button', { name: /配\s*置/ })).not.toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: /详\s*情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(dialog).getByRole('tab', { name: /配\s*置/ }));
 
     await waitFor(() => {
-      expect(consumerService.refreshConsumerGroup).toHaveBeenCalledWith('remote-cg', 'instance-1');
+      expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-1',
+      );
     });
-    expect(await within(row).findByText('42')).toBeInTheDocument();
+    const retryQueueInput = await within(dialog).findByLabelText('重试队列数');
+    expect(retryQueueInput).toHaveValue('1');
+
+    await user.clear(retryQueueInput);
+    await user.type(retryQueueInput, '2');
+    await user.clear(within(dialog).getByLabelText('最大重试次数'));
+    await user.type(within(dialog).getByLabelText('最大重试次数'), '8');
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => {
+      expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledWith({
+        instanceId: 'instance-1',
+        name: 'remote-cg',
+        retryQueueNums: 2,
+        retryMaxTimes: 8,
+      });
+    });
+    expect(await screen.findByText('消费组配置已保存')).toBeInTheDocument();
   });
 });

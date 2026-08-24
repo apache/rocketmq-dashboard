@@ -960,7 +960,7 @@ const AclPageContent = ({
                     style={{
                       display: 'flex',
                       gap: 12,
-                      padding: '16px 0',
+                      padding: '0 0 16px',
                       flexWrap: 'wrap',
                     }}
                   >
@@ -1070,7 +1070,7 @@ const AclPageContent = ({
               ),
               children: (
                 <div>
-                  <div style={{ padding: '16px 0' }}>
+                  <div style={{ padding: '0 0 16px' }}>
                     <Space>
                       <Button
                         type="primary"
@@ -1128,7 +1128,7 @@ const AclPageContent = ({
                     style={{
                       display: 'flex',
                       gap: 12,
-                      padding: '16px 0',
+                      padding: '0 0 16px',
                       flexWrap: 'wrap',
                       alignItems: 'center',
                     }}

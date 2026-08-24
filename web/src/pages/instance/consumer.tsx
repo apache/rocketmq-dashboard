@@ -40,6 +40,7 @@ import {
   Flex,
   DatePicker,
   Tooltip,
+  Spin,
   message,
 } from 'antd';
 import {
@@ -56,13 +57,7 @@ import {
   ArrowsClockwise,
   SlidersHorizontal,
 } from '@phosphor-icons/react';
-import {
-  ImportOutlined,
-  ExportOutlined,
-  DeleteOutlined,
-  SyncOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons';
+import { ImportOutlined, ExportOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -323,45 +318,42 @@ const ConsumerPageContent = ({
   );
 
   const loadProgress = useCallback(
-    async (groupName: string) => {
+    async (groupName: string, force = false, silent = false) => {
       const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
-      if (progressByGroup[cacheKey]) return;
+      if (!force && progressByGroup[cacheKey]) return;
       try {
         const progress = await getConsumerProgress(groupName, selectedInstanceId || undefined);
         setProgressByGroup((prev) => ({ ...prev, [cacheKey]: progress }));
       } catch {
-        message.error(t('consumer.fetchProgressFailed', { name: groupName }));
+        if (!silent) message.error(t('consumer.fetchProgressFailed', { name: groupName }));
       }
     },
     [progressByGroup, t, selectedInstanceId],
   );
 
-  const [refreshingGroup, setRefreshingGroup] = useState<string | null>(null);
-
-  const handleRefreshGroup = async (record: ConsumerGroup) => {
-    if (refreshingGroup) return;
-    setRefreshingGroup(record.name);
-    try {
-      const refreshed = await refreshConsumerGroup(record.name, selectedInstanceId || undefined);
-      if (!refreshed) {
-        // 组不存在（业务状态为空）：保留原行数据，不弹错。
-        return;
+  useEffect(() => {
+    if (!modalOpen || !selectedGroup || !selectedInstanceId) return undefined;
+    const groupName = selectedGroup.name;
+    let inFlight = false;
+    const tick = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const refreshed = await refreshConsumerGroup(groupName, selectedInstanceId);
+        if (refreshed) {
+          setGroups((prev) => prev.map((g) => (g.name === groupName ? refreshed : g)));
+          setSelectedGroup((prev) => (prev && prev.name === groupName ? refreshed : prev));
+        }
+        await loadProgress(groupName, true, true);
+      } catch {
+        // 自动刷新失败静默处理，避免每 2s 弹错
+      } finally {
+        inFlight = false;
       }
-      setGroups((prev) => prev.map((group) => (group.name === record.name ? refreshed : group)));
-      // Invalidate the cached progress so the detail modal re-fetches it on next open.
-      setProgressByGroup((prev) => {
-        const next = { ...prev };
-        delete next[diagnosticCacheKey(selectedInstanceId, record.name)];
-        return next;
-      });
-      message.success(`消费组 ${record.name} 已刷新`);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : '';
-      message.error(detail || `刷新消费组 ${record.name} 失败`);
-    } finally {
-      setRefreshingGroup(null);
-    }
-  };
+    };
+    const interval = window.setInterval(() => void tick(), 2000);
+    return () => window.clearInterval(interval);
+  }, [modalOpen, selectedGroup?.name, selectedInstanceId, loadProgress]);
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
@@ -393,7 +385,7 @@ const ConsumerPageContent = ({
     void loadProgress(group.name);
   };
 
-  const openSettingsModal = async (group: ConsumerGroup) => {
+  const loadGroupSettings = async (group: ConsumerGroup) => {
     if (!selectedInstanceId) return;
     setSettingsGroup(group);
     setSettingsLoading(true);
@@ -401,10 +393,16 @@ const ConsumerPageContent = ({
       const settings = await getConsumerGroupSettings(group.name, selectedInstanceId);
       settingsForm.setFieldsValue(settings);
     } catch {
-      setSettingsGroup(null);
       message.error('加载消费组配置失败，请稍后重试');
     } finally {
       setSettingsLoading(false);
+    }
+  };
+
+  const handleDetailTabChange = (key: string) => {
+    setDetailTab(key);
+    if (key === 'settings' && selectedGroup && settingsGroup?.name !== selectedGroup.name) {
+      void loadGroupSettings(selectedGroup);
     }
   };
 
@@ -425,8 +423,12 @@ const ConsumerPageContent = ({
             : group,
         ),
       );
+      setSelectedGroup((current) =>
+        current && current.name === settingsGroup.name
+          ? { ...current, retryMaxTimes: saved.retryMaxTimes }
+          : current,
+      );
       message.success('消费组配置已保存');
-      setSettingsGroup(null);
     } catch {
       message.error('保存消费组配置失败，请稍后重试');
     } finally {
@@ -719,32 +721,9 @@ const ConsumerPageContent = ({
     {
       title: '操作',
       key: 'actions',
-      width: 360,
+      width: 232,
       render: (_: unknown, record: ConsumerGroup) => (
-        <Flex gap={6}>
-          <Button
-            size="small"
-            icon={<SlidersHorizontal size={14} />}
-            disabled={isCloudInstance}
-            onClick={(e) => {
-              e.stopPropagation();
-              void openSettingsModal(record);
-            }}
-          >
-            配置
-          </Button>
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            loading={refreshingGroup === record.name}
-            disabled={refreshingGroup !== null && refreshingGroup !== record.name}
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleRefreshGroup(record);
-            }}
-          >
-            刷新
-          </Button>
+        <Flex gap={6} justify="flex-end">
           <Button
             size="small"
             icon={<Eye size={14} />}
@@ -1213,10 +1192,15 @@ const ConsumerPageContent = ({
       <Modal
         title={
           selectedGroup ? (
-            <Space>
-              <Cube size={18} weight="fill" color="#1677ff" />
-              <span style={{ fontWeight: 600 }}>{selectedGroup.name}</span>
-            </Space>
+            <Flex align="center" justify="space-between">
+              <Space>
+                <Cube size={18} weight="fill" color="#1677ff" />
+                <span style={{ fontWeight: 600 }}>{selectedGroup.name}</span>
+              </Space>
+              <Text type="secondary" style={{ fontSize: 14, fontWeight: 400, marginRight: 28 }}>
+                <SyncOutlined style={{ marginRight: 4 }} />每 2s 自动刷新
+              </Text>
+            </Flex>
           ) : (
             'Group 详情'
           )
@@ -1226,6 +1210,8 @@ const ConsumerPageContent = ({
           setModalOpen(false);
           setSelectedGroup(null);
           setShowOnlyInconsistent(false);
+          setSettingsGroup(null);
+          settingsForm.resetFields();
         }}
         width={detailTab === 'progress' ? 1080 : 800}
         destroyOnHidden
@@ -1234,7 +1220,7 @@ const ConsumerPageContent = ({
         {selectedGroup && (
           <Tabs
             activeKey={detailTab}
-            onChange={setDetailTab}
+            onChange={handleDetailTabChange}
             items={[
               /* ─── 概览 Tab ─── */
               {
@@ -1528,40 +1514,52 @@ const ConsumerPageContent = ({
                   </div>
                 ),
               },
+              /* ─── 配置 Tab ─── */
+              {
+                key: 'settings',
+                label: (
+                  <Space size={4}>
+                    <SlidersHorizontal size={14} />
+                    <span>配置</span>
+                  </Space>
+                ),
+                disabled: isCloudInstance,
+                children: (
+                  <Spin spinning={settingsLoading}>
+                    <Form form={settingsForm} layout="vertical" style={{ maxWidth: 480 }}>
+                      <Form.Item label="Group 名称">
+                        <Text strong>{selectedGroup.name}</Text>
+                      </Form.Item>
+                      <Form.Item
+                        label="重试队列数"
+                        name="retryQueueNums"
+                        rules={[{ required: true, message: '请输入重试队列数' }]}
+                      >
+                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item
+                        label="最大重试次数"
+                        name="retryMaxTimes"
+                        rules={[{ required: true, message: '请输入最大重试次数' }]}
+                      >
+                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item style={{ marginBottom: 0 }}>
+                        <Button
+                          type="primary"
+                          loading={settingsSubmitting}
+                          onClick={() => void saveSettings()}
+                        >
+                          保存
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  </Spin>
+                ),
+              },
             ]}
           />
         )}
-      </Modal>
-
-      <Modal
-        title="消费组配置"
-        open={Boolean(settingsGroup)}
-        onCancel={() => setSettingsGroup(null)}
-        onOk={() => void saveSettings()}
-        confirmLoading={settingsSubmitting}
-        okText="保存"
-        cancelText="取消"
-        destroyOnHidden
-      >
-        <Form form={settingsForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="Group 名称">
-            <Text strong>{settingsGroup?.name}</Text>
-          </Form.Item>
-          <Form.Item
-            label="重试队列数"
-            name="retryQueueNums"
-            rules={[{ required: true, message: '请输入重试队列数' }]}
-          >
-            <InputNumber min={1} max={128} style={{ width: '100%' }} disabled={settingsLoading} />
-          </Form.Item>
-          <Form.Item
-            label="最大重试次数"
-            name="retryMaxTimes"
-            rules={[{ required: true, message: '请输入最大重试次数' }]}
-          >
-            <InputNumber min={1} max={128} style={{ width: '100%' }} disabled={settingsLoading} />
-          </Form.Item>
-        </Form>
       </Modal>
 
       {/* ═══════════════════════════════════════════

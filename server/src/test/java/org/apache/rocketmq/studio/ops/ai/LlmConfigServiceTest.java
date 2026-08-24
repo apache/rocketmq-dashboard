@@ -298,7 +298,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectMissingRequiredApiKey() {
+    void configShouldRejectMissingRequiredApiKeyTest() {
         when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
                 .theme("dark")
                 .compact(true)
@@ -326,7 +326,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldAllowOllamaWithoutApiKey() {
+    void configShouldAllowOllamaWithoutApiKeyTest() {
         when(llmClient.supports(any())).thenReturn(true);
 
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
@@ -342,7 +342,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectHttpProvidersUnsupportedByRuntimeGateway() {
+    void configShouldRejectHttpProvidersUnsupportedByRuntimeGatewayTest() {
         LlmOperationResultVO azure = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("azure")
                 .engine("http")
@@ -367,7 +367,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldProbeProviderModelsWithStoredApiKey() {
+    void configShouldProbeProviderModelsWithStoredApiKeyTest() {
         when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
         when(llmClient.listModels(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(
                 new LlmModelItemVO("gpt-4o", "GPT-4o")));
@@ -389,7 +389,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldPreferEnvironmentTokenOverStoredApiKey() {
+    void configShouldPreferEnvironmentTokenOverStoredApiKeyTest() {
         LlmProperties properties = new LlmProperties();
         properties.setToken("env-token");
         LlmConfigService service = new LlmConfigService(settingsService, llmClient, agentProviders, properties);
@@ -414,7 +414,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldReturnProviderProbeFailure() {
+    void configShouldReturnProviderProbeFailureTest() {
         when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
         when(llmClient.listModels(org.mockito.ArgumentMatchers.any())).thenThrow(new LlmGatewayException(
                 401,
@@ -439,7 +439,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldNotProbeHttpModelsForCliEngine() {
+    void configShouldNotProbeHttpModelsForCliEngineTest() {
         AgentProvider provider = mock(AgentProvider.class);
         when(agentProviders.forEngine("claude-code")).thenReturn(provider);
         when(provider.available()).thenReturn(true);
@@ -460,7 +460,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldReportMissingCliEngine() {
+    void configShouldReportMissingCliEngineTest() {
         AgentProvider provider = mock(AgentProvider.class);
         when(agentProviders.forEngine("qoder")).thenReturn(provider);
         when(provider.available()).thenReturn(false);
@@ -482,7 +482,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectInvalidApiBase() {
+    void configShouldRejectInvalidApiBaseTest() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
                 .apiKey("sk-test")
@@ -498,7 +498,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectOutOfRangeMaxTokens() {
+    void configShouldRejectOutOfRangeMaxTokensTest() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
                 .apiKey("sk-test")
@@ -514,7 +514,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectOutOfRangeTemperature() {
+    void configShouldRejectOutOfRangeTemperatureTest() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
                 .apiKey("sk-test")

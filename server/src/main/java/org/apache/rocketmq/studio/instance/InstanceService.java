@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -63,6 +64,7 @@ public class InstanceService {
     private final CloudCredentialRepository cloudCredentialRepository;
     private final InstanceProviderRegistry providerRegistry;
     private final MqAdminExtFactory adminFactory;
+    private final MqClientPool clientPool;
     private final OperationAuditService operationAuditService;
     private final SettingsRepository settingsRepository;
     private final RegionNames regionNames;
@@ -590,6 +592,7 @@ public class InstanceService {
                 .anyMatch(instance -> oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
         if (!endpointReferenced) {
             adminFactory.release(oldEndpoint);
+            clientPool.release(oldEndpoint);
             return;
         }
         boolean identityReferenced = remaining.stream()
@@ -597,6 +600,7 @@ public class InstanceService {
                         && Objects.equals(oldCredentialRef, normalizeCredentialRef(instance.getAdminCredentialRef())));
         if (!identityReferenced) {
             adminFactory.release(oldEndpoint, oldCredentialRef);
+            clientPool.release(oldEndpoint, oldCredentialRef);
         }
     }
 
