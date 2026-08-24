@@ -87,8 +87,6 @@ type ApiErrorLike = {
   };
 };
 
-const RESEND_UNAVAILABLE_MESSAGE = '当前版本尚未接入普通消息重新发送接口';
-
 const QUERY_OPTIONS = [
   { value: 'topic' as const, label: '按 Topic 查询' },
   { value: 'key' as const, label: '按 Message Key' },

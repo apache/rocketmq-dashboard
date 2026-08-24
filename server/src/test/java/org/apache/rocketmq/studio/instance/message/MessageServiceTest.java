@@ -173,7 +173,7 @@ class MessageServiceTest {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(provider, registry, history);
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
         when(provider.queryMessages("instance-a", "TopicA", null, null, null, 1000L, 2000L))
                 .thenReturn(java.util.stream.IntStream.range(0, 200)
