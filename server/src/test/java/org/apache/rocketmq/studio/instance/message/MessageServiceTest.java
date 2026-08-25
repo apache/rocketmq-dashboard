@@ -28,6 +28,22 @@ import static org.mockito.Mockito.when;
 class MessageServiceTest {
 
     @Test
+    void rejectsNegativeQueueCoordinatesBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class));
+
+        assertThatThrownBy(() -> service.pullMessageAtOffset("instance-a", "TopicA", "broker-a", -1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("queueId must not be negative");
+        assertThatThrownBy(() -> service.pullMessageAtOffset("instance-a", "TopicA", "broker-a", 0, -1))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("offset must not be negative");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
     void rejectsKeyQueryWithoutTopicBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
