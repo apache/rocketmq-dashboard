@@ -100,6 +100,28 @@ export interface ClusterConfigUpdateResult {
   failedBrokers: BrokerConfigUpdateFailure[];
 }
 
+export interface ClusterConfigPreviewTarget {
+  name: string;
+  address: string;
+}
+
+export interface ClusterConfigPreviewChange {
+  field: string;
+  currentValue: string | null;
+  proposedValue: string | null;
+  brokerProperty: string;
+}
+
+export interface ClusterConfigPreviewResult {
+  cluster: ClusterInfo;
+  currentConfig: ClusterConfig;
+  proposedConfig: ClusterConfig;
+  targetBrokers: ClusterConfigPreviewTarget[];
+  brokerProperties: Record<string, string>;
+  changes: ClusterConfigPreviewChange[];
+  changed: boolean;
+}
+
 export interface ClusterProbeResult {
   connected: boolean;
   namesrvAddr: string;
@@ -179,6 +201,16 @@ export async function updateClusterConfig(
 ) {
   const res = await client.post<{ data: ClusterConfigUpdateResult }>(
     '/clusters/config/update',
+    data,
+  );
+  return res.data.data;
+}
+
+export async function previewClusterConfig(
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+) {
+  const res = await client.post<{ data: ClusterConfigPreviewResult }>(
+    '/clusters/config/preview',
     data,
   );
   return res.data.data;

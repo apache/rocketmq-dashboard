@@ -2,6 +2,7 @@ import { isMockMode } from './dataMode';
 import * as clusterApi from '../api/cluster';
 import type {
   ClusterConfig,
+  ClusterConfigPreviewResult,
   ClusterConfigUpdateResult,
   ClusterInfo,
   ClusterProbeResult,
@@ -210,7 +211,8 @@ export async function updateClusterConfig(
   data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
 ) {
   if (isMockMode()) {
-    const { id, ...config } = data;
+    const { id } = data;
+    const config = pickClusterConfig(data);
     const cluster = getMockCluster(id);
     Object.assign(cluster.config, config);
     return {
@@ -223,9 +225,92 @@ export async function updateClusterConfig(
   return clusterApi.updateClusterConfig(data);
 }
 
+export async function previewClusterConfig(
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+): Promise<ClusterConfigPreviewResult> {
+  if (isMockMode()) {
+    const { id } = data;
+    const config = pickClusterConfig(data);
+    const cluster = getMockCluster(id);
+    const currentConfig = { ...cluster.config };
+    const proposedConfig = { ...cluster.config, ...config };
+    const changes = buildMockConfigPreviewChanges(currentConfig, proposedConfig);
+    return {
+      cluster: copyCluster(cluster),
+      currentConfig,
+      proposedConfig,
+      targetBrokers: cluster.brokers
+        .filter((broker) => broker.addr)
+        .map((broker) => ({ name: broker.name, address: broker.addr })),
+      brokerProperties: buildMockBrokerProperties(config),
+      changes,
+      changed: changes.length > 0,
+    };
+  }
+  return clusterApi.previewClusterConfig(data);
+}
+
 export async function restartBroker(clusterId: string, brokerName: string) {
   if (isMockMode()) return { success: true, message: `Broker ${brokerName} restarted (mock)` };
   return clusterApi.restartBroker(clusterId, brokerName);
+}
+
+function pickClusterConfig(config: Partial<ClusterConfig>): Partial<ClusterConfig> {
+  const picked: Partial<ClusterConfig> = {};
+  if (config.flushDiskType !== undefined) picked.flushDiskType = config.flushDiskType;
+  if (config.autoCreateTopicEnable !== undefined) {
+    picked.autoCreateTopicEnable = config.autoCreateTopicEnable;
+  }
+  if (config.autoCreateSubscriptionGroup !== undefined) {
+    picked.autoCreateSubscriptionGroup = config.autoCreateSubscriptionGroup;
+  }
+  if (config.maxMessageSize !== undefined) picked.maxMessageSize = config.maxMessageSize;
+  if (config.fileReservedTime !== undefined) picked.fileReservedTime = config.fileReservedTime;
+  if (config.writeQueueNums !== undefined) picked.writeQueueNums = config.writeQueueNums;
+  if (config.readQueueNums !== undefined) picked.readQueueNums = config.readQueueNums;
+  if (config.brokerPermission !== undefined) picked.brokerPermission = config.brokerPermission;
+  return picked;
+}
+
+function buildMockBrokerProperties(config: Partial<ClusterConfig>): Record<string, string> {
+  const props: Record<string, string> = {};
+  if (config.flushDiskType != null) props.flushDiskType = String(config.flushDiskType);
+  if (config.autoCreateTopicEnable != null) {
+    props.autoCreateTopicEnable = String(config.autoCreateTopicEnable);
+  }
+  if (config.autoCreateSubscriptionGroup != null) {
+    props.autoCreateSubscriptionGroup = String(config.autoCreateSubscriptionGroup);
+  }
+  if (config.maxMessageSize != null) props.maxMessageSize = String(config.maxMessageSize);
+  if (config.fileReservedTime != null) props.fileReservedTime = String(config.fileReservedTime);
+  if (config.writeQueueNums != null) props.defaultTopicQueueNums = String(config.writeQueueNums);
+  if (config.readQueueNums != null) props.defaultTopicQueueNums = String(config.readQueueNums);
+  if (config.brokerPermission != null) props.brokerPermission = String(config.brokerPermission);
+  return props;
+}
+
+function buildMockConfigPreviewChanges(
+  currentConfig: ClusterConfig,
+  proposedConfig: ClusterConfig,
+): ClusterConfigPreviewResult['changes'] {
+  const fields: Array<{ field: keyof ClusterConfig; brokerProperty: string }> = [
+    { field: 'flushDiskType', brokerProperty: 'flushDiskType' },
+    { field: 'autoCreateTopicEnable', brokerProperty: 'autoCreateTopicEnable' },
+    { field: 'autoCreateSubscriptionGroup', brokerProperty: 'autoCreateSubscriptionGroup' },
+    { field: 'maxMessageSize', brokerProperty: 'maxMessageSize' },
+    { field: 'fileReservedTime', brokerProperty: 'fileReservedTime' },
+    { field: 'writeQueueNums', brokerProperty: 'defaultTopicQueueNums' },
+    { field: 'readQueueNums', brokerProperty: 'defaultTopicQueueNums' },
+    { field: 'brokerPermission', brokerProperty: 'brokerPermission' },
+  ];
+  return fields
+    .filter(({ field }) => currentConfig[field] !== proposedConfig[field])
+    .map(({ field, brokerProperty }) => ({
+      field,
+      currentValue: String(currentConfig[field]),
+      proposedValue: String(proposedConfig[field]),
+      brokerProperty,
+    }));
 }
 
 function getMockCluster(clusterId: string) {

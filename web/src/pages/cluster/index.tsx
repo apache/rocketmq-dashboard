@@ -56,6 +56,8 @@ import type {
   ProxyInfo,
   NameserverRegistryEntry,
   ClusterConfig,
+  ClusterConfigPreviewChange,
+  ClusterConfigPreviewResult,
   ClusterInfo,
   ClusterProbeResult,
 } from '../../api/cluster';
@@ -66,6 +68,7 @@ import {
   listK8sCerts,
   listNameserverRegistry,
   listRegistryClusters,
+  previewClusterConfig,
   restartProxy,
   testClusterConnection,
   updateClusterConfig,
@@ -83,11 +86,24 @@ const REFRESH_INTERVAL_MS = 2000;
 type RefreshSource = 'initial' | 'manual' | 'operation' | 'background';
 
 type ProxyDetail = ProxyInfo & { clusterId: string; clusterName: string; nsClusterName: string };
+type ClusterConfigFormValues = Partial<ClusterConfig> & { maxMessageSizeMB: number };
+type ClusterConfigRequest = { id: string; instanceId?: string } & Partial<ClusterConfig>;
 
 const safeText = (value: string | null | undefined) => value ?? '';
 const searchText = (value: string | null | undefined) => safeText(value).toLowerCase();
 const compareText = (left: string | null | undefined, right: string | null | undefined) =>
   safeText(left).localeCompare(safeText(right));
+
+const CONFIG_FIELD_LABEL_KEYS: Record<string, string> = {
+  flushDiskType: 'cluster.flushDiskType',
+  autoCreateTopicEnable: 'cluster.autoCreateTopic',
+  autoCreateSubscriptionGroup: 'cluster.autoCreateSubGroup',
+  maxMessageSize: 'cluster.maxMessageSize',
+  fileReservedTime: 'cluster.fileReservedTime',
+  writeQueueNums: 'cluster.writeQueues',
+  readQueueNums: 'cluster.readQueues',
+  brokerPermission: 'cluster.brokerPermission',
+};
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -106,6 +122,9 @@ const ClusterPage = () => {
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
+  const [configPreview, setConfigPreview] = useState<ClusterConfigPreviewResult | null>(null);
+  const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
+  const [configSubmitting, setConfigSubmitting] = useState(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [configForm] = Form.useForm();
@@ -477,6 +496,9 @@ const ClusterPage = () => {
   const handleConfigOpen = (cluster: ClusterInfo) => {
     const cfg: ClusterConfig = cluster.config ?? ({} as ClusterConfig);
     setSelectedCluster(cluster);
+    setConfigPreview(null);
+    setConfigPreviewLoading(false);
+    setConfigSubmitting(false);
     configForm.setFieldsValue({
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,
@@ -488,6 +510,151 @@ const ClusterPage = () => {
       brokerPermission: cfg.brokerPermission ?? 6,
     });
     setConfigModalOpen(true);
+  };
+
+  const buildConfigUpdateRequest = (
+    values: ClusterConfigFormValues,
+  ): ClusterConfigRequest | null => {
+    if (!selectedCluster) return null;
+    const { maxMessageSizeMB, ...configValues } = values;
+    return {
+      id: selectedCluster.id,
+      instanceId: selectedInstanceIdRef.current,
+      ...(selectedCluster.config ?? {}),
+      ...configValues,
+      maxMessageSize: maxMessageSizeMB * 1048576,
+    };
+  };
+
+  const handleConfigPreview = async () => {
+    let values: ClusterConfigFormValues;
+    try {
+      values = await configForm.validateFields();
+    } catch {
+      return;
+    }
+    const request = buildConfigUpdateRequest(values);
+    if (!request) return;
+
+    setConfigPreviewLoading(true);
+    try {
+      const preview = await previewClusterConfig(request);
+      setConfigPreview(preview);
+      message.success(t('cluster.configPreviewGenerated'));
+    } catch {
+      setConfigPreview(null);
+      message.error(t('cluster.configPreviewFailed'));
+    } finally {
+      setConfigPreviewLoading(false);
+    }
+  };
+
+  const handleConfigSubmit = async () => {
+    let values: ClusterConfigFormValues;
+    try {
+      values = await configForm.validateFields();
+    } catch {
+      return;
+    }
+    const request = buildConfigUpdateRequest(values);
+    if (!request) return;
+
+    setConfigSubmitting(true);
+    try {
+      const result = await updateClusterConfig(request);
+      if (result.status === 'SUCCESS') {
+        await requestRefresh('operation');
+        message.success(t('cluster.configUpdated'));
+        setConfigModalOpen(false);
+        setConfigPreview(null);
+        return;
+      }
+
+      const failedAddresses = result.failedBrokers.map((failure) => failure.address).join(', ');
+      if (result.status === 'PARTIAL') {
+        await requestRefresh('operation');
+        message.warning(t('cluster.configPartiallyUpdated', { brokers: failedAddresses }));
+        return;
+      }
+      message.error(t('cluster.configUpdateFailed', { brokers: failedAddresses }));
+    } catch {
+      message.error(t('cluster.configUpdateFailed', { brokers: '' }));
+    } finally {
+      setConfigSubmitting(false);
+    }
+  };
+
+  const configFieldLabel = (field: string) => {
+    const key = CONFIG_FIELD_LABEL_KEYS[field];
+    return key ? t(key) : field;
+  };
+
+  const previewValue = (value: string | null) => value ?? '-';
+
+  const renderConfigPreview = () => {
+    if (!configPreview) return null;
+    const propertyEntries = Object.entries(configPreview.brokerProperties ?? {});
+    const previewColumns: ColumnsType<ClusterConfigPreviewChange> = [
+      {
+        title: t('cluster.configPreviewField'),
+        dataIndex: 'field',
+        key: 'field',
+        render: (field: string) => configFieldLabel(field),
+      },
+      {
+        title: t('cluster.configPreviewCurrent'),
+        dataIndex: 'currentValue',
+        key: 'currentValue',
+        render: previewValue,
+      },
+      {
+        title: t('cluster.configPreviewProposed'),
+        dataIndex: 'proposedValue',
+        key: 'proposedValue',
+        render: previewValue,
+      },
+      {
+        title: t('cluster.configPreviewProperty'),
+        dataIndex: 'brokerProperty',
+        key: 'brokerProperty',
+      },
+    ];
+
+    return (
+      <Card size="small" title={t('cluster.configPreview')} style={{ marginTop: 16 }}>
+        <Descriptions size="small" column={1}>
+          <Descriptions.Item label={t('cluster.configPreviewTargets')}>
+            <Space size={[0, 4]} wrap>
+              {configPreview.targetBrokers.length > 0 ? (
+                configPreview.targetBrokers.map((broker) => (
+                  <Tag key={broker.address}>{broker.address}</Tag>
+                ))
+              ) : (
+                <Text type="secondary">-</Text>
+              )}
+            </Space>
+          </Descriptions.Item>
+          <Descriptions.Item label={t('cluster.configPreviewBrokerProperties')}>
+            <Space size={[0, 4]} wrap>
+              {propertyEntries.length > 0 ? (
+                propertyEntries.map(([key, value]) => <Tag key={key}>{`${key}=${value}`}</Tag>)
+              ) : (
+                <Text type="secondary">-</Text>
+              )}
+            </Space>
+          </Descriptions.Item>
+        </Descriptions>
+        <Table<ClusterConfigPreviewChange>
+          columns={previewColumns}
+          dataSource={configPreview.changes}
+          rowKey="field"
+          pagination={false}
+          size="small"
+          locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
+          style={{ marginTop: 12 }}
+        />
+      </Card>
+    );
   };
 
   const tabItems = [
@@ -703,48 +870,24 @@ const ClusterPage = () => {
           <Modal
             title={t('cluster.configTitle', { name: selectedCluster.name })}
             open={configModalOpen}
-            onCancel={() => setConfigModalOpen(false)}
-            onOk={() => {
-              configForm.validateFields().then(async (values) => {
-                if (!selectedCluster) return;
-                try {
-                  const { maxMessageSizeMB, ...configValues } = values;
-                  const nextConfig: ClusterConfig = {
-                    ...(selectedCluster.config ?? {}),
-                    ...configValues,
-                    maxMessageSize: maxMessageSizeMB * 1048576,
-                  };
-                  const result = await updateClusterConfig({
-                    id: selectedCluster.id,
-                    instanceId: selectedInstanceIdRef.current,
-                    ...nextConfig,
-                  });
-                  if (result.status === 'SUCCESS') {
-                    await requestRefresh('operation');
-                    message.success(t('cluster.configUpdated'));
-                    setConfigModalOpen(false);
-                    return;
-                  }
-
-                  const failedAddresses = result.failedBrokers
-                    .map((failure) => failure.address)
-                    .join(', ');
-                  if (result.status === 'PARTIAL') {
-                    await requestRefresh('operation');
-                    message.warning(
-                      t('cluster.configPartiallyUpdated', { brokers: failedAddresses }),
-                    );
-                    return;
-                  }
-                  message.error(t('cluster.configUpdateFailed', { brokers: failedAddresses }));
-                } catch {
-                  message.error(t('cluster.configUpdateFailed', { brokers: '' }));
-                }
-              });
+            onCancel={() => {
+              setConfigModalOpen(false);
+              setConfigPreview(null);
             }}
-            width={560}
+            onOk={() => void handleConfigSubmit()}
+            confirmLoading={configSubmitting}
+            width={720}
           >
-            <Form form={configForm} layout="vertical">
+            <Space style={{ marginBottom: 16 }}>
+              <Button
+                icon={<EyeOutlined />}
+                loading={configPreviewLoading}
+                onClick={() => void handleConfigPreview()}
+              >
+                {t('cluster.configPreview')}
+              </Button>
+            </Space>
+            <Form form={configForm} layout="vertical" onValuesChange={() => setConfigPreview(null)}>
               <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
                 <Radio.Group>
                   <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
@@ -785,6 +928,7 @@ const ClusterPage = () => {
                 <InputNumber min={0} max={7} style={{ width: '100%' }} />
               </Form.Item>
             </Form>
+            {renderConfigPreview()}
           </Modal>
         )}
       </div>

@@ -31,6 +31,7 @@ const clusterServiceMocks = vi.hoisted(() => ({
   listK8sCerts: vi.fn(),
   listNameserverRegistry: vi.fn(),
   listRegistryClusters: vi.fn(),
+  previewClusterConfig: vi.fn(),
   restartProxy: vi.fn(),
   testClusterConnection: vi.fn(),
   updateClusterConfig: vi.fn(),
@@ -255,6 +256,32 @@ describe('Cluster page', () => {
     ]);
     clusterServiceMocks.restartProxy.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.testClusterConnection.mockReset();
+    clusterServiceMocks.previewClusterConfig.mockReset().mockImplementation(async (request) => {
+      const cluster = buildCluster();
+      return {
+        cluster,
+        currentConfig: cluster.config,
+        proposedConfig: { ...cluster.config, ...request },
+        targetBrokers: cluster.brokers.map((broker) => ({
+          name: broker.name,
+          address: broker.addr,
+        })),
+        brokerProperties: {
+          ...(request.writeQueueNums != null
+            ? { defaultTopicQueueNums: String(request.writeQueueNums) }
+            : {}),
+        },
+        changes: [
+          {
+            field: 'writeQueueNums',
+            currentValue: String(cluster.config.writeQueueNums),
+            proposedValue: String(request.writeQueueNums),
+            brokerProperty: 'defaultTopicQueueNums',
+          },
+        ],
+        changed: true,
+      };
+    });
     clusterServiceMocks.updateClusterConfig.mockReset().mockImplementation(async () => {
       const cluster = buildCluster();
       return {
@@ -314,6 +341,35 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('1,842')).toBeInTheDocument();
     expect(within(dialog).getByText('8081')).toBeInTheDocument();
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
+  });
+
+  it('previews broker config changes before submitting the update', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /配\s*置/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const writeQueuesInput = within(dialog).getByLabelText('写队列数');
+    await user.clear(writeQueuesInput);
+    await user.type(writeQueuesInput, '16');
+
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'cluster-prod',
+          instanceId: 'instance-1',
+          writeQueueNums: 16,
+          maxMessageSize: 4 * 1024 * 1024,
+        }),
+      ),
+    );
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
+    expect(within(dialog).getByText('10.101.2.11:10911')).toBeInTheDocument();
+    expect(within(dialog).getByText('defaultTopicQueueNums=16')).toBeInTheDocument();
+    expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
   });
 
   it('keeps cluster tabs usable when address fields are missing', async () => {

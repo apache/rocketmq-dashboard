@@ -29,6 +29,7 @@ import {
   getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
+  previewClusterConfig,
   updateClusterConfig,
   updateK8sCert,
   updateNameServer,
@@ -87,6 +88,30 @@ describe('clusterService mock clusters', () => {
         ]),
       }),
     ]);
+  });
+
+  it('previews mock config updates without mutating the cluster', async () => {
+    const before = await getCluster('cluster-prod');
+
+    const preview = await previewClusterConfig({
+      id: before.id,
+      writeQueueNums: before.config.writeQueueNums + 1,
+    });
+
+    expect(preview.changed).toBe(true);
+    expect(preview.brokerProperties).toMatchObject({
+      defaultTopicQueueNums: String(before.config.writeQueueNums + 1),
+    });
+    expect(preview.targetBrokers.map((broker) => broker.address)).toEqual(
+      before.brokers.map((broker) => broker.addr),
+    );
+    expect(preview.changes).toEqual([
+      expect.objectContaining({
+        field: 'writeQueueNums',
+        brokerProperty: 'defaultTopicQueueNums',
+      }),
+    ]);
+    await expect(getCluster('cluster-prod')).resolves.toMatchObject({ config: before.config });
   });
 
   it('persists partial mock config updates without copying id into config', async () => {
