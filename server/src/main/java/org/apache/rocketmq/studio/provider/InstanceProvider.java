@@ -86,6 +86,16 @@ public interface InstanceProvider {
 
     List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search);
 
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
+            int page, int pageSize) {
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, search);
+        int total = groups.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+    }
+
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
 
     void deleteConsumerGroup(String instanceId, String groupName);

@@ -287,14 +287,10 @@ class MetadataServiceTest {
 
     @Test
     void listConsumerGroupsPageShouldPaginateFromOneBasedIndexes() {
-        ConsumerGroupVO first = new ConsumerGroupVO();
-        first.setName("cg-a");
-        ConsumerGroupVO second = new ConsumerGroupVO();
-        second.setName("cg-b");
         ConsumerGroupVO third = new ConsumerGroupVO();
         third.setName("cg-c");
-        when(apacheProvider.listConsumerGroups("instance-a", "order"))
-                .thenReturn(List.of(first, second, third));
+        when(apacheProvider.listConsumerGroupsPage("instance-a", "order", 2, 2))
+                .thenReturn(PageResult.of(List.of(third), 3, 2, 2));
 
         PageResult<ConsumerGroupVO> result =
                 metadataService.listConsumerGroupsPage("instance-a", null, "order", 2, 2);
@@ -303,23 +299,23 @@ class MetadataServiceTest {
         assertThat(result.getTotal()).isEqualTo(3);
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(2);
-        verify(apacheProvider).listConsumerGroups("instance-a", "order");
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", "order", 2, 2);
+        verify(apacheProvider, org.mockito.Mockito.never()).listConsumerGroups("instance-a", "order");
     }
 
     @Test
     void listConsumerGroupsPageShouldReturnEmptyItemsWhenPageStartsPastFilteredTotal() {
-        ConsumerGroupVO first = new ConsumerGroupVO();
-        first.setName("cg-a");
-        when(metadataProvider.listConsumerGroups("cluster-1", "order")).thenReturn(List.of(first));
+        when(metadataProvider.listConsumerGroupsPage("cluster-1", "order", 2, 1))
+                .thenReturn(PageResult.empty(2, 1));
 
         PageResult<ConsumerGroupVO> result =
                 metadataService.listConsumerGroupsPage(null, "cluster-1", "order", 2, 1);
 
         assertThat(result.getItems()).isEmpty();
-        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getTotal()).isZero();
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(1);
-        verify(metadataProvider).listConsumerGroups("cluster-1", "order");
+        verify(metadataProvider).listConsumerGroupsPage("cluster-1", "order", 2, 1);
     }
 
     @Test
