@@ -149,19 +149,25 @@ public class AclService {
         if (page < 1 || pageSize < 1 || pageSize > 100) {
             throw new BusinessException(400, "page must be >= 1 and pageSize must be between 1 and 100");
         }
-        String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        List<AclUserVO> users = (isTencentInstance(instanceId)
-                ? tencentAclService.listUsers(instanceId) : aclRepository.findUsers()).stream()
+        if (isTencentInstance(instanceId)) {
+            String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+            List<AclUserVO> users = tencentAclService.listUsers(instanceId).stream()
                 .filter(user -> query.isEmpty()
                         || containsIgnoreCase(user.getUsername(), query)
                         || containsIgnoreCase(user.getAccessKey(), query))
                 .sorted(Comparator.comparing(AclUserVO::getGmtCreate, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(AclUserVO::getId, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
-        int from = (int) Math.min(Pagination.pageOffset(page, pageSize), users.size());
-        int to = Math.min(from + pageSize, users.size());
-        return PageResult.of(users.subList(from, to).stream().map(this::maskCredentials).toList(),
-                users.size(), page, pageSize);
+            int from = (int) Math.min(Pagination.pageOffset(page, pageSize), users.size());
+            int to = Math.min(from + pageSize, users.size());
+            return PageResult.of(
+                    users.subList(from, to).stream().map(this::maskCredentials).toList(),
+                    users.size(), page, pageSize);
+        }
+        PageResult<AclUserVO> result = aclRepository.findUserPage(
+                StringUtils.hasText(keyword) ? keyword.trim() : null, page, pageSize);
+        return PageResult.of(result.getItems().stream().map(this::maskCredentials).toList(),
+                result.getTotal(), result.getPage(), result.getSize());
     }
 
 
