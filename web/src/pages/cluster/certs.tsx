@@ -156,14 +156,14 @@ const K8sCertsPage = () => {
       dataIndex: 'type',
       key: 'type',
       width: 110,
-      sorter: (a, b) => a.type.localeCompare(b.type),
-      render: (type: string) => {
+      sorter: (a, b) => (a.type ?? '').localeCompare(b.type ?? ''),
+      render: (type: string | null) => {
         const colorMap: Record<string, string> = {
           TLS: 'blue',
           mTLS: 'purple',
           ServiceAccount: 'orange',
         };
-        return <Tag color={colorMap[type] ?? 'default'}>{type}</Tag>;
+        return type ? <Tag color={colorMap[type] ?? 'default'}>{type}</Tag> : '-';
       },
     },
     {
@@ -171,7 +171,8 @@ const K8sCertsPage = () => {
       dataIndex: 'issuer',
       key: 'issuer',
       width: 180,
-      sorter: (a, b) => a.issuer.localeCompare(b.issuer),
+      sorter: (a, b) => (a.issuer ?? '').localeCompare(b.issuer ?? ''),
+      render: (issuer: string | null) => issuer || '-',
       ellipsis: true,
     },
     {
@@ -179,8 +180,8 @@ const K8sCertsPage = () => {
       dataIndex: 'notAfter',
       key: 'notAfter',
       width: 170,
-      sorter: (a, b) => new Date(a.notAfter).getTime() - new Date(b.notAfter).getTime(),
-      render: (iso: string) => (
+      sorter: (a, b) => (Date.parse(a.notAfter ?? '') || 0) - (Date.parse(b.notAfter ?? '') || 0),
+      render: (iso: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(iso)}
         </Text>
@@ -208,15 +209,15 @@ const K8sCertsPage = () => {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      sorter: (a, b) => a.status.localeCompare(b.status),
-      render: (status: string) => {
+      sorter: (a, b) => (a.status ?? '').localeCompare(b.status ?? ''),
+      render: (status: string | null) => {
         const map: Record<string, { color: string; label: string }> = {
           valid: { color: 'green', label: '有效' },
           expiring: { color: 'orange', label: '即将过期' },
           expired: { color: 'red', label: '已过期' },
         };
-        const cfg = map[status] ?? { color: 'default', label: status };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
+        const cfg = status ? map[status] ?? { color: 'default', label: status } : null;
+        return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : '-';
       },
     },
     {

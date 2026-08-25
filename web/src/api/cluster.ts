@@ -136,13 +136,13 @@ export interface K8sCertInfo {
   id: number;
   k8sId: string;
   cluster: string;
-  type: string;
-  issuer: string;
-  notBefore: string;
-  notAfter: string;
-  status: string;
+  type: string | null;
+  issuer: string | null;
+  notBefore: string | null;
+  notAfter: string | null;
+  status: string | null;
   daysRemaining: number;
-  san: string[];
+  san: string[] | null;
   certPem?: string;
   keyPem?: string;
 }
