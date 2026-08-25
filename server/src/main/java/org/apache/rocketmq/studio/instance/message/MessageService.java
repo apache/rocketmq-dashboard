@@ -91,6 +91,12 @@ public class MessageService {
         if (!StringUtils.hasText(brokerName)) {
             throw new BusinessException(400, "brokerName is required");
         }
+        if (queueId < 0) {
+            throw new BusinessException(400, "queueId must not be negative");
+        }
+        if (offset < 0) {
+            throw new BusinessException(400, "offset must not be negative");
+        }
         return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
     }
 
