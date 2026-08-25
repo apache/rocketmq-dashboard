@@ -67,6 +67,7 @@ import {
   deleteTopic,
   getTopicConsumerPage,
   getTopicRoutes,
+  listAllTopics,
   listTopicsPage,
   sendTopicMessage,
 } from '../../services/topicService';
@@ -155,6 +156,21 @@ const TOPIC_EXPORT_COLUMNS: CsvColumn<Topic>[] = [
 ];
 
 const buildTopicCsv = (topics: Topic[]) => buildCsv(TOPIC_EXPORT_COLUMNS, topics);
+
+const visibleTopics = (
+  topics: Topic[],
+  selectedInstanceId: string | undefined,
+  searchText: string,
+  typeFilter: string,
+) =>
+  topics
+    .filter((topic) => {
+      if (selectedInstanceId && topic.instanceId !== selectedInstanceId) return false;
+      if (searchText && !topic.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      if (typeFilter && topic.type !== typeFilter) return false;
+      return true;
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
 
 // ─── Random message body generators ──────────────────────────────
 const randomOrderBody = () =>
@@ -326,6 +342,7 @@ const TopicPage = () => {
   const [importRows, setImportRows] = useState<ResourceImportRow<Partial<Topic>>[]>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const topicRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
@@ -377,15 +394,7 @@ const TopicPage = () => {
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
-    () =>
-      topics
-        .filter((t) => {
-          if (selectedInstanceId && t.instanceId !== selectedInstanceId) return false;
-          if (searchText && !t.name.toLowerCase().includes(searchText.toLowerCase())) return false;
-          if (typeFilter && t.type !== typeFilter) return false;
-          return true;
-        })
-        .sort((a, b) => a.name.localeCompare(b.name)),
+    () => visibleTopics(topics, selectedInstanceId, searchText, typeFilter),
     [topics, selectedInstanceId, searchText, typeFilter],
   );
 
@@ -396,19 +405,22 @@ const TopicPage = () => {
     setTablePage(1);
   };
 
-  const loadTopicConsumers = async (topic: Topic, page = 1, pageSize = 20) => {
-    const requestId = ++consumersRequestIdRef.current;
-    const consumers = await getTopicConsumerPage(
-      topic.name,
-      selectedInstanceId || undefined,
-      page,
-      pageSize,
-    );
-    // Guard against a slower earlier page overwriting a newer one when the user pages quickly.
-    if (requestId === consumersRequestIdRef.current) {
-      setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
-    }
-  };
+  const loadTopicConsumers = useCallback(
+    async (topic: Topic, page = 1, pageSize = 20) => {
+      const requestId = ++consumersRequestIdRef.current;
+      const consumers = await getTopicConsumerPage(
+        topic.name,
+        selectedInstanceId || undefined,
+        page,
+        pageSize,
+      );
+      // Guard against a slower earlier page overwriting a newer one when the user pages quickly.
+      if (requestId === consumersRequestIdRef.current) {
+        setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
+      }
+    },
+    [selectedInstanceId],
+  );
 
   // ─── Open detail modal ────────────────────────────────────────
   const openDetail = useCallback(
@@ -553,6 +565,28 @@ const TopicPage = () => {
         },
       });
     }
+  };
+
+  const handleExport = () => {
+    setExporting(true);
+
+    void listAllTopics({
+      instanceId: selectedInstanceId || undefined,
+      type: typeFilter || undefined,
+      search: searchText.trim() || undefined,
+    })
+      .then((allTopics) => {
+        const exportTopics = visibleTopics(allTopics, selectedInstanceId, searchText, typeFilter);
+        downloadCsv(
+          `rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`,
+          buildTopicCsv(exportTopics),
+        );
+        message.success(`已导出 ${exportTopics.length} 个 Topic`);
+      })
+      .catch(() => {
+        message.error('导出 Topic 失败，请稍后重试');
+      })
+      .finally(() => setExporting(false));
   };
 
   // ─── Table columns ────────────────────────────────────────────
@@ -1151,16 +1185,7 @@ const TopicPage = () => {
           >
             导入
           </Button>
-          <Button
-            icon={<ExportOutlined />}
-            onClick={() => {
-              downloadCsv(
-                `rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`,
-                buildTopicCsv(filteredTopics),
-              );
-              message.success(`已导出 ${filteredTopics.length} 个 Topic`);
-            }}
-          >
+          <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
             导出
           </Button>
           {!isCloudInstance && (

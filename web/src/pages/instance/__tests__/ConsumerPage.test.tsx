@@ -36,6 +36,7 @@ vi.mock('../../../services/consumerService', () => ({
   getConsumerStack: vi.fn(),
   getConsumerSubscriptions: vi.fn(),
   getConsumerGroupSettings: vi.fn(),
+  listAllConsumerGroups: vi.fn(),
   updateConsumerGroupSettings: vi.fn(),
   listConsumerGroupPage: vi.fn(),
   refreshConsumerGroup: vi.fn(),
@@ -124,6 +125,7 @@ describe('Consumer page', () => {
       },
     ]);
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
+    vi.mocked(consumerService.listAllConsumerGroups).mockResolvedValue([group]);
     vi.mocked(consumerService.refreshConsumerGroup).mockResolvedValue({
       ...group,
       totalLag: 42,
@@ -226,7 +228,7 @@ describe('Consumer page', () => {
     );
   });
 
-  it('downloads the currently filtered consumer groups when exporting', async () => {
+  it('downloads all consumer groups matching the current filters when exporting', async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
     let exportedBlob: Blob | undefined;
@@ -234,13 +236,23 @@ describe('Consumer page', () => {
       exportedBlob = blob as Blob;
       return 'blob:consumer-group-export';
     });
-    const exportGroups = [
+    const currentPageGroups = [
       {
         ...group,
         name: 'orders-cg',
         namespace: '\r=formula-risk',
         subscribedTopics: ['orders-topic', 'payments,topic'],
       },
+    ];
+    const archivedGroup = {
+      ...group,
+      name: 'orders-cg-archive',
+      namespace: '=archive',
+      subscribedTopics: ['orders-topic'],
+    };
+    const exportGroups = [
+      ...currentPageGroups,
+      archivedGroup,
       {
         ...group,
         name: 'users-cg',
@@ -252,12 +264,17 @@ describe('Consumer page', () => {
       const filtered = params?.search
         ? exportGroups.filter((item) => item.name.includes(params.search ?? ''))
         : exportGroups;
-      return groupPage(filtered, {
+      return groupPage(filtered.slice(0, 1), {
         total: filtered.length,
         page: params?.page ?? 1,
         size: params?.pageSize ?? 20,
       });
     });
+    vi.mocked(consumerService.listAllConsumerGroups).mockImplementation(async (params) =>
+      params?.search
+        ? exportGroups.filter((item) => item.name.includes(params.search ?? ''))
+        : exportGroups,
+    );
     renderWithProviders(<ConsumerPage />);
 
     expect(await screen.findByText('orders-cg')).toBeInTheDocument();
@@ -265,6 +282,12 @@ describe('Consumer page', () => {
     await waitFor(() => expect(screen.queryByText('users-cg')).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
+    await waitFor(() =>
+      expect(consumerService.listAllConsumerGroups).toHaveBeenCalledWith({
+        instanceId: 'instance-1',
+        search: 'orders',
+      }),
+    );
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:consumer-group-export');
@@ -275,7 +298,9 @@ describe('Consumer page', () => {
     expect(exportedBlob).toBeDefined();
     const csv = await exportedBlob!.text();
     expect(csv).toContain('"orders-cg"');
+    expect(csv).toContain('"orders-cg-archive"');
     expect(csv).toContain('"\'\r=formula-risk"');
+    expect(csv).toContain('"\'=archive"');
     expect(csv).toContain('"orders-topic;payments,topic"');
     expect(csv).not.toContain('users-cg');
     clickSpy.mockRestore();

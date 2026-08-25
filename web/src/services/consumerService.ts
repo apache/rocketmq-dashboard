@@ -15,6 +15,8 @@ import type {
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
+const EXPORT_PAGE_SIZE = 100;
+const MAX_EXPORT_PAGES = 100;
 
 function copyConsumerInstance(
   instance: ConsumerGroup['instances'][number],
@@ -81,6 +83,29 @@ export async function listConsumerGroupPage(
     };
   }
   return metadataApi.listConsumerGroupPage(params);
+}
+
+export async function listAllConsumerGroups(
+  params: ConsumerGroupQuery = {},
+): Promise<ConsumerGroup[]> {
+  const groups: ConsumerGroup[] = [];
+  let page = 1;
+
+  while (page <= MAX_EXPORT_PAGES) {
+    const result = await listConsumerGroupPage({
+      ...params,
+      page,
+      pageSize: EXPORT_PAGE_SIZE,
+    });
+    groups.push(...result.items);
+    const total = result.total ?? groups.length;
+    if (result.items.length === 0 || groups.length >= total) {
+      return groups.map(normalizeConsumerGroup);
+    }
+    page += 1;
+  }
+
+  throw new Error(`Consumer group export exceeded ${MAX_EXPORT_PAGES} pages`);
 }
 
 export async function getConsumerProgress(

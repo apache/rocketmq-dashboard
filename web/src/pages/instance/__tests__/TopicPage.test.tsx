@@ -32,6 +32,7 @@ const topicServiceMocks = vi.hoisted(() => ({
   getTopicConsumers: vi.fn(),
   getTopicConsumerPage: vi.fn(),
   getTopicRoutes: vi.fn(),
+  listAllTopics: vi.fn(),
   listTopics: vi.fn(),
   listTopicsPage: vi.fn(),
   sendTopicMessage: vi.fn(),
@@ -132,6 +133,7 @@ const getTableBody = () => {
 describe('TopicPage', () => {
   beforeEach(() => {
     mockTopicsList(buildTopics(25));
+    topicServiceMocks.listAllTopics.mockResolvedValue(buildTopics(25));
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({ deleted: [], failed: [] });
     topicServiceMocks.createTopic.mockImplementation(async (data: Partial<Topic>) => ({
       ...buildTopics(1)[0],
@@ -200,7 +202,7 @@ describe('TopicPage', () => {
     expect(create).toHaveClass('ant-btn-loading');
   });
 
-  it('downloads the currently filtered topics when exporting', async () => {
+  it('downloads all topics matching the current filters when exporting', async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
     let exportedBlob: Blob | undefined;
@@ -208,20 +210,32 @@ describe('TopicPage', () => {
       exportedBlob = blob as Blob;
       return 'blob:topic-export';
     });
-    mockTopicsList([
+    const currentPageTopics = [
       {
         ...buildTopics(1)[0],
         name: 'orders-topic',
         namespace: 'trade',
         remark: '\t=orders, "critical"',
       },
+    ];
+    const archivedTopic = {
+      ...buildTopics(1)[0],
+      name: 'orders-topic-archive',
+      namespace: 'trade',
+      remark: '=archive',
+    };
+    const allMatchingTopics = [
+      ...currentPageTopics,
+      archivedTopic,
       {
         ...buildTopics(1)[0],
         name: 'users-topic',
         namespace: 'user',
         remark: '=formula-risk',
       },
-    ]);
+    ];
+    mockTopicsList(currentPageTopics);
+    topicServiceMocks.listAllTopics.mockResolvedValue(allMatchingTopics);
     renderWithProviders();
 
     expect(await screen.findByText('orders-topic')).toBeInTheDocument();
@@ -230,6 +244,13 @@ describe('TopicPage', () => {
     await waitFor(() => expect(screen.queryByText('users-topic')).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
+    await waitFor(() =>
+      expect(topicServiceMocks.listAllTopics).toHaveBeenCalledWith({
+        instanceId: 'instance-proxy-1',
+        type: undefined,
+        search: 'orders',
+      }),
+    );
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:topic-export');
@@ -238,7 +259,9 @@ describe('TopicPage', () => {
     expect(exportedBlob).toBeDefined();
     const csv = await exportedBlob!.text();
     expect(csv).toContain('"orders-topic"');
+    expect(csv).toContain('"orders-topic-archive"');
     expect(csv).toContain('"\'\t=orders, ""critical"""');
+    expect(csv).toContain('"\'=archive"');
     expect(csv).not.toContain('users-topic');
     clickSpy.mockRestore();
   });

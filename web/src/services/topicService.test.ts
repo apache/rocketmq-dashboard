@@ -20,6 +20,7 @@ import {
   getTopicConsumerPage,
   getTopicConsumers,
   getTopicRoutes,
+  listAllTopics,
   listTopics,
 } from './topicService';
 
@@ -84,9 +85,15 @@ describe('topic service mock data', () => {
 
   it('filters mock topics by instance ID', async () => {
     const topics = await listTopics({ instanceId: 'instance-proxy-1' });
+    const directTopics = await listTopics({ instanceId: 'instance-proxy-1', search: 'order' });
+    const exportedTopics = await listAllTopics({
+      instanceId: 'instance-proxy-1',
+      search: 'order',
+    });
 
     expect(topics).not.toHaveLength(0);
     expect(topics.every((topic) => topic.instanceId === 'instance-proxy-1')).toBe(true);
+    expect(exportedTopics).toEqual(directTopics);
   });
 
   it('rejects duplicate topic creates in the same cluster', async () => {
