@@ -42,11 +42,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -81,7 +83,7 @@ public class ClusterService {
         log.info("Listing all clusters");
         List<ClusterVO> discovered = clusterProvider.discoverClusters();
         if (discovered != null && !discovered.isEmpty()) {
-            discovered.forEach(this::enrichWithLiveConfig);
+            enrichDiscoveredClusters(discovered, null);
             return discovered;
         }
         return List.of();
@@ -122,7 +124,7 @@ public class ClusterService {
         log.info("Listing clusters for instance: {}", instanceId);
         List<ClusterVO> discovered = clusterProvider.discoverClusters(instanceId);
         if (discovered != null && !discovered.isEmpty()) {
-            discovered.forEach(cluster -> enrichWithLiveConfig(cluster, instanceId));
+            enrichDiscoveredClusters(discovered, instanceId);
             return discovered;
         }
         return List.of();
@@ -191,9 +193,35 @@ public class ClusterService {
     }
 
     private void enrichWithLiveConfig(ClusterVO cluster, String instanceId) {
+        enrichWithLiveConfig(cluster, instanceId, Set.of());
+    }
+
+    /**
+     * Enriches a discovered cluster list without repeating broker-config reads for the same
+     * broker address. Multiple registry entries can expose the same underlying clusters;
+     * once an address fails, later duplicates should use the persisted fallback immediately.
+     */
+    private void enrichDiscoveredClusters(List<ClusterVO> clusters, String instanceId) {
+        Set<String> attemptedAddresses = new LinkedHashSet<>();
+        for (ClusterVO cluster : clusters) {
+            if (cluster == null) {
+                continue;
+            }
+            enrichWithLiveConfig(cluster, instanceId, attemptedAddresses);
+            if (cluster.getBrokers() != null) {
+                cluster.getBrokers().stream()
+                        .map(BrokerVO::getAddr)
+                        .filter(address -> address != null && !address.isEmpty())
+                        .forEach(attemptedAddresses::add);
+            }
+        }
+    }
+
+    private void enrichWithLiveConfig(ClusterVO cluster, String instanceId, Set<String> attemptedAddresses) {
         if (cluster.getBrokers() != null) {
             for (BrokerVO broker : cluster.getBrokers()) {
-                if (broker.getAddr() != null && !broker.getAddr().isEmpty()) {
+                if (broker.getAddr() != null && !broker.getAddr().isEmpty()
+                        && !attemptedAddresses.contains(broker.getAddr())) {
                     try {
                         cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId));
                         return;

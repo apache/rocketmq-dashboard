@@ -146,6 +146,39 @@ class ClusterServiceTest {
     }
 
     @Test
+    void listClustersShouldNotRepeatBrokerConfigReadsForDuplicateBrokers() {
+        ClusterVO duplicateCluster = ClusterVO.builder()
+                .name("duplicate-cluster")
+                .status(ClusterStatus.warning)
+                .brokers(List.of(BrokerVO.builder()
+                        .name("broker-0")
+                        .addr("10.0.0.1:10911")
+                        .build()))
+                .build();
+        duplicateCluster.setId("cluster-2");
+        sampleCluster.setConfig(null);
+        when(clusterProvider.discoverClusters()).thenReturn(List.of(sampleCluster, duplicateCluster));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null))
+                .thenThrow(new BusinessException(502, "broker unavailable"));
+        when(clusterRepository.findById("cluster-1"))
+                .thenReturn(Optional.of(ClusterVO.builder()
+                        .config(ClusterConfigVO.builder().maxMessageSize(1024).build())
+                        .build()));
+        when(clusterRepository.findById("cluster-2"))
+                .thenReturn(Optional.of(ClusterVO.builder()
+                        .config(ClusterConfigVO.builder().maxMessageSize(2048).build())
+                        .build()));
+
+        List<ClusterVO> result = clusterService.listClusters();
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getConfig().getMaxMessageSize()).isEqualTo(1024);
+        assertThat(result.get(1).getConfig().getMaxMessageSize()).isEqualTo(2048);
+        verify(brokerConfigService, org.mockito.Mockito.times(1))
+                .getBrokerConfig("10.0.0.1:10911", null);
+    }
+
+    @Test
     void updateClusterConfigShouldRejectDifferentDefaultReadAndWriteQueueNums() {
         UpdateConfigDTO command = UpdateConfigDTO.builder()
                 .id("cluster-1")
