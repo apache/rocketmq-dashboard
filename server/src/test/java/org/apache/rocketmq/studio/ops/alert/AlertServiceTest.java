@@ -242,6 +242,24 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldPreserveCompositePrometheusDurationTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("High Lag Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(5000)
+                .duration("1h30m")
+                .description("Lag too high")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result).contains("for: 1h30m").doesNotContain("for: 5m");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldExcludeNativeClusterRulesTest() {
         AlertRuleVO legacy = AlertRuleVO.builder()
                 .name("High Lag Alert")
