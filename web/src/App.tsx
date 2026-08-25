@@ -43,7 +43,6 @@ const AiPage = lazy(() => import('./pages/ai'));
 const SettingsPage = lazy(() => import('./pages/settings'));
 const ProxyPage = lazy(() => import('./pages/studio/Proxy'));
 const LiteTopicPage = lazy(() => import('./pages/studio/LiteTopic'));
-const GroupManagementPage = lazy(() => import('./pages/studio/GroupManagement'));
 const BrokerClusterPage = lazy(() => import('./pages/studio/BrokerCluster'));
 const GrafanaDashboardsPage = lazy(() => import('./pages/studio/GrafanaDashboards'));
 const ProducerPage = lazy(() => import('./pages/studio/Producer'));
@@ -191,7 +190,10 @@ function App() {
             <Route path="settings" element={<SettingsPage />} />
             <Route path="studio/proxy" element={<ProxyPage />} />
             <Route path="studio/lite-topic" element={<LiteTopicPage />} />
-            <Route path="studio/group-management" element={<GroupManagementPage />} />
+            <Route
+              path="studio/group-management"
+              element={<Navigate to="/instance/consumer" replace />}
+            />
             <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
             <Route path="studio/alert-management" element={<Navigate to="/ops/alerts" replace />} />
             <Route path="studio/producer" element={<ProducerPage />} />
