@@ -487,4 +487,29 @@ describe('DLQ page', () => {
     expect(within(retryDialog as HTMLElement).getByText('-cg-"payment"')).toBeInTheDocument();
     expect(messageService.listDLQGroups).toHaveBeenCalledTimes(2);
   });
+
+  it('ignores a stale group response after changing instances', async () => {
+    let resolveFirstInstance!: (page: DLQGroupPage) => void;
+    vi.mocked(messageService.listDLQGroups)
+      .mockImplementationOnce(
+        () =>
+          new Promise<DLQGroupPage>((resolve) => {
+            resolveFirstInstance = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(pageOf([secondDlqGroup]));
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+    expect(await screen.findByText('-cg-"payment"')).toBeInTheDocument();
+
+    await act(async () => resolveFirstInstance(pageOf([dlqGroup])));
+
+    expect(screen.queryByText('cg-order')).not.toBeInTheDocument();
+    expect(screen.getByText('-cg-"payment"')).toBeInTheDocument();
+  });
 });
