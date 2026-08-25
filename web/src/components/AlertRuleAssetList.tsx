@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, App, Button, Modal, Space, Table, Tag, Typography } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
@@ -40,6 +40,8 @@ export const AlertRuleAssetList: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const [assets, setAssets] = useState<AlertRuleAssetInfo[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [selectedSeverities, setSelectedSeverities] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [viewing, setViewing] = useState<AlertRuleAssetInfo | null>(null);
@@ -49,6 +51,30 @@ export const AlertRuleAssetList: React.FC = () => {
   const listRequestId = useRef(0);
   const viewRequestId = useRef(0);
   const [exportingNames, setExportingNames] = useState<Set<string>>(() => new Set());
+
+  const severityOptions = useMemo(
+    () =>
+      Array.from(new Set(assets.flatMap((asset) => asset.severities || [])))
+        .sort((a, b) => a.localeCompare(b))
+        .map((severity) => ({ label: severity.toUpperCase(), value: severity })),
+    [assets],
+  );
+
+  const filteredAssets = useMemo(() => {
+    const normalizedSearch = searchText.trim().toLowerCase();
+    return assets.filter((asset) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        [asset.name, asset.group]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalizedSearch));
+      const matchesSeverity =
+        selectedSeverities.length === 0 ||
+        selectedSeverities.some((severity) => (asset.severities || []).includes(severity));
+
+      return matchesSearch && matchesSeverity;
+    });
+  }, [assets, searchText, selectedSeverities]);
 
   const loadAssets = useCallback(async () => {
     const requestId = ++listRequestId.current;
@@ -182,6 +208,27 @@ export const AlertRuleAssetList: React.FC = () => {
 
   return (
     <div>
+      <Space style={{ marginBottom: 12 }}>
+        <Input.Search
+          allowClear
+          placeholder={t('alertAssets.searchPlaceholder')}
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          onSearch={setSearchText}
+          style={{ width: 280 }}
+        />
+        <Select
+          allowClear
+          mode="multiple"
+          maxTagCount="responsive"
+          options={severityOptions}
+          placeholder={t('alertAssets.allSeverities')}
+          value={selectedSeverities}
+          onChange={setSelectedSeverities}
+          style={{ minWidth: 220 }}
+        />
+      </Space>
+
       {loadError && (
         <Alert
           showIcon
@@ -202,7 +249,7 @@ export const AlertRuleAssetList: React.FC = () => {
 
       <Table
         columns={columns}
-        dataSource={assets}
+        dataSource={filteredAssets}
         loading={loading}
         rowKey="name"
         pagination={false}
