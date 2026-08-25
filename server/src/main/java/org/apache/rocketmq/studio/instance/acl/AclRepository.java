@@ -37,6 +37,8 @@ public interface AclRepository {
 
     List<AclUserVO> findUsers();
 
+    PageResult<AclUserVO> findUserPage(String keyword, int page, int pageSize);
+
     Optional<AclUserVO> findUserById(Long id);
 
     AclUserVO saveUser(AclUserVO user);

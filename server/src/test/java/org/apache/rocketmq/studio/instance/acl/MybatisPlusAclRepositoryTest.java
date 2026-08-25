@@ -117,6 +117,40 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void findUserPageShouldApplyKeywordFiltersAndDatabasePagination() {
+        RmqAclUser entity = new RmqAclUser();
+        entity.setId(11L);
+        entity.setUsername("user-orders");
+        entity.setAccessKey("access-key-orders");
+        entity.setSecretKey(CredentialUtils.encodeBase64("secret-key"));
+        entity.setAdmin(false);
+        entity.setGmtCreate(LocalDateTime.of(2026, 8, 20, 9, 30));
+        Page<RmqAclUser> mapperPage = new Page<RmqAclUser>(3, 20)
+                .setRecords(List.of(entity))
+                .setTotal(51);
+        when(userMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        PageResult<AclUserVO> result = repository.findUserPage("orders", 3, 20);
+
+        ArgumentCaptor<IPage<RmqAclUser>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
+        ArgumentCaptor<Wrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(userMapper).selectPage(pageCaptor.capture(), queryCaptor.capture());
+        assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(3);
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(20);
+        assertThat(result.getTotal()).isEqualTo(51);
+        assertThat(result.getPage()).isEqualTo(3);
+        assertThat(result.getSize()).isEqualTo(20);
+        assertThat(result.getItems()).singleElement().satisfies(user -> {
+            assertThat(user.getUsername()).isEqualTo("user-orders");
+            assertThat(user.getAccessKey()).isEqualTo("access-key-orders");
+            assertThat(user.getSecretKey()).isEqualTo("secret-key");
+        });
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("username", "access_key", "ORDER BY gmt_create DESC,id DESC");
+        verify(userMapper, never()).selectList(any(QueryWrapper.class));
+    }
+
+    @Test
     void replaceRuleShouldReturnEmptyWhenConcurrentDeleteWins() {
         RmqAclRule existing = new RmqAclRule();
         existing.setId(1L);
