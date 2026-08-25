@@ -151,6 +151,28 @@ describe('consumer service mock data', () => {
     }
   });
 
+  it('stops API consumer group export when pagination exceeds the safety limit', async () => {
+    mode.mock = false;
+    metadataApi.listConsumerGroupPage.mockReset();
+    metadataApi.listConsumerGroupPage.mockResolvedValue({
+      items: [{ name: 'cg-a', subscribedTopics: null, instances: null }],
+      total: Number.MAX_SAFE_INTEGER,
+      page: 1,
+      size: 100,
+    });
+    try {
+      await expect(listAllConsumerGroups()).rejects.toThrow(
+        'Consumer group export exceeded 100 pages',
+      );
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenCalledTimes(100);
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        page: 100,
+        pageSize: 100,
+      });
+    } finally {
+      mode.mock = true;
+    }
+  });
   it('returns copied progress and subscription rows', async () => {
     const firstProgress = await getConsumerProgress('cg-order-notify');
     const firstSubscriptions = await getConsumerSubscriptions('cg-order-notify');

@@ -13,6 +13,7 @@ import type {
 import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
 
 const EXPORT_PAGE_SIZE = 100;
+const MAX_EXPORT_PAGES = 100;
 
 const cloneTopic = (topic: Topic): Topic => ({ ...topic });
 const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] => routes.map((route) => ({ ...route }));
@@ -60,15 +61,15 @@ export const listAllTopics = async (params: TopicQuery = {}): Promise<Topic[]> =
   const topics: Topic[] = [];
   let page = 1;
 
-  while (true) {
+  while (page <= MAX_EXPORT_PAGES) {
     const result = await listTopicsPage({ ...params, page, pageSize: EXPORT_PAGE_SIZE });
     topics.push(...result.items);
     const total = result.total ?? topics.length;
-    if (result.items.length === 0 || topics.length >= total) break;
+    if (result.items.length === 0 || topics.length >= total) return topics;
     page += 1;
   }
 
-  return topics;
+  throw new Error(`Topic export exceeded ${MAX_EXPORT_PAGES} pages`);
 };
 
 export async function createTopic(data: Partial<Topic>): Promise<Topic> {

@@ -16,6 +16,7 @@ import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../moc
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
 const EXPORT_PAGE_SIZE = 100;
+const MAX_EXPORT_PAGES = 100;
 
 function copyConsumerInstance(
   instance: ConsumerGroup['instances'][number],
@@ -90,7 +91,7 @@ export async function listAllConsumerGroups(
   const groups: ConsumerGroup[] = [];
   let page = 1;
 
-  while (true) {
+  while (page <= MAX_EXPORT_PAGES) {
     const result = await listConsumerGroupPage({
       ...params,
       page,
@@ -98,11 +99,13 @@ export async function listAllConsumerGroups(
     });
     groups.push(...result.items);
     const total = result.total ?? groups.length;
-    if (result.items.length === 0 || groups.length >= total) break;
+    if (result.items.length === 0 || groups.length >= total) {
+      return groups.map(normalizeConsumerGroup);
+    }
     page += 1;
   }
 
-  return groups.map(normalizeConsumerGroup);
+  throw new Error(`Consumer group export exceeded ${MAX_EXPORT_PAGES} pages`);
 }
 
 export async function getConsumerProgress(
