@@ -16,22 +16,16 @@
  */
 package org.apache.rocketmq.studio.ops.audit;
 
-import java.time.LocalDateTime;
-import org.apache.rocketmq.studio.common.domain.PageResult;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-public interface AuditRepository {
-    PageResult<AuditRecordVO> findPage(String search, String operationType,
-                                       String resourceType, String clusterId,
-                                       LocalDateTime startDate, LocalDateTime endDate,
-                                       String result, int page, int pageSize);
-
-    AuditFilterOptionsVO findFilterOptions();
-
-    AuditSummaryVO summarize(String search, String operationType, String resourceType,
-                             String clusterId, LocalDateTime startDate, LocalDateTime endDate,
-                             String result);
-
-    void save(AuditRecordVO record);
-
-    int deleteBefore(LocalDateTime cutoff, int batchSize, int maxBatches);
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class AuditSummaryBucketVO {
+    private String name;
+    private long count;
 }

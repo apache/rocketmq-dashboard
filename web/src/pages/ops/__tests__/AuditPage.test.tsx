@@ -28,6 +28,7 @@ vi.mock('../../../services/opsService', () => ({
   cleanupAuditLogs: vi.fn(),
   exportAuditLogs: vi.fn(),
   getAuditFilterOptions: vi.fn(),
+  getAuditSummary: vi.fn(),
   listAuditRecords: vi.fn(),
 }));
 
@@ -92,6 +93,16 @@ describe('Audit page', () => {
       total: 1,
       page: 1,
       size: 20,
+    });
+    vi.mocked(opsService.getAuditSummary).mockResolvedValue({
+      total: 10,
+      successful: 8,
+      failed: 1,
+      partial: 1,
+      uniqueOperators: 3,
+      latestAt: '2026-08-01 10:00:00',
+      byOperation: [{ name: 'DELETE_TOPIC', count: 6 }],
+      byResourceType: [{ name: 'TOPIC', count: 9 }],
     });
     vi.mocked(opsService.exportAuditLogs).mockResolvedValue(
       '\uFEFFtimestamp,operator\r\n"2026-08-01 10:00:00","admin"\r\n',
@@ -173,6 +184,24 @@ describe('Audit page', () => {
     expect(screen.getByText('成功')).toBeInTheDocument();
     expect(screen.getByText('topic: orders')).toBeInTheDocument();
     expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
+  });
+
+  it('loads a filtered server-side summary dashboard', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('匹配记录')).toBeInTheDocument();
+    expect(screen.getByText('80')).toBeInTheDocument();
+    expect(screen.getAllByText('DELETE TOPIC').length).toBeGreaterThan(0);
+    await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
+
+    await waitFor(
+      () =>
+        expect(opsService.getAuditSummary).toHaveBeenLastCalledWith(
+          expect.objectContaining({ search: 'topic-a' }),
+        ),
+      { timeout: 1000 },
+    );
   });
 
   it('loads persisted filter values and forwards their original codes', async () => {

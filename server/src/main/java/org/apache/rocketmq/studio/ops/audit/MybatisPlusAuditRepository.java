@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /** MySQL-backed audit repository (rmq_operation_audit). */
@@ -96,6 +97,95 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .clusterIds(findDistinctValues(values, "cluster_id"))
                 .results(findDistinctValues(values, "result"))
                 .build();
+    }
+
+    @Override
+    public AuditSummaryVO summarize(String search, String operationType, String resourceType,
+                                    String clusterId, LocalDateTime startDate, LocalDateTime endDate,
+                                    String result) {
+        Consumer<QueryWrapper<RmqOperationAudit>> filters = query -> applyFilters(query, search,
+                operationType, resourceType, clusterId, startDate, endDate, result);
+        long total = count(filters, null);
+        long successful = count(filters, "SUCCESS");
+        long failed = count(filters, "FAILED");
+        long partial = count(filters, "PARTIAL");
+
+        QueryWrapper<RmqOperationAudit> operatorsQuery = new QueryWrapper<RmqOperationAudit>()
+                .select("operator").isNotNull("operator").groupBy("operator");
+        filters.accept(operatorsQuery);
+        long uniqueOperators = auditMapper.selectMaps(operatorsQuery).size();
+
+        QueryWrapper<RmqOperationAudit> latestQuery = new QueryWrapper<RmqOperationAudit>()
+                .select("operated_at").orderByDesc("operated_at").last("LIMIT 1");
+        filters.accept(latestQuery);
+        List<RmqOperationAudit> latestRows = auditMapper.selectList(latestQuery);
+        LocalDateTime latestAt = latestRows.isEmpty() ? null : latestRows.get(0).getOperatedAt();
+
+        return AuditSummaryVO.builder()
+                .total(total)
+                .successful(successful)
+                .failed(failed)
+                .partial(partial)
+                .uniqueOperators(uniqueOperators)
+                .latestAt(latestAt)
+                .byOperation(groupCounts("operation", filters))
+                .byResourceType(groupCounts("resource_type", filters))
+                .build();
+    }
+
+    private long count(Consumer<QueryWrapper<RmqOperationAudit>> filters, String forcedResult) {
+        QueryWrapper<RmqOperationAudit> query = new QueryWrapper<>();
+        filters.accept(query);
+        if (forcedResult != null) {
+            query.eq("result", forcedResult);
+        }
+        return auditMapper.selectCount(query);
+    }
+
+    private List<AuditSummaryBucketVO> groupCounts(
+            String column, Consumer<QueryWrapper<RmqOperationAudit>> filters) {
+        QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
+                .select(column + " AS bucket_name", "COUNT(*) AS bucket_count")
+                .isNotNull(column)
+                .groupBy(column);
+        filters.accept(query);
+        return auditMapper.selectMaps(query).stream()
+                .map(row -> AuditSummaryBucketVO.builder()
+                        .name(mapValue(row, "bucket_name"))
+                        .count(Long.parseLong(mapValue(row, "bucket_count")))
+                        .build())
+                .filter(bucket -> StringUtils.hasText(bucket.getName()))
+                .sorted((left, right) -> {
+                    int countOrder = Long.compare(right.getCount(), left.getCount());
+                    return countOrder != 0 ? countOrder : left.getName().compareTo(right.getName());
+                })
+                .limit(8)
+                .toList();
+    }
+
+    private String mapValue(Map<String, Object> row, String key) {
+        return row.entrySet().stream()
+                .filter(entry -> key.equalsIgnoreCase(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .findFirst()
+                .orElse("");
+    }
+
+    private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
+                              String operationType, String resourceType, String clusterId,
+                              LocalDateTime startDate, LocalDateTime endDate, String result) {
+        query.and(StringUtils.hasText(search), w -> w
+                        .like("operator", search)
+                        .or().like("resource_name", search)
+                        .or().like("detail", search))
+                .eq(StringUtils.hasText(operationType), "operation", operationType)
+                .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .ge(startDate != null, "operated_at", startDate)
+                .le(endDate != null, "operated_at", endDate)
+                .eq(StringUtils.hasText(result), "result", result);
     }
 
     @Override
