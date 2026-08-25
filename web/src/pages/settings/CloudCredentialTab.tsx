@@ -33,6 +33,7 @@ import {
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { MagnifyingGlass } from '@phosphor-icons/react';
+import { useLang } from '../../i18n/LangContext';
 
 import {
   createCloudCredential,
@@ -43,20 +44,10 @@ import {
 import type { CloudCredential } from '../../api/cloudCredential';
 import type { InstanceVendor } from '../../api/instance';
 
-const vendorLabel: Record<string, string> = {
-  ALIYUN: '阿里云',
-  TENCENT: '腾讯云',
-};
-
 const vendorTagColor: Record<string, string> = {
   ALIYUN: 'orange',
   TENCENT: 'blue',
 };
-
-const VENDOR_OPTIONS = [
-  { value: 'ALIYUN', label: '阿里云' },
-  { value: 'TENCENT', label: '腾讯云' },
-];
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
@@ -69,6 +60,7 @@ interface CredentialFormValues {
 }
 
 export const CloudCredentialTab = () => {
+  const { t } = useLang();
   const [credentials, setCredentials] = useState<CloudCredential[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -110,7 +102,7 @@ export const CloudCredentialTab = () => {
         setTotal(result.total);
       } catch {
         if (requestId === requestSeqRef.current) {
-          message.error('云凭据加载失败，请稍后重试');
+          message.error(t('settings.credentialLoadFailed'));
         }
       } finally {
         if (requestId === requestSeqRef.current) {
@@ -118,7 +110,7 @@ export const CloudCredentialTab = () => {
         }
       }
     })();
-  }, [debouncedSearch, page, pageSize, vendorFilter]);
+  }, [debouncedSearch, page, pageSize, t, vendorFilter]);
 
   useEffect(() => {
     void loadCredentials();
@@ -175,7 +167,7 @@ export const CloudCredentialTab = () => {
           remark: values.remark,
         });
         setCredentials((previous) => previous.map((item) => (item.id === saved.id ? saved : item)));
-        message.success('云凭据已更新');
+        message.success(t('settings.credentialUpdated'));
       } else {
         await createCloudCredential({
           name: values.name,
@@ -185,7 +177,7 @@ export const CloudCredentialTab = () => {
           remark: values.remark,
         });
         setPage(1);
-        message.success('云凭据已添加');
+        message.success(t('settings.credentialAdded'));
       }
       await loadCredentials();
       closeModal();
@@ -193,7 +185,7 @@ export const CloudCredentialTab = () => {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
-      message.error('保存云凭据失败，请稍后重试');
+      message.error(t('settings.credentialSaveFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -208,27 +200,33 @@ export const CloudCredentialTab = () => {
       } else {
         await loadCredentials();
       }
-      message.success('云凭据已删除');
+      message.success(t('settings.credentialDeleted'));
     } catch {
-      message.error('删除云凭据失败（可能仍被实例引用），请稍后重试');
+      message.error(t('settings.credentialDeleteFailed'));
     }
   };
 
   const columns: ColumnsType<CloudCredential> = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
+    { title: t('common.name'), dataIndex: 'name', key: 'name' },
     {
-      title: '云厂商',
+      title: t('settings.cloudVendor'),
       dataIndex: 'vendor',
       key: 'vendor',
       render: (vendor: string) => (
-        <Tag color={vendorTagColor[vendor]}>{vendorLabel[vendor] ?? vendor}</Tag>
+        <Tag color={vendorTagColor[vendor]}>
+          {vendor === 'ALIYUN'
+            ? t('settings.aliyun')
+            : vendor === 'TENCENT'
+              ? t('settings.tencent')
+              : vendor}
+        </Tag>
       ),
     },
     { title: 'AccessKey', dataIndex: 'accessKey', key: 'accessKey' },
-    { title: '备注', dataIndex: 'remark', key: 'remark' },
-    { title: '创建时间', dataIndex: 'gmtCreate', key: 'gmtCreate' },
+    { title: t('settings.remark'), dataIndex: 'remark', key: 'remark' },
+    { title: t('settings.createdAt'), dataIndex: 'gmtCreate', key: 'gmtCreate' },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'action',
       render: (_: unknown, record: CloudCredential) => (
         <Space size="small">
@@ -238,16 +236,16 @@ export const CloudCredentialTab = () => {
             icon={<EditOutlined />}
             onClick={() => openEditModal(record)}
           >
-            编辑
+            {t('common.edit')}
           </Button>
           <Popconfirm
-            title="确定要删除该云凭据吗？"
+            title={t('settings.deleteCredentialConfirm')}
             onConfirm={() => void handleDelete(record)}
-            okText="确定"
-            cancelText="取消"
+            okText={t('settings.confirmAction')}
+            cancelText={t('common.cancel')}
           >
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
+              {t('common.delete')}
             </Button>
           </Popconfirm>
         </Space>
@@ -262,22 +260,25 @@ export const CloudCredentialTab = () => {
           <Input
             allowClear
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
-            placeholder="搜索凭据名称"
+            placeholder={t('settings.searchCredentials')}
             style={{ width: 240 }}
             value={search}
             onChange={(event) => changeSearch(event.target.value)}
           />
           <Select<InstanceVendor>
             allowClear
-            placeholder="全部云厂商"
+            placeholder={t('settings.allCloudVendors')}
             style={{ width: 160 }}
             value={vendorFilter}
             onChange={changeVendorFilter}
-            options={VENDOR_OPTIONS}
+            options={[
+              { value: 'ALIYUN', label: t('settings.aliyun') },
+              { value: 'TENCENT', label: t('settings.tencent') },
+            ]}
           />
         </Flex>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} disabled={loading}>
-          添加云凭据
+          {t('settings.addCredential')}
         </Button>
       </Flex>
 
@@ -292,7 +293,7 @@ export const CloudCredentialTab = () => {
           total,
           showSizeChanger: true,
           pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
-          showTotal: (count) => `共 ${count} 条`,
+          showTotal: (count) => t('settings.totalRecords', { total: count }),
           onChange: (nextPage, nextPageSize) => {
             if (nextPageSize !== pageSize) {
               setPage(1);
@@ -306,7 +307,7 @@ export const CloudCredentialTab = () => {
       />
 
       <Modal
-        title={editingCredential ? '编辑云凭据' : '添加云凭据'}
+        title={t(editingCredential ? 'settings.editCredential' : 'settings.addCredential')}
         open={modalOpen}
         onCancel={closeModal}
         onOk={() => void handleSubmit()}
@@ -321,8 +322,13 @@ export const CloudCredentialTab = () => {
             items={[
               {
                 key: 'vendor',
-                label: '云厂商',
-                children: vendorLabel[editingCredential.vendor] ?? editingCredential.vendor,
+                label: t('settings.cloudVendor'),
+                children:
+                  editingCredential.vendor === 'ALIYUN'
+                    ? t('settings.aliyun')
+                    : editingCredential.vendor === 'TENCENT'
+                      ? t('settings.tencent')
+                      : editingCredential.vendor,
               },
               { key: 'accessKey', label: 'AccessKey', children: editingCredential.accessKey },
             ]}
@@ -330,27 +336,34 @@ export const CloudCredentialTab = () => {
         )}
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
-            label="名称"
+            label={t('common.name')}
             name="name"
-            rules={[{ required: true, message: '请输入凭据名称' }]}
+            rules={[{ required: true, message: t('settings.credentialNameRequired') }]}
           >
-            <Input placeholder="例如：阿里云测试账号" />
+            <Input placeholder={t('settings.credentialNameExample')} />
           </Form.Item>
 
           {!editingCredential && (
             <>
               <Form.Item
-                label="云厂商"
+                label={t('settings.cloudVendor')}
                 name="vendor"
-                rules={[{ required: true, message: '请选择云厂商' }]}
+                rules={[{ required: true, message: t('settings.selectCloudVendor') }]}
               >
-                <Select placeholder="请选择" virtual={false} options={VENDOR_OPTIONS} />
+                <Select
+                  placeholder={t('settings.selectCloudVendor')}
+                  virtual={false}
+                  options={[
+                    { value: 'ALIYUN', label: t('settings.aliyun') },
+                    { value: 'TENCENT', label: t('settings.tencent') },
+                  ]}
+                />
               </Form.Item>
 
               <Form.Item
                 label="AccessKey"
                 name="accessKey"
-                rules={[{ required: true, message: '请输入 AccessKey' }]}
+                rules={[{ required: true, message: t('settings.accessKeyRequired') }]}
               >
                 <Input autoComplete="off" placeholder="LTAI..." />
               </Form.Item>
@@ -360,14 +373,18 @@ export const CloudCredentialTab = () => {
           <Form.Item
             label="SecretKey"
             name="secretKey"
-            rules={editingCredential ? [] : [{ required: true, message: '请输入 SecretKey' }]}
-            extra={editingCredential ? '留空表示保持原 SecretKey 不变' : undefined}
+            rules={
+              editingCredential
+                ? []
+                : [{ required: true, message: t('settings.secretKeyRequired') }]
+            }
+            extra={editingCredential ? t('settings.keepSecretKey') : undefined}
           >
-            <Input.Password autoComplete="off" placeholder="请输入 SecretKey" />
+            <Input.Password autoComplete="off" placeholder={t('settings.enterSecretKey')} />
           </Form.Item>
 
-          <Form.Item label="备注" name="remark">
-            <Input.TextArea rows={2} placeholder="可选" />
+          <Form.Item label={t('settings.remark')} name="remark">
+            <Input.TextArea rows={2} placeholder={t('settings.optional')} />
           </Form.Item>
         </Form>
       </Modal>

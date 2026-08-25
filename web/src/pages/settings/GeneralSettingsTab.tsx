@@ -34,14 +34,9 @@ import { getGeneralSettings, saveGeneralSettings } from '../../api/settings';
 import type { GeneralSettings, GeneralSettingsUpdate } from '../../api/settings';
 import { useTheme } from '../../theme/useTheme';
 import type { ThemeMode } from '../../theme/themePreference';
+import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
-
-const THEME_OPTIONS = [
-  { value: 'light', label: '浅色' },
-  { value: 'dark', label: '深色' },
-  { value: 'system', label: '跟随系统' },
-];
 
 const toThemeMode = (value?: string): ThemeMode =>
   value === 'light' || value === 'dark' ? value : 'system';
@@ -62,6 +57,7 @@ const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
 });
 
 export const GeneralSettingsTab = () => {
+  const { t } = useLang();
   const { message } = App.useApp();
   const { setThemeMode, setCompact } = useTheme();
   const [settings, setSettings] = useState<GeneralSettings | null>(null);
@@ -88,7 +84,7 @@ export const GeneralSettingsTab = () => {
         });
       })
       .catch(() => {
-        if (!cancelled) message.error('通用设置加载失败，请稍后重试');
+        if (!cancelled) message.error(t('settings.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -97,8 +93,7 @@ export const GeneralSettingsTab = () => {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [message, notifyForm, securityForm, t]);
 
   const persistPreference = async (patch: Partial<GeneralSettings>) => {
     if (!settings) return;
@@ -107,9 +102,9 @@ export const GeneralSettingsTab = () => {
     setSavingPreference(true);
     try {
       await saveGeneralSettings(buildPayload(next));
-      message.success('设置已保存');
+      message.success(t('settings.saveSuccess'));
     } catch {
-      message.error('设置保存失败，请稍后重试');
+      message.error(t('settings.saveFailed'));
     } finally {
       setSavingPreference(false);
     }
@@ -122,7 +117,7 @@ export const GeneralSettingsTab = () => {
       setSettings({ ...settings, ...patch });
       return true;
     } catch {
-      message.error('设置保存失败，请稍后重试');
+      message.error(t('settings.saveFailed'));
       return false;
     }
   };
@@ -133,7 +128,7 @@ export const GeneralSettingsTab = () => {
     setSavingSecurity(true);
     try {
       if (await mergeAndSave({ sessionTimeout: values.sessionTimeout })) {
-        message.success('设置已保存');
+        message.success(t('settings.saveSuccess'));
       }
     } finally {
       securityInFlightRef.current = false;
@@ -151,7 +146,7 @@ export const GeneralSettingsTab = () => {
     setSavingNotification(true);
     try {
       if (await mergeAndSave(values)) {
-        message.success('设置已保存');
+        message.success(t('settings.saveSuccess'));
       }
     } finally {
       notifyInFlightRef.current = false;
@@ -165,7 +160,7 @@ export const GeneralSettingsTab = () => {
         title={
           <Space>
             <SkinOutlined />
-            界面偏好
+            {t('settings.appearance')}
           </Space>
         }
         loading={loading}
@@ -173,14 +168,18 @@ export const GeneralSettingsTab = () => {
         <Flex vertical gap={20}>
           <Flex justify="space-between" align="center" gap={16}>
             <div>
-              <div>主题模式</div>
+              <div>{t('settings.themeMode')}</div>
               <Text type="secondary" style={{ fontSize: 14 }}>
-                作用于前端展示，跟随系统时随操作系统外观变化
+                {t('settings.themeHelp')}
               </Text>
             </div>
             <Segmented
               value={toThemeMode(settings?.theme)}
-              options={THEME_OPTIONS}
+              options={[
+                { value: 'light', label: t('settings.lightTheme') },
+                { value: 'dark', label: t('settings.darkTheme') },
+                { value: 'system', label: t('settings.systemTheme') },
+              ]}
               disabled={savingPreference}
               onChange={(value) => {
                 const mode = value as ThemeMode;
@@ -191,9 +190,9 @@ export const GeneralSettingsTab = () => {
           </Flex>
           <Flex justify="space-between" align="center" gap={16}>
             <div>
-              <div>紧凑模式</div>
+              <div>{t('settings.compactMode')}</div>
               <Text type="secondary" style={{ fontSize: 14 }}>
-                减小组件间距，单屏展示更多内容
+                {t('settings.compactHelp')}
               </Text>
             </div>
             <Switch
@@ -212,37 +211,42 @@ export const GeneralSettingsTab = () => {
         title={
           <Space>
             <SafetyOutlined />
-            安全与会话
+            {t('settings.securitySession')}
           </Space>
         }
         loading={loading}
       >
         <Form form={securityForm} layout="vertical" onFinish={handleSecurityFinish}>
           <Form.Item
-            label="会话超时"
-            extra="应用于新创建的会话，已登录用户保持原到期时间"
+            label={t('settings.sessionTimeout')}
+            extra={t('settings.sessionTimeoutHelp')}
             style={{ marginBottom: 16 }}
           >
             <Space.Compact>
               <Form.Item
                 name="sessionTimeout"
                 noStyle
-                rules={[{ required: true, message: '请输入会话超时时长' }]}
+                rules={[{ required: true, message: t('settings.sessionTimeoutRequired') }]}
               >
                 <InputNumber min={5} max={1440} style={{ width: 120 }} />
               </Form.Item>
-              <Input aria-label="会话超时单位" readOnly value="分钟" style={{ width: 64 }} />
+              <Input
+                aria-label={t('settings.sessionTimeoutUnit')}
+                readOnly
+                value={t('settings.minutes')}
+                style={{ width: 64 }}
+              />
             </Space.Compact>
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 16 }}>
             <Button type="primary" htmlType="submit" loading={savingSecurity} disabled={loading}>
-              保存设置
+              {t('settings.saveSettings')}
             </Button>
           </Form.Item>
 
           <Text type="secondary" style={{ fontSize: 14 }}>
-            登录保护由服务端 STUDIO_AUTH_LOGIN_REQUIRED 配置决定，修改后重启服务生效。
+            {t('settings.loginProtectionHelp')}
           </Text>
         </Form>
       </Card>
@@ -251,32 +255,32 @@ export const GeneralSettingsTab = () => {
         title={
           <Space>
             <BellOutlined />
-            通知设置
+            {t('settings.notification')}
           </Space>
         }
         loading={loading}
       >
         <Form form={notifyForm} layout="vertical" onFinish={handleNotifyFinish}>
           <Form.Item
-            label="钉钉机器人 Webhook"
+            label={t('settings.dingtalkWebhook')}
             name="dingtalkWebhook"
-            extra="告警规则选择钉钉渠道时推送到该机器人"
+            extra={t('settings.dingtalkWebhookHelp')}
           >
             <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." />
           </Form.Item>
 
           <Form.Item
-            label="邮件收件人"
+            label={t('settings.emailRecipients')}
             name="emailRecipients"
-            extra="多个地址用英文逗号分隔；邮件发送通道后续接入"
+            extra={t('settings.emailRecipientsHelp')}
           >
             <Input.TextArea rows={2} placeholder="ops@example.com, oncall@example.com" />
           </Form.Item>
 
           <Form.Item
-            label="短信网关 Webhook"
+            label={t('settings.smsWebhook')}
             name="smsWebhook"
-            extra="占位配置，短信发送通道后续接入"
+            extra={t('settings.smsWebhookHelp')}
           >
             <Input placeholder="https://sms-gateway.example.com/notify" />
           </Form.Item>
@@ -288,7 +292,7 @@ export const GeneralSettingsTab = () => {
               loading={savingNotification}
               disabled={loading}
             >
-              保存设置
+              {t('settings.saveSettings')}
             </Button>
           </Form.Item>
         </Form>

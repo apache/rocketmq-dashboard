@@ -21,6 +21,8 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { getGeneralSettings, saveGeneralSettings } from '../../../api/settings';
 import { ThemeProvider } from '../../../theme/ThemeProvider';
+import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { GeneralSettingsTab } from '../GeneralSettingsTab';
 
 beforeAll(() => {
@@ -52,9 +54,11 @@ vi.mock('../../../api/settings', () => ({
 const renderTab = () =>
   render(
     <App>
-      <ThemeProvider>
-        <GeneralSettingsTab />
-      </ThemeProvider>
+      <LangProvider>
+        <ThemeProvider>
+          <GeneralSettingsTab />
+        </ThemeProvider>
+      </LangProvider>
     </App>,
   );
 
@@ -121,6 +125,14 @@ describe('GeneralSettingsTab', () => {
         }),
       ),
     );
+  });
+
+  it('renders section labels in English when English is selected', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderTab();
+
+    expect(await screen.findByText('Appearance preferences')).toBeInTheDocument();
+    expect(screen.getByText('Session timeout')).toBeInTheDocument();
   });
 
   it('saves immediately when the theme mode preference changes', async () => {

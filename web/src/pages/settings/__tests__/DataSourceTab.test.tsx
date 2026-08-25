@@ -22,6 +22,7 @@ import { App } from 'antd';
 import type { DataSource, DataSourcePage } from '../../../api/settings';
 import { createDataSource, listDataSourcesPage, testDataSource } from '../../../api/settings';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { DataSourceTab } from '../DataSourceTab';
 
 vi.mock('../../../api/settings', () => ({
@@ -88,6 +89,7 @@ beforeAll(() => {
 describe('DataSourceTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     vi.mocked(listDataSourcesPage).mockResolvedValue(sourcePage);
   });
 
@@ -126,6 +128,19 @@ describe('DataSourceTab', () => {
 
     expect(screen.getByText('未检测')).toBeInTheDocument();
     expect(screen.queryByText('离线')).not.toBeInTheDocument();
+  });
+
+  it('renders management controls in English when English is selected', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    render(
+      <LangProvider>
+        <App>
+          <DataSourceTab />
+        </App>
+      </LangProvider>,
+    );
+
+    expect(await screen.findByPlaceholderText('Search data source names')).toBeInTheDocument();
   });
 
   it('shows connection test loading only on the clicked row', async () => {

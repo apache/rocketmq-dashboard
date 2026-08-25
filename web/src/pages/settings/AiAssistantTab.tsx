@@ -45,22 +45,6 @@ import {
 } from '../../api/llm';
 import { fallbackModelOptions } from '../studio/llmModelOptions';
 
-const PROVIDER_OPTIONS = [
-  { value: 'tongyi', label: '通义千问（DashScope）' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic（Claude）' },
-  { value: 'azure', label: 'Azure OpenAI' },
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'ollama', label: 'Ollama（本地）' },
-  { value: 'bedrock', label: 'AWS Bedrock' },
-];
-
-const ENGINE_OPTIONS = [
-  { value: 'claude-code', label: 'Claude Code（默认）' },
-  { value: 'qoder', label: 'Qoder CLI' },
-  { value: 'http', label: 'HTTP（OpenAI 兼容）' },
-];
-
 const DEFAULT_BASE_URL: Record<string, string> = {
   tongyi: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   openai: 'https://api.openai.com/v1',
@@ -69,32 +53,50 @@ const DEFAULT_BASE_URL: Record<string, string> = {
   ollama: 'http://localhost:11434/v1',
 };
 
-const BASE_URL_PRESETS: Record<string, { value: string; label: string }[]> = {
+const providerOptions = (t: (key: string) => string) => [
+  { value: 'tongyi', label: t('settings.tongyi') },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic (Claude)' },
+  { value: 'azure', label: 'Azure OpenAI' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'ollama', label: t('settings.ollamaLocal') },
+  { value: 'bedrock', label: 'AWS Bedrock' },
+];
+
+const engineOptions = (t: (key: string) => string) => [
+  { value: 'claude-code', label: t('settings.claudeCodeDefault') },
+  { value: 'qoder', label: 'Qoder CLI' },
+  { value: 'http', label: t('settings.httpOpenAiCompatible') },
+];
+
+const baseUrlPresets = (
+  t: (key: string) => string,
+): Record<string, { value: string; label: string }[]> => ({
   tongyi: [
     {
       value: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      label: '百炼 DashScope 标准（compatible-mode）',
+      label: t('settings.dashscopeStandard'),
     },
     {
       value: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
-      label: 'Token Plan 网关（OpenAI 兼容）',
+      label: t('settings.tokenPlanOpenAi'),
     },
     {
       value: 'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic',
-      label: 'Token Plan 网关（Anthropic 兼容）',
+      label: t('settings.tokenPlanAnthropic'),
     },
   ],
-  openai: [{ value: 'https://api.openai.com/v1', label: 'OpenAI 官方' }],
+  openai: [{ value: 'https://api.openai.com/v1', label: t('settings.openaiOfficial') }],
   anthropic: [
-    { value: 'https://api.anthropic.com', label: 'Anthropic 官方' },
+    { value: 'https://api.anthropic.com', label: t('settings.anthropicOfficial') },
     {
       value: 'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic',
-      label: 'Token Plan 网关（Anthropic 兼容）',
+      label: t('settings.tokenPlanAnthropic'),
     },
   ],
-  deepseek: [{ value: 'https://api.deepseek.com/v1', label: 'DeepSeek 官方' }],
-  ollama: [{ value: 'http://localhost:11434/v1', label: 'Ollama 本地' }],
-};
+  deepseek: [{ value: 'https://api.deepseek.com/v1', label: t('settings.deepseekOfficial') }],
+  ollama: [{ value: 'http://localhost:11434/v1', label: t('settings.ollamaLocal') }],
+});
 
 interface TestState {
   success: boolean;
@@ -222,11 +224,11 @@ export const AiAssistantTab = () => {
 
   const applyTestResult = (result: LlmTestResult) => {
     if (result.status === 0) {
-      setTestResult({ success: true, msg: result.msg || '连接成功' });
+      setTestResult({ success: true, msg: result.msg || t('settings.connectionSucceeded') });
     } else {
       setTestResult({
         success: false,
-        msg: result.errMsg || '连接测试失败',
+        msg: result.errMsg || t('settings.connectionTestFailedShort'),
         hint: result.hint,
       });
     }
@@ -250,7 +252,7 @@ export const AiAssistantTab = () => {
       }
     } catch {
       if (testRequestIdRef.current === requestId) {
-        setTestResult({ success: false, msg: '连接测试请求失败，请稍后重试' });
+        setTestResult({ success: false, msg: t('settings.connectionTestRequestFailed') });
       }
     } finally {
       if (testRequestIdRef.current === requestId) {
@@ -266,7 +268,7 @@ export const AiAssistantTab = () => {
     try {
       const result = await saveLlmConfig(payload);
       if (result.status === 0) {
-        message.success('保存成功');
+        message.success(t('settings.saveSucceeded'));
         if (payload.apiKey) {
           setApiKeyConfigured(true);
           form.setFieldValue('apiKey', undefined);
@@ -279,10 +281,10 @@ export const AiAssistantTab = () => {
           message.warning(t('ai.modelsRefreshFailedAfterSave'));
         }
       } else {
-        message.error(result.errMsg || '保存失败');
+        message.error(result.errMsg || t('settings.saveFailedShort'));
       }
     } catch {
-      message.error('保存请求失败，请稍后重试');
+      message.error(t('settings.saveRequestFailed'));
     } finally {
       setSaving(false);
     }
@@ -302,40 +304,40 @@ export const AiAssistantTab = () => {
             title={
               <Space>
                 <RobotOutlined />
-                执行引擎与模型
+                {t('settings.aiEngineModel')}
               </Space>
             }
           >
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label="执行引擎"
+                  label={t('settings.aiEngine')}
                   name="engine"
-                  extra="Claude Code / Qoder 引擎在服务器上以 CLI 子进程方式运行，凭据经环境变量注入；HTTP 引擎直连 OpenAI 兼容接口"
+                  extra={t('settings.aiEngineHelp')}
                 >
-                  <Select options={ENGINE_OPTIONS} />
+                  <Select options={engineOptions(t)} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
-                  label="模型服务商"
+                  label={t('settings.modelProvider')}
                   name="provider"
-                  rules={[{ required: true, message: '请选择模型服务商' }]}
+                  rules={[{ required: true, message: t('settings.modelProviderRequired') }]}
                 >
-                  <Select options={PROVIDER_OPTIONS} onChange={handleProviderChange} />
+                  <Select options={providerOptions(t)} onChange={handleProviderChange} />
                 </Form.Item>
               </Col>
             </Row>
             <Form.Item
-              label="模型"
+              label={t('settings.model')}
               name="model"
-              rules={[{ required: true, message: '请选择或输入模型' }]}
-              extra="可从下拉选择，也可直接输入自定义模型 ID"
+              rules={[{ required: true, message: t('settings.modelRequired') }]}
+              extra={t('settings.modelHelp')}
               style={{ marginBottom: 0 }}
             >
               <AutoComplete
                 options={modelOptions}
-                placeholder="选择或输入模型"
+                placeholder={t('settings.selectOrEnterModel')}
                 filterOption={(input, option) =>
                   String(option?.value ?? '')
                     .toLowerCase()
@@ -351,7 +353,7 @@ export const AiAssistantTab = () => {
             title={
               <Space>
                 <KeyOutlined />
-                凭据与接入地址
+                {t('settings.credentialsEndpoint')}
               </Space>
             }
           >
@@ -359,19 +361,19 @@ export const AiAssistantTab = () => {
               label="API Key"
               name="apiKey"
               extra={
-                apiKeyConfigured
-                  ? '已配置（可能来自环境变量 RMQ_LLM_TOKEN）；留空将保留现有密钥'
-                  : '请输入 API Key'
+                apiKeyConfigured ? t('settings.apiKeyConfiguredHelp') : t('settings.enterApiKey')
               }
             >
               <Input.Password
-                placeholder={apiKeyConfigured ? '••••••••（已配置，留空保留）' : 'sk-...'}
+                placeholder={
+                  apiKeyConfigured ? t('settings.apiKeyConfiguredPlaceholder') : 'sk-...'
+                }
                 autoComplete="new-password"
               />
             </Form.Item>
             {apiKeyConfigured && (
               <div style={{ marginTop: -16, marginBottom: 16 }}>
-                <Tag color="green">密钥已配置</Tag>
+                <Tag color="green">{t('settings.apiKeyConfigured')}</Tag>
               </div>
             )}
 
@@ -379,10 +381,10 @@ export const AiAssistantTab = () => {
               label="API Base URL"
               name="apiBase"
               rules={[
-                { required: true, message: '请输入 API Base URL' },
+                { required: true, message: t('settings.apiBaseRequired') },
                 {
                   pattern: /^https?:\/\/.+/,
-                  message: '需为 http/https 地址',
+                  message: t('settings.apiBaseInvalid'),
                 },
               ]}
               style={{
@@ -391,7 +393,7 @@ export const AiAssistantTab = () => {
               }}
             >
               <AutoComplete
-                options={BASE_URL_PRESETS[selectedProvider ?? 'tongyi'] ?? []}
+                options={baseUrlPresets(t)[selectedProvider ?? 'tongyi'] ?? []}
                 placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
                 suffixIcon={<CaretDownOutlined style={{ color: '#9CA3AF' }} />}
                 filterOption={(input, option) =>
@@ -447,7 +449,7 @@ export const AiAssistantTab = () => {
             title={
               <Space>
                 <ControlOutlined />
-                生成参数
+                {t('settings.generationParameters')}
               </Space>
             }
           >
@@ -481,10 +483,10 @@ export const AiAssistantTab = () => {
               disabled={loading}
               onClick={() => void handleSave()}
             >
-              保存
+              {t('common.save')}
             </Button>
             <Button loading={testing} disabled={loading} onClick={() => void handleTest()}>
-              测试连接
+              {t('settings.testConnection')}
             </Button>
           </Space>
         </Flex>
