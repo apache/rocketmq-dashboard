@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.provider.apache;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -195,6 +197,41 @@ class RocketMQMetadataProviderTest {
                 org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper, times(1)).selectList(captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("instance_id", "cluster_id");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldUseDatabasePaginationAndStableOrdering() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        RmqGroup entity = new RmqGroup();
+        entity.setId(21L);
+        entity.setName("group-b");
+        entity.setInstanceId("instance-a");
+        entity.setClusterId("cluster-1");
+        entity.setConsumeType("CLUSTERING");
+        entity.setMessageModel("Pop");
+        entity.setMaxRetry(5);
+        Page<RmqGroup> databasePage = new Page<>(2, 1, 21);
+        databasePage.setRecords(List.of(entity));
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(databasePage);
+        RocketMQMetadataProvider provider = newProvider();
+
+        PageResult<ConsumerGroupVO> result = provider.listConsumerGroupsPage(
+                "instance-a", "cluster-1", "group", 2, 1);
+
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getName()).isEqualTo("group-b");
+        assertThat(result.getItems().get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Pop);
+        assertThat(result.getTotal()).isEqualTo(21);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(1);
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).selectPage(any(Page.class), captor.capture());
+        assertThat(captor.getValue().getSqlSegment())
+                .contains("instance_id", "cluster_id", "ORDER BY name ASC,id ASC");
+        verify(groupMapper, never()).selectList(any());
+        verify(runtimeAdminClientResolver, times(2)).execute(eq("instance-a"), any());
     }
 
     @Test

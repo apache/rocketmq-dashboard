@@ -18,7 +18,6 @@ package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
-import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -186,12 +185,13 @@ public class MetadataService {
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
                                                               int page, int pageSize) {
         validatePagination(page, pageSize);
-
-        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, clusterId, search);
-        int total = groups.size();
-        int from = (int) Math.min(Pagination.pageOffset(page, pageSize), total);
-        int to = Math.min(from + pageSize, total);
-        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+        instanceId = normalizeInstanceId(instanceId);
+        if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
+            return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
+                    normalizeFilter(search), page, pageSize);
+        }
+        return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(search),
+                page, pageSize);
     }
 
 
