@@ -117,7 +117,7 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
-    void findUserPageShouldApplyKeywordFiltersAndDatabasePagination() {
+    void findUserPageShouldNormalizeKeywordFiltersAndApplyDatabasePagination() {
         RmqAclUser entity = new RmqAclUser();
         entity.setId(11L);
         entity.setUsername("user-orders");
@@ -130,7 +130,7 @@ class MybatisPlusAclRepositoryTest {
                 .setTotal(51);
         when(userMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
 
-        PageResult<AclUserVO> result = repository.findUserPage("orders", 3, 20);
+        PageResult<AclUserVO> result = repository.findUserPage(" ORDERS ", 3, 20);
 
         ArgumentCaptor<IPage<RmqAclUser>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
         ArgumentCaptor<Wrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -147,6 +147,8 @@ class MybatisPlusAclRepositoryTest {
         });
         assertThat(queryCaptor.getValue().getSqlSegment())
                 .contains("username", "access_key", "ORDER BY gmt_create DESC,id DESC");
+        assertThat(((QueryWrapper<RmqAclUser>) queryCaptor.getValue()).getParamNameValuePairs())
+                .containsValue("%orders%");
         verify(userMapper, never()).selectList(any(QueryWrapper.class));
     }
 
