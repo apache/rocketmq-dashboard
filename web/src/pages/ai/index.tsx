@@ -131,7 +131,7 @@ const ENGINE_OPTIONS = [
   { value: 'http', label: 'HTTP' },
 ];
 
-export const normalizeAiMarkdown = (content: string): string =>
+const normalizeAiMarkdown = (content: string): string =>
   content
     .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
     .replace(/^([-+*])(?=\S)/gm, '$1 ')

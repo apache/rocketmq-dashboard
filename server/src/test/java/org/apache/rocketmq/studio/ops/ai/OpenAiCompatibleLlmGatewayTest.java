@@ -65,7 +65,7 @@ class OpenAiCompatibleLlmGatewayTest {
     }
 
     @Test
-    void httpChatAllowsSlowProvidersToStartStreaming() throws Exception {
+    void httpChatAllowsSlowProvidersToStartStreamingTest() throws Exception {
         ExecutorService executor = singleChatExecutor();
         List<RecordingSseEmitter> emitters = new CopyOnWriteArrayList<>();
         OpenAiCompatibleLlmGateway testedGateway = gateway(executor, emitters);
