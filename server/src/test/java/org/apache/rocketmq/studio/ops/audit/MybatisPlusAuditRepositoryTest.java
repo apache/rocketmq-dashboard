@@ -84,7 +84,7 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
-    void findFilterOptionsPreservesPersistedValuesAndCachesTheResult() {
+    void findFilterOptionsPreservesPersistedValuesAndCachesTheResultTest() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
                         "cluster_id", "prod-cn", "result", "SUCCESS"),
@@ -110,7 +110,7 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
-    void saveInvalidatesCachedFilterOptions() {
+    void saveInvalidatesCachedFilterOptionsTest() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
 
         repository.findFilterOptions();
