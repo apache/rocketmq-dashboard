@@ -186,4 +186,25 @@ class MessageServiceTest {
         assertThat(page.getTotal()).isEqualTo(200);
         assertThat(page.isResultMayBeTruncated()).isTrue();
     }
+
+    @Test
+    void pageQueryRecordsHistoryOnlyForTheFirstPage() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessages("instance-a", "TopicA", null, null, null, 1000L, 2000L))
+                .thenReturn(List.of(MessageRecordVO.builder().msgId("msg-1").build()));
+
+        service.queryMessagesPage("instance-a", "TopicA", null, null, null,
+                1000L, 2000L, 1, 50);
+        service.queryMessagesPage("instance-a", "TopicA", null, null, null,
+                1000L, 2000L, 2, 50);
+
+        verify(provider, org.mockito.Mockito.times(2))
+                .queryMessages("instance-a", "TopicA", null, null, null, 1000L, 2000L);
+        verify(history, org.mockito.Mockito.times(1)).recordMessageQuery(
+                "instance-a", "TOPIC", "TopicA", null, null, null, 1000L, 2000L, 1);
+    }
 }

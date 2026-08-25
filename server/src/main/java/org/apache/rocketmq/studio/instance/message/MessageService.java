@@ -42,12 +42,20 @@ public class MessageService {
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
+        return queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime, true);
+    }
+
+    private List<MessageRecordVO> queryMessages(
+            String instanceId, String topic, String msgId, String tag, String key,
+            Long startTime, Long endTime, boolean recordHistory) {
         validateTopicQueryWindow(topic, msgId, key, startTime, endTime);
         log.info("Querying messages: topic={}, msgId={}, tag={}, key={}", topic, msgId, tag, key);
         List<MessageRecordVO> result = providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime))
                 .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
-        recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.size());
+        if (recordHistory) {
+            recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.size());
+        }
         return result;
     }
 
@@ -56,7 +64,8 @@ public class MessageService {
         if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new BusinessException(400, "page must be positive and pageSize must be between 1 and 200");
         }
-        List<MessageRecordVO> result = queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime);
+        List<MessageRecordVO> result = queryMessages(
+                instanceId, topic, msgId, tag, key, startTime, endTime, page == 1);
         long offset = (long) (page - 1) * pageSize;
         int from = (int) Math.min(offset, result.size());
         int to = Math.min(from + pageSize, result.size());
