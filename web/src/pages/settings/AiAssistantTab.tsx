@@ -222,6 +222,32 @@ export const AiAssistantTab = () => {
     };
   };
 
+  const handleClearApiKey = async () => {
+    const payload = await buildPayload();
+    if (!payload) return;
+    const confirmed = window.confirm(t('settings.clearApiKeyConfirm'));
+    if (!confirmed) return;
+    setSaving(true);
+    try {
+      const result = await saveLlmConfig({
+        ...payload,
+        apiKey: undefined,
+        clearApiKey: true,
+      });
+      if (result.status === 0) {
+        message.success(t('settings.clearApiKeySucceeded'));
+        setApiKeyConfigured(false);
+        form.setFieldValue('apiKey', undefined);
+      } else {
+        message.error(result.errMsg || t('settings.clearApiKeyFailed'));
+      }
+    } catch {
+      message.error(t('settings.clearApiKeyFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const applyTestResult = (result: LlmTestResult) => {
     if (result.status === 0) {
       setTestResult({ success: true, msg: result.msg || t('settings.connectionSucceeded') });
@@ -374,6 +400,15 @@ export const AiAssistantTab = () => {
             {apiKeyConfigured && (
               <div style={{ marginTop: -16, marginBottom: 16 }}>
                 <Tag color="green">{t('settings.apiKeyConfigured')}</Tag>
+                <Button
+                  danger
+                  size="small"
+                  style={{ marginLeft: 8 }}
+                  loading={saving}
+                  onClick={() => void handleClearApiKey()}
+                >
+                  {t('settings.clearApiKey')}
+                </Button>
               </div>
             )}
 

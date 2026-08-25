@@ -276,10 +276,15 @@ public class LlmConfigService {
 
     private LlmConfigVO normalize(LlmConfigVO config) {
         String provider = normalizeProvider(config == null ? null : config.getProvider());
+        boolean clearApiKey = config != null && config.isClearApiKey();
+        String apiKey = clearApiKey
+                ? ""
+                : defaultString(config == null ? null : config.getApiKey(), "");
         return LlmConfigVO.builder()
                 .provider(provider)
                 .engine(normalizeEngine(config == null ? null : config.getEngine()))
-                .apiKey(defaultString(config == null ? null : config.getApiKey(), ""))
+                .apiKey(apiKey)
+                .clearApiKey(clearApiKey)
                 .apiBase(normalizeApiBase(defaultString(config == null ? null : config.getApiBase(),
                         defaultApiBase(provider))))
                 .model(defaultString(config == null ? null : config.getModel(), defaultModel(provider)))
@@ -298,6 +303,10 @@ public class LlmConfigService {
 
     private LlmConfigVO normalizeWithStoredApiKey(LlmConfigVO config) {
         LlmConfigVO normalized = normalize(config);
+        if (normalized.isClearApiKey()) {
+            normalized.setApiKey("");
+            return normalized;
+        }
         if (!requiresApiKey(normalized.getProvider())) {
             normalized.setApiKey("");
             return normalized;

@@ -814,6 +814,19 @@ const translations: Record<string, Record<Lang, string>> = {
     en: '•••••••• (configured; leave empty to keep)',
   },
   'settings.apiKeyConfigured': { zh: '密钥已配置', en: 'API key configured' },
+  'settings.clearApiKey': { zh: '清除密钥', en: 'Clear key' },
+  'settings.clearApiKeyConfirm': {
+    zh: '确定清除已保存的 LLM API Key 吗？通过 RMQ_LLM_TOKEN 注入的密钥不会被删除。',
+    en: 'Clear the saved LLM API key? A key injected through RMQ_LLM_TOKEN will not be removed.',
+  },
+  'settings.clearApiKeySucceeded': {
+    zh: 'LLM API Key 已清除',
+    en: 'LLM API key cleared',
+  },
+  'settings.clearApiKeyFailed': {
+    zh: '清除 LLM API Key 失败',
+    en: 'Failed to clear the LLM API key',
+  },
   'settings.apiBaseRequired': { zh: '请输入 API Base URL', en: 'Enter an API base URL.' },
   'settings.apiBaseInvalid': { zh: '需为 http/https 地址', en: 'Use an http or https URL.' },
   'settings.generationParameters': { zh: '生成参数', en: 'Generation parameters' },

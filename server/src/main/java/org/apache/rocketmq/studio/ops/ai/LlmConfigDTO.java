@@ -26,6 +26,7 @@ public class LlmConfigDTO {
     private String engine;
     @ToString.Exclude
     private String apiKey;
+    private boolean clearApiKey;
     private String apiBase;
     private String model;
     private int maxTokens;
@@ -40,6 +41,7 @@ public class LlmConfigDTO {
                 .provider(provider)
                 .engine(engine)
                 .apiKey(apiKey)
+                .clearApiKey(clearApiKey)
                 .apiBase(apiBase)
                 .model(model)
                 .maxTokens(maxTokens)
