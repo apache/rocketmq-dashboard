@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,6 +37,14 @@ const renderWithProviders = (ui: React.ReactElement) =>
       <LangProvider>{ui}</LangProvider>
     </App>,
   );
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
 
 describe('Audit page', () => {
   let createObjectURL: ReturnType<typeof vi.fn>;
@@ -112,6 +120,11 @@ describe('Audit page', () => {
 
     expect(await screen.findByText('topic-a')).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'topic-a' }),
+      ),
+    );
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
     await waitFor(() =>
@@ -201,6 +214,38 @@ describe('Audit page', () => {
 
     await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(2));
     expect(container.querySelector('.ant-spin-spinning')).not.toBeNull();
+  });
+
+  it('ignores stale filter-option responses after cleanup refreshes', async () => {
+    const user = userEvent.setup();
+    const staleOptions =
+      deferred<Awaited<ReturnType<typeof opsService.getAuditFilterOptions>>>();
+    vi.mocked(opsService.getAuditFilterOptions)
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockImplementationOnce(() => staleOptions.promise);
+    vi.mocked(opsService.cleanupAuditLogs).mockResolvedValue(3);
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /清理日志/ }));
+    await user.click(await screen.findByRole('button', { name: /确认清理/ }));
+
+    await waitFor(() =>
+      expect(opsService.getAuditFilterOptions).toHaveBeenNthCalledWith(2),
+    );
+
+    await act(async () => {
+      staleOptions.resolve({
+        operationTypes: ['STALE_OPERATION'],
+        resourceTypes: [],
+        clusterIds: [],
+        results: [],
+      });
+    });
+
+    await user.click(screen.getByRole('combobox', { name: '操作类型' }));
+    expect(await screen.findByText('STALE OPERATION')).toBeInTheDocument();
   });
 
   it('still loads audit records when filter options cannot be loaded', async () => {
