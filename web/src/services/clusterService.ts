@@ -142,7 +142,9 @@ export async function getNameServerConfigDiff(
 }
 
 export async function listK8sCerts(): Promise<K8sCertInfo[]> {
-  if (isMockMode()) return mockCertStore.map((cert) => ({ ...cert, san: [...cert.san] }));
+  if (isMockMode()) {
+    return mockCertStore.map((cert) => ({ ...cert, san: cert.san ? [...cert.san] : cert.san }));
+  }
   return clusterApi.listK8sCerts();
 }
 
@@ -164,7 +166,7 @@ export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
       san: [...(data.san ?? [])],
     };
     mockCertStore.push(cert);
-    return { ...cert, san: [...cert.san] };
+    return { ...cert, san: cert.san ? [...cert.san] : cert.san };
   }
   return clusterApi.createK8sCert(data);
 }
@@ -174,7 +176,7 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
     const existing = mockCertStore.find((cert) => cert.id === data.id);
     if (!existing) throw new Error(`Certificate not found: ${data.id}`);
     Object.assign(existing, data, { san: data.san ? [...data.san] : existing.san });
-    return { ...existing, san: [...existing.san] };
+    return { ...existing, san: existing.san ? [...existing.san] : existing.san };
   }
   return clusterApi.updateK8sCert(data);
 }
@@ -192,7 +194,7 @@ export async function renewK8sCert(id: number): Promise<K8sCertInfo> {
       status: 'valid',
       daysRemaining: Math.round((notAfter.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
     });
-    return { ...existing, san: [...existing.san] };
+    return { ...existing, san: existing.san ? [...existing.san] : existing.san };
   }
   return clusterApi.renewK8sCert(id);
 }

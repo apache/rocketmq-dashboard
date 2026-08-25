@@ -43,6 +43,18 @@ const certs: K8sCertInfo[] = [
     san: ['broker.prod.example.com'],
   },
   {
+    id: 3,
+    k8sId: 'metadata-only-tls',
+    cluster: 'legacy-cluster',
+    type: null,
+    issuer: null,
+    notBefore: null,
+    notAfter: null,
+    status: null,
+    daysRemaining: 0,
+    san: null,
+  },
+  {
     id: 2,
     k8sId: 'rocketmq-staging-tls',
     cluster: 'staging-cluster',
@@ -95,6 +107,18 @@ describe('K8sCertsPage', () => {
     expect(screen.queryByText('broker.prod.example.com')).not.toBeInTheDocument();
     expect(screen.queryByText('命名空间')).not.toBeInTheDocument();
     expect(screen.queryByText('SAN')).not.toBeInTheDocument();
+  });
+
+  it('renders and sorts incomplete certificate metadata safely', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('metadata-only-tls');
+    await user.click(screen.getByRole('columnheader', { name: /签发者/ }));
+    await user.click(screen.getByRole('columnheader', { name: /到期时间/ }));
+
+    expect(screen.getByText('metadata-only-tls')).toBeInTheDocument();
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
   });
 
   it('explains that certificate records are Studio-local metadata', async () => {
