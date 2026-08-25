@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Modal, message } from 'antd';
+import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Modal, message, Alert } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   House,
@@ -81,7 +81,9 @@ const MainLayout = () => {
   const [capabilityState, setCapabilityState] = useState<{
     instanceId: string;
     capabilities: Set<InstanceCapability> | null;
+    status: 'success' | 'error';
   } | null>(null);
+  const [capabilityReloadVersion, setCapabilityReloadVersion] = useState(0);
 
   // Pages fetch on mount, so reload to re-request everything from the new data source.
   const handleDataModeToggle = () => {
@@ -145,23 +147,39 @@ const MainLayout = () => {
           setCapabilityState({
             instanceId: selectedInstanceId,
             capabilities: new Set(result.capabilities),
+            status: 'success',
           });
         }
       })
       .catch(() => {
-        // An unknown capability set is derived as fail-closed below.
+        if (active) {
+          setCapabilityState({
+            instanceId: selectedInstanceId,
+            capabilities: null,
+            status: 'error',
+          });
+        }
       });
     return () => {
       active = false;
     };
-  }, [selectedInstanceId]);
+  }, [selectedInstanceId, capabilityReloadVersion]);
 
+  const currentCapabilityState =
+    capabilityState?.instanceId === selectedInstanceId ? capabilityState : null;
   const instanceCapabilities =
     selectedInstanceId === null
       ? undefined
-      : capabilityState?.instanceId === selectedInstanceId
-        ? capabilityState.capabilities
-        : null;
+      : currentCapabilityState?.status === 'success'
+        ? currentCapabilityState.capabilities
+        : undefined;
+  const capabilityError = Boolean(selectedInstanceId && currentCapabilityState?.status === 'error');
+  const retryCapabilities = () => {
+    setCapabilityState((current) =>
+      current?.instanceId === selectedInstanceId && current.status === 'error' ? null : current,
+    );
+    setCapabilityReloadVersion((current) => current + 1);
+  };
 
   const selectedMenuKey = instanceScopedMatch
     ? `/instance/${instanceScopedMatch[1]}`
@@ -590,6 +608,31 @@ const MainLayout = () => {
               overflow: isAiRoute ? 'hidden' : 'auto',
             }}
           >
+            {capabilityError && (
+              <Alert
+                showIcon
+                type="warning"
+                message={t('layout.capabilityLoadFailed')}
+                action={
+                  <button
+                    type="button"
+                    onClick={retryCapabilities}
+                    style={{
+                      border: 0,
+                      padding: 0,
+                      background: 'transparent',
+                      color: '#1677ff',
+                      cursor: 'pointer',
+                      font: 'inherit',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {t('common.retry')}
+                  </button>
+                }
+                style={{ margin: 16, marginBottom: 0 }}
+              />
+            )}
             <Outlet />
           </Content>
         </Layout>

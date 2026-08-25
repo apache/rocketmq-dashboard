@@ -48,7 +48,6 @@ export function useInstanceFilter() {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [instancesLoading, setInstancesLoading] = useState(true);
   const [instancesError, setInstancesError] = useState(false);
-  const [reloadVersion, setReloadVersion] = useState(0);
 
   // Keep the latest selected instance id in a ref so the instance *list* is only
   // fetched when needed (section / navigation changes) and not re-fetched every
@@ -85,7 +84,7 @@ export function useInstanceFilter() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, reloadVersion, section]);
+  }, [navigate, section]);
 
   const selectedInstanceId =
     routeInstanceId !== undefined &&
@@ -98,11 +97,6 @@ export function useInstanceFilter() {
     navigate(`/instance/${encodeURIComponent(name)}/${section}`);
   };
 
-  const retryInstances = () => {
-    setInstancesLoading(true);
-    setReloadVersion((current) => current + 1);
-  };
-
   const instanceOptions = instances.map((instance) => ({
     value: instance.name,
     label: instance.name,
@@ -111,8 +105,6 @@ export function useInstanceFilter() {
   return {
     instances,
     instancesLoading,
-    instancesError,
-    retryInstances,
     selectedInstanceId,
     selectedInstance,
     selectInstance,

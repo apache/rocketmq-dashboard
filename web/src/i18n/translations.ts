@@ -85,6 +85,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'layout.switchToLightTheme': { zh: '切换到浅色主题', en: 'Switch to light theme' },
   'layout.switchToDarkTheme': { zh: '切换到深色主题', en: 'Switch to dark theme' },
   'layout.openUserMenu': { zh: '打开用户菜单', en: 'Open user menu' },
+  'layout.capabilityLoadFailed': {
+    zh: '实例能力查询失败，已暂时显示全部功能导航。',
+    en: 'Failed to load instance capabilities. All feature navigation is shown for now.',
+  },
 
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },

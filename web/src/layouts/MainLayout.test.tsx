@@ -82,6 +82,8 @@ vi.mock('antd', async () => {
         ),
       ),
     Empty: () => null,
+    Alert: ({ message, action }: { message?: React.ReactNode; action?: React.ReactNode }) =>
+      React.createElement('div', { role: 'alert' }, message, action),
     Input: () => null,
     Modal: ({ open, children }: { open?: boolean; children?: React.ReactNode }) =>
       open ? React.createElement('div', null, children) : null,
@@ -203,7 +205,7 @@ describe('MainLayout authentication navigation', () => {
     expect(screen.queryByText('消息查询')).not.toBeInTheDocument();
   });
 
-  it('hides capability-gated navigation when capability discovery fails', async () => {
+  it('keeps instance navigation visible and offers retry when capability discovery fails', async () => {
     instanceServiceMocks.getInstanceCapabilities.mockRejectedValue(new Error('unavailable'));
 
     render(
@@ -223,8 +225,36 @@ describe('MainLayout authentication navigation', () => {
     await waitFor(() =>
       expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith('apache-1'),
     );
-    expect(screen.queryByText('Topic 管理')).not.toBeInTheDocument();
-    expect(screen.queryByText('ACL 管理')).not.toBeInTheDocument();
-    expect(screen.queryByText('死信队列')).not.toBeInTheDocument();
+    expect(screen.getByText('Topic 管理')).toBeInTheDocument();
+    expect(screen.getByText('ACL 管理')).toBeInTheDocument();
+    expect(screen.getByText('死信队列')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('实例能力查询失败');
+
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it('keeps instance navigation visible while capability discovery is loading', () => {
+    instanceServiceMocks.getInstanceCapabilities.mockReturnValue(new Promise(() => {}));
+
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/instance/apache-1/topic']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route path="instance/:instanceId/topic" element={<div>apache topic</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    expect(screen.getByText('Topic 管理')).toBeInTheDocument();
+    expect(screen.getByText('ACL 管理')).toBeInTheDocument();
+    expect(screen.getByText('死信队列')).toBeInTheDocument();
   });
 });
