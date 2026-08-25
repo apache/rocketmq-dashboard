@@ -60,8 +60,8 @@ public class DLQService {
         return dlqProvider.resendMessages(instanceId, groupName, startTime, endTime, targetTopic);
     }
 
-    public List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
-                                             Integer maxCount) {
+    public DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                            Integer maxCount) {
         requireApacheInstance(instanceId);
         validateResendRequest(groupName, startTime, endTime);
         log.info("Exporting DLQ messages: group={}, maxCount={}", groupName, maxCount);

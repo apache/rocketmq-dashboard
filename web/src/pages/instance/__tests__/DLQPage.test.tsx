@@ -241,11 +241,12 @@ describe('DLQ page', () => {
   });
 
   it('exports the dead-letter messages of a group as JSON', async () => {
-    vi.mocked(messageService.exportDLQMessages).mockResolvedValue(
-      new Blob(['[{"msgId":"m1","topic":"%DLQ%cg-order","queueId":0,"offset":5}]'], {
+    vi.mocked(messageService.exportDLQMessages).mockResolvedValue({
+      blob: new Blob(['[{"msgId":"m1","topic":"%DLQ%cg-order","queueId":0,"offset":5}]'], {
         type: 'application/json',
       }),
-    );
+      meta: { truncated: false, failedQueueCount: 0, limit: 5000 },
+    });
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
 
@@ -265,6 +266,24 @@ describe('DLQ page', () => {
     await expect(blob.text()).resolves.toContain('"msgId":"m1"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
+  });
+
+  it('warns when the export scan is incomplete', async () => {
+    vi.mocked(messageService.exportDLQMessages).mockResolvedValue({
+      blob: new Blob(['[]'], { type: 'application/json' }),
+      meta: { truncated: true, failedQueueCount: 2, limit: 100 },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('导出可能不完整：2 个队列无法扫描，导出上限 100 条'),
+      ).toBeInTheDocument(),
+    );
   });
 
   it('exports summaries for the selected groups in one CSV file', async () => {

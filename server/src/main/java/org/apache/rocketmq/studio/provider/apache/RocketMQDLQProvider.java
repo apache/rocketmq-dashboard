@@ -34,6 +34,7 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
@@ -227,14 +228,19 @@ public class RocketMQDLQProvider implements DLQProvider {
     }
 
     @Override
-    public List<DLQMessageVO> exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
-                                             Integer maxCount) {
+    public DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                            Integer maxCount) {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
         int cap = maxCount == null || maxCount <= 0 ? RESEND_HARD_CAP : Math.min(maxCount, RESEND_HARD_CAP);
         DeadLetterScanResult scanResult = collectDeadLetters(instanceId, dlqTopic, begin, end, cap);
-        return scanResult.messages().stream().map(this::toExportVO).toList();
+        return DLQExportResultVO.builder()
+                .messages(scanResult.messages().stream().map(this::toExportVO).toList())
+                .truncated(scanResult.truncated())
+                .failedQueueCount(scanResult.failedQueueCount())
+                .limit(cap)
+                .build();
     }
 
     private DLQMessageVO toExportVO(MessageExt message) {

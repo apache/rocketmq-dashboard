@@ -266,14 +266,20 @@ const DLQPage = () => {
 
   const handleExport = async (group: DLQGroup) => {
     try {
-      const blob = await exportDLQMessages({
+      const { blob, meta } = await exportDLQMessages({
         instanceId: selectedInstanceId,
         groupName: group.groupName,
         startTime: exportRange[0].valueOf(),
         endTime: exportRange[1].valueOf(),
       });
       downloadBlob(blob, `${group.groupName}-dlq-messages.json`);
-      message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
+      if (meta.truncated || meta.failedQueueCount > 0) {
+        message.warning(
+          `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
+        );
+      } else {
+        message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
+      }
     } catch (error) {
       message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
     }

@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { listDLQGroups, resendDLQ } from './message';
+import { exportDLQMessages, listDLQGroups, resendDLQ } from './message';
 import type { DLQGroup } from './message';
 
 const mock = new MockAdapter(client);
@@ -88,5 +88,38 @@ describe('DLQ API', () => {
     });
 
     await expect(resendDLQ(payload)).resolves.toEqual(result);
+  });
+
+  it('returns the export blob with completeness metadata from the response headers', async () => {
+    const payload = new Blob(['[]'], { type: 'application/json' });
+    mock.onGet('/dlq/export').reply(200, payload, {
+      'content-type': 'application/json',
+      'content-disposition': 'attachment; filename="dlq-order-consumer.json"',
+      'x-dlq-export-truncated': 'true',
+      'x-dlq-export-failedqueues': '1',
+      'x-dlq-export-limit': '5000',
+    });
+
+    const { blob, meta } = await exportDLQMessages({
+      instanceId: 'instance-1',
+      groupName: group.groupName,
+    });
+
+    await expect(blob.text()).resolves.toBe('[]');
+    expect(meta).toEqual({ truncated: true, failedQueueCount: 1, limit: 5000 });
+  });
+
+  it('defaults the export metadata when the backend omits the headers', async () => {
+    const payload = new Blob(['[]'], { type: 'application/json' });
+    mock.onGet('/dlq/export').reply(200, payload, {
+      'content-type': 'application/json',
+    });
+
+    const { meta } = await exportDLQMessages({
+      instanceId: 'instance-1',
+      groupName: group.groupName,
+    });
+
+    expect(meta).toEqual({ truncated: false, failedQueueCount: 0, limit: 0 });
   });
 });

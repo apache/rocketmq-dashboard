@@ -16,17 +16,26 @@
  */
 package org.apache.rocketmq.studio.instance.dlq;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
-import org.apache.rocketmq.studio.common.domain.PageResult;
 
-public interface DLQProvider {
-    List<DLQGroupVO> listDLQGroups(String instanceId);
+/**
+ * A DLQ export: the exported messages plus scan-completeness metadata so callers can
+ * tell whether the export is a full snapshot or a bounded/partial one. The message
+ * list itself stays a plain array in the JSON file so existing consumers keep working.
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DLQExportResultVO {
 
-    PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize);
-
-    DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
-                                     String targetTopic);
-    DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
-                                     Integer maxCount);
+    private List<DLQMessageVO> messages;
+    private boolean truncated;
+    private int failedQueueCount;
+    private int limit;
 }
