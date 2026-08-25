@@ -396,7 +396,7 @@ public class AclService {
 
     private static PageResult<AclRuleVO> paginateRules(List<AclRuleVO> rules, int page, int pageSize) {
         int total = rules.size();
-        int fromIndex = Math.min((page - 1) * pageSize, total);
+        int fromIndex = (int) Math.min(Pagination.pageOffset(page, pageSize), total);
         int toIndex = Math.min(fromIndex + pageSize, total);
         return PageResult.of(rules.subList(fromIndex, toIndex), total, page, pageSize);
     }
