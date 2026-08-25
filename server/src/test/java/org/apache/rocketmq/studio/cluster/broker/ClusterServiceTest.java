@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
@@ -157,6 +158,63 @@ class ClusterServiceTest {
                 .hasMessageContaining("requires matching writeQueueNums and readQueueNums");
 
         verifyNoInteractions(clusterRepository, clusterProvider);
+    }
+
+    @Test
+    void previewConfigShouldReturnEffectiveBrokerUpdateWithoutMutatingCluster() {
+        sampleCluster.setBrokers(List.of(
+                BrokerVO.builder().name("broker-0").addr("10.0.0.1:10911").build(),
+                BrokerVO.builder().name("broker-1").addr("10.0.0.2:10911").build()));
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        ClusterConfigVO storedConfig = sampleCluster.getConfig();
+
+        ClusterConfigPreviewVO preview = clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("SYNC_FLUSH")
+                .autoCreateTopicEnable(false)
+                .writeQueueNums(16)
+                .build());
+
+        assertThat(preview.isChanged()).isTrue();
+        assertThat(preview.getTargetBrokers())
+                .extracting(ClusterConfigPreviewVO.BrokerTargetVO::getAddress)
+                .containsExactly("10.0.0.1:10911", "10.0.0.2:10911");
+        assertThat(preview.getBrokerProperties())
+                .containsEntry("flushDiskType", "SYNC_FLUSH")
+                .containsEntry("autoCreateTopicEnable", "false")
+                .containsEntry("defaultTopicQueueNums", "16");
+        assertThat(preview.getChanges())
+                .extracting(ClusterConfigPreviewVO.ConfigChangeVO::getField)
+                .containsExactly("flushDiskType", "autoCreateTopicEnable", "writeQueueNums", "readQueueNums");
+        assertThat(preview.getProposedConfig().getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
+        assertThat(preview.getProposedConfig().getWriteQueueNums()).isEqualTo(16);
+        assertThat(preview.getProposedConfig().getReadQueueNums()).isEqualTo(16);
+        assertThat(sampleCluster.getConfig()).isSameAs(storedConfig);
+        assertThat(storedConfig.getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
+        assertThat(storedConfig.getWriteQueueNums()).isEqualTo(8);
+        assertThat(storedConfig.getReadQueueNums()).isEqualTo(8);
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
+        verifyNoInteractions(brokerConfigService, auditService);
+    }
+
+    @Test
+    void previewConfigShouldUseSelectedInstanceWithoutCallingBrokerUpdate() {
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-1")).thenReturn(sampleCluster);
+
+        ClusterConfigPreviewVO preview = clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .instanceId("instance-1")
+                .brokerPermission(4)
+                .build());
+
+        assertThat(preview.getChanges())
+                .extracting(ClusterConfigPreviewVO.ConfigChangeVO::getField)
+                .containsExactly("brokerPermission");
+        verify(clusterProvider).refreshClusterDetail("cluster-1", "instance-1");
+        verify(brokerConfigService, never()).updateBrokerConfig(any(), any(), any());
+        verify(brokerConfigService, never()).updateBrokerConfig(any(), any(), any(), any());
+        verifyNoInteractions(auditService);
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
     }
 
     @Test

@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.config.BrokerConfigUpdateFailureVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
@@ -41,7 +42,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 
 @Slf4j
@@ -155,6 +159,26 @@ public class ClusterService {
     public void requireProxy(String clusterId, String addr) {
         ClusterVO cluster = resolveCluster(clusterId);
         requireProxy(cluster, addr);
+    }
+
+    public ClusterConfigPreviewVO previewClusterConfig(UpdateConfigDTO command) {
+        log.info("Previewing cluster config update for: {}", command.getId());
+        requireMatchingDefaultQueueNums(command);
+        ClusterVO cluster = resolveCluster(command.getId(), command.getInstanceId());
+        ClusterConfigVO currentConfig = copyConfig(cluster.getConfig());
+        ClusterConfigVO proposedConfig = copyConfig(currentConfig);
+        applyConfig(command, proposedConfig);
+        List<ClusterConfigPreviewVO.ConfigChangeVO> changes =
+                findConfigChanges(currentConfig, proposedConfig);
+        return ClusterConfigPreviewVO.builder()
+                .cluster(cluster)
+                .currentConfig(currentConfig)
+                .proposedConfig(proposedConfig)
+                .targetBrokers(targetBrokers(cluster))
+                .brokerProperties(buildBrokerPropertyMap(command))
+                .changes(changes)
+                .changed(!changes.isEmpty())
+                .build();
     }
 
     /**
@@ -342,31 +366,94 @@ public class ClusterService {
 
     private Properties buildBrokerProperties(UpdateConfigDTO command) {
         Properties props = new Properties();
+        buildBrokerPropertyMap(command).forEach(props::setProperty);
+        return props;
+    }
+
+    private Map<String, String> buildBrokerPropertyMap(UpdateConfigDTO command) {
+        Map<String, String> props = new LinkedHashMap<>();
         if (command.getFlushDiskType() != null) {
-            props.setProperty("flushDiskType", command.getFlushDiskType());
+            props.put("flushDiskType", command.getFlushDiskType());
         }
         if (command.getAutoCreateTopicEnable() != null) {
-            props.setProperty("autoCreateTopicEnable", command.getAutoCreateTopicEnable().toString());
+            props.put("autoCreateTopicEnable", command.getAutoCreateTopicEnable().toString());
         }
         if (command.getAutoCreateSubscriptionGroup() != null) {
-            props.setProperty("autoCreateSubscriptionGroup", command.getAutoCreateSubscriptionGroup().toString());
+            props.put("autoCreateSubscriptionGroup", command.getAutoCreateSubscriptionGroup().toString());
         }
         if (command.getMaxMessageSize() != null) {
-            props.setProperty("maxMessageSize", command.getMaxMessageSize().toString());
+            props.put("maxMessageSize", command.getMaxMessageSize().toString());
         }
         if (command.getFileReservedTime() != null) {
-            props.setProperty("fileReservedTime", command.getFileReservedTime().toString());
+            props.put("fileReservedTime", command.getFileReservedTime().toString());
         }
         if (command.getWriteQueueNums() != null) {
-            props.setProperty("defaultTopicQueueNums", command.getWriteQueueNums().toString());
+            props.put("defaultTopicQueueNums", command.getWriteQueueNums().toString());
         }
         if (command.getReadQueueNums() != null) {
-            props.setProperty("defaultTopicQueueNums", command.getReadQueueNums().toString());
+            props.put("defaultTopicQueueNums", command.getReadQueueNums().toString());
         }
         if (command.getBrokerPermission() != null) {
-            props.setProperty("brokerPermission", command.getBrokerPermission().toString());
+            props.put("brokerPermission", command.getBrokerPermission().toString());
         }
         return props;
+    }
+
+    private List<ClusterConfigPreviewVO.BrokerTargetVO> targetBrokers(ClusterVO cluster) {
+        if (cluster.getBrokers() == null) {
+            return List.of();
+        }
+        return cluster.getBrokers().stream()
+                .filter(broker -> broker.getAddr() != null && !broker.getAddr().isBlank())
+                .map(broker -> ClusterConfigPreviewVO.BrokerTargetVO.builder()
+                        .name(broker.getName())
+                        .address(broker.getAddr())
+                        .build())
+                .toList();
+    }
+
+    private List<ClusterConfigPreviewVO.ConfigChangeVO> findConfigChanges(
+            ClusterConfigVO current,
+            ClusterConfigVO proposed) {
+        List<ClusterConfigPreviewVO.ConfigChangeVO> changes = new ArrayList<>();
+        addConfigChange(changes, "flushDiskType", "flushDiskType",
+                current.getFlushDiskType(), proposed.getFlushDiskType());
+        addConfigChange(changes, "autoCreateTopicEnable", "autoCreateTopicEnable",
+                current.isAutoCreateTopicEnable(), proposed.isAutoCreateTopicEnable());
+        addConfigChange(changes, "autoCreateSubscriptionGroup", "autoCreateSubscriptionGroup",
+                current.isAutoCreateSubscriptionGroup(), proposed.isAutoCreateSubscriptionGroup());
+        addConfigChange(changes, "maxMessageSize", "maxMessageSize",
+                current.getMaxMessageSize(), proposed.getMaxMessageSize());
+        addConfigChange(changes, "fileReservedTime", "fileReservedTime",
+                current.getFileReservedTime(), proposed.getFileReservedTime());
+        addConfigChange(changes, "writeQueueNums", "defaultTopicQueueNums",
+                current.getWriteQueueNums(), proposed.getWriteQueueNums());
+        addConfigChange(changes, "readQueueNums", "defaultTopicQueueNums",
+                current.getReadQueueNums(), proposed.getReadQueueNums());
+        addConfigChange(changes, "brokerPermission", "brokerPermission",
+                current.getBrokerPermission(), proposed.getBrokerPermission());
+        return changes;
+    }
+
+    private void addConfigChange(
+            List<ClusterConfigPreviewVO.ConfigChangeVO> changes,
+            String field,
+            String brokerProperty,
+            Object currentValue,
+            Object proposedValue) {
+        if (Objects.equals(currentValue, proposedValue)) {
+            return;
+        }
+        changes.add(ClusterConfigPreviewVO.ConfigChangeVO.builder()
+                .field(field)
+                .currentValue(previewValue(currentValue))
+                .proposedValue(previewValue(proposedValue))
+                .brokerProperty(brokerProperty)
+                .build());
+    }
+
+    private String previewValue(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private void requireMatchingDefaultQueueNums(UpdateConfigDTO command) {

@@ -185,11 +185,12 @@ public class AclService {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.updateUser(instanceId, user.toAclUserVO());
         }
-        if (user.getId() == null) {
+        if (!StringUtils.hasText(user.getId())) {
             throw new BusinessException(400, "ACL user id is required");
         }
-        log.info("Updating ACL user id={}, username={}", user.getId(), user.getUsername());
-        AclUserVO existing = aclRepository.findUserById(user.getId())
+        Long userId = EntityIds.parseId(user.getId());
+        log.info("Updating ACL user id={}, username={}", userId, user.getUsername());
+        AclUserVO existing = aclRepository.findUserById(userId)
                 .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
         if (user.getUsername() != null && !StringUtils.hasText(user.getUsername())) {
             throw new BusinessException(400, "ACL username is required");

@@ -14,22 +14,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cluster.client;
+package org.apache.rocketmq.studio.cluster.config;
 
-import lombok.AllArgsConstructor;
+import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.Value;
 
-@Data
+import java.util.List;
+import java.util.Map;
+
+@Value
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ProducerConnectionVO {
-    private String clientId;
-    private String clientAddr;
-    private String topic;
-    private String producerGroup;
-    private String language;
-    private String versionDesc;
+public class ClusterConfigPreviewVO {
+    ClusterVO cluster;
+    ClusterConfigVO currentConfig;
+    ClusterConfigVO proposedConfig;
+    List<BrokerTargetVO> targetBrokers;
+    Map<String, String> brokerProperties;
+    List<ConfigChangeVO> changes;
+    boolean changed;
+
+    @Value
+    @Builder
+    public static class BrokerTargetVO {
+        String name;
+        String address;
+    }
+
+    @Value
+    @Builder
+    public static class ConfigChangeVO {
+        String field;
+        String currentValue;
+        String proposedValue;
+        String brokerProperty;
+    }
 }

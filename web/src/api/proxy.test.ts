@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { queryProxyHomePage } from './proxy';
+import { addProxyAddress, queryProxyHomePage, removeProxyAddress } from './proxy';
 
 const mock = new MockAdapter(client);
 
@@ -53,5 +53,31 @@ describe('Proxy API', () => {
     const result = await queryProxyHomePage();
     expect(result.proxyAddrList).toHaveLength(0);
     expect(result.currentProxyAddr).toBe('');
+  });
+
+  it('adds proxy addresses through the Studio endpoint', async () => {
+    const data = {
+      proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    };
+    mock.onPost('/proxies/addresses').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ addr: '10.0.0.10:8081' });
+      return [200, { code: 200, data }];
+    });
+
+    await expect(addProxyAddress('10.0.0.10:8081')).resolves.toEqual(data);
+  });
+
+  it('removes proxy addresses through the Studio endpoint', async () => {
+    const data = {
+      proxyAddrList: ['127.0.0.1:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    };
+    mock.onDelete('/proxies/addresses').reply((config) => {
+      expect(config.params).toEqual({ addr: '10.0.0.10:8081' });
+      return [200, { code: 200, data }];
+    });
+
+    await expect(removeProxyAddress('10.0.0.10:8081')).resolves.toEqual(data);
   });
 });

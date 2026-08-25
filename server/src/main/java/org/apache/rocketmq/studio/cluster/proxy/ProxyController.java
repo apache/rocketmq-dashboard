@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -48,6 +49,18 @@ public class ProxyController {
     @GetMapping("/topology")
     public Result<List<ProxyTopologyVO>> getProxyTopology() {
         return Result.ok(proxyAddressService.buildTopology());
+    }
+
+    @PostMapping("/addresses")
+    public Result<ProxyHomeVO> addProxyAddress(@Valid @RequestBody ProxyAddressDTO request) {
+        proxyAddressService.addProxyAddr(request.getAddr());
+        return Result.ok(proxyAddressService.getHomePage());
+    }
+
+    @DeleteMapping("/addresses")
+    public Result<ProxyHomeVO> removeProxyAddress(@RequestParam String addr) {
+        proxyAddressService.removeProxyAddr(addr);
+        return Result.ok(proxyAddressService.getHomePage());
     }
 
     @PostMapping("/config/reload")

@@ -95,6 +95,8 @@ describe('Producer API', () => {
       {
         clientId: 'producer-1',
         clientAddr: '192.168.1.10',
+        topic: 'order-events',
+        producerGroup: 'order-producer',
         language: 'JAVA',
         versionDesc: '5.1.0',
       },
@@ -115,8 +117,36 @@ describe('Producer API', () => {
     const result = await queryProducerConnection('instance-1', 'order-events', 'order-producer');
     expect(result.connectionSet).toHaveLength(2);
     expect(result.connectionSet[0].clientId).toBe('producer-1');
+    expect(result.connectionSet[0].producerGroup).toBe('order-producer');
     expect(result.summary.totalConnections).toBe(2);
     expect(result.summary.readiness).toBe('READY');
+  });
+
+  it('queries producer connections without a producer group for all-group scans', async () => {
+    mock.onGet('/producer/connection').reply((config) => {
+      expect(config.params.topic).toBe('order-events');
+      expect(config.params.instanceId).toBe('instance-1');
+      expect(config.params.producerGroup).toBeUndefined();
+      return [
+        200,
+        {
+          connectionSet: [
+            {
+              clientId: 'producer-1',
+              clientAddr: '192.168.1.10',
+              topic: 'order-events',
+              producerGroup: 'pg-order',
+              language: 'JAVA',
+              versionDesc: '5.1.0',
+            },
+          ],
+        },
+      ];
+    });
+
+    const result = await queryProducerConnection('instance-1', 'order-events');
+    expect(result.connectionSet[0].producerGroup).toBe('pg-order');
+    expect(result.summary.totalConnections).toBe(1);
   });
 
   it('handles empty producer connections', async () => {

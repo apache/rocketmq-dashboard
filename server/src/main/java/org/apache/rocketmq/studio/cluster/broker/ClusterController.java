@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
 import org.apache.rocketmq.studio.common.domain.Result;
@@ -67,6 +68,12 @@ public class ClusterController {
     public Result<ClusterConfigUpdateResultVO> updateClusterConfig(@Valid @RequestBody(required = false) UpdateConfigDTO command) {
         requireUpdateConfigCommand(command);
         return Result.ok(clusterService.updateClusterConfig(command));
+    }
+
+    @PostMapping("/config/preview")
+    public Result<ClusterConfigPreviewVO> previewClusterConfig(@Valid @RequestBody(required = false) UpdateConfigDTO command) {
+        requireUpdateConfigCommand(command);
+        return Result.ok(clusterService.previewClusterConfig(command));
     }
 
     @PostMapping("/{clusterId}/brokers/{name}/restart")

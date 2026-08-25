@@ -25,6 +25,7 @@ import {
   deleteAclRule,
   deleteAclUser,
   examineBrokerClusterAclConfig,
+  getAclUserCredentials,
   listAclRules,
   updateAclRule,
   updateAclUser,
@@ -138,6 +139,41 @@ describe('ACL API contract', () => {
     await expect(updateAclUser({ id: user.id, admin: true })).resolves.toEqual(user);
     await expect(deleteAclRule(rule.id)).resolves.toBeUndefined();
     await expect(deleteAclUser(user.id)).resolves.toBeUndefined();
+  });
+
+  it('passes Tencent role names as ACL entity identifiers', async () => {
+    mock.onPost('/acl/rules/delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ id: 'reader-role', instanceId: 'tencent-rmq' });
+      return [200, { code: 200 }];
+    });
+    mock.onPost('/acl/users/delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ id: 'reader-role', instanceId: 'tencent-rmq' });
+      return [200, { code: 200 }];
+    });
+    mock.onGet('/acl/users/reader-role/credentials').reply((config) => {
+      expect(config.params).toEqual({ instanceId: 'tencent-rmq' });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            id: 'reader-role',
+            username: 'reader-role',
+            accessKey: 'ak',
+            secretKey: 'sk',
+            admin: false,
+            clusters: ['rmq-cloud'],
+          },
+        },
+      ];
+    });
+
+    await expect(deleteAclRule('reader-role', 'tencent-rmq')).resolves.toBeUndefined();
+    await expect(deleteAclUser('reader-role', 'tencent-rmq')).resolves.toBeUndefined();
+    await expect(getAclUserCredentials('reader-role', 'tencent-rmq')).resolves.toMatchObject({
+      username: 'reader-role',
+      secretKey: 'sk',
+    });
   });
 
   it('fetches cluster ACL config by clusterId', async () => {

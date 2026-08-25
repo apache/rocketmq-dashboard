@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
@@ -215,6 +216,48 @@ class ClusterControllerTest {
                 .andExpect(jsonPath("$.data.cluster.config.flushDiskType").value("SYNC_FLUSH"))
                 .andExpect(jsonPath("$.data.cluster.config.writeQueueNums").value(16))
                 .andExpect(jsonPath("$.data.cluster.config.readQueueNums").value(16));
+    }
+
+    @Test
+    void previewConfigShouldReturnEffectiveBrokerChanges() throws Exception {
+        ClusterVO cluster = buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy);
+        when(clusterService.previewClusterConfig(any(UpdateConfigDTO.class))).thenReturn(
+                ClusterConfigPreviewVO.builder()
+                        .cluster(cluster)
+                        .targetBrokers(Collections.singletonList(
+                                ClusterConfigPreviewVO.BrokerTargetVO.builder()
+                                        .name("broker-0")
+                                        .address("10.0.0.1:10911")
+                                        .build()))
+                        .brokerProperties(Collections.singletonMap("defaultTopicQueueNums", "16"))
+                        .changes(Collections.singletonList(
+                                ClusterConfigPreviewVO.ConfigChangeVO.builder()
+                                        .field("writeQueueNums")
+                                        .currentValue("8")
+                                        .proposedValue("16")
+                                        .brokerProperty("defaultTopicQueueNums")
+                                        .build()))
+                        .changed(true)
+                        .build());
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .writeQueueNums(16)
+                .readQueueNums(16)
+                .build();
+
+        mockMvc.perform(post("/api/clusters/config/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.changed").value(true))
+                .andExpect(jsonPath("$.data.targetBrokers[0].address").value("10.0.0.1:10911"))
+                .andExpect(jsonPath("$.data.brokerProperties.defaultTopicQueueNums").value("16"))
+                .andExpect(jsonPath("$.data.changes[0].field").value("writeQueueNums"))
+                .andExpect(jsonPath("$.data.changes[0].brokerProperty").value("defaultTopicQueueNums"));
+
+        verify(clusterService).previewClusterConfig(any(UpdateConfigDTO.class));
     }
 
     @Test

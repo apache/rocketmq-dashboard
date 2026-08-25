@@ -8,8 +8,10 @@ export interface PageResult<T> {
   size: number;
 }
 
+export type AclEntityId = number | string;
+
 export interface AclRule {
-  id: number;
+  id: AclEntityId;
   principal: string;
   resource: string;
   resourceType: string;
@@ -46,7 +48,7 @@ export interface AclUserPage {
 }
 
 export interface AclUser {
-  id: number;
+  id: AclEntityId;
   username: string;
   accessKey: string;
   secretKey: string;
@@ -72,7 +74,7 @@ export async function updateAclRule(data: Partial<AclRule> & { instanceId?: stri
   return res.data.data;
 }
 
-export async function deleteAclRule(id: number, instanceId?: string) {
+export async function deleteAclRule(id: AclEntityId, instanceId?: string) {
   await client.post('/acl/rules/delete', { id, instanceId });
 }
 
@@ -86,9 +88,9 @@ export async function pageAclUsers(params: AclUserQuery & { page: number; pageSi
   return res.data.data;
 }
 
-export async function getAclUserCredentials(id: number, instanceId?: string) {
+export async function getAclUserCredentials(id: AclEntityId, instanceId?: string) {
   const res = await client.get<{ data: AclUser }>(
-    `/acl/users/${encodeURIComponent(id)}/credentials`,
+    `/acl/users/${encodeURIComponent(String(id))}/credentials`,
     { params: { instanceId } },
   );
   return res.data.data;
@@ -104,7 +106,7 @@ export async function updateAclUser(data: Partial<AclUser> & { instanceId?: stri
   return res.data.data;
 }
 
-export async function deleteAclUser(id: number, instanceId?: string) {
+export async function deleteAclUser(id: AclEntityId, instanceId?: string) {
   await client.post('/acl/users/delete', { id, instanceId });
 }
 

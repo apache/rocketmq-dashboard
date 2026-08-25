@@ -221,6 +221,45 @@ class AclControllerTest {
     }
 
     @Test
+    void updateRuleShouldAcceptTencentRoleNameIdentifier() throws Exception {
+        AclRuleVO updated = AclRuleVO.builder()
+                .principal("reader-role")
+                .resource("*")
+                .resourceType("Cluster")
+                .resourcePattern("LITERAL")
+                .actions(List.of("SUB"))
+                .decision("ALLOW")
+                .scope("cluster")
+                .aclVersion("1.0")
+                .build();
+        when(aclService.updateRule(any(AclRuleVO.class), eq("tencent-rmq"))).thenReturn(updated);
+
+        mockMvc.perform(post("/api/acl/rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "reader-role",
+                                  "principal": "reader-role",
+                                  "resource": "*",
+                                  "resourceType": "Cluster",
+                                  "resourcePattern": "LITERAL",
+                                  "actions": ["SUB"],
+                                  "decision": "ALLOW",
+                                  "scope": "cluster",
+                                  "instanceId": "tencent-rmq"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.principal").value("reader-role"))
+                .andExpect(jsonPath("$.data.resource").value("*"));
+
+        ArgumentCaptor<AclRuleVO> captor = ArgumentCaptor.forClass(AclRuleVO.class);
+        verify(aclService).updateRule(captor.capture(), eq("tencent-rmq"));
+        assertThat(captor.getValue().getId()).isNull();
+        assertThat(captor.getValue().getPrincipal()).isEqualTo("reader-role");
+    }
+
+    @Test
     void updateRuleShouldReturnNotFoundForUnknownId() throws Exception {
         AclRuleVO input = AclRuleVO.builder()
                 .id(999L)
@@ -365,7 +404,7 @@ class AclControllerTest {
     @Test
     void updateUserShouldReturnMaskedUpdatedUser() throws Exception {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId(1L);
+        input.setId("1");
         input.setUsername("admin");
         input.setAdmin(false);
         AclUserVO updated = AclUserVO.builder()
@@ -387,6 +426,39 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.data.accessKey").value("acce****3456"))
                 .andExpect(jsonPath("$.data.secretKey").value("secr****7654"))
                 .andExpect(jsonPath("$.data.admin").value(false));
+    }
+
+    @Test
+    void updateUserShouldAcceptTencentRoleNameIdentifier() throws Exception {
+        AclUserVO updated = AclUserVO.builder()
+                .username("reader-role")
+                .accessKey("acce****3456")
+                .secretKey("secr****7654")
+                .admin(false)
+                .permRead(true)
+                .permWrite(false)
+                .build();
+        when(aclService.updateUser(any(UpdateAclUserDTO.class), eq("tencent-rmq"))).thenReturn(updated);
+
+        mockMvc.perform(post("/api/acl/users/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "reader-role",
+                                  "username": "reader-role",
+                                  "permRead": true,
+                                  "permWrite": false,
+                                  "instanceId": "tencent-rmq"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("reader-role"))
+                .andExpect(jsonPath("$.data.permRead").value(true));
+
+        ArgumentCaptor<UpdateAclUserDTO> captor = ArgumentCaptor.forClass(UpdateAclUserDTO.class);
+        verify(aclService).updateUser(captor.capture(), eq("tencent-rmq"));
+        assertThat(captor.getValue().getId()).isEqualTo("reader-role");
+        assertThat(captor.getValue().getUsername()).isEqualTo("reader-role");
     }
 
     @Test

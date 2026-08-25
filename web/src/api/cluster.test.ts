@@ -26,6 +26,7 @@ import {
   getNameServerConfigDiff,
   getCluster,
   listK8sCerts,
+  previewClusterConfig,
   renewK8sCert,
   restartBroker,
   restartNameServer,
@@ -145,6 +146,33 @@ describe('K8s certificate API', () => {
     mock.onPost('/clusters/config/update').reply(200, { code: 200, data: result });
 
     await expect(updateClusterConfig({ id: 'cluster-1', writeQueueNums: 16 })).resolves.toEqual(
+      result,
+    );
+  });
+
+  it('previews effective broker config update changes', async () => {
+    const result = {
+      cluster: { id: 'cluster-1' },
+      currentConfig: { writeQueueNums: 8, readQueueNums: 8 },
+      proposedConfig: { writeQueueNums: 16, readQueueNums: 16 },
+      targetBrokers: [{ name: 'broker-0', address: '10.0.0.1:10911' }],
+      brokerProperties: { defaultTopicQueueNums: '16' },
+      changes: [
+        {
+          field: 'writeQueueNums',
+          currentValue: '8',
+          proposedValue: '16',
+          brokerProperty: 'defaultTopicQueueNums',
+        },
+      ],
+      changed: true,
+    };
+    mock.onPost('/clusters/config/preview').reply((config) => {
+      expect(JSON.parse(config.data)).toMatchObject({ id: 'cluster-1', writeQueueNums: 16 });
+      return [200, { code: 200, data: result }];
+    });
+
+    await expect(previewClusterConfig({ id: 'cluster-1', writeQueueNums: 16 })).resolves.toEqual(
       result,
     );
   });

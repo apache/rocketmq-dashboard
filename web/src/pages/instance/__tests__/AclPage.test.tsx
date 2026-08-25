@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AclRule, AclUser } from '../../../api/acl';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as aclService from '../../../services/aclService';
 import * as instanceService from '../../../services/instanceService';
@@ -195,6 +196,118 @@ describe('ACL page', () => {
     expect(await screen.findByTestId('acl-local-metadata-notice')).toHaveTextContent(
       '当前 ACL 规则和用户仅保存为 Studio 本地元数据',
     );
+  });
+
+  it('uses Tencent role names for role-backed ACL rules and users', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 21,
+        name: 'tencent-rmq',
+        type: 'CLOUD',
+        endpoint: 'vpc.tencent:8080',
+        vendor: 'TENCENT',
+        cloudInstanceId: 'rmq-cloud',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          principal: 'reader-role',
+          resource: '*',
+          resourceType: 'Cluster',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: '1.0',
+          gmtCreate: '2026-07-23T00:00:00Z',
+        } as AclRule,
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          username: 'reader-role',
+          accessKey: 'acce****3456',
+          secretKey: 'secr****7654',
+          admin: false,
+          clusters: ['rmq-cloud'],
+          gmtCreate: '2026-07-23T00:00:00Z',
+        } as AclUser,
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.updateAclRule).mockResolvedValue({
+      id: 'reader-role',
+      principal: 'reader-role',
+      resource: '*',
+      resourceType: 'Cluster',
+      resourcePattern: 'LITERAL',
+      actions: ['PUB', 'SUB'],
+      decision: 'ALLOW',
+      scope: 'cluster',
+      aclVersion: '1.0',
+      gmtCreate: '2026-07-23T00:00:00Z',
+    });
+    vi.mocked(aclService.getAclUserCredentials).mockResolvedValue({
+      id: 'reader-role',
+      username: 'reader-role',
+      accessKey: 'full-access-key',
+      secretKey: 'full-secret-key',
+      admin: false,
+      clusters: ['rmq-cloud'],
+      gmtCreate: '2026-07-23T00:00:00Z',
+    });
+
+    renderWithProviders(<AclPage />, '/instance/tencent-rmq/acl');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('acl-local-metadata-notice')).toHaveTextContent(
+        'Tencent Cloud Role',
+      ),
+    );
+    const ruleRow = await screen.findByRole('row', { name: /reader-role/ });
+    await user.click(within(ruleRow).getByRole('button', { name: /编辑/ }));
+    const ruleDialog = await screen.findByRole('dialog');
+    expect(within(ruleDialog).getByLabelText('资源名称')).toBeDisabled();
+    await user.click(within(ruleDialog).getByLabelText('订阅 (SUB)'));
+    await user.click(within(ruleDialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(aclService.updateAclRule).toHaveBeenCalledTimes(1));
+    expect(aclService.updateAclRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'reader-role',
+        principal: 'reader-role',
+        resource: '*',
+        resourceType: 'Cluster',
+        resourcePattern: 'LITERAL',
+        decision: 'ALLOW',
+        scope: 'cluster',
+        instanceId: 'tencent-rmq',
+      }),
+    );
+
+    await user.click(screen.getByText('用户管理'));
+    const userRow = await screen.findByRole('row', { name: /reader-role/ });
+    const secretCell = within(userRow).getByText('••••••••••••').closest('td');
+    expect(secretCell).not.toBeNull();
+    await user.click(within(secretCell as HTMLElement).getByRole('button'));
+
+    await waitFor(() =>
+      expect(aclService.getAclUserCredentials).toHaveBeenCalledWith('reader-role', 'tencent-rmq'),
+    );
+    expect(await within(userRow).findByText('full-secret-key')).toBeInTheDocument();
   });
 
   it('renders backend users on the user tab', async () => {
