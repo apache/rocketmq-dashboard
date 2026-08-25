@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, App, Button, Modal, Space, Table, Tag, Typography } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
@@ -35,6 +35,8 @@ export const GrafanaDashboardList: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const [dashboards, setDashboards] = useState<GrafanaDashboardInfo[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [viewing, setViewing] = useState<GrafanaDashboardInfo | null>(null);
@@ -45,6 +47,30 @@ export const GrafanaDashboardList: React.FC = () => {
   const viewRequestId = useRef(0);
   const [exportingUids, setExportingUids] = useState<Set<string>>(() => new Set());
   const [exportingAll, setExportingAll] = useState(false);
+
+  const tagOptions = useMemo(
+    () =>
+      Array.from(new Set(dashboards.flatMap((dashboard) => dashboard.tags || [])))
+        .sort((a, b) => a.localeCompare(b))
+        .map((tag) => ({ label: tag, value: tag })),
+    [dashboards],
+  );
+
+  const filteredDashboards = useMemo(() => {
+    const normalizedSearch = searchText.trim().toLowerCase();
+    return dashboards.filter((dashboard) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        [dashboard.uid, dashboard.title, dashboard.description, ...(dashboard.tags || [])]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalizedSearch));
+      const matchesTags =
+        selectedTags.length === 0 ||
+        selectedTags.every((tag) => (dashboard.tags || []).includes(tag));
+
+      return matchesSearch && matchesTags;
+    });
+  }, [dashboards, searchText, selectedTags]);
 
   const loadDashboards = useCallback(async () => {
     const requestId = ++listRequestId.current;
@@ -186,6 +212,24 @@ export const GrafanaDashboardList: React.FC = () => {
   return (
     <div>
       <Space style={{ marginBottom: 12 }}>
+        <Input.Search
+          allowClear
+          placeholder={t('grafana.searchPlaceholder')}
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          onSearch={setSearchText}
+          style={{ width: 280 }}
+        />
+        <Select
+          allowClear
+          mode="multiple"
+          maxTagCount="responsive"
+          options={tagOptions}
+          placeholder={t('grafana.allTags')}
+          value={selectedTags}
+          onChange={setSelectedTags}
+          style={{ minWidth: 220 }}
+        />
         <Button
           icon={<DownloadSimple size={16} />}
           loading={exportingAll}
@@ -216,7 +260,7 @@ export const GrafanaDashboardList: React.FC = () => {
 
       <Table
         columns={columns}
-        dataSource={dashboards}
+        dataSource={filteredDashboards}
         loading={loading}
         rowKey="uid"
         pagination={false}
