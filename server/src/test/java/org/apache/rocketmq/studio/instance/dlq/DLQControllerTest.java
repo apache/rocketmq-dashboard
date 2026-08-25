@@ -113,7 +113,7 @@ class DLQControllerTest {
     }
 
     @Test
-    void listMessagesShouldPassQueryParameters() throws Exception {
+    void listMessagesShouldPassQueryParametersTest() throws Exception {
         when(dlqService.listMessages("instance-1", "test-group", 1000L, 2000L, 2, 20))
                 .thenReturn(DLQMessagePageVO.builder().items(List.of()).total(0).page(2).size(20).build());
 
@@ -130,7 +130,7 @@ class DLQControllerTest {
     }
 
     @Test
-    void selectedResendShouldPassStableMessageReferences() throws Exception {
+    void selectedResendShouldPassStableMessageReferencesTest() throws Exception {
         Map<String, Object> body = Map.of(
                 "instanceId", "instance-1", "groupName", "test-group", "messages",
                 List.of(Map.of("msgId", "msg-1", "queueId", 0, "offset", 5)));

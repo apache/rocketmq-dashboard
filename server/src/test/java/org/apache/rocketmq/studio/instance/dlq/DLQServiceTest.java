@@ -163,7 +163,7 @@ class DLQServiceTest {
     }
 
     @Test
-    void listMessagesShouldDelegatePagedQuery() {
+    void listMessagesShouldDelegatePagedQueryTest() {
         DLQMessagePageVO result = DLQMessagePageVO.builder().items(List.of()).total(0).page(2).size(20).build();
         when(dlqProvider.listMessages("instance-1", "group-1", 1000L, 2000L, 2, 20)).thenReturn(result);
 
@@ -173,7 +173,7 @@ class DLQServiceTest {
     }
 
     @Test
-    void selectedResendShouldRejectMoreThanOneHundredMessages() {
+    void selectedResendShouldRejectMoreThanOneHundredMessagesTest() {
         List<DLQMessageRefDTO> messages = java.util.stream.IntStream.range(0, 101)
                 .mapToObj(index -> {
                     DLQMessageRefDTO reference = new DLQMessageRefDTO();
