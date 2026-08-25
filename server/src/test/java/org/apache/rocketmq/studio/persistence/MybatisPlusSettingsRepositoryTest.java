@@ -90,7 +90,7 @@ class MybatisPlusSettingsRepositoryTest {
     }
 
     @Test
-    void shouldUpdateSingletonSettingsWhenConcurrentCreationWins() {
+    void shouldUpdateSingletonSettingsWhenConcurrentCreationWinsTest() {
         RmqSettings concurrent = new RmqSettings();
         concurrent.setId(7L);
         concurrent.setSettingsKey("general");
