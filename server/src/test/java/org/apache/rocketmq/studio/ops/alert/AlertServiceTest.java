@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -798,10 +799,39 @@ class AlertServiceTest {
     }
 
     @Test
+    void listAlertsPageShouldReturnTheRequestedPage() {
+        SystemAlertVO alert = SystemAlertVO.builder().id(7L).level(AlertLevel.warning)
+                .title("Slow Consumer").build();
+        when(alertRepository.findAlerts("warning", 2, 20))
+                .thenReturn(PageResult.of(List.of(alert), 21, 2, 20));
+
+        PageResult<SystemAlertVO> result = alertService.listAlerts(" warning ", 2, 20);
+
+        assertThat(result.getItems()).containsExactly(alert);
+        assertThat(result.getTotal()).isEqualTo(21);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(20);
+        verify(alertRepository).findAlerts("warning", 2, 20);
+    }
+
+    @Test
+    void listAlertsPageShouldRejectInvalidPaginationBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> alertService.listAlerts(null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than 0");
+        assertThatThrownBy(() -> alertService.listAlerts(null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+
+        verify(alertRepository, never()).findAlerts(any(), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
     void acknowledgeAlertShouldSetAcknowledgedTrue() {
         SystemAlertVO existing = SystemAlertVO.builder().id(1L).level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
+        when(alertRepository.findAlertById(1L)).thenReturn(java.util.Optional.of(existing));
         when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(true);
 
         SystemAlertVO result = alertService.acknowledgeAlert(1L);
@@ -819,12 +849,12 @@ class AlertServiceTest {
                 .hasMessage("System alert ID is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
-        verify(alertRepository, never()).findAlerts(any());
+        verify(alertRepository, never()).findAlertById(any());
     }
 
     @Test
     void acknowledgeAlertShouldIgnorePersistedAlertsWithNullIds() {
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(SystemAlertVO.builder().title("corrupt").build()));
+        when(alertRepository.findAlertById(999L)).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(999L))
                 .isInstanceOf(BusinessException.class)
@@ -833,7 +863,7 @@ class AlertServiceTest {
 
     @Test
     void acknowledgeAlertShouldThrowWhenAlertNotFound() {
-        when(alertRepository.findAlerts(null)).thenReturn(Collections.emptyList());
+        when(alertRepository.findAlertById(999L)).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(999L))
                 .isInstanceOf(BusinessException.class)
@@ -844,7 +874,7 @@ class AlertServiceTest {
     void acknowledgeAlertShouldRejectConcurrentRemoval() {
         SystemAlertVO existing = SystemAlertVO.builder().id(1L).level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
+        when(alertRepository.findAlertById(1L)).thenReturn(java.util.Optional.of(existing));
         when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(false);
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(1L))

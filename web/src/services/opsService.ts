@@ -6,6 +6,7 @@ import type {
   AlertRule,
   AlertRuleBulkResult,
   SystemAlert,
+  SystemAlertPage,
   AuditQuery,
   AuditRecord,
   PageResult,
@@ -193,6 +194,25 @@ export async function bulkDeleteAlertRules(ids: number[]): Promise<AlertRuleBulk
 export async function listSystemAlerts(): Promise<SystemAlert[]> {
   if (isMockMode()) return (mockSystemAlerts as unknown as SystemAlert[]).map(copySystemAlert);
   return opsApi.listSystemAlerts();
+}
+
+export async function listSystemAlertsPage(
+  query: { level?: string; page?: number; pageSize?: number } = {},
+): Promise<SystemAlertPage> {
+  if (!isMockMode()) return opsApi.listSystemAlertsPage(query);
+  const level = query.level?.toLowerCase();
+  const alerts = (mockSystemAlerts as unknown as SystemAlert[])
+    .filter((alert) => !level || alert.level.toLowerCase() === level)
+    .map(copySystemAlert);
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 20;
+  const from = Math.min((page - 1) * pageSize, alerts.length);
+  return {
+    items: alerts.slice(from, from + pageSize),
+    total: alerts.length,
+    page,
+    size: pageSize,
+  };
 }
 
 export async function acknowledgeAlert(id: number): Promise<void> {

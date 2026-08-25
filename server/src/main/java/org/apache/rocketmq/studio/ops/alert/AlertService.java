@@ -17,10 +17,12 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -224,16 +226,21 @@ public class AlertService {
         return alertRepository.findAlerts(level);
     }
 
+    public PageResult<SystemAlertVO> listAlerts(String level, int page, int pageSize) {
+        validateAlertPagination(page, pageSize);
+        String normalizedLevel = StringUtils.hasText(level) ? level.trim() : level;
+        log.info("Listing system alerts, level={}, page={}, pageSize={}",
+                normalizedLevel, page, pageSize);
+        return alertRepository.findAlerts(normalizedLevel, page, pageSize);
+    }
+
 
     public SystemAlertVO acknowledgeAlert(Long id) {
         log.info("Acknowledging system alert id={}", id);
         if (id == null) {
             throw new BusinessException(400, "System alert ID is required");
         }
-        List<SystemAlertVO> alerts = alertRepository.findAlerts(null);
-        SystemAlertVO alert = alerts.stream()
-                .filter(a -> Objects.equals(a.getId(), id))
-                .findFirst()
+        SystemAlertVO alert = alertRepository.findAlertById(id)
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
         if (!alertRepository.acknowledgeAlert(alert)) {
@@ -255,6 +262,15 @@ public class AlertService {
 
     private List<PrometheusAlertRule> defaultPrometheusRules() {
         return alertRuleAssetService.loadDefaultRules();
+    }
+
+    private static void validateAlertPagination(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than 0");
+        }
+        if (pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "pageSize must be between 1 and 100");
+        }
     }
 
     private PrometheusAlertRule toPrometheusRule(AlertRuleVO rule) {

@@ -31,6 +31,13 @@ export interface SystemAlert {
   acknowledged: boolean;
 }
 
+export interface SystemAlertPage {
+  items: SystemAlert[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 // Matches mock/audit.ts (inferred from data)
 export interface AuditRecord {
   id: number;
@@ -105,6 +112,15 @@ export async function bulkDeleteAlertRules(ids: number[]) {
 // ─── System Alerts ──────────────────────────────────────────────
 export async function listSystemAlerts() {
   const res = await client.get<{ data: SystemAlert[] }>('/system-alerts');
+  return res.data.data;
+}
+
+export async function listSystemAlertsPage(params: {
+  level?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const res = await client.get<{ data: SystemAlertPage }>('/system-alerts/page', { params });
   return res.data.data;
 }
 

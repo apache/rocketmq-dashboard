@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
@@ -31,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -78,12 +81,35 @@ public class MybatisPlusAlertRepository implements AlertRepository {
 
     @Override
     public List<SystemAlertVO> findAlerts(String level) {
-        QueryWrapper<RmqSystemAlert> query = new QueryWrapper<RmqSystemAlert>()
-                .eq(StringUtils.hasText(level), "level", level == null ? null : level.toLowerCase(Locale.ROOT))
-                .orderByDesc("time");
-        return alertMapper.selectList(query).stream()
+        return alertMapper.selectList(alertQuery(level)).stream()
                 .map(MybatisPlusAlertRepository::toAlertVO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<SystemAlertVO> findAlerts(String level, int page, int pageSize) {
+        Page<RmqSystemAlert> result = alertMapper.selectPage(
+                new Page<>(page, pageSize), alertQuery(level));
+        List<SystemAlertVO> items = result.getRecords().stream()
+                .map(MybatisPlusAlertRepository::toAlertVO)
+                .toList();
+        return PageResult.of(items, result.getTotal(), page, pageSize);
+    }
+
+    @Override
+    public Optional<SystemAlertVO> findAlertById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(alertMapper.selectById(id))
+                .map(MybatisPlusAlertRepository::toAlertVO);
+    }
+
+    private QueryWrapper<RmqSystemAlert> alertQuery(String level) {
+        return new QueryWrapper<RmqSystemAlert>()
+                .eq(StringUtils.hasText(level), "level",
+                        level == null ? null : level.toLowerCase(Locale.ROOT))
+                .orderByDesc("time", "id");
     }
 
     @Override
