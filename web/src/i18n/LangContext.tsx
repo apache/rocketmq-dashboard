@@ -28,7 +28,7 @@ interface LangContextType {
 const LangContext = createContext<LangContextType>({
   lang: 'zh',
   setLang: () => {},
-  t: (key) => key,
+  t: (key) => translations[key]?.zh ?? key,
 });
 
 export const LangProvider = ({ children }: { children: ReactNode }) => {

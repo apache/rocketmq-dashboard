@@ -27,6 +27,7 @@ import {
   updateCloudCredential,
 } from '../../../api/cloudCredential';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { CloudCredentialTab } from '../CloudCredentialTab';
 
 vi.mock('../../../api/cloudCredential', () => ({
@@ -88,6 +89,7 @@ beforeAll(() => {
 describe('CloudCredentialTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     vi.mocked(listCloudCredentials).mockResolvedValue(credentials);
   });
 
@@ -103,6 +105,13 @@ describe('CloudCredentialTab', () => {
     renderTab();
 
     await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledWith(undefined, '', 1, 20));
+  });
+
+  it('renders management controls in English when English is selected', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderTab();
+
+    expect(await screen.findByPlaceholderText('Search credential names')).toBeInTheDocument();
   });
 
   it('resets to the first page and queries filters after they change', async () => {

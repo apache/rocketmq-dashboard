@@ -20,6 +20,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { AiAssistantTab } from '../AiAssistantTab';
 
 const llmApiMocks = vi.hoisted(() => ({
@@ -59,6 +60,7 @@ const renderPage = () =>
 describe('AiAssistantTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     llmApiMocks.getLlmConfig.mockResolvedValue({
       provider: 'tongyi',
       apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -81,6 +83,14 @@ describe('AiAssistantTab', () => {
 
     expect(await screen.findByText('密钥已配置')).toBeInTheDocument();
     expect(screen.getByDisplayValue('qwen3.8-max')).toBeInTheDocument();
+  });
+
+  it('renders assistant configuration labels in English when English is selected', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderPage();
+
+    expect(await screen.findByText('Execution engine and model')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Test connection' })).toBeInTheDocument();
   });
 
   it('saves without sending an apiKey when the input stays empty', async () => {

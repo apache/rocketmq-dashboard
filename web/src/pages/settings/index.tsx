@@ -39,17 +39,21 @@ const SettingsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('settings.title')} subtitle="管理应用配置与数据源" />
+      <PageHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
 
       <Tabs
         activeKey={activeKey}
         onChange={(key) => setSearchParams({ tab: key })}
         items={[
-          { key: 'general', label: '通用设置', children: <GeneralSettingsTab /> },
-          { key: 'ai', label: 'AI 助手', children: <AiAssistantTab /> },
-          { key: 'credential', label: '云凭据管理', children: <CloudCredentialTab /> },
-          { key: 'datasource', label: '数据源管理', children: <DataSourceTab /> },
-          { key: 'about', label: '关于', children: <AboutTab /> },
+          { key: 'general', label: t('settings.tabGeneral'), children: <GeneralSettingsTab /> },
+          { key: 'ai', label: t('settings.tabAi'), children: <AiAssistantTab /> },
+          {
+            key: 'credential',
+            label: t('settings.tabCredential'),
+            children: <CloudCredentialTab />,
+          },
+          { key: 'datasource', label: t('settings.tabDatasource'), children: <DataSourceTab /> },
+          { key: 'about', label: t('settings.tabAbout'), children: <AboutTab /> },
         ]}
       />
     </div>

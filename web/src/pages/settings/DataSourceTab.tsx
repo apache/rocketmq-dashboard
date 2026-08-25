@@ -142,7 +142,7 @@ export const DataSourceTab = () => {
         setTotal(result.total);
       } catch {
         if (requestId === requestSeqRef.current) {
-          message.error('数据源加载失败，请稍后重试');
+          message.error(t('settings.dataSourceLoadFailed'));
         }
       } finally {
         if (requestId === requestSeqRef.current) {
@@ -150,7 +150,7 @@ export const DataSourceTab = () => {
         }
       }
     })();
-  }, [debouncedSearch, page, pageSize, typeFilter]);
+  }, [debouncedSearch, page, pageSize, t, typeFilter]);
 
   useEffect(() => {
     void loadDataSources();
@@ -182,7 +182,7 @@ export const DataSourceTab = () => {
     key: string,
   ) => {
     if (key !== 'modal' && authNeedsSecret(data.auth)) {
-      message.warning('认证数据源请编辑后输入凭据再测试连接');
+      message.warning(t('settings.dataSourceAuthTestHint'));
       return;
     }
     setTestingKeys((previous) => new Set(previous).add(key));
@@ -191,7 +191,7 @@ export const DataSourceTab = () => {
       if (result.success) message.success(result.message);
       else message.error(result.message);
     } catch {
-      message.error('连接测试失败，请稍后重试');
+      message.error(t('settings.connectionTestFailed'));
     } finally {
       setTestingKeys((previous) => {
         const next = new Set(previous);
@@ -230,14 +230,16 @@ export const DataSourceTab = () => {
         setPage(1);
       }
       await loadDataSources();
-      message.success(editingDataSource ? '数据源已更新' : '数据源已添加');
+      message.success(
+        t(editingDataSource ? 'settings.dataSourceUpdated' : 'settings.dataSourceAdded'),
+      );
       setModalOpen(false);
       dsForm.resetFields();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
-      message.error('保存数据源失败，请稍后重试');
+      message.error(t('settings.dataSourceSaveFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -251,27 +253,27 @@ export const DataSourceTab = () => {
       } else {
         await loadDataSources();
       }
-      message.success('数据源已删除');
+      message.success(t('settings.dataSourceDeleted'));
     } catch {
-      message.error('删除数据源失败，请稍后重试');
+      message.error(t('settings.dataSourceDeleteFailed'));
     }
   };
 
   const columns: ColumnsType<DataSource> = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
+    { title: t('common.name'), dataIndex: 'name', key: 'name' },
     {
-      title: '类型',
+      title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
       render: (t: string) => <Tag color={typeTagColor[t]}>{t}</Tag>,
     },
     { title: 'URL', dataIndex: 'url', key: 'url' },
     {
-      title: '适用实例',
+      title: t('settings.instances'),
       dataIndex: 'instanceIds',
       key: 'instanceIds',
       render: (instanceIds: string[] | undefined) => {
-        if (!instanceIds?.length) return '全局';
+        if (!instanceIds?.length) return t('settings.global');
         return instanceIds
           .map(
             (instanceId) =>
@@ -282,9 +284,9 @@ export const DataSourceTab = () => {
           .join('、');
       },
     },
-    { title: '认证方式', dataIndex: 'auth', key: 'auth' },
+    { title: t('settings.authentication'), dataIndex: 'auth', key: 'auth' },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: DataSource['status']) =>
@@ -295,7 +297,7 @@ export const DataSourceTab = () => {
         ),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'action',
       render: (_: unknown, record: DataSource) => (
         <Space size="small">
@@ -305,12 +307,10 @@ export const DataSourceTab = () => {
             icon={<ApiOutlined />}
             loading={testingKeys.has(record.key)}
             disabled={authNeedsSecret(record.auth)}
-            title={
-              authNeedsSecret(record.auth) ? '认证数据源请编辑后输入凭据再测试连接' : undefined
-            }
+            title={authNeedsSecret(record.auth) ? t('settings.dataSourceAuthTestHint') : undefined}
             onClick={() => void handleTestConnection(record, record.key)}
           >
-            测试连接
+            {t('settings.testConnection')}
           </Button>
           <Button
             type="link"
@@ -318,16 +318,16 @@ export const DataSourceTab = () => {
             icon={<EditOutlined />}
             onClick={() => openEditModal(record)}
           >
-            编辑
+            {t('common.edit')}
           </Button>
           <Popconfirm
-            title="确定要删除该数据源吗？"
+            title={t('settings.deleteDataSourceConfirm')}
             onConfirm={() => void handleDelete(record)}
-            okText="确定"
-            cancelText="取消"
+            okText={t('settings.confirmAction')}
+            cancelText={t('common.cancel')}
           >
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
+              {t('common.delete')}
             </Button>
           </Popconfirm>
         </Space>
@@ -342,7 +342,7 @@ export const DataSourceTab = () => {
           <Input
             allowClear
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
-            placeholder="搜索数据源名称"
+            placeholder={t('settings.searchDataSources')}
             style={{ width: 240 }}
             value={search}
             onChange={(event) => {
@@ -352,7 +352,7 @@ export const DataSourceTab = () => {
           />
           <Select
             allowClear
-            placeholder="全部类型"
+            placeholder={t('settings.allTypes')}
             style={{ width: 160 }}
             value={typeFilter}
             onChange={(value) => {
@@ -363,7 +363,7 @@ export const DataSourceTab = () => {
           />
         </Flex>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} disabled={loading}>
-          添加数据源
+          {t('settings.addDataSource')}
         </Button>
       </Flex>
 
@@ -378,7 +378,7 @@ export const DataSourceTab = () => {
           total,
           showSizeChanger: true,
           pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
-          showTotal: (count) => `共 ${count} 条`,
+          showTotal: (count) => t('settings.totalRecords', { total: count }),
           onChange: (nextPage, nextPageSize) => {
             if (nextPageSize !== pageSize) {
               setPage(1);
@@ -392,7 +392,7 @@ export const DataSourceTab = () => {
       />
 
       <Modal
-        title={editingDataSource ? '编辑数据源' : '添加数据源'}
+        title={t(editingDataSource ? 'settings.editDataSource' : 'settings.addDataSource')}
         open={modalOpen}
         onCancel={() => {
           setModalOpen(false);
@@ -405,34 +405,42 @@ export const DataSourceTab = () => {
       >
         <Form form={dsForm} layout="vertical" preserve={false}>
           <Form.Item
-            label="名称"
+            label={t('common.name')}
             name="name"
-            rules={[{ required: true, message: '请输入数据源名称' }]}
+            rules={[{ required: true, message: t('settings.dataSourceNameRequired') }]}
           >
-            <Input placeholder="例如：Prometheus 生产监控" />
+            <Input placeholder={t('settings.dataSourceNameExample')} />
           </Form.Item>
 
           <Form.Item
-            label="类型"
+            label={t('common.type')}
             name="type"
-            rules={[{ required: true, message: '请选择数据源类型' }]}
+            rules={[{ required: true, message: t('settings.selectType') }]}
           >
-            <Select placeholder="请选择" virtual={false} options={DATA_SOURCE_TYPE_OPTIONS} />
+            <Select
+              placeholder={t('settings.selectType')}
+              virtual={false}
+              options={DATA_SOURCE_TYPE_OPTIONS}
+            />
           </Form.Item>
 
           <Form.Item
             label="URL"
             name="url"
-            rules={[{ required: true, message: '请输入数据源 URL' }]}
+            rules={[{ required: true, message: t('settings.dataSourceUrlRequired') }]}
           >
             <Input placeholder="http://localhost:9090" />
           </Form.Item>
 
-          <Form.Item label="适用实例" name="instanceIds" extra="留空时可用于所有实例">
+          <Form.Item
+            label={t('settings.instances')}
+            name="instanceIds"
+            extra={t('settings.instancesHelp')}
+          >
             <Select
               mode="multiple"
               allowClear
-              placeholder="选择此数据源对应的实例"
+              placeholder={t('settings.selectDataSourceInstances')}
               options={instances.map((instance) => ({
                 value: instance.name,
                 label: instance.name,
@@ -440,7 +448,7 @@ export const DataSourceTab = () => {
             />
           </Form.Item>
 
-          <Form.Item label="认证方式" name="auth" initialValue="None">
+          <Form.Item label={t('settings.authentication')} name="auth" initialValue="None">
             <Select
               virtual={false}
               onChange={() => {
@@ -461,18 +469,21 @@ export const DataSourceTab = () => {
           {authValue === 'Basic Auth' && (
             <>
               <Form.Item
-                label="用户名"
+                label={t('settings.username')}
                 name="username"
-                rules={[{ required: true, message: '请输入用户名' }]}
+                rules={[{ required: true, message: t('settings.usernameRequired') }]}
               >
                 <Input autoComplete="username" placeholder="prometheus" />
               </Form.Item>
               <Form.Item
-                label="密码"
+                label={t('settings.password')}
                 name="password"
-                rules={[{ required: true, message: '请输入密码' }]}
+                rules={[{ required: true, message: t('settings.passwordRequired') }]}
               >
-                <Input.Password autoComplete="current-password" placeholder="请输入密码" />
+                <Input.Password
+                  autoComplete="current-password"
+                  placeholder={t('settings.passwordRequired')}
+                />
               </Form.Item>
             </>
           )}
@@ -481,9 +492,9 @@ export const DataSourceTab = () => {
             <Form.Item
               label="Bearer Token"
               name="bearerToken"
-              rules={[{ required: true, message: '请输入 Bearer Token' }]}
+              rules={[{ required: true, message: t('settings.bearerTokenRequired') }]}
             >
-              <Input.Password autoComplete="off" placeholder="请输入 Token" />
+              <Input.Password autoComplete="off" placeholder={t('settings.enterToken')} />
             </Form.Item>
           )}
 
@@ -498,7 +509,7 @@ export const DataSourceTab = () => {
             }}
             style={{ marginTop: 8 }}
           >
-            测试连接
+            {t('settings.testConnection')}
           </Button>
         </Form>
       </Modal>
