@@ -97,13 +97,20 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 
 /* ─── Helpers ─── */
 
+const UNKNOWN_LAG_COLOR = '#8c8c8c';
+const UNAVAILABLE_LAG_LABEL = '不可用';
+
 const lagColor = (lag: number): string => {
+  // The backend reports -1 when the lag cannot be determined; do not color it
+  // as healthy (green) or backlogged.
+  if (!isLagAvailable(lag)) return UNKNOWN_LAG_COLOR;
   if (lag >= 10_000) return '#ff4d4f';
   if (lag >= 1_000) return '#faad14';
   return '#52c41a';
@@ -164,7 +171,15 @@ const visibleConsumerGroups = (
   }
 
   if (sortKey === 'lag_desc') {
-    data = [...data].sort((left, right) => right.totalLag - left.totalLag);
+    // An unknown lag (-1) is not a measurable backlog, so it sorts after
+    // every group with a known backlog instead of first.
+    data = [...data].sort((left, right) => {
+      const leftKnown = isLagAvailable(left.totalLag);
+      const rightKnown = isLagAvailable(right.totalLag);
+      if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
+      if (!leftKnown) return 0;
+      return right.totalLag - left.totalLag;
+    });
   } else if (sortKey === 'name_asc') {
     data = [...data].sort((left, right) => left.name.localeCompare(right.name));
   }
@@ -512,7 +527,11 @@ const ConsumerPageContent = ({
       return (a.queueId ?? 0) - (b.queueId ?? 0);
     });
   }, [selectedProgress, progressTopic, progressTopicOptions]);
-  const visibleProgressLag = visibleProgress.reduce((sum, q) => sum + (q.diffTotal ?? 0), 0);
+  const hasUnknownProgressLag = visibleProgress.some((q) => !isLagAvailable(q.diffTotal));
+  const visibleProgressLag = visibleProgress.reduce(
+    (sum, q) => sum + (isLagAvailable(q.diffTotal) ? q.diffTotal : 0),
+    0,
+  );
 
   const openStackModal = async (consumerInstance: ConsumerInstance) => {
     if (!selectedGroup) return;
@@ -716,8 +735,13 @@ const ConsumerPageContent = ({
       key: 'totalLag',
       width: 96,
       align: 'right',
-      sorter: (a, b) => (a.totalLag ?? 0) - (b.totalLag ?? 0),
-      render: (lag: number) => (lag ?? 0).toLocaleString(),
+      sorter: (a, b) => lagSortValue(a.totalLag) - lagSortValue(b.totalLag),
+      render: (lag: number) =>
+        isLagAvailable(lag) ? (
+          lag.toLocaleString()
+        ) : (
+          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+        ),
     },
     {
       title: '消费延迟',
@@ -1013,6 +1037,13 @@ const ConsumerPageContent = ({
       width: 120,
       align: 'right',
       render: (diff: number) => {
+        if (!isLagAvailable(diff)) {
+          return (
+            <Text type="secondary" style={{ fontWeight: 600 }}>
+              {UNAVAILABLE_LAG_LABEL}
+            </Text>
+          );
+        }
         const color = lagColor(diff);
         return (
           <Text style={{ color, fontWeight: 600, fontFamily: 'monospace' }}>
@@ -1287,6 +1318,7 @@ const ConsumerPageContent = ({
                           <Statistic
                             title="总堆积"
                             value={selectedGroup.totalLag}
+                            formatter={(value) => formatLag(Number(value), UNAVAILABLE_LAG_LABEL)}
                             prefix={
                               <ArrowsClockwise size={18} color={lagColor(selectedGroup.totalLag)} />
                             }
@@ -1515,14 +1547,20 @@ const ConsumerPageContent = ({
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总堆积:</Text>
-                          <Text
-                            strong
-                            style={{
-                              color: lagColor(visibleProgressLag),
-                            }}
-                          >
-                            {visibleProgressLag.toLocaleString()}
-                          </Text>
+                          {hasUnknownProgressLag ? (
+                            <Text strong style={{ color: UNKNOWN_LAG_COLOR }}>
+                              {UNAVAILABLE_LAG_LABEL}
+                            </Text>
+                          ) : (
+                            <Text
+                              strong
+                              style={{
+                                color: lagColor(visibleProgressLag),
+                              }}
+                            >
+                              {visibleProgressLag.toLocaleString()}
+                            </Text>
+                          )}
                         </Space>
                       </Space>
                     </Card>

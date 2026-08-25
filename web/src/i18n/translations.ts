@@ -1473,6 +1473,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'brokerCluster.grpcAddr': { zh: 'gRPC 地址', en: 'gRPC Address' },
   'brokerCluster.connections': { zh: '连接数', en: 'Connections' },
 
+  'groupMgmt.lagUnavailable': { zh: '不可用', en: 'Unavailable' },
+
   // ─── SSL Settings ───
   'ssl.title': { zh: 'SSL/TLS 设置', en: 'SSL/TLS Settings' },
   'ssl.info': { zh: 'SSL/TLS 配置', en: 'SSL/TLS Configuration' },

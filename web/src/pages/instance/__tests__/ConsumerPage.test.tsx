@@ -911,4 +911,53 @@ describe('Consumer page', () => {
     });
     expect(await screen.findByText('消费组配置已保存')).toBeInTheDocument();
   });
+
+  it('renders an unknown (-1) lag as unavailable in the table and the lag detail', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        { ...group, name: 'unknown-lag-cg', totalLag: -1 },
+        { ...group, name: 'known-lag-cg', totalLag: 15000 },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    const unknownRow = await screen.findByRole('row', { name: /unknown-lag-cg/ });
+    expect(within(unknownRow).getByText('不可用')).toBeInTheDocument();
+    const knownRow = await screen.findByRole('row', { name: /\bknown-lag-cg\b/ });
+    expect(within(knownRow).queryByText('不可用')).not.toBeInTheDocument();
+
+    await user.click(within(unknownRow).getByRole('button', { name: /详\s*情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /unknown-lag-cg/ });
+    expect(within(dialog).getByText('不可用')).toBeInTheDocument();
+  });
+
+  it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        { ...group, name: 'unknown-lag-cg', totalLag: -1 },
+        { ...group, name: 'known-lag-cg', totalLag: 15000 },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+    await screen.findByRole('row', { name: /unknown-lag-cg/ });
+
+    await user.click(screen.getByText('名称升序'));
+    await user.click(await screen.findByText('堆积量降序'));
+    await waitFor(() => {
+      const rows = Array.from(document.querySelectorAll('tbody tr'));
+      const order = rows
+        .map((row) => row.textContent ?? '')
+        .map((text) =>
+          text.includes('unknown-lag-cg')
+            ? 'unknown'
+            : /\bknown-lag-cg\b/.test(text)
+              ? 'known'
+              : '',
+        )
+        .filter(Boolean);
+      expect(order).toEqual(['known', 'unknown']);
+    });
+  });
 });
