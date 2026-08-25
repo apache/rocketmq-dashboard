@@ -188,6 +188,25 @@ class AclServiceTest {
     }
 
     @Test
+    void listRulesShouldReturnEmptyPageWhenTencentPageOffsetExceedsIntegerRange() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceRepository.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
+                AclRuleVO.builder().principal("role-a").resource("topic-a").build()));
+
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+                "tencent-instance", Integer.MAX_VALUE, 100);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    @Test
     void createRuleShouldSetIdAndTimestamp() {
         AclRuleVO input = AclRuleVO.builder()
                 .principal("user1")
