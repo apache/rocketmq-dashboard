@@ -26,6 +26,7 @@ import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,6 +40,13 @@ import java.util.stream.Collectors;
 public class MybatisPlusAuditRepository implements AuditRepository {
 
     private static final long FILTER_OPTIONS_CACHE_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);
+
+    /**
+     * Maximum number of hot-spot buckets returned for the byOperation /
+     * byResourceType breakdowns. Kept in sync with the dashboard, which
+     * renders the top N entries of each breakdown.
+     */
+    static final int HOTSPOT_LIMIT = 5;
 
     private final RmqOperationAuditMapper auditMapper;
     private volatile CachedFilterOptions cachedFilterOptions;
@@ -105,27 +113,25 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                                     String result) {
         Consumer<QueryWrapper<RmqOperationAudit>> filters = query -> applyFilters(query, search,
                 operationType, resourceType, clusterId, startDate, endDate, result);
-        long total = count(filters, null);
-        long successful = count(filters, "SUCCESS");
-        long failed = count(filters, "FAILED");
-        long partial = count(filters, "PARTIAL");
 
-        QueryWrapper<RmqOperationAudit> operatorsQuery = new QueryWrapper<RmqOperationAudit>()
-                .select("operator").isNotNull("operator").groupBy("operator");
-        filters.accept(operatorsQuery);
-        long uniqueOperators = auditMapper.selectMaps(operatorsQuery).size();
+        // One GROUP BY result query computes total / SUCCESS / FAILED / PARTIAL in a single
+        // round trip instead of four separate COUNT(*) statements. Note that when the caller
+        // already filters on a specific result, the buckets for the other outcomes are
+        // intentionally reported as zero, because those rows are filtered out.
+        Map<String, Long> resultCounts = resultCounts(filters);
+        long total = resultCounts.values().stream().mapToLong(Long::longValue).sum();
 
-        QueryWrapper<RmqOperationAudit> latestQuery = new QueryWrapper<RmqOperationAudit>()
-                .select("operated_at").orderByDesc("operated_at").last("LIMIT 1");
-        filters.accept(latestQuery);
-        List<RmqOperationAudit> latestRows = auditMapper.selectList(latestQuery);
-        LocalDateTime latestAt = latestRows.isEmpty() ? null : latestRows.get(0).getOperatedAt();
+        // COUNT(DISTINCT operator) is evaluated inside the database so matching rows are
+        // never materialized into the application just to count operators.
+        long uniqueOperators = countDistinctOperators(filters);
+
+        LocalDateTime latestAt = latestOperatedAt(filters);
 
         return AuditSummaryVO.builder()
                 .total(total)
-                .successful(successful)
-                .failed(failed)
-                .partial(partial)
+                .successful(resultCounts.getOrDefault("SUCCESS", 0L))
+                .failed(resultCounts.getOrDefault("FAILED", 0L))
+                .partial(resultCounts.getOrDefault("PARTIAL", 0L))
                 .uniqueOperators(uniqueOperators)
                 .latestAt(latestAt)
                 .byOperation(groupCounts("operation", filters))
@@ -133,13 +139,38 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .build();
     }
 
-    private long count(Consumer<QueryWrapper<RmqOperationAudit>> filters, String forcedResult) {
-        QueryWrapper<RmqOperationAudit> query = new QueryWrapper<>();
+    private Map<String, Long> resultCounts(Consumer<QueryWrapper<RmqOperationAudit>> filters) {
+        QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
+                .select("result", "COUNT(*) AS result_count")
+                .groupBy("result");
         filters.accept(query);
-        if (forcedResult != null) {
-            query.eq("result", forcedResult);
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (Map<String, Object> row : auditMapper.selectMaps(query)) {
+            String key = mapValue(row, "result");
+            counts.merge(key, parseCount(row, "result_count"), Long::sum);
         }
-        return auditMapper.selectCount(query);
+        return counts;
+    }
+
+    private long countDistinctOperators(Consumer<QueryWrapper<RmqOperationAudit>> filters) {
+        QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
+                .select("COUNT(DISTINCT operator) AS operator_count")
+                .isNotNull("operator");
+        filters.accept(query);
+        List<Map<String, Object>> rows = auditMapper.selectMaps(query);
+        if (rows.isEmpty()) {
+            return 0L;
+        }
+        String value = mapValue(rows.get(0), "operator_count");
+        return value.isEmpty() ? 0L : Long.parseLong(value);
+    }
+
+    private LocalDateTime latestOperatedAt(Consumer<QueryWrapper<RmqOperationAudit>> filters) {
+        QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
+                .select("gmt_create").orderByDesc("gmt_create").last("LIMIT 1");
+        filters.accept(query);
+        List<RmqOperationAudit> rows = auditMapper.selectList(query);
+        return rows.isEmpty() ? null : rows.get(0).getGmtCreate();
     }
 
     private List<AuditSummaryBucketVO> groupCounts(
@@ -152,15 +183,27 @@ public class MybatisPlusAuditRepository implements AuditRepository {
         return auditMapper.selectMaps(query).stream()
                 .map(row -> AuditSummaryBucketVO.builder()
                         .name(mapValue(row, "bucket_name"))
-                        .count(Long.parseLong(mapValue(row, "bucket_count")))
+                        .count(parseCount(row, "bucket_count"))
                         .build())
                 .filter(bucket -> StringUtils.hasText(bucket.getName()))
                 .sorted((left, right) -> {
                     int countOrder = Long.compare(right.getCount(), left.getCount());
                     return countOrder != 0 ? countOrder : left.getName().compareTo(right.getName());
                 })
-                .limit(8)
+                .limit(HOTSPOT_LIMIT)
                 .toList();
+    }
+
+    /**
+     * Reads an aggregate column value from a result row using case-insensitive key
+     * matching, because JDBC drivers are free to return label casing differently.
+     */
+    private long parseCount(Map<String, Object> row, String key) {
+        String value = mapValue(row, key);
+        if (value.isEmpty()) {
+            return 0L;
+        }
+        return Long.parseLong(value);
     }
 
     private String mapValue(Map<String, Object> row, String key) {
@@ -183,8 +226,8 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
-                .ge(startDate != null, "operated_at", startDate)
-                .le(endDate != null, "operated_at", endDate)
+                .ge(startDate != null, "gmt_create", startDate)
+                .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result);
     }
 

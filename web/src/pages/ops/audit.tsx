@@ -206,6 +206,12 @@ const AuditPage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    // Reset the loading flag whenever the filters change so a stale summary is
+    // not shown while the refreshed aggregate is still in flight. The microtask
+    // mirrors the record-list effect so the flag update is not applied synchronously.
+    void Promise.resolve().then(() => {
+      if (!cancelled) setSummaryLoading(true);
+    });
     void getAuditSummary(activeFilter)
       .then((value) => {
         if (!cancelled) setSummary(value);

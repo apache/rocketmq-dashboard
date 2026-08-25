@@ -167,4 +167,141 @@ class MybatisPlusAuditRepositoryTest {
         audit.setId(id);
         return audit;
     }
+
+    @Test
+    void summarizeAggregatesResultCountsInOneGroupByAndCountsOperatorsInSqlTest() {
+        RmqOperationAudit latest = new RmqOperationAudit();
+        latest.setGmtCreate(LocalDateTime.of(2026, 8, 17, 12, 0));
+
+        when(auditMapper.selectMaps(any(Wrapper.class)))
+                .thenReturn(List.of(
+                        row("result", "SUCCESS", "result_count", 5L),
+                        row("result", "FAILED", "result_count", 2L),
+                        row("result", "PARTIAL", "result_count", 1L)))
+                .thenReturn(List.of(row("operator_count", 3L)))
+                .thenReturn(List.of(
+                        row("bucket_name", "DELETE_TOPIC", "bucket_count", 4L),
+                        row("bucket_name", "CREATE_TOPIC", "bucket_count", 4L)))
+                .thenReturn(List.of(row("bucket_name", "TOPIC", "bucket_count", 8L)));
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of(latest));
+
+        AuditSummaryVO summary = repository.summarize(
+                null, null, null, null, null, null, null);
+
+        assertThat(summary.getTotal()).isEqualTo(8);
+        assertThat(summary.getSuccessful()).isEqualTo(5);
+        assertThat(summary.getFailed()).isEqualTo(2);
+        assertThat(summary.getPartial()).isEqualTo(1);
+        assertThat(summary.getUniqueOperators()).isEqualTo(3);
+        assertThat(summary.getLatestAt()).isEqualTo(LocalDateTime.of(2026, 8, 17, 12, 0));
+        // Equal-count buckets fall back to name ordering for a stable dashboard.
+        assertThat(summary.getByOperation()).extracting(AuditSummaryBucketVO::getName)
+                .containsExactly("CREATE_TOPIC", "DELETE_TOPIC");
+        assertThat(summary.getByResourceType()).extracting(AuditSummaryBucketVO::getName)
+                .containsExactly("TOPIC");
+
+        // The result aggregation no longer issues one COUNT(*) per outcome.
+        verify(auditMapper, never()).selectCount(any());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> mapsCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper, times(4)).selectMaps(mapsCaptor.capture());
+        List<QueryWrapper<RmqOperationAudit>> queries = mapsCaptor.getAllValues().stream()
+                .map(wrapper -> (QueryWrapper<RmqOperationAudit>) wrapper)
+                .toList();
+        assertThat(queries.get(0).getSqlSelect()).contains("COUNT(*)");
+        assertThat(queries.get(0).getSqlSegment()).contains("GROUP BY result");
+        assertThat(queries.get(1).getSqlSelect()).contains("COUNT(DISTINCT operator)");
+        assertThat(queries.get(2).getSqlSegment()).contains("GROUP BY operation");
+        assertThat(queries.get(3).getSqlSegment()).contains("GROUP BY resource_type");
+    }
+
+    @Test
+    void summarizeOrdersHotspotsByCountThenNameAndCapsAtTheDashboardLimitTest() {
+        // Mirrors the top-N list rendered by AuditSummaryCards on the dashboard.
+        assertThat(MybatisPlusAuditRepository.HOTSPOT_LIMIT).isEqualTo(5);
+
+        when(auditMapper.selectMaps(any(Wrapper.class)))
+                .thenReturn(List.of())
+                .thenReturn(List.of(row("operator_count", 0L)))
+                .thenReturn(List.of(
+                        row("bucket_name", "op-a", "bucket_count", 10L),
+                        row("bucket_name", "op-b", "bucket_count", 7L),
+                        row("bucket_name", "op-c", "bucket_count", 7L),
+                        row("bucket_name", "op-d", "bucket_count", 3L),
+                        row("bucket_name", "op-e", "bucket_count", 3L),
+                        row("bucket_name", "op-f", "bucket_count", 3L),
+                        row("bucket_name", "op-g", "bucket_count", 1L)))
+                .thenReturn(List.of());
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        AuditSummaryVO summary = repository.summarize(
+                null, null, null, null, null, null, null);
+
+        assertThat(summary.getByOperation()).extracting(AuditSummaryBucketVO::getName)
+                .containsExactly("op-a", "op-b", "op-c", "op-d", "op-e");
+        assertThat(summary.getByOperation()).extracting(AuditSummaryBucketVO::getCount)
+                .containsExactly(10L, 7L, 7L, 3L, 3L);
+    }
+
+    @Test
+    void summarizeReadsAggregateLabelsCaseInsensitivelyTest() {
+        // JDBC drivers may return result-set label casing differently; the mapping must not care.
+        when(auditMapper.selectMaps(any(Wrapper.class)))
+                .thenReturn(List.of(row("RESULT", "SUCCESS", "RESULT_COUNT", 2L)))
+                .thenReturn(List.of(row("Operator_Count", 1L)))
+                .thenReturn(List.of(row("BUCKET_NAME", "TOPIC", "BUCKET_COUNT", 2L)))
+                .thenReturn(List.of(row("Bucket_Name", "GROUP", "bucket_count", 2L)));
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        AuditSummaryVO summary = repository.summarize(
+                null, null, null, null, null, null, null);
+
+        assertThat(summary.getSuccessful()).isEqualTo(2);
+        assertThat(summary.getUniqueOperators()).isEqualTo(1);
+        assertThat(summary.getByOperation()).extracting(
+                AuditSummaryBucketVO::getName, AuditSummaryBucketVO::getCount)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("TOPIC", 2L));
+        assertThat(summary.getByResourceType()).extracting(
+                AuditSummaryBucketVO::getName, AuditSummaryBucketVO::getCount)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("GROUP", 2L));
+    }
+
+    @Test
+    void summarizeAppliesEveryFilterToEachAggregateQueryTest() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        LocalDateTime startDate = LocalDateTime.of(2026, 8, 1, 0, 0);
+        LocalDateTime endDate = LocalDateTime.of(2026, 8, 31, 23, 59);
+        repository.summarize("orders", "DELETE_TOPIC", "TOPIC", "prod-cn",
+                startDate, endDate, "SUCCESS");
+
+        List<Wrapper<RmqOperationAudit>> queries = new java.util.ArrayList<>();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> mapsCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper, times(4)).selectMaps(mapsCaptor.capture());
+        queries.addAll(mapsCaptor.getAllValues());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> listCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectList(listCaptor.capture());
+        queries.add(listCaptor.getValue());
+
+        for (Wrapper<RmqOperationAudit> query : queries) {
+            String segment = query.getSqlSegment();
+            assertThat(segment).contains("operator LIKE", "resource_name LIKE", "detail LIKE");
+            assertThat(segment).contains("operation =", "resource_type =", "cluster_id =");
+            assertThat(segment).contains("result =", "gmt_create >=", "gmt_create <=");
+        }
+    }
+
+    /** Builds a {@code Map<String, Object>} row so mocked result maps keep an explicit type. */
+    private static Map<String, Object> row(Object... keyValues) {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            result.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        return result;
+    }
+
 }

@@ -49,7 +49,9 @@ const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: numb
 };
 
 const AuditSummaryCards = ({ summary, loading }: Props) => {
-  if (loading && !summary) return <Skeleton active paragraph={{ rows: 4 }} />;
+  // Show the placeholder while any fetch is in flight so a filter change does
+  // not keep painting a stale summary until the refreshed aggregate arrives.
+  if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
   const data = summary || {
     total: 0,
     successful: 0,
