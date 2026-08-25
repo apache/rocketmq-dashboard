@@ -26,8 +26,25 @@ export interface StudioUser {
   gmtModified: string;
 }
 
-export async function listStudioUsers() {
-  const response = await client.get<{ data: StudioUser[] }>('/studio-users');
+export interface StudioUserPage {
+  items: StudioUser[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface StudioUserQuery {
+  search?: string;
+  admin?: boolean;
+  enabled?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export async function listStudioUsers(query: StudioUserQuery = {}) {
+  const response = await client.get<{ data: StudioUserPage }>('/studio-users', {
+    params: query,
+  });
   return response.data.data;
 }
 

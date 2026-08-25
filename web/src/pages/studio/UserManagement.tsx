@@ -14,8 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Form, Input, Modal, Space, Switch, Table, Tag, message } from 'antd';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Button,
+  Card,
+  Flex,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Switch,
+  Table,
+  Tag,
+  message,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Key, Plus } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
@@ -43,6 +56,10 @@ interface PasswordFormValues {
 }
 
 const dateTime = (value?: string) => (value ? new Date(value).toLocaleString() : '-');
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
+type RoleFilter = 'admin' | 'reader';
+type StatusFilter = 'enabled' | 'disabled';
 
 const UserManagementPage = () => {
   const navigate = useNavigate();
@@ -50,23 +67,60 @@ const UserManagementPage = () => {
   const userId = useAuthStore((state) => state.userId);
   const clearAuth = useAuthStore((state) => state.logout);
   const [users, setUsers] = useState<StudioUser[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
+  const requestSeqRef = useRef(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   const loadUsers = useCallback(async () => {
-    if (!admin) return;
-    setLoading(true);
-    try {
-      setUsers(await listStudioUsers());
-    } catch {
-      message.error('加载用户列表失败');
-    } finally {
-      setLoading(false);
+    if (!admin) {
+      requestSeqRef.current += 1;
+      setUsers([]);
+      setTotal(0);
+      return;
     }
-  }, [admin]);
+    const requestId = ++requestSeqRef.current;
+    Promise.resolve().then(() => {
+      if (requestId === requestSeqRef.current) setLoading(true);
+    });
+    try {
+      const result = await listStudioUsers({
+        search: debouncedSearch || undefined,
+        admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
+        enabled: statusFilter === undefined ? undefined : statusFilter === 'enabled',
+        page,
+        pageSize,
+      });
+      if (requestId !== requestSeqRef.current) return;
+      if (result.items.length === 0 && result.total > 0 && page > 1) {
+        const lastPage = Math.max(1, Math.ceil(result.total / result.size));
+        if (page > lastPage) {
+          setPage(lastPage);
+          return;
+        }
+      }
+      setUsers(result.items);
+      setTotal(result.total);
+    } catch {
+      if (requestId === requestSeqRef.current) message.error('加载用户列表失败');
+    } finally {
+      if (requestId === requestSeqRef.current) setLoading(false);
+    }
+  }, [admin, debouncedSearch, page, pageSize, roleFilter, statusFilter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -75,6 +129,13 @@ const UserManagementPage = () => {
     return () => window.clearTimeout(timer);
   }, [loadUsers]);
 
+  useEffect(
+    () => () => {
+      requestSeqRef.current += 1;
+    },
+    [],
+  );
+
   const createUser = async () => {
     const values = await createForm.validateFields();
     try {
@@ -82,7 +143,8 @@ const UserManagementPage = () => {
       message.success('用户已创建');
       setCreateOpen(false);
       createForm.resetFields();
-      await loadUsers();
+      if (page === 1) await loadUsers();
+      else setPage(1);
     } catch {
       message.error('创建用户失败');
     }
@@ -190,7 +252,74 @@ const UserManagementPage = () => {
           修改我的密码
         </Button>
       </Card>
-      {admin && <Table rowKey="id" loading={loading} columns={columns} dataSource={users} />}
+      {admin && (
+        <Card>
+          <Flex gap={12} wrap style={{ marginBottom: 16 }}>
+            <Input.Search
+              allowClear
+              placeholder="搜索用户名"
+              style={{ width: 240 }}
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+            />
+            <Select<RoleFilter>
+              allowClear
+              aria-label="按权限筛选"
+              placeholder="全部权限"
+              style={{ width: 140 }}
+              value={roleFilter}
+              onChange={(value) => {
+                setRoleFilter(value);
+                setPage(1);
+              }}
+              options={[
+                { label: '管理员', value: 'admin' },
+                { label: '普通用户', value: 'reader' },
+              ]}
+            />
+            <Select<StatusFilter>
+              allowClear
+              aria-label="按状态筛选"
+              placeholder="全部状态"
+              style={{ width: 140 }}
+              value={statusFilter}
+              onChange={(value) => {
+                setStatusFilter(value);
+                setPage(1);
+              }}
+              options={[
+                { label: '已启用', value: 'enabled' },
+                { label: '已禁用', value: 'disabled' },
+              ]}
+            />
+          </Flex>
+          <Table
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={users}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
+              showTotal: (count) => `共 ${count} 个用户`,
+              onChange: (nextPage, nextPageSize) => {
+                if (nextPageSize !== pageSize) {
+                  setPage(1);
+                  setPageSize(nextPageSize);
+                } else {
+                  setPage(nextPage);
+                }
+              },
+            }}
+          />
+        </Card>
+      )}
 
       <Modal
         title="新建 Studio 用户"

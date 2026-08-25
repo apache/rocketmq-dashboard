@@ -18,15 +18,16 @@ package org.apache.rocketmq.studio.auth;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/studio-users")
@@ -36,8 +37,17 @@ public class StudioUserController {
     private final AuthService authService;
 
     @GetMapping
-    public Result<List<StudioUserVO>> list() {
-        return Result.ok(authService.listUsers().stream().map(StudioUserVO::from).toList());
+    public Result<PageResult<StudioUserVO>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean admin,
+            @RequestParam(required = false) Boolean enabled,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        PageResult<RmqStudioUser> result = authService.listUsers(
+                search, admin, enabled, page, pageSize);
+        return Result.ok(PageResult.of(
+                result.getItems().stream().map(StudioUserVO::from).toList(),
+                result.getTotal(), result.getPage(), result.getSize()));
     }
 
     @PostMapping
