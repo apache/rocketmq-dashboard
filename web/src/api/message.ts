@@ -139,6 +139,18 @@ export async function queryMessagePage(
   return { ...res.data.data, items: sortMessagesByStoreTimeDesc(res.data.data.items) };
 }
 
+// The backend reports business statuses ("finish" | "failed") on trace nodes,
+// while the Ant Design Steps component only understands
+// 'error' | 'wait' | 'process' | 'finish'. Map at the API boundary so the UI
+// never sees a status it cannot render.
+const mapTraceNodeStatus = (status: unknown): TraceNode['status'] => {
+  if (status === 'failed') return 'error';
+  if (status === 'finish' || status === 'process' || status === 'error' || status === 'wait') {
+    return status;
+  }
+  return 'wait';
+};
+
 export async function getMessageTrace(
   msgId: string,
   instanceId?: string,
@@ -153,7 +165,14 @@ export async function getMessageTrace(
     `/messages/${encodeURIComponent(msgId)}/trace`,
     { params },
   );
-  return res.data.data;
+  const trace = res.data.data;
+  return {
+    ...trace,
+    nodes: (trace.nodes ?? []).map((node) => ({
+      ...node,
+      status: mapTraceNodeStatus(node.status),
+    })),
+  };
 }
 
 export async function consumeMessageDirectly(data: DirectConsumeMessageRequest) {
