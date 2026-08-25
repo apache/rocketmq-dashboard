@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
@@ -31,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -48,6 +51,45 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         return ruleMapper.selectList(new QueryWrapper<RmqAlertRule>().orderByAsc("name")).stream()
                 .map(MybatisPlusAlertRepository::toRuleVO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<AlertRuleVO> findRulePage(String search, Boolean enabled,
+                                                 int page, int pageSize) {
+        QueryWrapper<RmqAlertRule> query = ruleQuery(search, enabled);
+        Page<RmqAlertRule> result = ruleMapper.selectPage(new Page<>(page, pageSize), query);
+        List<AlertRuleVO> items = result.getRecords().stream()
+                .map(MybatisPlusAlertRepository::toRuleVO)
+                .toList();
+        return PageResult.of(items, result.getTotal(), page, pageSize);
+    }
+
+    @Override
+    public Optional<AlertRuleVO> findRuleById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(ruleMapper.selectById(id))
+                .map(MybatisPlusAlertRepository::toRuleVO);
+    }
+
+    @Override
+    public List<AlertRuleVO> findRulesByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return ruleMapper.selectList(new QueryWrapper<RmqAlertRule>()
+                        .in("id", ids))
+                .stream()
+                .map(MybatisPlusAlertRepository::toRuleVO)
+                .toList();
+    }
+
+    private QueryWrapper<RmqAlertRule> ruleQuery(String search, Boolean enabled) {
+        return new QueryWrapper<RmqAlertRule>()
+                .like(StringUtils.hasText(search), "name", search)
+                .eq(enabled != null, "enabled", enabled)
+                .orderByAsc("name", "id");
     }
 
     @Override

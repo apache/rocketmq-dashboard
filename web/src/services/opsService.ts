@@ -5,6 +5,7 @@ import * as opsApi from '../api/ops';
 import type {
   AlertRule,
   AlertRuleBulkResult,
+  AlertRulePage,
   SystemAlert,
   AuditQuery,
   AuditRecord,
@@ -99,6 +100,31 @@ function formatAuditCsv(records: AuditRecord[]): string {
 export async function listAlertRules(): Promise<AlertRule[]> {
   if (isMockMode()) return alertRulesState.map(copyAlertRule);
   return opsApi.listAlertRules();
+}
+
+export async function listAlertRulesPage(
+  query: { search?: string; enabled?: boolean; page?: number; pageSize?: number } = {},
+): Promise<AlertRulePage> {
+  if (!isMockMode()) return opsApi.listAlertRulesPage(query);
+  const search = query.search?.trim().toLowerCase();
+  const rules = alertRulesState
+    .filter((rule) => !query.enabled || rule.enabled === query.enabled)
+    .filter(
+      (rule) =>
+        !search ||
+        rule.name.toLowerCase().includes(search) ||
+        rule.metric.toLowerCase().includes(search),
+    )
+    .map(copyAlertRule);
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 20;
+  const from = Math.min((page - 1) * pageSize, rules.length);
+  return {
+    items: rules.slice(from, from + pageSize),
+    total: rules.length,
+    page,
+    size: pageSize,
+  };
 }
 
 export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRule> {

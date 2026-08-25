@@ -229,6 +229,7 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'alerts.totalRules': { zh: '规则总数', en: 'Total Rules' },
   'alerts.enabled': { zh: '已启用', en: 'Enabled' },
+  'alerts.disabled': { zh: '已禁用', en: 'Disabled' },
   'alerts.triggered24h': { zh: '24h 触发', en: 'Triggered (24h)' },
   'alerts.newRule': { zh: '新建规则', en: 'New Rule' },
   'alerts.ruleName': { zh: '规则名称', en: 'Rule Name' },

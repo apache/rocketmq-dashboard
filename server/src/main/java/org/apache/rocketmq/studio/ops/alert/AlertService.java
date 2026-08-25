@@ -17,7 +17,9 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -49,6 +51,15 @@ public class AlertService {
     public List<AlertRuleVO> listRules() {
         log.info("Listing all alert rules");
         return alertRepository.findAllRules();
+    }
+
+    public PageResult<AlertRuleVO> listRules(String search, Boolean enabled, int page,
+                                             int pageSize) {
+        validateRulePagination(page, pageSize);
+        String normalizedSearch = StringUtils.hasText(search) ? search.trim() : null;
+        log.info("Listing alert rules, search={}, enabled={}, page={}, pageSize={}",
+                normalizedSearch, enabled, page, pageSize);
+        return alertRepository.findRulePage(normalizedSearch, enabled, page, pageSize);
     }
 
     public String exportPrometheusRulesYaml() {
@@ -128,10 +139,7 @@ public class AlertService {
     public AlertRuleVO toggleRule(Long id, boolean enabled) {
         log.info("Toggling alert rule id={}, enabled={}", id, enabled);
         validateRuleId(id);
-        List<AlertRuleVO> rules = alertRepository.findAllRules();
-        AlertRuleVO rule = rules.stream()
-                .filter(r -> Objects.equals(r.getId(), id))
-                .findFirst()
+        AlertRuleVO rule = alertRepository.findRuleById(id)
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Alert rule not found: " + id));
         rule.setEnabled(enabled);
         AlertRuleVO saved = alertRepository.saveRule(rule);
@@ -152,7 +160,7 @@ public class AlertService {
     public AlertRuleBulkResultVO bulkToggleRules(List<Long> ids, boolean enabled) {
         List<Long> normalizedIds = normalizeBulkIds(ids);
         Map<Long, AlertRuleVO> rulesById = new LinkedHashMap<>();
-        for (AlertRuleVO rule : alertRepository.findAllRules()) {
+        for (AlertRuleVO rule : alertRepository.findRulesByIds(normalizedIds)) {
             rulesById.put(rule.getId(), rule);
         }
         List<Long> succeeded = new ArrayList<>();
@@ -216,6 +224,15 @@ public class AlertService {
             }
         }
         return normalized;
+    }
+
+    private static void validateRulePagination(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than zero");
+        }
+        if (pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "pageSize must be between 1 and 100");
+        }
     }
 
 
