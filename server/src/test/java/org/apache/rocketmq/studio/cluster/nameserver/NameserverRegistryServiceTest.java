@@ -21,9 +21,11 @@ import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -116,12 +118,96 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void createShouldTrimNameBeforeUniquenessCheckAndPersistTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(10L);
+            return 1;
+        });
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(10L);
+        stored.setName("prod");
+        when(nameserverMapper.selectById(10L)).thenReturn(stored);
+
+        service.create(CreateNameserverRegistryDTO.builder()
+                .name("  prod  ")
+                .namesrvAddr("10.0.0.1:9876")
+                .build());
+
+        ArgumentCaptor<RmqNameserver> captor = ArgumentCaptor.forClass(RmqNameserver.class);
+        verify(nameserverMapper).insert(captor.capture());
+        assertThat(captor.getValue().getName()).isEqualTo("prod");
+    }
+
+    @Test
+    void createShouldRejectBlankNameTest() {
+        assertThatThrownBy(() -> service.create(CreateNameserverRegistryDTO.builder()
+                .name("   ")
+                .namesrvAddr("10.0.0.1:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not be blank");
+        verify(nameserverMapper, never()).insert(any(RmqNameserver.class));
+    }
+
+    @Test
+    void createShouldNormalizeAddrBeforePersistTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(11L);
+            return 1;
+        });
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(11L);
+        stored.setName("prod");
+        stored.setNamesrvAddr("ns1:9876,ns2:9876");
+        when(nameserverMapper.selectById(11L)).thenReturn(stored);
+
+        service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr(" NS1:9876 ; ns2:9876 ")
+                .build());
+
+        ArgumentCaptor<RmqNameserver> captor = ArgumentCaptor.forClass(RmqNameserver.class);
+        verify(nameserverMapper).insert(captor.capture());
+        assertThat(captor.getValue().getNamesrvAddr()).isEqualTo("ns1:9876,ns2:9876");
+    }
+
+    @Test
+    void createShouldRejectMalformedAddrTest() {
+        assertThatThrownBy(() -> service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr("ns1")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("missing host:port");
+        verify(nameserverMapper, never()).insert(any(RmqNameserver.class));
+    }
+
+    @Test
+    void createShouldMapUniqueIndexViolationToConflictTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class)))
+                .thenThrow(new DuplicateKeyException("uk_nameserver_name"));
+
+        assertThatThrownBy(() -> service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr("10.0.0.1:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("already exists");
+    }
+
+    @Test
     void updateShouldPersistAndReturnStoredEntryTest() {
         RmqNameserver existing = new RmqNameserver();
         existing.setId(1L);
         existing.setName("rocketmq1");
         when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
 
         NameserverRegistryVO updated = service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
@@ -167,14 +253,113 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void updateShouldRejectMalformedAddrTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(existing);
+
+        assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq1")
+                .namesrvAddr("ns1:0")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("out of range");
+        verify(nameserverMapper, never()).updateById(any(RmqNameserver.class));
+    }
+
+    @Test
+    void updateShouldTrimNameBeforePersistTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        existing.setName("rocketmq1");
+        when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+
+        service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("  rocketmq1  ")
+                .namesrvAddr("rocketmq1-nameserver.svc:9876")
+                .build());
+
+        assertThat(existing.getName()).isEqualTo("rocketmq1");
+    }
+
+    @Test
+    void updateShouldMapUniqueIndexViolationToConflictTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class)))
+                .thenThrow(new DuplicateKeyException("uk_nameserver_name"));
+
+        assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq2")
+                .namesrvAddr("x:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("already exists");
+    }
+
+    @Test
+    void updateShouldThrowWhenEntryDeletedAfterReadTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq1")
+                .namesrvAddr("x:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("deleted concurrently");
+    }
+
+    @Test
+    void updateShouldThrowWhenEntryVanishesBeforeReloadTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(null);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+
+        assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq1")
+                .namesrvAddr("x:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("deleted concurrently");
+    }
+
+    @Test
     void deleteShouldRemoveExistingEntryTest() {
         RmqNameserver stored = new RmqNameserver();
         stored.setId(1L);
         when(nameserverMapper.selectById(1L)).thenReturn(stored);
+        when(nameserverMapper.deleteById(1L)).thenReturn(1);
 
         service.delete(1L);
 
         verify(nameserverMapper).deleteById(1L);
+    }
+
+    @Test
+    void deleteShouldThrowWhenEntryDeletedConcurrentlyTest() {
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(1L);
+        when(nameserverMapper.selectById(1L)).thenReturn(stored);
+        when(nameserverMapper.deleteById(1L)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.delete(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("deleted concurrently");
     }
 
     @Test
