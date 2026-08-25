@@ -327,4 +327,186 @@ class DLQControllerTest {
                             "unexpected content disposition: " + disposition);
                 });
     }
+
+    @Test
+    void listDLQMessagesShouldReturnPageTest() throws Exception {
+        when(dlqService.listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20)))
+                .thenReturn(PageResult.of(List.of(
+                        DLQMessageVO.builder()
+                                .msgId("msg-1")
+                                .topic("%DLQ%test-group")
+                                .queueId(0)
+                                .offset(5L)
+                                .storeTime(150L)
+                                .keys("key-a")
+                                .body("hello dlq")
+                                .build()), 1, 1, 20));
+
+        mockMvc.perform(get("/api/dlq/test-group/messages")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.items[0].msgId").value("msg-1"))
+                .andExpect(jsonPath("$.data.total").value(1));
+
+        verify(dlqService).listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20));
+    }
+
+    @Test
+    void listDLQMessagesShouldRejectOversizedPageSizeTest() throws Exception {
+        mockMvc.perform(get("/api/dlq/test-group/messages")
+                        .param("instanceId", "instance-1")
+                        .param("pageSize", "500"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("pageSize must not exceed 100"));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void listDLQMessagesShouldRejectZeroPageTest() throws Exception {
+        mockMvc.perform(get("/api/dlq/test-group/messages")
+                        .param("instanceId", "instance-1")
+                        .param("page", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("page must be at least 1"));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void resendSelectedMessagesShouldReturnSuccessTest() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
+                "groupName", "test-group",
+                "msgIds", List.of("msg-1", "msg-2"),
+                "targetTopic", "target-topic"
+        );
+
+        mockMvc.perform(post("/api/dlq/resend-selected")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"));
+
+        verify(dlqService).resendSelectedMessages(
+                eq("instance-1"), eq("test-group"), eq(List.of("msg-1", "msg-2")), eq("target-topic"));
+    }
+
+    @Test
+    void resendSelectedMessagesShouldRejectNullRequestBodyTest() throws Exception {
+        mockMvc.perform(post("/api/dlq/resend-selected")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("DLQ resend request is required"));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void resendSelectedMessagesShouldRejectEmptyMsgIdsTest() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
+                "groupName", "test-group",
+                "msgIds", List.of()
+        );
+
+        mockMvc.perform(post("/api/dlq/resend-selected")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("At least one msgId is required"));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void resendSelectedMessagesShouldRejectMoreThanHundredMsgIdsTest() throws Exception {
+        List<String> msgIds = new java.util.ArrayList<>();
+        for (int i = 0; i < 101; i++) {
+            msgIds.add("msg-" + i);
+        }
+        Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
+                "groupName", "test-group",
+                "msgIds", msgIds
+        );
+
+        mockMvc.perform(post("/api/dlq/resend-selected")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("At most 100 msgIds are allowed per resend"));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void exportDLQExcelShouldReturnAttachmentWithCompletenessHeadersTest() throws Exception {
+        when(dlqService.exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
+                .thenReturn(DLQExcelExportResultVO.builder()
+                        .data(new byte[]{1, 2, 3})
+                        .truncated(false)
+                        .failedQueueCount(0)
+                        .limit(5000)
+                        .build());
+
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"dlq-test-group.xlsx\""))
+                .andExpect(header().string("X-DLQ-Export-Truncated", "false"))
+                .andExpect(header().string("X-DLQ-Export-FailedQueues", "0"))
+                .andExpect(header().string("X-DLQ-Export-Limit", "5000"))
+                .andExpect(content().contentTypeCompatibleWith(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(content().bytes(new byte[]{1, 2, 3}));
+
+        verify(dlqService).exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull());
+    }
+
+    @Test
+    void exportDLQExcelShouldSanitizeHeaderUnsafeGroupNameCharactersTest() throws Exception {
+        when(dlqService.exportExcel(eq("instance-1"), eq("we\"ird\\group"), isNull(), isNull(), isNull()))
+                .thenReturn(DLQExcelExportResultVO.builder()
+                        .data(new byte[]{9})
+                        .truncated(false)
+                        .failedQueueCount(0)
+                        .limit(5000)
+                        .build());
+
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "we\"ird\\group"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"dlq-we_ird_group.xlsx\""));
+    }
+
+    @Test
+    void exportDLQExcelShouldRejectMoreThanHundredMsgIdsTest() throws Exception {
+        org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request =
+                get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group");
+        for (int i = 0; i < 101; i++) {
+            request = request.param("msgIds", "msg-" + i);
+        }
+
+        mockMvc.perform(request)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("At most 100 msgIds are allowed per export"));
+
+        verifyNoInteractions(dlqService);
+    }
 }

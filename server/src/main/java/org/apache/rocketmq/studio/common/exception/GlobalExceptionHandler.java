@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.common.exception;
 
+import jakarta.validation.ConstraintViolationException;
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusException;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
@@ -71,6 +72,21 @@ public class GlobalExceptionHandler {
         String message = ex.getBindingResult().getFieldErrors().stream()
                 .findFirst()
                 .map(error -> error.getDefaultMessage() == null ? "Invalid request" : error.getDefaultMessage())
+                .orElse("Invalid request");
+        return Result.error(HttpStatus.BAD_REQUEST.value(), message);
+    }
+
+    /**
+     * Constraint violations on {@code @Validated} request parameters (e.g. {@code @Size}
+     * on a {@code @RequestParam}) surface as {@link ConstraintViolationException} rather
+     * than {@link MethodArgumentNotValidException}; report them as 400 as well.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<?> handleConstraintViolationException(ConstraintViolationException ex) {
+        String message = ex.getConstraintViolations().stream()
+                .findFirst()
+                .map(violation -> violation.getMessage() == null ? "Invalid request" : violation.getMessage())
                 .orElse("Invalid request");
         return Result.error(HttpStatus.BAD_REQUEST.value(), message);
     }

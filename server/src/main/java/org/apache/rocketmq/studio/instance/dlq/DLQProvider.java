@@ -27,6 +27,27 @@ public interface DLQProvider {
 
     DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                      String targetTopic);
+
     DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                      Integer maxCount);
+
+    /**
+     * Paged dead-letter message detail query for a group within a time window.
+     */
+    PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                          int page, int pageSize);
+
+    /**
+     * Re-deliver only the selected dead-letter messages (by msgId) back to their origin or a target topic.
+     */
+    DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
+                                     String targetTopic);
+
+    /**
+     * Excel (.xlsx) export of dead-letter messages; when {@code msgIds} is non-empty only those
+     * messages are included, otherwise the whole time window is exported. The result carries the
+     * serialized sheet plus scan-completeness metadata, mirroring the JSON export.
+     */
+    DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
+                                       List<String> msgIds);
 }

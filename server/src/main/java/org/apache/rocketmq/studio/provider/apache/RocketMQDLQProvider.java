@@ -34,8 +34,10 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessageExcelRow;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
@@ -47,6 +49,7 @@ import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -72,6 +75,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final int RESEND_HARD_CAP = 5000;
+    private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final String ORIGIN_MESSAGE_ID_PROPERTY = "studio_dlq_origin_message_id";
     private static final String ORIGIN_TOPIC_PROPERTY = "studio_dlq_origin_topic";
@@ -224,6 +228,133 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .outcome(outcome)
                 .scanIncomplete(scanResult.scanIncomplete())
                 .failedQueueCount(scanResult.failedQueueCount())
+                .build();
+    }
+
+    @Override
+    public DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
+                                             String targetTopic) {
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "groupName is required for DLQ resend");
+        }
+        if (msgIds == null || msgIds.isEmpty()) {
+            throw new BusinessException(400, "At least one msgId is required for selected DLQ resend");
+        }
+        groupName = groupName.trim();
+        Set<String> selected = new java.util.HashSet<>();
+        for (String msgId : msgIds) {
+            if (StringUtils.hasText(msgId)) {
+                selected.add(msgId.trim());
+            }
+        }
+        if (selected.isEmpty()) {
+            throw new BusinessException(400, "At least one valid msgId is required for selected DLQ resend");
+        }
+
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+
+        // Scan a wide window so the selected messages are found regardless of their store time.
+        long end = System.currentTimeMillis();
+        long begin = end - 7 * 24 * ONE_HOUR_MILLIS;
+        DeadLetterScanResult scanResult =
+                collectDeadLetters(instanceId, dlqTopic, begin, end, RESEND_HARD_CAP);
+        List<MessageExt> deadLetters = scanResult.messages().stream()
+                .filter(message -> selected.contains(message.getMsgId()))
+                .toList();
+        int[] counts = {0, 0};
+        if (!deadLetters.isEmpty()) {
+            try {
+                runtimeAdminClientResolver.executeProducer(instanceId, producer -> {
+                    for (MessageExt deadLetter : deadLetters) {
+                        if (resendOne(producer, deadLetter, targetTopic)) {
+                            counts[0]++;
+                        } else {
+                            counts[1]++;
+                        }
+                    }
+                    return null;
+                });
+            } catch (Exception e) {
+                log.warn("Failed to resend selected dead letters for group {}: {}", groupName, e.getMessage());
+                counts[1] += deadLetters.size() - counts[0];
+            }
+        }
+        int resent = counts[0];
+        int failed = counts[1];
+        boolean foundAll = deadLetters.size() == selected.size();
+
+        String outcome = classifyOutcome(deadLetters.size(), resent, failed, !foundAll);
+        String detail = String.format("instanceId=%s, group=%s, selected=%d, matched=%d, resent=%d, failed=%d",
+                instanceId, groupName, selected.size(), deadLetters.size(), resent, failed);
+        recordAudit(groupName, detail, outcome);
+        log.info("Selected DLQ resend completed: {}", detail);
+        return DLQResendResultVO.builder()
+                .matched(deadLetters.size())
+                .resent(resent)
+                .failed(failed)
+                .outcome(outcome)
+                .build();
+    }
+
+    @Override
+    public PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                                 int page, int pageSize) {
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "groupName is required for DLQ message details");
+        }
+        if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(400, "Invalid page or pageSize");
+        }
+        groupName = groupName.trim();
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+        long end = endTime != null ? endTime : System.currentTimeMillis();
+        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        if (begin >= end) {
+            throw new BusinessException(400, "DLQ detail start time must be before end time");
+        }
+        List<DLQMessageVO> all = collectDeadLetters(instanceId, dlqTopic, begin, end, RESEND_HARD_CAP)
+                .messages().stream()
+                .map(this::toExportVO)
+                .toList();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, all.size());
+        int to = (int) Math.min(offset + pageSize, all.size());
+        return PageResult.of(all.subList(from, to), all.size(), page, pageSize);
+    }
+
+    @Override
+    public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
+                                              List<String> msgIds) {
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "groupName is required for DLQ export");
+        }
+        groupName = groupName.trim();
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+        long end = endTime != null ? endTime : System.currentTimeMillis();
+        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        DeadLetterScanResult scanResult = collectDeadLetters(instanceId, dlqTopic, begin, end, RESEND_HARD_CAP);
+        Set<String> selected = msgIds == null ? Collections.emptySet()
+                : new java.util.HashSet<>(msgIds);
+        List<DLQMessageVO> messages = scanResult.messages().stream()
+                .filter(message -> selected.isEmpty() || selected.contains(message.getMsgId()))
+                .map(this::toExportVO)
+                .toList();
+        byte[] data;
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            com.alibaba.excel.EasyExcel.write(output, DLQMessageExcelRow.class)
+                    .sheet("DLQ")
+                    .doWrite(messages.stream().map(DLQMessageExcelRow::from).toList());
+            data = output.toByteArray();
+        } catch (Exception e) {
+            log.warn("Failed to build Excel export for group {}: {}", groupName, e.getMessage());
+            throw new BusinessException(502, "Failed to export DLQ messages as Excel: " + e.getMessage());
+        }
+        return DLQExcelExportResultVO.builder()
+                .data(data)
+                .truncated(scanResult.truncated())
+                .failedQueueCount(scanResult.failedQueueCount())
+                .limit(RESEND_HARD_CAP)
                 .build();
     }
 
