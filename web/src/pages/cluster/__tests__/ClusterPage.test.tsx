@@ -757,4 +757,35 @@ describe('Cluster page', () => {
 
     expect(clusterServiceMocks.listClusters).toHaveBeenCalledTimes(1);
   });
+
+  it('ignores stale registry-cluster and nameserver responses', async () => {
+    const staleClusters = deferred<ClusterInfo[]>();
+    const latestClusters = deferred<ClusterInfo[]>();
+    clusterServiceMocks.listRegistryClusters
+      .mockImplementationOnce(() => staleClusters.promise)
+      .mockImplementationOnce(() => latestClusters.promise);
+
+    renderWithProviders(<ClusterPage />);
+    await flushPromises();
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await flushPromises();
+
+    await act(async () => {
+      staleClusters.resolve([buildCluster({ connections: 501 })]);
+      await staleClusters.promise;
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('501')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
+
+    await act(async () => {
+      latestClusters.resolve([buildCluster({ connections: 502 })]);
+      await latestClusters.promise;
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('502')).toBeInTheDocument();
+  });
 });

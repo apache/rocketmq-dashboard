@@ -129,76 +129,74 @@ const ClusterPage = () => {
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [configForm] = Form.useForm();
 
-  const loadNsRegistry = useCallback(async () => {
-    try {
-      setNsRegistry(await listNameserverRegistry());
-    } catch {
-      setNsRegistry([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    listNameserverRegistry()
-      .then((entries) => {
-        if (active) setNsRegistry(entries);
-      })
-      .catch(() => {
-        if (active) setNsRegistry([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const [k8sIdOptions, setK8sIdOptions] = useState<string[]>([]);
 
   const [registryClusters, setRegistryClusters] = useState<ClusterInfo[]>([]);
   const [registryLoading, setRegistryLoading] = useState(true);
+  const nsRegistryRequestRef = useRef(0);
+  const registryClustersRequestRef = useRef(0);
+  const k8sCertsRequestRef = useRef(0);
 
   const loadRegistryClusters = useCallback(async () => {
-    setRegistryLoading(true);
+    const requestId = ++registryClustersRequestRef.current;
+    void Promise.resolve().then(() => {
+      if (registryClustersRequestRef.current === requestId) setRegistryLoading(true);
+    });
     try {
-      setRegistryClusters(await listRegistryClusters());
+      const nextClusters = await listRegistryClusters();
+      if (registryClustersRequestRef.current === requestId) {
+        setRegistryClusters(nextClusters);
+      }
     } catch {
-      setRegistryClusters([]);
+      if (registryClustersRequestRef.current === requestId) {
+        setRegistryClusters([]);
+      }
     } finally {
-      setRegistryLoading(false);
+      if (registryClustersRequestRef.current === requestId) {
+        setRegistryLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    let active = true;
-    listRegistryClusters()
-      .then((next) => {
-        if (active) setRegistryClusters(next);
-      })
-      .catch(() => {
-        if (active) setRegistryClusters([]);
-      })
-      .finally(() => {
-        if (active) setRegistryLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    void Promise.resolve().then(loadRegistryClusters);
+  }, [loadRegistryClusters]);
+
+  const loadNsRegistry = useCallback(async () => {
+    const requestId = ++nsRegistryRequestRef.current;
+    try {
+      const entries = await listNameserverRegistry();
+      if (nsRegistryRequestRef.current === requestId) setNsRegistry(entries);
+    } catch {
+      if (nsRegistryRequestRef.current === requestId) setNsRegistry([]);
+    }
   }, []);
 
   useEffect(() => {
-    let active = true;
+    void Promise.resolve().then(loadNsRegistry);
+  }, [loadNsRegistry]);
+
+  useEffect(() => {
+    const requestId = ++k8sCertsRequestRef.current;
     listK8sCerts()
       .then((certs) => {
-        if (active) {
+        if (k8sCertsRequestRef.current === requestId) {
           setK8sIdOptions([...new Set(certs.map((cert) => cert.k8sId).filter(Boolean))]);
         }
       })
       .catch(() => {
-        if (active) setK8sIdOptions([]);
+        if (k8sCertsRequestRef.current === requestId) setK8sIdOptions([]);
       });
-    return () => {
-      active = false;
-    };
   }, []);
+
+  useEffect(
+    () => () => {
+      nsRegistryRequestRef.current += 1;
+      registryClustersRequestRef.current += 1;
+      k8sCertsRequestRef.current += 1;
+    },
+    [],
+  );
 
   const [nsCreateModalOpen, setNsCreateModalOpen] = useState(false);
   const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
