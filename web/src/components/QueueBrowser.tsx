@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -61,15 +61,30 @@ export const useQueueBrowser = (instanceId?: string) => {
   const [offsets, setOffsets] = useState<Record<string, number>>({});
   const [pulling, setPulling] = useState<string | null>(null);
   const [entries, setEntries] = useState<PulledEntry[]>([]);
+  const requestSeqRef = useRef(0);
+
+  useEffect(() => {
+    const requestId = ++requestSeqRef.current;
+    void Promise.resolve().then(() => {
+      if (requestId !== requestSeqRef.current) return;
+      setQueues([]);
+      setOffsets({});
+      setEntries([]);
+      setLoading(false);
+      setPulling(null);
+    });
+  }, [instanceId, topic]);
 
   const loadQueues = useCallback(async () => {
     if (!instanceId || !topic) return;
+    const requestId = ++requestSeqRef.current;
     setLoading(true);
     setQueues([]);
     setOffsets({});
     setEntries([]);
     try {
       const result = await getQueueOffsets({ instanceId, topic });
+      if (requestId !== requestSeqRef.current) return;
       setQueues(result);
       const initial: Record<string, number> = {};
       for (const q of result) {
@@ -78,14 +93,17 @@ export const useQueueBrowser = (instanceId?: string) => {
       }
       setOffsets(initial);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载队列信息失败');
+      if (requestId === requestSeqRef.current) {
+        message.error(err instanceof Error ? err.message : '加载队列信息失败');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestSeqRef.current) setLoading(false);
     }
   }, [instanceId, topic]);
 
   const handlePull = async (queue: QueueOffset) => {
     if (!instanceId || !topic) return;
+    const requestId = requestSeqRef.current;
     const key = `${queue.brokerName}-${queue.queueId}`;
     const offset = offsets[key] ?? queue.minOffset;
     setPulling(key);
@@ -97,14 +115,17 @@ export const useQueueBrowser = (instanceId?: string) => {
         queueId: queue.queueId,
         offset,
       });
+      if (requestId !== requestSeqRef.current) return;
       setEntries((prev) => [
         ...prev.filter((entry) => entry.key !== key),
         { key, offset, message: msg },
       ]);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '拉取消息失败');
+      if (requestId === requestSeqRef.current) {
+        message.error(err instanceof Error ? err.message : '拉取消息失败');
+      }
     } finally {
-      setPulling(null);
+      if (requestId === requestSeqRef.current) setPulling(null);
     }
   };
 
