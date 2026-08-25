@@ -20,8 +20,8 @@ import { attachThresholdUnit } from '../alertRulePayload';
 
 describe('attachThresholdUnit', () => {
   it('derives the threshold unit from the selected metric', () => {
-    expect(attachThresholdUnit({ metric: 'Broker 离线', threshold: 1 })).toEqual({
-      metric: 'Broker 离线',
+    expect(attachThresholdUnit({ metric: 'rocketmq_broker_offline', threshold: 1 })).toEqual({
+      metric: 'rocketmq_broker_offline',
       threshold: 1,
       thresholdUnit: '个',
     });
@@ -30,14 +30,23 @@ describe('attachThresholdUnit', () => {
   it('overwrites stale units when a metric changes', () => {
     expect(
       attachThresholdUnit({
-        metric: '消费堆积量',
+        metric: 'rocketmq_consumer_lag_messages',
         threshold: 100,
         thresholdUnit: '%',
       }),
     ).toEqual({
-      metric: '消费堆积量',
+      metric: 'rocketmq_consumer_lag_messages',
       threshold: 100,
       thresholdUnit: '条',
+    });
+  });
+
+  it('normalizes legacy display values before submitting them to the backend', () => {
+    expect(attachThresholdUnit({ metric: '磁盘使用率', duration: '5分钟', threshold: 85 })).toEqual({
+      metric: 'rocketmq_disk_use_ratio',
+      duration: '5m',
+      threshold: 85,
+      thresholdUnit: '%',
     });
   });
 });
