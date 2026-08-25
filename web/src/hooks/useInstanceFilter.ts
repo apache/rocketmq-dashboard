@@ -47,6 +47,8 @@ export function useInstanceFilter() {
 
   const [instances, setInstances] = useState<Instance[]>([]);
   const [instancesLoading, setInstancesLoading] = useState(true);
+  const [instancesError, setInstancesError] = useState(false);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   // Keep the latest selected instance id in a ref so the instance *list* is only
   // fetched when needed (section / navigation changes) and not re-fetched every
@@ -63,6 +65,7 @@ export function useInstanceFilter() {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
+        setInstancesError(false);
         const selectedInstanceId = routeInstanceIdRef.current;
         const isKnownInstance = nextInstances.some(
           (instance) => instance.name === selectedInstanceId,
@@ -74,7 +77,7 @@ export function useInstanceFilter() {
         }
       })
       .catch(() => {
-        // 实例列表加载失败时不做实例过滤，保持页面数据可用
+        if (!cancelled) setInstancesError(true);
       })
       .finally(() => {
         if (!cancelled) setInstancesLoading(false);
@@ -82,16 +85,22 @@ export function useInstanceFilter() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, section]);
+  }, [navigate, reloadVersion, section]);
 
   const selectedInstanceId =
-    routeInstanceId !== undefined && instances.some((instance) => instance.name === routeInstanceId)
+    routeInstanceId !== undefined &&
+    (instancesError || instances.some((instance) => instance.name === routeInstanceId))
       ? routeInstanceId
       : instances[0]?.name;
   const selectedInstance = instances.find((instance) => instance.name === selectedInstanceId);
 
   const selectInstance = (name: string) => {
     navigate(`/instance/${encodeURIComponent(name)}/${section}`);
+  };
+
+  const retryInstances = () => {
+    setInstancesLoading(true);
+    setReloadVersion((current) => current + 1);
   };
 
   const instanceOptions = instances.map((instance) => ({
@@ -102,6 +111,8 @@ export function useInstanceFilter() {
   return {
     instances,
     instancesLoading,
+    instancesError,
+    retryInstances,
     selectedInstanceId,
     selectedInstance,
     selectInstance,

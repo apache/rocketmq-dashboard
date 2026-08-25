@@ -59,10 +59,10 @@ const { Sider, Content } = Layout;
 const iconSize = 18;
 
 function hasInstanceCapability(
-  capabilities: Set<InstanceCapability> | null,
+  capabilities: Set<InstanceCapability> | null | undefined,
   capability: InstanceCapability,
 ) {
-  return capabilities === null || capabilities.has(capability);
+  return capabilities === undefined || capabilities?.has(capability) === true;
 }
 
 const MainLayout = () => {
@@ -80,7 +80,7 @@ const MainLayout = () => {
   const toggleDataMode = useDataModeStore((state) => state.toggle);
   const [capabilityState, setCapabilityState] = useState<{
     instanceId: string;
-    capabilities: Set<InstanceCapability>;
+    capabilities: Set<InstanceCapability> | null;
   } | null>(null);
 
   // Pages fetch on mount, so reload to re-request everything from the new data source.
@@ -149,7 +149,7 @@ const MainLayout = () => {
         }
       })
       .catch(() => {
-        // Preserve existing navigation when capability discovery is unavailable.
+        // An unknown capability set is derived as fail-closed below.
       });
     return () => {
       active = false;
@@ -157,7 +157,11 @@ const MainLayout = () => {
   }, [selectedInstanceId]);
 
   const instanceCapabilities =
-    capabilityState?.instanceId === selectedInstanceId ? capabilityState.capabilities : null;
+    selectedInstanceId === null
+      ? undefined
+      : capabilityState?.instanceId === selectedInstanceId
+        ? capabilityState.capabilities
+        : null;
 
   const selectedMenuKey = instanceScopedMatch
     ? `/instance/${instanceScopedMatch[1]}`
@@ -176,13 +180,25 @@ const MainLayout = () => {
             ? [{ key: '/instance/topic', icon: <ListDashes size={16} />, label: t('nav.topic') }]
             : []),
           ...(hasInstanceCapability(instanceCapabilities, 'CONSUMER_GROUP_MANAGEMENT')
-            ? [{ key: '/instance/consumer', icon: <ChatCircleText size={16} />, label: t('nav.group') }]
+            ? [
+                {
+                  key: '/instance/consumer',
+                  icon: <ChatCircleText size={16} />,
+                  label: t('nav.group'),
+                },
+              ]
             : []),
           ...(hasInstanceCapability(instanceCapabilities, 'ACL_MANAGEMENT')
             ? [{ key: '/instance/acl', icon: <Key size={16} />, label: t('nav.acl') }]
             : []),
           ...(hasInstanceCapability(instanceCapabilities, 'MESSAGE_QUERY')
-            ? [{ key: '/instance/message', icon: <MagnifyingGlass size={16} />, label: t('nav.message') }]
+            ? [
+                {
+                  key: '/instance/message',
+                  icon: <MagnifyingGlass size={16} />,
+                  label: t('nav.message'),
+                },
+              ]
             : []),
           ...(hasInstanceCapability(instanceCapabilities, 'DLQ_MANAGEMENT')
             ? [{ key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') }]

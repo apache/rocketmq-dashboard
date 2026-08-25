@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { useInstanceFilter } from './useInstanceFilter';
@@ -32,7 +32,21 @@ function InstanceRouteProbe() {
   return <output>{`${pathname}|${selectedInstanceId}`}</output>;
 }
 
+function RetryableInstanceRouteProbe() {
+  const { selectedInstanceId, retryInstances } = useInstanceFilter();
+  return (
+    <>
+      <output>{selectedInstanceId}</output>
+      <button onClick={retryInstances}>retry</button>
+    </>
+  );
+}
+
 describe('useInstanceFilter', () => {
+  beforeEach(() => {
+    instanceServiceMocks.listInstances.mockReset();
+  });
+
   it('replaces an unknown route instance with the first available instance', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
@@ -87,5 +101,51 @@ describe('useInstanceFilter', () => {
     await waitFor(() => {
       expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
     });
+  });
+
+  it('keeps a valid route instance selected when inventory loading fails', async () => {
+    instanceServiceMocks.listInstances.mockRejectedValue(new Error('inventory unavailable'));
+
+    render(
+      <MemoryRouter initialEntries={['/instance/instance-a/topic']}>
+        <Routes>
+          <Route path="/instance/:instanceId/topic" element={<InstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
+    });
+  });
+
+  it('retries instance inventory after a failed load', async () => {
+    instanceServiceMocks.listInstances
+      .mockRejectedValueOnce(new Error('inventory unavailable'))
+      .mockResolvedValueOnce([
+        {
+          id: 7,
+          name: 'instance-a',
+          remark: '',
+          type: 'PROXY_CLUSTER',
+          endpoint: '127.0.0.1:8080',
+          topicCount: 0,
+          consumerGroupCount: 0,
+          gmtCreate: '2026-01-01T00:00:00Z',
+          gmtModified: '2026-01-01T00:00:00Z',
+        },
+      ]);
+
+    render(
+      <MemoryRouter initialEntries={['/instance/instance-a/topic']}>
+        <Routes>
+          <Route path="/instance/:instanceId/topic" element={<RetryableInstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(instanceServiceMocks.listInstances).toHaveBeenCalledTimes(1));
+    screen.getByRole('button', { name: 'retry' }).click();
+    await waitFor(() => expect(instanceServiceMocks.listInstances).toHaveBeenCalledTimes(2));
   });
 });

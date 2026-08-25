@@ -203,7 +203,7 @@ describe('MainLayout authentication navigation', () => {
     expect(screen.queryByText('消息查询')).not.toBeInTheDocument();
   });
 
-  it('keeps navigation available when capability discovery fails', async () => {
+  it('hides capability-gated navigation when capability discovery fails', async () => {
     instanceServiceMocks.getInstanceCapabilities.mockRejectedValue(new Error('unavailable'));
 
     render(
@@ -223,7 +223,8 @@ describe('MainLayout authentication navigation', () => {
     await waitFor(() =>
       expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith('apache-1'),
     );
-    expect(screen.getByText('ACL 管理')).toBeInTheDocument();
-    expect(screen.getByText('死信队列')).toBeInTheDocument();
+    expect(screen.queryByText('Topic 管理')).not.toBeInTheDocument();
+    expect(screen.queryByText('ACL 管理')).not.toBeInTheDocument();
+    expect(screen.queryByText('死信队列')).not.toBeInTheDocument();
   });
 });
