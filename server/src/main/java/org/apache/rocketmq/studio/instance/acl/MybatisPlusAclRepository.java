@@ -177,6 +177,8 @@ public class MybatisPlusAclRepository implements AclRepository {
     @Override
     @Transactional
     public PlainAccessConfigVO createAndUpdatePlainAccessConfig(PlainAccessConfigVO config) {
+        validatePermissionEntries(config.getTopicPerms(), "topicPerms");
+        validatePermissionEntries(config.getGroupPerms(), "groupPerms");
         List<RmqAclUser> existingAccounts = userMapper.selectList(
                 new QueryWrapper<RmqAclUser>().eq("access_key", config.getAccessKey()));
         if (existingAccounts.size() > 1) {
@@ -354,6 +356,19 @@ public class MybatisPlusAclRepository implements AclRepository {
             return null;
         }
         return new String[]{entry.substring(0, idx).trim(), entry.substring(idx + 1).trim()};
+    }
+
+    private static void validatePermissionEntries(List<String> entries, String field) {
+        if (entries == null) {
+            return;
+        }
+        for (int index = 0; index < entries.size(); index++) {
+            String[] parts = splitPerm(entries.get(index));
+            if (parts == null || parts[0].isBlank() || parts[1].isBlank()) {
+                throw new BusinessException(400,
+                        field + "[" + index + "] must use non-blank resource=permission format");
+            }
+        }
     }
 
     // ── Mapping ────────────────────────────────────────────────────

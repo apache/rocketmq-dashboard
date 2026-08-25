@@ -48,6 +48,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -61,6 +62,22 @@ class MybatisPlusAclRepositoryTest {
 
     @InjectMocks
     private MybatisPlusAclRepository repository;
+
+    @Test
+    void upsertShouldRejectMalformedPermissionEntriesBeforeMutatingAccount() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .secretKey("secret-x")
+                .topicPerms(List.of("orders=PUB", "missing-permission"))
+                .build();
+
+        assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(config))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topicPerms[1] must use non-blank resource=permission format")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(userMapper, ruleMapper);
+    }
 
     @Test
     void findRulePageShouldApplyFiltersAndPreserveFilteredTotal() {
