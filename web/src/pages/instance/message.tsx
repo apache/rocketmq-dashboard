@@ -124,6 +124,9 @@ const formatTimeMs = (value: number | string): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 };
 
+const isBase64Body = (record: MessageRecord): boolean =>
+  (record.bodyEncoding ?? '').toUpperCase() === 'BASE64';
+
 const formatBody = (body: string): string => {
   try {
     return JSON.stringify(JSON.parse(body), null, 2);
@@ -420,8 +423,16 @@ const MessagePageContent = ({
   };
 
   const handleDownload = (record: MessageRecord) => {
-    const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
-    downloadBlob(blob, `${record.msgId}.json`);
+    if (isBase64Body(record)) {
+      // Binary payloads arrive Base64-encoded; keep the encoding as plain text
+      // instead of forcing the encoded string through the JSON formatter.
+      downloadBlob(new Blob([record.body], { type: 'text/plain' }), `${record.msgId}.txt`);
+    } else {
+      downloadBlob(
+        new Blob([formatBody(record.body)], { type: 'application/json' }),
+        `${record.msgId}.json`,
+      );
+    }
     message.success('消息下载成功');
   };
 
@@ -616,9 +627,28 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{formatTimeMs(selectedMsg.storeTime)}</span>
             </Descriptions.Item>
           </Descriptions>
-          <Typography.Title level={5} style={{ marginBottom: 8 }}>
-            消息体
-          </Typography.Title>
+          {selectedMsg.bodyTruncated && (
+            <Alert
+              showIcon
+              type="warning"
+              message="消息体超过展示上限，下方内容已被截断"
+              style={{ marginBottom: 12 }}
+            />
+          )}
+          {selectedMsg.propertiesTruncated && (
+            <Alert
+              showIcon
+              type="warning"
+              message="消息属性数量或长度超限，部分属性未完整展示"
+              style={{ marginBottom: 12 }}
+            />
+          )}
+          <Flex align="center" gap={8} style={{ marginBottom: 8 }}>
+            <Typography.Title level={5} style={{ marginBottom: 0 }}>
+              消息体
+            </Typography.Title>
+            {isBase64Body(selectedMsg) && <Tag color="geekblue">Base64</Tag>}
+          </Flex>
           <Paragraph
             copyable
             style={{

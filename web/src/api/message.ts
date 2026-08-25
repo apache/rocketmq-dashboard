@@ -10,10 +10,16 @@ export interface MessageRecord {
   queueId: number | null;
   queueOffset: number | null;
   body: string;
+  /** How `body` is encoded: "UTF-8" for text, "BASE64" for binary payloads. */
+  bodyEncoding?: string | null;
+  /** True when the backend clipped the body to its display limit. */
+  bodyTruncated?: boolean;
   storeTime: number | string;
   bornHost: string;
   storeHost: string;
   properties: Record<string, string>;
+  /** True when some properties were dropped by the backend display limit. */
+  propertiesTruncated?: boolean;
   size: number;
 }
 
