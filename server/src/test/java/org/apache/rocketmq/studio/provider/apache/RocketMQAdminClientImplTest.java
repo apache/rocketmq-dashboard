@@ -422,6 +422,42 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void updateTopicClearsRemarkWhenBlankSubmitted() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setRemark("old remark");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setRemark("   ");
+
+        TopicVO updated = adminClient.updateTopic(topic);
+
+        assertThat(existing.getRemark()).isNull();
+        assertThat(updated.getRemark()).isNull();
+        verify(topicMapper).updateById(existing);
+    }
+
+    @Test
+    void updateTopicKeepsRemarkWhenNotSubmitted() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setRemark("old remark");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        TopicVO updated = adminClient.updateTopic(topic);
+
+        assertThat(existing.getRemark()).isEqualTo("old remark");
+        assertThat(updated.getRemark()).isEqualTo("old remark");
+    }
+
+    @Test
     void topicWritesSendMessageTypeAttributeToBroker() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());

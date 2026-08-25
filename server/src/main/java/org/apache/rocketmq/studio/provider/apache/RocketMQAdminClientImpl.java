@@ -353,8 +353,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     if (topic.getType() != null) {
                         existing.setTopicType(topic.getType().name());
                     }
-                    if (StringUtils.hasText(topic.getRemark())) {
-                        existing.setRemark(topic.getRemark());
+                    // Distinguish "remark not submitted" (null: keep the stored value) from
+                    // "remark submitted blank" (clear it); a hasText() guard treated both the
+                    // same, so users could never remove a persisted remark.
+                    if (topic.getRemark() != null) {
+                        String remark = topic.getRemark().trim();
+                        existing.setRemark(remark.isEmpty() ? null : remark);
                     }
                     existing.setGmtModified(LocalDateTime.now());
                     topicMapper.updateById(existing);
@@ -366,6 +370,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topic.setId(existing == null ? null : existing.getId());
                 topic.setWriteQueues(writeQueues);
                 topic.setReadQueues(readQueues);
+                // Echo the persisted remark (kept, replaced or cleared) so the response
+                // matches the stored state instead of the raw request value.
+                if (existing != null) {
+                    topic.setRemark(existing.getRemark());
+                }
                 return topic;
             } catch (BusinessException e) {
                 recordAudit("UPDATE_TOPIC", topicName, e.getMessage(), "FAILED");
