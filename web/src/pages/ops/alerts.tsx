@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState, type Key } from 'react';
+import { useCallback, useEffect, useRef, useState, type Key } from 'react';
 import { Plus, Pencil, Trash } from '@phosphor-icons/react';
 import {
   Button,
@@ -43,7 +43,7 @@ import {
   bulkDeleteAlertRules,
   bulkToggleAlertRules,
   deleteAlertRule,
-  listAlertRules,
+  listAlertRulesPage,
   toggleAlertRule,
   updateAlertRule,
 } from '../../services/opsService';
@@ -66,6 +66,11 @@ const AlertsPage = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const [rules, setRules] = useState<AlertRule[]>([]);
+  const [totalRules, setTotalRules] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useState('');
+  const [enabledFilter, setEnabledFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
@@ -74,6 +79,7 @@ const AlertsPage = () => {
   const [selectedRuleIds, setSelectedRuleIds] = useState<Key[]>([]);
   const [bulkAction, setBulkAction] = useState<'enable' | 'disable' | 'delete' | null>(null);
   const [form] = Form.useForm();
+  const requestIdRef = useRef(0);
 
   const channelLabels: Record<string, string> = {
     dingtalk: 'DingTalk',
@@ -81,24 +87,35 @@ const AlertsPage = () => {
     sms: 'SMS',
   };
 
-  useEffect(() => {
-    let cancelled = false;
-
-    void listAlertRules()
-      .then((nextRules) => {
-        if (!cancelled) setRules(nextRules);
-      })
-      .catch(() => {
-        if (!cancelled) message.error('告警规则加载失败，请稍后重试');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+  const loadRules = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
+    try {
+      const result = await listAlertRulesPage({
+        search: search.trim() || undefined,
+        enabled: enabledFilter === 'all' ? undefined : enabledFilter === 'enabled',
+        page,
+        pageSize,
       });
+      if (requestId !== requestIdRef.current) return;
+      setRules(result.items);
+      setTotalRules(result.total);
+    } catch {
+      if (requestId === requestIdRef.current) {
+        message.error('告警规则加载失败，请稍后重试');
+      }
+    } finally {
+      if (requestId === requestIdRef.current) setLoading(false);
+    }
+  }, [enabledFilter, page, pageSize, search]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadRules(), 0);
     return () => {
-      cancelled = true;
+      window.clearTimeout(timer);
+      requestIdRef.current += 1;
     };
-  }, []);
+  }, [loadRules]);
 
   const enabledCount = rules.filter((r) => r.enabled).length;
   const selectedCount = selectedRuleIds.length;
@@ -165,7 +182,6 @@ const AlertsPage = () => {
       if (updatedRules.size > 0) {
         setRules((previous) => previous.map((rule) => updatedRules.get(rule.id) ?? rule));
       }
-
       setSelectedRuleIds(failedIds.map(Number));
 
       if (failedIds.length === 0) {
@@ -212,6 +228,7 @@ const AlertsPage = () => {
           const succeeded = new Set(result.succeededIds);
           const failedIds = Object.keys(result.failures);
           setRules((previous) => previous.filter((rule) => !succeeded.has(rule.id)));
+          setTotalRules((previous) => Math.max(previous - result.succeededIds.length, 0));
           setSelectedRuleIds(failedIds.map(Number));
           if (failedIds.length === 0) message.success(t('alerts.bulkDeleteSuccess'));
           else
@@ -364,9 +381,7 @@ const AlertsPage = () => {
           <Flex gap={16}>
             <Flex align="center" gap={4}>
               <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.totalRules')}</span>
-              <span style={{ fontSize: 18, fontWeight: 600, color: '#3b82f6' }}>
-                {rules.length}
-              </span>
+              <span style={{ fontSize: 18, fontWeight: 600, color: '#3b82f6' }}>{totalRules}</span>
             </Flex>
             <Flex align="center" gap={4}>
               <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.enabled')}</span>
@@ -402,7 +417,30 @@ const AlertsPage = () => {
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
           }}
         >
-          <span style={{ color: token.colorTextSecondary }}>
+          <Input.Search
+            allowClear
+            placeholder={t('alerts.searchPlaceholder')}
+            style={{ width: 260 }}
+            value={search}
+            onChange={(event) => {
+              setPage(1);
+              setSearch(event.target.value);
+            }}
+          />
+          <Select
+            value={enabledFilter}
+            onChange={(value) => {
+              setPage(1);
+              setEnabledFilter(value);
+            }}
+            style={{ width: 130 }}
+            options={[
+              { value: 'all', label: t('common.all') },
+              { value: 'enabled', label: t('alerts.enabled') },
+              { value: 'disabled', label: t('alerts.disabled') },
+            ]}
+          />
+          <span style={{ color: token.colorTextSecondary, marginLeft: 8 }}>
             {t('alerts.selectedRules', { count: selectedCount })}
           </span>
           <Flex gap={8}>
@@ -440,7 +478,22 @@ const AlertsPage = () => {
           size="small"
           loading={loading}
           rowSelection={rowSelection}
-          pagination={false}
+          pagination={{
+            current: page,
+            pageSize,
+            total: totalRules,
+            showSizeChanger: true,
+            pageSizeOptions: ['20', '50', '100'],
+            showTotal: (count) => `${t('common.total')} ${count}`,
+            onChange: (nextPage, nextPageSize) => {
+              if (nextPageSize !== pageSize) {
+                setPage(1);
+                setPageSize(nextPageSize);
+              } else {
+                setPage(nextPage);
+              }
+            },
+          }}
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>

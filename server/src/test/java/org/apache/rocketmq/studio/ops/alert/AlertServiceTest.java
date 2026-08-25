@@ -19,9 +19,9 @@ package org.apache.rocketmq.studio.ops.alert;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,10 +32,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -83,6 +85,32 @@ class AlertServiceTest {
         List<AlertRuleVO> result = alertService.listRules();
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void listRulesShouldNormalizeSearchAndDelegateFiltersToRepository() {
+        PageResult<AlertRuleVO> repositoryPage = PageResult.of(List.of(), 0, 2, 20);
+        when(alertRepository.findRulePage("lag", true, 2, 20)).thenReturn(repositoryPage);
+
+        PageResult<AlertRuleVO> result = alertService.listRules("  lag  ", true, 2, 20);
+
+        assertThat(result).isSameAs(repositoryPage);
+        verify(alertRepository).findRulePage("lag", true, 2, 20);
+    }
+
+    @Test
+    void listRulesShouldRejectInvalidPaginationBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> alertService.listRules("lag", true, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than zero");
+        assertThatThrownBy(() -> alertService.listRules("lag", true, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+        assertThatThrownBy(() -> alertService.listRules("lag", true, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+
+        verify(alertRepository, never()).findRulePage(any(), any(), anyInt(), anyInt());
     }
 
     @Test
@@ -642,7 +670,7 @@ class AlertServiceTest {
     @Test
     void toggleRuleShouldEnableRule() {
         AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(existing));
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.toggleRule(1L, true);
@@ -656,7 +684,7 @@ class AlertServiceTest {
     @Test
     void toggleRuleShouldDisableRule() {
         AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").enabled(true).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(existing));
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.toggleRule(1L, false);
@@ -672,11 +700,12 @@ class AlertServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verify(alertRepository, never()).findAllRules();
+        verify(alertRepository, never()).findRuleById(any());
     }
 
     @Test
-    void toggleRuleShouldIgnorePersistedRulesWithNullIds() {
-        when(alertRepository.findAllRules()).thenReturn(List.of(AlertRuleVO.builder().name("corrupt").build()));
+    void toggleRuleShouldUseADirectIdLookupWhenRuleIsMissing() {
+        when(alertRepository.findRuleById(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> alertService.toggleRule(999L, true))
                 .isInstanceOf(BusinessException.class)
@@ -685,7 +714,7 @@ class AlertServiceTest {
 
     @Test
     void toggleRuleShouldThrowWhenRuleNotFound() {
-        when(alertRepository.findAllRules()).thenReturn(Collections.emptyList());
+        when(alertRepository.findRuleById(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> alertService.toggleRule(999L, true))
                 .isInstanceOf(BusinessException.class)
@@ -725,7 +754,7 @@ class AlertServiceTest {
     @Test
     void bulkToggleShouldDeduplicateIdsAndReportMissingRules() {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("High CPU").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.findRulesByIds(List.of(1L, 999L))).thenReturn(List.of(rule));
         when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(true);
 
         AlertRuleBulkResultVO result = alertService.bulkToggleRules(
@@ -741,7 +770,7 @@ class AlertServiceTest {
     @Test
     void bulkToggleShouldReportRulesDeletedConcurrentlyInsteadOfRecreatingThem() {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("High CPU").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.findRulesByIds(List.of(1L))).thenReturn(List.of(rule));
         when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(false);
 
         AlertRuleBulkResultVO result = alertService.bulkToggleRules(List.of(1L), true);

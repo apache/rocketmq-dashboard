@@ -54,6 +54,45 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
+    public PageResult<AlertRuleVO> findRulePage(String search, Boolean enabled,
+                                                 int page, int pageSize) {
+        QueryWrapper<RmqAlertRule> query = ruleQuery(search, enabled);
+        Page<RmqAlertRule> result = ruleMapper.selectPage(new Page<>(page, pageSize), query);
+        List<AlertRuleVO> items = result.getRecords().stream()
+                .map(MybatisPlusAlertRepository::toRuleVO)
+                .toList();
+        return PageResult.of(items, result.getTotal(), page, pageSize);
+    }
+
+    @Override
+    public Optional<AlertRuleVO> findRuleById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(ruleMapper.selectById(id))
+                .map(MybatisPlusAlertRepository::toRuleVO);
+    }
+
+    @Override
+    public List<AlertRuleVO> findRulesByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return ruleMapper.selectList(new QueryWrapper<RmqAlertRule>()
+                        .in("id", ids))
+                .stream()
+                .map(MybatisPlusAlertRepository::toRuleVO)
+                .toList();
+    }
+
+    private QueryWrapper<RmqAlertRule> ruleQuery(String search, Boolean enabled) {
+        return new QueryWrapper<RmqAlertRule>()
+                .like(StringUtils.hasText(search), "name", search)
+                .eq(enabled != null, "enabled", enabled)
+                .orderByAsc("name", "id");
+    }
+
+    @Override
     @Transactional
     public AlertRuleVO saveRule(AlertRuleVO rule) {
         RmqAlertRule entity = toRuleEntity(rule);

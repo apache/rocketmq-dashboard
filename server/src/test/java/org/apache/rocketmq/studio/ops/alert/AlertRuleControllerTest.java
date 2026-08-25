@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -66,6 +67,31 @@ class AlertRuleControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].enabled").value(true));
+    }
+
+    @Test
+    void listRulesPageShouldPassFiltersAndReturnPageContract() throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .id(1L)
+                .name("High Lag")
+                .enabled(true)
+                .build();
+        when(alertService.listRules("lag", true, 2, 20))
+                .thenReturn(PageResult.of(List.of(rule), 21, 2, 20));
+
+        mockMvc.perform(get("/api/alert-rules/page")
+                        .param("search", "lag")
+                        .param("enabled", "true")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.total").value(21))
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(20))
+                .andExpect(jsonPath("$.data.items[0].id").value(1));
+
+        verify(alertService).listRules("lag", true, 2, 20);
     }
 
     @Test

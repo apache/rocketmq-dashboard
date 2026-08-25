@@ -123,6 +123,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
+            int page, int pageSize) {
+        return metadataProvider.listConsumerGroupsPage(instanceId, null, search, page, pageSize);
+    }
+
+    @Override
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
         return adminClient.createConsumerGroup(group);
     }

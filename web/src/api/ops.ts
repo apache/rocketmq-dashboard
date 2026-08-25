@@ -21,6 +21,13 @@ export interface AlertRuleBulkResult {
   updatedRules: AlertRule[];
 }
 
+export interface AlertRulePage {
+  items: AlertRule[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 // Matches mock/dashboard.ts systemAlerts
 export interface SystemAlert {
   id: number;
@@ -74,6 +81,16 @@ export interface AuditQuery {
 // ─── Alert Rules ────────────────────────────────────────────────
 export async function listAlertRules() {
   const res = await client.get<{ data: AlertRule[] }>('/alert-rules');
+  return res.data.data;
+}
+
+export async function listAlertRulesPage(params: {
+  search?: string;
+  enabled?: boolean;
+  page?: number;
+  pageSize?: number;
+}) {
+  const res = await client.get<{ data: AlertRulePage }>('/alert-rules/page', { params });
   return res.data.data;
 }
 
