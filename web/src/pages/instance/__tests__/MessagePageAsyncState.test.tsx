@@ -27,6 +27,7 @@ import MessagePage from '../message';
 const serviceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
   queryMessages: vi.fn(),
+  consumeMessageDirectly: vi.fn(),
 }));
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
@@ -229,7 +230,7 @@ describe('MessagePage async request ownership', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps normal message resend disabled until a real API is wired', async () => {
+  it('requiresGroupAndClientBeforeDirectConsumeTest', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     const user = userEvent.setup();
     renderPage();
@@ -240,9 +241,19 @@ describe('MessagePage async request ownership', () => {
     await user.click(within(row).getByRole('button', { name: /详情/ }));
 
     const dialog = await screen.findByRole('dialog', { name: '消息详情' });
-    const resendButton = within(dialog).getByRole('button', { name: /重新发送/ });
-    expect(resendButton).toBeDisabled();
-    expect(resendButton).toHaveAttribute('title', '当前版本尚未接入普通消息重新发送接口');
+    await user.click(within(dialog).getByRole('button', { name: /直接消费/ }));
+    const consumeDialogTitle = await screen.findByText('直接消费消息');
+    const consumeDialog = consumeDialogTitle.closest('[role="dialog"]');
+    expect(consumeDialog).not.toBeNull();
+    expect(
+      within(consumeDialog as HTMLElement).getByPlaceholderText('目标消费者组'),
+    ).toBeInTheDocument();
+    expect(
+      within(consumeDialog as HTMLElement).getByPlaceholderText('在线客户端 ID'),
+    ).toBeInTheDocument();
+
+    await user.click(within(consumeDialog as HTMLElement).getByRole('button', { name: /执\s*行/ }));
+    expect(serviceMocks.consumeMessageDirectly).not.toHaveBeenCalled();
   });
 
   it('keeps the latest query loading and ignores an earlier query result', async () => {

@@ -102,7 +102,7 @@ class MessageControllerTest {
     }
 
     @Test
-    void directConsumeShouldPassValidatedRequest() throws Exception {
+    void directConsumeShouldPassValidatedRequestTest() throws Exception {
         DirectConsumeMessageResultVO result = DirectConsumeMessageResultVO.builder()
                 .consumeResult("CR_SUCCESS").remark("ok").spentTimeMillis(8).build();
         when(messageService.consumeMessageDirectly(org.mockito.ArgumentMatchers.any())).thenReturn(result);

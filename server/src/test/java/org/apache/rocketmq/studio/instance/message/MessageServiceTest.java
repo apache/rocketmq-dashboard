@@ -32,7 +32,7 @@ class MessageServiceTest {
     void rejectsNegativeQueueCoordinatesBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
-                mock(QueryHistoryService.class));
+                mock(QueryHistoryService.class), mock(OperationAuditService.class));
 
         assertThatThrownBy(() -> service.pullMessageAtOffset("instance-a", "TopicA", "broker-a", -1, 0))
                 .isInstanceOf(BusinessException.class)
@@ -129,7 +129,7 @@ class MessageServiceTest {
     }
 
     @Test
-    void directsMessageConsumptionThroughSelectedProviderAndAuditsIt() {
+    void directsMessageConsumptionThroughSelectedProviderAndAuditsItTest() {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProvider provider = mock(InstanceProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);

@@ -140,7 +140,7 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
-    void directlyConsumesMessageForTheExplicitGroupAndClient() throws Exception {
+    void directlyConsumesMessageForTheExplicitGroupAndClientTest() throws Exception {
         ConsumeMessageDirectlyResult brokerResult = new ConsumeMessageDirectlyResult();
         brokerResult.setConsumeResult(CMResult.CR_SUCCESS);
         brokerResult.setRemark("consumed");
