@@ -23,6 +23,7 @@ import { LangProvider } from '../../../i18n/LangContext';
 import { listClusters } from '../../../services/clusterService';
 import { listInstances } from '../../../services/instanceService';
 import type { ClusterInfo } from '../../../api/cluster';
+import { downloadCsv } from '../../../utils/download';
 import BrokerCluster from '../BrokerCluster';
 
 vi.mock('../../../services/clusterService', () => ({
@@ -32,6 +33,15 @@ vi.mock('../../../services/clusterService', () => ({
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return {
+    ...actual,
+    downloadCsv: vi.fn(),
+  };
+});
 
 // Mock matchMedia for antd responsive components
 beforeAll(() => {
@@ -173,6 +183,29 @@ describe('BrokerCluster Page', () => {
     expect(listClusters).toHaveBeenCalledWith('instance-1');
   });
 
+  it('exports only the currently selected topology tab', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [brokerFilename, brokerCsv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(brokerFilename).toMatch(/^rocketmq-broker-topology-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(brokerCsv).toContain('"broker-api-a"');
+    expect(brokerCsv).toContain('"broker-api-b"');
+    expect(brokerCsv).not.toContain('"nameserver-api-a"');
+
+    await user.click(screen.getByText('NameServer 管理'));
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(2);
+    const [nameServerFilename, nameServerCsv] = vi.mocked(downloadCsv).mock.calls[1];
+    expect(nameServerFilename).toMatch(/^rocketmq-nameserver-topology-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(nameServerCsv).toContain('"nameserver-api-a"');
+    expect(nameServerCsv).not.toContain('"broker-api-a"');
+  }, 10_000);
   it('does not fall back to an unscoped cluster query when instance discovery fails', async () => {
     vi.mocked(listInstances).mockRejectedValueOnce(new Error('instance discovery failed'));
     renderWithProviders(<BrokerCluster />);

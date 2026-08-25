@@ -17,7 +17,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Select } from 'antd';
-import { ArrowClockwise, Cloud, ChartBar, PlugsConnected } from '@phosphor-icons/react';
+import {
+  ArrowClockwise,
+  Cloud,
+  ChartBar,
+  DownloadSimple,
+  PlugsConnected,
+} from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import { listClusters } from '../../services/clusterService';
 import { isMockMode } from '../../services/dataMode';
@@ -25,9 +31,11 @@ import type { ClusterInfo } from '../../api/cluster';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
+type ClusterTabKey = 'nameserver' | 'broker' | 'proxy';
 
 const REFRESH_INTERVAL_MS = 2000;
 
@@ -64,6 +72,36 @@ interface ProxyRecord {
   grpcPort: string;
   connections: number;
 }
+
+const BROKER_EXPORT_COLUMNS: CsvColumn<BrokerRecord>[] = [
+  { header: 'Cluster', value: (broker) => broker.k8sCluster },
+  { header: 'Broker Name', value: (broker) => broker.brokerName },
+  { header: 'Status', value: (broker) => broker.status },
+  { header: 'Version', value: (broker) => broker.version },
+  { header: 'Disk Usage', value: (broker) => broker.diskUsage },
+  { header: 'Address', value: (broker) => broker.address },
+  { header: 'TPS In', value: (broker) => broker.tpsIn },
+  { header: 'TPS Out', value: (broker) => broker.tpsOut },
+];
+
+const NAMESERVER_EXPORT_COLUMNS: CsvColumn<NameServerRecord>[] = [
+  { header: 'Cluster', value: (nameServer) => nameServer.k8sCluster },
+  { header: 'NameServer Name', value: (nameServer) => nameServer.name },
+  { header: 'Status', value: (nameServer) => nameServer.status },
+  { header: 'Version', value: (nameServer) => nameServer.version },
+  { header: 'Address', value: (nameServer) => nameServer.address },
+  { header: 'Connections', value: (nameServer) => nameServer.connections },
+];
+
+const PROXY_EXPORT_COLUMNS: CsvColumn<ProxyRecord>[] = [
+  { header: 'Cluster', value: (proxy) => proxy.k8sCluster },
+  { header: 'Proxy Name', value: (proxy) => proxy.name },
+  { header: 'Status', value: (proxy) => proxy.status },
+  { header: 'Version', value: (proxy) => proxy.version },
+  { header: 'HTTP Address', value: (proxy) => proxy.address },
+  { header: 'gRPC Address', value: (proxy) => proxy.grpcPort },
+  { header: 'Connections', value: (proxy) => proxy.connections },
+];
 
 // ─── Helpers ────────────────────────────────────────────────────
 const normalizeStatus = (status: string): NodeStatus => {
@@ -145,7 +183,7 @@ function mapClusters(clusters: ClusterInfo[]): {
 // ─── Component ──────────────────────────────────────────────────
 const BrokerClusterPage = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [activeTab, setActiveTab] = useState('broker');
+  const [activeTab, setActiveTab] = useState<ClusterTabKey>('broker');
   const [loading, setLoading] = useState(false);
   const [brokerData, setBrokerData] = useState<BrokerRecord[]>([]);
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
@@ -258,6 +296,32 @@ const BrokerClusterPage = () => {
       </div>
     );
   };
+
+  function handleExport() {
+    const today = new Date().toISOString().slice(0, 10);
+    if (activeTab === 'nameserver') {
+      downloadCsv(
+        `rocketmq-nameserver-topology-${today}.csv`,
+        buildCsv(NAMESERVER_EXPORT_COLUMNS, nameServerData),
+      );
+      return;
+    }
+    if (activeTab === 'proxy') {
+      downloadCsv(
+        `rocketmq-proxy-topology-${today}.csv`,
+        buildCsv(PROXY_EXPORT_COLUMNS, proxyData),
+      );
+      return;
+    }
+    downloadCsv(
+      `rocketmq-broker-topology-${today}.csv`,
+      buildCsv(BROKER_EXPORT_COLUMNS, brokerData),
+    );
+  }
+  const exportDisabled =
+    (activeTab === 'nameserver' && nameServerData.length === 0) ||
+    (activeTab === 'proxy' && proxyData.length === 0) ||
+    (activeTab === 'broker' && brokerData.length === 0);
 
   const brokerColumns = [
     {
@@ -461,6 +525,14 @@ const BrokerClusterPage = () => {
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
           />
+          <Button
+            icon={<DownloadSimple size={14} />}
+            size="small"
+            disabled={exportDisabled}
+            onClick={handleExport}
+          >
+            {t('common.export')}
+          </Button>
           <Switch
             checked={autoRefresh}
             onChange={setAutoRefresh}
@@ -481,7 +553,7 @@ const BrokerClusterPage = () => {
         >
           <Tabs
             activeKey={activeTab}
-            onChange={setActiveTab}
+            onChange={(key) => setActiveTab(key as ClusterTabKey)}
             items={[
               {
                 key: 'nameserver',
