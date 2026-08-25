@@ -12,6 +12,8 @@ import type {
 } from '../api/metadata';
 import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
 
+const EXPORT_PAGE_SIZE = 100;
+
 const cloneTopic = (topic: Topic): Topic => ({ ...topic });
 const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] => routes.map((route) => ({ ...route }));
 const cloneConsumers = (consumers: ConsumerGroupInfo[]): ConsumerGroupInfo[] =>
@@ -53,6 +55,21 @@ export async function listTopicsPage(
   }
   return metadataApi.listTopicsPage(params);
 }
+
+export const listAllTopics = async (params: TopicQuery = {}): Promise<Topic[]> => {
+  const topics: Topic[] = [];
+  let page = 1;
+
+  while (true) {
+    const result = await listTopicsPage({ ...params, page, pageSize: EXPORT_PAGE_SIZE });
+    topics.push(...result.items);
+    const total = result.total ?? topics.length;
+    if (result.items.length === 0 || topics.length >= total) break;
+    page += 1;
+  }
+
+  return topics;
+};
 
 export async function createTopic(data: Partial<Topic>): Promise<Topic> {
   if (isMockMode()) {

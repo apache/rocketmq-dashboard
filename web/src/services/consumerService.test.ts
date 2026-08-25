@@ -22,13 +22,18 @@ import {
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
+  listAllConsumerGroups,
   listConsumerGroupPage,
   listConsumerGroups,
 } from './consumerService';
 
 const { mode, metadataApi } = vi.hoisted(() => ({
   mode: { mock: true },
-  metadataApi: { getConsumerGroup: vi.fn(), listConsumerGroups: vi.fn() },
+  metadataApi: {
+    getConsumerGroup: vi.fn(),
+    listConsumerGroupPage: vi.fn(),
+    listConsumerGroups: vi.fn(),
+  },
 }));
 
 vi.mock('./dataMode', () => ({ isMockMode: () => mode.mock }));
@@ -100,6 +105,50 @@ describe('consumer service mock data', () => {
     expect(page.total).toBe(1);
     expect(page.page).toBe(2);
     expect(page.size).toBe(1);
+  });
+
+  it('loads every API consumer group page matching the export filters', async () => {
+    mode.mock = false;
+    const firstGroup = { name: 'cg-a', subscribedTopics: null, instances: null };
+    const secondGroup = { name: 'cg-b', subscribedTopics: ['topic-b'], instances: [] };
+    metadataApi.listConsumerGroupPage
+      .mockResolvedValueOnce({
+        items: [firstGroup],
+        total: 2,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({
+        items: [secondGroup],
+        total: 2,
+        page: 2,
+        size: 100,
+      });
+    try {
+      const groups = await listAllConsumerGroups({
+        instanceId: 'instance-1',
+        search: 'cg',
+      });
+
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenNthCalledWith(1, {
+        instanceId: 'instance-1',
+        search: 'cg',
+        page: 1,
+        pageSize: 100,
+      });
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenNthCalledWith(2, {
+        instanceId: 'instance-1',
+        search: 'cg',
+        page: 2,
+        pageSize: 100,
+      });
+      expect(groups).toEqual([
+        { name: 'cg-a', subscribedTopics: [], instances: [] },
+        { name: 'cg-b', subscribedTopics: ['topic-b'], instances: [] },
+      ]);
+    } finally {
+      mode.mock = true;
+    }
   });
 
   it('returns copied progress and subscription rows', async () => {

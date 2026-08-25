@@ -15,6 +15,7 @@ import type {
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
+const EXPORT_PAGE_SIZE = 100;
 
 function copyConsumerInstance(
   instance: ConsumerGroup['instances'][number],
@@ -81,6 +82,27 @@ export async function listConsumerGroupPage(
     };
   }
   return metadataApi.listConsumerGroupPage(params);
+}
+
+export async function listAllConsumerGroups(
+  params: ConsumerGroupQuery = {},
+): Promise<ConsumerGroup[]> {
+  const groups: ConsumerGroup[] = [];
+  let page = 1;
+
+  while (true) {
+    const result = await listConsumerGroupPage({
+      ...params,
+      page,
+      pageSize: EXPORT_PAGE_SIZE,
+    });
+    groups.push(...result.items);
+    const total = result.total ?? groups.length;
+    if (result.items.length === 0 || groups.length >= total) break;
+    page += 1;
+  }
+
+  return groups.map(normalizeConsumerGroup);
 }
 
 export async function getConsumerProgress(

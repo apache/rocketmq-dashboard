@@ -81,6 +81,7 @@ import {
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
+  listAllConsumerGroups,
   listConsumerGroupPage,
   refreshConsumerGroup,
   resetConsumerOffset,
@@ -150,6 +151,26 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
 ];
 
 const buildConsumerGroupCsv = (groups: ConsumerGroup[]) => buildCsv(GROUP_EXPORT_COLUMNS, groups);
+
+const visibleConsumerGroups = (
+  groups: ConsumerGroup[],
+  modeFilter: string,
+  sortKey: string,
+): ConsumerGroup[] => {
+  let data = groups;
+
+  if (modeFilter !== 'ALL') {
+    data = data.filter((group) => group.subscriptionMode === modeFilter);
+  }
+
+  if (sortKey === 'lag_desc') {
+    data = [...data].sort((left, right) => right.totalLag - left.totalLag);
+  } else if (sortKey === 'name_asc') {
+    data = [...data].sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  return data;
+};
 
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
 
@@ -233,6 +254,7 @@ const ConsumerPageContent = ({
   const [importRows, setImportRows] = useState<ResourceImportRow<Partial<ConsumerGroup>>[]>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const groupRequestIdRef = useRef(0);
   const stackRequestIdRef = useRef(0);
@@ -244,6 +266,7 @@ const ConsumerPageContent = ({
     silentRefreshRef.current = silent;
     setRefreshKey((key) => key + 1);
   }, []);
+  const selectedGroupName = selectedGroup?.name;
 
   useEffect(() => {
     if (!selectedInstanceId) {
@@ -357,20 +380,28 @@ const ConsumerPageContent = ({
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
-    let data = groups;
-
-    if (modeFilter !== 'ALL') {
-      data = data.filter((g) => g.subscriptionMode === modeFilter);
-    }
-
-    if (sortKey === 'lag_desc') {
-      data = [...data].sort((a, b) => b.totalLag - a.totalLag);
-    } else if (sortKey === 'name_asc') {
-      data = [...data].sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    return data;
+    return visibleConsumerGroups(groups, modeFilter, sortKey);
   }, [groups, modeFilter, sortKey]);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const allGroups = await listAllConsumerGroups({
+        instanceId: selectedInstanceId || undefined,
+        search: search.trim() || undefined,
+      });
+      const exportGroups = visibleConsumerGroups(allGroups, modeFilter, sortKey);
+      downloadCsv(
+        `rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`,
+        buildConsumerGroupCsv(exportGroups),
+      );
+      message.success(`已导出 ${exportGroups.length} 个 Group`);
+    } catch {
+      message.error('导出 Group 失败，请稍后重试');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   /* ─── Open detail modal ─── */
   const [detailTab, setDetailTab] = useState('overview');
@@ -436,8 +467,8 @@ const ConsumerPageContent = ({
     }
   };
 
-  const selectedDiagnosticKey = selectedGroup
-    ? diagnosticCacheKey(selectedInstanceId, selectedGroup.name)
+  const selectedDiagnosticKey = selectedGroupName
+    ? diagnosticCacheKey(selectedInstanceId, selectedGroupName)
     : '';
   const resetDiagnosticKey = resetGroup
     ? diagnosticCacheKey(selectedInstanceId, resetGroup.name)
@@ -460,7 +491,10 @@ const ConsumerPageContent = ({
   const visibleSubscriptions = showOnlyInconsistent
     ? inconsistentSubscriptions
     : selectedSubscriptions;
-  const selectedProgress = selectedGroup ? (progressByGroup[selectedDiagnosticKey] ?? []) : [];
+  const selectedProgress = useMemo(
+    () => (selectedGroupName ? (progressByGroup[selectedDiagnosticKey] ?? []) : []),
+    [progressByGroup, selectedDiagnosticKey, selectedGroupName],
+  );
   const progressTopicOptions = useMemo(
     () => Array.from(new Set(selectedProgress.map((q) => q.topic).filter(Boolean))).sort(),
     [selectedProgress],
@@ -1099,16 +1133,7 @@ const ConsumerPageContent = ({
           >
             导入
           </Button>
-          <Button
-            icon={<ExportOutlined />}
-            onClick={() => {
-              downloadCsv(
-                `rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`,
-                buildConsumerGroupCsv(filtered),
-              );
-              message.success(`已导出 ${filtered.length} 个 Group`);
-            }}
-          >
+          <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
             导出
           </Button>
           <Button
