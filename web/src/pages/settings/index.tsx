@@ -43,7 +43,13 @@ const SettingsPage = () => {
 
       <Tabs
         activeKey={activeKey}
-        onChange={(key) => setSearchParams({ tab: key })}
+        onChange={(key) =>
+          setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            next.set('tab', key);
+            return next;
+          })
+        }
         items={[
           { key: 'general', label: '通用设置', children: <GeneralSettingsTab /> },
           { key: 'ai', label: 'AI 助手', children: <AiAssistantTab /> },
