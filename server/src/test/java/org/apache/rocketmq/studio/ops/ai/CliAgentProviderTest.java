@@ -126,6 +126,18 @@ class CliAgentProviderTest {
     }
 
     @Test
+    void completeRejectsOversizedPromptBeforeStartingCli() {
+        FakeCli cli = new FakeCli("echo should-not-run");
+
+        assertThatThrownBy(() -> cli.complete(
+                null, "x".repeat(AiPayloadGuard.MAX_OUTBOUND_PROMPT_BYTES + 1), null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getCode()).isEqualTo("llm.request.payload_too_large");
+                });
+    }
+
+    @Test
     void availabilityAndCompletionUseTheIsolatedEnvironment() {
         RecordingEnvironment processEnvironment = new RecordingEnvironment();
         FakeCli cli = new FakeCli(

@@ -77,6 +77,10 @@ public abstract class CliAgentProvider implements AgentProvider {
 
     @Override
     public String complete(LlmConfigVO config, String prompt, String modelOverride) {
+        String effectiveModel = StringUtils.hasText(modelOverride)
+                ? modelOverride
+                : config == null ? null : config.getModel();
+        AiPayloadGuard.validateOutboundPrompt(prompt, effectiveModel);
         if (!available()) {
             throw new LlmGatewayException(503, "llm.provider.cli_missing",
                     binaryName() + " CLI is not installed in the server runtime",

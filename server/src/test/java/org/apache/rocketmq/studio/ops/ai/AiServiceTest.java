@@ -16,10 +16,11 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -46,8 +47,12 @@ class AiServiceTest {
     @Mock
     private McpServerRegistry mcpServerRegistry;
 
-    @InjectMocks
     private AiService aiService;
+
+    @BeforeEach
+    void setUp() {
+        aiService = new AiService(llmGateway, mcpServerRegistry, new ObjectMapper());
+    }
 
     @Test
     void chatShouldReturnSseEmitterFromGateway() {
@@ -213,6 +218,43 @@ class AiServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Chat request is required");
         verifyNoInteractions(llmGateway);
+    }
+
+    @Test
+    void chatRejectsOversizedMessageBeforeCallingGateway() {
+        ChatDTO request = ChatDTO.builder()
+                .message("\u754c".repeat(AiPayloadGuard.MAX_MESSAGE_BYTES / 3 + 1))
+                .build();
+
+        assertThatThrownBy(() -> aiService.chat(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Chat message must not exceed");
+        verifyNoInteractions(llmGateway);
+    }
+
+    @Test
+    void executeRejectsOversizedContextBeforeCallingGateway() {
+        AiCommandDTO command = AiCommandDTO.builder()
+                .command("query_metrics")
+                .context(Map.of("payload", "x".repeat(AiPayloadGuard.MAX_CONTEXT_BYTES)))
+                .build();
+
+        AiExecuteResultVO result = aiService.execute(command);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getResult()).contains("Command context must not exceed");
+        verifyNoInteractions(llmGateway);
+    }
+
+    @Test
+    void executeToolRejectsOversizedInputBeforeCallingRegistry() {
+        Map<String, Object> input = Map.of(
+                "payload", "x".repeat(AiPayloadGuard.MAX_TOOL_INPUT_BYTES));
+
+        assertThatThrownBy(() -> aiService.executeTool("rmq.capabilities", input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Tool input must not exceed");
+        verifyNoInteractions(mcpServerRegistry);
     }
 
     @Test

@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -84,6 +85,7 @@ public class OpenAiCompatibleLlmClient {
 
     public String complete(LlmConfigVO config, String prompt, String modelOverride) {
         validate(config);
+        AiPayloadGuard.validateOutboundPrompt(prompt, effectiveModel(config, modelOverride));
         Map<String, Object> requestBody = requestBody(config, prompt, modelOverride, false);
         HttpRequest request = request(config, "application/json", requestBody);
         try {
@@ -135,6 +137,7 @@ public class OpenAiCompatibleLlmClient {
 
     public void stream(LlmConfigVO config, String prompt, String modelOverride, Consumer<String> tokenConsumer) {
         validate(config);
+        AiPayloadGuard.validateOutboundPrompt(prompt, effectiveModel(config, modelOverride));
         Map<String, Object> requestBody = requestBody(config, prompt, modelOverride, true);
         HttpRequest request = request(config, "text/event-stream", requestBody);
         try {
@@ -143,6 +146,10 @@ public class OpenAiCompatibleLlmClient {
                 throw upstreamException(response.statusCode(), checkedBody(response.body().errorBody()));
             }
             parseStreamWithTimeout(response.body().stream(), tokenConsumer);
+        } catch (ResponseLimitException exception) {
+            throw new LlmGatewayException(502, "llm.provider.response_too_large",
+                    "LLM provider stream exceeded the maximum of " + exception.limitBytes() + " bytes",
+                    "Reduce the provider response size and retry.", exception);
         } catch (HttpTimeoutException exception) {
             throw new LlmGatewayException(504, "llm.provider.timeout",
                     "LLM provider stream timed out",
@@ -231,7 +238,8 @@ public class OpenAiCompatibleLlmClient {
                         new LimitedBodySubscriber(responseBodyLimitBytes()), StreamBody::error);
             }
             return HttpResponse.BodySubscribers.mapping(
-                    HttpResponse.BodySubscribers.ofInputStream(), StreamBody::stream);
+                    HttpResponse.BodySubscribers.ofInputStream(),
+                    input -> StreamBody.stream(new LimitedInputStream(input, responseBodyLimitBytes())));
         };
     }
 
@@ -299,6 +307,10 @@ public class OpenAiCompatibleLlmClient {
         body.put("max_tokens", config.getMaxTokens());
         body.put("stream", stream);
         return body;
+    }
+
+    private String effectiveModel(LlmConfigVO config, String modelOverride) {
+        return StringUtils.hasText(modelOverride) ? modelOverride : config.getModel();
     }
 
     private URI chatCompletionsUri(LlmConfigVO config) {
@@ -550,6 +562,57 @@ public class OpenAiCompatibleLlmClient {
                 completed = true;
                 body.complete(new LimitedBody(output.toString(StandardCharsets.UTF_8), false, limitBytes));
             }
+        }
+    }
+
+    private static final class LimitedInputStream extends FilterInputStream {
+
+        private final int limitBytes;
+        private int bytesRead;
+
+        private LimitedInputStream(InputStream input, int limitBytes) {
+            super(input);
+            this.limitBytes = limitBytes;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int value = super.read();
+            if (value != -1) {
+                addBytes(1);
+            }
+            return value;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            int allowed = Math.min(length, limitBytes - bytesRead + 1);
+            int read = super.read(buffer, offset, allowed);
+            if (read > 0) {
+                addBytes(read);
+            }
+            return read;
+        }
+
+        private void addBytes(int count) throws ResponseLimitException {
+            bytesRead += count;
+            if (bytesRead > limitBytes) {
+                throw new ResponseLimitException(limitBytes);
+            }
+        }
+    }
+
+    private static final class ResponseLimitException extends IOException {
+
+        private final int limitBytes;
+
+        private ResponseLimitException(int limitBytes) {
+            super("LLM provider stream exceeds " + limitBytes + " bytes");
+            this.limitBytes = limitBytes;
+        }
+
+        private int limitBytes() {
+            return limitBytes;
         }
     }
 }
