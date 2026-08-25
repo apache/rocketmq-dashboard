@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -98,5 +99,18 @@ class MessageControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(messageService).getMessageTrace("instance-a", "msg-001", "orders");
+    }
+
+    @Test
+    void directConsumeShouldPassValidatedRequestTest() throws Exception {
+        DirectConsumeMessageResultVO result = DirectConsumeMessageResultVO.builder()
+                .consumeResult("CR_SUCCESS").remark("ok").spentTimeMillis(8).build();
+        when(messageService.consumeMessageDirectly(org.mockito.ArgumentMatchers.any())).thenReturn(result);
+
+        mockMvc.perform(post("/api/messages/direct-consume").contentType("application/json")
+                        .content("{\"instanceId\":\"instance-a\",\"topic\":\"orders\",\"msgId\":\"msg-001\","
+                                + "\"consumerGroup\":\"billing\",\"clientId\":\"client-a\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consumeResult").value("CR_SUCCESS"));
     }
 }

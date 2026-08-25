@@ -59,7 +59,11 @@ import {
 import type { MessageQueryHistory, TraceQueryHistory } from '../../api/messageHistory';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
-import { getMessageTrace, queryMessagePage } from '../../services/messageService';
+import {
+  consumeMessageDirectly,
+  getMessageTrace,
+  queryMessagePage,
+} from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
@@ -82,8 +86,6 @@ type ApiErrorLike = {
     };
   };
 };
-
-const RESEND_UNAVAILABLE_MESSAGE = '当前版本尚未接入普通消息重新发送接口';
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const, label: '按 Topic 查询' },
@@ -265,6 +267,10 @@ const MessagePageContent = ({
   const [queryError, setQueryError] = useState<string | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
+  const [directConsumeGroup, setDirectConsumeGroup] = useState('');
+  const [directConsumeClientId, setDirectConsumeClientId] = useState('');
+  const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
 
@@ -417,6 +423,41 @@ const MessagePageContent = ({
     setModalOpen(false);
     setTraceLoading(false);
     setTraceError(null);
+  };
+
+  const openDirectConsume = () => {
+    setDirectConsumeGroup('');
+    setDirectConsumeClientId('');
+    setDirectConsumeOpen(true);
+  };
+
+  const handleDirectConsume = async () => {
+    if (
+      !selectedInstanceId ||
+      !selectedMsg ||
+      !directConsumeGroup.trim() ||
+      !directConsumeClientId.trim()
+    ) {
+      message.warning('请填写目标消费组和在线客户端 ID');
+      return;
+    }
+    setDirectConsumeSubmitting(true);
+    try {
+      const result = await consumeMessageDirectly({
+        instanceId: selectedInstanceId,
+        topic: selectedMsg.topic,
+        msgId: selectedMsg.msgId,
+        consumerGroup: directConsumeGroup.trim(),
+        clientId: directConsumeClientId.trim(),
+      });
+      const detail = [result.consumeResult, result.remark].filter(Boolean).join('：');
+      message.info(`Broker 返回 ${detail || 'UNKNOWN'}，耗时 ${result.spentTimeMillis} ms`);
+      setDirectConsumeOpen(false);
+    } catch (error) {
+      message.error(getErrorMessage(error, '直接消费请求失败，请检查消费组和客户端是否在线'));
+    } finally {
+      setDirectConsumeSubmitting(false);
+    }
   };
 
   const handleDownload = (record: MessageRecord) => {
@@ -890,15 +931,49 @@ const MessagePageContent = ({
             <Button
               type="primary"
               icon={<SendOutlined />}
-              disabled
-              title={RESEND_UNAVAILABLE_MESSAGE}
+              disabled={!selectedInstanceId || !selectedMsg}
+              onClick={openDirectConsume}
             >
-              重新发送
+              直接消费
             </Button>
           </Flex>
         }
       >
         <Tabs activeKey={modalTab} onChange={setModalTab} items={modalTabs} />
+      </Modal>
+
+      <Modal
+        title="直接消费消息"
+        open={directConsumeOpen}
+        onCancel={() => setDirectConsumeOpen(false)}
+        onOk={() => void handleDirectConsume()}
+        confirmLoading={directConsumeSubmitting}
+        okText="执行"
+        destroyOnHidden
+      >
+        <Alert
+          showIcon
+          type="warning"
+          message="Broker 会请求指定在线客户端立即消费该消息。"
+          description="这不是向 Topic 重新发送消息；Broker 返回的消费结果会原样显示。"
+          style={{ marginBottom: 16 }}
+        />
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Input value={selectedMsg?.topic} disabled addonBefore="Topic" />
+          <Input value={selectedMsg?.msgId} disabled addonBefore="Message ID" />
+          <Input
+            value={directConsumeGroup}
+            onChange={(event) => setDirectConsumeGroup(event.target.value)}
+            placeholder="目标消费者组"
+            addonBefore="Consumer group"
+          />
+          <Input
+            value={directConsumeClientId}
+            onChange={(event) => setDirectConsumeClientId(event.target.value)}
+            placeholder="在线客户端 ID"
+            addonBefore="Client ID"
+          />
+        </Space>
       </Modal>
     </div>
   );

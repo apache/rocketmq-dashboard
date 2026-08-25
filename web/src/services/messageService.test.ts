@@ -16,7 +16,12 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getMessageTrace, listDLQGroups, queryMessages } from './messageService';
+import {
+  consumeMessageDirectly,
+  getMessageTrace,
+  listDLQGroups,
+  queryMessages,
+} from './messageService';
 
 vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
@@ -74,6 +79,21 @@ describe('message service mock data', () => {
     const second = await listDLQGroups('instance-1');
     expect(second.items[0].groupName).toBe('cg-order-processor');
     expect(second.items[0]).not.toBe(first.items[0]);
+  });
+
+  it('marks direct-consume results as mock-only in mock mode', async () => {
+    await expect(
+      consumeMessageDirectly({
+        instanceId: 'instance-1',
+        topic: 'orders',
+        msgId: 'msg-1',
+        consumerGroup: 'billing',
+        clientId: 'client-a',
+      }),
+    ).resolves.toMatchObject({
+      consumeResult: 'CR_SUCCESS',
+      remark: expect.stringContaining('Mock mode'),
+    });
   });
 
   it('filters and pages mock DLQ groups', async () => {

@@ -28,4 +28,8 @@ public interface MessageProvider {
     List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic);
 
     MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName, int queueId, long offset);
+
+    default DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        throw new UnsupportedOperationException("Direct message consumption is not supported");
+    }
 }
