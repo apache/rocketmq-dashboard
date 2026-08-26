@@ -18,26 +18,38 @@
 import { App } from 'antd';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { listStudioUsers } from '../../../api/studioUsers';
+import {
+  listAllStudioUsers as downloadStudioUsers,
+  listStudioUsers,
+} from '../../../api/studioUsers';
+import { downloadCsv } from '../../../utils/download';
 import UserManagementPage from '../UserManagement';
 
+type MockAuthState = { admin: boolean; userId: number; logout: () => void };
 vi.mock('../../../api/studioUsers', () => ({
   createStudioUser: vi.fn(),
+  listAllStudioUsers: vi.fn(),
   listStudioUsers: vi.fn(),
   resetStudioUserPassword: vi.fn(),
   setStudioUserEnabled: vi.fn(),
 }));
 
 vi.mock('../../../stores/authStore', () => ({
-  default: (
-    selector: (state: { admin: boolean; userId: number; logout: () => void }) => unknown,
-  ) =>
+  default: (selector: (state: MockAuthState) => unknown) =>
     selector({ admin: true, userId: 1, logout: vi.fn() }),
 }));
 
-const page = {
+vi.mock('../../../utils/download', async () => {
+  const downloadModule =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return {
+    ...downloadModule,
+    downloadCsv: vi.fn(),
+  };
+});
+const studioUserPage = {
   items: [
     {
       id: 7,
@@ -63,6 +75,18 @@ const renderPage = () =>
     </MemoryRouter>,
   );
 
+const selectOption = async (user: UserEvent, comboboxName: string, optionText: string) => {
+  await user.click(screen.getByRole('combobox', { name: comboboxName }));
+  const option = await screen.findByText(optionText, {
+    selector: '.ant-select-item-option-content',
+  });
+  await user.click(option);
+};
+const applyAdminDisabledFilter = async (user: UserEvent, keyword = 'ops') => {
+  await user.type(screen.getByPlaceholderText('搜索用户名'), keyword);
+  await selectOption(user, '按权限筛选', '管理员');
+  await selectOption(user, '按状态筛选', '已禁用');
+};
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -82,7 +106,8 @@ beforeAll(() => {
 describe('UserManagementPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listStudioUsers).mockResolvedValue(page);
+    vi.mocked(listStudioUsers).mockResolvedValue(studioUserPage);
+    vi.mocked(downloadStudioUsers).mockResolvedValue(studioUserPage.items);
   });
 
   it('loads a bounded first page and renders the server total', async () => {
@@ -104,11 +129,7 @@ describe('UserManagementPage', () => {
     renderPage();
     await screen.findByText('operator');
 
-    await user.type(screen.getByPlaceholderText('搜索用户名'), 'ops');
-    await user.click(screen.getByRole('combobox', { name: '按权限筛选' }));
-    await user.click(await screen.findByText('管理员', { selector: '.ant-select-item-option-content' }));
-    await user.click(screen.getByRole('combobox', { name: '按状态筛选' }));
-    await user.click(await screen.findByText('已禁用', { selector: '.ant-select-item-option-content' }));
+    await applyAdminDisabledFilter(user);
 
     await waitFor(() =>
       expect(listStudioUsers).toHaveBeenLastCalledWith({
@@ -119,5 +140,21 @@ describe('UserManagementPage', () => {
         pageSize: 20,
       }),
     );
+  });
+
+  it('exports all users that match the active filters', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('operator');
+    await applyAdminDisabledFilter(user, 'ops');
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    const expectedExportQuery = { search: 'ops', admin: true, enabled: false };
+    await waitFor(() => expect(downloadStudioUsers).toHaveBeenCalledWith(expectedExportQuery));
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [exportFilename, exportedCsv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(exportFilename).toMatch(/^rocketmq-studio-users-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(exportedCsv).toContain('"operator"');
+    expect(exportedCsv).toContain('"User"');
+    expect(exportedCsv).toContain('"Enabled"');
   });
 });

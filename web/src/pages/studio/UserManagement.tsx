@@ -30,19 +30,21 @@ import {
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Key, Plus } from '@phosphor-icons/react';
+import { DownloadSimple, Key, Plus } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { changePassword } from '../../api/auth';
 import {
   createStudioUser,
+  listAllStudioUsers as exportStudioUsers,
   listStudioUsers,
   resetStudioUserPassword,
   setStudioUserEnabled,
   type StudioUser,
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 interface CreateFormValues {
   username: string;
@@ -61,6 +63,15 @@ const PAGE_SIZE_OPTIONS = [20, 50, 100];
 type RoleFilter = 'admin' | 'reader';
 type StatusFilter = 'enabled' | 'disabled';
 
+const STUDIO_USER_EXPORT_COLUMNS: CsvColumn<StudioUser>[] = [
+  { header: 'User ID', value: (user) => user.id },
+  { header: 'Username', value: (user) => user.username },
+  { header: 'Role', value: (user) => (user.admin ? 'Admin' : 'User') },
+  { header: 'Status', value: (user) => (user.enabled ? 'Enabled' : 'Disabled') },
+  { header: 'Password Changed At', value: (user) => dateTime(user.passwordChangedAt) },
+  { header: 'Created At', value: (user) => dateTime(user.gmtCreate) },
+  { header: 'Modified At', value: (user) => dateTime(user.gmtModified) },
+];
 const UserManagementPage = () => {
   const navigate = useNavigate();
   const admin = useAuthStore((state) => state.admin);
@@ -77,6 +88,7 @@ const UserManagementPage = () => {
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
+  const [userExporting, setUserExporting] = useState(false);
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
@@ -179,7 +191,27 @@ const UserManagementPage = () => {
       message.error('修改密码失败');
     }
   };
-
+  const openCreateUserModal = () => setCreateOpen(true);
+  const handleExportUsers = useCallback(async () => {
+    if (!admin) return;
+    setUserExporting(true);
+    try {
+      const exportedUsers = await exportStudioUsers({
+        search: search.trim() || undefined,
+        admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
+        enabled: statusFilter === undefined ? undefined : statusFilter === 'enabled',
+      });
+      const today = new Date().toISOString().slice(0, 10);
+      downloadCsv(
+        `rocketmq-studio-users-${today}.csv`,
+        buildCsv(STUDIO_USER_EXPORT_COLUMNS, exportedUsers),
+      );
+      message.success(`已导出 ${exportedUsers.length} 个用户`);
+    } catch {
+      message.error('导出用户列表失败，请稍后重试');
+    }
+    setUserExporting(false);
+  }, [admin, roleFilter, search, statusFilter]);
   const columns: ColumnsType<StudioUser> = [
     { title: '用户名', dataIndex: 'username' },
     { title: '用户 ID', dataIndex: 'id', width: 100 },
@@ -221,9 +253,19 @@ const UserManagementPage = () => {
         subtitle="Studio 本地账号、会话与密码管理"
         extra={
           admin ? (
-            <Button type="primary" icon={<Plus size={16} />} onClick={() => setCreateOpen(true)}>
-              新建用户
-            </Button>
+            <Space>
+              <Button
+                icon={<DownloadSimple size={16} />}
+                disabled={loading || total === 0}
+                loading={userExporting}
+                onClick={() => void handleExportUsers()}
+              >
+                导出
+              </Button>
+              <Button type="primary" icon={<Plus size={16} />} onClick={openCreateUserModal}>
+                新建用户
+              </Button>
+            </Space>
           ) : undefined
         }
       />
