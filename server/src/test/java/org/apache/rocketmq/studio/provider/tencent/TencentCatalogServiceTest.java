@@ -17,9 +17,11 @@
 package org.apache.rocketmq.studio.provider.tencent;
 
 import com.tencentcloudapi.trocket.v20230308.models.DescribeInstanceListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeInstanceListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeInstanceResponse;
 import com.tencentcloudapi.trocket.v20230308.models.Endpoint;
 import com.tencentcloudapi.trocket.v20230308.models.InstanceItem;
+import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
@@ -34,6 +36,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,11 +50,18 @@ class TencentCatalogServiceTest {
     @Mock
     private TencentClientFactory clientFactory;
 
+    @Mock
+    private TrocketClient client;
+
     private TencentCatalogService service;
 
     @BeforeEach
     void setUp() {
         service = new TencentCatalogService(clientFactory);
+        lenient().when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenAnswer(invocation -> {
+            TencentClientFactory.TencentCall<Object> action = invocation.getArgument(2);
+            return action.execute(client);
+        });
     }
 
     @Test
@@ -119,6 +131,48 @@ class TencentCatalogServiceTest {
         assertThat(instances).singleElement()
                 .extracting(CloudInstanceOptionVO::getInstanceId)
                 .isEqualTo("rmq-valid");
+    }
+
+    @Test
+    void listCloudInstancesShouldContinuePastTenThousandRecordsWhenTotalCountRequiresItTest() throws Exception {
+        InstanceItem item = new InstanceItem();
+        item.setInstanceId("rmq-page");
+        item.setInstanceName("page");
+        when(client.DescribeInstanceList(any())).thenAnswer(invocation -> {
+            DescribeInstanceListRequest request = invocation.getArgument(0);
+            DescribeInstanceListResponse response = new DescribeInstanceListResponse();
+            response.setTotalCount(10_001L);
+            response.setData(request.getOffset() < 10_000L
+                    ? java.util.stream.IntStream.range(0, 100).mapToObj(index -> item).toArray(InstanceItem[]::new)
+                    : new InstanceItem[]{item});
+            return response;
+        });
+
+        List<CloudInstanceOptionVO> instances = service.listCloudInstances(CREDENTIAL_ID, REGION, null);
+
+        assertThat(instances).hasSize(10_001);
+        org.mockito.ArgumentCaptor<DescribeInstanceListRequest> captor =
+                org.mockito.ArgumentCaptor.forClass(DescribeInstanceListRequest.class);
+        verify(client, times(101)).DescribeInstanceList(captor.capture());
+        assertThat(captor.getAllValues().get(100).getOffset()).isEqualTo(10_000L);
+    }
+
+    @Test
+    void listCloudInstancesShouldStopAtExactlyTenThousandRecordsWhenTotalCountIsReachedTest() throws Exception {
+        InstanceItem item = new InstanceItem();
+        item.setInstanceId("rmq-page");
+        item.setInstanceName("page");
+        when(client.DescribeInstanceList(any())).thenAnswer(invocation -> {
+            DescribeInstanceListResponse response = new DescribeInstanceListResponse();
+            response.setTotalCount(10_000L);
+            response.setData(java.util.stream.IntStream.range(0, 100)
+                    .mapToObj(index -> item)
+                    .toArray(InstanceItem[]::new));
+            return response;
+        });
+
+        assertThat(service.listCloudInstances(CREDENTIAL_ID, REGION, null)).hasSize(10_000);
+        verify(client, times(100)).DescribeInstanceList(any());
     }
 
     @Test
