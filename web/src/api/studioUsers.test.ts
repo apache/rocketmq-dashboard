@@ -18,10 +18,11 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import client from './client';
-import { listStudioUsers } from './studioUsers';
+import { listAllStudioUsers as loadStudioUsersForExport, listStudioUsers } from './studioUsers';
 
 const mock = new MockAdapter(client);
-
+const exportQuery = { search: 'op', admin: false };
+const exportRequestParams = [1, 2].map((page) => ({ ...exportQuery, page, pageSize: 100 }));
 describe('studio users API', () => {
   beforeEach(() => mock.reset());
   afterEach(() => mock.reset());
@@ -58,5 +59,34 @@ describe('studio users API', () => {
       page: 2,
       pageSize: 20,
     });
+  });
+
+  it('loads all export pages with the maximum supported page size', async () => {
+    mock.onGet('/studio-users').reply((config) => {
+      const currentPage = config.params?.page;
+      const pageItems =
+        currentPage === 1
+          ? [{ id: 7, username: 'operator', admin: false, enabled: true }]
+          : [{ id: 8, username: 'admin', admin: true, enabled: false }];
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            items: pageItems,
+            total: 2,
+            page: currentPage,
+            size: 100,
+          },
+        },
+      ];
+    });
+    const exportedUsers = await loadStudioUsersForExport(exportQuery);
+    expect(exportedUsers.map((user) => user.username)).toEqual(['operator', 'admin']);
+    expect(mock.history.get).toHaveLength(2);
+    expect(mock.history.get.map((request) => request.params)).toEqual([
+      exportRequestParams[0],
+      exportRequestParams[1],
+    ]);
   });
 });

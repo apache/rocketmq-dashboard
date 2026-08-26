@@ -16,6 +16,8 @@
  */
 import client from './client';
 
+const STUDIO_USER_EXPORT_PAGE_SIZE = 100;
+const STUDIO_USER_MAX_EXPORT_PAGES = 100;
 export interface StudioUser {
   id: number;
   username: string;
@@ -41,6 +43,8 @@ export interface StudioUserQuery {
   pageSize?: number;
 }
 
+type StudioUserExportQuery = Omit<StudioUserQuery, 'page' | 'pageSize'>;
+type CreateStudioUserRequest = Pick<StudioUser, 'username' | 'admin'> & { password: string };
 export async function listStudioUsers(query: StudioUserQuery = {}) {
   const response = await client.get<{ data: StudioUserPage }>('/studio-users', {
     params: query,
@@ -48,13 +52,32 @@ export async function listStudioUsers(query: StudioUserQuery = {}) {
   return response.data.data;
 }
 
-export async function createStudioUser(request: { username: string; password: string; admin: boolean }) {
+export const listAllStudioUsers = async (
+  query: StudioUserExportQuery = {},
+): Promise<StudioUser[]> => {
+  const allUsers: StudioUser[] = [];
+  let page = 1;
+  while (page <= STUDIO_USER_MAX_EXPORT_PAGES) {
+    const result = await listStudioUsers({
+      ...query,
+      page,
+      pageSize: STUDIO_USER_EXPORT_PAGE_SIZE,
+    });
+    allUsers.push(...result.items);
+    const total = result.total ?? allUsers.length;
+    if (result.items.length === 0 || allUsers.length >= total) return allUsers;
+    page += 1;
+  }
+  throw new Error(`Studio user export exceeded ${STUDIO_USER_MAX_EXPORT_PAGES} pages`);
+};
+export async function createStudioUser(request: CreateStudioUserRequest) {
   const response = await client.post<{ data: StudioUser }>('/studio-users', request);
   return response.data.data;
 }
 
 export async function setStudioUserEnabled(userId: number, enabled: boolean) {
-  const response = await client.post<{ data: StudioUser }>(`/studio-users/${userId}/status`, { enabled });
+  const statusPath = `/studio-users/${userId}/status`;
+  const response = await client.post<{ data: StudioUser }>(statusPath, { enabled });
   return response.data.data;
 }
 
