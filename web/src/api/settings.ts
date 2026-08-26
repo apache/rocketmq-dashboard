@@ -64,6 +64,9 @@ export interface DataSourcePage {
   size: number;
 }
 
+const DATA_SOURCE_EXPORT_PAGE_SIZE = 100;
+const DATA_SOURCE_MAX_EXPORT_PAGES = 100;
+
 // ─── General Settings ───────────────────────────────────────────
 export async function getGeneralSettings() {
   const res = await client.get<{ data: GeneralSettings }>('/settings/general');
@@ -101,6 +104,27 @@ export async function listDataSourcesPage(params: {
     params,
   });
   return res.data.data;
+}
+
+export async function listAllDataSources(params: { search?: string; type?: string } = {}) {
+  const allDataSources: DataSource[] = [];
+  let page = 1;
+
+  while (page <= DATA_SOURCE_MAX_EXPORT_PAGES) {
+    const result = await listDataSourcesPage({
+      ...params,
+      page,
+      pageSize: DATA_SOURCE_EXPORT_PAGE_SIZE,
+    });
+    allDataSources.push(...result.items);
+    const total = result.total ?? allDataSources.length;
+    if (result.items.length === 0 || allDataSources.length >= total) {
+      return allDataSources;
+    }
+    page += 1;
+  }
+
+  throw new Error(`Data source export exceeded ${DATA_SOURCE_MAX_EXPORT_PAGES} pages`);
 }
 
 export async function createDataSource(data: Partial<DataSource>) {

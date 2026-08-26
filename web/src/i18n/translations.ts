@@ -713,6 +713,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '删除数据源失败，请稍后重试',
     en: 'Failed to delete data source. Please try again later.',
   },
+  'settings.dataSourceExported': {
+    zh: '已导出 {total} 个数据源',
+    en: 'Exported {total} data sources',
+  },
+  'settings.dataSourceExportFailed': {
+    zh: '导出数据源失败，请稍后重试',
+    en: 'Failed to export data sources. Please try again later.',
+  },
   'settings.instances': { zh: '适用实例', en: 'Applicable instances' },
   'settings.global': { zh: '全局', en: 'Global' },
   'settings.authentication': { zh: '认证方式', en: 'Authentication' },

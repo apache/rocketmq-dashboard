@@ -30,7 +30,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import { MagnifyingGlass } from '@phosphor-icons/react';
+import { DownloadSimple, MagnifyingGlass } from '@phosphor-icons/react';
 import { ApiOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -39,6 +39,7 @@ import StatusBadge from '../../components/StatusBadge';
 import {
   createDataSource,
   deleteDataSource,
+  listAllDataSources,
   listDataSourcesPage,
   testDataSource,
   updateDataSource,
@@ -47,6 +48,7 @@ import type { DataSource } from '../../api/settings';
 import { STATUS_MAP } from '../../constants/theme';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -73,6 +75,20 @@ const DATA_SOURCE_TYPE_OPTIONS = [
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 type DataSourceFormValues = Partial<DataSource>;
+
+interface DataSourceExportRow extends DataSource {
+  instanceNames: string;
+  statusLabel: string;
+}
+
+const DATA_SOURCE_EXPORT_COLUMNS: CsvColumn<DataSourceExportRow>[] = [
+  { header: 'Name', value: (source) => source.name },
+  { header: 'Type', value: (source) => source.type },
+  { header: 'URL', value: (source) => source.url },
+  { header: 'Applicable Instances', value: (source) => source.instanceNames },
+  { header: 'Authentication', value: (source) => source.auth },
+  { header: 'Status', value: (source) => source.statusLabel },
+];
 
 const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
 const authNeedsSecret = (auth?: string) => auth === 'Basic Auth' || auth === 'Bearer Token';
@@ -108,6 +124,7 @@ export const DataSourceTab = () => {
   const authValue = Form.useWatch('auth', dsForm);
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
 
   useEffect(() => {
@@ -259,6 +276,45 @@ export const DataSourceTab = () => {
     }
   };
 
+  const formatInstanceIds = (instanceIds: string[] | undefined) => {
+    if (!instanceIds?.length) return t('settings.global');
+    return instanceIds
+      .map(
+        (instanceId) =>
+          instances.find(
+            (instance) => instance.name === instanceId || String(instance.id) === instanceId,
+          )?.name ?? instanceId,
+      )
+      .join('、');
+  };
+
+  const formatStatus = (status: DataSource['status']) => {
+    if (!status || !STATUS_MAP[status]) return t('settings.dataSourceNotTested');
+    return t(STATUS_MAP[status].labelKey);
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const exported = await listAllDataSources({
+        search: debouncedSearch,
+        type: typeFilter,
+      });
+      const rows = exported.map((source) => ({
+        ...source,
+        instanceNames: formatInstanceIds(source.instanceIds),
+        statusLabel: formatStatus(source.status),
+      }));
+      const filename = `rocketmq-data-sources-${new Date().toISOString().slice(0, 10)}.csv`;
+      downloadCsv(filename, buildCsv(DATA_SOURCE_EXPORT_COLUMNS, rows));
+      message.success(t('settings.dataSourceExported', { total: rows.length }));
+    } catch {
+      message.error(t('settings.dataSourceExportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const columns: ColumnsType<DataSource> = [
     { title: t('common.name'), dataIndex: 'name', key: 'name' },
     {
@@ -272,17 +328,7 @@ export const DataSourceTab = () => {
       title: t('settings.instances'),
       dataIndex: 'instanceIds',
       key: 'instanceIds',
-      render: (instanceIds: string[] | undefined) => {
-        if (!instanceIds?.length) return t('settings.global');
-        return instanceIds
-          .map(
-            (instanceId) =>
-              instances.find(
-                (instance) => instance.name === instanceId || String(instance.id) === instanceId,
-              )?.name ?? instanceId,
-          )
-          .join('、');
-      },
+      render: formatInstanceIds,
     },
     { title: t('settings.authentication'), dataIndex: 'auth', key: 'auth' },
     {
@@ -362,9 +408,24 @@ export const DataSourceTab = () => {
             options={DATA_SOURCE_TYPE_OPTIONS}
           />
         </Flex>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} disabled={loading}>
-          {t('settings.addDataSource')}
-        </Button>
+        <Space>
+          <Button
+            icon={<DownloadSimple size={14} />}
+            onClick={() => void handleExport()}
+            loading={exporting}
+            disabled={loading || total === 0}
+          >
+            {t('common.export')}
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openCreateModal}
+            disabled={loading}
+          >
+            {t('settings.addDataSource')}
+          </Button>
+        </Space>
       </Flex>
 
       <Table<DataSource>
