@@ -20,20 +20,36 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { DataSource, DataSourcePage } from '../../../api/settings';
-import { createDataSource, listDataSourcesPage, testDataSource } from '../../../api/settings';
+import {
+  createDataSource,
+  listAllDataSources,
+  listDataSourcesPage,
+  testDataSource,
+} from '../../../api/settings';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
+import { downloadCsv } from '../../../utils/download';
 import { DataSourceTab } from '../DataSourceTab';
 
 vi.mock('../../../api/settings', () => ({
   createDataSource: vi.fn(),
   deleteDataSource: vi.fn(),
   getGeneralSettings: vi.fn(),
+  listAllDataSources: vi.fn(),
   listDataSourcesPage: vi.fn(),
   saveGeneralSettings: vi.fn(),
   testDataSource: vi.fn(),
   updateDataSource: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => {
+  const downloadModule =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return {
+    ...downloadModule,
+    downloadCsv: vi.fn(),
+  };
+});
 
 const sources: DataSource[] = [
   {
@@ -91,6 +107,7 @@ describe('DataSourceTab', () => {
     vi.clearAllMocks();
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     vi.mocked(listDataSourcesPage).mockResolvedValue(sourcePage);
+    vi.mocked(listAllDataSources).mockResolvedValue(sources);
   });
 
   it('keeps data source creation disabled until the initial list is ready', async () => {
@@ -216,6 +233,55 @@ describe('DataSourceTab', () => {
     await waitFor(() => {
       expect(buttons[1]).not.toHaveClass('ant-btn-loading');
     });
+  });
+
+  it('exports all data sources that match the active filters without secrets', async () => {
+    vi.mocked(listAllDataSources).mockResolvedValue([
+      {
+        ...sources[1],
+        instanceIds: ['instance-1'],
+        username: 'hidden-user',
+        password: 'hidden-password',
+        bearerToken: 'hidden-token',
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <LangProvider>
+        <App>
+          <DataSourceTab />
+        </App>
+      </LangProvider>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.type(screen.getByPlaceholderText('搜索数据源名称'), 'prom');
+    await selectFilterOption(user, '全部类型', 'Thanos');
+    await waitFor(() =>
+      expect(listDataSourcesPage).toHaveBeenLastCalledWith({
+        search: 'prom',
+        type: 'Thanos',
+        page: 1,
+        pageSize: 20,
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    await waitFor(() =>
+      expect(listAllDataSources).toHaveBeenCalledWith({
+        search: 'prom',
+        type: 'Thanos',
+      }),
+    );
+    const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toMatch(/^rocketmq-data-sources-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(csv).toContain('"Name","Type","URL","Applicable Instances","Authentication","Status"');
+    expect(csv).toContain('"Thanos DR","Thanos","http://thanos:10902"');
+    expect(csv).toContain('"Bearer Token"');
+    expect(csv).not.toContain('hidden-user');
+    expect(csv).not.toContain('hidden-password');
+    expect(csv).not.toContain('hidden-token');
   });
 
   it('submits basic auth credentials when testing from the modal', async () => {
@@ -426,4 +492,15 @@ async function selectAntdOption(
     return element;
   });
   await user.click(within(popup).getByRole('option', { name: option }));
+}
+
+async function selectFilterOption(
+  user: ReturnType<typeof userEvent.setup>,
+  placeholder: string,
+  option: string,
+) {
+  await user.click(screen.getByText(placeholder));
+  await user.click(
+    await screen.findByText(option, { selector: '.ant-select-item-option-content' }),
+  );
 }

@@ -21,6 +21,7 @@ import client from './client';
 import {
   createDataSource,
   deleteDataSource,
+  listAllDataSources,
   listDataSources,
   testDataSource,
   updateDataSource,
@@ -56,6 +57,40 @@ describe('data sources API', () => {
     await expect(listDataSources()).resolves.toEqual([source]);
     await expect(createDataSource({ name: source.name })).resolves.toEqual(source);
     await expect(updateDataSource(source)).resolves.toEqual(source);
+  });
+
+  it('loads all data source export pages with the maximum supported page size', async () => {
+    mock.onGet('/settings/datasources/page').reply((config) => {
+      const page = config.params.page;
+      expect(config.params.search).toBe('prom');
+      expect(config.params.type).toBe('Prometheus');
+      expect(config.params.pageSize).toBe(100);
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            items:
+              page === 1
+                ? [source]
+                : [
+                    {
+                      ...source,
+                      key: 'source-2',
+                      name: 'Prometheus backup',
+                    },
+                  ],
+            total: 2,
+            page,
+            size: 100,
+          },
+        },
+      ];
+    });
+
+    await expect(listAllDataSources({ search: 'prom', type: 'Prometheus' })).resolves.toHaveLength(
+      2,
+    );
   });
 
   it('uses a key query parameter for deletion and sends test auth details', async () => {
