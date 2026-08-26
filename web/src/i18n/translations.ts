@@ -1677,6 +1677,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.fetchSessionFailed': { zh: '获取会话详情失败', en: 'Failed to fetch session detail' },
   'liteTopic.extendTtlSuccess': { zh: 'TTL 延长成功', en: 'TTL extended successfully' },
   'liteTopic.extendTtlFailed': { zh: 'TTL 延长失败', en: 'Failed to extend TTL' },
+  'liteTopic.exportSuccess': {
+    zh: '已导出 {total} 条 LiteTopic',
+    en: 'Exported {total} LiteTopics',
+  },
+  'liteTopic.exportFailed': {
+    zh: '导出 LiteTopic 失败，请稍后重试',
+    en: 'Failed to export LiteTopics',
+  },
   'liteTopic.total': { zh: '共 {total} 条记录', en: 'Total {total} records' },
   'liteTopic.defaultTtl': { zh: '默认 TTL', en: 'Default TTL' },
   'liteTopic.maxTtl': { zh: '最大 TTL', en: 'Max TTL' },
