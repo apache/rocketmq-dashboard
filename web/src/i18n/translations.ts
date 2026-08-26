@@ -151,6 +151,33 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Delete NameServer "{name}"? This action cannot be undone.',
   },
   'cluster.nsOperationFailed': { zh: '操作失败，请稍后重试', en: 'Operation failed, please retry' },
+  'cluster.nsConfigDiff': { zh: '配置差异', en: 'Config Diff' },
+  'cluster.nsConfigDiffTitle': {
+    zh: 'NameServer 配置差异 - {name}',
+    en: 'NameServer Config Diff - {name}',
+  },
+  'cluster.nsConfigDiffLoading': {
+    zh: '正在检测 NameServer 配置差异',
+    en: 'Checking NameServer config diff',
+  },
+  'cluster.nsConfigDiffFailed': {
+    zh: 'NameServer 配置差异检测失败，请稍后重试',
+    en: 'Failed to check NameServer config diff, please retry',
+  },
+  'cluster.nsConfigDiffDriftDetected': {
+    zh: '检测到 NameServer 配置差异',
+    en: 'NameServer config drift detected',
+  },
+  'cluster.nsConfigDiffNoDrift': {
+    zh: '未检测到 NameServer 配置差异',
+    en: 'No NameServer config drift detected',
+  },
+  'cluster.nsConfigDiffComplete': { zh: '检测完整', en: 'Complete' },
+  'cluster.nsConfigDiffComparedKeys': { zh: '比较配置项', en: 'Compared Keys' },
+  'cluster.nsConfigDiffValues': { zh: '节点配置值', en: 'Node Values' },
+  'cluster.nsConfigDiffReachable': { zh: '可达', en: 'Reachable' },
+  'cluster.nsConfigDiffUnreachable': { zh: '不可达', en: 'Unreachable' },
+  'cluster.nsConfigDiffUnconfigured': { zh: '未配置', en: 'Unconfigured' },
   'cluster.nsClusterName': { zh: 'NameServer 集群名称', en: 'NS Cluster Name' },
   'cluster.count': { zh: '数量', en: 'Count' },
   'cluster.searchBroker': {
