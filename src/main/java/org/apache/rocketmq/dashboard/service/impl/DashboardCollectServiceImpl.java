@@ -19,6 +19,7 @@ package org.apache.rocketmq.dashboard.service.impl;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.google.common.base.Charsets;
+import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
 import com.google.common.base.Ticker;
 import com.google.common.cache.CacheBuilder;
@@ -31,6 +32,7 @@ import com.google.common.collect.Maps;
 import com.google.common.io.Files;
 import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.service.DashboardCollectService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +43,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @Service
 public class DashboardCollectServiceImpl implements DashboardCollectService {
@@ -49,6 +52,8 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
     private RMQConfigure configure;
 
     private final static Logger log = LoggerFactory.getLogger(DashboardCollectServiceImpl.class);
+
+    private static final Pattern DATE_PATTERN = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
 
     private LoadingCache<String, List<String>> brokerMap = CacheBuilder.newBuilder()
             .maximumSize(1000)
@@ -135,6 +140,7 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
 
     @Override
     public Map<String, List<String>> getBrokerCache(String date) {
+        checkDateParam(date);
         String dataLocationPath = configure.getDashboardCollectData();
         File file = new File(dataLocationPath + date + ".json");
         if (!file.exists()) {
@@ -146,6 +152,7 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
 
     @Override
     public Map<String, List<String>> getTopicCache(String date) {
+        checkDateParam(date);
         String dataLocationPath = configure.getDashboardCollectData();
         File file = new File(dataLocationPath + date + "_topic" + ".json");
         if (!file.exists()) {
@@ -154,6 +161,12 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
             return Maps.newHashMap();
         }
         return jsonDataFile2map(file);
+    }
+
+    private void checkDateParam(String date) {
+        if (Strings.isNullOrEmpty(date) || !DATE_PATTERN.matcher(date).matches()) {
+            throw new ServiceException(-1, "invalid date format, expected yyyy-MM-dd, actual: " + date);
+        }
     }
 
 }
