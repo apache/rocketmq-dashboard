@@ -537,6 +537,28 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldContinuePastTenThousandRecordsWhenTotalCountRequiresItTest() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_page");
+        when(client.DescribeConsumerGroupList(any())).thenAnswer(invocation -> {
+            DescribeConsumerGroupListRequest request = invocation.getArgument(0);
+            DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+            response.setTotalCount(10_001L);
+            response.setData(request.getOffset() < 10_000L
+                    ? IntStream.range(0, 100).mapToObj(index -> item).toArray(ConsumeGroupItem[]::new)
+                    : new ConsumeGroupItem[]{item});
+            return response;
+        });
+
+        assertThat(provider.listConsumerGroups(STUDIO_INSTANCE_ID, "does-not-match")).isEmpty();
+
+        ArgumentCaptor<DescribeConsumerGroupListRequest> captor =
+                ArgumentCaptor.forClass(DescribeConsumerGroupListRequest.class);
+        verify(client, times(101)).DescribeConsumerGroupList(captor.capture());
+        assertThat(captor.getAllValues().get(100).getOffset()).isEqualTo(10_000L);
+    }
+
+    @Test
     void createConsumerGroupShouldCallTencentOpenApiTest() throws Exception {
         when(client.CreateConsumerGroup(any())).thenReturn(null);
         ConsumerGroupVO group = new ConsumerGroupVO();

@@ -409,10 +409,10 @@ public class TencentInstanceProvider implements InstanceProvider {
     private List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search, boolean enrichTimes) {
         Context context = resolve(instanceId);
         List<ConsumerGroupVO> groups = new ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeConsumerGroupListRequest request = new DescribeConsumerGroupListRequest();
             request.setInstanceId(context.cloudInstanceId());
-            request.setOffset((long) page * PAGE_SIZE);
+            request.setOffset(offset);
             request.setLimit((long) PAGE_SIZE);
             DescribeConsumerGroupListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeConsumerGroupList(request));
@@ -432,7 +432,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                     groups.add(group);
                 }
             }
-            if (data.length < PAGE_SIZE) {
+            if (data.length < PAGE_SIZE || hasFetchedAll(offset, PAGE_SIZE, response.getTotalCount())) {
                 break;
             }
         }
