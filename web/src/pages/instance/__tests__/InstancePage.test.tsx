@@ -22,6 +22,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as aliyunCatalogApi from '../../../api/aliyunCatalog';
 import * as cloudCredentialApi from '../../../api/cloudCredential';
+import * as tencentCatalogApi from '../../../api/tencentCatalog';
 import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCredential';
 import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -118,6 +119,8 @@ describe('InstancePage', () => {
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(cloudCredentialPage([]));
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([]);
     vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
+    vi.mocked(tencentCatalogApi.listTencentRegions).mockResolvedValue([]);
+    vi.mocked(tencentCatalogApi.listTencentInstances).mockResolvedValue([]);
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(1, 'production-proxy'),
       instance(2, 'development-direct', 'DIRECT'),
@@ -451,6 +454,60 @@ describe('InstancePage', () => {
     );
     expect(
       await screen.findByText(/导入完成：共同步 3 个实例（新导入 2，已存在跳过 1）/),
+    ).toBeInTheDocument();
+  });
+
+  it('imports every Tencent instance of the credential via one-click import', async () => {
+    const user = userEvent.setup();
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
+      cloudCredentialPage([
+        {
+          id: 201,
+          name: 'tencent-prod-account',
+          vendor: 'TENCENT',
+          accessKey: 'AKID-prod',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+      ]),
+    );
+    vi.mocked(instanceService.importCloudInstances).mockResolvedValue({
+      discovered: 4,
+      imported: 1,
+      skipped: 3,
+      failed: [],
+    });
+
+    renderPage();
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Tencent 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenLastCalledWith('TENCENT'),
+    );
+
+    const importButton = within(dialog).getByRole('button', { name: /一键导入/ });
+    expect(importButton).toBeDisabled();
+
+    const credentialSelect = within(dialog).getAllByRole('combobox')[0];
+    fireEvent.mouseDown(credentialSelect.parentElement!);
+    await user.click(
+      await screen.findByText(/tencent-prod-account/, {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await waitFor(() => expect(importButton).toBeEnabled());
+
+    await user.click(importButton);
+
+    await waitFor(() =>
+      expect(instanceService.importCloudInstances).toHaveBeenCalledWith({
+        vendor: 'TENCENT',
+        credentialId: 201,
+      }),
+    );
+    expect(
+      await screen.findByText(/导入完成：共同步 4 个实例（新导入 1，已存在跳过 3）/),
     ).toBeInTheDocument();
   });
 
