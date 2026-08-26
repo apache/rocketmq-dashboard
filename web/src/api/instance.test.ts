@@ -22,6 +22,7 @@ import {
   createInstance,
   deleteInstance,
   getInstanceCapabilities,
+  importCloudInstances,
   listInstances,
   supportsApacheRuntime,
   updateInstance,
@@ -107,6 +108,18 @@ describe('instance API', () => {
     });
 
     await expect(getInstanceCapabilities('instance/proxy')).resolves.toEqual(capabilities);
+  });
+
+  it('posts cloud import requests for cloud vendors', async () => {
+    const result = { discovered: 4, imported: 1, skipped: 3, failed: [] };
+    mock.onPost('/instances/import-cloud').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ vendor: 'TENCENT', credentialId: 201 });
+      return [200, { code: 200, data: result }];
+    });
+
+    await expect(importCloudInstances({ vendor: 'TENCENT', credentialId: 201 })).resolves.toEqual(
+      result,
+    );
   });
 
   it('identifies instances supported by Apache MQAdmin runtime APIs', () => {

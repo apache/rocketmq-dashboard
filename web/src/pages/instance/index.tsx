@@ -723,7 +723,7 @@ const InstancePage = () => {
         width={520}
         footer={
           <Flex justify="flex-end" gap={8}>
-            {vendor === 'ALIYUN' && (
+            {cloudVendor && (
               <Tooltip title="遍历该凭据下全部地域，将所有云上实例导入（幂等，已存在的自动跳过），备注自动取自云上实例">
                 <Button
                   loading={importing}
