@@ -49,7 +49,6 @@ import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -324,7 +323,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     @Override
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
-                                              List<String> msgIds) {
+                                              List<String> msgIds, java.io.OutputStream out) {
         if (!StringUtils.hasText(groupName)) {
             throw new BusinessException(400, "groupName is required for DLQ export");
         }
@@ -335,23 +334,24 @@ public class RocketMQDLQProvider implements DLQProvider {
         DeadLetterScanResult scanResult = collectDeadLetters(instanceId, dlqTopic, begin, end, RESEND_HARD_CAP);
         Set<String> selected = msgIds == null ? Collections.emptySet()
                 : new java.util.HashSet<>(msgIds);
-        List<DLQMessageVO> messages = scanResult.messages().stream()
+        List<DLQMessageExcelRow> rows = scanResult.messages().stream()
                 .filter(message -> selected.isEmpty() || selected.contains(message.getMsgId()))
                 .map(this::toExportVO)
+                .map(DLQMessageExcelRow::from)
                 .toList();
-        byte[] data;
         try {
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-            com.alibaba.excel.EasyExcel.write(output, DLQMessageExcelRow.class)
+            // Stream straight to the caller's OutputStream so the whole workbook is never buffered
+            // in the heap (the export is capped at RESEND_HARD_CAP messages, but large snapshots can
+            // still be several MB).
+            com.alibaba.excel.EasyExcel.write(out, DLQMessageExcelRow.class)
                     .sheet("DLQ")
-                    .doWrite(messages.stream().map(DLQMessageExcelRow::from).toList());
-            data = output.toByteArray();
+                    .doWrite(rows);
+            out.flush();
         } catch (Exception e) {
             log.warn("Failed to build Excel export for group {}: {}", groupName, e.getMessage());
             throw new BusinessException(502, "Failed to export DLQ messages as Excel: " + e.getMessage());
         }
         return DLQExcelExportResultVO.builder()
-                .data(data)
                 .truncated(scanResult.truncated())
                 .failedQueueCount(scanResult.failedQueueCount())
                 .limit(RESEND_HARD_CAP)

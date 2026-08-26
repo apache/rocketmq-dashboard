@@ -75,7 +75,7 @@ public class DLQProviderStub implements DLQProvider {
 
     @Override
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
-                                              List<String> msgIds) {
+                                              List<String> msgIds, java.io.OutputStream out) {
         log.warn("DLQProviderStub.exportExcel called but no real DLQ provider is configured. group={}", groupName);
         throw unsupported();
     }

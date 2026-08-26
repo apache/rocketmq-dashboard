@@ -21,6 +21,7 @@ import com.tencentcloudapi.common.exception.TencentCloudSDKException;
 import com.tencentcloudapi.common.profile.ClientProfile;
 import com.tencentcloudapi.common.profile.HttpProfile;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import jakarta.annotation.PreDestroy;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
@@ -60,6 +61,22 @@ public class TencentClientFactory {
     public synchronized void invalidateCredential(Long credentialId) {
         String prefix = credentialId + "#";
         clients.keySet().removeIf(key -> key.startsWith(prefix));
+    }
+
+    /**
+     * Releases every cached {@link TrocketClient} when the application context shuts down.
+     * The Tencent SDK client has no public {@code shutdown()} API, so the cache is cleared to
+     * drop the references and let the underlying connection pools be reclaimed by GC (mirrors the
+     * {@code @PreDestroy} already present on the Aliyun client factory). Without this, the
+     * credentials map would retain clients for the whole process lifetime.
+     */
+    @PreDestroy
+    public void close() {
+        int released = clients.size();
+        clients.clear();
+        if (released > 0) {
+            log.info("Released {} cached Tencent TrocketClient instance(s) on context shutdown", released);
+        }
     }
 
     public <T> T call(Long credentialId, String region, TencentCall<T> action) {

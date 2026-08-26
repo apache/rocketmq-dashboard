@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -39,6 +40,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -95,22 +97,25 @@ public class DLQController {
     }
 
     @GetMapping("/export-excel")
-    public ResponseEntity<byte[]> exportDLQExcel(@RequestParam String instanceId,
-                                                 @RequestParam String groupName,
-                                                 @RequestParam(required = false) Long startTime,
-                                                 @RequestParam(required = false) Long endTime,
-                                                 @Size(max = MAX_SELECTED_MESSAGES,
-                                                         message = "At most 100 msgIds are allowed per export")
-                                                 @RequestParam(required = false) List<String> msgIds) {
-        DLQExcelExportResultVO result = dlqService.exportExcel(instanceId, groupName, startTime, endTime, msgIds);
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        attachmentDisposition("dlq-" + sanitizeForFilename(groupName) + ".xlsx").toString())
-                .header(HEADER_EXPORT_TRUNCATED, String.valueOf(result.isTruncated()))
-                .header(HEADER_EXPORT_FAILED_QUEUES, String.valueOf(result.getFailedQueueCount()))
-                .header(HEADER_EXPORT_LIMIT, String.valueOf(result.getLimit()))
-                .contentType(MediaType.parseMediaType(EXCEL_MEDIA_TYPE))
-                .body(result.getData());
+    public ResponseEntity<Void> exportDLQExcel(@RequestParam String instanceId,
+                                               @RequestParam String groupName,
+                                               @RequestParam(required = false) Long startTime,
+                                               @RequestParam(required = false) Long endTime,
+                                               @Size(max = MAX_SELECTED_MESSAGES,
+                                                       message = "At most 100 msgIds are allowed per export")
+                                               @RequestParam(required = false) List<String> msgIds,
+                                               HttpServletResponse response) throws IOException {
+        // Stream the workbook straight to the response body so it is never buffered in the heap.
+        response.setContentType(EXCEL_MEDIA_TYPE);
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                attachmentDisposition("dlq-" + sanitizeForFilename(groupName) + ".xlsx").toString());
+        DLQExcelExportResultVO result = dlqService.exportExcel(
+                instanceId, groupName, startTime, endTime, msgIds, response.getOutputStream());
+        response.setHeader(HEADER_EXPORT_TRUNCATED, String.valueOf(result.isTruncated()));
+        response.setHeader(HEADER_EXPORT_FAILED_QUEUES, String.valueOf(result.getFailedQueueCount()));
+        response.setHeader(HEADER_EXPORT_LIMIT, String.valueOf(result.getLimit()));
+        response.getOutputStream().flush();
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/export")

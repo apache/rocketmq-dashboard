@@ -197,7 +197,6 @@ export interface ImportConsumerGroupsResult {
   groups: ConsumerGroup[];
   failures: ImportConsumerGroupsFailure[];
 }
-
 // ─── Topic API ──────────────────────────────────────────────────
 export async function listTopics(params?: TopicQuery) {
   const res = await client.get<{ data: Topic[] }>('/topics', { params });

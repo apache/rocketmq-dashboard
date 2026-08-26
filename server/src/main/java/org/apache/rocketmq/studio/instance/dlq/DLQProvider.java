@@ -45,9 +45,10 @@ public interface DLQProvider {
 
     /**
      * Excel (.xlsx) export of dead-letter messages; when {@code msgIds} is non-empty only those
-     * messages are included, otherwise the whole time window is exported. The result carries the
-     * serialized sheet plus scan-completeness metadata, mirroring the JSON export.
+     * messages are included, otherwise the whole time window is exported. The sheet is streamed
+     * directly to {@code out} (never fully buffered in the heap) and the returned value carries only
+     * the scan-completeness metadata, mirroring the JSON export.
      */
     DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
-                                       List<String> msgIds);
+                                       List<String> msgIds, java.io.OutputStream out);
 }

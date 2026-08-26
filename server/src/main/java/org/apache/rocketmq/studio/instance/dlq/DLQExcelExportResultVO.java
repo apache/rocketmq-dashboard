@@ -22,9 +22,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * An Excel DLQ export: the serialized .xlsx bytes plus the same scan-completeness
- * metadata as the JSON export, so callers can tell whether the sheet covers a full
- * snapshot or a bounded/partial one.
+ * An Excel DLQ export: scan-completeness metadata for the streamed .xlsx sheet, so callers can
+ * tell whether the sheet covers a full snapshot or a bounded/partial one. The sheet bytes are
+ * streamed straight to the HTTP response and are never materialized in the heap.
  */
 @Data
 @Builder
@@ -32,7 +32,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class DLQExcelExportResultVO {
 
-    private byte[] data;
     private boolean truncated;
     private int failedQueueCount;
     private int limit;

@@ -29,10 +29,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.io.OutputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
@@ -468,9 +470,9 @@ class DLQControllerTest {
 
     @Test
     void exportDLQExcelShouldReturnAttachmentWithCompletenessHeadersTest() throws Exception {
-        when(dlqService.exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
+        when(dlqService.exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull(),
+                any(OutputStream.class)))
                 .thenReturn(DLQExcelExportResultVO.builder()
-                        .data(new byte[]{1, 2, 3})
                         .truncated(false)
                         .failedQueueCount(0)
                         .limit(5000)
@@ -486,17 +488,17 @@ class DLQControllerTest {
                 .andExpect(header().string("X-DLQ-Export-FailedQueues", "0"))
                 .andExpect(header().string("X-DLQ-Export-Limit", "5000"))
                 .andExpect(content().contentTypeCompatibleWith(
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .andExpect(content().bytes(new byte[]{1, 2, 3}));
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
 
-        verify(dlqService).exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull());
+        verify(dlqService).exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull(),
+                any(OutputStream.class));
     }
 
     @Test
     void exportDLQExcelShouldSanitizeHeaderUnsafeGroupNameCharactersTest() throws Exception {
-        when(dlqService.exportExcel(eq("instance-1"), eq("we\"ird\\group"), isNull(), isNull(), isNull()))
+        when(dlqService.exportExcel(eq("instance-1"), eq("we\"ird\\group"), isNull(), isNull(), isNull(),
+                any(OutputStream.class)))
                 .thenReturn(DLQExcelExportResultVO.builder()
-                        .data(new byte[]{9})
                         .truncated(false)
                         .failedQueueCount(0)
                         .limit(5000)

@@ -92,7 +92,7 @@ public class DLQService {
     }
 
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
-                                              List<String> msgIds) {
+                                              List<String> msgIds, java.io.OutputStream out) {
         requireApacheInstance(instanceId);
         validateResendRequest(groupName, startTime, endTime);
         if (msgIds != null && msgIds.size() > MAX_SELECTED_MESSAGES) {
@@ -100,7 +100,7 @@ public class DLQService {
         }
         log.info("Exporting DLQ messages as Excel: group={}, selected={}", groupName,
                 msgIds == null ? 0 : msgIds.size());
-        return dlqProvider.exportExcel(instanceId, groupName, startTime, endTime, msgIds);
+        return dlqProvider.exportExcel(instanceId, groupName, startTime, endTime, msgIds, out);
     }
 
     private void requireApacheInstance(String instanceId) {
