@@ -402,6 +402,11 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       ),
     [dataSources, instanceId],
   );
+  const availableDataSourceKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    availableDataSourceKeysRef.current = new Set(availableDataSources.map((source) => source.key));
+  }, [availableDataSources]);
 
   const loadMetrics = useCallback(
     async (metric: MetricMapping | undefined, range: (typeof RANGE_OPTIONS)[number]) => {
@@ -417,7 +422,11 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       setQueryLoading(true);
       setQueryError(null);
       try {
-        const currentDataSourceKey = dataSourceKeyRef.current;
+        const selectedDataSourceKey = dataSourceKeyRef.current;
+        const currentDataSourceKey =
+          selectedDataSourceKey && availableDataSourceKeysRef.current.has(selectedDataSourceKey)
+            ? selectedDataSourceKey
+            : '';
         const credentials =
           dataSourceCredentialsRef.current?.key === currentDataSourceKey
             ? dataSourceCredentialsRef.current
@@ -554,12 +563,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       window.setTimeout(() => {
         // Keep the ref in sync with the state; queries read the ref, so a stale key would
         // keep hitting the de-registered data source while the UI shows the default.
+        dataSourceCredentialsRef.current = null;
         dataSourceKeyRef.current = '';
         setDataSourceKey('');
         setData(null);
+        setPendingDataSource(null);
+        void loadMetrics(selectedMetric, selectedRange);
       }, 0);
     }
-  }, [availableDataSources, dataSourceKey]);
+  }, [availableDataSources, dataSourceKey, loadMetrics, selectedMetric, selectedRange]);
 
   const pendingAuthMode = pendingDataSource
     ? getDataSourceAuthMode(pendingDataSource.auth)
