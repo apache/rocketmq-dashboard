@@ -45,6 +45,7 @@ import {
   PencilSimple,
   Gauge,
   Info,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -58,6 +59,7 @@ import {
   type LiteTopicItem,
   type LiteTopicSession,
 } from '../../api/liteTopic';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const formatDuration = (ms: number | undefined | null): string => {
   if (ms == null) return '-';
@@ -79,6 +81,24 @@ const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' =
 };
 
 const knownTTLStatuses = new Set(['ACTIVE', 'EXPIRING_SOON', 'EXPIRED']);
+
+interface LiteTopicExportRow extends LiteTopicItem {
+  ttlStatusLabel: string;
+  sessionCount: number;
+}
+
+const LITE_TOPIC_EXPORT_COLUMNS: CsvColumn<LiteTopicExportRow>[] = [
+  { header: 'Namespace', value: (item) => item.namespace },
+  { header: 'Topic Pattern', value: (item) => item.topicPattern },
+  { header: 'Topic Count', value: (item) => item.topicCount },
+  { header: 'Consumer Count', value: (item) => item.consumerCount },
+  { header: 'Total Backlog', value: (item) => item.totalBacklog },
+  { header: 'Average TTL', value: (item) => formatDuration(item.averageTTL) },
+  { header: 'TTL Status', value: (item) => item.ttlStatusLabel },
+  { header: 'Last Active Time', value: (item) => formatTime(item.lastActiveTime) },
+  { header: 'Session Count', value: (item) => item.sessionCount },
+  { header: 'Session IDs', value: (item) => item.sessionIds?.join(';') },
+];
 
 const collectNamespaces = (items: LiteTopicItem[]): string[] => {
   const namespaces = new Map<string, string>();
@@ -310,6 +330,15 @@ const LiteTopicPage: React.FC = () => {
     return <Tag color={cfg.color}>{cfg.label}</Tag>;
   };
 
+  const getTTLStatusLabel = (status: string | undefined) => {
+    const map: Record<string, string> = {
+      ACTIVE: t('liteTopic.active'),
+      EXPIRING_SOON: t('liteTopic.expiringSoon'),
+      EXPIRED: t('liteTopic.expired'),
+    };
+    return map[status || ''] || t('liteTopic.unknown');
+  };
+
   const filteredTopicList = topicList.filter((item) => {
     if (!ttlStatusFilter) return true;
     if (ttlStatusFilter === 'UNKNOWN') {
@@ -320,6 +349,21 @@ const LiteTopicPage: React.FC = () => {
 
   const lastPage = Math.max(1, Math.ceil(filteredTopicList.length / pageSize));
   const clampedCurrentPage = Math.min(currentPage, lastPage);
+
+  const handleExport = () => {
+    try {
+      const rows = filteredTopicList.map((item) => ({
+        ...item,
+        ttlStatusLabel: getTTLStatusLabel(item.ttlStatus),
+        sessionCount: item.sessionIds?.length ?? 0,
+      }));
+      const filename = `rocketmq-lite-topics-${new Date().toISOString().slice(0, 10)}.csv`;
+      downloadCsv(filename, buildCsv(LITE_TOPIC_EXPORT_COLUMNS, rows));
+      message.success(t('liteTopic.exportSuccess', { total: rows.length }));
+    } catch {
+      message.error(t('liteTopic.exportFailed'));
+    }
+  };
 
   // ─── Columns ─────────────────────────────────────────────────
 
@@ -724,9 +768,19 @@ const LiteTopicPage: React.FC = () => {
       <PageHeader
         title={t('liteTopic.title')}
         extra={
-          <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
-            {t('common.refresh')}
-          </Button>
+          <Space>
+            <Button
+              icon={<DownloadSimple size={14} />}
+              size="small"
+              disabled={loading || filteredTopicList.length === 0}
+              onClick={handleExport}
+            >
+              {t('common.export')}
+            </Button>
+            <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
+              {t('common.refresh')}
+            </Button>
+          </Space>
         }
       />
 

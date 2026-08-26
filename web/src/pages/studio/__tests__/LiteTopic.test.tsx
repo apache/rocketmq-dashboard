@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
+import { downloadCsv } from '../../../utils/download';
 import LiteTopic from '../LiteTopic';
 
 const apiMocks = vi.hoisted(() => ({
@@ -32,6 +33,15 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/liteTopic', () => apiMocks);
+
+vi.mock('../../../utils/download', async () => {
+  const downloadModule =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return {
+    ...downloadModule,
+    downloadCsv: vi.fn(),
+  };
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -258,6 +268,44 @@ describe('LiteTopic Page', () => {
     expect(screen.getByText('unknown-*')).toBeInTheDocument();
     expect(screen.getByText('missing-status-*')).toBeInTheDocument();
     expect(apiMocks.queryLiteTopicList).toHaveBeenCalledTimes(initialListRequestCount);
+  });
+
+  it('exports the current LiteTopic filter result', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: '=active-*',
+        topicCount: 3,
+        consumerCount: 2,
+        totalBacklog: 12,
+        averageTTL: 60000,
+        ttlStatus: 'ACTIVE',
+        lastActiveTime: 1893456000000,
+        sessionIds: ['session-1', 'session-2'],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'expired-*',
+        ttlStatus: 'EXPIRED',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('=active-*')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '状态' }));
+    await user.click(
+      await screen.findByText('活跃', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toMatch(/^rocketmq-lite-topics-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(csv).toContain('"Namespace","Topic Pattern","Topic Count"');
+    expect(csv).toContain('"default","\'=active-*","3","2","12","1.0min","活跃"');
+    expect(csv).toContain('"session-1;session-2"');
+    expect(csv).not.toContain('expired-*');
   });
 
   it('keeps an early filtered display while a delayed bootstrap supplies namespace options', async () => {
