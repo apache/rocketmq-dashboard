@@ -104,25 +104,26 @@
 | 61 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
 | 62 | GET | `/api/settings/general` | 获取通用设置 |
 | 63 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 64 | GET | `/api/settings/datasources` | 数据源列表 |
-| 65 | POST | `/api/settings/datasources/create` | 创建数据源 |
-| 66 | POST | `/api/settings/datasources/update` | 更新数据源 |
-| 67 | POST | `/api/settings/datasources/delete` | 删除数据源 |
-| 68 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 69 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 70 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 71 | GET | `/api/ai/tools` | 可用工具列表 |
-| 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 74 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
-| 75 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
-| 76 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
-| 77 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 78 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 79 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 80 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
-| 81 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
-| 82 | GET | `/api/topics/page` | Topic 分页列表 |
+| 64 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
+| 65 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
+| 66 | POST | `/api/settings/datasources/create` | 创建数据源 |
+| 67 | POST | `/api/settings/datasources/update` | 更新数据源 |
+| 68 | POST | `/api/settings/datasources/delete` | 删除数据源 |
+| 69 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
+| 70 | POST | `/api/ai/chat` | AI 对话（SSE） |
+| 71 | POST | `/api/ai/execute` | 执行 AI 指令 |
+| 72 | GET | `/api/ai/tools` | 可用工具列表 |
+| 73 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 74 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 75 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 76 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 77 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 78 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 79 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 80 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 81 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 82 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 83 | GET | `/api/topics/page` | Topic 分页列表 |
 
 ## 通用响应格式
 
@@ -1759,11 +1760,13 @@ POST /api/settings/general/save
 
 **Response `data`:** `null`
 
-### 14.3 获取数据源列表
+### 14.3 获取数据源选择器列表（未分页）
 
 ```
 GET /api/settings/datasources
 ```
+
+用于选择器、下拉框等需要一次性加载全部数据源的场景；不支持 `search`、`type`、`page` 或 `pageSize`。设置页表格应使用 14.4 的分页接口。
 
 **Response `data`:** `DataSource[]`
 
@@ -1771,12 +1774,39 @@ GET /api/settings/datasources
 |------|------|------|
 | `key` | `string` | 数据源 ID |
 | `name` | `string` | 名称 |
-| `type` | `string` | 类型: `Prometheus` / `VictoriaMetrics` / `Thanos` |
+| `type` | `string` | 类型: `Prometheus` / `VictoriaMetrics` / `Thanos` / `Mimir` / `Cortex` / `ARMS` |
 | `url` | `string` | 连接 URL |
 | `auth` | `string` | 认证方式: `None` / `Basic Auth` / `Bearer Token` |
-| `status` | `string` | 状态: `healthy` / `error` |
+| `status` | `string?` | 连接状态，可能为空 |
+| `instanceIds` | `string[]?` | 绑定的实例 ID 列表；为空或省略表示全局可用 |
 
-### 14.4 创建数据源
+### 14.4 分页获取数据源列表
+
+```
+GET /api/settings/datasources/page?search={keyword}&type={type}&page={page}&pageSize={pageSize}
+```
+
+用于设置页表格的搜索、类型筛选和分页加载；与 14.3 的未分页 selector endpoint 区分使用。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `search` | `string` | 否 | 按数据源名称等库存字段搜索 |
+| `type` | `string` | 否 | 按数据源类型过滤，值同 `DataSource.type` |
+| `page` | `number` | 否 | 页码，默认 `1`，必须大于等于 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，范围 `1`-`100` |
+
+**Response `data`:** `PageResult<DataSource>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `DataSource[]` | 当前页数据，结构同 14.3 |
+| `total` | `number` | 匹配筛选条件的数据源总数 |
+| `page` | `number` | 当前页码（回显请求中的 `page`） |
+| `size` | `number` | 每页条数（回显请求中的 `pageSize`） |
+
+### 14.5 创建数据源
 
 ```
 POST /api/settings/datasources/create
@@ -1793,7 +1823,7 @@ POST /api/settings/datasources/create
 
 **Response `data`:** `DataSource`
 
-### 14.5 更新数据源
+### 14.6 更新数据源
 
 ```
 POST /api/settings/datasources/update
@@ -1811,7 +1841,7 @@ POST /api/settings/datasources/update
 
 **Response `data`:** `DataSource`
 
-### 14.6 删除数据源
+### 14.7 删除数据源
 
 ```
 POST /api/settings/datasources/delete
@@ -1825,7 +1855,7 @@ POST /api/settings/datasources/delete
 
 **Response `data`:** `null`
 
-### 14.7 测试数据源连接
+### 14.8 测试数据源连接
 
 ```
 POST /api/settings/datasources/test
@@ -2189,4 +2219,4 @@ GET /api/metrics/grafana/dashboards/export
 | **顺序类型** | `PARTITON_ORDER`, `MESSAGES_ORDER` |
 | **通知渠道** | `dingtalk`, `email`, `sms` |
 | **LLM 提供商** | `openai`, `azure`, `ollama`, `qwen` |
-| **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos` |
+| **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos`, `Mimir`, `Cortex`, `ARMS` |
