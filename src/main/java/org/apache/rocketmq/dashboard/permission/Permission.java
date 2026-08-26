@@ -14,25 +14,14 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.apache.rocketmq.dashboard.permisssion;
+package org.apache.rocketmq.dashboard.permission;
 
-public enum UserRoleEnum {
-    SUPER(1, "Super"),
-    NORMAL(2, "Normal");
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-    private int roleType;
-    private String roleName;
-
-    UserRoleEnum(int roleType, String roleName) {
-        this.roleType = roleType;
-        this.roleName = roleName;
-    }
-
-    public int getRoleType() {
-        return roleType;
-    }
-
-    public String getRoleName() {
-        return roleName;
-    }
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Permission {
 }

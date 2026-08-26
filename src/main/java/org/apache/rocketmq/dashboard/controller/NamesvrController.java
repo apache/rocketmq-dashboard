@@ -18,7 +18,7 @@ package org.apache.rocketmq.dashboard.controller;
 
 import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.OpsService;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;

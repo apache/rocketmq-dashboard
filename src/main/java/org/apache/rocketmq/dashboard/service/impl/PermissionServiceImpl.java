@@ -33,8 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.NORMAL;
-import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.SUPER;
+import static org.apache.rocketmq.dashboard.permission.UserRoleEnum.NORMAL;
+import static org.apache.rocketmq.dashboard.permission.UserRoleEnum.SUPER;
 
 
 @Service

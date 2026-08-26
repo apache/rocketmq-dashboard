@@ -22,7 +22,7 @@ import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;

@@ -26,7 +26,7 @@ import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.DlqMessageExcelModel;
 import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.DlqMessageService;
 import org.apache.rocketmq.dashboard.util.ExcelUtil;
 import org.apache.rocketmq.tools.admin.MQAdminExt;

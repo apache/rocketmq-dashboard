@@ -22,7 +22,6 @@ import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.User;
 import org.apache.rocketmq.dashboard.model.UserInfo;
-import org.apache.rocketmq.dashboard.permisssion.PermissionAspect;
 import org.apache.rocketmq.dashboard.service.impl.PermissionServiceImpl;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.dashboard.util.WebUtil;

@@ -22,7 +22,7 @@ import jakarta.annotation.Resource;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.trace.MessageTraceGraph;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.service.MessageTraceService;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;

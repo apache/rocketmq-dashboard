@@ -14,7 +14,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.apache.rocketmq.dashboard.permisssion;
+package org.apache.rocketmq.dashboard.permission;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -45,7 +45,7 @@ public class PermissionAspect {
      * @Permission can be applied to the Controller class to implement Permission verification on all methods in the class
      * can also be applied to methods in a class for fine control
      */
-    @Pointcut("@annotation(org.apache.rocketmq.dashboard.permisssion.Permission) || @within(org.apache.rocketmq.dashboard.permisssion.Permission)")
+    @Pointcut("@annotation(org.apache.rocketmq.dashboard.permission.Permission) || @within(org.apache.rocketmq.dashboard.permission.Permission)")
     private void permission() {
 
     }

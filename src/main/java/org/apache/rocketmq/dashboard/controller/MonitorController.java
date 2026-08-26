@@ -18,7 +18,7 @@ package org.apache.rocketmq.dashboard.controller;
 
 import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.MonitorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
