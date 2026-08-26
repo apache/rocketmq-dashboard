@@ -8,7 +8,7 @@
 ./deploy/deploy.sh web       # 仅部署前端
 ```
 
-脚本自动完成：本地构建 → 导出镜像 → SCP 传输 → 远程加载 → 重启容器 → 验证。
+脚本自动完成：本地打包源码 → SCP 传输 → 目标机构建镜像（复用 `~/.m2` 与 Docker 缓存）→ `docker compose` 重启容器 → 验证。
 后端通过 Maven 容器构建，并默认挂载宿主机的 `~/.m2`，后续构建会复用已下载的依赖。
 
 ## 配置
@@ -84,6 +84,7 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 
 ## 前置条件
 
-- 本地安装 Docker
+- 本地安装 `tar`、`scp`、`ssh`
+- 本地使用 Docker Compose 启动时，安装 Docker Engine 与 Docker Compose plugin（支持 `docker compose` 命令）
 - 远程机器可通过 SSH 免密登录
-- 远程机器已安装 Podman（Alibaba Cloud Linux 3 默认提供）
+- 远程机器安装 Docker Engine 与 Docker Compose plugin（`deploy.sh` 依赖 `docker`、`docker compose`、`docker run`、`docker build` 和 `docker exec`）
