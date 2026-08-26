@@ -131,6 +131,33 @@ describe('ACL page', () => {
     expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a non-copyable placeholder when an ACL user has no access key', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 12,
+          username: 'cloud-role',
+          accessKey: null,
+          secretKey: null,
+          admin: false,
+          clusters: ['cluster-a'],
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    const row = await screen.findByRole('row', { name: /cloud-role/ });
+    const accessKeyCell = row.querySelectorAll('td')[1];
+
+    expect(within(accessKeyCell).getByText('-')).toBeInTheDocument();
+    expect(within(accessKeyCell).queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('closes an ACL rule dialog when switching to another instance', async () => {
     const user = userEvent.setup();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
