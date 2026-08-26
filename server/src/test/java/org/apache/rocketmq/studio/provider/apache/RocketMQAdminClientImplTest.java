@@ -29,6 +29,8 @@ import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
@@ -56,6 +58,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -116,6 +119,34 @@ class RocketMQAdminClientImplTest {
                 invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(1).apply(sendProducer));
         adminClient = new RocketMQAdminClientImpl(adminFactory, properties, topicMapper, groupMapper, auditService,
                 runtimeAdminClientResolver, clientPool);
+    }
+
+    @Test
+    void getTopicUsesFirstUsableQueueData() throws Exception {
+        QueueData queueData = new QueueData();
+        queueData.setReadQueueNums(4);
+        queueData.setWriteQueueNums(6);
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(Arrays.asList(null, queueData));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeData);
+
+        TopicVO topic = adminClient.getTopic("orders");
+
+        assertThat(topic.getName()).isEqualTo("orders");
+        assertThat(topic.getReadQueues()).isEqualTo(4);
+        assertThat(topic.getWriteQueues()).isEqualTo(6);
+    }
+
+    @Test
+    void getTopicReturnsNotFoundWhenAllQueueDataIsNull() throws Exception {
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(java.util.Collections.singletonList(null));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeData);
+
+        assertThatThrownBy(() -> adminClient.getTopic("orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Topic not found: orders")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
     }
 
     @Test
