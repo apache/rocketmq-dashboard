@@ -1393,6 +1393,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'proxy.totalConnections': { zh: '总连接数', en: 'Total Connections' },
   'proxy.totalTps': { zh: '总 TPS', en: 'Total TPS' },
   'proxy.nodes': { zh: 'Proxy 节点', en: 'Proxy Nodes' },
+  'proxy.nodeFilter': { zh: '筛选 Proxy 节点', en: 'Filter Proxy nodes' },
+  'proxy.nodeFilterPlaceholder': {
+    zh: '筛选地址、状态或版本',
+    en: 'Filter address, status or version',
+  },
   'proxy.viewConfig': { zh: '查看配置', en: 'View Config' },
   'proxy.nodeConfig': { zh: '节点配置', en: 'Node Configuration' },
   'proxy.current': { zh: '当前', en: 'Current' },

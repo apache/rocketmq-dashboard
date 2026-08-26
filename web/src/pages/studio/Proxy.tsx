@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Card,
   Table,
@@ -45,6 +45,7 @@ import {
   Warning,
   Plus,
   Trash,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -78,6 +79,7 @@ const ProxyPage: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [newProxyAddress, setNewProxyAddress] = useState('');
+  const [nodeFilter, setNodeFilter] = useState('');
   const [addressMutationLoading, setAddressMutationLoading] = useState(false);
   const [removingProxyAddress, setRemovingProxyAddress] = useState<string | null>(null);
   const [clusterId, setClusterId] = useState<string>(
@@ -294,6 +296,38 @@ const ProxyPage: React.FC = () => {
       </Tag>
     );
   };
+
+  const proxyStatusLabel = useCallback(
+    (status: string) => {
+      const map: Record<string, string> = {
+        healthy: t('proxy.healthy'),
+        unhealthy: t('proxy.unhealthy'),
+        warning: t('proxy.warning'),
+        error: t('proxy.statusError'),
+        offline: t('proxy.statusOffline'),
+        unknown: t('common.na'),
+      };
+      return map[status] || map.unknown;
+    },
+    [t],
+  );
+
+  const filteredProxyNodes = useMemo(() => {
+    const keyword = nodeFilter.trim().toLowerCase();
+    if (!keyword) return proxyNodes;
+    return proxyNodes.filter((node) =>
+      [
+        node.address,
+        node.status,
+        proxyStatusLabel(node.status),
+        node.version,
+        node.uptime,
+        node.isSelected ? t('proxy.current') : '',
+      ]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => value.toLowerCase().includes(keyword)),
+    );
+  }, [nodeFilter, proxyNodes, proxyStatusLabel, t]);
 
   const renderUnavailable = () => <Text type="secondary">{t('common.na')}</Text>;
 
@@ -516,8 +550,24 @@ const ProxyPage: React.FC = () => {
           title={t('proxy.nodes')}
           variant="borderless"
           style={{ borderRadius: 8, marginBottom: 24 }}
+          extra={
+            <Input
+              allowClear
+              aria-label={t('proxy.nodeFilter')}
+              placeholder={t('proxy.nodeFilterPlaceholder')}
+              prefix={<MagnifyingGlass size={14} />}
+              value={nodeFilter}
+              onChange={(event) => setNodeFilter(event.target.value)}
+              style={{ width: 260 }}
+            />
+          }
         >
-          <Table columns={columns} dataSource={proxyNodes} pagination={false} size="middle" />
+          <Table
+            columns={columns}
+            dataSource={filteredProxyNodes}
+            pagination={false}
+            size="middle"
+          />
         </Card>
       </Spin>
 
