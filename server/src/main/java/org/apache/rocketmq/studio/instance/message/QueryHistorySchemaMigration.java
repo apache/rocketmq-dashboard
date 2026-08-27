@@ -20,13 +20,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 
-/** Adds query-history indexes to Studio databases created before the index contract was added. */
+/** Adds query-history columns and indexes to Studio databases created before the current schema. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class QueryHistorySchemaMigration implements ApplicationRunner {
     private static final List<Column> COLUMNS = List.of(
-            new Column("rmq_instance_message", "result_snapshot", "MEDIUMTEXT"));
+            new Column("rmq_instance_message", "result_snapshot", "MEDIUMTEXT"),
+            new Column("rmq_instance_trace", "trace_topic", "VARCHAR(255)"));
     private static final List<Index> INDEXES = List.of(
             new Index("rmq_instance_message", "idx_message_query_owner_lookup",
                     "queried_by, cluster_id, gmt_create, id"),

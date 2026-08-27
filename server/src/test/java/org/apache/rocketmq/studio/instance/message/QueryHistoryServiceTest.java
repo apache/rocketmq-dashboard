@@ -80,6 +80,52 @@ class QueryHistoryServiceTest {
         verify(traceQueryMapper).insert(captor.capture());
         assertThat(captor.getValue().getClusterId()).isEqualTo("cluster-a");
         assertThat(captor.getValue().getQueriedBy()).isEqualTo(AuthenticatedUserContext.SYSTEM_ACTOR);
+        assertThat(captor.getValue().getTraceTopic()).isNull();
+    }
+
+    @Test
+    void recordsNormalizedCustomTraceTopic() {
+        AuthenticatedUserContext.setUsername("alice");
+
+        service.recordTraceQuery("cluster-a", "msg-1", "orders", "  CUSTOM_TRACE  ", 2, 1);
+
+        ArgumentCaptor<RmqTraceQuery> captor = ArgumentCaptor.forClass(RmqTraceQuery.class);
+        verify(traceQueryMapper).insert(captor.capture());
+        assertThat(captor.getValue().getTraceTopic()).isEqualTo("CUSTOM_TRACE");
+        assertThat(captor.getValue().getQueriedBy()).isEqualTo("alice");
+    }
+
+    @Test
+    void mapsCustomTraceTopicIntoHistoryView() {
+        AuthenticatedUserContext.setUsername("alice");
+        RmqTraceQuery entity = new RmqTraceQuery();
+        entity.setId(7L);
+        entity.setMsgId("msg-7");
+        entity.setTopic("orders");
+        entity.setTraceTopic("CUSTOM_TRACE");
+        entity.setNodeCount(3);
+        entity.setConsumerCount(2);
+        entity.setClusterId("cluster-a");
+        entity.setQueriedBy("alice");
+        entity.setGmtCreate(LocalDateTime.of(2026, 8, 5, 12, 0));
+        when(traceQueryMapper.selectPage(any(Page.class), any(Wrapper.class)))
+                .thenAnswer(invocation -> {
+                    Page<RmqTraceQuery> result = invocation.getArgument(0);
+                    result.setRecords(java.util.List.of(entity));
+                    result.setTotal(1);
+                    return result;
+                });
+
+        PageResult<TraceQueryHistoryVO> result = service.listTraceQueries("cluster-a", "CUSTOM", 1, 20);
+
+        assertThat(result.getItems()).singleElement().satisfies(item -> {
+            assertThat(item.getTraceTopic()).isEqualTo("CUSTOM_TRACE");
+            assertThat(item.getMsgId()).isEqualTo("msg-7");
+        });
+
+        ArgumentCaptor<Wrapper<RmqTraceQuery>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(traceQueryMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getCustomSqlSegment()).contains("trace_topic");
     }
 
     @Test

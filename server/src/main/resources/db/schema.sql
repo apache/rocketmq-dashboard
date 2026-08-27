@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_trace (
   `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   msg_id VARCHAR(128) NOT NULL,
   topic VARCHAR(255),
+  trace_topic VARCHAR(255) COMMENT '自定义消息轨迹主题，空表示使用默认主题',
   node_count INT DEFAULT 0,
   consumer_count INT DEFAULT 0,
   cluster_id VARCHAR(255),
@@ -428,5 +429,5 @@ ALTER TABLE rmq_instance_message MODIFY queried_by VARCHAR(128);
 ALTER TABLE rmq_instance_trace MODIFY queried_by VARCHAR(128);
 ALTER TABLE rmq_operation_audit MODIFY operator VARCHAR(128);
 
--- Existing deployments are upgraded by AlertSchemaMigration after the application
--- connects, because this schema is also parsed by H2 in the development profile.
+-- Existing deployments are upgraded by the application schema-migration runners after the
+-- application connects. This schema is also parsed by H2 in the development profile.

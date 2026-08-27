@@ -60,6 +60,7 @@ describe('MessageQueryHistoryDrawer', () => {
           id: 2,
           msgId: 'msg-1',
           topic: 'orders',
+          traceTopic: 'CUSTOM_TRACE',
           nodeCount: 3,
           consumerCount: 1,
           queriedBy: 'bob',
@@ -86,6 +87,7 @@ describe('MessageQueryHistoryDrawer', () => {
     );
     await user.click(screen.getByRole('tab', { name: '轨迹查询' }));
     expect(await screen.findByText('msg-1')).toBeInTheDocument();
+    expect(screen.getByText('CUSTOM_TRACE')).toBeInTheDocument();
     await waitFor(() => expect(listTraceQueryHistory).toHaveBeenCalled());
   });
 
