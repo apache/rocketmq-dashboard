@@ -19,10 +19,13 @@ package org.apache.rocketmq.studio.ops.alert;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
-import org.springframework.util.StringUtils;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -30,19 +33,23 @@ import java.util.List;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AlertService {
 
-    private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=");
+    private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
     private static final Pattern METRIC_NAME_PATTERN = Pattern.compile("^[a-zA-Z_:][a-zA-Z0-9_:]*$");
     private static final Pattern DURATION_PATTERN = Pattern.compile("^\\d+(ms|s|m|h|d|w|y)$");
 
     private final AlertRepository alertRepository;
+    private final AlertStateRepository alertStateRepository;
     private final AlertRuleAssetService alertRuleAssetService;
     private final OperationAuditService operationAuditService;
 
@@ -61,9 +68,30 @@ public class AlertService {
         return alertRepository.findRulePage(normalizedSearch, enabled, page, pageSize);
     }
 
+    public List<AlertRuleVO> listRules(AlertDomain domain) {
+        return listRules().stream()
+                .filter(rule -> domain == resolveDomain(rule))
+                .toList();
+    }
+
+    public PageResult<AlertRuleVO> listRules(AlertDomain domain, String search, Boolean enabled, int page,
+            int pageSize) {
+        requireDomain(domain);
+        if (page < 1 || pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "Invalid page or pageSize");
+        }
+        return alertRepository.findRulesPage(new AlertRuleQuery(domain,
+                hasText(search) ? search.trim() : null, enabled, page, pageSize));
+    }
+
+    public List<AlertRuleRuntimeVO> listRuleRuntime(AlertDomain domain) {
+        return alertStateRepository.findRuntimeByRuleIds(listRules(domain));
+    }
+
     public String exportPrometheusRulesYaml() {
         List<AlertRuleVO> rules = alertRepository.findAllRules().stream()
                 .filter(AlertRuleVO::isEnabled)
+                .filter(rule -> resolveDomain(rule) == AlertDomain.BUSINESS)
                 .toList();
         List<PrometheusAlertRule> prometheusRules = rules.isEmpty()
                 ? defaultPrometheusRules()
@@ -105,17 +133,32 @@ public class AlertService {
         if (rule == null) {
             throw new BusinessException(400, "Alert rule request is required");
         }
+        if (rule.getId() != null) {
+            throw new BusinessException(400, "Alert rule ID must not be provided when creating a rule");
+        }
         if (!hasText(rule.getName())) {
             throw new BusinessException(400, "Alert rule name is required");
         }
         rule.setName(rule.getName().trim());
+        NativeAlertRulePolicy.validate(rule);
+        rejectDuplicateSemanticRule(rule, null);
         log.info("Creating alert rule: {}", rule.getName());
-        AlertRuleVO saved = alertRepository.saveRule(rule);
+        AlertRuleVO saved = saveNewRule(rule);
         auditRule("CREATE_ALERT_RULE", saved, null);
         return saved;
     }
 
+    public AlertRuleVO createRule(AlertDomain domain, AlertRuleVO rule) {
+        requireDomain(domain);
+        if (rule == null) {
+            return createRule(null);
+        }
+        rule.setDomain(domain);
+        return createRule(rule);
+    }
 
+
+    @Transactional
     public AlertRuleVO updateRule(AlertRuleVO rule) {
         if (rule == null) {
             throw new BusinessException(400, "Alert rule request is required");
@@ -127,41 +170,121 @@ public class AlertService {
         Long id = rule.getId();
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
-        if (!alertRepository.replaceRule(rule)) {
+        NativeAlertRulePolicy.validate(rule);
+        rejectDuplicateSemanticRule(rule, id);
+        if (!replaceRuleWithoutDuplicate(rule)) {
             throw ruleNotFound(id);
         }
+        alertStateRepository.deleteByRuleId(id);
         auditRule("UPDATE_ALERT_RULE", rule, null);
         return rule;
     }
 
+    @Transactional
+    public AlertRuleVO updateRule(AlertDomain domain, AlertRuleVO rule) {
+        requireDomain(domain);
+        validateRuleId(rule == null ? null : rule.getId());
+        AlertRuleVO existing = alertRepository.findRuleById(rule.getId())
+                .orElseThrow(() -> ruleNotFound(rule.getId()));
+        if (resolveDomain(existing) != domain) {
+            throw new BusinessException(404, "Alert rule not found: " + rule.getId());
+        }
+        rule.setDomain(domain);
+        return updateRule(rule);
+    }
 
+    private AlertDomain resolveDomain(AlertRuleVO rule) {
+        return rule.getDomain() == null ? AlertDomain.BUSINESS : rule.getDomain();
+    }
+
+    private void rejectDuplicateSemanticRule(AlertRuleVO rule, Long excludedId) {
+        String fingerprint = AlertRuleSemanticFingerprint.of(rule);
+        boolean duplicate = alertRepository.findAllRules().stream()
+                .filter(candidate -> !Objects.equals(candidate.getId(), excludedId))
+                .anyMatch(candidate -> AlertRuleSemanticFingerprint.of(candidate).equals(fingerprint));
+        if (duplicate) {
+            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+        }
+    }
+
+    private AlertRuleVO saveNewRule(AlertRuleVO rule) {
+        try {
+            return alertRepository.insertRule(rule);
+        } catch (DuplicateKeyException duplicate) {
+            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+        }
+    }
+
+    private boolean replaceRuleWithoutDuplicate(AlertRuleVO rule) {
+        try {
+            return alertRepository.replaceRule(rule);
+        } catch (DuplicateKeyException duplicate) {
+            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+        }
+    }
+
+    private void requireDomain(AlertDomain domain) {
+        if (domain == null) {
+            throw new BusinessException(400, "Alert domain is required");
+        }
+    }
+
+
+    @Transactional
     public AlertRuleVO toggleRule(Long id, boolean enabled) {
         log.info("Toggling alert rule id={}, enabled={}", id, enabled);
         validateRuleId(id);
         AlertRuleVO rule = alertRepository.findRuleById(id)
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Alert rule not found: " + id));
         rule.setEnabled(enabled);
-        AlertRuleVO saved = alertRepository.saveRule(rule);
-        auditRule("TOGGLE_ALERT_RULE", saved, "enabled=" + enabled);
-        return saved;
+        if (!alertRepository.replaceRule(rule)) {
+            throw ruleNotFound(id);
+        }
+        alertStateRepository.deleteByRuleId(id);
+        auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
+        return rule;
+    }
+
+    @Transactional
+    public AlertRuleVO toggleRule(AlertDomain domain, Long id, boolean enabled) {
+        requireDomain(domain);
+        AlertRuleVO rule = findRuleInDomain(domain, id);
+        rule.setEnabled(enabled);
+        if (!alertRepository.replaceRule(rule)) {
+            throw ruleNotFound(id);
+        }
+        alertStateRepository.deleteByRuleId(id);
+        auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
+        return rule;
     }
 
 
+    @Transactional
     public void deleteRule(Long id) {
         log.info("Deleting alert rule id={}", id);
         validateRuleId(id);
         if (!alertRepository.deleteRule(id)) {
             throw ruleNotFound(id);
         }
+        alertStateRepository.deleteByRuleId(id);
         recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, null);
     }
 
+    @Transactional
+    public void deleteRule(AlertDomain domain, Long id) {
+        requireDomain(domain);
+        findRuleInDomain(domain, id);
+        if (!alertRepository.deleteRule(id)) {
+            throw ruleNotFound(id);
+        }
+        alertStateRepository.deleteByRuleId(id);
+        recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, null);
+    }
+
+    @Transactional
     public AlertRuleBulkResultVO bulkToggleRules(List<Long> ids, boolean enabled) {
         List<Long> normalizedIds = normalizeBulkIds(ids);
-        Map<Long, AlertRuleVO> rulesById = new LinkedHashMap<>();
-        for (AlertRuleVO rule : alertRepository.findRulesByIds(normalizedIds)) {
-            rulesById.put(rule.getId(), rule);
-        }
+        Map<Long, AlertRuleVO> rulesById = rulesById(normalizedIds);
         List<Long> succeeded = new ArrayList<>();
         Map<Long, String> failures = new LinkedHashMap<>();
         List<AlertRuleVO> updated = new ArrayList<>();
@@ -179,6 +302,7 @@ public class AlertService {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
+                alertStateRepository.deleteByRuleId(id);
                 auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled + ", bulk=true");
                 succeeded.add(id);
                 updated.add(rule);
@@ -190,6 +314,14 @@ public class AlertService {
                 .succeededIds(succeeded).failures(failures).updatedRules(updated).build();
     }
 
+    @Transactional
+    public AlertRuleBulkResultVO bulkToggleRules(AlertDomain domain, List<Long> ids, boolean enabled) {
+        requireDomain(domain);
+        return bulkUpdateRules(domain, ids, rule -> rule.setEnabled(enabled),
+                "TOGGLE_ALERT_RULE", "enabled=" + enabled + ", bulk=true");
+    }
+
+    @Transactional
     public AlertRuleBulkResultVO bulkDeleteRules(List<Long> ids) {
         List<Long> normalizedIds = normalizeBulkIds(ids);
         List<Long> succeeded = new ArrayList<>();
@@ -200,6 +332,7 @@ public class AlertService {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
+                alertStateRepository.deleteByRuleId(id);
                 recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, "bulk=true");
                 succeeded.add(id);
             } catch (RuntimeException failure) {
@@ -208,6 +341,83 @@ public class AlertService {
         }
         return AlertRuleBulkResultVO.builder()
                 .succeededIds(succeeded).failures(failures).updatedRules(List.of()).build();
+    }
+
+    @Transactional
+    public AlertRuleBulkResultVO bulkDeleteRules(AlertDomain domain, List<Long> ids) {
+        requireDomain(domain);
+        List<Long> normalizedIds = normalizeBulkIds(ids);
+        Map<Long, AlertRuleVO> rulesById = rulesById(normalizedIds);
+        List<Long> succeeded = new ArrayList<>();
+        Map<Long, String> failures = new LinkedHashMap<>();
+        for (Long id : normalizedIds) {
+            AlertRuleVO rule = rulesById.get(id);
+            if (rule == null || resolveDomain(rule) != domain) {
+                failures.put(id, "Alert rule not found");
+                continue;
+            }
+            try {
+                if (!alertRepository.deleteRule(id)) {
+                    failures.put(id, "Alert rule not found");
+                    continue;
+                }
+                alertStateRepository.deleteByRuleId(id);
+                recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", String.valueOf(id), null, "bulk=true");
+                succeeded.add(id);
+            } catch (RuntimeException failure) {
+                failures.put(id, failure.getMessage() == null ? "Delete failed" : failure.getMessage());
+            }
+        }
+        return AlertRuleBulkResultVO.builder()
+                .succeededIds(succeeded).failures(failures).updatedRules(List.of()).build();
+    }
+
+    private AlertRuleBulkResultVO bulkUpdateRules(AlertDomain domain, List<Long> ids,
+            java.util.function.Consumer<AlertRuleVO> update, String auditOperation, String auditDetail) {
+        List<Long> normalizedIds = normalizeBulkIds(ids);
+        Map<Long, AlertRuleVO> rulesById = rulesById(normalizedIds);
+        List<Long> succeeded = new ArrayList<>();
+        Map<Long, String> failures = new LinkedHashMap<>();
+        List<AlertRuleVO> updated = new ArrayList<>();
+        for (Long id : normalizedIds) {
+            AlertRuleVO rule = rulesById.get(id);
+            if (rule == null || resolveDomain(rule) != domain) {
+                failures.put(id, "Alert rule not found");
+                continue;
+            }
+            try {
+                update.accept(rule);
+                if (!alertRepository.replaceRule(rule)) {
+                    failures.put(id, "Alert rule not found");
+                    continue;
+                }
+                alertStateRepository.deleteByRuleId(id);
+                auditRule(auditOperation, rule, auditDetail);
+                succeeded.add(id);
+                updated.add(rule);
+            } catch (RuntimeException failure) {
+                failures.put(id, failure.getMessage() == null ? "Update failed" : failure.getMessage());
+            }
+        }
+        return AlertRuleBulkResultVO.builder()
+                .succeededIds(succeeded).failures(failures).updatedRules(updated).build();
+    }
+
+    private AlertRuleVO findRuleInDomain(AlertDomain domain, Long id) {
+        validateRuleId(id);
+        return alertRepository.findRuleById(id)
+                .filter(rule -> resolveDomain(rule) == domain)
+                .orElseThrow(() -> ruleNotFound(id));
+    }
+
+    private Map<Long, AlertRuleVO> rulesById(List<Long> ids) {
+        Map<Long, AlertRuleVO> rulesById = new LinkedHashMap<>();
+        for (AlertRuleVO rule : alertRepository.findRulesByIds(ids)) {
+            if (rule.getId() != null) {
+                rulesById.put(rule.getId(), rule);
+            }
+        }
+        return rulesById;
     }
 
     private List<Long> normalizeBulkIds(List<Long> ids) {
@@ -248,6 +458,75 @@ public class AlertService {
         return alertRepository.findAlerts(normalizedLevel, page, pageSize);
     }
 
+    public List<SystemAlertVO> listAlerts(String level, AlertDomain domain, String instanceId, String transition) {
+        return listAlerts(level).stream()
+                .filter(alert -> domain == null || domain == alert.getDomain())
+                .filter(alert -> !hasText(instanceId) || instanceId.trim().equals(alert.getInstanceId()))
+                .filter(alert -> !hasText(transition) || transition.trim().equalsIgnoreCase(alert.getTransition()))
+                .toList();
+    }
+
+    public PageResult<SystemAlertVO> listAlerts(String level, AlertDomain domain, String instanceId,
+            String transition, int page, int pageSize) {
+        return listAlerts(level, domain, instanceId, transition, null, null, null, null, page, pageSize);
+    }
+
+    public PageResult<SystemAlertVO> listAlerts(String level, AlertDomain domain, String instanceId,
+            String transition, String labelKey, String labelValue, LocalDateTime from, LocalDateTime to,
+            int page, int pageSize) {
+        return listAlerts(level, domain, instanceId, transition, labelKey, labelValue, from, to, page, pageSize, null);
+    }
+
+    public PageResult<SystemAlertVO> listAlerts(String level, AlertDomain domain, String instanceId,
+            String transition, String labelKey, String labelValue, LocalDateTime from, LocalDateTime to,
+            int page, int pageSize, Boolean notificationSuppressed) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "Invalid page or pageSize");
+        }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(400, "from must not be after to");
+        }
+        if (hasText(labelKey) != hasText(labelValue)) {
+            throw new BusinessException(400, "labelKey and labelValue must be provided together");
+        }
+        return alertRepository.findAlertsPage(new SystemAlertQuery(level, domain, instanceId, transition,
+                hasText(labelKey) ? labelKey.trim() : null, hasText(labelValue) ? labelValue.trim() : null,
+                from, to, page, pageSize, notificationSuppressed));
+    }
+
+    public List<SystemAlertVO> findRelatedAlerts(Long id) {
+        if (id == null) {
+            throw new BusinessException(400, "System alert ID is required");
+        }
+        SystemAlertVO source = alertRepository.findAlertById(id)
+                .orElseThrow(() -> new BusinessException(404, "System alert not found: " + id));
+        AlertDomain relatedDomain = (source.getDomain() == null ? AlertDomain.BUSINESS : source.getDomain())
+                == AlertDomain.BUSINESS
+                ? AlertDomain.CLUSTER : AlertDomain.BUSINESS;
+        List<SystemAlertVO> explicitCauses = source.getSuppressionCauseAlertId() == null
+                ? List.of()
+                : alertRepository.findAlertById(source.getSuppressionCauseAlertId())
+                        .stream()
+                        .filter(candidate -> candidate.getDomain() == relatedDomain)
+                        .filter(candidate -> AlertCorrelationScope.matches(source, candidate))
+                        .toList();
+        if (!hasText(source.getInstanceId()) || source.getTime() == null) {
+            return explicitCauses;
+        }
+        LocalDateTime from = source.getTime().minusMinutes(30);
+        LocalDateTime to = source.getTime().plusMinutes(30);
+        List<SystemAlertVO> windowMatches = alertRepository.findAlertsPage(new SystemAlertQuery(null, relatedDomain, source.getInstanceId(),
+                        "FIRING", null, null, from, to, 1, 100))
+                .getItems().stream()
+                .filter(candidate -> !Objects.equals(candidate.getId(), source.getId()))
+                .filter(candidate -> AlertCorrelationScope.matches(source, candidate))
+                .toList();
+        LinkedHashMap<Long, SystemAlertVO> related = new LinkedHashMap<>();
+        explicitCauses.forEach(candidate -> related.put(candidate.getId(), candidate));
+        windowMatches.forEach(candidate -> related.putIfAbsent(candidate.getId(), candidate));
+        return List.copyOf(related.values());
+    }
+
 
     public SystemAlertVO acknowledgeAlert(Long id) {
         log.info("Acknowledging system alert id={}", id);
@@ -255,10 +534,18 @@ public class AlertService {
             throw new BusinessException(400, "System alert ID is required");
         }
         SystemAlertVO alert = alertRepository.findAlertById(id)
-                .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
+                .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404,
+                        "System alert not found: " + id));
         alert.setAcknowledged(true);
+        alert.setAcknowledgedBy(AuthenticatedUserContext.currentUsernameOrSystem());
+        alert.setAcknowledgedAt(LocalDateTime.now(ZoneOffset.UTC));
         if (!alertRepository.acknowledgeAlert(alert)) {
             throw new BusinessException(404, "System alert not found: " + id);
+        }
+        if ("FIRING".equalsIgnoreCase(alert.getTransition())
+                && alert.getRuleId() != null && hasText(alert.getFingerprint()) && alert.getTime() != null) {
+            alertStateRepository.acknowledge(new AlertStateKey(alert.getRuleId(), alert.getFingerprint()),
+                    alert.getTime().toInstant(ZoneOffset.UTC));
         }
         recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", String.valueOf(alert.getId()), null,
                 "acknowledged=true");
@@ -266,6 +553,7 @@ public class AlertService {
     }
 
 
+    @Transactional
     public int clearAcknowledged() {
         log.info("Clearing acknowledged system alerts");
         int deleted = alertRepository.deleteAcknowledgedAlerts();
@@ -337,6 +625,11 @@ public class AlertService {
     private String expression(AlertRuleVO rule) {
         String metric = validateMetric(rule.getMetric());
         String operator = validateOperator(rule.getOperator());
+        if ("UNAVAILABLE".equals(operator)) {
+            // Prometheus has no availability enum. Its compatible exporter convention is zero for
+            // unavailable targets; native Studio evaluation keeps failed samples value-less.
+            return metric + labelSelector(rule) + " == 0";
+        }
         return metric + labelSelector(rule) + " " + operator + " " + formatThreshold(rule.getThreshold());
     }
 

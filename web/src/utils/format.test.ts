@@ -4,6 +4,7 @@ import {
   formatBytes,
   formatDate,
   formatDateTime,
+  formatUtcDateTime,
   formatDelay,
   formatNumber,
   formatPercent,
@@ -43,12 +44,20 @@ describe('formatBytes', () => {
   it('uses a placeholder for invalid dates and numeric values', () => {
     expect(formatDate('not-a-date')).toBe('-');
     expect(formatDateTime(new Date(Number.NaN))).toBe('-');
+    expect(formatUtcDateTime('not-a-date', 'UTC')).toBe('-');
     expect(formatRelativeTime(Number.NaN, 'en', (key) => key)).toBe('-');
     expect(formatRelativeTime(Date.now(), 'en', (key) => key, Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatTimeOfDay(Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatNumber(Number.NaN)).toBe('-');
     expect(formatDelay(Number.POSITIVE_INFINITY, 'en')).toBe('-');
     expect(formatPercent(Number.NEGATIVE_INFINITY)).toBe('-');
+  });
+
+  it('treats timezone-less alert timestamps as UTC', () => {
+    expect(formatUtcDateTime('2026-08-23T10:35:38.590731', 'America/Los_Angeles')).toBe(
+      '2026-08-23 03:35:38 PDT',
+    );
+    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38 UTC');
   });
 
   it('formats recent timestamps for compact conversation history', () => {

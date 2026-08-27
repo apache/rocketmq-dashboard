@@ -11,6 +11,14 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:studio123}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  mail:
+    host: ${STUDIO_ALERTING_SMTP_HOST:}
+    port: ${STUDIO_ALERTING_SMTP_PORT:587}
+    username: ${STUDIO_ALERTING_SMTP_USERNAME:}
+    password: ${STUDIO_ALERTING_SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${STUDIO_ALERTING_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${STUDIO_ALERTING_SMTP_STARTTLS:true}
 
 mybatis-plus:
   configuration:
@@ -68,6 +76,13 @@ studio:
   query-history:
     retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
     cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}
+  alerting:
+    collection-interval: ${STUDIO_ALERTING_COLLECTION_INTERVAL:PT30S}
+    collection-parallelism: ${STUDIO_ALERTING_COLLECTION_PARALLELISM:4}
+    collection-timeout: ${STUDIO_ALERTING_COLLECTION_TIMEOUT:PT15S}
+    snapshot-retention: ${STUDIO_ALERTING_SNAPSHOT_RETENTION:PT24H}
+    snapshot-cleanup-interval: ${STUDIO_ALERTING_SNAPSHOT_CLEANUP_INTERVAL:PT1H}
+    notification-dispatch-interval: ${STUDIO_ALERTING_NOTIFICATION_DISPATCH_INTERVAL:PT10S}
   llm:
     token: ${RMQ_LLM_TOKEN:}
     anthropic-base-url: ${RMQ_ANTHROPIC_BASE_URL:}

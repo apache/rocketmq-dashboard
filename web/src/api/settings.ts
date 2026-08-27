@@ -30,7 +30,10 @@ export interface GeneralSettings {
   model: string;
   baseUrl: string;
   dingtalkWebhook?: string;
+  dingtalkSigningSecret?: string;
+  clearDingtalkSigningSecret?: boolean;
   dingtalkWebhookConfigured?: boolean;
+  dingtalkSigningSecretConfigured?: boolean;
   emailRecipients?: string;
   smsWebhook?: string;
   smsWebhookConfigured?: boolean;
@@ -38,10 +41,14 @@ export interface GeneralSettings {
 
 export type GeneralSettingsUpdate = Omit<
   GeneralSettings,
-  'apiKeyConfigured' | 'dingtalkWebhookConfigured' | 'smsWebhookConfigured'
+  | 'apiKeyConfigured'
+  | 'dingtalkWebhookConfigured'
+  | 'dingtalkSigningSecretConfigured'
+  | 'smsWebhookConfigured'
 > & {
   apiKey?: string;
   clearApiKey?: boolean;
+  clearDingtalkSigningSecret?: boolean;
 };
 
 export interface DataSource {
@@ -79,13 +86,19 @@ export async function saveGeneralSettings(data: GeneralSettingsUpdate) {
   } as GeneralSettingsUpdate & {
     apiKeyConfigured?: boolean;
     dingtalkWebhookConfigured?: boolean;
+    dingtalkSigningSecretConfigured?: boolean;
     smsWebhookConfigured?: boolean;
   };
   delete payload.apiKeyConfigured;
   delete payload.dingtalkWebhookConfigured;
+  delete payload.dingtalkSigningSecretConfigured;
   delete payload.smsWebhookConfigured;
   if (!payload.apiKey?.trim()) delete payload.apiKey;
   await client.post('/settings/general/save', payload);
+}
+
+export async function testNotification(channel: 'dingtalk' | 'email' | 'sms') {
+  await client.post('/settings/general/test-notification', null, { params: { channel } });
 }
 
 // ─── Data Sources ───────────────────────────────────────────────

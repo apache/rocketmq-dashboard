@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import org.apache.rocketmq.studio.ops.alert.NotificationOutboxService;
 
 @RestController
 @RequestMapping("/api/settings")
@@ -35,6 +36,7 @@ import java.util.List;
 public class SettingsController {
 
     private final SettingsService settingsService;
+    private final NotificationOutboxService notificationOutboxService;
 
     @GetMapping("/general")
     public Result<GeneralSettingsVO> getGeneralSettings() {
@@ -44,6 +46,12 @@ public class SettingsController {
     @PostMapping("/general/save")
     public Result<Void> saveGeneralSettings(@Valid @RequestBody GeneralSettingsUpdateDTO request) {
         settingsService.saveGeneralSettings(request.toSettings());
+        return Result.ok();
+    }
+
+    @PostMapping("/general/test-notification")
+    public Result<Void> testNotification(@RequestParam String channel) {
+        notificationOutboxService.sendTestMessage(channel);
         return Result.ok();
     }
 

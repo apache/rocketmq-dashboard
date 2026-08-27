@@ -320,7 +320,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             } else {
                 stats = adminExecute(admin -> admin.examineConsumeStats(vo.getName()));
             }
-            if (stats == null || stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
+            if (stats == null) {
+                return;
+            }
+            vo.setConsumeStatsAvailable(true);
+            if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }
             long totalLag = 0;
@@ -339,6 +343,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             if (newestConsumedTimestamp > 0) {
                 long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
+                vo.setConsumptionTimestampAvailable(true);
             }
         } catch (Exception e) {
             // No consume stats (e.g. POP-only group without an offset table): keep zeros.

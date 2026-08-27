@@ -23,8 +23,10 @@ import {
   exportAuditLogs,
   getAuditFilterOptions,
   listAlertRules,
+  listAlertRulesPage,
   listAuditRecords,
   listSystemAlerts,
+  listSystemAlertsPage,
   toggleAlertRule,
   updateAlertRule,
 } from './opsService';
@@ -55,6 +57,17 @@ describe('ops service mock data', () => {
     expect(second[0].name).toBe(originalName);
     expect(second[0].channels).not.toContain('mutated-channel');
     expect(second[0]).not.toBe(first[0]);
+  });
+
+  it('filters and pages mock alert rules without exposing mutable rows', async () => {
+    const first = await listAlertRulesPage('CLUSTER', { page: 1, pageSize: 1, search: '磁盘' });
+
+    expect(first.items).toHaveLength(1);
+    expect(first.total).toBeGreaterThanOrEqual(1);
+    first.items[0].name = 'mutated';
+
+    const second = await listAlertRulesPage('CLUSTER', { page: 1, pageSize: 1, search: '磁盘' });
+    expect(second.items[0].name).not.toBe('mutated');
   });
 
   it('copies alert rule channels on create, update, and toggle', async () => {
@@ -106,6 +119,15 @@ describe('ops service mock data', () => {
     const second = await listSystemAlerts();
     expect(second[0].title).toBe(originalTitle);
     expect(second[0]).not.toBe(first[0]);
+  });
+
+  it('pages mock system alert rows', async () => {
+    const full = await listSystemAlerts();
+    const result = await listSystemAlertsPage({ page: 1, pageSize: 1 });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.total).toBeGreaterThanOrEqual(1);
+    expect(result.items[0]).not.toBe(full[0]);
   });
 
   it('returns copied audit records', async () => {

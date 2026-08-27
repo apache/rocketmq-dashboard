@@ -251,6 +251,8 @@ CREATE TABLE IF NOT EXISTS rmq_alert_rule (
   threshold DOUBLE,
   threshold_unit VARCHAR(32),
   duration VARCHAR(32),
+  aggregation VARCHAR(16) NOT NULL DEFAULT 'LAST',
+  window_seconds INT NOT NULL DEFAULT 0,
   channels VARCHAR(512) COMMENT '逗号分隔的通知渠道',
   enabled TINYINT(1) DEFAULT 1,
   last_triggered VARCHAR(64),
@@ -258,10 +260,103 @@ CREATE TABLE IF NOT EXISTS rmq_alert_rule (
   broker_name VARCHAR(128),
   cluster_name VARCHAR(128),
   severity VARCHAR(32),
+  domain VARCHAR(16) NOT NULL DEFAULT 'BUSINESS' COMMENT 'BUSINESS or CLUSTER alert rule domain',
+  instance_id VARCHAR(128) COMMENT 'Studio instance scope required for native rule evaluation',
+  consumer_group VARCHAR(255) COMMENT 'Optional consumer group selector for business metrics',
+  topic VARCHAR(255) COMMENT 'Optional topic selector for topic backlog metrics',
+  consecutive_samples INT NOT NULL DEFAULT 1 COMMENT 'Consecutive native samples required before firing',
+  reminder_interval VARCHAR(32) NOT NULL DEFAULT '30m' COMMENT 'Repeat notification interval while unacknowledged',
+  notification_template TEXT COMMENT 'Optional notification body template',
+  semantic_fingerprint CHAR(64) NOT NULL COMMENT 'SHA-256 identity of the rule evaluation conditions',
+  UNIQUE KEY uk_alert_rule_semantic_fingerprint (semantic_fingerprint),
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 14. 系统告警事件
+-- 14. Native alert metric snapshots (short retention, managed by CollectorScheduler)
+CREATE TABLE IF NOT EXISTS rmq_metric_snapshot (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `instance_id` VARCHAR(128) NOT NULL,
+  `metric_key` VARCHAR(128) NOT NULL,
+  `domain` VARCHAR(16) NOT NULL,
+  `cluster_id` VARCHAR(128),
+  `labels_hash` CHAR(64) NOT NULL,
+  `labels_json` TEXT NOT NULL,
+  `value` DOUBLE NULL,
+  `availability` VARCHAR(16) NOT NULL,
+  `collected_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX idx_metric_snapshot_lookup (`instance_id`, `metric_key`, `collected_at`),
+  INDEX idx_metric_snapshot_retention (`collected_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS rmq_alert_collection_lease (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `lease_name` VARCHAR(128) NOT NULL,
+  `holder_id` VARCHAR(64) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_alert_collection_lease_name (`lease_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS rmq_alert_state (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `rule_id` bigint(20) unsigned NOT NULL,
+  `fingerprint` CHAR(64) NOT NULL,
+  `status` VARCHAR(16) NOT NULL,
+  `consecutive_hits` INT NOT NULL DEFAULT 0,
+  `current_value` DOUBLE NULL,
+  `first_pending_at` DATETIME NULL,
+  `fired_at` DATETIME NULL,
+  `last_notified_at` DATETIME NULL,
+  `resolved_at` DATETIME NULL,
+  `version` INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_alert_state_rule_fingerprint (`rule_id`, `fingerprint`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS rmq_alert_silence (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `domain` VARCHAR(16) NULL,
+  `rule_id` bigint(20) unsigned NULL,
+  `instance_id` VARCHAR(128) NULL,
+  `labels_json` TEXT NULL,
+  `starts_at` DATETIME NOT NULL,
+  `ends_at` DATETIME NOT NULL,
+  `reason` VARCHAR(512) NULL,
+  `created_by` VARCHAR(128) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX idx_alert_silence_active (`starts_at`, `ends_at`),
+  INDEX idx_alert_silence_scope (`domain`, `rule_id`, `instance_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS rmq_alert_notification_outbox (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `alert_id` bigint(20) unsigned NOT NULL,
+  `channel` VARCHAR(32) NOT NULL,
+  `status` VARCHAR(16) NOT NULL,
+  `attempt_count` INT NOT NULL DEFAULT 0,
+  `next_attempt_at` DATETIME NOT NULL,
+  `sending_started_at` DATETIME NULL,
+  `claim_token` VARCHAR(64) NULL,
+  `last_error` VARCHAR(1000) NULL,
+  `message_content` TEXT NULL COMMENT 'Rendered notification body snapshot',
+  `delivered_at` DATETIME NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_alert_notification_outbox (`alert_id`, `channel`),
+  INDEX idx_alert_notification_ready (`status`, `next_attempt_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 15. 系统告警事件
 CREATE TABLE IF NOT EXISTS rmq_system_alert (
   `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -271,9 +366,23 @@ CREATE TABLE IF NOT EXISTS rmq_system_alert (
   description TEXT,
   time DATETIME,
   acknowledged TINYINT(1) DEFAULT 0,
+  acknowledged_by VARCHAR(128),
+  acknowledged_at DATETIME,
+  domain VARCHAR(16),
+  rule_id bigint(20) unsigned,
+  fingerprint CHAR(64),
+  transition VARCHAR(16),
+  instance_id VARCHAR(128),
+  current_value DOUBLE,
+  notification_suppressed TINYINT(1) NOT NULL DEFAULT 0,
+  suppression_cause_alert_id bigint(20) unsigned,
+  suppression_reason VARCHAR(512),
+  labels_json TEXT,
   PRIMARY KEY (`id`),
   INDEX idx_level (level),
-  INDEX idx_acknowledged (acknowledged)
+  INDEX idx_acknowledged (acknowledged),
+  INDEX idx_system_alert_domain_time (domain, time),
+  INDEX idx_system_alert_feed (domain, instance_id, transition, time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 15. Cloud provider credentials (secret_key is base64-encoded and never seeded).
@@ -298,3 +407,6 @@ CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
 ALTER TABLE rmq_instance_message MODIFY queried_by VARCHAR(128);
 ALTER TABLE rmq_instance_trace MODIFY queried_by VARCHAR(128);
 ALTER TABLE rmq_operation_audit MODIFY operator VARCHAR(128);
+
+-- Existing deployments are upgraded by AlertSchemaMigration after the application
+-- connects, because this schema is also parsed by H2 in the development profile.

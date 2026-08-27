@@ -30,6 +30,8 @@ public class RmqAlertRule {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private String domain;
+
     private String name;
 
     private String metric;
@@ -41,6 +43,10 @@ public class RmqAlertRule {
     private String thresholdUnit;
 
     private String duration;
+
+    private String aggregation;
+
+    private Integer windowSeconds;
 
     private String channels;
 
@@ -55,6 +61,18 @@ public class RmqAlertRule {
     private String clusterName;
 
     private String severity;
+
+    private String instanceId;
+
+    private String consumerGroup;
+
+    private String topic;
+
+    private Integer consecutiveSamples;
+    private String reminderInterval;
+    private String notificationTemplate;
+
+    private String semanticFingerprint;
 
     private LocalDateTime gmtCreate;
 

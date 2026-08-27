@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
@@ -31,24 +32,43 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/alert-rules")
+@RequestMapping({"/api/alert-rules", "/api/business-alert-rules"})
 @RequiredArgsConstructor
 public class AlertRuleController {
 
     private final AlertService alertService;
+    private final NativeAlertRuleTestService nativeAlertRuleTestService;
+    private final NativeAlertMetricCatalogService metricCatalogService;
+    private final AlertRuleTransferService transferService;
 
     @GetMapping
-    public Result<List<AlertRuleVO>> listRules() {
-        return Result.ok(alertService.listRules());
+    public Result<List<AlertRuleVO>> listRules(HttpServletRequest request) {
+        // Keep the original read endpoint complete for existing API clients while the
+        // domain-specific route powers the Business Alerts page.
+        if (request.getRequestURI().endsWith("/api/alert-rules")) {
+            return Result.ok(alertService.listRules());
+        }
+        return Result.ok(alertService.listRules(AlertDomain.BUSINESS));
     }
 
     @GetMapping("/page")
     public Result<PageResult<AlertRuleVO>> listRulesPage(
+            HttpServletRequest request,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return Result.ok(alertService.listRules(search, enabled, page, pageSize));
+        // The legacy route keeps the cross-domain pagination contract; the business route
+        // restricts the page to business rules.
+        if (request.getRequestURI().endsWith("/api/alert-rules/page")) {
+            return Result.ok(alertService.listRules(search, enabled, page, pageSize));
+        }
+        return Result.ok(alertService.listRules(AlertDomain.BUSINESS, search, enabled, page, pageSize));
+    }
+
+    @GetMapping("/runtime")
+    public Result<List<AlertRuleRuntimeVO>> listRuntime() {
+        return Result.ok(alertService.listRuleRuntime(AlertDomain.BUSINESS));
     }
 
     @GetMapping("/export")
@@ -56,9 +76,22 @@ public class AlertRuleController {
         return Result.ok(new AlertRulesYamlVO(alertService.exportPrometheusRulesYaml()));
     }
 
+    @GetMapping("/transfer")
+    public Result<AlertRuleTransferDTO> exportTransfer() {
+        return Result.ok(transferService.exportRules(AlertDomain.BUSINESS));
+    }
+
+    @PostMapping("/import")
+    public Result<List<AlertRuleVO>> importRules(@Valid @RequestBody(required = false) AlertRuleTransferDTO transfer) {
+        return Result.ok(transferService.importRules(AlertDomain.BUSINESS, transfer));
+    }
+
     @PostMapping("/create")
     public Result<AlertRuleVO> createRule(@Valid @RequestBody(required = false) AlertRuleRequestDTO rule) {
-        return Result.ok(alertService.createRule(requireAlertRule(rule).toAlertRuleVO()));
+        AlertRuleVO candidate = requireAlertRule(rule).toAlertRuleVO();
+        candidate.setDomain(AlertDomain.BUSINESS);
+        metricCatalogService.validate(candidate);
+        return Result.ok(alertService.createRule(AlertDomain.BUSINESS, candidate));
     }
 
     @PostMapping("/update")
@@ -67,30 +100,41 @@ public class AlertRuleController {
         if (request.getId() == null) {
             throw new BusinessException(400, "id is required");
         }
-        return Result.ok(alertService.updateRule(request.toAlertRuleVO()));
+        AlertRuleVO candidate = request.toAlertRuleVO();
+        candidate.setDomain(AlertDomain.BUSINESS);
+        metricCatalogService.validate(candidate);
+        return Result.ok(alertService.updateRule(AlertDomain.BUSINESS, candidate));
+    }
+
+    @PostMapping("/test")
+    public Result<AlertRuleTestResultVO> testRule(@Valid @RequestBody(required = false) AlertRuleRequestDTO rule) {
+        AlertRuleVO candidate = requireAlertRule(rule).toAlertRuleVO();
+        candidate.setDomain(AlertDomain.BUSINESS);
+        metricCatalogService.validate(candidate);
+        return Result.ok(nativeAlertRuleTestService.test(candidate));
     }
 
     @PostMapping("/toggle")
     public Result<AlertRuleVO> toggleRule(@Valid @RequestBody ToggleAlertRuleDTO request) {
-        return Result.ok(alertService.toggleRule(request.getId(), request.getEnabled()));
+        return Result.ok(alertService.toggleRule(AlertDomain.BUSINESS, request.getId(), request.getEnabled()));
     }
 
     @PostMapping("/delete")
     public Result<Void> deleteRule(@Valid @RequestBody DeleteAlertRuleDTO request) {
-        alertService.deleteRule(request.getId());
+        alertService.deleteRule(AlertDomain.BUSINESS, request.getId());
         return Result.ok();
     }
 
     @PostMapping("/bulk-toggle")
     public Result<AlertRuleBulkResultVO> bulkToggle(
             @Valid @RequestBody BulkToggleAlertRulesDTO request) {
-        return Result.ok(alertService.bulkToggleRules(request.getIds(), request.getEnabled()));
+        return Result.ok(alertService.bulkToggleRules(AlertDomain.BUSINESS, request.getIds(), request.getEnabled()));
     }
 
     @PostMapping("/bulk-delete")
     public Result<AlertRuleBulkResultVO> bulkDelete(
             @Valid @RequestBody BulkDeleteAlertRulesDTO request) {
-        return Result.ok(alertService.bulkDeleteRules(request.getIds()));
+        return Result.ok(alertService.bulkDeleteRules(AlertDomain.BUSINESS, request.getIds()));
     }
 
     private AlertRuleRequestDTO requireAlertRule(AlertRuleRequestDTO rule) {

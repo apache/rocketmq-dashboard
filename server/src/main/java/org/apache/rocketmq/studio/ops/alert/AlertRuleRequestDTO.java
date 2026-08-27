@@ -17,7 +17,9 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
@@ -28,13 +30,20 @@ public class AlertRuleRequestDTO {
     @NotBlank(message = "name is required")
     private String name;
     private String metric;
-    @Pattern(regexp = ">|>=|<|<=|==|!=", message = "operator is invalid")
+    @Pattern(regexp = ">|>=|<|<=|==|!=|UNAVAILABLE", message = "operator is invalid")
     private String operator;
     private double threshold;
     private String thresholdUnit;
     @Pattern(regexp = "(?:[0-9]+(?:ms|s|m|h|d|w|y))+", message = "duration is invalid")
     private String duration;
-    private List<@NotBlank(message = "channel must not be blank") String> channels;
+    @Pattern(regexp = "LAST|MAX|MIN|AVG|SUM", flags = Pattern.Flag.CASE_INSENSITIVE,
+            message = "aggregation is invalid")
+    private String aggregation;
+    @Min(value = 0, message = "windowSeconds must not be negative")
+    private Integer windowSeconds;
+    private List<@NotBlank(message = "channel must not be blank")
+            @Pattern(regexp = "dingtalk|sms|email", flags = Pattern.Flag.CASE_INSENSITIVE,
+                    message = "channel is unsupported") String> channels;
     private boolean enabled;
     private String description;
     private String brokerName;
@@ -42,6 +51,15 @@ public class AlertRuleRequestDTO {
     @Pattern(regexp = "critical|warning|info", flags = Pattern.Flag.CASE_INSENSITIVE,
             message = "severity is invalid")
     private String severity;
+    private String instanceId;
+    private String consumerGroup;
+    private String topic;
+    @Min(value = 1, message = "consecutiveSamples must be at least 1")
+    private Integer consecutiveSamples;
+    @Pattern(regexp = "(?:[0-9]+(?:ms|s|m|h|d|w|y))+", message = "reminderInterval is invalid")
+    private String reminderInterval;
+    @Size(max = 4000, message = "notificationTemplate must not exceed 4000 characters")
+    private String notificationTemplate;
 
     public AlertRuleVO toAlertRuleVO() {
         return AlertRuleVO.builder()
@@ -52,12 +70,20 @@ public class AlertRuleRequestDTO {
                 .threshold(threshold)
                 .thresholdUnit(thresholdUnit)
                 .duration(duration)
+                .aggregation(aggregation == null ? "LAST" : aggregation)
+                .windowSeconds(windowSeconds == null ? 0 : windowSeconds)
                 .channels(normalizeChannels(channels))
                 .enabled(enabled)
                 .description(description)
                 .brokerName(brokerName)
                 .clusterName(clusterName)
                 .severity(severity)
+                .instanceId(instanceId)
+                .consumerGroup(consumerGroup)
+                .topic(topic)
+                .consecutiveSamples(consecutiveSamples == null ? 1 : consecutiveSamples)
+                .reminderInterval(reminderInterval == null ? "30m" : reminderInterval)
+                .notificationTemplate(notificationTemplate)
                 .build();
     }
 
