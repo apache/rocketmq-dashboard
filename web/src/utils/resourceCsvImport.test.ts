@@ -167,4 +167,28 @@ describe('resourceCsvImport', () => {
     );
     expect(validateResourceName('ok-name|100%', 'group')).toBeNull();
   });
+
+  it.each(['MESSAGES_ORDER', 'MESSAGES ORDER'])(
+    'accepts and canonicalizes the global delivery order value %s from CSV',
+    (deliveryOrderType) => {
+      const records = parseCsvTable(
+        [
+          '"Name","Subscription Data Type","Delivery Order Type"',
+          `"cg-global-orders","FIFO","${deliveryOrderType}"`,
+        ].join('\n'),
+      );
+      const validation = validateConsumerGroupCsvImport(records, 'instance-3');
+
+      expect(validation.errors).toEqual([]);
+      expect(validation.rows[0]).toMatchObject({
+        status: 'pending',
+        payload: {
+          name: 'cg-global-orders',
+          subscriptionDataType: 'FIFO',
+          deliveryOrderType: 'MESSAGES_ORDER',
+          instanceId: 'instance-3',
+        },
+      });
+    },
+  );
 });
