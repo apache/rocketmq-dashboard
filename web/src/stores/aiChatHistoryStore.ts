@@ -87,22 +87,31 @@ const restoreMessages = (messages: unknown): AiChatMessage[] =>
   (Array.isArray(messages) ? messages : [])
     .filter(isRecord)
     .flatMap((message) => {
-      if (typeof message.id !== 'string' || (message.role !== 'user' && message.role !== 'ai')) return [];
-      return [{
-        id: message.id,
-        role: message.role as AiChatMessage['role'],
-        createdAt: typeof message.createdAt === 'number' ? message.createdAt : undefined,
-        text: truncateMessageField(message.text),
-        summary: truncateMessageField(message.summary),
-        thinking: truncateMessageField(message.thinking),
-        pending: false,
-      }];
+      if (typeof message.id !== 'string' || (message.role !== 'user' && message.role !== 'ai'))
+        return [];
+      return [
+        {
+          id: message.id,
+          role: message.role as AiChatMessage['role'],
+          createdAt: typeof message.createdAt === 'number' ? message.createdAt : undefined,
+          text: truncateMessageField(message.text),
+          summary: truncateMessageField(message.summary),
+          thinking: truncateMessageField(message.thinking),
+          pending: false,
+        },
+      ];
     })
     .slice(-MAX_AI_CHAT_MESSAGES);
 
 const limitHistorySize = (history: AiChatHistory): AiChatHistory => {
-  const conversations = history.conversations.map((conversation) => ({ ...conversation, messages: [...conversation.messages] }));
-  while (conversations.length > 0 && JSON.stringify({ conversations }).length > MAX_AI_CHAT_HISTORY_BYTES) {
+  const conversations = history.conversations.map((conversation) => ({
+    ...conversation,
+    messages: [...conversation.messages],
+  }));
+  while (
+    conversations.length > 0 &&
+    JSON.stringify({ conversations }).length > MAX_AI_CHAT_HISTORY_BYTES
+  ) {
     const oldestIndex = conversations.length - 1;
     const oldest = conversations[oldestIndex];
     if (oldest.messages.length > 1) {
@@ -115,7 +124,7 @@ const limitHistorySize = (history: AiChatHistory): AiChatHistory => {
     conversations,
     activeConversationId: conversations.some((item) => item.id === history.activeConversationId)
       ? history.activeConversationId
-      : conversations[0]?.id ?? null,
+      : (conversations[0]?.id ?? null),
   };
 };
 
@@ -128,13 +137,20 @@ export const getRecentAiChatConversations = (
       ...conversation,
       prompt: conversation.messages.find((item) => item.role === 'user' && item.text?.trim())?.text,
     }))
-    .filter((conversation): conversation is RecentAiChatConversation => Boolean(conversation.prompt))
+    .filter((conversation): conversation is RecentAiChatConversation =>
+      Boolean(conversation.prompt),
+    )
     .slice(0, limit);
 
-const restoreHistory = (history?: Partial<AiChatHistory> & { messages?: AiChatMessage[]; conversationId?: string | null }): AiChatHistory => {
+const restoreHistory = (
+  history?: Partial<AiChatHistory> & { messages?: AiChatMessage[]; conversationId?: string | null },
+): AiChatHistory => {
   if (Array.isArray(history?.conversations)) {
     const conversations = history.conversations
-      .filter((conversation): conversation is AiChatConversation => isRecord(conversation) && typeof conversation.id === 'string')
+      .filter(
+        (conversation): conversation is AiChatConversation =>
+          isRecord(conversation) && typeof conversation.id === 'string',
+      )
       .slice(0, MAX_AI_CHAT_CONVERSATIONS)
       .map((conversation) => ({
         id: conversation.id,
@@ -144,8 +160,8 @@ const restoreHistory = (history?: Partial<AiChatHistory> & { messages?: AiChatMe
     return limitHistorySize({
       conversations,
       activeConversationId: conversations.some((item) => item.id === history.activeConversationId)
-        ? history.activeConversationId ?? null
-        : conversations[0]?.id ?? null,
+        ? (history.activeConversationId ?? null)
+        : (conversations[0]?.id ?? null),
     });
   }
 
@@ -178,7 +194,13 @@ export const flushAiChatHistoryPersistence = (): void => {
 };
 
 const throttledHistoryStorage: StateStorage = {
-  getItem: (name) => sessionStorage.getItem(name),
+  getItem: (name) => {
+    try {
+      return sessionStorage.getItem(name);
+    } catch {
+      return null;
+    }
+  },
   setItem: (name, value) => {
     pendingPersist = { name, value };
     if (persistTimer) return;
@@ -190,7 +212,11 @@ const throttledHistoryStorage: StateStorage = {
       persistTimer = null;
     }
     pendingPersist = null;
-    sessionStorage.removeItem(name);
+    try {
+      sessionStorage.removeItem(name);
+    } catch {
+      // The in-memory conversation remains cleared if browser storage is unavailable.
+    }
   },
 };
 
@@ -232,12 +258,16 @@ export const useAiChatHistoryStore = create<AiChatHistoryState>()(
           const nextMessages = boundMessageFields(
             typeof messages === 'function' ? messages(conversation?.messages ?? []) : messages,
           );
-          const updatedConversation = { id: conversationId, messages: nextMessages, updatedAt: Date.now() };
+          const updatedConversation = {
+            id: conversationId,
+            messages: nextMessages,
+            updatedAt: Date.now(),
+          };
           const nextHistory = limitHistorySize({
-            conversations: [updatedConversation, ...history.conversations.filter((item) => item.id !== conversationId)].slice(
-              0,
-              MAX_AI_CHAT_CONVERSATIONS,
-            ),
+            conversations: [
+              updatedConversation,
+              ...history.conversations.filter((item) => item.id !== conversationId),
+            ].slice(0, MAX_AI_CHAT_CONVERSATIONS),
             activeConversationId: history.activeConversationId ?? conversationId,
           });
           return {
@@ -254,7 +284,10 @@ export const useAiChatHistoryStore = create<AiChatHistoryState>()(
       storage: createJSONStorage(() => throttledHistoryStorage),
       partialize: (state) => ({ histories: state.histories }),
       merge: (persisted, current) => {
-        const saved = persisted as Partial<AiChatHistoryState> & { messages?: AiChatMessage[]; conversationId?: string | null };
+        const saved = persisted as Partial<AiChatHistoryState> & {
+          messages?: AiChatMessage[];
+          conversationId?: string | null;
+        };
         return {
           ...current,
           histories: {
