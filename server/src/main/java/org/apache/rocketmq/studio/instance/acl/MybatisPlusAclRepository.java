@@ -104,6 +104,23 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
+    public PageResult<AclUserVO> findUserPage(String keyword, int page, int pageSize) {
+        String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase() : null;
+        QueryWrapper<RmqAclUser> query = new QueryWrapper<RmqAclUser>()
+                .and(search != null, w -> w
+                        .like("username", search)
+                        .or().like("access_key", search))
+                .orderByDesc("gmt_create")
+                .orderByDesc("id");
+        IPage<RmqAclUser> mapperPage = userMapper.selectPage(new Page<>(page, pageSize), query);
+        List<AclUserVO> items = mapperPage.getRecords().stream()
+                .map(MybatisPlusAclRepository::toUserVO)
+                .collect(Collectors.toList());
+        return PageResult.of(items, mapperPage.getTotal(), (int) mapperPage.getCurrent(),
+                (int) mapperPage.getSize());
+    }
+
+    @Override
     public Optional<AclUserVO> findUserById(Long id) {
         if (id == null) {
             return Optional.empty();

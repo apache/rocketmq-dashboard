@@ -21,6 +21,13 @@ export interface AlertRuleBulkResult {
   updatedRules: AlertRule[];
 }
 
+export interface AlertRulePage {
+  items: AlertRule[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 // Matches mock/dashboard.ts systemAlerts
 export interface SystemAlert {
   id: number;
@@ -29,6 +36,13 @@ export interface SystemAlert {
   description: string;
   time: string;
   acknowledged: boolean;
+}
+
+export interface SystemAlertPage {
+  items: SystemAlert[];
+  total: number;
+  page: number;
+  size: number;
 }
 
 // Matches mock/audit.ts (inferred from data)
@@ -70,6 +84,16 @@ export async function listAlertRules() {
   return res.data.data;
 }
 
+export async function listAlertRulesPage(params: {
+  search?: string;
+  enabled?: boolean;
+  page?: number;
+  pageSize?: number;
+}) {
+  const res = await client.get<{ data: AlertRulePage }>('/alert-rules/page', { params });
+  return res.data.data;
+}
+
 export async function createAlertRule(data: Partial<AlertRule>) {
   const res = await client.post<{ data: AlertRule }>('/alert-rules/create', data);
   return res.data.data;
@@ -105,6 +129,15 @@ export async function bulkDeleteAlertRules(ids: number[]) {
 // ─── System Alerts ──────────────────────────────────────────────
 export async function listSystemAlerts() {
   const res = await client.get<{ data: SystemAlert[] }>('/system-alerts');
+  return res.data.data;
+}
+
+export async function listSystemAlertsPage(params: {
+  level?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const res = await client.get<{ data: SystemAlertPage }>('/system-alerts/page', { params });
   return res.data.data;
 }
 

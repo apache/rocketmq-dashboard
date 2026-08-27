@@ -227,27 +227,26 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
         List<ConsumerGroupVO> result = new ArrayList<>();
         for (RmqGroup entity : groupMapper.selectList(query)) {
-            ConsumerGroupVO vo = new ConsumerGroupVO();
-            vo.setId(entity.getId());
-            vo.setName(entity.getName());
-            vo.setClusterId(entity.getClusterId());
-            vo.setInstanceId(entity.getInstanceId());
-            // consumeType stores the real ConsumeType ("CLUSTERING"/"BROADCASTING"); messageModel
-            // holds the subscription mode ("Push"/"Pop") and is not a ConsumeType.
-            vo.setConsumeType(parseConsumeType(entity.getConsumeType()));
-            // messageModel stores the subscription mode ("Push"/"Pop"); surface it so read paths
-            // (web detail, AI rmq.group.list) never see a null subscriptionMode.
-            vo.setSubscriptionMode(parseSubscriptionMode(entity.getMessageModel()));
-            vo.setRetryMaxTimes(entity.getMaxRetry() == null ? 0 : entity.getMaxRetry());
-            vo.setGmtCreate(entity.getGmtCreate());
-            vo.setGmtModified(entity.getGmtModified());
-
-            // Live stats (online clients, lag, delay) are enriched in parallel below with a
-            // bounded executor and per-group timeout instead of blocking the listing.
-            result.add(vo);
+            result.add(toConsumerGroupVO(entity));
         }
         enrichLiveStats(instanceId, result);
         return result;
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, int page, int pageSize) {
+        LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
+                .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
+                .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .orderByAsc(RmqGroup::getName, RmqGroup::getId);
+        Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
+        List<ConsumerGroupVO> groups = result.getRecords().stream()
+                .map(this::toConsumerGroupVO)
+                .toList();
+        enrichLiveStats(instanceId, groups);
+        return PageResult.of(groups, result.getTotal(), page, pageSize);
     }
 
     private static final int ONLINE_ENRICHMENT_THREADS = 8;
@@ -263,6 +262,24 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @jakarta.annotation.PreDestroy
     void shutdownOnlineEnrichmentExecutor() {
         onlineEnrichmentExecutor.shutdownNow();
+    }
+
+    private ConsumerGroupVO toConsumerGroupVO(RmqGroup entity) {
+        ConsumerGroupVO vo = new ConsumerGroupVO();
+        vo.setId(entity.getId());
+        vo.setName(entity.getName());
+        vo.setClusterId(entity.getClusterId());
+        vo.setInstanceId(entity.getInstanceId());
+        // consumeType stores the real ConsumeType ("CLUSTERING"/"BROADCASTING"); messageModel
+        // holds the subscription mode ("Push"/"Pop") and is not a ConsumeType.
+        vo.setConsumeType(parseConsumeType(entity.getConsumeType()));
+        // messageModel stores the subscription mode ("Push"/"Pop"); surface it so read paths
+        // (web detail, AI rmq.group.list) never see a null subscriptionMode.
+        vo.setSubscriptionMode(parseSubscriptionMode(entity.getMessageModel()));
+        vo.setRetryMaxTimes(entity.getMaxRetry() == null ? 0 : entity.getMaxRetry());
+        vo.setGmtCreate(entity.getGmtCreate());
+        vo.setGmtModified(entity.getGmtModified());
+        return vo;
     }
 
     private void enrichLiveStats(String instanceId, List<ConsumerGroupVO> groups) {

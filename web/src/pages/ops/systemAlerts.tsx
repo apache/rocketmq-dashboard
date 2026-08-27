@@ -15,15 +15,15 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
-import { Card, Tag, Flex, Typography, Badge, Button, message } from 'antd';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Card, Tag, Typography, Button, Flex, Table, message } from 'antd';
 import { CheckCircle, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import {
   acknowledgeAlert,
   clearAcknowledgedAlerts,
-  listSystemAlerts,
+  listSystemAlertsPage,
 } from '../../services/opsService';
 import type { SystemAlert } from '../../api/ops';
 
@@ -41,34 +41,43 @@ const SystemAlertsPage = () => {
   };
 
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
-  const [levelFilter, setLevelFilter] = useState<string>('all');
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [levelFilter, setLevelFilter] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [acknowledgingIds, setAcknowledgingIds] = useState<Set<number>>(() => new Set());
   const [clearing, setClearing] = useState(false);
+  const requestIdRef = useRef(0);
+
+  const loadAlerts = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
+    try {
+      const result = await listSystemAlertsPage({
+        level: levelFilter,
+        page,
+        pageSize,
+      });
+      if (requestId !== requestIdRef.current) return;
+      setAlerts(result.items);
+      setTotal(result.total);
+    } catch {
+      if (requestId === requestIdRef.current) message.error('系统告警加载失败，请稍后重试');
+    } finally {
+      if (requestId === requestIdRef.current) setLoading(false);
+    }
+  }, [levelFilter, page, pageSize]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    void listSystemAlerts()
-      .then((data) => {
-        if (!cancelled) setAlerts(data);
-      })
-      .catch(() => {
-        if (!cancelled) message.error('系统告警加载失败，请稍后重试');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
+    const timer = window.setTimeout(() => void loadAlerts(), 0);
     return () => {
-      cancelled = true;
+      window.clearTimeout(timer);
+      requestIdRef.current += 1;
     };
-  }, []);
+  }, [loadAlerts]);
 
-  const filtered =
-    levelFilter === 'all'
-      ? alerts
-      : alerts.filter((a) => normalizeAlertLevel(a.level) === levelFilter);
+  const filtered = alerts;
 
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
@@ -93,8 +102,7 @@ const SystemAlertsPage = () => {
     setClearing(true);
     try {
       await clearAcknowledgedAlerts();
-      const fresh = await listSystemAlerts();
-      setAlerts(fresh);
+      await loadAlerts();
       message.success(t('sysAlerts.cleared'));
     } catch {
       message.error('清理已确认告警失败，请稍后重试');
@@ -121,104 +129,124 @@ const SystemAlertsPage = () => {
       />
 
       <Flex gap={8} style={{ marginBottom: 16 }}>
-        {['all', 'error', 'warning', 'info'].map((level) => (
+        {[undefined, 'error', 'warning', 'info'].map((level) => (
           <Button
-            key={level}
+            key={level ?? 'all'}
             type={levelFilter === level ? 'primary' : 'default'}
             size="small"
-            onClick={() => setLevelFilter(level)}
+            onClick={() => {
+              setPage(1);
+              setLevelFilter(level);
+            }}
           >
-            {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
-            {level !== 'all' && (
-              <Badge
-                count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
-                style={{
-                  marginLeft: 4,
-                  backgroundColor:
-                    level === 'error' ? '#ff4d4f' : level === 'warning' ? '#fa8c16' : '#1677ff',
-                }}
-                size="small"
-              />
-            )}
+            {level === undefined ? t('common.all') : alertLevelConfig[level]?.label}
           </Button>
         ))}
       </Flex>
 
-      <Flex vertical gap={12}>
-        {loading && <Card loading />}
-        {!loading &&
-          filtered.map((alert) => {
-            const normalizedLevel = normalizeAlertLevel(alert.level);
-            const cfg = alertLevelConfig[normalizedLevel] ?? {
-              color: '#8c8c8c',
-              bg: '#fafafa',
-              label: alert.level || t('common.na'),
-            };
-            return (
-              <div
-                key={alert.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                  padding: '12px 16px',
-                  borderRadius: 8,
-                  background: cfg.bg,
-                  borderLeft: `3px solid ${cfg.color}`,
-                  opacity: alert.acknowledged ? 0.6 : 1,
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <Flex align="center" gap={8}>
-                    <Text strong style={{ fontSize: 14 }}>
-                      {alert.title}
-                    </Text>
-                    <Tag
-                      color={
-                        normalizedLevel === 'error'
-                          ? 'error'
-                          : normalizedLevel === 'warning'
-                            ? 'warning'
-                            : normalizedLevel === 'info'
-                              ? 'processing'
-                              : 'default'
-                      }
-                      style={{ fontSize: 14, lineHeight: '18px', padding: '0 6px' }}
-                    >
-                      {cfg.label}
-                    </Tag>
-                  </Flex>
+      <Card styles={{ body: { padding: 0 } }}>
+        <Table<SystemAlert>
+          rowKey="id"
+          loading={loading}
+          dataSource={filtered}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            pageSizeOptions: ['20', '50', '100'],
+            showTotal: (count) => `${t('common.total')} ${count}`,
+            onChange: (nextPage, nextPageSize) => {
+              if (nextPageSize !== pageSize) {
+                setPage(1);
+                setPageSize(nextPageSize);
+              } else {
+                setPage(nextPage);
+              }
+            },
+          }}
+          columns={[
+            {
+              title: t('sysAlerts.severe'),
+              dataIndex: 'level',
+              width: 110,
+              render: (level: string) => {
+                const normalizedLevel = normalizeAlertLevel(level);
+                const cfg = alertLevelConfig[normalizedLevel] ?? {
+                  color: '#8c8c8c',
+                  bg: '#fafafa',
+                  label: level || t('common.na'),
+                };
+                return (
+                  <Tag
+                    color={
+                      normalizedLevel === 'error'
+                        ? 'error'
+                        : normalizedLevel === 'warning'
+                          ? 'warning'
+                          : normalizedLevel === 'info'
+                            ? 'processing'
+                            : 'default'
+                    }
+                    style={{ fontSize: 14, lineHeight: '18px', padding: '0 6px' }}
+                  >
+                    {cfg.label}
+                  </Tag>
+                );
+              },
+            },
+            {
+              title: t('sysAlerts.title'),
+              dataIndex: 'title',
+              render: (_: string, alert) => (
+                <>
+                  <Text strong style={{ fontSize: 14 }}>
+                    {alert.title}
+                  </Text>
                   <Text type="secondary" style={{ fontSize: 14 }}>
                     {alert.description}
                   </Text>
-                </div>
-                <Flex align="center" gap={8} style={{ flexShrink: 0 }}>
-                  <Text type="secondary" style={{ fontSize: 14 }}>
-                    {alert.time}
-                  </Text>
-                  {!alert.acknowledged && (
-                    <Button
-                      size="small"
-                      type="link"
-                      icon={<CheckCircle size={14} />}
-                      onClick={() => handleAck(alert.id)}
-                      loading={acknowledgingIds.has(alert.id)}
-                    >
-                      {t('sysAlerts.acknowledge')}
-                    </Button>
-                  )}
-                </Flex>
-              </div>
-            );
+                </>
+              ),
+            },
+            {
+              title: t('audit.time'),
+              dataIndex: 'time',
+              width: 180,
+              render: (time: string) => (
+                <Text type="secondary" style={{ fontSize: 14 }}>
+                  {time}
+                </Text>
+              ),
+            },
+            {
+              title: t('common.actions'),
+              key: 'actions',
+              width: 130,
+              render: (_: unknown, alert: SystemAlert) =>
+                alert.acknowledged ? (
+                  <Tag>{t('sysAlerts.acknowledged')}</Tag>
+                ) : (
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<CheckCircle size={14} />}
+                    onClick={() => handleAck(alert.id)}
+                    loading={acknowledgingIds.has(alert.id)}
+                  >
+                    {t('sysAlerts.acknowledge')}
+                  </Button>
+                ),
+            },
+          ]}
+          onRow={(alert) => ({
+            style: {
+              background: alertLevelConfig[normalizeAlertLevel(alert.level)]?.bg ?? '#fafafa',
+              opacity: alert.acknowledged ? 0.6 : 1,
+            },
           })}
-        {!loading && filtered.length === 0 && (
-          <Card>
-            <Flex justify="center" style={{ padding: 40 }}>
-              <Text type="secondary">{t('sysAlerts.noAlerts')}</Text>
-            </Flex>
-          </Card>
-        )}
-      </Flex>
+        />
+      </Card>
     </div>
   );
 };

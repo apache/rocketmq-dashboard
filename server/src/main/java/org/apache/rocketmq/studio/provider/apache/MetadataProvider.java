@@ -56,6 +56,21 @@ public interface MetadataProvider {
         return listConsumerGroups(clusterId, search);
     }
 
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String clusterId, String search,
+            int page, int pageSize) {
+        List<ConsumerGroupVO> groups = listConsumerGroups(clusterId, search);
+        int total = groups.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, int page, int pageSize) {
+        return listConsumerGroupsPage(clusterId, search, page, pageSize);
+    }
+
     List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);
     List<TopicConsumerVO> getTopicConsumers(String instanceId, String name);
 

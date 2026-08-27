@@ -25,14 +25,14 @@ import AlertsPage from '../alerts';
 import {
   bulkDeleteAlertRules,
   bulkToggleAlertRules,
-  listAlertRules,
+  listAlertRulesPage,
   toggleAlertRule,
 } from '../../../services/opsService';
 
 vi.mock('../../../services/opsService', () => ({
   createAlertRule: vi.fn(),
   deleteAlertRule: vi.fn(),
-  listAlertRules: vi.fn(),
+  listAlertRulesPage: vi.fn(),
   toggleAlertRule: vi.fn(),
   bulkToggleAlertRules: vi.fn(),
   bulkDeleteAlertRules: vi.fn(),
@@ -110,7 +110,12 @@ function getRuleRow(ruleName: string) {
 describe('AlertsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listAlertRules).mockResolvedValue(alertRules.map(cloneRule));
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: alertRules.map(cloneRule),
+      total: alertRules.length,
+      page: 1,
+      size: 20,
+    });
     vi.mocked(toggleAlertRule).mockImplementation(async (id, enabled) => {
       const rule = alertRules.find((item) => item.id === id);
       if (!rule) throw new Error(`Rule not found: ${id}`);
@@ -158,10 +163,58 @@ describe('AlertsPage', () => {
     expect(within(getRuleRow('Consumer lag')).getByRole('checkbox')).not.toBeChecked();
   });
 
-  it('keeps only failed alert rules selected after a partial bulk failure', async () => {
-    vi.mocked(listAlertRules).mockResolvedValue(
-      alertRules.map((rule) => ({ ...cloneRule(rule), enabled: true })),
+  it('loads a server-side page and filters by status and search', async () => {
+    vi.mocked(listAlertRulesPage).mockClear();
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: [cloneRule(alertRules[0])],
+      total: 21,
+      page: 2,
+      size: 20,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    expect(listAlertRulesPage).toHaveBeenLastCalledWith({
+      enabled: undefined,
+      page: 1,
+      pageSize: 20,
+      search: undefined,
+    });
+
+    await user.type(screen.getByPlaceholderText('搜索规则名称或指标'), 'disk');
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith({
+        enabled: undefined,
+        page: 1,
+        pageSize: 20,
+        search: 'disk',
+      }),
     );
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('已启用', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith({
+        enabled: true,
+        page: 1,
+        pageSize: 20,
+        search: 'disk',
+      }),
+    );
+    expect(screen.getByText('规则总数')).toBeInTheDocument();
+    expect(screen.getByText('21')).toBeInTheDocument();
+  });
+
+  it('keeps only failed alert rules selected after a partial bulk failure', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: alertRules.map((rule) => ({ ...cloneRule(rule), enabled: true })),
+      total: alertRules.length,
+      page: 1,
+      size: 20,
+    });
     vi.mocked(bulkToggleAlertRules).mockResolvedValue({
       succeededIds: [1],
       failures: { '2': 'network error' },

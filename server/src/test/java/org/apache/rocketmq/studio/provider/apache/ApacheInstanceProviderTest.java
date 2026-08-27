@@ -16,9 +16,11 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
@@ -103,5 +105,15 @@ class ApacheInstanceProviderTest {
         assertThat(provider.listConsumerGroups("inst-1", "orders")).isEmpty();
 
         verify(metadataProvider).listConsumerGroups("inst-1", null, "orders");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldRouteThroughDatabasePaginationTest() {
+        PageResult<ConsumerGroupVO> page = PageResult.of(java.util.List.of(), 0, 1, 20);
+        when(metadataProvider.listConsumerGroupsPage("inst-1", null, "orders", 1, 20)).thenReturn(page);
+
+        assertThat(provider.listConsumerGroupsPage("inst-1", "orders", 1, 20)).isSameAs(page);
+
+        verify(metadataProvider).listConsumerGroupsPage("inst-1", null, "orders", 1, 20);
     }
 }

@@ -188,6 +188,33 @@ class AclServiceTest {
     }
 
     @Test
+    void pageUsersShouldUseDatabasePaginationForApacheUsers() {
+        AclUserVO user = AclUserVO.builder()
+                .id(1L)
+                .username("orders")
+                .accessKey("access-key-123456")
+                .secretKey("secret-key-987654")
+                .admin(false)
+                .clusters(List.of("cluster-a"))
+                .gmtCreate(LocalDateTime.now())
+                .build();
+        when(aclRepository.findUserPage("orders", 2, 20))
+                .thenReturn(PageResult.of(List.of(user), 21, 2, 20));
+
+        PageResult<AclUserVO> result = aclService.pageUsers(null, 2, 20, " orders ");
+
+        assertThat(result.getItems()).singleElement().satisfies(listed -> {
+            assertThat(listed.getUsername()).isEqualTo("orders");
+            assertThat(listed.getAccessKey()).isEqualTo("acce****3456");
+            assertThat(listed.getSecretKey()).isEqualTo("secr****7654");
+        });
+        assertThat(result.getTotal()).isEqualTo(21);
+        verify(aclRepository).findUserPage("orders", 2, 20);
+        verify(aclRepository, never()).findUsers();
+        verifyNoInteractions(instanceRepository, tencentAclService);
+    }
+
+    @Test
     void listRulesShouldReturnEmptyPageWhenTencentPageOffsetExceedsIntegerRange() {
         InstanceVO instance = InstanceVO.builder()
                 .name("tencent-instance")

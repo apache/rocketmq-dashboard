@@ -5,7 +5,9 @@ import * as opsApi from '../api/ops';
 import type {
   AlertRule,
   AlertRuleBulkResult,
+  AlertRulePage,
   SystemAlert,
+  SystemAlertPage,
   AuditQuery,
   AuditRecord,
   PageResult,
@@ -101,6 +103,31 @@ export async function listAlertRules(): Promise<AlertRule[]> {
   return opsApi.listAlertRules();
 }
 
+export async function listAlertRulesPage(
+  query: { search?: string; enabled?: boolean; page?: number; pageSize?: number } = {},
+): Promise<AlertRulePage> {
+  if (!isMockMode()) return opsApi.listAlertRulesPage(query);
+  const search = query.search?.trim().toLowerCase();
+  const rules = alertRulesState
+    .filter((rule) => !query.enabled || rule.enabled === query.enabled)
+    .filter(
+      (rule) =>
+        !search ||
+        rule.name.toLowerCase().includes(search) ||
+        rule.metric.toLowerCase().includes(search),
+    )
+    .map(copyAlertRule);
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 20;
+  const from = Math.min((page - 1) * pageSize, rules.length);
+  return {
+    items: rules.slice(from, from + pageSize),
+    total: rules.length,
+    page,
+    size: pageSize,
+  };
+}
+
 export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRule> {
   if (isMockMode()) {
     const rule: AlertRule = {
@@ -193,6 +220,25 @@ export async function bulkDeleteAlertRules(ids: number[]): Promise<AlertRuleBulk
 export async function listSystemAlerts(): Promise<SystemAlert[]> {
   if (isMockMode()) return (mockSystemAlerts as unknown as SystemAlert[]).map(copySystemAlert);
   return opsApi.listSystemAlerts();
+}
+
+export async function listSystemAlertsPage(
+  query: { level?: string; page?: number; pageSize?: number } = {},
+): Promise<SystemAlertPage> {
+  if (!isMockMode()) return opsApi.listSystemAlertsPage(query);
+  const level = query.level?.toLowerCase();
+  const alerts = (mockSystemAlerts as unknown as SystemAlert[])
+    .filter((alert) => !level || alert.level.toLowerCase() === level)
+    .map(copySystemAlert);
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 20;
+  const from = Math.min((page - 1) * pageSize, alerts.length);
+  return {
+    items: alerts.slice(from, from + pageSize),
+    total: alerts.length,
+    page,
+    size: pageSize,
+  };
 }
 
 export async function acknowledgeAlert(id: number): Promise<void> {

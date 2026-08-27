@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.alert;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
@@ -31,10 +32,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -82,6 +85,32 @@ class AlertServiceTest {
         List<AlertRuleVO> result = alertService.listRules();
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void listRulesShouldNormalizeSearchAndDelegateFiltersToRepository() {
+        PageResult<AlertRuleVO> repositoryPage = PageResult.of(List.of(), 0, 2, 20);
+        when(alertRepository.findRulePage("lag", true, 2, 20)).thenReturn(repositoryPage);
+
+        PageResult<AlertRuleVO> result = alertService.listRules("  lag  ", true, 2, 20);
+
+        assertThat(result).isSameAs(repositoryPage);
+        verify(alertRepository).findRulePage("lag", true, 2, 20);
+    }
+
+    @Test
+    void listRulesShouldRejectInvalidPaginationBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> alertService.listRules("lag", true, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than zero");
+        assertThatThrownBy(() -> alertService.listRules("lag", true, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+        assertThatThrownBy(() -> alertService.listRules("lag", true, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+
+        verify(alertRepository, never()).findRulePage(any(), any(), anyInt(), anyInt());
     }
 
     @Test
@@ -641,7 +670,7 @@ class AlertServiceTest {
     @Test
     void toggleRuleShouldEnableRule() {
         AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(existing));
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.toggleRule(1L, true);
@@ -655,7 +684,7 @@ class AlertServiceTest {
     @Test
     void toggleRuleShouldDisableRule() {
         AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").enabled(true).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(existing));
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.toggleRule(1L, false);
@@ -671,11 +700,12 @@ class AlertServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verify(alertRepository, never()).findAllRules();
+        verify(alertRepository, never()).findRuleById(any());
     }
 
     @Test
-    void toggleRuleShouldIgnorePersistedRulesWithNullIds() {
-        when(alertRepository.findAllRules()).thenReturn(List.of(AlertRuleVO.builder().name("corrupt").build()));
+    void toggleRuleShouldUseADirectIdLookupWhenRuleIsMissing() {
+        when(alertRepository.findRuleById(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> alertService.toggleRule(999L, true))
                 .isInstanceOf(BusinessException.class)
@@ -684,7 +714,7 @@ class AlertServiceTest {
 
     @Test
     void toggleRuleShouldThrowWhenRuleNotFound() {
-        when(alertRepository.findAllRules()).thenReturn(Collections.emptyList());
+        when(alertRepository.findRuleById(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> alertService.toggleRule(999L, true))
                 .isInstanceOf(BusinessException.class)
@@ -724,7 +754,7 @@ class AlertServiceTest {
     @Test
     void bulkToggleShouldDeduplicateIdsAndReportMissingRules() {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("High CPU").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.findRulesByIds(List.of(1L, 999L))).thenReturn(List.of(rule));
         when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(true);
 
         AlertRuleBulkResultVO result = alertService.bulkToggleRules(
@@ -740,7 +770,7 @@ class AlertServiceTest {
     @Test
     void bulkToggleShouldReportRulesDeletedConcurrentlyInsteadOfRecreatingThem() {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("High CPU").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.findRulesByIds(List.of(1L))).thenReturn(List.of(rule));
         when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(false);
 
         AlertRuleBulkResultVO result = alertService.bulkToggleRules(List.of(1L), true);
@@ -798,10 +828,39 @@ class AlertServiceTest {
     }
 
     @Test
+    void listAlertsPageShouldReturnTheRequestedPage() {
+        SystemAlertVO alert = SystemAlertVO.builder().id(7L).level(AlertLevel.warning)
+                .title("Slow Consumer").build();
+        when(alertRepository.findAlerts("warning", 2, 20))
+                .thenReturn(PageResult.of(List.of(alert), 21, 2, 20));
+
+        PageResult<SystemAlertVO> result = alertService.listAlerts(" warning ", 2, 20);
+
+        assertThat(result.getItems()).containsExactly(alert);
+        assertThat(result.getTotal()).isEqualTo(21);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(20);
+        verify(alertRepository).findAlerts("warning", 2, 20);
+    }
+
+    @Test
+    void listAlertsPageShouldRejectInvalidPaginationBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> alertService.listAlerts(null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than 0");
+        assertThatThrownBy(() -> alertService.listAlerts(null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+
+        verify(alertRepository, never()).findAlerts(any(), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
     void acknowledgeAlertShouldSetAcknowledgedTrue() {
         SystemAlertVO existing = SystemAlertVO.builder().id(1L).level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
+        when(alertRepository.findAlertById(1L)).thenReturn(java.util.Optional.of(existing));
         when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(true);
 
         SystemAlertVO result = alertService.acknowledgeAlert(1L);
@@ -819,12 +878,12 @@ class AlertServiceTest {
                 .hasMessage("System alert ID is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
-        verify(alertRepository, never()).findAlerts(any());
+        verify(alertRepository, never()).findAlertById(any());
     }
 
     @Test
     void acknowledgeAlertShouldIgnorePersistedAlertsWithNullIds() {
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(SystemAlertVO.builder().title("corrupt").build()));
+        when(alertRepository.findAlertById(999L)).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(999L))
                 .isInstanceOf(BusinessException.class)
@@ -833,7 +892,7 @@ class AlertServiceTest {
 
     @Test
     void acknowledgeAlertShouldThrowWhenAlertNotFound() {
-        when(alertRepository.findAlerts(null)).thenReturn(Collections.emptyList());
+        when(alertRepository.findAlertById(999L)).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(999L))
                 .isInstanceOf(BusinessException.class)
@@ -844,7 +903,7 @@ class AlertServiceTest {
     void acknowledgeAlertShouldRejectConcurrentRemoval() {
         SystemAlertVO existing = SystemAlertVO.builder().id(1L).level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
-        when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
+        when(alertRepository.findAlertById(1L)).thenReturn(java.util.Optional.of(existing));
         when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(false);
 
         assertThatThrownBy(() -> alertService.acknowledgeAlert(1L))

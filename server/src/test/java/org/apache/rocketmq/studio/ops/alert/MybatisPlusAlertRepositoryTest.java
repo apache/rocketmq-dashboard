@@ -18,12 +18,16 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSystemAlertMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -58,6 +62,72 @@ class MybatisPlusAlertRepositoryTest {
         when(ruleMapper.updateById(any(RmqAlertRule.class))).thenReturn(0);
 
         assertThat(repository.replaceRule(rule)).isFalse();
+    }
+
+    @Test
+    void findRulePageShouldApplyFiltersOrderingAndDatabasePagination() {
+        RmqAlertRule entity = new RmqAlertRule();
+        entity.setId(1L);
+        entity.setName("High Lag");
+        entity.setEnabled(true);
+        entity.setChannels("email");
+        Page<RmqAlertRule> mapperPage = new Page<RmqAlertRule>(3, 20)
+                .setRecords(List.of(entity))
+                .setTotal(51);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        PageResult<AlertRuleVO> result = repository.findRulePage("lag", true, 3, 20);
+
+        ArgumentCaptor<IPage<RmqAlertRule>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(pageCaptor.capture(), queryCaptor.capture());
+        assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(3);
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(20);
+        assertThat(result.getTotal()).isEqualTo(51);
+        assertThat(result.getPage()).isEqualTo(3);
+        assertThat(result.getSize()).isEqualTo(20);
+        assertThat(result.getItems()).singleElement()
+                .satisfies(rule -> {
+                    assertThat(rule.getId()).isEqualTo(1L);
+                    assertThat(rule.getName()).isEqualTo("High Lag");
+                    assertThat(rule.isEnabled()).isTrue();
+                });
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        query.getCustomSqlSegment();
+        assertThat(query.getSqlSegment())
+                .contains("name", "enabled", "ORDER BY name ASC,id ASC");
+        assertThat(query.getParamNameValuePairs())
+                .containsValue("%lag%")
+                .containsValue(true);
+        verify(ruleMapper, never()).selectList(any());
+    }
+
+    @Test
+    void findRuleByIdShouldUsePrimaryKeyLookupWithoutFullListRead() {
+        RmqAlertRule entity = new RmqAlertRule();
+        entity.setId(9L);
+        entity.setName("High Lag");
+        entity.setEnabled(true);
+        when(ruleMapper.selectById(9L)).thenReturn(entity);
+
+        assertThat(repository.findRuleById(9L)).hasValueSatisfying(rule ->
+                assertThat(rule.getId()).isEqualTo(9L));
+        assertThat(repository.findRuleById(null)).isEmpty();
+        verify(ruleMapper, never()).selectList(any());
+    }
+
+    @Test
+    void findRulesByIdsShouldUseBoundedIdQuery() {
+        RmqAlertRule entity = new RmqAlertRule();
+        entity.setId(1L);
+        entity.setName("High Lag");
+        entity.setEnabled(true);
+        when(ruleMapper.selectList(any(Wrapper.class))).thenReturn(List.of(entity));
+
+        assertThat(repository.findRulesByIds(List.of(1L, 2L))).singleElement()
+                .satisfies(rule -> assertThat(rule.getId()).isEqualTo(1L));
+        assertThat(repository.findRulesByIds(null)).isEmpty();
+        assertThat(repository.findRulesByIds(List.of())).isEmpty();
     }
 
     @Test
