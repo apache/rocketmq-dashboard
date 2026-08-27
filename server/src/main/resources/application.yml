@@ -47,6 +47,11 @@ management:
           include: livenessState
         readiness:
           include: readinessState,db
+  health:
+    mail:
+      # SMTP is optional for native alerting; skip the SMTP connectivity probe
+      # unless explicitly enabled, so health stays UP when no SMTP host is configured.
+      enabled: ${STUDIO_ALERTING_SMTP_HEALTH_ENABLED:false}
 
 studio:
   cors:
