@@ -66,6 +66,9 @@ const ENGINE_OPTIONS = [
   { value: 'http', label: 'HTTP' },
 ];
 
+const ROCKETMQ_DOCS_URL = 'https://rocketmq.apache.org/docs/';
+const ROCKETMQ_COMMUNITY_URL = 'https://rocketmq.apache.org/';
+
 // 首页只暴露这些模型（token-plan 网关实际可对话的模型集），qwen3.8-max 为推荐项。
 const HOME_MODELS = [
   'qwen3.8-max',
@@ -566,22 +569,26 @@ const HomePage = () => {
         >
           <span className="pointer-events-auto">
             <a
-              href="#"
+              href={ROCKETMQ_DOCS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="transition-colors hover:text-purple-500"
               style={{ textDecoration: 'none' }}
             >
-              文档中心
+              {t('home.docs')}
             </a>
             <span style={{ margin: '0 4px' }}>｜</span>
             <a
-              href="#"
+              href={ROCKETMQ_COMMUNITY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="transition-colors hover:text-purple-500"
               style={{ textDecoration: 'none' }}
             >
-              RocketMQ 社区
+              {t('home.community')}
             </a>
             <span style={{ margin: '0 4px' }}>｜</span>
-            <span>RocketMQ Studio 出品</span>
+            <span>{t('home.brand')}</span>
             <span style={{ margin: '0 4px' }}>｜</span>
             <span>
               当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})

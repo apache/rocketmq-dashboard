@@ -36,6 +36,7 @@ import {
   Typography,
   Card,
   Alert,
+  Spin,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -60,10 +61,13 @@ import type {
   ClusterConfigPreviewResult,
   ClusterInfo,
   ClusterProbeResult,
+  NameServerConfigDiffResult,
+  NameServerConfigDifference,
 } from '../../api/cluster';
 import {
   createNameserverRegistry,
   deleteNameserverRegistry,
+  getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
   listNameserverRegistry,
@@ -88,6 +92,7 @@ type RefreshSource = 'initial' | 'manual' | 'operation' | 'background';
 type ProxyDetail = ProxyInfo & { clusterId: string; clusterName: string; nsClusterName: string };
 type ClusterConfigFormValues = Partial<ClusterConfig> & { maxMessageSizeMB: number };
 type ClusterConfigRequest = { id: string; instanceId?: string } & Partial<ClusterConfig>;
+type NameServerConfigDiffNode = NameServerConfigDiffResult['nodes'][number];
 
 const safeText = (value: string | null | undefined) => value ?? '';
 const searchText = (value: string | null | undefined) => safeText(value).toLowerCase();
@@ -127,6 +132,17 @@ const ClusterPage = () => {
   const [configSubmitting, setConfigSubmitting] = useState(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
+  const [nsConfigDiffState, setNsConfigDiffState] = useState<{
+    open: boolean;
+    loading: boolean;
+    cluster: ClusterInfo | null;
+    result: NameServerConfigDiffResult | null;
+  }>({
+    open: false,
+    loading: false,
+    cluster: null,
+    result: null,
+  });
   const [configForm] = Form.useForm();
 
   const [k8sIdOptions, setK8sIdOptions] = useState<string[]>([]);
@@ -276,6 +292,45 @@ const ClusterPage = () => {
       });
     },
     [loadNsRegistry, t],
+  );
+
+  const resolveNameserverRegistryCluster = useCallback(
+    (entry: NameserverRegistryEntry) => {
+      const namesrvAddr = safeText(entry.namesrvAddr);
+      const name = safeText(entry.name);
+      return registryClusters.find(
+        (cluster) =>
+          cluster.endpoint === namesrvAddr ||
+          cluster.nameServers.some((nameServer) => nameServer.addr === namesrvAddr) ||
+          cluster.name === name ||
+          cluster.nsClusterName === name,
+      );
+    },
+    [registryClusters],
+  );
+
+  const openNameServerConfigDiff = useCallback(
+    async (cluster: ClusterInfo) => {
+      setNsConfigDiffState({
+        open: true,
+        loading: true,
+        cluster,
+        result: null,
+      });
+      try {
+        const result = await getNameServerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        setNsConfigDiffState({
+          open: true,
+          loading: false,
+          cluster,
+          result,
+        });
+      } catch {
+        setNsConfigDiffState((current) => ({ ...current, loading: false }));
+        message.error(t('cluster.nsConfigDiffFailed'));
+      }
+    },
+    [t],
   );
 
   // ─── Connection test ──────────────────────────────────────────────────────
@@ -690,6 +745,126 @@ const ClusterPage = () => {
 
   // ─── Tab 2: Broker 管理 (flat table) ────────────────────────────────────────
 
+  function renderNameServerConfigDiffModal() {
+    const { cluster, loading: diffLoading, open, result } = nsConfigDiffState;
+    const titleName = cluster?.nsClusterName ?? cluster?.name ?? result?.cluster ?? '-';
+    const nodeColumns: ColumnsType<NameServerConfigDiffNode> = [
+      {
+        title: t('common.address'),
+        dataIndex: 'address',
+        key: 'address',
+        render: (address: string) => <Text copyable>{address}</Text>,
+      },
+      {
+        title: t('common.status'),
+        dataIndex: 'reachable',
+        key: 'reachable',
+        width: 120,
+        render: (reachable: boolean) => (
+          <Tag color={reachable ? 'green' : 'red'}>
+            {reachable ? t('cluster.nsConfigDiffReachable') : t('cluster.nsConfigDiffUnreachable')}
+          </Tag>
+        ),
+      },
+    ];
+    const differenceColumns: ColumnsType<NameServerConfigDifference> = [
+      {
+        title: t('cluster.configPreviewField'),
+        dataIndex: 'key',
+        key: 'key',
+        width: 220,
+        render: (key: string) => <Text strong>{key}</Text>,
+      },
+      {
+        title: t('cluster.nsConfigDiffValues'),
+        dataIndex: 'values',
+        key: 'values',
+        render: (values: NameServerConfigDifference['values']) => (
+          <Space size={[0, 4]} wrap>
+            {values.map((value) => (
+              <Tag key={value.address} color={value.configured ? 'blue' : 'default'}>
+                {`${value.address}: ${
+                  value.configured ? (value.value ?? '-') : t('cluster.nsConfigDiffUnconfigured')
+                }`}
+              </Tag>
+            ))}
+          </Space>
+        ),
+      },
+    ];
+
+    return (
+      <Modal
+        title={t('cluster.nsConfigDiffTitle', { name: titleName })}
+        open={open}
+        onCancel={() =>
+          setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null })
+        }
+        footer={
+          <Button
+            onClick={() =>
+              setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null })
+            }
+          >
+            {t('common.close')}
+          </Button>
+        }
+        width={920}
+        destroyOnHidden
+      >
+        <Spin spinning={diffLoading}>
+          {result ? (
+            <>
+              <Alert
+                showIcon
+                type={result.driftDetected ? 'warning' : 'success'}
+                message={
+                  result.driftDetected
+                    ? t('cluster.nsConfigDiffDriftDetected')
+                    : t('cluster.nsConfigDiffNoDrift')
+                }
+                style={{ marginBottom: 16 }}
+              />
+              <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
+                <Descriptions.Item label={t('cluster.configPreviewTargets')}>
+                  {`${result.reachableNodeCount}/${result.nodeCount}`}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('cluster.nsConfigDiffComplete')}>
+                  {result.complete ? t('common.yes') : t('common.no')}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('cluster.nsConfigDiffComparedKeys')} span={2}>
+                  <Space size={[0, 4]} wrap>
+                    {result.comparedKeys.map((key) => (
+                      <Tag key={key}>{key}</Tag>
+                    ))}
+                  </Space>
+                </Descriptions.Item>
+              </Descriptions>
+              <Table<NameServerConfigDiffNode>
+                columns={nodeColumns}
+                dataSource={result.nodes}
+                rowKey="address"
+                pagination={false}
+                size="small"
+                style={{ marginBottom: 16 }}
+              />
+              <Table<NameServerConfigDifference>
+                columns={differenceColumns}
+                dataSource={result.differences}
+                rowKey="key"
+                pagination={false}
+                size="small"
+                locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
+              />
+            </>
+          ) : (
+            <Alert showIcon type="info" message={t('cluster.nsConfigDiffLoading')} />
+          )}
+        </Spin>
+      </Modal>
+    );
+  }
+
   function renderBrokerTab() {
     type BrokerWithCluster = BrokerInfo & {
       clusterName: string;
@@ -1016,27 +1191,43 @@ const ClusterPage = () => {
       {
         title: t('common.actions'),
         key: 'action',
-        width: 160,
-        render: (_: unknown, record: NameserverRegistryEntry) => (
-          <Flex gap={6}>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              style={{ borderColor: '#722ed1', color: '#722ed1' }}
-              onClick={() => openNsEditModal(record)}
-            >
-              {t('common.edit')}
-            </Button>
-            <Button
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => handleNsDelete(record)}
-            >
-              {t('common.delete')}
-            </Button>
-          </Flex>
-        ),
+        width: 260,
+        render: (_: unknown, record: NameserverRegistryEntry) => {
+          const matchedCluster = resolveNameserverRegistryCluster(record);
+          return (
+            <Flex gap={6}>
+              <Button
+                size="small"
+                icon={<EyeOutlined />}
+                disabled={!matchedCluster}
+                loading={
+                  nsConfigDiffState.loading && nsConfigDiffState.cluster?.id === matchedCluster?.id
+                }
+                onClick={() => {
+                  if (matchedCluster) void openNameServerConfigDiff(matchedCluster);
+                }}
+              >
+                {t('cluster.nsConfigDiff')}
+              </Button>
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                style={{ borderColor: '#722ed1', color: '#722ed1' }}
+                onClick={() => openNsEditModal(record)}
+              >
+                {t('common.edit')}
+              </Button>
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleNsDelete(record)}
+              >
+                {t('common.delete')}
+              </Button>
+            </Flex>
+          );
+        },
       },
     ];
 
@@ -1401,6 +1592,9 @@ const ClusterPage = () => {
           </Descriptions>
         )}
       </Modal>
+
+      {renderNameServerConfigDiffModal()}
+
       <Modal
         title={t('cluster.testConnectionTitle')}
         open={connectModalOpen}

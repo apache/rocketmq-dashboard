@@ -27,6 +27,7 @@ import { LangProvider } from '../../../i18n/LangContext';
 const clusterServiceMocks = vi.hoisted(() => ({
   createNameserverRegistry: vi.fn(),
   deleteNameserverRegistry: vi.fn(),
+  getNameServerConfigDiff: vi.fn(),
   listClusters: vi.fn(),
   listK8sCerts: vi.fn(),
   listNameserverRegistry: vi.fn(),
@@ -241,6 +242,16 @@ describe('Cluster page', () => {
       gmtModified: '',
     });
     clusterServiceMocks.deleteNameserverRegistry.mockReset().mockResolvedValue(undefined);
+    clusterServiceMocks.getNameServerConfigDiff.mockReset().mockResolvedValue({
+      cluster: 'rocketmq1',
+      complete: true,
+      driftDetected: false,
+      nodeCount: 1,
+      reachableNodeCount: 1,
+      comparedKeys: ['serverWorkerThreads'],
+      nodes: [{ address: 'rocketmq1-nameserver:9876', reachable: true }],
+      differences: [],
+    });
     clusterServiceMocks.listNameserverRegistry.mockReset().mockResolvedValue([
       {
         id: 1,
@@ -455,6 +466,66 @@ describe('Cluster page', () => {
       expect(clusterServiceMocks.deleteNameserverRegistry).toHaveBeenCalledWith(1),
     );
     confirmSpy.mockRestore();
+  });
+
+  it('opens NameServer config drift details from a registry row', async () => {
+    const user = userEvent.setup();
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        name: 'rocketmq1',
+        nsClusterName: 'rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        nameServers: [
+          { addr: 'rocketmq1-nameserver:9876', status: 'healthy' },
+          { addr: 'rocketmq1-nameserver-1:9876', status: 'healthy' },
+        ],
+      },
+    ]);
+    clusterServiceMocks.getNameServerConfigDiff.mockResolvedValue({
+      cluster: 'rocketmq1',
+      complete: true,
+      driftDetected: true,
+      nodeCount: 2,
+      reachableNodeCount: 2,
+      comparedKeys: ['serverWorkerThreads'],
+      nodes: [
+        { address: 'rocketmq1-nameserver:9876', reachable: true },
+        { address: 'rocketmq1-nameserver-1:9876', reachable: true },
+      ],
+      differences: [
+        {
+          key: 'serverWorkerThreads',
+          values: [
+            { address: 'rocketmq1-nameserver:9876', configured: true, value: '8' },
+            { address: 'rocketmq1-nameserver-1:9876', configured: true, value: '12' },
+          ],
+        },
+      ],
+    });
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const row = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    await user.click(within(row).getByRole('button', { name: /配置差异/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith(
+        'cluster-prod',
+        'instance-1',
+      ),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: /NameServer 配置差异 - rocketmq1/,
+    });
+    expect(within(dialog).getByText('检测到 NameServer 配置差异')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('serverWorkerThreads').length).toBeGreaterThan(0);
+    expect(
+      within(dialog).getByText((content) => content.includes('rocketmq1-nameserver:9876: 8')),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText((content) => content.includes('rocketmq1-nameserver-1:9876: 12')),
+    ).toBeInTheDocument();
   });
 
   it('polls the API after two seconds and renders only returned metrics', async () => {

@@ -41,9 +41,9 @@ const dashboards = [
     uid: 'rocketmq-overview',
     title: 'RocketMQ Cluster Overview',
     description: 'Overview',
-    tags: ['rocketmq'],
+    tags: ['overview', 'rocketmq'],
   },
-  { uid: 'rocketmq-broker', title: 'RocketMQ Broker', description: 'Broker', tags: ['rocketmq'] },
+  { uid: 'rocketmq-broker', title: 'RocketMQ Broker', description: 'Broker', tags: ['broker'] },
 ];
 
 const dashboardModel = {
@@ -52,6 +52,15 @@ const dashboardModel = {
   schemaVersion: 39,
   panels: [{ id: 1, title: 'Messages In TPS', type: 'timeseries' }],
 };
+
+const renderDashboardList = () =>
+  render(
+    <App>
+      <LangProvider>
+        <GrafanaDashboardList />
+      </LangProvider>
+    </App>,
+  );
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -100,6 +109,25 @@ describe('GrafanaDashboardList', () => {
     expect(screen.getByText('RocketMQ Broker')).toBeInTheDocument();
   });
 
+  it('filters dashboards by search text and tags', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const { container } = renderDashboardList();
+    const overviewCell = await screen.findByText('RocketMQ Cluster Overview');
+    expect(overviewCell).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText(/Search dashboard|搜索看板/), 'broker');
+    const brokerCell = screen.getByText('RocketMQ Broker');
+    expect(brokerCell).toBeInTheDocument();
+    expect(screen.queryByText('RocketMQ Cluster Overview')).not.toBeInTheDocument();
+
+    await user.clear(screen.getByPlaceholderText(/Search dashboard|搜索看板/));
+    await user.click(container.querySelector('.ant-select-selector') as Element);
+    await user.click(
+      await screen.findByText('overview', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.getByText('RocketMQ Cluster Overview')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('RocketMQ Broker')).not.toBeInTheDocument());
+  }, 10_000);
   it('keeps a failed list request visible and recovers when retried', async () => {
     vi.mocked(listGrafanaDashboards)
       .mockRejectedValueOnce(new Error('temporary failure'))
@@ -252,9 +280,11 @@ describe('GrafanaDashboardList', () => {
     );
 
     await screen.findByText('RocketMQ Cluster Overview');
+    await user.type(screen.getByPlaceholderText(/Search dashboard|搜索看板/), 'broker');
     await user.click(screen.getByRole('button', { name: /Export all|导出全部/ }));
 
     await waitFor(() => expect(exportGrafanaDashboards).toHaveBeenCalledTimes(1));
+    expect(exportGrafanaDashboard).not.toHaveBeenCalled();
     expect(downloadedFilename).toBe('rocketmq-grafana-dashboards.zip');
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalled();

@@ -508,4 +508,58 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('Instance A Prometheus')).toBeInTheDocument();
     expect(screen.queryByText('Instance B Prometheus')).not.toBeInTheDocument();
   });
+
+  it('falls back to the default source when the selected data source leaves the instance scope', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-instance-a',
+        name: 'Instance A Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+        instanceIds: ['instance-1'],
+      },
+    ]);
+
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+
+    await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(screen.getByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Instance A Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'ds-instance-a',
+          instanceId: 'instance-1',
+        }),
+      ),
+    );
+    const dataSourceQueriesBeforeScopeChange = vi.mocked(queryByDataSource).mock.calls.length;
+    const defaultQueriesBeforeScopeChange = vi.mocked(queryMetrics).mock.calls.length;
+
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+
+    await waitFor(() =>
+      expect(vi.mocked(queryMetrics).mock.calls.length).toBeGreaterThan(
+        defaultQueriesBeforeScopeChange,
+      ),
+    );
+    expect(vi.mocked(queryByDataSource).mock.calls).toHaveLength(
+      dataSourceQueriesBeforeScopeChange,
+    );
+    expect(screen.getAllByTitle('默认数据源').length).toBeGreaterThan(0);
+  });
 });

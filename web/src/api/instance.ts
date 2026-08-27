@@ -134,7 +134,10 @@ export async function deleteInstancesBatch(ids: string[]) {
   return res.data.data;
 }
 
-export async function importCloudInstances(data: { vendor: InstanceVendor; credentialId: number }) {
+export async function importCloudInstances(data: {
+  vendor: Exclude<InstanceVendor, 'APACHE'>;
+  credentialId: number;
+}) {
   const res = await client.post<{ data: CloudImportResult }>('/instances/import-cloud', data);
   return res.data.data;
 }
