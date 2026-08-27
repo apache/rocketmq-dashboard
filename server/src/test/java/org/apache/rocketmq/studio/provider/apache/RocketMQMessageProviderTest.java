@@ -79,6 +79,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class RocketMQMessageProviderTest {
 
+    private static final long TOPIC_TAIL_SCAN_BUDGET = 32L * 32;
+
     @Mock
     private DefaultMQAdminExt adminExt;
 
@@ -618,7 +620,7 @@ class RocketMQMessageProviderTest {
         assertThat(messages).hasSize(200);
         assertThat(messages.get(0).getMsgId()).isEqualTo("msg-39999");
         assertThat(messages.get(199).getMsgId()).isEqualTo("msg-39800");
-        verify(pullConsumer).pull(queue, "*", 8_000L, 32);
+        verify(pullConsumer).pull(queue, "*", maxOffsetExclusive - TOPIC_TAIL_SCAN_BUDGET, 32);
         verify(pullConsumer, never()).pull(queue, "*", 0L, 32);
     }
 
@@ -643,8 +645,9 @@ class RocketMQMessageProviderTest {
 
         assertThat(messages).hasSize(200);
         assertThat(pulledOffsets).isNotEmpty();
-        assertThat(pulledOffsets.get(0)).isEqualTo(18_000L);
-        assertThat(pulledOffsets).allMatch(offset -> offset >= 18_000L);
+        long expectedFirstOffset = maxOffsetExclusive - TOPIC_TAIL_SCAN_BUDGET;
+        assertThat(pulledOffsets.get(0)).isEqualTo(expectedFirstOffset);
+        assertThat(pulledOffsets).allMatch(offset -> offset >= expectedFirstOffset);
     }
 
     private MQClientAPIImpl mockOffsetLookupClient() {
