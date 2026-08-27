@@ -61,8 +61,19 @@ public class MessageController {
     public Result<TraceRecordVO> getMessageTrace(@PathVariable String msgId, @RequestParam String instanceId,
                                                  // Optional for the Apache/Aliyun providers; the Tencent
                                                  // provider requires a non-empty topic (DescribeMessageTrace).
-                                                 @RequestParam(required = false) String topic) {
-        return Result.ok(messageService.getMessageTrace(instanceId, msgId, topic));
+                                                 @RequestParam(required = false) String topic,
+                                                 // Custom trace topic; when blank the default
+                                                 // RMQ_SYS_TRACE_TOPIC is used.
+                                                 @RequestParam(required = false) String traceTopic) {
+        return Result.ok(messageService.getMessageTrace(instanceId, msgId, topic, traceTopic));
+    }
+
+    @GetMapping("/trace-by-key")
+    public Result<TraceRecordVO> getMessageTraceByKey(@RequestParam String instanceId,
+                                                      @RequestParam String key,
+                                                      @RequestParam(required = false) String topic,
+                                                      @RequestParam(required = false) String traceTopic) {
+        return Result.ok(messageService.getMessageTraceByKey(instanceId, key, topic, traceTopic));
     }
 
     @GetMapping("/queues")

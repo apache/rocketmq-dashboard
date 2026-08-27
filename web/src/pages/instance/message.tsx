@@ -62,6 +62,7 @@ import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  getMessageTraceByKey,
   queryMessagePage,
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
@@ -266,6 +267,9 @@ const MessagePageContent = ({
   const [traceLoading, setTraceLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
+  const [traceQueryMode, setTraceQueryMode] = useState<'msgid' | 'key'>('msgid');
+  const [traceQueryValue, setTraceQueryValue] = useState('');
+  const [customTraceTopic, setCustomTraceTopic] = useState('');
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
@@ -402,8 +406,47 @@ const MessagePageContent = ({
     setTraceData(null);
     setTraceLoading(true);
     setTraceError(null);
+    if (tab === 'trace') {
+      setTraceQueryMode('msgid');
+      setTraceQueryValue(record.msgId);
+    }
     try {
       const result = await getMessageTrace(record.msgId, selectedInstanceId, record.topic);
+      if (traceGenerationRef.current !== requestGeneration) return;
+      setTraceData(result);
+      setTraceError(null);
+    } catch (error) {
+      if (traceGenerationRef.current === requestGeneration) {
+        setTraceError(getErrorMessage(error, DEFAULT_TRACE_ERROR));
+      }
+    } finally {
+      if (traceGenerationRef.current === requestGeneration) {
+        setTraceLoading(false);
+      }
+    }
+  };
+
+  const runTraceQuery = async () => {
+    const requestGeneration = traceGenerationRef.current + 1;
+    traceGenerationRef.current = requestGeneration;
+    const value = traceQueryValue.trim();
+    if (!value) {
+      setTraceError(traceQueryMode === 'key' ? '请输入 Message Key' : '请输入 Message ID');
+      return;
+    }
+    setTraceData(null);
+    setTraceLoading(true);
+    setTraceError(null);
+    try {
+      const result =
+        traceQueryMode === 'key'
+          ? await getMessageTraceByKey(
+              value,
+              selectedInstanceId,
+              selectedMsg?.topic,
+              customTraceTopic,
+            )
+          : await getMessageTrace(value, selectedInstanceId, selectedMsg?.topic, customTraceTopic);
       if (traceGenerationRef.current !== requestGeneration) return;
       setTraceData(result);
       setTraceError(null);
@@ -682,30 +725,70 @@ const MessagePageContent = ({
     {
       key: 'trace',
       label: '消息轨迹',
-      children: traceLoading ? (
-        <Typography.Text type="secondary">正在加载轨迹数据…</Typography.Text>
-      ) : traceError ? (
-        <Alert showIcon type="warning" message={traceError} />
-      ) : traceData?.nodes?.length ? (
-        <Steps
-          direction="vertical"
-          size="small"
-          items={traceData.nodes.map((node) => ({
-            title: node.title,
-            description: (
-              <div style={{ fontSize: 14 }}>
-                <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
-                  {formatTimeMs(node.timestamp)}
-                </div>
-                <div style={{ marginTop: 2 }}>{node.description}</div>
-                <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
-              </div>
-            ),
-            status: node.status,
-          }))}
-        />
-      ) : (
-        <Typography.Text type="secondary">暂无轨迹数据</Typography.Text>
+      children: (
+        <>
+          <Space wrap size={8} style={{ marginBottom: 16 }}>
+            <Segmented
+              size="small"
+              options={[
+                { value: 'msgid', label: '按 Message ID' },
+                { value: 'key', label: '按 Message Key' },
+              ]}
+              value={traceQueryMode}
+              onChange={(value) => setTraceQueryMode(value as 'msgid' | 'key')}
+            />
+            <Input
+              size="small"
+              style={{ width: 300 }}
+              placeholder={
+                traceQueryMode === 'key' ? '输入 Message Key' : '消息 ID（默认当前消息）'
+              }
+              value={traceQueryValue}
+              onChange={(event) => setTraceQueryValue(event.target.value)}
+            />
+            <Input
+              size="small"
+              style={{ width: 260 }}
+              placeholder="轨迹 Topic（留空使用默认）"
+              value={customTraceTopic}
+              onChange={(event) => setCustomTraceTopic(event.target.value)}
+              allowClear
+            />
+            <Button
+              size="small"
+              type="primary"
+              icon={<SearchOutlined />}
+              onClick={() => void runTraceQuery()}
+            >
+              查询轨迹
+            </Button>
+          </Space>
+          {traceLoading ? (
+            <Typography.Text type="secondary">正在加载轨迹数据…</Typography.Text>
+          ) : traceError ? (
+            <Alert showIcon type="warning" message={traceError} />
+          ) : traceData?.nodes?.length ? (
+            <Steps
+              direction="vertical"
+              size="small"
+              items={traceData.nodes.map((node) => ({
+                title: node.title,
+                description: (
+                  <div style={{ fontSize: 14 }}>
+                    <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
+                      {formatTimeMs(node.timestamp)}
+                    </div>
+                    <div style={{ marginTop: 2 }}>{node.description}</div>
+                    <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
+                  </div>
+                ),
+                status: node.status,
+              }))}
+            />
+          ) : (
+            <Typography.Text type="secondary">暂无轨迹数据</Typography.Text>
+          )}
+        </>
       ),
     },
     {

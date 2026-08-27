@@ -168,4 +168,14 @@ public class ApacheInstanceProvider implements InstanceProvider {
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
         return messageProvider.consumeMessageDirectly(request);
     }
+
+    @Override
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic, String traceTopic) {
+        return messageProvider.getMessageTrace(instanceId, msgId, topic, traceTopic);
+    }
+
+    @Override
+    public TraceRecordVO getMessageTraceByKey(String instanceId, String key, String topic, String traceTopic) {
+        return messageProvider.getMessageTraceByKey(instanceId, key, topic, traceTopic);
+    }
 }

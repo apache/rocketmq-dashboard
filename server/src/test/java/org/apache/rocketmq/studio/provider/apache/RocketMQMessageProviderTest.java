@@ -558,6 +558,62 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void getMessageTraceQueriesCustomTraceTopicWhenProvided() throws Exception {
+        String pub = traceContext("Pub", "1000", "cn", "prod-group", "TopicA", "msg-custom",
+                "tag1", "key1", "broker:10911", "15", "50", "0", "offset-1", "true");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(pub).getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO record =
+                provider.getMessageTrace("instance-a", "msg-custom", "orders", "MY_TRACE_TOPIC");
+
+        assertThat(record.getNodes()).hasSize(1);
+        assertThat(record.getNodes().get(0).getTitle()).isEqualTo("produce");
+        ArgumentCaptor<String> topicCaptor = ArgumentCaptor.forClass(String.class);
+        verify(adminExt).queryMessage(topicCaptor.capture(), eq("msg-custom"), anyInt(), anyLong(), anyLong());
+        assertThat(topicCaptor.getValue()).isEqualTo("MY_TRACE_TOPIC");
+    }
+
+    @Test
+    void getMessageTraceByKeyParsesContextsOfDifferentMessagesSharingTheKey() throws Exception {
+        // Two trace contexts belong to different message ids but share the same business key;
+        // the key lookup must surface both instead of filtering on a single message id.
+        String pubA = traceContext("Pub", "1000", "cn", "prod-group", "TopicA", "msg-a",
+                "tag1", "shared-key", "broker:10911", "15", "50", "0", "offset-1", "true");
+        String subB = traceContext("SubAfter", "req-b", "msg-b", "20", "true", "shared-key",
+                "3", "3000", "cons-group");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(pubA, subB).getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO record =
+                provider.getMessageTraceByKey("instance-a", "shared-key", "orders", "CUSTOM_TRACE");
+
+        assertThat(record.getNodes()).hasSize(2);
+        assertThat(record.getConsumerStatus()).hasSize(1);
+        assertThat(record.getConsumerStatus().get(0).getGroup()).isEqualTo("cons-group");
+        ArgumentCaptor<String> topicCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(adminExt).queryMessage(topicCaptor.capture(), keyCaptor.capture(), anyInt(), anyLong(), anyLong());
+        assertThat(topicCaptor.getValue()).isEqualTo("CUSTOM_TRACE");
+        assertThat(keyCaptor.getValue()).isEqualTo("shared-key");
+    }
+
+    @Test
+    void getMessageTraceByKeyUsesDefaultTraceTopicWhenNotSpecified() throws Exception {
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of()));
+
+        TraceRecordVO record = provider.getMessageTraceByKey("instance-a", "shared-key", null, null);
+
+        assertThat(record.getNodes()).isEmpty();
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("shared-key"), anyInt(), anyLong(), anyLong());
+    }
+
+    @Test
     void getMessageTraceUsesDecodedOffsetToResolveQueryWindow() throws Exception {
         String msgId = "AC1E0A6400002A9F0000000001A3F2B1";
         long storeTimestamp = System.currentTimeMillis() - 2 * 60 * 60 * 1000L;

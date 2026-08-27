@@ -207,4 +207,42 @@ class MessageServiceTest {
         verify(history, org.mockito.Mockito.times(1)).recordMessageQuery(
                 "instance-a", "TOPIC", "TopicA", null, null, null, 1000L, 2000L, 1);
     }
+
+    @Test
+    void fallsBackToThreeArgTracePathWhenCustomTraceTopicIsBlank() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.getMessageTrace("instance-a", "msg-001", "orders")).thenReturn(trace);
+
+        service.getMessageTrace("instance-a", "msg-001", "orders", null);
+
+        verify(provider).getMessageTrace("instance-a", "msg-001", "orders");
+        verify(provider, org.mockito.Mockito.never()).getMessageTrace(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void keyTraceLookupDoesNotRecordTraceQueryHistory() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(fallback.getMessageTraceByKey("instance-a", "ORDER-1", "orders", null)).thenReturn(trace);
+
+        TraceRecordVO result = service.getMessageTraceByKey("instance-a", "ORDER-1", "orders", null);
+
+        assertThat(result).isSameAs(trace);
+        verify(history, org.mockito.Mockito.never()).recordTraceQuery(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
 }

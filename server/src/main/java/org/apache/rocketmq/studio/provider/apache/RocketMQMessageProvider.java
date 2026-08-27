@@ -423,8 +423,7 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
-        return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId, topic));
+        return getMessageTrace(instanceId, msgId, topic, null);
     }
 
     @Override
@@ -440,7 +439,20 @@ public class RocketMQMessageProvider implements MessageProvider {
         });
     }
 
-    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId, String topic) {
+    @Override
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic, String traceTopic) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId, topic, traceTopic));
+    }
+
+    @Override
+    public TraceRecordVO getMessageTraceByKey(String instanceId, String key, String topic, String traceTopic) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> getMessageTraceByKey(instanceId, (DefaultMQAdminExt) adminExt, key, topic, traceTopic));
+    }
+
+    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId, String topic,
+                                          String traceTopic) {
 
         long now = System.currentTimeMillis();
         long begin;
@@ -465,10 +477,11 @@ public class RocketMQMessageProvider implements MessageProvider {
         List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
 
         try {
-            QueryResult traceResult = adminExt.queryMessage(TRACE_TOPIC, msgId, TRACE_QUERY_MAX, begin, end);
+            QueryResult traceResult =
+                    adminExt.queryMessage(effectiveTraceTopic(traceTopic), msgId, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), msgId, nodes, consumerStatus);
+                    parseTraceBody(traceMessage.getBody(), msgId, nodes, consumerStatus, true);
                 }
             }
         } catch (BusinessException e) {
@@ -504,6 +517,49 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
+     * Trace lookup by business key. The key query already scopes the returned trace messages to
+     * the requested message, so the body parser does not filter on a message id. The original
+     * message topic is not required to query the global trace topic but is kept in the signature
+     * for API symmetry and logged for diagnostics.
+     */
+    private TraceRecordVO getMessageTraceByKey(String instanceId, DefaultMQAdminExt adminExt, String key,
+                                               String topic, String traceTopic) {
+        log.debug("Trace by key: key={}, originalTopic={}, traceTopic={}", key, topic,
+                effectiveTraceTopic(traceTopic));
+        long now = System.currentTimeMillis();
+        // No message id to derive a precise window from; scan the last 24h of trace data.
+        long begin = now - ONE_DAY_MILLIS;
+        long end = now + 60_000L;
+
+        List<TraceNodeVO> nodes = new ArrayList<>();
+        List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
+
+        try {
+            QueryResult traceResult =
+                    adminExt.queryMessage(effectiveTraceTopic(traceTopic), key, TRACE_QUERY_MAX, begin, end);
+            if (traceResult != null && traceResult.getMessageList() != null) {
+                for (MessageExt traceMessage : traceResult.getMessageList()) {
+                    parseTraceBody(traceMessage.getBody(), null, nodes, consumerStatus, false);
+                }
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("Trace query by key={} failed: {}", key, e.getMessage());
+            throw new BusinessException(502, "Failed to query message trace by key: " + e.getMessage());
+        }
+
+        return TraceRecordVO.builder()
+                .nodes(nodes)
+                .consumerStatus(consumerStatus)
+                .build();
+    }
+
+    private String effectiveTraceTopic(String traceTopic) {
+        return StringUtils.hasText(traceTopic) ? traceTopic.trim() : TRACE_TOPIC;
+    }
+
+    /**
      * Attempts to resolve the store timestamp of the original message so the trace
      * query window can be derived from the message's own timeline rather than the
      * current time. Returns 0 if the message cannot be located.
@@ -534,10 +590,12 @@ public class RocketMQMessageProvider implements MessageProvider {
     /**
      * Parse a trace message body. Trace contexts are separated by STX ({@code \u0002}) and the
      * fields in each context are separated by SOH ({@code \u0001}); the first field is the trace
-     * type.
+     * type. When {@code filterByMsgId} is true only contexts whose message id matches
+     * {@code targetMsgId} are kept; otherwise every context is parsed (used by key lookups where
+     * the query already scoped the trace messages to the requested key).
      */
     private void parseTraceBody(byte[] body, String targetMsgId, List<TraceNodeVO> nodes,
-                                List<ConsumerStatusVO> consumerStatus) {
+                                List<ConsumerStatusVO> consumerStatus, boolean filterByMsgId) {
         if (body == null || body.length == 0) {
             return;
         }
@@ -554,7 +612,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             // The message ID column differs by trace type: Pub/EndTransaction place msgId at
             // index 5, while SubAfter places it at index 2 in RocketMQ 5.5.0.
             int msgIdIndex = "SubAfter".equals(traceType) ? 2 : 5;
-            if (!targetMsgId.equals(field(fields, msgIdIndex))) {
+            if (filterByMsgId && !targetMsgId.equals(field(fields, msgIdIndex))) {
                 continue;
             }
             try {

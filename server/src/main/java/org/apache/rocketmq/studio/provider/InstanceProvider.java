@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -113,5 +114,20 @@ public interface InstanceProvider {
 
     default DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
         throw new UnsupportedOperationException("Direct message consumption is not supported");
+    }
+
+    /**
+     * Message trace lookup against a custom trace topic. When {@code traceTopic} is blank, the
+     * provider falls back to its default trace topic (RMQ_SYS_TRACE_TOPIC).
+     */
+    default TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic, String traceTopic) {
+        throw new BusinessException(501, "Custom trace topic is not supported by this provider");
+    }
+
+    /**
+     * Message trace lookup by business key, optionally against a custom trace topic.
+     */
+    default TraceRecordVO getMessageTraceByKey(String instanceId, String key, String topic, String traceTopic) {
+        throw new BusinessException(501, "Message trace by key is not supported by this provider");
     }
 }
