@@ -150,4 +150,31 @@ describe('GeneralSettingsTab', () => {
     );
     expect(localStorage.getItem('rocketmq-studio-theme')).toBe('dark');
   });
+
+  it('can explicitly clear a configured DingTalk signing secret', async () => {
+    vi.mocked(getGeneralSettings).mockResolvedValue({
+      theme: 'system',
+      compact: false,
+      desktopNotify: false,
+      notifySound: false,
+      sessionTimeout: 30,
+      requireLogin: true,
+      llmProvider: 'openai',
+      apiKeyConfigured: false,
+      model: 'test-model',
+      baseUrl: 'https://example.test/v1',
+      dingtalkSigningSecretConfigured: true,
+    });
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    const user = userEvent.setup();
+    renderTab();
+
+    await user.click(await screen.findByRole('button', { name: '清除钉钉签名密钥' }));
+
+    await waitFor(() =>
+      expect(saveGeneralSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ clearDingtalkSigningSecret: true }),
+      ),
+    );
+  });
 });

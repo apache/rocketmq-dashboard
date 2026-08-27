@@ -41,5 +41,9 @@ public class ConsumerGroupVO extends BaseEntity {
     private String deliveryOrderType;
     private int retryMaxTimes;
     private int delaySeconds;
+    /** Whether the provider successfully read broker-side consume stats for this group. */
+    private boolean consumeStatsAvailable;
+    /** Whether broker consume stats include a consumed-message timestamp for delay calculation. */
+    private boolean consumptionTimestampAvailable;
     private List<ConsumerInstanceVO> instances = new ArrayList<>();
 }

@@ -54,22 +54,22 @@ describe('alert rules API', () => {
   });
 
   it('loads and unwraps alert rules', async () => {
-    mock.onGet('/alert-rules').reply(200, { code: 200, data: [rule] });
+    mock.onGet('/cluster-alert-rules').reply(200, { code: 200, data: [rule] });
 
     await expect(listAlertRules()).resolves.toEqual([rule]);
   });
 
   it('returns the backend records for create, update, and toggle', async () => {
     const updated = { ...rule, threshold: 90, enabled: false };
-    mock.onPost('/alert-rules/create').reply((config) => {
+    mock.onPost('/cluster-alert-rules/create').reply((config) => {
       expect(JSON.parse(config.data)).toMatchObject({ name: rule.name });
       return [200, { code: 200, data: rule }];
     });
-    mock.onPost('/alert-rules/update').reply((config) => {
+    mock.onPost('/cluster-alert-rules/update').reply((config) => {
       expect(JSON.parse(config.data)).toMatchObject({ id: rule.id, threshold: 90 });
       return [200, { code: 200, data: updated }];
     });
-    mock.onPost('/alert-rules/toggle').reply((config) => {
+    mock.onPost('/cluster-alert-rules/toggle').reply((config) => {
       expect(JSON.parse(config.data)).toEqual({ id: rule.id, enabled: false });
       return [200, { code: 200, data: updated }];
     });
@@ -80,7 +80,7 @@ describe('alert rules API', () => {
   });
 
   it('sends the rule id when deleting', async () => {
-    mock.onPost('/alert-rules/delete').reply((config) => {
+    mock.onPost('/cluster-alert-rules/delete').reply((config) => {
       expect(JSON.parse(config.data)).toEqual({ id: rule.id });
       return [200, { code: 200, data: null }];
     });

@@ -80,7 +80,7 @@ class SettingsServiceTest {
     private MockRestServiceServer prometheusServer;
 
     @BeforeEach
-    void setUp() {
+    void setUpTest() {
         RestClient.Builder restClientBuilder = RestClient.builder();
         prometheusServer = MockRestServiceServer.bindTo(restClientBuilder).build();
         settingsService = new SettingsService(settingsRepository, restClientBuilder.build(),
@@ -89,12 +89,12 @@ class SettingsServiceTest {
 
 
     @AfterEach
-    void tearDown() {
+    void tearDownTest() {
         prometheusServer.verify();
     }
 
     @Test
-    void getGeneralSettingsShouldReturnCurrentSettings() {
+    void getGeneralSettingsShouldReturnCurrentSettingsTest() {
         GeneralSettingsVO settings = GeneralSettingsVO.builder()
                 .theme("dark")
                 .compact(true)
@@ -120,7 +120,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void getGeneralSettingsShouldRedactNotificationWebhooksForReaderSessions() {
+    void getGeneralSettingsShouldRedactNotificationWebhooksForReaderSessionsTest() {
         GeneralSettingsVO settings = GeneralSettingsVO.builder()
                 .theme("dark")
                 .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=secret")
@@ -142,7 +142,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldPreserveExistingApiKeyWhenOmitted() {
+    void saveGeneralSettingsShouldPreserveExistingApiKeyWhenOmittedTest() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")
                 .build();
@@ -160,7 +160,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldPreserveProviderSpecificLlmFieldsWhenOmitted() {
+    void saveGeneralSettingsShouldPreserveProviderSpecificLlmFieldsWhenOmittedTest() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .deploymentName("production-gpt")
                 .apiVersion("2024-06-01")
@@ -179,7 +179,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldRejectMetadataLlmBaseUrlBeforePersisting() {
+    void saveGeneralSettingsShouldRejectMetadataLlmBaseUrlBeforePersistingTest() {
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .baseUrl("http://169.254.169.254/latest/meta-data")
                 .build();
@@ -192,7 +192,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldAllowLoopbackForLocalLlmGateways() {
+    void saveGeneralSettingsShouldAllowLoopbackForLocalLlmGatewaysTest() {
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .baseUrl("http://localhost:11434/v1")
                 .build();
@@ -203,7 +203,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldReplaceExistingApiKey() {
+    void saveGeneralSettingsShouldReplaceExistingApiKeyTest() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")
                 .build();
@@ -219,7 +219,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldClearApiKeyOnlyWhenExplicitlyRequested() {
+    void saveGeneralSettingsShouldClearApiKeyOnlyWhenExplicitlyRequestedTest() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")
                 .build();
@@ -236,7 +236,24 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldLetClearTakePrecedenceOverReplacementApiKey() {
+    void saveGeneralSettingsShouldClearDingtalkSigningSecretOnlyWhenExplicitlyRequestedTest() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkSigningSecret("SEC-existing")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .clearDingtalkSigningSecret(true)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkSigningSecret()).isEmpty();
+        assertThat(update.isClearDingtalkSigningSecret()).isFalse();
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldLetClearTakePrecedenceOverReplacementApiKeyTest() {
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .apiKey("sk-new")
                 .clearApiKey(true)
@@ -250,7 +267,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldSucceedWhenAuditRecordingFails() {
+    void saveGeneralSettingsShouldSucceedWhenAuditRecordingFailsTest() {
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .theme("dark")
                 .build();
@@ -268,7 +285,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void listDataSourcesShouldReturnAllSources() {
+    void listDataSourcesShouldReturnAllSourcesTest() {
         DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("rocketmq")
                 .url("localhost:9876").status("connected").build();
         DataSourceVO ds2 = DataSourceVO.builder().key("ds-2").name("Staging").type("rocketmq")
@@ -285,7 +302,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void listDataSourcesShouldReturnEmptyListWhenNoSources() {
+    void listDataSourcesShouldReturnEmptyListWhenNoSourcesTest() {
         when(settingsRepository.findAllDataSources()).thenReturn(Collections.emptyList());
 
         List<DataSourceVO> result = settingsService.listDataSources();
@@ -294,7 +311,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void listDataSourcesShouldValidatePaginationBeforeRepositoryAccess() {
+    void listDataSourcesShouldValidatePaginationBeforeRepositoryAccessTest() {
         assertThatThrownBy(() -> settingsService.listDataSources(null, null, 0, 20))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be greater than zero");
@@ -309,7 +326,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void listDataSourcesShouldDelegateBoundedInventoryQuery() {
+    void listDataSourcesShouldDelegateBoundedInventoryQueryTest() {
         PageResult<DataSourceVO> page = PageResult.of(List.of(), 0, 2, 20);
         when(settingsRepository.findDataSources(" prod ", " prometheus ", 2, 20))
                 .thenReturn(page);
@@ -322,7 +339,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void createDataSourceShouldAssignKeyBeforeSaving() {
+    void createDataSourceShouldAssignKeyBeforeSavingTest() {
         DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
                 .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
@@ -343,7 +360,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void createDataSourceShouldReplaceClientProvidedKey() {
+    void createDataSourceShouldReplaceClientProvidedKeyTest() {
         DataSourceVO input = DataSourceVO.builder().key("existing-key").name("New DS")
                 .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
@@ -361,7 +378,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void createDataSourceShouldRejectNullRequest() {
+    void createDataSourceShouldRejectNullRequestTest() {
         assertThatThrownBy(() -> settingsService.createDataSource(null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source request is required")
@@ -372,7 +389,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void createDataSourceShouldRejectLoopbackUrl() {
+    void createDataSourceShouldRejectLoopbackUrlTest() {
         DataSourceVO input = DataSourceVO.builder().name("Loopback DS").type("rocketmq")
                 .url("http://127.0.0.1:9090").build();
 
@@ -385,7 +402,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void updateDataSourceShouldRejectMetadataUrl() {
+    void updateDataSourceShouldRejectMetadataUrlTest() {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Metadata DS").type("rocketmq")
                 .url("http://169.254.169.254/latest/meta-data/").build();
 
@@ -398,7 +415,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void updateDataSourceShouldDelegateToRepository() {
+    void updateDataSourceShouldDelegateToRepositoryTest() {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
                 .url("http://10.1.2.3").build();
         when(settingsRepository.replaceDataSource(input)).thenReturn(true);
@@ -413,7 +430,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void updateDataSourceShouldRejectNullRequest() {
+    void updateDataSourceShouldRejectNullRequestTest() {
         assertThatThrownBy(() -> settingsService.updateDataSource(null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source request is required")
@@ -424,7 +441,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void updateDataSourceShouldRejectUnknownKey() {
+    void updateDataSourceShouldRejectUnknownKeyTest() {
         SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key("missing").name("Unexpected DS").type("rocketmq")
                 .url("http://10.1.2.3").build();
@@ -438,7 +455,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void updateDataSourceShouldRejectBlankKey() {
+    void updateDataSourceShouldRejectBlankKeyTest() {
         SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
                 operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key(" ").name("Unexpected DS").type("rocketmq")
@@ -453,7 +470,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void deleteDataSourceShouldDelegateToRepository() {
+    void deleteDataSourceShouldDelegateToRepositoryTest() {
         when(settingsRepository.deleteDataSource("ds-1")).thenReturn(true);
 
         settingsService.deleteDataSource("ds-1");
@@ -464,7 +481,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void deleteDataSourceShouldRejectUnknownKey() {
+    void deleteDataSourceShouldRejectUnknownKeyTest() {
         SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
                 operationAuditService);
 
@@ -476,7 +493,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void deleteDataSourceShouldRejectBlankKey() {
+    void deleteDataSourceShouldRejectBlankKeyTest() {
         assertThatThrownBy(() -> settingsService.deleteDataSource(" "))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source key is required")
@@ -647,7 +664,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void dataSourceAddressPolicyShouldRejectMixedSafeAndLoopbackResults() throws Exception {
+    void dataSourceAddressPolicyShouldRejectMixedSafeAndLoopbackResultsTest() throws Exception {
         InetAddress[] addresses = {
                 InetAddress.getByName("192.0.2.1"),
                 InetAddress.getByName("127.0.0.1")
@@ -657,7 +674,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void dataSourceAddressPolicyShouldAcceptAllSafeResults() throws Exception {
+    void dataSourceAddressPolicyShouldAcceptAllSafeResultsTest() throws Exception {
         InetAddress[] addresses = {
                 InetAddress.getByName("192.0.2.1"),
                 InetAddress.getByName("198.51.100.1")

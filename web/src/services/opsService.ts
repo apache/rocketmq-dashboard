@@ -4,13 +4,25 @@ import { isMockMode } from './dataMode';
 import * as opsApi from '../api/ops';
 import type {
   AlertRule,
+  AlertRuleQuery,
+  AlertRuleRuntime,
   AlertRuleBulkResult,
-  AlertRulePage,
+  AlertRuleDomain,
+  AlertRuleTestResult,
+  AlertRuleTransfer,
+  NativeAlertMetricInfo,
+  CollectorStatus,
   SystemAlert,
-  SystemAlertPage,
+  SystemAlertQuery,
   AuditQuery,
   AuditRecord,
   PageResult,
+  NotificationDelivery,
+  NotificationDeliveryBulkRetryResult,
+  NotificationDeliveryQuery,
+  NotificationDeliveryRecord,
+  AlertSilence,
+  CreateAlertSilence,
 } from '../api/ops';
 import { mockAlertRules } from '../mock/alerts';
 import { mockAuditRecords } from '../mock/audit';
@@ -18,6 +30,7 @@ import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
 
 let auditRecordsState = mockAuditRecords as unknown as AuditRecord[];
 const alertRulesState = mockAlertRules as unknown as AlertRule[];
+let alertSilencesState: AlertSilence[] = [];
 
 function copyAlertRule(rule: AlertRule): AlertRule {
   return {
@@ -98,37 +111,116 @@ function formatAuditCsv(records: AuditRecord[]): string {
   return `\uFEFF${header}${rows.length > 0 ? `${rows.join('\r\n')}\r\n` : ''}`;
 }
 
-export async function listAlertRules(): Promise<AlertRule[]> {
+export async function listAlertRules(domain: AlertRuleDomain = 'CLUSTER'): Promise<AlertRule[]> {
   if (isMockMode()) return alertRulesState.map(copyAlertRule);
-  return opsApi.listAlertRules();
+  return opsApi.listAlertRules(domain);
 }
-
 export async function listAlertRulesPage(
-  query: { search?: string; enabled?: boolean; page?: number; pageSize?: number } = {},
-): Promise<AlertRulePage> {
-  if (!isMockMode()) return opsApi.listAlertRulesPage(query);
+  domain: AlertRuleDomain = 'CLUSTER',
+  query: AlertRuleQuery = {},
+): Promise<PageResult<AlertRule>> {
+  if (!isMockMode()) return opsApi.listAlertRulesPage(domain, query);
+
   const search = query.search?.trim().toLowerCase();
-  const rules = alertRulesState
-    .filter((rule) => !query.enabled || rule.enabled === query.enabled)
+  const page = Math.max(1, query.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
+  const filtered = alertRulesState
+    .filter((rule) => query.enabled == null || rule.enabled === query.enabled)
     .filter(
       (rule) =>
-        !search ||
-        rule.name.toLowerCase().includes(search) ||
-        rule.metric.toLowerCase().includes(search),
+        !search || includesIgnoreCase(rule.name, search) || includesIgnoreCase(rule.metric, search),
     )
-    .map(copyAlertRule);
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
-  const from = Math.min((page - 1) * pageSize, rules.length);
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id - right.id);
+  const start = (page - 1) * pageSize;
   return {
-    items: rules.slice(from, from + pageSize),
-    total: rules.length,
+    items: filtered.slice(start, start + pageSize).map(copyAlertRule),
+    total: filtered.length,
     page,
     size: pageSize,
   };
 }
+export async function listAlertRuleRuntime(
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRuleRuntime[]> {
+  if (isMockMode()) return [];
+  return opsApi.listAlertRuleRuntime(domain);
+}
 
-export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRule> {
+export async function exportAlertRulesTransfer(
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRuleTransfer> {
+  if (isMockMode()) return { version: 1, domain, rules: alertRulesState.map(copyAlertRule) };
+  return opsApi.exportAlertRulesTransfer(domain);
+}
+
+export async function importAlertRulesTransfer(
+  data: AlertRuleTransfer,
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRule[]> {
+  if (!isMockMode()) return opsApi.importAlertRulesTransfer(data, domain);
+  const startId = Date.now();
+  const imported = data.rules.map((rule, index) => ({
+    ...copyAlertRule(rule as AlertRule),
+    id: startId + index,
+  }));
+  alertRulesState.push(...imported);
+  return imported.map(copyAlertRule);
+}
+
+export async function listNativeAlertMetrics(
+  instanceId: string,
+  domain: AlertRuleDomain,
+): Promise<NativeAlertMetricInfo[]> {
+  if (isMockMode()) {
+    return domain === 'BUSINESS'
+      ? [
+          {
+            key: 'consumer.lag.total',
+            label: 'Consumer lag total',
+            thresholdUnit: 'messages',
+            supportsConsumerGroup: true,
+          },
+          {
+            key: 'consumer.lag.max_queue',
+            label: 'Consumer lag max queue',
+            thresholdUnit: 'messages',
+            supportsConsumerGroup: true,
+          },
+          {
+            key: 'dlq.message.count',
+            label: 'DLQ message count',
+            thresholdUnit: 'messages',
+            supportsConsumerGroup: true,
+          },
+        ]
+      : [
+          {
+            key: 'nameserver.availability',
+            label: 'NameServer availability',
+            thresholdUnit: '',
+            supportsConsumerGroup: false,
+          },
+          {
+            key: 'broker.availability',
+            label: 'Broker availability',
+            thresholdUnit: '',
+            supportsConsumerGroup: false,
+          },
+          {
+            key: 'broker.disk.usage_ratio',
+            label: 'Broker disk usage ratio',
+            thresholdUnit: 'ratio',
+            supportsConsumerGroup: false,
+          },
+        ];
+  }
+  return opsApi.listNativeAlertMetrics(instanceId, domain);
+}
+
+export async function createAlertRule(
+  data: Partial<AlertRule>,
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRule> {
   if (isMockMode()) {
     const rule: AlertRule = {
       id: Date.now(),
@@ -147,10 +239,13 @@ export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRu
     alertRulesState.push(rule);
     return copyAlertRule(rule);
   }
-  return opsApi.createAlertRule(data);
+  return opsApi.createAlertRule(data, domain);
 }
 
-export async function updateAlertRule(data: AlertRule): Promise<AlertRule> {
+export async function updateAlertRule(
+  data: AlertRule,
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRule> {
   if (isMockMode()) {
     const index = alertRulesState.findIndex((rule) => rule.id === data.id);
     if (index < 0) throw new Error(`Alert rule not found: ${data.id}`);
@@ -158,33 +253,41 @@ export async function updateAlertRule(data: AlertRule): Promise<AlertRule> {
     alertRulesState[index] = rule;
     return copyAlertRule(rule);
   }
-  return opsApi.updateAlertRule(data);
+  return opsApi.updateAlertRule(data, domain);
 }
 
-export async function toggleAlertRule(id: number, enabled: boolean): Promise<AlertRule> {
+export async function toggleAlertRule(
+  id: number,
+  enabled: boolean,
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRule> {
   if (isMockMode()) {
     const rule = alertRulesState.find((item) => item.id === id);
     if (!rule) throw new Error(`Alert rule not found: ${id}`);
     rule.enabled = enabled;
     return copyAlertRule(rule);
   }
-  return opsApi.toggleAlertRule(id, enabled);
+  return opsApi.toggleAlertRule(id, enabled, domain);
 }
 
-export async function deleteAlertRule(id: number): Promise<void> {
+export async function deleteAlertRule(
+  id: number,
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<void> {
   if (isMockMode()) {
     const idx = alertRulesState.findIndex((rule) => rule.id === id);
     if (idx >= 0) alertRulesState.splice(idx, 1);
     return;
   }
-  return opsApi.deleteAlertRule(id);
+  return opsApi.deleteAlertRule(id, domain);
 }
 
 export async function bulkToggleAlertRules(
   ids: number[],
   enabled: boolean,
+  domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRuleBulkResult> {
-  if (!isMockMode()) return opsApi.bulkToggleAlertRules(ids, enabled);
+  if (!isMockMode()) return opsApi.bulkToggleAlertRules(ids, enabled, domain);
   const succeededIds: number[] = [];
   const failures: Record<string, string> = {};
   const updatedRules: AlertRule[] = [];
@@ -201,8 +304,11 @@ export async function bulkToggleAlertRules(
   return { succeededIds, failures, updatedRules };
 }
 
-export async function bulkDeleteAlertRules(ids: number[]): Promise<AlertRuleBulkResult> {
-  if (!isMockMode()) return opsApi.bulkDeleteAlertRules(ids);
+export async function bulkDeleteAlertRules(
+  ids: number[],
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRuleBulkResult> {
+  if (!isMockMode()) return opsApi.bulkDeleteAlertRules(ids, domain);
   const succeededIds: number[] = [];
   const failures: Record<string, string> = {};
   for (const id of [...new Set(ids)]) {
@@ -217,28 +323,67 @@ export async function bulkDeleteAlertRules(ids: number[]): Promise<AlertRuleBulk
   return { succeededIds, failures, updatedRules: [] };
 }
 
+export async function testAlertRule(
+  data: Partial<AlertRule>,
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRuleTestResult> {
+  if (isMockMode()) return { samples: [] };
+  return opsApi.testAlertRule(data, domain);
+}
+
 export async function listSystemAlerts(): Promise<SystemAlert[]> {
   if (isMockMode()) return (mockSystemAlerts as unknown as SystemAlert[]).map(copySystemAlert);
   return opsApi.listSystemAlerts();
 }
 
 export async function listSystemAlertsPage(
-  query: { level?: string; page?: number; pageSize?: number } = {},
-): Promise<SystemAlertPage> {
-  if (!isMockMode()) return opsApi.listSystemAlertsPage(query);
-  const level = query.level?.toLowerCase();
-  const alerts = (mockSystemAlerts as unknown as SystemAlert[])
-    .filter((alert) => !level || alert.level.toLowerCase() === level)
-    .map(copySystemAlert);
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 20;
-  const from = Math.min((page - 1) * pageSize, alerts.length);
+  params: SystemAlertQuery = {},
+): Promise<PageResult<SystemAlert>> {
+  if (!isMockMode()) return opsApi.listSystemAlertsPage(params);
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? 20;
+  const normalizedLevel = params.level?.toLowerCase();
+  const normalizedTransition = params.transition?.toUpperCase();
+  const filtered = (mockSystemAlerts as unknown as SystemAlert[]).filter((alert) => {
+    if (normalizedLevel && alert.level.toLowerCase() !== normalizedLevel) return false;
+    if (params.domain && alert.domain !== params.domain) return false;
+    if (params.instanceId && alert.instanceId !== params.instanceId) return false;
+    if (normalizedTransition && alert.transition !== normalizedTransition) return false;
+    if (params.labelKey && alert.labels?.[params.labelKey] !== params.labelValue) return false;
+    if (
+      params.notificationSuppressed != null &&
+      alert.notificationSuppressed !== params.notificationSuppressed
+    ) {
+      return false;
+    }
+    const alertTime = new Date(alert.time).getTime();
+    if (params.from && alertTime < new Date(params.from).getTime()) return false;
+    if (params.to && alertTime > new Date(params.to).getTime()) return false;
+    return true;
+  });
+  const start = (page - 1) * pageSize;
   return {
-    items: alerts.slice(from, from + pageSize),
-    total: alerts.length,
+    items: filtered.slice(start, start + pageSize).map(copySystemAlert),
+    total: filtered.length,
     page,
     size: pageSize,
   };
+}
+
+export async function listRelatedSystemAlerts(id: number): Promise<SystemAlert[]> {
+  if (isMockMode()) return [];
+  return opsApi.listRelatedSystemAlerts(id);
+}
+
+export async function getCollectorStatus(): Promise<CollectorStatus> {
+  if (isMockMode()) {
+    return {
+      collectionInterval: 'PT30S',
+      clusterCollectorCount: 0,
+      businessCollectorCount: 0,
+    };
+  }
+  return opsApi.getCollectorStatus();
 }
 
 export async function acknowledgeAlert(id: number): Promise<void> {
@@ -259,6 +404,49 @@ export async function clearAcknowledgedAlerts(): Promise<number> {
   }
   const result = await opsApi.clearAcknowledgedAlerts();
   return result.cleared;
+}
+
+export async function listAlertDeliveries(id: number): Promise<NotificationDelivery[]> {
+  if (isMockMode()) return [];
+  return opsApi.listAlertDeliveries(id);
+}
+
+export async function retryAlertDelivery(id: number): Promise<void> {
+  if (isMockMode()) return;
+  return opsApi.retryAlertDelivery(id);
+}
+
+export async function retryAlertDeliveries(
+  ids: number[],
+): Promise<NotificationDeliveryBulkRetryResult> {
+  if (isMockMode()) return { succeededIds: ids, failures: {} };
+  return opsApi.retryAlertDeliveries(ids);
+}
+
+export async function listAlertDeliveriesPage(
+  params: NotificationDeliveryQuery = {},
+): Promise<PageResult<NotificationDeliveryRecord>> {
+  if (isMockMode()) {
+    return { items: [], total: 0, page: params.page ?? 1, size: params.pageSize ?? 20 };
+  }
+  return opsApi.listAlertDeliveriesPage(params);
+}
+
+export async function listAlertSilences(): Promise<AlertSilence[]> {
+  if (isMockMode()) return alertSilencesState.map((silence) => ({ ...silence }));
+  return opsApi.listAlertSilences();
+}
+
+export async function createAlertSilence(data: CreateAlertSilence): Promise<AlertSilence> {
+  if (!isMockMode()) return opsApi.createAlertSilence(data);
+  const silence = { ...data, id: Date.now(), createdBy: 'admin' } as AlertSilence;
+  alertSilencesState = [silence, ...alertSilencesState];
+  return silence;
+}
+
+export async function deleteAlertSilence(id: number): Promise<void> {
+  if (!isMockMode()) return opsApi.deleteAlertSilence(id);
+  alertSilencesState = alertSilencesState.filter((silence) => silence.id !== id);
 }
 
 export async function listAuditRecords(params: AuditQuery = {}): Promise<PageResult<AuditRecord>> {

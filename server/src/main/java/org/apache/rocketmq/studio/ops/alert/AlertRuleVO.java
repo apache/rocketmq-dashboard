@@ -29,12 +29,18 @@ import java.util.List;
 @AllArgsConstructor
 public class AlertRuleVO {
     private Long id;
+    @Builder.Default
+    private AlertDomain domain = AlertDomain.BUSINESS;
     private String name;
     private String metric;
     private String operator;
     private double threshold;
     private String thresholdUnit;
     private String duration;
+    @Builder.Default
+    private String aggregation = "LAST";
+    @Builder.Default
+    private int windowSeconds = 0;
     private List<String> channels;
     private boolean enabled;
     private String lastTriggered;
@@ -45,4 +51,17 @@ public class AlertRuleVO {
     private String clusterName;
     /** Alert severity: critical, warning, info */
     private String severity;
+    /** Studio instance ID required when evaluating a rule against native metric samples. */
+    private String instanceId;
+    /** Optional consumer group selector for consumer-lag metrics. */
+    private String consumerGroup;
+    /** Optional topic selector for topic backlog metrics. */
+    private String topic;
+    /** Number of consecutive matching native samples required before firing. */
+    @Builder.Default
+    private int consecutiveSamples = 1;
+    @Builder.Default
+    private String reminderInterval = "30m";
+    /** Optional per-rule notification body template. */
+    private String notificationTemplate;
 }

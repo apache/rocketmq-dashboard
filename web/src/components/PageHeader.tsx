@@ -28,13 +28,16 @@ interface PageHeaderProps {
 }
 
 const PageHeader = ({ title, subtitle, extra, headingLevel = 1 }: PageHeaderProps) => (
-  <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
-    <Flex align="center" gap={12}>
-      <Title level={headingLevel} style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
+  <Flex justify="space-between" align="center" gap={16} style={{ marginBottom: 24 }}>
+    <Flex vertical gap={4} style={{ minWidth: 0 }}>
+      <Title
+        level={headingLevel}
+        style={{ margin: 0, fontSize: 20, fontWeight: 600, lineHeight: 1.3 }}
+      >
         {title}
       </Title>
       {subtitle && (
-        <Text type="secondary" style={{ fontSize: 14 }}>
+        <Text type="secondary" style={{ fontSize: 14, lineHeight: 1.5 }}>
           {subtitle}
         </Text>
       )}

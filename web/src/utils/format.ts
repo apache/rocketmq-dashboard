@@ -33,6 +33,47 @@ export function formatDateTime(date: string | Date | null | undefined): string {
 }
 
 /**
+ * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
+ * serialize UTC LocalDateTime values without an offset, so normal Date parsing
+ * would incorrectly treat them as browser-local timestamps.
+ */
+export function formatUtcDateTime(
+  date: string | Date | null | undefined,
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): string {
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
+  const utcDate =
+    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
+      ? new Date(`${date}Z`)
+      : new Date(date);
+  if (Number.isNaN(utcDate.getTime())) return '-';
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'short',
+  }).formatToParts(utcDate);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  const year = value('year');
+  const month = value('month');
+  const day = value('day');
+  const hour = value('hour');
+  const minute = value('minute');
+  const second = value('second');
+  const zone = value('timeZoneName');
+  return year && month && day && hour && minute && second
+    ? `${year}-${month}-${day} ${hour}:${minute}:${second}${zone ? ` ${zone}` : ''}`
+    : '-';
+}
+
+/**
  * Format a date string or Date object to 'YYYY-MM-DD'.
  */
 export function formatDate(date: string | Date | null | undefined): string {

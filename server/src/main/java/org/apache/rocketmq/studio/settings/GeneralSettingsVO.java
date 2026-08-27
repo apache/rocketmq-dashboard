@@ -50,6 +50,12 @@ public class GeneralSettingsVO {
     private Integer maxTokens;
     private Double temperature;
     private String dingtalkWebhook;
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @ToString.Exclude
+    private String dingtalkSigningSecret;
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @ToString.Exclude
+    private boolean clearDingtalkSigningSecret;
     private String emailRecipients;
     private String smsWebhook;
 
@@ -61,6 +67,11 @@ public class GeneralSettingsVO {
     @JsonProperty(value = "dingtalkWebhookConfigured", access = JsonProperty.Access.READ_ONLY)
     public boolean isDingtalkWebhookConfigured() {
         return StringUtils.hasText(dingtalkWebhook);
+    }
+
+    @JsonProperty(value = "dingtalkSigningSecretConfigured", access = JsonProperty.Access.READ_ONLY)
+    public boolean isDingtalkSigningSecretConfigured() {
+        return StringUtils.hasText(dingtalkSigningSecret);
     }
 
     @JsonProperty(value = "smsWebhookConfigured", access = JsonProperty.Access.READ_ONLY)

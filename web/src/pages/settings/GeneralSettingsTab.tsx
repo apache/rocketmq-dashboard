@@ -30,7 +30,7 @@ import {
   Typography,
 } from 'antd';
 import { BellOutlined, SafetyOutlined, SkinOutlined } from '@ant-design/icons';
-import { getGeneralSettings, saveGeneralSettings } from '../../api/settings';
+import { getGeneralSettings, saveGeneralSettings, testNotification } from '../../api/settings';
 import type { GeneralSettings, GeneralSettingsUpdate } from '../../api/settings';
 import { useTheme } from '../../theme/useTheme';
 import type { ThemeMode } from '../../theme/themePreference';
@@ -52,6 +52,8 @@ const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
   model: settings.model,
   baseUrl: settings.baseUrl,
   dingtalkWebhook: settings.dingtalkWebhook,
+  dingtalkSigningSecret: settings.dingtalkSigningSecret,
+  clearDingtalkSigningSecret: settings.clearDingtalkSigningSecret,
   emailRecipients: settings.emailRecipients,
   smsWebhook: settings.smsWebhook,
 });
@@ -65,6 +67,7 @@ export const GeneralSettingsTab = () => {
   const [savingPreference, setSavingPreference] = useState(false);
   const [savingSecurity, setSavingSecurity] = useState(false);
   const [savingNotification, setSavingNotification] = useState(false);
+  const [testingChannel, setTestingChannel] = useState<string>();
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
   const [securityForm] = Form.useForm();
@@ -79,6 +82,7 @@ export const GeneralSettingsTab = () => {
         securityForm.setFieldsValue({ sessionTimeout: loaded.sessionTimeout });
         notifyForm.setFieldsValue({
           dingtalkWebhook: loaded.dingtalkWebhook,
+          dingtalkSigningSecret: '',
           emailRecipients: loaded.emailRecipients,
           smsWebhook: loaded.smsWebhook,
         });
@@ -114,11 +118,32 @@ export const GeneralSettingsTab = () => {
     if (!settings) return false;
     try {
       await saveGeneralSettings(buildPayload({ ...settings, ...patch }));
-      setSettings({ ...settings, ...patch });
+      const statePatch = { ...patch };
+      delete statePatch.clearDingtalkSigningSecret;
+      setSettings({ ...settings, ...statePatch });
       return true;
     } catch {
       message.error(t('settings.saveFailed'));
       return false;
+    }
+  };
+
+  const clearDingtalkSigningSecret = async () => {
+    if (!settings) return;
+    setSavingNotification(true);
+    try {
+      if (
+        await mergeAndSave({
+          dingtalkSigningSecret: '',
+          clearDingtalkSigningSecret: true,
+          dingtalkSigningSecretConfigured: false,
+        })
+      ) {
+        notifyForm.setFieldValue('dingtalkSigningSecret', '');
+        message.success(t('settings.dingtalkSecretCleared'));
+      }
+    } finally {
+      setSavingNotification(false);
     }
   };
 
@@ -138,6 +163,7 @@ export const GeneralSettingsTab = () => {
 
   const handleNotifyFinish = async (values: {
     dingtalkWebhook?: string;
+    dingtalkSigningSecret?: string;
     emailRecipients?: string;
     smsWebhook?: string;
   }) => {
@@ -151,6 +177,20 @@ export const GeneralSettingsTab = () => {
     } finally {
       notifyInFlightRef.current = false;
       setSavingNotification(false);
+    }
+  };
+
+  const sendTest = async (channel: 'dingtalk' | 'email' | 'sms') => {
+    setTestingChannel(channel);
+    try {
+      const values = await notifyForm.validateFields();
+      if (!(await mergeAndSave(values))) return;
+      await testNotification(channel);
+      message.success(t('settings.testMessageSent'));
+    } catch (error: any) {
+      message.error(error?.response?.data?.message ?? t('settings.testMessageFailed'));
+    } finally {
+      setTestingChannel(undefined);
     }
   };
 
@@ -268,6 +308,24 @@ export const GeneralSettingsTab = () => {
           >
             <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." />
           </Form.Item>
+          <Form.Item
+            label={t('settings.dingtalkSigningSecret')}
+            name="dingtalkSigningSecret"
+            extra={t('settings.dingtalkSigningSecretHelp')}
+          >
+            <Input.Password placeholder="SEC..." autoComplete="new-password" />
+          </Form.Item>
+          {settings?.dingtalkSigningSecretConfigured && (
+            <Form.Item style={{ marginTop: -16 }}>
+              <Button
+                danger
+                onClick={() => void clearDingtalkSigningSecret()}
+                loading={savingNotification}
+              >
+                {t('settings.clearDingtalkSigningSecret')}
+              </Button>
+            </Form.Item>
+          )}
 
           <Form.Item
             label={t('settings.emailRecipients')}
@@ -285,6 +343,22 @@ export const GeneralSettingsTab = () => {
             <Input placeholder="https://sms-gateway.example.com/notify" />
           </Form.Item>
 
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Space>
+              <Button
+                onClick={() => void sendTest('dingtalk')}
+                loading={testingChannel === 'dingtalk'}
+              >
+                {t('settings.testDingtalk')}
+              </Button>
+              <Button onClick={() => void sendTest('email')} loading={testingChannel === 'email'}>
+                {t('settings.testEmail')}
+              </Button>
+              <Button onClick={() => void sendTest('sms')} loading={testingChannel === 'sms'}>
+                {t('settings.testSmsWebhook')}
+              </Button>
+            </Space>
+          </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button
               type="primary"

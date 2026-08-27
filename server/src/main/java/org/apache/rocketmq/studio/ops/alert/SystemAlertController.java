@@ -27,7 +27,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PathVariable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -37,19 +39,64 @@ import java.util.Map;
 public class SystemAlertController {
 
     private final AlertService alertService;
+    private final NotificationOutboxService notificationOutboxService;
 
     @GetMapping
     public Result<List<SystemAlertVO>> listAlerts(
-            @RequestParam(required = false) String level) {
-        return Result.ok(alertService.listAlerts(level));
+            @RequestParam(required = false) String level,
+            @RequestParam(required = false) AlertDomain domain,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String transition) {
+        return Result.ok(alertService.listAlerts(level, domain, instanceId, transition));
     }
 
     @GetMapping("/page")
     public Result<PageResult<SystemAlertVO>> listAlertsPage(
             @RequestParam(required = false) String level,
+            @RequestParam(required = false) AlertDomain domain,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String transition,
+            @RequestParam(required = false) String labelKey,
+            @RequestParam(required = false) String labelValue,
+            @RequestParam(required = false) LocalDateTime from,
+            @RequestParam(required = false) LocalDateTime to,
+            @RequestParam(required = false) Boolean notificationSuppressed,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return Result.ok(alertService.listAlerts(level, page, pageSize));
+        return Result.ok(alertService.listAlerts(level, domain, instanceId, transition,
+                labelKey, labelValue, from, to, page, pageSize, notificationSuppressed));
+    }
+
+    @GetMapping("/{id}/related")
+    public Result<List<SystemAlertVO>> listRelatedAlerts(@PathVariable Long id) {
+        return Result.ok(alertService.findRelatedAlerts(id));
+    }
+
+    @GetMapping("/{id}/deliveries")
+    public Result<List<NotificationDeliveryVO>> listDeliveries(@PathVariable Long id) {
+        return Result.ok(notificationOutboxService.listDeliveries(id));
+    }
+
+    @GetMapping("/deliveries/page")
+    public Result<PageResult<NotificationDeliveryPageVO>> listDeliveriesPage(
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(notificationOutboxService.listDeliveries(channel, status, instanceId, page, pageSize));
+    }
+
+    @PostMapping("/deliveries/{deliveryId}/retry")
+    public Result<Void> retryFailedDelivery(@PathVariable Long deliveryId) {
+        notificationOutboxService.retryFailedDelivery(deliveryId);
+        return Result.ok();
+    }
+
+    @PostMapping("/deliveries/retry")
+    public Result<NotificationDeliveryBulkRetryResult> retryFailedDeliveries(
+            @RequestBody(required = false) List<Long> deliveryIds) {
+        return Result.ok(notificationOutboxService.retryFailedDeliveries(deliveryIds));
     }
 
     @PostMapping("/acknowledge")

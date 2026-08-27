@@ -15,24 +15,113 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Card, Tag, Typography, Button, Flex, Table, message } from 'antd';
-import { CheckCircle, Trash } from '@phosphor-icons/react';
+import { useEffect, useState } from 'react';
+import {
+  Card,
+  Tag,
+  Flex,
+  Typography,
+  Badge,
+  Button,
+  message,
+  Pagination,
+  Select,
+  Spin,
+  Modal,
+  Form,
+  Input,
+} from 'antd';
+import { CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
+import useAuthStore from '../../stores/authStore';
 import {
   acknowledgeAlert,
   clearAcknowledgedAlerts,
+  getCollectorStatus,
+  listAlertDeliveries,
+  listRelatedSystemAlerts,
+  retryAlertDelivery,
   listSystemAlertsPage,
+  createAlertSilence,
+  deleteAlertSilence,
+  listAlertSilences,
 } from '../../services/opsService';
-import type { SystemAlert } from '../../api/ops';
+import type {
+  AlertSilence,
+  CollectorStatus,
+  CreateAlertSilence,
+  NotificationDelivery,
+  PageResult,
+  SystemAlert,
+} from '../../api/ops';
+import { formatUtcDateTime, formatNumber } from '../../utils/format';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
 const normalizeAlertLevel = (level?: string | null) => (level ?? '').toLowerCase();
+const formatAlertTransition = (
+  transition: SystemAlert['transition'] | undefined,
+  firingLabel: string,
+  resolvedLabel: string,
+) => {
+  if (transition === 'FIRING') return firingLabel;
+  if (transition === 'RESOLVED') return resolvedLabel;
+  return transition;
+};
+
+const parseSilenceLabels = (
+  value: string | undefined,
+  invalidMessage: string,
+): Record<string, string> | undefined => {
+  if (!value?.trim()) return undefined;
+  const labels: Record<string, string> = {};
+  for (const pair of value.split(',')) {
+    const separator = pair.indexOf('=');
+    if (separator <= 0 || !pair.slice(separator + 1).trim()) {
+      throw new Error(invalidMessage);
+    }
+    labels[pair.slice(0, separator).trim()] = pair.slice(separator + 1).trim();
+  }
+  return labels;
+};
+
+const localDateTimeToUtc = (value: string) => new Date(`${value}:00`).toISOString();
+const localDateTimeToUtcDatabaseValue = (value: string) =>
+  new Date(`${value}:00`).toISOString().replace('Z', '');
+
+const ALERT_EXPORT_COLUMNS: CsvColumn<SystemAlert>[] = [
+  { header: 'ID', value: (alert) => alert.id },
+  { header: 'Domain', value: (alert) => alert.domain },
+  { header: 'Instance', value: (alert) => alert.instanceId },
+  { header: 'Rule ID', value: (alert) => alert.ruleId },
+  { header: 'Title', value: (alert) => alert.title },
+  { header: 'Level', value: (alert) => alert.level },
+  { header: 'Transition', value: (alert) => alert.transition },
+  { header: 'Time (UTC)', value: (alert) => alert.time },
+  { header: 'Current value', value: (alert) => alert.currentValue },
+  {
+    header: 'Labels',
+    value: (alert) =>
+      Object.entries(alert.labels ?? {})
+        .map(([key, value]) => `${key}=${value}`)
+        .join(', '),
+  },
+  { header: 'Notification suppressed', value: (alert) => alert.notificationSuppressed === true },
+  { header: 'Suppression cause alert ID', value: (alert) => alert.suppressionCauseAlertId },
+  { header: 'Suppression reason', value: (alert) => alert.suppressionReason },
+  { header: 'Acknowledged', value: (alert) => alert.acknowledged },
+  { header: 'Acknowledged by', value: (alert) => alert.acknowledgedBy },
+  { header: 'Acknowledged at (UTC)', value: (alert) => alert.acknowledgedAt },
+  { header: 'Description', value: (alert) => alert.description },
+];
 
 const SystemAlertsPage = () => {
   const { t } = useLang();
+  const userId = useAuthStore((state) => state.userId);
+  const admin = useAuthStore((state) => state.admin);
+  const canManageSilences = !userId || admin === true;
 
   const alertLevelConfig: Record<string, { color: string; bg: string; label: string }> = {
     error: { color: '#ff4d4f', bg: '#fff2f0', label: t('sysAlerts.severe') },
@@ -41,43 +130,94 @@ const SystemAlertsPage = () => {
   };
 
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [levelFilter, setLevelFilter] = useState<string | undefined>(undefined);
+  const [levelFilter, setLevelFilter] = useState<string>('all');
+  const [domainFilter, setDomainFilter] = useState<string>('all');
+  const [transitionFilter, setTransitionFilter] = useState<string>('all');
+  const [suppressionFilter, setSuppressionFilter] = useState<string>('all');
+  const [instanceFilter, setInstanceFilter] = useState('');
+  const [labelFilter, setLabelFilter] = useState('');
+  const [fromFilter, setFromFilter] = useState('');
+  const [toFilter, setToFilter] = useState('');
+  const [collectorStatus, setCollectorStatus] = useState<CollectorStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const pageSize = 20;
   const [acknowledgingIds, setAcknowledgingIds] = useState<Set<number>>(() => new Set());
   const [clearing, setClearing] = useState(false);
-  const requestIdRef = useRef(0);
+  const [exporting, setExporting] = useState(false);
+  const [deliveries, setDeliveries] = useState<Record<number, NotificationDelivery[]>>({});
+  const [loadingDeliveries, setLoadingDeliveries] = useState<Set<number>>(() => new Set());
+  const [retryingDeliveryIds, setRetryingDeliveryIds] = useState<Set<number>>(() => new Set());
+  const [relatedAlerts, setRelatedAlerts] = useState<Record<number, SystemAlert[]>>({});
+  const [loadingRelatedIds, setLoadingRelatedIds] = useState<Set<number>>(() => new Set());
+  const [silencesVisible, setSilencesVisible] = useState(false);
+  const [silences, setSilences] = useState<AlertSilence[]>([]);
+  const [loadingSilences, setLoadingSilences] = useState(false);
+  const [savingSilence, setSavingSilence] = useState(false);
+  const [deletingSilenceId, setDeletingSilenceId] = useState<number | null>(null);
+  const [silenceForm] = Form.useForm();
 
-  const loadAlerts = useCallback(async () => {
-    const requestId = ++requestIdRef.current;
-    setLoading(true);
-    try {
-      const result = await listSystemAlertsPage({
-        level: levelFilter,
-        page,
-        pageSize,
-      });
-      if (requestId !== requestIdRef.current) return;
-      setAlerts(result.items);
-      setTotal(result.total);
-    } catch {
-      if (requestId === requestIdRef.current) message.error('系统告警加载失败，请稍后重试');
-    } finally {
-      if (requestId === requestIdRef.current) setLoading(false);
-    }
-  }, [levelFilter, page, pageSize]);
+  const currentQuery = () => {
+    const labelSeparator = labelFilter.indexOf('=');
+    const labelKey = labelSeparator > 0 ? labelFilter.slice(0, labelSeparator).trim() : undefined;
+    const labelValue = labelKey ? labelFilter.slice(labelSeparator + 1).trim() : undefined;
+    return {
+      level: levelFilter === 'all' ? undefined : levelFilter,
+      domain: domainFilter === 'all' ? undefined : (domainFilter as 'BUSINESS' | 'CLUSTER'),
+      transition: transitionFilter === 'all' ? undefined : transitionFilter,
+      notificationSuppressed:
+        suppressionFilter === 'all' ? undefined : suppressionFilter === 'suppressed',
+      instanceId: instanceFilter.trim() || undefined,
+      labelKey: labelKey && labelValue ? labelKey : undefined,
+      labelValue: labelKey && labelValue ? labelValue : undefined,
+      from: fromFilter ? localDateTimeToUtcDatabaseValue(fromFilter) : undefined,
+      to: toFilter ? localDateTimeToUtcDatabaseValue(toFilter) : undefined,
+    };
+  };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void loadAlerts(), 0);
-    return () => {
-      window.clearTimeout(timer);
-      requestIdRef.current += 1;
-    };
-  }, [loadAlerts]);
+    let cancelled = false;
 
-  const filtered = alerts;
+    void listSystemAlertsPage({
+      ...currentQuery(),
+      page,
+      pageSize,
+    })
+      .then((data: PageResult<SystemAlert>) => {
+        if (!cancelled) {
+          setAlerts(data.items);
+          setTotal(data.total);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) message.error(t('sysAlerts.loadFailed'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    void getCollectorStatus()
+      .then((status) => {
+        if (!cancelled) setCollectorStatus(status);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    domainFilter,
+    fromFilter,
+    instanceFilter,
+    labelFilter,
+    levelFilter,
+    page,
+    refreshNonce,
+    suppressionFilter,
+    toFilter,
+    transitionFilter,
+  ]);
 
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
@@ -88,7 +228,7 @@ const SystemAlertsPage = () => {
       setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)));
       message.success(t('sysAlerts.acknowledged'));
     } catch {
-      message.error('确认告警失败，请稍后重试');
+      message.error(t('sysAlerts.acknowledgeFailed'));
     } finally {
       setAcknowledgingIds((current) => {
         const next = new Set(current);
@@ -102,12 +242,152 @@ const SystemAlertsPage = () => {
     setClearing(true);
     try {
       await clearAcknowledgedAlerts();
-      await loadAlerts();
+      if (page === 1) setRefreshNonce((value) => value + 1);
+      else setPage(1);
       message.success(t('sysAlerts.cleared'));
     } catch {
-      message.error('清理已确认告警失败，请稍后重试');
+      message.error(t('sysAlerts.clearFailed'));
     } finally {
       setClearing(false);
+    }
+  };
+
+  const exportAlerts = async () => {
+    setExporting(true);
+    try {
+      const query = currentQuery();
+      const first = await listSystemAlertsPage({ ...query, page: 1, pageSize: 100 });
+      const rows = [...first.items];
+      for (let currentPage = 2; rows.length < first.total; currentPage += 1) {
+        const result = await listSystemAlertsPage({ ...query, page: currentPage, pageSize: 100 });
+        rows.push(...result.items);
+      }
+      downloadCsv(
+        `rocketmq-system-alerts-${new Date().toISOString().slice(0, 10)}.csv`,
+        buildCsv(ALERT_EXPORT_COLUMNS, rows),
+      );
+      message.success(t('sysAlerts.exportSuccess', { count: rows.length }));
+    } catch {
+      message.error(t('sysAlerts.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const loadDeliveries = async (alertId: number, force = false) => {
+    if ((!force && deliveries[alertId]) || loadingDeliveries.has(alertId)) return;
+    setLoadingDeliveries((current) => new Set(current).add(alertId));
+    try {
+      const result = await listAlertDeliveries(alertId);
+      setDeliveries((current) => ({ ...current, [alertId]: result }));
+    } catch {
+      message.error(t('sysAlerts.deliveryLoadFailed'));
+    } finally {
+      setLoadingDeliveries((current) => {
+        const next = new Set(current);
+        next.delete(alertId);
+        return next;
+      });
+    }
+  };
+
+  const loadRelatedAlerts = async (alertId: number) => {
+    if (relatedAlerts[alertId] || loadingRelatedIds.has(alertId)) return;
+    setLoadingRelatedIds((current) => new Set(current).add(alertId));
+    try {
+      const result = await listRelatedSystemAlerts(alertId);
+      setRelatedAlerts((current) => ({ ...current, [alertId]: result }));
+    } catch {
+      message.error(t('sysAlerts.relatedLoadFailed'));
+    } finally {
+      setLoadingRelatedIds((current) => {
+        const next = new Set(current);
+        next.delete(alertId);
+        return next;
+      });
+    }
+  };
+
+  const handleRetryDelivery = async (alertId: number, deliveryId: number) => {
+    setRetryingDeliveryIds((current) => new Set(current).add(deliveryId));
+    try {
+      await retryAlertDelivery(deliveryId);
+      await loadDeliveries(alertId, true);
+      message.success(t('deliveries.retryQueued'));
+    } catch {
+      message.error(t('deliveries.retryFailed'));
+    } finally {
+      setRetryingDeliveryIds((current) => {
+        const next = new Set(current);
+        next.delete(deliveryId);
+        return next;
+      });
+    }
+  };
+
+  const loadSilences = async () => {
+    setLoadingSilences(true);
+    try {
+      setSilences(await listAlertSilences());
+    } catch {
+      message.error(t('sysAlerts.silenceLoadFailed'));
+    } finally {
+      setLoadingSilences(false);
+    }
+  };
+
+  const openSilences = () => {
+    setSilencesVisible(true);
+    void loadSilences();
+  };
+
+  const createSilence = async () => {
+    let values: {
+      domain?: 'BUSINESS' | 'CLUSTER';
+      ruleId?: string;
+      instanceId?: string;
+      startsAt: string;
+      endsAt: string;
+      reason?: string;
+      labelsText?: string;
+    };
+    try {
+      values = await silenceForm.validateFields();
+    } catch {
+      return;
+    }
+    setSavingSilence(true);
+    try {
+      const request: CreateAlertSilence = {
+        instanceId: values.instanceId,
+        startsAt: localDateTimeToUtc(values.startsAt),
+        endsAt: localDateTimeToUtc(values.endsAt),
+        reason: values.reason,
+        ruleId: values.ruleId ? Number(values.ruleId) : undefined,
+        domain: values.domain || undefined,
+        labels: parseSilenceLabels(values.labelsText, t('sysAlerts.labelsFormatInvalid')),
+      };
+      await createAlertSilence(request);
+      silenceForm.resetFields();
+      await loadSilences();
+      message.success(t('sysAlerts.silenceCreated'));
+    } catch {
+      message.error(t('sysAlerts.silenceCreateFailed'));
+    } finally {
+      setSavingSilence(false);
+    }
+  };
+
+  const deleteSilence = async (id: number) => {
+    setDeletingSilenceId(id);
+    try {
+      await deleteAlertSilence(id);
+      await loadSilences();
+      message.success(t('sysAlerts.silenceEnded'));
+    } catch {
+      message.error(t('sysAlerts.silenceEndFailed'));
+    } finally {
+      setDeletingSilenceId(null);
     }
   };
 
@@ -117,136 +397,468 @@ const SystemAlertsPage = () => {
         title={t('sysAlerts.title')}
         subtitle={t('sysAlerts.subtitle', { n: unackCount })}
         extra={
-          <Button
-            icon={<Trash size={14} />}
-            onClick={handleClearAcked}
-            disabled={!alerts.some((a) => a.acknowledged)}
-            loading={clearing}
-          >
-            {t('sysAlerts.clearAcked')}
-          </Button>
+          <Flex gap={8}>
+            <Button
+              icon={<DownloadSimple size={14} />}
+              onClick={() => void exportAlerts()}
+              loading={exporting}
+            >
+              {t('sysAlerts.exportCsv')}
+            </Button>
+            <Button onClick={openSilences}>{t('sysAlerts.maintenanceWindows')}</Button>
+            <Button
+              icon={<Trash size={14} />}
+              onClick={handleClearAcked}
+              disabled={!alerts.some((a) => a.acknowledged)}
+              loading={clearing}
+            >
+              {t('sysAlerts.clearAcked')}
+            </Button>
+          </Flex>
         }
       />
 
       <Flex gap={8} style={{ marginBottom: 16 }}>
-        {[undefined, 'error', 'warning', 'info'].map((level) => (
+        {['all', 'error', 'warning', 'info'].map((level) => (
           <Button
-            key={level ?? 'all'}
+            key={level}
             type={levelFilter === level ? 'primary' : 'default'}
             size="small"
             onClick={() => {
-              setPage(1);
               setLevelFilter(level);
+              setPage(1);
             }}
           >
-            {level === undefined ? t('common.all') : alertLevelConfig[level]?.label}
+            {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
+            {level !== 'all' && (
+              <Badge
+                count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
+                style={{
+                  marginLeft: 4,
+                  backgroundColor:
+                    level === 'error' ? '#ff4d4f' : level === 'warning' ? '#fa8c16' : '#1677ff',
+                }}
+                size="small"
+              />
+            )}
           </Button>
         ))}
+        <Select
+          value={domainFilter}
+          size="small"
+          style={{ minWidth: 132 }}
+          onChange={(value) => {
+            setDomainFilter(value);
+            setPage(1);
+          }}
+          options={[
+            { value: 'all', label: t('common.all') },
+            { value: 'BUSINESS', label: t('sysAlerts.business') },
+            { value: 'CLUSTER', label: t('sysAlerts.cluster') },
+          ]}
+        />
+        <Input
+          aria-label={t('sysAlerts.instanceFilter')}
+          size="small"
+          placeholder={t('sysAlerts.instanceId')}
+          style={{ width: 150 }}
+          value={instanceFilter}
+          onChange={(event) => {
+            setInstanceFilter(event.target.value);
+            setPage(1);
+          }}
+        />
+        <Input
+          aria-label={t('sysAlerts.labelsFilter')}
+          size="small"
+          placeholder={t('sysAlerts.labelsPlaceholder')}
+          style={{ width: 190 }}
+          value={labelFilter}
+          onChange={(event) => {
+            setLabelFilter(event.target.value);
+            setPage(1);
+          }}
+        />
+        <Input
+          aria-label={t('sysAlerts.startTimeFilter')}
+          type="datetime-local"
+          size="small"
+          style={{ width: 190 }}
+          value={fromFilter}
+          onChange={(event) => {
+            setFromFilter(event.target.value);
+            setPage(1);
+          }}
+        />
+        <Input
+          aria-label={t('sysAlerts.endTimeFilter')}
+          type="datetime-local"
+          size="small"
+          style={{ width: 190 }}
+          value={toFilter}
+          onChange={(event) => {
+            setToFilter(event.target.value);
+            setPage(1);
+          }}
+        />
+        <Select
+          value={transitionFilter}
+          size="small"
+          style={{ minWidth: 124 }}
+          onChange={(value) => {
+            setTransitionFilter(value);
+            setPage(1);
+          }}
+          options={[
+            { value: 'all', label: t('sysAlerts.allStatuses') },
+            { value: 'FIRING', label: t('sysAlerts.firing') },
+            { value: 'RESOLVED', label: t('sysAlerts.resolved') },
+          ]}
+        />
+        <Select
+          aria-label={t('sysAlerts.suppressionFilter')}
+          value={suppressionFilter}
+          size="small"
+          style={{ minWidth: 132 }}
+          onChange={(value) => {
+            setSuppressionFilter(value);
+            setPage(1);
+          }}
+          options={[
+            { value: 'all', label: t('sysAlerts.allDeliveryStatuses') },
+            { value: 'suppressed', label: t('sysAlerts.notificationSuppressed') },
+            { value: 'delivered', label: t('sysAlerts.notificationNotSuppressed') },
+          ]}
+        />
+        {collectorStatus && <Tag color="success">{t('sysAlerts.nativeCollectionEnabled')}</Tag>}
       </Flex>
 
-      <Card styles={{ body: { padding: 0 } }}>
-        <Table<SystemAlert>
-          rowKey="id"
-          loading={loading}
-          dataSource={filtered}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            pageSizeOptions: ['20', '50', '100'],
-            showTotal: (count) => `${t('common.total')} ${count}`,
-            onChange: (nextPage, nextPageSize) => {
-              if (nextPageSize !== pageSize) {
-                setPage(1);
-                setPageSize(nextPageSize);
-              } else {
-                setPage(nextPage);
-              }
-            },
-          }}
-          columns={[
-            {
-              title: t('sysAlerts.severe'),
-              dataIndex: 'level',
-              width: 110,
-              render: (level: string) => {
-                const normalizedLevel = normalizeAlertLevel(level);
-                const cfg = alertLevelConfig[normalizedLevel] ?? {
-                  color: '#8c8c8c',
-                  bg: '#fafafa',
-                  label: level || t('common.na'),
-                };
-                return (
-                  <Tag
-                    color={
-                      normalizedLevel === 'error'
-                        ? 'error'
-                        : normalizedLevel === 'warning'
-                          ? 'warning'
-                          : normalizedLevel === 'info'
-                            ? 'processing'
-                            : 'default'
-                    }
-                    style={{ fontSize: 14, lineHeight: '18px', padding: '0 6px' }}
-                  >
-                    {cfg.label}
-                  </Tag>
-                );
-              },
-            },
-            {
-              title: t('sysAlerts.title'),
-              dataIndex: 'title',
-              render: (_: string, alert) => (
-                <>
-                  <Text strong style={{ fontSize: 14 }}>
-                    {alert.title}
-                  </Text>
+      <Flex vertical gap={12}>
+        {loading && <Card loading />}
+        {!loading &&
+          alerts.map((alert) => {
+            const normalizedLevel = normalizeAlertLevel(alert.level);
+            const cfg = alertLevelConfig[normalizedLevel] ?? {
+              color: '#8c8c8c',
+              bg: '#fafafa',
+              label: alert.level || t('common.na'),
+            };
+            return (
+              <div
+                key={alert.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  background: cfg.bg,
+                  borderLeft: `3px solid ${cfg.color}`,
+                  opacity: alert.acknowledged ? 0.6 : 1,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Flex align="center" gap={8}>
+                    <Text strong style={{ fontSize: 14 }}>
+                      {alert.title}
+                    </Text>
+                    <Tag
+                      color={
+                        normalizedLevel === 'error'
+                          ? 'error'
+                          : normalizedLevel === 'warning'
+                            ? 'warning'
+                            : normalizedLevel === 'info'
+                              ? 'processing'
+                              : 'default'
+                      }
+                      style={{ fontSize: 14, lineHeight: '18px', padding: '0 6px' }}
+                    >
+                      {cfg.label}
+                    </Tag>
+                    {alert.domain && (
+                      <Tag color={alert.domain === 'CLUSTER' ? 'geekblue' : 'green'}>
+                        {alert.domain === 'CLUSTER'
+                          ? t('sysAlerts.domainCluster')
+                          : t('sysAlerts.domainBusiness')}
+                      </Tag>
+                    )}
+                    {alert.transition && (
+                      <Tag>
+                        {formatAlertTransition(
+                          alert.transition,
+                          t('sysAlerts.firing'),
+                          t('sysAlerts.resolved'),
+                        )}
+                      </Tag>
+                    )}
+                    {alert.notificationSuppressed && (
+                      <Tag color="gold">{t('sysAlerts.notificationSuppressed')}</Tag>
+                    )}
+                  </Flex>
                   <Text type="secondary" style={{ fontSize: 14 }}>
                     {alert.description}
                   </Text>
-                </>
-              ),
-            },
-            {
-              title: t('audit.time'),
-              dataIndex: 'time',
-              width: 180,
-              render: (time: string) => (
-                <Text type="secondary" style={{ fontSize: 14 }}>
-                  {time}
+                  {alert.instanceId && (
+                    <Text type="secondary" style={{ display: 'block' }}>
+                      {alert.instanceId}
+                      {alert.currentValue != null ? ` · ${formatNumber(alert.currentValue)}` : ''}
+                    </Text>
+                  )}
+                  {alert.acknowledgedAt && (
+                    <Text type="secondary" style={{ display: 'block' }}>
+                      {t('sysAlerts.acknowledgedBy', { user: alert.acknowledgedBy ?? 'system' })} ·{' '}
+                      {formatUtcDateTime(alert.acknowledgedAt)}
+                    </Text>
+                  )}
+                  {alert.notificationSuppressed && (
+                    <Text type="warning" style={{ display: 'block' }}>
+                      {alert.suppressionReason || t('sysAlerts.suppressedByUpstream')}
+                    </Text>
+                  )}
+                  {alert.labels && Object.keys(alert.labels).length > 0 && (
+                    <Flex gap={4} wrap="wrap" style={{ marginTop: 6 }}>
+                      {Object.entries(alert.labels)
+                        .sort(([left], [right]) => left.localeCompare(right))
+                        .map(([key, value]) => (
+                          <Tag key={key}>
+                            {key}={value}
+                          </Tag>
+                        ))}
+                    </Flex>
+                  )}
+                  {loadingRelatedIds.has(alert.id) && <Spin size="small" />}
+                  {relatedAlerts[alert.id] && (
+                    <Flex vertical gap={4} style={{ marginTop: 8 }}>
+                      <Text strong>{t('sysAlerts.rootCauseImpact')}</Text>
+                      {relatedAlerts[alert.id].length === 0 && (
+                        <Text type="secondary">{t('sysAlerts.noRelatedEvents')}</Text>
+                      )}
+                      {relatedAlerts[alert.id].map((related) => (
+                        <Flex key={related.id} gap={6} align="center" wrap="wrap">
+                          <Tag color={related.domain === 'CLUSTER' ? 'geekblue' : 'green'}>
+                            {related.domain === 'CLUSTER'
+                              ? t('sysAlerts.domainCluster')
+                              : t('sysAlerts.domainBusiness')}
+                          </Tag>
+                          <Text>{related.title}</Text>
+                          {related.transition && (
+                            <Tag>
+                              {formatAlertTransition(
+                                related.transition,
+                                t('sysAlerts.firing'),
+                                t('sysAlerts.resolved'),
+                              )}
+                            </Tag>
+                          )}
+                          <Text type="secondary">{formatUtcDateTime(related.time)}</Text>
+                        </Flex>
+                      ))}
+                    </Flex>
+                  )}
+                  {loadingDeliveries.has(alert.id) && <Spin size="small" />}
+                  {deliveries[alert.id] && (
+                    <Flex vertical gap={6} style={{ marginTop: 6, minWidth: 0 }}>
+                      {deliveries[alert.id].length === 0 && (
+                        <Text type="secondary">
+                          {alert.notificationSuppressed
+                            ? alert.suppressionReason || t('sysAlerts.suppressedByUpstream')
+                            : alert.ruleId == null
+                              ? t('sysAlerts.noDeliveryRecords')
+                              : t('sysAlerts.noChannels')}
+                        </Text>
+                      )}
+                      {deliveries[alert.id].map((delivery) => (
+                        <div key={delivery.id} style={{ minWidth: 0 }}>
+                          <Flex gap={6} align="center" wrap="wrap">
+                            <Tag
+                              color={
+                                delivery.status === 'DELIVERED'
+                                  ? 'success'
+                                  : delivery.status === 'FAILED'
+                                    ? 'error'
+                                    : 'processing'
+                              }
+                            >
+                              {delivery.channel}: {delivery.status} ({delivery.attemptCount})
+                            </Tag>
+                            {delivery.status === 'FAILED' && (
+                              <Button
+                                size="small"
+                                type="link"
+                                onClick={() => void handleRetryDelivery(alert.id, delivery.id)}
+                                loading={retryingDeliveryIds.has(delivery.id)}
+                              >
+                                {t('deliveries.retry')}
+                              </Button>
+                            )}
+                          </Flex>
+                          {delivery.lastError && (
+                            <Text
+                              type="secondary"
+                              title={delivery.lastError}
+                              style={{
+                                display: 'block',
+                                marginTop: 2,
+                                overflowWrap: 'anywhere',
+                                wordBreak: 'break-word',
+                              }}
+                            >
+                              {delivery.lastError}
+                            </Text>
+                          )}
+                        </div>
+                      ))}
+                    </Flex>
+                  )}
+                </div>
+                <Flex align="center" gap={8} style={{ flexShrink: 0 }}>
+                  <Text type="secondary" style={{ fontSize: 14 }}>
+                    {formatUtcDateTime(alert.time)}
+                  </Text>
+                  <Button size="small" type="link" onClick={() => void loadDeliveries(alert.id)}>
+                    {t('sysAlerts.deliveryRecords')}
+                  </Button>
+                  <Button size="small" type="link" onClick={() => void loadRelatedAlerts(alert.id)}>
+                    {t('sysAlerts.relatedEvents')}
+                  </Button>
+                  {alert.suppressionCauseAlertId && (
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() => void loadRelatedAlerts(alert.id)}
+                    >
+                      {t('sysAlerts.viewRootCause')}
+                    </Button>
+                  )}
+                  {!alert.acknowledged && alert.transition !== 'RESOLVED' && (
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<CheckCircle size={14} />}
+                      onClick={() => handleAck(alert.id)}
+                      loading={acknowledgingIds.has(alert.id)}
+                    >
+                      {t('sysAlerts.acknowledge')}
+                    </Button>
+                  )}
+                </Flex>
+              </div>
+            );
+          })}
+        {!loading && alerts.length === 0 && (
+          <Card>
+            <Flex justify="center" style={{ padding: 40 }}>
+              <Text type="secondary">{t('sysAlerts.noAlerts')}</Text>
+            </Flex>
+          </Card>
+        )}
+      </Flex>
+      {total > pageSize && (
+        <Pagination
+          current={page}
+          pageSize={pageSize}
+          total={total}
+          showSizeChanger={false}
+          style={{ marginTop: 16, textAlign: 'right' }}
+          onChange={setPage}
+        />
+      )}
+      <Modal
+        title={t('sysAlerts.maintenanceWindows')}
+        open={silencesVisible}
+        onCancel={() => setSilencesVisible(false)}
+        onOk={() => void createSilence()}
+        okText={t('sysAlerts.create')}
+        okButtonProps={{ style: { display: canManageSilences ? undefined : 'none' } }}
+        confirmLoading={savingSilence}
+        width={680}
+      >
+        {canManageSilences && (
+          <Form form={silenceForm} layout="vertical" initialValues={{ domain: 'BUSINESS' }}>
+            <Flex gap={8}>
+              <Form.Item name="domain" label={t('sysAlerts.domain')} style={{ flex: 1 }}>
+                <Select
+                  options={[
+                    { value: 'BUSINESS', label: t('sysAlerts.business') },
+                    { value: 'CLUSTER', label: t('sysAlerts.cluster') },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                name="ruleId"
+                label={t('sysAlerts.ruleId')}
+                style={{ flex: 1 }}
+                rules={[{ pattern: /^\d+$/, message: t('sysAlerts.validRuleIdRequired') }]}
+              >
+                <Input inputMode="numeric" />
+              </Form.Item>
+              <Form.Item name="instanceId" label={t('sysAlerts.instanceId')} style={{ flex: 1 }}>
+                <Input />
+              </Form.Item>
+            </Flex>
+            <Flex gap={8}>
+              <Form.Item
+                name="startsAt"
+                label={t('sysAlerts.startTime')}
+                rules={[{ required: true, message: t('sysAlerts.startTimeRequired') }]}
+                style={{ flex: 1 }}
+              >
+                <Input type="datetime-local" />
+              </Form.Item>
+              <Form.Item
+                name="endsAt"
+                label={t('sysAlerts.endTime')}
+                rules={[{ required: true, message: t('sysAlerts.endTimeRequired') }]}
+                style={{ flex: 1 }}
+              >
+                <Input type="datetime-local" />
+              </Form.Item>
+            </Flex>
+            <Form.Item name="reason" label={t('sysAlerts.reason')}>
+              <Input maxLength={512} />
+            </Form.Item>
+            <Form.Item
+              name="labelsText"
+              label={t('sysAlerts.labelScope')}
+              extra={t('sysAlerts.labelScopeHelp')}
+            >
+              <Input />
+            </Form.Item>
+          </Form>
+        )}
+        <Spin spinning={loadingSilences}>
+          <Flex vertical gap={6}>
+            {silences.length === 0 && (
+              <Text type="secondary">{t('sysAlerts.noMaintenanceWindows')}</Text>
+            )}
+            {silences.map((silence) => (
+              <Flex key={silence.id} justify="space-between" align="center" gap={8}>
+                <Text>
+                  {silence.domain ?? t('common.all')} ·{' '}
+                  {silence.instanceId ?? t('sysAlerts.allInstances')} · {silence.startsAt} -{' '}
+                  {silence.endsAt}
+                  {silence.labels && Object.keys(silence.labels).length > 0
+                    ? ` · ${Object.entries(silence.labels)
+                        .map(([key, value]) => `${key}=${value}`)
+                        .join(', ')}`
+                    : ''}
                 </Text>
-              ),
-            },
-            {
-              title: t('common.actions'),
-              key: 'actions',
-              width: 130,
-              render: (_: unknown, alert: SystemAlert) =>
-                alert.acknowledged ? (
-                  <Tag>{t('sysAlerts.acknowledged')}</Tag>
-                ) : (
+                {canManageSilences && (
                   <Button
                     size="small"
-                    type="link"
-                    icon={<CheckCircle size={14} />}
-                    onClick={() => handleAck(alert.id)}
-                    loading={acknowledgingIds.has(alert.id)}
+                    danger
+                    loading={deletingSilenceId === silence.id}
+                    onClick={() => void deleteSilence(silence.id)}
                   >
-                    {t('sysAlerts.acknowledge')}
+                    {t('sysAlerts.end')}
                   </Button>
-                ),
-            },
-          ]}
-          onRow={(alert) => ({
-            style: {
-              background: alertLevelConfig[normalizeAlertLevel(alert.level)]?.bg ?? '#fafafa',
-              opacity: alert.acknowledged ? 0.6 : 1,
-            },
-          })}
-        />
-      </Card>
+                )}
+              </Flex>
+            ))}
+          </Flex>
+        </Spin>
+      </Modal>
     </div>
   );
 };

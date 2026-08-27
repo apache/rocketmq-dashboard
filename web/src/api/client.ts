@@ -99,7 +99,7 @@ client.interceptors.response.use(
     if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
       clearAiChatHistories();
       clearAuthSession();
-      window.location.href = '/';
+      window.location.href = '/login';
       return Promise.reject(error);
     }
     if (isCorsRejection(error)) {

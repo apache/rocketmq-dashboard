@@ -103,6 +103,10 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                 // drops it; re-add it here or the configured LLM token is lost on restart.
                 node.put("apiKey", settings.getApiKey());
             }
+            if (org.springframework.util.StringUtils.hasText(settings.getDingtalkSigningSecret())) {
+                // The signing secret is also WRITE_ONLY and must be retained in persisted settings.
+                node.put("dingtalkSigningSecret", settings.getDingtalkSigningSecret());
+            }
             String json = objectMapper.writeValueAsString(node);
             RmqSettings entity = findSingletonSettings();
             if (entity == null) {

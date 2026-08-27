@@ -154,7 +154,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private void fillConsumeStats(MQAdminExt admin, ConsumerGroupVO vo, String name) {
         try {
             ConsumeStats stats = admin.examineConsumeStats(name);
-            if (stats == null || stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
+            if (stats == null) {
+                return;
+            }
+            vo.setConsumeStatsAvailable(true);
+            if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }
             long totalLag = 0;
@@ -173,6 +177,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             if (newestConsumedTimestamp > 0) {
                 long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
+                vo.setConsumptionTimestampAvailable(true);
             }
         } catch (Exception e) {
             log.debug("No consume stats for group {}: {}", name, e.getMessage());
