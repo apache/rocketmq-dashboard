@@ -24,7 +24,11 @@ import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
+import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
+import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
 import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
@@ -37,7 +41,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 @Slf4j
@@ -355,6 +362,99 @@ public class MetadataService {
         if (request == null) {
             throw new BusinessException(400, "Topic send message request is required");
         }
+    }
+
+    private static final int MAX_IMPORT_GROUPS = 100;
+
+    public ImportConsumerGroupsResultVO importConsumerGroups(String instanceId,
+                                                             List<CreateConsumerGroupDTO> groups) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(400, "instanceId is required");
+        }
+        if (groups == null || groups.isEmpty()) {
+            throw new BusinessException(400, "groups is required");
+        }
+        if (groups.size() > MAX_IMPORT_GROUPS) {
+            throw new BusinessException(400, "At most 100 consumer groups are allowed per import");
+        }
+
+        String normalizedInstanceId = normalizeInstanceId(instanceId);
+        List<ConsumerGroupVO> imported = new ArrayList<>();
+        List<ImportConsumerGroupsResultVO.Failure> failures = new ArrayList<>();
+        for (int index = 0; index < groups.size(); index++) {
+            CreateConsumerGroupDTO request = groups.get(index);
+            String name = request == null ? null : request.getName();
+            try {
+                if (request == null) {
+                    throw new BusinessException(400, "consumer group request is required");
+                }
+                ConsumerGroupVO group = request.toConsumerGroupVO();
+                group.setInstanceId(normalizedInstanceId);
+                imported.add(createConsumerGroup(group));
+            } catch (Exception exception) {
+                failures.add(ImportConsumerGroupsResultVO.Failure.builder()
+                        .index(index)
+                        .name(name)
+                        .message(StringUtils.hasText(exception.getMessage())
+                                ? exception.getMessage() : "Failed to create consumer group")
+                        .build());
+            }
+        }
+
+        return ImportConsumerGroupsResultVO.builder()
+                .imported(imported.size())
+                .failed(failures.size())
+                .groups(imported)
+                .failures(failures)
+                .build();
+    }
+
+    public String exportConsumerGroups(String instanceId, String search, String subscriptionMode,
+                                       List<String> names) {
+        instanceId = normalizeInstanceId(instanceId);
+        List<ConsumerGroupVO> groups = new ArrayList<>(listConsumerGroups(instanceId, null, search));
+        Set<String> selectedNames = new HashSet<>(names == null ? List.of() : names);
+        if (!selectedNames.isEmpty()) {
+            groups.removeIf(group -> !selectedNames.contains(group.getName()));
+        }
+        if (StringUtils.hasText(subscriptionMode) && !"ALL".equals(subscriptionMode)) {
+            groups.removeIf(group -> !subscriptionMode.equals(toText(group.getSubscriptionMode())));
+        }
+
+        groups.sort(this::compareNames);
+        return buildConsumerGroupCsv(groups);
+    }
+
+    private int compareNames(ConsumerGroupVO left, ConsumerGroupVO right) {
+        String leftName = left.getName() == null ? "" : left.getName();
+        String rightName = right.getName() == null ? "" : right.getName();
+        return leftName.compareTo(rightName);
+    }
+
+    private String buildConsumerGroupCsv(List<ConsumerGroupVO> groups) {
+        StringBuilder csv = new StringBuilder();
+        CsvUtil.appendRow(csv, "Name", "Namespace", "Cluster ID", "Subscription Mode", "Consume Type",
+                "Online Instances", "Total Lag", "Delay Seconds", "Subscription Data Type",
+                "Delivery Order Type", "Retry Max Times", "Subscribed Topics", "Created At", "Updated At");
+        for (ConsumerGroupVO group : groups) {
+            CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
+                    toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
+                    group.getOnlineInstances(), group.getTotalLag(), group.getDelaySeconds(),
+                    group.getSubscriptionDataType(), group.getDeliveryOrderType(), group.getRetryMaxTimes(),
+                    String.join(";", group.getSubscribedTopics() == null ? List.of() : group.getSubscribedTopics()),
+                    group.getGmtCreate(), group.getGmtModified());
+        }
+        return csv.toString();
+    }
+
+    private String toText(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof SubscriptionMode mode) {
+            return mode.name();
+        }
+        return value.toString();
     }
 
     private String requireName(String value, String fieldName) {

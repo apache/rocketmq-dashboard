@@ -30,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 @RestController
@@ -86,6 +88,23 @@ public class ConsumerGroupController {
         return Result.ok(metadataService.refreshConsumerGroup(instanceId, name));
     }
 
+    @GetMapping("/export")
+    public Result<String> exportConsumerGroups(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String subscriptionMode,
+            @RequestParam(required = false) String names) {
+        return Result.ok(metadataService.exportConsumerGroups(instanceId, search,
+                subscriptionMode, parseNames(names)));
+    }
+
+    @PostMapping("/import")
+    public Result<ImportConsumerGroupsResultVO> importConsumerGroups(
+            @Valid @RequestBody ImportConsumerGroupsDTO request) {
+        String instanceId = instanceService.normalizeIdentifier(request.getInstanceId());
+        return Result.ok(metadataService.importConsumerGroups(instanceId, request.getGroups()));
+    }
+
     @GetMapping("/{name}/progress")
     public Result<List<QueueProgressVO>> getGroupProgress(
             @PathVariable String name,
@@ -126,5 +145,16 @@ public class ConsumerGroupController {
         metadataService.resetOffset(request.getInstanceId(), request.getName(),
                 request.getTimestamp(), request.getTopic());
         return Result.ok();
+    }
+
+    private List<String> parseNames(String names) {
+        if (names == null || names.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(names.split(","))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .distinct()
+                .toList();
     }
 }

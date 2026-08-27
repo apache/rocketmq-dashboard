@@ -100,6 +100,23 @@ class ConsumerGroupControllerTest {
     }
 
     @Test
+    void exportConsumerGroupsShouldPassViewFiltersAndSelectedNames() throws Exception {
+        when(metadataService.exportConsumerGroups("instance-a", "orders", "Pop",
+                List.of("cg-a", "cg-b"))).thenReturn("\"Name\"\n\"cg-a\"");
+
+        mockMvc.perform(get("/api/groups/export")
+                        .param("instanceId", "instance-a")
+                        .param("search", "orders")
+                        .param("subscriptionMode", "Pop")
+                        .param("names", "cg-a, cg-b,cg-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value("\"Name\"\n\"cg-a\""));
+
+        verify(metadataService).exportConsumerGroups("instance-a", "orders", "Pop",
+                List.of("cg-a", "cg-b"));
+    }
+
+    @Test
     void createConsumerGroupShouldPassValidatedRequest() throws Exception {
         Map<String, Object> body = Map.of(
                 "instanceId", 7,
@@ -130,6 +147,43 @@ class ConsumerGroupControllerTest {
         assertThat(captor.getValue().getClusterId()).isEqualTo("cluster-a");
         assertThat(captor.getValue().getInstanceId()).isEqualTo("rocketmq1");
         assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
+    }
+
+    @Test
+    void importConsumerGroupsShouldNormalizeInstanceAndDelegateBatch() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "7",
+                "groups", List.of(Map.of(
+                        "name", "cg-orders",
+                        "subscriptionMode", "Push",
+                        "consumeType", "CLUSTERING",
+                        "retryMaxTimes", 8
+                ))
+        );
+        ConsumerGroupVO created = new ConsumerGroupVO();
+        created.setName("cg-orders");
+        when(instanceService.normalizeIdentifier("7")).thenReturn("rocketmq1");
+        when(metadataService.importConsumerGroups(eq("rocketmq1"), any()))
+                .thenReturn(ImportConsumerGroupsResultVO.builder()
+                        .imported(1)
+                        .failed(0)
+                        .groups(List.of(created))
+                        .failures(List.of())
+                        .build());
+
+        mockMvc.perform(post("/api/groups/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.groups[0].name").value("cg-orders"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<CreateConsumerGroupDTO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(metadataService).importConsumerGroups(eq("rocketmq1"), captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).getName()).isEqualTo("cg-orders");
+        assertThat(captor.getValue().get(0).getRetryMaxTimes()).isEqualTo(8);
     }
 
     @Test

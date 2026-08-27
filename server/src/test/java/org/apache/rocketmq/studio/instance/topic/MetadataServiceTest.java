@@ -19,9 +19,13 @@ package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
+import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
@@ -30,14 +34,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -456,6 +464,117 @@ class MetadataServiceTest {
                 "cloud-instance", null, "SUCCESS", null);
         verify(operationAuditService).record("RESET_OFFSET", "GROUP", "cg-orders",
                 "cloud-instance", "topic=orders, timestamp=1784246400000", "SUCCESS", null);
+    }
+
+    @Test
+    void exportConsumerGroupsShouldApplyFiltersSortingAndCsvEscaping() {
+        ConsumerGroupVO stale = consumerGroup("users-cg", "=formula", 2, SubscriptionMode.Push);
+        ConsumerGroupVO unknownLag = consumerGroup("orders-unknown", "orders", -1, SubscriptionMode.Pop);
+        ConsumerGroupVO highLag = consumerGroup("orders-high", "orders", 100, SubscriptionMode.Pop);
+        ConsumerGroupVO lowLag = consumerGroup("orders-low", "orders", 5, SubscriptionMode.Pop);
+        when(apacheProvider.listConsumerGroups("instance-a", "orders"))
+                .thenReturn(List.of(stale, unknownLag, lowLag, highLag));
+
+        String csv = metadataService.exportConsumerGroups("instance-a", " orders ", "Pop",
+                List.of("orders-low", "orders-high", "orders-unknown"));
+
+        assertThat(csv).contains("\"Name\",\"Namespace\",\"Cluster ID\"");
+        assertThat(csv).contains("\"orders-high\",\"orders\"");
+        assertThat(csv).contains("\"orders-low\",\"orders\"");
+        assertThat(csv).contains("\"orders-unknown\",\"orders\"");
+        assertThat(csv).doesNotContain("users-cg");
+        assertThat(csv.indexOf("\"orders-high\"")).isLessThan(csv.indexOf("\"orders-low\""));
+        assertThat(csv.indexOf("\"orders-low\"")).isLessThan(csv.indexOf("\"orders-unknown\""));
+        assertThat(csv).contains("\"orders-topic;payments,topic\"");
+        verify(apacheProvider).listConsumerGroups("instance-a", "orders");
+    }
+
+    @Test
+    void exportConsumerGroupsShouldEscapeFormulaCells() {
+        ConsumerGroupVO group = consumerGroup("orders-cg", "=formula", 10, SubscriptionMode.Push);
+        when(apacheProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
+
+        String csv = metadataService.exportConsumerGroups("instance-a", null, null, List.of());
+
+        assertThat(csv).contains("\"'=formula\"");
+    }
+
+    @Test
+    void importConsumerGroupsShouldContinueAfterRowFailure() {
+        when(apacheProvider.createConsumerGroup(eq("instance-a"), any(ConsumerGroupVO.class)))
+                .thenAnswer(invocation -> {
+                    ConsumerGroupVO group = invocation.getArgument(1);
+                    if ("cg-fail".equals(group.getName())) {
+                        throw new BusinessException(500, "broker rejected group");
+                    }
+                    group.setClusterId("cluster-a");
+                    return group;
+                });
+
+        ImportConsumerGroupsResultVO result = metadataService.importConsumerGroups("instance-a",
+                List.of(importRequest("cg-ok", "other-instance"), importRequest("cg-fail", "other-instance")));
+
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getGroups()).extracting(ConsumerGroupVO::getName).containsExactly("cg-ok");
+        assertThat(result.getFailures()).hasSize(1);
+        assertThat(result.getFailures().get(0).getIndex()).isEqualTo(1);
+        assertThat(result.getFailures().get(0).getName()).isEqualTo("cg-fail");
+        assertThat(result.getFailures().get(0).getMessage()).isEqualTo("broker rejected group");
+
+        ArgumentCaptor<ConsumerGroupVO> captor = ArgumentCaptor.forClass(ConsumerGroupVO.class);
+        verify(apacheProvider, org.mockito.Mockito.times(2))
+                .createConsumerGroup(eq("instance-a"), captor.capture());
+        assertThat(captor.getAllValues()).extracting(ConsumerGroupVO::getInstanceId)
+                .containsExactly("instance-a", "instance-a");
+    }
+
+
+    @Test
+    void importConsumerGroupsShouldRejectEmptyAndOversizedBatchesTest() {
+        assertThatThrownBy(() -> metadataService.importConsumerGroups("instance-a", List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("groups is required");
+
+        List<CreateConsumerGroupDTO> oversized = new ArrayList<>();
+        for (int i = 0; i < 101; i++) {
+            oversized.add(importRequest("cg-" + i, null));
+        }
+        assertThatThrownBy(() -> metadataService.importConsumerGroups("instance-a", oversized))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("At most 100");
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    private ConsumerGroupVO consumerGroup(String name, String namespace, long lag, SubscriptionMode mode) {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName(name);
+        group.setNamespace(namespace);
+        group.setClusterId("cluster-a");
+        group.setSubscriptionMode(mode);
+        group.setConsumeType(ConsumeType.CLUSTERING);
+        group.setOnlineInstances(1);
+        group.setTotalLag(lag);
+        group.setDelaySeconds(3);
+        group.setSubscriptionDataType("NORMAL");
+        group.setRetryMaxTimes(16);
+        group.setSubscribedTopics(List.of("orders-topic", "payments,topic"));
+        group.setGmtCreate(LocalDateTime.of(2026, 8, 27, 10, 0));
+        group.setGmtModified(LocalDateTime.of(2026, 8, 27, 11, 0));
+        return group;
+    }
+
+    private CreateConsumerGroupDTO importRequest(String name, String instanceId) {
+        CreateConsumerGroupDTO request = new CreateConsumerGroupDTO();
+        request.setName(name);
+        request.setInstanceId(instanceId);
+        request.setSubscriptionMode(SubscriptionMode.Push);
+        request.setConsumeType(ConsumeType.CLUSTERING);
+        request.setRetryMaxTimes(16);
+        request.setSubscriptionDataType("NORMAL");
+        return request;
+
     }
 
 }

@@ -78,10 +78,11 @@ import {
   batchDeleteConsumerGroups,
   createConsumerGroup,
   deleteConsumerGroup,
+  exportConsumerGroups,
   getConsumerProgress,
   getConsumerStack,
   getConsumerSubscriptions,
-  listAllConsumerGroups,
+  importConsumerGroups,
   listConsumerGroupPage,
   refreshConsumerGroup,
   resetConsumerOffset,
@@ -96,7 +97,7 @@ import {
   validateConsumerGroupCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { downloadCsv } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
 import { tableScrollX } from '../../utils/table';
 
@@ -139,25 +140,6 @@ const formatDelay = (totalSeconds: number): string => {
 
   return parts.length > 0 ? parts.join('') : '0秒';
 };
-
-const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
-  { header: 'Name', value: (group) => group.name },
-  { header: 'Namespace', value: (group) => group.namespace },
-  { header: 'Cluster ID', value: (group) => group.clusterId },
-  { header: 'Subscription Mode', value: (group) => group.subscriptionMode },
-  { header: 'Consume Type', value: (group) => group.consumeType },
-  { header: 'Online Instances', value: (group) => group.onlineInstances },
-  { header: 'Total Lag', value: (group) => group.totalLag },
-  { header: 'Delay Seconds', value: (group) => group.delaySeconds },
-  { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
-  { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
-  { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },
-  { header: 'Subscribed Topics', value: (group) => (group.subscribedTopics ?? []).join(';') },
-  { header: 'Created At', value: (group) => group.gmtCreate },
-  { header: 'Updated At', value: (group) => group.gmtModified },
-];
-
-const buildConsumerGroupCsv = (groups: ConsumerGroup[]) => buildCsv(GROUP_EXPORT_COLUMNS, groups);
 
 const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): ConsumerGroup[] => {
   let data = groups;
@@ -383,16 +365,13 @@ const ConsumerPageContent = ({
   const handleExport = async () => {
     setExporting(true);
     try {
-      const allGroups = await listAllConsumerGroups({
+      const csv = await exportConsumerGroups({
         instanceId: selectedInstanceId || undefined,
         search: search.trim() || undefined,
+        subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
       });
-      const exportGroups = visibleConsumerGroups(allGroups, modeFilter);
-      downloadCsv(
-        `rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`,
-        buildConsumerGroupCsv(exportGroups),
-      );
-      message.success(`已导出 ${exportGroups.length} 个 Group`);
+      downloadCsv(`rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      message.success('Group 导出完成');
     } catch {
       message.error('导出 Group 失败，请稍后重试');
     } finally {
@@ -582,22 +561,37 @@ const ConsumerPageContent = ({
 
     setImporting(true);
     const nextRows = importRows.map((row) => ({ ...row }));
-    const createdGroups: ConsumerGroup[] = [];
+    let createdGroups: ConsumerGroup[] = [];
 
-    for (const { row, index } of targetIndexes) {
-      try {
-        const created = await createConsumerGroup(row.payload);
-        createdGroups.push(created);
-        nextRows[index] = { ...nextRows[index], status: 'success', message: '已创建' };
-      } catch (error) {
+    try {
+      const result = await importConsumerGroups(
+        selectedInstanceId,
+        targetIndexes.map(({ row }) => row.payload),
+      );
+      createdGroups = result.groups;
+      const failureByIndex = new Map(result.failures.map((failure) => [failure.index, failure]));
+      targetIndexes.forEach(({ index }, requestIndex) => {
+        const failure = failureByIndex.get(requestIndex);
+        nextRows[index] = failure
+          ? {
+              ...nextRows[index],
+              status: 'failed',
+              message: failure.message || '创建失败',
+            }
+          : { ...nextRows[index], status: 'success', message: '已创建' };
+      });
+    } catch (error) {
+      for (const { index } of targetIndexes) {
         nextRows[index] = {
           ...nextRows[index],
           status: 'failed',
           message: error instanceof Error ? error.message : '创建失败',
         };
       }
-      setImportRows([...nextRows]);
+    } finally {
+      setImporting(false);
     }
+    setImportRows([...nextRows]);
 
     if (createdGroups.length > 0) {
       setGroups((previous) => {
@@ -619,7 +613,6 @@ const ConsumerPageContent = ({
     } else {
       message.error(`${failedCount} 个 Group 导入失败`);
     }
-    setImporting(false);
   };
 
   const consumerGroupImportColumns: ColumnsType<ResourceImportRow<Partial<ConsumerGroup>>> = [
@@ -1897,7 +1890,7 @@ const ConsumerPageContent = ({
             <Alert
               type="info"
               showIcon
-              message={`检测到 ${importRows.length} 个 Group，将按顺序调用创建接口`}
+              message={`检测到 ${importRows.length} 个 Group，将通过后端批量导入`}
               description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
             />
           )}
