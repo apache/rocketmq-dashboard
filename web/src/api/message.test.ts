@@ -18,7 +18,12 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { consumeMessageDirectly, getMessageTrace, queryMessagePage, queryMessages } from './message';
+import {
+  consumeMessageDirectly,
+  getMessageTrace,
+  queryMessagePage,
+  queryMessages,
+} from './message';
 
 const mock = new MockAdapter(client);
 
@@ -123,6 +128,49 @@ describe('message API', () => {
       .reply(200, { code: 200, data: trace });
 
     await expect(getMessageTrace('msg-1', 'instance-1', 'orders')).resolves.toEqual(trace);
+  });
+
+  it('maps backend trace node statuses to Ant Design step statuses', async () => {
+    const trace = {
+      nodes: [
+        {
+          title: 'Produce',
+          timestamp: 1784246400000,
+          status: 'failed',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'Consume',
+          timestamp: 1784246400000,
+          status: 'finish',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'In flight',
+          timestamp: 1784246400000,
+          status: 'process',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'Unknown',
+          timestamp: 1784246400000,
+          status: 'something-else',
+          costTime: 1,
+          description: 'x',
+        },
+      ],
+      consumerStatus: [],
+    };
+    mock
+      .onGet('/messages/msg-2/trace', { params: { instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: trace });
+
+    const mapped = await getMessageTrace('msg-2', 'instance-1');
+    expect(mapped.nodes.map((node) => node.status)).toEqual(['error', 'finish', 'process', 'wait']);
+    expect(mapped.consumerStatus).toEqual([]);
   });
 
   it('encodes message IDs before requesting trace records', async () => {
