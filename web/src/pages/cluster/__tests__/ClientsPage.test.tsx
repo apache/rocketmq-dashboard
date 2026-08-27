@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -138,6 +138,16 @@ const renderWithProviders = (ui: React.ReactElement) =>
       <LangProvider>{ui}</LangProvider>
     </App>,
   );
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
 
 describe('Clients page', () => {
   it('returns to the first page when the connection search changes', async () => {
@@ -390,6 +400,63 @@ describe('Clients page', () => {
     expect(await screen.findByText('Cluster ns-audit is unavailable')).toBeInTheDocument();
     expect(screen.queryByText('order-svc-0@10.0.1.12:49152')).not.toBeInTheDocument();
     expect(within(screen.getByTestId('connection-total')).getByText('0')).toBeInTheDocument();
+  });
+
+  it('ignores a stale connection response after switching nameservers', async () => {
+    const user = userEvent.setup();
+    const stale = deferred<ClientConnection[]>();
+    const latest = deferred<ClientConnection[]>();
+    vi.mocked(connectionsService.listConnections)
+      .mockImplementationOnce(() => stale.promise)
+      .mockImplementationOnce(() => latest.promise);
+
+    renderWithProviders(<ClientsPage />);
+
+    await user.click(screen.getByRole('combobox', { name: 'NameServer' }));
+    await user.click(
+      await screen.findByText('rocketmq2 (namesrv-2:9876)', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-2:9876',
+      }),
+    );
+
+    await act(async () => {
+      latest.resolve(connections);
+      stale.resolve([{ ...connection, clientId: 'stale-client@10.0.1.99:49160' }]);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('stale-client@10.0.1.99:49160')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('connection-total')).getByText('3')).toBeInTheDocument();
+  });
+
+  it('ignores a stale registry response after a retry', async () => {
+    const user = userEvent.setup();
+    const stale = deferred<ClusterInfo[]>();
+    vi.mocked(clusterService.listRegistryClusters)
+      .mockRejectedValueOnce(new Error('Unable to load registry clusters'))
+      .mockImplementationOnce(() => stale.promise);
+
+    renderWithProviders(<ClientsPage />);
+
+    expect(await screen.findByText('Unable to load registry clusters')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() =>
+      expect(clusterService.listRegistryClusters).toHaveBeenNthCalledWith(2),
+    );
+
+    await act(async () => {
+      stale.resolve([]);
+    });
+
+    expect(screen.queryByText('Unable to load registry clusters')).not.toBeInTheDocument();
+    expect(connectionsService.listConnections).toHaveBeenCalledTimes(0);
   });
 
   it('surfaces registry discovery failures and allows retrying', async () => {

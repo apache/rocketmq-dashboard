@@ -142,6 +142,7 @@ const DLQPage = () => {
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
+  const groupRequestIdRef = useRef(0);
 
   useEffect(
     () => () => {
@@ -175,16 +176,14 @@ const DLQPage = () => {
   }
 
   useEffect(() => {
-    let cancelled = false;
+    const requestId = ++groupRequestIdRef.current;
 
     if (!selectedInstanceId) {
       void Promise.resolve().then(() => {
-        if (cancelled) return;
+        if (groupRequestIdRef.current !== requestId) return;
         setLoading(false);
       });
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
 
     // Clear `loading` inside the same callback as the data updates so rows and
@@ -192,7 +191,7 @@ const DLQPage = () => {
     // visible for a render while the spin overlay still blocks pointer events.
     void listDLQGroups(selectedInstanceId, search || undefined, page, pageSize)
       .then((result) => {
-        if (!cancelled) {
+        if (groupRequestIdRef.current === requestId) {
           setGroups(result.items);
           setTotal(result.total);
           setLoadError(null);
@@ -206,16 +205,19 @@ const DLQPage = () => {
         }
       })
       .catch((error) => {
-        if (!cancelled) {
+        if (groupRequestIdRef.current === requestId) {
           setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
           setLoading(false);
         }
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [refreshKey, selectedInstanceId, search, page, pageSize]);
+
+  useEffect(
+    () => () => {
+      groupRequestIdRef.current += 1;
+    },
+    [],
+  );
 
   const selectedGroups = useMemo(() => {
     const selected = new Set(selectedGroupNames);

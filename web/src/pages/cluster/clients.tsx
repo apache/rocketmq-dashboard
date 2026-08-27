@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -137,6 +137,8 @@ const ClientsPage = () => {
   const [columnFilters, setColumnFilters] = useState<ClientTableFilters>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const registryRequestRef = useRef(0);
+  const connectionRequestRef = useRef(0);
 
   const selectedCluster = registryClusters.find((cluster) => cluster.endpoint === selectedEndpoint);
 
@@ -150,6 +152,7 @@ const ClientsPage = () => {
   );
 
   const handleNameserverChange = (endpoint: string) => {
+    connectionRequestRef.current += 1;
     setCurrentPage(1);
     setSelectedEndpoint(endpoint);
     setConnections([]);
@@ -160,11 +163,11 @@ const ClientsPage = () => {
   };
 
   useEffect(() => {
-    let cancelled = false;
+    const requestId = ++registryRequestRef.current;
 
     void listRegistryClusters()
       .then((nextClusters) => {
-        if (cancelled) return;
+        if (registryRequestRef.current !== requestId) return;
         setRegistryClusters(nextClusters);
         setSelectedEndpoint((current) => {
           if (current && nextClusters.some((cluster) => cluster.endpoint === current)) {
@@ -175,38 +178,35 @@ const ClientsPage = () => {
         setLoadError(null);
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (registryRequestRef.current !== requestId) return;
         setRegistryClusters([]);
         setSelectedEndpoint(undefined);
         setConnections([]);
         setLoadError(getLoadErrorMessage(error));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (registryRequestRef.current === requestId) setLoading(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [registryLoadKey]);
 
   useEffect(() => {
-    let cancelled = false;
+    const requestId = ++connectionRequestRef.current;
     if (!selectedEndpoint || !selectedCluster) {
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
+    void Promise.resolve().then(() => {
+      if (connectionRequestRef.current === requestId) setLoading(true);
+    });
 
     void listConnections({ namesrvAddr: selectedEndpoint })
       .then((nextConnections) => {
-        if (!cancelled) {
+        if (connectionRequestRef.current === requestId) {
           setConnections(nextConnections);
           setLoadError(null);
         }
       })
       .catch((error) => {
-        if (!cancelled) {
+        if (connectionRequestRef.current === requestId) {
           setConnections([]);
           setClusterFilter('ALL');
           setSelectedConnection(null);
@@ -214,13 +214,17 @@ const ClientsPage = () => {
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (connectionRequestRef.current === requestId) setLoading(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [connectionLoadKey, selectedEndpoint, selectedCluster]);
+
+  useEffect(
+    () => () => {
+      registryRequestRef.current += 1;
+      connectionRequestRef.current += 1;
+    },
+    [],
+  );
 
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {

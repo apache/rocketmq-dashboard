@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Card,
   Table,
@@ -100,21 +100,21 @@ const AuditPage: React.FC = () => {
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
   const [exporting, setExporting] = useState(false);
+  const recordsRequestRef = useRef(0);
+  const filterOptionsRequestRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const requestId = ++filterOptionsRequestRef.current;
 
     void getAuditFilterOptions()
       .then((options) => {
-        if (!cancelled) setFilterOptions(options);
+        if (filterOptionsRequestRef.current === requestId) setFilterOptions(options);
       })
       .catch(() => {
-        if (!cancelled) setFilterOptions(emptyFilterOptions);
+        if (filterOptionsRequestRef.current === requestId) {
+          setFilterOptions(emptyFilterOptions);
+        }
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [refreshKey]);
 
   // Debounce free-text search so the record list is not re-fetched on every
@@ -125,9 +125,9 @@ const AuditPage: React.FC = () => {
   }, [searchText]);
 
   useEffect(() => {
-    let cancelled = false;
+    const requestId = ++recordsRequestRef.current;
     void Promise.resolve().then(() => {
-      if (!cancelled) setLoading(true);
+      if (recordsRequestRef.current === requestId) setLoading(true);
     });
 
     void listAuditRecords({
@@ -143,20 +143,22 @@ const AuditPage: React.FC = () => {
       ),
     })
       .then((result) => {
-        if (cancelled) return;
+        if (recordsRequestRef.current !== requestId) return;
         setRecords(result.items);
         setTotal(result.total);
+        if (result.items.length === 0 && result.total > 0 && page > 1) {
+          setPage(Math.max(1, Math.ceil(result.total / pageSize)));
+          return;
+        }
       })
       .catch(() => {
-        if (!cancelled) message.error('审计日志加载失败，请稍后重试');
+        if (recordsRequestRef.current === requestId) {
+          message.error('审计日志加载失败，请稍后重试');
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (recordsRequestRef.current === requestId) setLoading(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     page,
     pageSize,
@@ -168,6 +170,34 @@ const AuditPage: React.FC = () => {
     resultFilter,
     refreshKey,
   ]);
+
+  useEffect(
+    () => () => {
+      recordsRequestRef.current += 1;
+      filterOptionsRequestRef.current += 1;
+    },
+    [],
+  );
+
+  const activeFilter = useMemo(
+    () =>
+      buildAuditFilter(
+        debouncedSearchText,
+        selectedType,
+        selectedResourceType,
+        selectedClusterId,
+        dateRange,
+        resultFilter,
+      ),
+    [
+      debouncedSearchText,
+      selectedType,
+      selectedResourceType,
+      selectedClusterId,
+      dateRange,
+      resultFilter,
+    ],
+  );
 
   const { Text } = Typography;
 
@@ -186,16 +216,7 @@ const AuditPage: React.FC = () => {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const csv = await exportAuditLogs(
-        buildAuditFilter(
-          searchText,
-          selectedType,
-          selectedResourceType,
-          selectedClusterId,
-          dateRange,
-          resultFilter,
-        ),
-      );
+      const csv = await exportAuditLogs(activeFilter);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
     } catch {
