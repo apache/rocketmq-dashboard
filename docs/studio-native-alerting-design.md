@@ -239,6 +239,10 @@ Snapshots have short retention, initially 24 hours. Studio is not a replacement 
 
 `CollectorScheduler` creates per-instance jobs at a default 30-second interval. Each job has a bounded timeout and the scheduler uses bounded concurrency, so one slow remote instance does not indefinitely delay every other instance. Collection failure records an unavailable sample and health diagnostic; it does not block other instances.
 
+The database lease is held for the entire collection pass, including passes in which every collector returns an empty sample list. The active holder renews it periodically (by default every 15 seconds, clamped to no more than one third of the configured lease duration). Renewal only succeeds for the current holder while its previous lease is still unexpired. If renewal fails, the scheduler cancels outstanding collection jobs and refuses to persist later samples, so an expired replica cannot continue acting as the active collector.
+
+The lease duration and heartbeat interval can be configured with `STUDIO_ALERTING_COLLECTION_LEASE_DURATION` and `STUDIO_ALERTING_COLLECTION_LEASE_RENEWAL_INTERVAL`. The interval should be comfortably shorter than the duration to tolerate transient database latency.
+
 For multi-replica Studio deployment, the scheduler uses a database lease:
 
 ```text

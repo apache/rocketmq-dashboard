@@ -34,14 +34,18 @@ import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionService;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
@@ -59,6 +63,7 @@ public class CollectorScheduler {
     private final NativeAlertProcessor alertProcessor;
     private final AlertCollectionLease collectionLease;
     private final ExecutorService collectionExecutor;
+    private final ScheduledExecutorService leaseRenewalExecutor;
 
     @Autowired
     public CollectorScheduler(AlertingProperties properties, InstanceRepository instanceRepository,
@@ -66,13 +71,22 @@ public class CollectorScheduler {
             MetricSnapshotRepository snapshotRepository, NativeAlertProcessor alertProcessor,
             AlertCollectionLease collectionLease) {
         this(properties, instanceRepository, clusterCollectors, businessCollectors, snapshotRepository, alertProcessor,
-                collectionLease, newCollectionExecutor(properties));
+                collectionLease, newCollectionExecutor(properties), newLeaseRenewalExecutor());
     }
 
     CollectorScheduler(AlertingProperties properties, InstanceRepository instanceRepository,
             List<ClusterMetricsCollector> clusterCollectors, List<BusinessMetricsCollector> businessCollectors,
             MetricSnapshotRepository snapshotRepository, NativeAlertProcessor alertProcessor,
             AlertCollectionLease collectionLease, ExecutorService collectionExecutor) {
+        this(properties, instanceRepository, clusterCollectors, businessCollectors, snapshotRepository, alertProcessor,
+                collectionLease, collectionExecutor, newLeaseRenewalExecutor());
+    }
+
+    CollectorScheduler(AlertingProperties properties, InstanceRepository instanceRepository,
+            List<ClusterMetricsCollector> clusterCollectors, List<BusinessMetricsCollector> businessCollectors,
+            MetricSnapshotRepository snapshotRepository, NativeAlertProcessor alertProcessor,
+            AlertCollectionLease collectionLease, ExecutorService collectionExecutor,
+            ScheduledExecutorService leaseRenewalExecutor) {
         this.properties = properties;
         this.instanceRepository = instanceRepository;
         this.clusterCollectors = clusterCollectors;
@@ -81,6 +95,7 @@ public class CollectorScheduler {
         this.alertProcessor = alertProcessor;
         this.collectionLease = collectionLease;
         this.collectionExecutor = collectionExecutor;
+        this.leaseRenewalExecutor = leaseRenewalExecutor;
     }
 
     @Scheduled(fixedDelayString = "${studio.alerting.collection-interval:PT30S}")
@@ -89,8 +104,20 @@ public class CollectorScheduler {
             log.debug("Skipping native alert collection because another Studio replica holds the lease");
             return;
         }
+        List<Future<?>> leaseJobs = new CopyOnWriteArrayList<>();
+        LeaseHeartbeat heartbeat = new LeaseHeartbeat(collectionLease, leaseRenewalExecutor,
+                leaseRenewalInterval(), leaseJobs);
+        heartbeat.start();
+        try {
+            collectWithPassBudget(heartbeat, leaseJobs);
+        } finally {
+            heartbeat.close();
+        }
+    }
+
+    private void collectWithPassBudget(LeaseHeartbeat heartbeat, List<Future<?>> leaseJobs) {
         List<InstanceVO> instances = instanceRepository.findAll();
-        if (instances.isEmpty()) {
+        if (instances.isEmpty() || !heartbeat.isHeld()) {
             return;
         }
         Duration timeout = parsePositiveDuration(properties.getCollectionTimeout(), Duration.ofSeconds(15));
@@ -101,11 +128,13 @@ public class CollectorScheduler {
         ArrayDeque<InstanceVO> pending = new ArrayDeque<>(instances);
         List<CollectionJob> running = new ArrayList<>();
         try {
-            submitAvailable(completionService, pending, running, parallelism, timeout, passDeadline);
-            while (!running.isEmpty()) {
+            submitAvailable(completionService, pending, running, parallelism, timeout, passDeadline, heartbeat,
+                    leaseJobs);
+            while (!running.isEmpty() && heartbeat.isHeld()) {
                 completeFinishedJobs(running);
                 cancelExpiredJobs(running, timeout, passDeadline, passTimeout);
-                submitAvailable(completionService, pending, running, parallelism, timeout, passDeadline);
+                submitAvailable(completionService, pending, running, parallelism, timeout, passDeadline, heartbeat,
+                        leaseJobs);
                 if (running.isEmpty()) {
                     break;
                 }
@@ -124,6 +153,10 @@ public class CollectorScheduler {
             log.warn("Native metric collection executor rejected new work; aborting pass with {} unstarted instance(s)",
                     pending.size());
         }
+        if (!heartbeat.isHeld()) {
+            cancelRunningJobs(running);
+            return;
+        }
         if (!pending.isEmpty()) {
             log.warn("Native metric collection pass exceeded {}; {} instance(s) were not started", passTimeout,
                     pending.size());
@@ -131,8 +164,9 @@ public class CollectorScheduler {
     }
 
     private void submitAvailable(CompletionService<InstanceVO> completionService, ArrayDeque<InstanceVO> pending,
-            List<CollectionJob> running, int parallelism, Duration timeout, Instant passDeadline) {
-        while (!pending.isEmpty() && running.size() < parallelism) {
+            List<CollectionJob> running, int parallelism, Duration timeout, Instant passDeadline,
+            LeaseHeartbeat heartbeat, List<Future<?>> leaseJobs) {
+        while (!pending.isEmpty() && running.size() < parallelism && heartbeat.isHeld()) {
             Instant now = Instant.now();
             if (!passDeadline.isAfter(now)) {
                 return;
@@ -140,10 +174,13 @@ public class CollectorScheduler {
             InstanceVO instance = pending.removeFirst();
             try {
                 Future<InstanceVO> future = completionService.submit(() -> {
-                    collectClusterMetrics(instance);
-                    collectBusinessMetrics(instance);
+                    if (heartbeat.isHeld()) {
+                        collectClusterMetrics(instance, heartbeat);
+                        collectBusinessMetrics(instance, heartbeat);
+                    }
                     return instance;
                 });
+                leaseJobs.add(future);
                 running.add(new CollectionJob(instance, future, now.plus(timeout)));
             } catch (RejectedExecutionException error) {
                 pending.addFirst(instance);
@@ -232,12 +269,15 @@ public class CollectorScheduler {
         snapshotRepository.deleteBefore(Instant.now().minus(retention));
     }
 
-    private void collectClusterMetrics(InstanceVO instance) {
+    private void collectClusterMetrics(InstanceVO instance, LeaseHeartbeat heartbeat) {
         for (ClusterMetricsCollector collector : clusterCollectors) {
+            if (!heartbeat.isHeld()) {
+                return;
+            }
             try {
                 if (collector.supports(instance)) {
                     List<MetricSample> samples = collector.collect(instance);
-                    persist(AlertDomain.CLUSTER, instance, collector.metricKeys(), samples);
+                    persist(AlertDomain.CLUSTER, instance, collector.metricKeys(), samples, heartbeat);
                 }
             } catch (RuntimeException error) {
                 log.warn("Native metric collector failed for instance {}: {}", instance.getName(), error.getMessage());
@@ -245,12 +285,15 @@ public class CollectorScheduler {
         }
     }
 
-    private void collectBusinessMetrics(InstanceVO instance) {
+    private void collectBusinessMetrics(InstanceVO instance, LeaseHeartbeat heartbeat) {
         for (BusinessMetricsCollector collector : businessCollectors) {
+            if (!heartbeat.isHeld()) {
+                return;
+            }
             try {
                 if (collector.supports(instance)) {
                     List<MetricSample> samples = collector.collect(instance);
-                    persist(AlertDomain.BUSINESS, instance, collector.metricKeys(), samples);
+                    persist(AlertDomain.BUSINESS, instance, collector.metricKeys(), samples, heartbeat);
                 }
             } catch (RuntimeException error) {
                 log.warn("Native metric collector failed for instance {}: {}", instance.getName(), error.getMessage());
@@ -259,7 +302,7 @@ public class CollectorScheduler {
     }
 
     private void persist(AlertDomain domain, InstanceVO instance, Set<String> declaredMetricKeys,
-            List<MetricSample> samples) {
+            List<MetricSample> samples, LeaseHeartbeat heartbeat) {
         List<MetricSample> collected = samples == null ? List.of() : samples;
         Set<String> scopeMetricKeys = metricKeys(declaredMetricKeys, collected);
         if (scopeMetricKeys.isEmpty()) {
@@ -267,7 +310,9 @@ public class CollectorScheduler {
         }
         MetricCollectionScope actualScope = new MetricCollectionScope(domain, instance.getName(), scopeMetricKeys);
         // Refresh immediately before persisting so a slow remote collection cannot write after lease loss.
-        if (!collectionLease.tryAcquire()) {
+        // This second ownership check is defense-in-depth against a heartbeat tick racing this write.
+        if (!heartbeat.isHeld() || !collectionLease.tryAcquire() || !heartbeat.isHeld()) {
+            heartbeat.markLost();
             log.debug("Discarding native metric samples because the collection lease was lost");
             return;
         }
@@ -287,6 +332,7 @@ public class CollectorScheduler {
     @PreDestroy
     void stopCollectionExecutor() {
         collectionExecutor.shutdownNow();
+        leaseRenewalExecutor.shutdownNow();
     }
 
     private static ExecutorService newCollectionExecutor(AlertingProperties properties) {
@@ -298,6 +344,89 @@ public class CollectorScheduler {
         };
         return new ThreadPoolExecutor(parallelism, parallelism, 0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(parallelism), threadFactory, new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    private static ScheduledExecutorService newLeaseRenewalExecutor() {
+        ThreadFactory threadFactory = task -> {
+            Thread thread = new Thread(task, "studio-native-metric-lease-renewer");
+            thread.setDaemon(true);
+            return thread;
+        };
+        return java.util.concurrent.Executors.newSingleThreadScheduledExecutor(threadFactory);
+    }
+
+    private Duration leaseRenewalInterval() {
+        Duration leaseDuration = parsePositiveDuration(properties.getCollectionLeaseDuration(), Duration.ofMinutes(1));
+        Duration safeMaximum = leaseDuration.dividedBy(3);
+        if (!safeMaximum.isPositive()) {
+            safeMaximum = Duration.ofMillis(1);
+        }
+        Duration configured = parsePositiveDuration(properties.getCollectionLeaseRenewalInterval(), safeMaximum);
+        return configured.compareTo(safeMaximum) > 0 ? safeMaximum : configured;
+    }
+
+    /** Renews lease ownership during the whole pass and cancels work immediately after lease loss. */
+    private static final class LeaseHeartbeat implements AutoCloseable {
+        private final AlertCollectionLease lease;
+        private final ScheduledExecutorService executor;
+        private final Duration interval;
+        private final List<Future<?>> jobs;
+        private final AtomicBoolean held = new AtomicBoolean(true);
+        private volatile ScheduledFuture<?> scheduledTask;
+
+        private LeaseHeartbeat(AlertCollectionLease lease, ScheduledExecutorService executor, Duration interval,
+                List<Future<?>> jobs) {
+            this.lease = lease;
+            this.executor = executor;
+            this.interval = interval;
+            this.jobs = jobs;
+        }
+
+        private void start() {
+            long intervalMillis = Math.max(1L, interval.toMillis());
+            try {
+                scheduledTask = executor.scheduleAtFixedRate(this::renewLease, intervalMillis, intervalMillis,
+                        TimeUnit.MILLISECONDS);
+            } catch (RuntimeException error) {
+                markLost();
+                log.warn("Unable to start native alert collection lease heartbeat", error);
+            }
+        }
+
+        private void renewLease() {
+            if (!held.get()) {
+                return;
+            }
+            try {
+                if (!lease.renew()) {
+                    markLost();
+                    log.warn("Native alert collection lease renewal failed; cancelling the active collection pass");
+                }
+            } catch (RuntimeException error) {
+                markLost();
+                log.warn("Native alert collection lease renewal raised an exception; cancelling the active pass",
+                        error);
+            }
+        }
+
+        private boolean isHeld() {
+            return held.get();
+        }
+
+        private void markLost() {
+            if (held.compareAndSet(true, false)) {
+                jobs.forEach(job -> job.cancel(true));
+            }
+        }
+
+        @Override
+        public void close() {
+            held.set(false);
+            ScheduledFuture<?> task = scheduledTask;
+            if (task != null) {
+                task.cancel(false);
+            }
+        }
     }
 
     private record CollectionJob(InstanceVO instance, Future<InstanceVO> future, Instant deadline) {

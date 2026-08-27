@@ -85,6 +85,8 @@ studio:
     collection-interval: ${STUDIO_ALERTING_COLLECTION_INTERVAL:PT30S}
     collection-parallelism: ${STUDIO_ALERTING_COLLECTION_PARALLELISM:4}
     collection-timeout: ${STUDIO_ALERTING_COLLECTION_TIMEOUT:PT15S}
+    collection-lease-duration: ${STUDIO_ALERTING_COLLECTION_LEASE_DURATION:PT1M}
+    collection-lease-renewal-interval: ${STUDIO_ALERTING_COLLECTION_LEASE_RENEWAL_INTERVAL:PT15S}
     snapshot-retention: ${STUDIO_ALERTING_SNAPSHOT_RETENTION:PT24H}
     snapshot-cleanup-interval: ${STUDIO_ALERTING_SNAPSHOT_CLEANUP_INTERVAL:PT1H}
     notification-dispatch-interval: ${STUDIO_ALERTING_NOTIFICATION_DISPATCH_INTERVAL:PT10S}

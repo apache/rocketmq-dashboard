@@ -17,5 +17,13 @@
 package org.apache.rocketmq.studio.cluster.metrics;
 
 public interface AlertCollectionLease {
+    /** Claims the lease, or refreshes it when this replica already owns it. */
     boolean tryAcquire();
+
+    /**
+     * Extends the current holder's lease without allowing an expired holder to reclaim it.
+     *
+     * @return {@code true} when the current holder still owns the lease
+     */
+    boolean renew();
 }
