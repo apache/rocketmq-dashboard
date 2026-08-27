@@ -261,6 +261,25 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void saveConfigShouldClearStoredApiKeyWhenRequested() {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("deepseek")
+                .clearApiKey(true)
+                .apiBase("https://api.deepseek.com/v1")
+                .model("deepseek-chat")
+                .maxTokens(8192)
+                .temperature(0.2)
+                .enabled(true)
+                .build());
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        assertThat(captor.getValue().getApiKey()).isBlank();
+        assertThat(llmConfigService.getConfig().getApiKey()).isBlank();
+        assertThat(llmConfigService.getConfig().isApiKeyConfigured()).isFalse();
+    }
+
+    @Test
     void saveConfigShouldNormalizeChatCompletionsEndpointToApiBase() {
         llmConfigService.saveConfig(LlmConfigVO.builder()
                 .provider("openai")

@@ -106,6 +106,24 @@ describe('AiAssistantTab', () => {
     expect(payload.apiKey).toBeUndefined();
   });
 
+  it('clears the stored API key after confirmation', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.click(screen.getByRole('button', { name: /清除密钥/ }));
+
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    expect(llmApiMocks.saveLlmConfig.mock.calls[0][0]).toMatchObject({
+      clearApiKey: true,
+      provider: 'tongyi',
+    });
+    expect(llmApiMocks.saveLlmConfig.mock.calls[0][0].apiKey).toBeUndefined();
+    expect(await screen.findByText('LLM API Key 已清除')).toBeInTheDocument();
+    expect(screen.queryByText('密钥已配置')).not.toBeInTheDocument();
+  });
+
   it('submits the Azure deployment fields required by the backend', async () => {
     const user = userEvent.setup();
     const { container } = renderPage();
