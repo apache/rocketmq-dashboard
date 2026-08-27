@@ -462,6 +462,53 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void resendSelectedMessagesLooksUpIdsWithoutAStoreTimeWindow() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageExt oldDeadLetter = new MessageExt();
+        oldDeadLetter.setMsgId("old-msg");
+        oldDeadLetter.setTopic(dlqTopic);
+        oldDeadLetter.setBody(new byte[] {1});
+        oldDeadLetter.setStoreTimestamp(1L);
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+
+        when(adminExt.viewMessage(dlqTopic, "old-msg")).thenReturn(oldDeadLetter);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        assertThat(provider.resendMessages(
+                "instance-a", "group-a", List.of("old-msg"), "target-topic"))
+                .extracting("matched", "resent", "failed", "outcome", "scanIncomplete")
+                .containsExactly(1, 1, 0, "SUCCESS", false);
+
+        verify(adminExt).viewMessage(dlqTopic, "old-msg");
+        verifyNoInteractions(pullConsumer);
+    }
+
+    @Test
+    void resendSelectedMessagesReportsMissingLookupsAsPartial() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageExt found = new MessageExt();
+        found.setMsgId("found-msg");
+        found.setTopic(dlqTopic);
+        found.setBody(new byte[] {1});
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+
+        when(adminExt.viewMessage(dlqTopic, "missing-msg"))
+                .thenThrow(new IllegalStateException("message not found"));
+        when(adminExt.viewMessage(dlqTopic, "found-msg")).thenReturn(found);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        assertThat(provider.resendMessages(
+                "instance-a", "group-a", List.of("missing-msg", "found-msg"), "target-topic"))
+                .extracting("matched", "resent", "failed", "outcome", "scanIncomplete")
+                .containsExactly(1, 1, 0, "PARTIAL", true);
+
+        verify(adminExt).viewMessage(dlqTopic, "missing-msg");
+        verify(adminExt).viewMessage(dlqTopic, "found-msg");
+    }
+
+    @Test
     void resendMessagesMarksAResultPartialWhenScanReachesHardCap() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
