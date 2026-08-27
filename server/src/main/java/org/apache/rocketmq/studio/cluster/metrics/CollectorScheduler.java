@@ -365,7 +365,10 @@ public class CollectorScheduler {
         return configured.compareTo(safeMaximum) > 0 ? safeMaximum : configured;
     }
 
-    /** Renews lease ownership during the whole pass and cancels work immediately after lease loss. */
+    /**
+     * Renews the collection lease while broker calls are in flight and cancels outstanding work
+     * as soon as ownership is lost, so an expired pass cannot publish late samples.
+     */
     private static final class LeaseHeartbeat implements AutoCloseable {
         private final AlertCollectionLease lease;
         private final ScheduledExecutorService executor;
