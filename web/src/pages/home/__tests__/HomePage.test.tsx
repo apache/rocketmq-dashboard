@@ -123,3 +123,19 @@ describe('HomePage LLM models', () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 });
+
+describe('HomePage footer', () => {
+  it('links to RocketMQ documentation and community pages', () => {
+    renderHome();
+
+    const docsLink = screen.getByRole('link', { name: '文档中心' });
+    expect(docsLink).toHaveAttribute('href', 'https://rocketmq.apache.org/docs/');
+    expect(docsLink).toHaveAttribute('target', '_blank');
+    expect(docsLink).toHaveAttribute('rel', 'noopener noreferrer');
+
+    const communityLink = screen.getByRole('link', { name: 'RocketMQ 社区' });
+    expect(communityLink).toHaveAttribute('href', 'https://rocketmq.apache.org/');
+    expect(communityLink).toHaveAttribute('target', '_blank');
+    expect(communityLink).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+});
