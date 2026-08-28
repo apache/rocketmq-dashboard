@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -32,7 +33,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -240,6 +243,32 @@ class K8sCertControllerTest {
                 .andExpect(jsonPath("$.message").value("id is required"));
 
         verifyNoInteractions(k8sCertService);
+    }
+
+    @Test
+    void renewCertShouldBindReplacementCertificateMaterial() throws Exception {
+        K8sCertVO renewedCert = buildCert(1L, "rocketmq-tls", CertType.TLS, CertStatus.valid);
+        when(k8sCertService.renewCert(any(RenewCertDTO.class))).thenReturn(renewedCert);
+        ArgumentCaptor<RenewCertDTO> captor = ArgumentCaptor.forClass(RenewCertDTO.class);
+
+        mockMvc.perform(post("/api/k8s-certs/renew")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "id": 1,
+                                    "certPem": "-----BEGIN CERTIFICATE-----...",
+                                    "keyPem": "-----BEGIN PRIVATE KEY-----..."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(1));
+
+        verify(k8sCertService).renewCert(captor.capture());
+        RenewCertDTO command = captor.getValue();
+        assertThat(command.getId()).isEqualTo(1L);
+        assertThat(command.getCertPem()).isEqualTo("-----BEGIN CERTIFICATE-----...");
+        assertThat(command.getKeyPem()).isEqualTo("-----BEGIN PRIVATE KEY-----...");
     }
 
     @Test

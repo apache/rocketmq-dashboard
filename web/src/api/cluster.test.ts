@@ -90,14 +90,24 @@ describe('K8s certificate API', () => {
     await expect(updateK8sCert({ id: cert.id, issuer: 'vault' })).resolves.toEqual(updated);
   });
 
-  it('renews a certificate using its id', async () => {
+  it('renews a certificate using replacement certificate material', async () => {
     const renewed = { ...cert, daysRemaining: 365, status: 'valid' };
     mock.onPost('/k8s-certs/renew').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ id: cert.id });
+      expect(JSON.parse(config.data)).toEqual({
+        id: cert.id,
+        certPem: '-----BEGIN CERTIFICATE-----...',
+        keyPem: '-----BEGIN PRIVATE KEY-----...',
+      });
       return [200, { code: 200, message: 'success', data: renewed }];
     });
 
-    await expect(renewK8sCert(cert.id)).resolves.toEqual(renewed);
+    await expect(
+      renewK8sCert({
+        id: cert.id,
+        certPem: '-----BEGIN CERTIFICATE-----...',
+        keyPem: '-----BEGIN PRIVATE KEY-----...',
+      }),
+    ).resolves.toEqual(renewed);
   });
 
   it('sends the certificate id when deleting', async () => {

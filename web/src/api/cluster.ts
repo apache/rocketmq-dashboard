@@ -147,6 +147,12 @@ export interface K8sCertInfo {
   keyPem?: string;
 }
 
+export interface RenewK8sCertRequest {
+  id: number;
+  certPem: string;
+  keyPem?: string;
+}
+
 export interface NameServerConfigValue {
   address: string;
   configured: boolean;
@@ -318,8 +324,8 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>) {
   return res.data.data;
 }
 
-export async function renewK8sCert(id: number) {
-  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', { id });
+export async function renewK8sCert(data: RenewK8sCertRequest) {
+  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', data);
   return res.data.data;
 }
 

@@ -31,12 +31,18 @@ import {
   Popconfirm,
   message,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
-import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
+import {
+  listK8sCerts,
+  createK8sCert,
+  deleteK8sCert,
+  renewK8sCert,
+} from '../../services/clusterService';
+import { useLang } from '../../i18n/LangContext';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
@@ -53,15 +59,24 @@ interface CreateCertFormValues {
   keyPem?: string;
 }
 
+interface RenewCertFormValues {
+  certPem: string;
+  keyPem?: string;
+}
+
 const K8sCertsPage = () => {
+  const { t } = useLang();
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+  const [renewingCert, setRenewingCert] = useState<K8sCertInfo | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [createForm] = Form.useForm<CreateCertFormValues>();
+  const [renewForm] = Form.useForm<RenewCertFormValues>();
 
   useEffect(() => {
     let active = true;
@@ -108,7 +123,7 @@ const K8sCertsPage = () => {
         keyPem: values.keyPem?.trim() || undefined,
       });
       setCerts((previous) => [...previous, created]);
-      message.success(`证书「${created.k8sId}」已添加`);
+      message.success(t('cert.added', { name: created.k8sId }));
       setCreateModalOpen(false);
       createForm.resetFields();
     } catch (error: unknown) {
@@ -123,7 +138,7 @@ const K8sCertsPage = () => {
     try {
       await deleteK8sCert(cert.id);
       setCerts((previous) => previous.filter((item) => item.id !== cert.id));
-      message.success(`证书「${cert.k8sId}」已删除`);
+      message.success(t('cert.deleted', { name: cert.k8sId }));
     } catch (error: unknown) {
       message.error(getErrorMessage(error));
     } finally {
@@ -131,9 +146,44 @@ const K8sCertsPage = () => {
     }
   };
 
+  const openRenewModal = (cert: K8sCertInfo) => {
+    setRenewingCert(cert);
+    renewForm.resetFields();
+  };
+
+  const closeRenewModal = () => {
+    setRenewingCert(null);
+    renewForm.resetFields();
+  };
+
+  const handleRenew = async () => {
+    if (!renewingCert) return;
+    let values: RenewCertFormValues;
+    try {
+      values = await renewForm.validateFields();
+    } catch {
+      return;
+    }
+    setRenewing(true);
+    try {
+      const renewed = await renewK8sCert({
+        id: renewingCert.id,
+        certPem: values.certPem.trim(),
+        keyPem: values.keyPem?.trim() || undefined,
+      });
+      setCerts((previous) => previous.map((item) => (item.id === renewed.id ? renewed : item)));
+      message.success(t('cert.renewed', { name: renewed.k8sId }));
+      closeRenewModal();
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setRenewing(false);
+    }
+  };
+
   const certColumns: ColumnsType<K8sCertInfo> = [
     {
-      title: 'K8s 集群名称',
+      title: t('cert.clusterName'),
       dataIndex: 'cluster',
       key: 'cluster',
       width: 260,
@@ -142,7 +192,7 @@ const K8sCertsPage = () => {
       render: (name: string) => <Text strong>{name}</Text>,
     },
     {
-      title: 'k8s ID',
+      title: t('cert.k8sId'),
       dataIndex: 'k8sId',
       key: 'k8sId',
       width: 240,
@@ -152,7 +202,7 @@ const K8sCertsPage = () => {
       ),
     },
     {
-      title: '类型',
+      title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
       width: 110,
@@ -167,7 +217,7 @@ const K8sCertsPage = () => {
       },
     },
     {
-      title: '签发者',
+      title: t('cert.issuer'),
       dataIndex: 'issuer',
       key: 'issuer',
       width: 180,
@@ -176,7 +226,7 @@ const K8sCertsPage = () => {
       ellipsis: true,
     },
     {
-      title: '到期时间',
+      title: t('cert.expiryTime'),
       dataIndex: 'notAfter',
       key: 'notAfter',
       width: 170,
@@ -188,7 +238,7 @@ const K8sCertsPage = () => {
       ),
     },
     {
-      title: '剩余天数',
+      title: t('cert.daysRemaining'),
       dataIndex: 'daysRemaining',
       key: 'daysRemaining',
       width: 100,
@@ -205,60 +255,73 @@ const K8sCertsPage = () => {
       ),
     },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       sorter: (a, b) => (a.status ?? '').localeCompare(b.status ?? ''),
       render: (status: string | null) => {
         const map: Record<string, { color: string; label: string }> = {
-          valid: { color: 'green', label: '有效' },
-          expiring: { color: 'orange', label: '即将过期' },
-          expired: { color: 'red', label: '已过期' },
+          valid: { color: 'green', label: t('cert.statusValid') },
+          expiring: { color: 'orange', label: t('cert.statusExpiring') },
+          expired: { color: 'red', label: t('cert.statusExpired') },
         };
-        const cfg = status ? map[status] ?? { color: 'default', label: status } : null;
+        const cfg = status ? (map[status] ?? { color: 'default', label: status }) : null;
         return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : '-';
       },
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'action',
-      width: 90,
+      width: 170,
       fixed: 'right',
       render: (_: unknown, cert: K8sCertInfo) => (
-        <Popconfirm
-          title={`确定要删除证书「${cert.k8sId}」吗？`}
-          onConfirm={() => void handleDelete(cert)}
-          okText="删除"
-          cancelText="取消"
-          okButtonProps={{ danger: true }}
-        >
+        <Space size={4}>
           <Button
             type="link"
             size="small"
-            danger
-            icon={<DeleteOutlined />}
-            loading={deletingId === cert.id}
+            icon={<SyncOutlined />}
+            onClick={() => openRenewModal(cert)}
           >
-            删除
+            {t('cert.renew')}
           </Button>
-        </Popconfirm>
+          <Popconfirm
+            title={t('cert.deleteConfirm', { name: cert.k8sId })}
+            onConfirm={() => void handleDelete(cert)}
+            okText={t('common.delete')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deletingId === cert.id}
+            >
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title="K8s 证书管理" subtitle={`共 ${filteredCerts.length} 个证书`} />
+      <PageHeader
+        title={t('cert.title')}
+        subtitle={t('cert.totalCount', { count: filteredCerts.length })}
+      />
       <InfoBanner
         data-testid="k8s-cert-local-metadata-notice"
-        title="当前证书记录仅保存为 Studio 本地元数据"
-        description="创建、续期和删除操作尚不会应用到 Kubernetes 集群或 cert-manager。请在集群侧管理实际证书，直到 Kubernetes Provider 接入完成。"
+        title={t('cert.localMetadataTitle')}
+        description={t('cert.localMetadataDescription')}
       />
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>
           <Input.Search
-            placeholder="搜索 k8s ID 或集群"
+            placeholder={t('cert.searchK8sPlaceholder')}
             allowClear
             onSearch={setCertSearch}
             onChange={(e) => !e.target.value && setCertSearch('')}
@@ -269,7 +332,7 @@ const K8sCertsPage = () => {
             onChange={setCertTypeFilter}
             style={{ width: 160 }}
             options={[
-              { value: '', label: '全部' },
+              { value: '', label: t('common.all') },
               { value: 'TLS', label: 'TLS' },
               { value: 'mTLS', label: 'mTLS' },
               { value: 'ServiceAccount', label: 'ServiceAccount' },
@@ -277,7 +340,7 @@ const K8sCertsPage = () => {
           />
         </Space>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-          新增证书
+          {t('cert.createCert')}
         </Button>
       </Flex>
       <Card styles={{ body: { padding: 0 } }}>
@@ -293,7 +356,7 @@ const K8sCertsPage = () => {
       </Card>
 
       <Modal
-        title="新增证书"
+        title={t('cert.createCert')}
         open={createModalOpen}
         onCancel={() => {
           setCreateModalOpen(false);
@@ -301,27 +364,27 @@ const K8sCertsPage = () => {
         }}
         onOk={() => void handleCreate()}
         confirmLoading={creating}
-        okText="添加"
-        cancelText="取消"
+        okText={t('common.add')}
+        cancelText={t('common.cancel')}
         width={640}
         destroyOnHidden
       >
         <Form form={createForm} layout="vertical" preserve={false}>
           <Form.Item
-            label="k8s ID"
+            label={t('cert.k8sId')}
             name="k8sId"
-            rules={[{ required: true, message: '请输入 k8s ID' }]}
+            rules={[{ required: true, message: t('cert.k8sIdRequired') }]}
           >
-            <Input placeholder="例如：kubernetes-daily" />
+            <Input placeholder={t('cert.k8sIdPlaceholder')} />
           </Form.Item>
           <Form.Item
-            label="K8s 集群名称"
+            label={t('cert.clusterName')}
             name="cluster"
-            rules={[{ required: true, message: '请输入集群名称' }]}
+            rules={[{ required: true, message: t('cert.clusterRequired') }]}
           >
-            <Input placeholder="例如：kubernetes（120.26.99.191:6443）" />
+            <Input placeholder={t('cert.clusterPlaceholder')} />
           </Form.Item>
-          <Form.Item label="类型" name="type" initialValue="TLS">
+          <Form.Item label={t('common.type')} name="type" initialValue="TLS">
             <Select
               virtual={false}
               options={[
@@ -332,9 +395,9 @@ const K8sCertsPage = () => {
             />
           </Form.Item>
           <Form.Item
-            label="证书内容（PEM）"
+            label={t('cert.certPemLabel')}
             name="certPem"
-            extra="粘贴 PEM 格式证书，签发者、有效期与 SAN 将自动解析；留空时有效期按一年占位"
+            extra={t('cert.certPemCreateExtra')}
           >
             <Input.TextArea
               rows={6}
@@ -342,7 +405,45 @@ const K8sCertsPage = () => {
               style={{ fontFamily: 'monospace' }}
             />
           </Form.Item>
-          <Form.Item label="私钥内容（PEM）" name="keyPem" extra="仅保存，不会在页面展示或返回">
+          <Form.Item label={t('cert.keyPemLabel')} name="keyPem" extra={t('cert.keyPemExtra')}>
+            <Input.TextArea
+              rows={6}
+              placeholder="-----BEGIN PRIVATE KEY-----..."
+              style={{ fontFamily: 'monospace' }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t('cert.renewCert', { name: renewingCert?.k8sId ?? '' })}
+        open={Boolean(renewingCert)}
+        onCancel={closeRenewModal}
+        onOk={() => void handleRenew()}
+        confirmLoading={renewing}
+        okText={t('cert.renew')}
+        cancelText={t('common.cancel')}
+        width={640}
+        destroyOnHidden
+      >
+        <Form form={renewForm} layout="vertical" preserve={false}>
+          <Form.Item
+            label={t('cert.renewCertPemLabel')}
+            name="certPem"
+            rules={[{ required: true, message: t('cert.renewCertPemRequired') }]}
+            extra={t('cert.renewCertPemExtra')}
+          >
+            <Input.TextArea
+              rows={8}
+              placeholder="-----BEGIN CERTIFICATE-----..."
+              style={{ fontFamily: 'monospace' }}
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('cert.renewKeyPemLabel')}
+            name="keyPem"
+            extra={t('cert.renewKeyPemExtra')}
+          >
             <Input.TextArea
               rows={6}
               placeholder="-----BEGIN PRIVATE KEY-----..."
