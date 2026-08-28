@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,6 +24,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { listDataSources } from '../../api/settings';
 import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
 import { LangProvider } from '../../i18n/LangContext';
+import { downloadCsv } from '../../utils/download';
+import {
+  METRICS_QUERY_HISTORY_STORAGE_KEY,
+  type MetricsQueryHistoryEntry,
+} from '../metricsExplorerDiagnostics';
 import MetricsExplorer from '../MetricsExplorer';
 
 vi.mock('../../api/settings', () => ({
@@ -35,6 +40,15 @@ vi.mock('../../api/metrics', () => ({
   queryByDataSource: vi.fn(),
   queryMetrics: vi.fn(),
 }));
+
+vi.mock('../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../utils/download')>('../../utils/download');
+  return {
+    ...actual,
+    downloadCsv: vi.fn(),
+  };
+});
 
 const profiles = [
   {
@@ -104,6 +118,37 @@ const histogramOnlyData = {
   ],
   warnings: [],
 };
+
+const createHistoryEntry = (
+  overrides: Partial<MetricsQueryHistoryEntry> = {},
+): MetricsQueryHistoryEntry => ({
+  id: 'history-consumer-lag',
+  profileId: 'rocketmq4-exporter',
+  profileName: 'RocketMQ 4.x Exporter',
+  metricId: 'consumer_lag_messages',
+  metricName: 'Consumer Lag Messages',
+  metricUnit: 'messages',
+  rangeId: '6h',
+  rangeLabel: '6h',
+  step: '2m',
+  dataSourceKey: '',
+  dataSourceName: '',
+  promql: 'sum(rocketmq_message_accumulation) by (cluster, group, topic)',
+  start: 1_799_978_400,
+  end: 1_800_000_000,
+  queriedAt: 1_800_000_000_000,
+  summary: {
+    seriesCount: 1,
+    visibleSeriesCount: 1,
+    sampleCount: 2,
+    scalarSampleCount: 2,
+    histogramSampleCount: 0,
+    warningCount: 0,
+    earliestTimestamp: 1_799_978_400,
+    latestTimestamp: 1_800_000_000,
+  },
+  ...overrides,
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -561,5 +606,124 @@ describe('MetricsExplorer', () => {
       dataSourceQueriesBeforeScopeChange,
     );
     expect(screen.getAllByTitle('默认数据源').length).toBeGreaterThan(0);
+  });
+
+  it('exports the current metric result as CSV', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toMatch(/^rocketmq-studio-metrics-message-in-tps-/);
+    expect(csv).toContain('"Message In TPS"');
+    expect(csv).toContain('"cluster=prod / node_id=broker-a"');
+    expect(csv).toContain('"2027-01-15T08:00:00.000Z"');
+  });
+
+  it('opens a series detail drawer for the active metric result', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '序列明细' }));
+
+    const detailsDialog = await screen.findByRole('dialog', { name: '指标序列明细' });
+    expect(detailsDialog).toBeInTheDocument();
+    expect(within(detailsDialog).getByText('scalar')).toBeInTheDocument();
+    expect(
+      within(detailsDialog).getByText('{"cluster":"prod","node_id":"broker-a"}'),
+    ).toBeInTheDocument();
+    expect(within(detailsDialog).getByText('42')).toBeInTheDocument();
+  });
+
+  it('restores a metric, profile, and range from query history', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify([createHistoryEntry()]));
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyItem = screen.getByText('Consumer Lag Messages').closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    await waitFor(() =>
+      expect(queryMetrics).toHaveBeenLastCalledWith({
+        metric: 'sum(rocketmq_message_accumulation) by (cluster, group, topic)',
+        start: 1_799_978_400,
+        end: 1_800_000_000,
+        step: '2m',
+      }),
+    );
+    expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
+  });
+
+  it('requires credentials again when restoring a protected data source history item', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({
+          id: 'history-protected-source',
+          profileId: 'rocketmq5-native',
+          profileName: 'RocketMQ 5.x Native',
+          metricId: 'message_in_tps',
+          metricName: 'Message In TPS',
+          metricUnit: 'messages/s',
+          rangeId: '1h',
+          rangeLabel: '1h',
+          step: '30s',
+          dataSourceKey: 'ds-basic',
+          dataSourceName: 'Protected Prometheus',
+          promql: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+          start: 1_799_996_400,
+        }),
+      ]),
+    );
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyItem = screen.getByText('Protected Prometheus').closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    expect(await screen.findByRole('dialog', { name: '数据源认证' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('用户名'), 'metrics-reader');
+    await user.type(screen.getByLabelText('密码'), 'secret-value');
+    await user.click(screen.getByRole('button', { name: /连\s*接/ }));
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith({
+        key: 'ds-basic',
+        username: 'metrics-reader',
+        password: 'secret-value',
+        instanceId: undefined,
+        query: {
+          metric: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+          start: 1_799_996_400,
+          end: 1_800_000_000,
+          step: '30s',
+        },
+      }),
+    );
+    expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).not.toContain('secret-value');
   });
 });

@@ -17,27 +17,53 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  App,
   Alert,
   Button,
+  Descriptions,
+  Drawer,
   Empty,
   Flex,
   Form,
   Input,
+  List,
   Modal,
   Segmented,
   Select,
   Skeleton,
+  Space,
+  Statistic,
+  Table,
   Tag,
   Tooltip,
   Typography,
 } from 'antd';
-import { ArrowsClockwise } from '@phosphor-icons/react';
+import type { ColumnsType } from 'antd/es/table';
+import { ArrowsClockwise, ClockCounterClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 
 import { listDataSources } from '../api/settings';
 import { listMetricProfiles, queryByDataSource, queryMetrics } from '../api/metrics';
 import type { DataSource } from '../api/settings';
-import type { MetricData, MetricMapping, MetricProfile, MetricSeries } from '../api/metrics';
+import type { MetricData, MetricMapping, MetricProfile } from '../api/metrics';
 import { useLang } from '../i18n/LangContext';
+import { downloadCsv } from '../utils/download';
+import {
+  buildMetricCsvFilename,
+  buildMetricCsvFromRows,
+  buildMetricCsvRows,
+  buildMetricSeriesDetailRows,
+  clearMetricsQueryHistory,
+  createMetricsQueryHistoryEntry,
+  loadMetricsQueryHistory,
+  mergeMetricsQueryHistory,
+  metricSeriesLabel,
+  saveMetricsQueryHistory,
+  summarizeMetricData,
+  toMetricSeriesSamples,
+  type MetricCsvContext,
+  type MetricSeriesDetailRow,
+  type MetricsQueryHistoryEntry,
+} from './metricsExplorerDiagnostics';
 
 const { Text, Title } = Typography;
 
@@ -51,62 +77,6 @@ const RANGE_OPTIONS = [
   { label: '6h', value: '6h', seconds: 6 * 60 * 60, step: '2m' },
   { label: '24h', value: '24h', seconds: 24 * 60 * 60, step: '5m' },
 ] as const;
-
-interface NumericSample {
-  timestamp: number;
-  value: number;
-}
-
-const sortAndStrip = (
-  samples: { timestamp: number; value: number; index: number }[],
-): NumericSample[] =>
-  samples
-    .filter((sample) => Number.isFinite(sample.timestamp) && Number.isFinite(sample.value))
-    .sort((left, right) => left.timestamp - right.timestamp || left.index - right.index)
-    .map(({ timestamp, value }) => ({ timestamp, value }));
-
-const toScalarSamples = (series: MetricSeries): NumericSample[] =>
-  sortAndStrip(
-    series.values.map((sample, index) => ({
-      timestamp: sample.timestamp,
-      value: Number(sample.value),
-      index,
-    })),
-  );
-
-// Native histograms carry no scalar samples. To avoid plotting them as "no data", derive a
-// trend value per histogram: the observed sum (in the metric's unit), falling back to the
-// observation count when the sum is absent or non-finite.
-const toHistogramSamples = (series: MetricSeries): NumericSample[] =>
-  sortAndStrip(
-    series.histograms.map((sample, index) => {
-      // An empty string parses to 0, so treat a blank field as missing rather than zero.
-      const sumText = sample.histogram.sum?.trim();
-      const countText = sample.histogram.count?.trim();
-      const sum = sumText ? Number(sumText) : Number.NaN;
-      const count = countText ? Number(countText) : Number.NaN;
-      const value = Number.isFinite(sum) ? sum : count;
-      return { timestamp: sample.timestamp, value, index };
-    }),
-  );
-
-const toNumericSamples = (
-  series: MetricSeries,
-): { samples: NumericSample[]; fromHistogram: boolean } => {
-  const scalar = toScalarSamples(series);
-  if (scalar.length > 0) {
-    return { samples: scalar, fromHistogram: false };
-  }
-  return { samples: toHistogramSamples(series), fromHistogram: true };
-};
-
-const seriesLabel = (series: MetricSeries, fallback: string) => {
-  const labels = Object.entries(series.labels)
-    .filter(([key]) => key !== '__name__')
-    .slice(0, 3)
-    .map(([key, value]) => `${key}=${value}`);
-  return labels.length > 0 ? labels.join(' / ') : series.labels.__name__ || fallback;
-};
 
 const formatMetricValue = (value: number) =>
   new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
@@ -130,10 +100,10 @@ const MetricChart = ({
 }: MetricChartProps) => {
   const chartSeries = data.series
     .map((series, index) => {
-      const { samples, fromHistogram } = toNumericSamples(series);
+      const { samples, fromHistogram } = toMetricSeriesSamples(series);
       return {
         color: SERIES_COLORS[index % SERIES_COLORS.length],
-        label: seriesLabel(series, metric.name),
+        label: metricSeriesLabel(series, metric.name),
         samples,
         fromHistogram,
       };
@@ -340,6 +310,33 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           connect: '连接',
           cancel: '取消',
           required: '此项为必填项',
+          history: '查询历史',
+          historyTitle: '指标查询历史',
+          noHistory: '暂无指标查询历史',
+          restore: '恢复',
+          clearHistory: '清空历史',
+          exportCsv: '导出 CSV',
+          exportDisabled: '暂无可导出的指标样本',
+          details: '序列明细',
+          detailsTitle: '指标序列明细',
+          unavailableHistory: '历史中的指标模板已不可用',
+          series: '序列',
+          visibleSeries: '有效序列',
+          samples: '样本',
+          scalarSamples: '标量样本',
+          histogramSamples: '直方图样本',
+          warnings: '告警',
+          source: '数据源',
+          latestSample: '最新样本',
+          labels: '标签',
+          sampleType: '样本类型',
+          value: '值',
+          firstSample: '最早样本',
+          lastSample: '最新样本',
+          queryWindow: '查询窗口',
+          queriedAt: '查询时间',
+          resultType: '结果类型',
+          protectedHistory: '该数据源需要重新认证',
         }
       : {
           title: 'Prometheus Metrics',
@@ -363,7 +360,35 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           connect: 'Connect',
           cancel: 'Cancel',
           required: 'This field is required',
+          history: 'Query history',
+          historyTitle: 'Metric query history',
+          noHistory: 'No metric query history',
+          restore: 'Restore',
+          clearHistory: 'Clear history',
+          exportCsv: 'Export CSV',
+          exportDisabled: 'No metric samples to export',
+          details: 'Series details',
+          detailsTitle: 'Metric series details',
+          unavailableHistory: 'The metric profile in this history entry is unavailable',
+          series: 'Series',
+          visibleSeries: 'Visible series',
+          samples: 'Samples',
+          scalarSamples: 'Scalar samples',
+          histogramSamples: 'Histogram samples',
+          warnings: 'Warnings',
+          source: 'Source',
+          latestSample: 'Latest sample',
+          labels: 'Labels',
+          sampleType: 'Sample type',
+          value: 'Value',
+          firstSample: 'First sample',
+          lastSample: 'Last sample',
+          queryWindow: 'Query window',
+          queriedAt: 'Queried at',
+          resultType: 'Result type',
+          protectedHistory: 'This data source requires authentication again',
         };
+  const { message } = App.useApp();
   const [authForm] = Form.useForm<AuthFormValues>();
   const [profiles, setProfiles] = useState<MetricProfile[]>([]);
   const [profileId, setProfileId] = useState('');
@@ -378,11 +403,18 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const [dataSourceKey, setDataSourceKey] = useState('');
   const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
   const [pendingDataSource, setPendingDataSource] = useState<DataSource | null>(null);
+  const [history, setHistory] = useState<MetricsQueryHistoryEntry[]>(() =>
+    loadMetricsQueryHistory(),
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [activeQuery, setActiveQuery] = useState<MetricsQueryHistoryEntry | null>(null);
   const requestId = useRef(0);
   // Keeps the latest data source readable from the stable loadMetrics callback so switching
   // the source uses the new key instead of a stale closure value.
   const dataSourceKeyRef = useRef(dataSourceKey);
   const dataSourceCredentialsRef = useRef<DataSourceCredentials | null>(null);
+  const dataSourceNamesRef = useRef<Map<string, string>>(new Map());
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === profileId),
@@ -402,17 +434,29 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       ),
     [dataSources, instanceId],
   );
+  const selectedDataSource = useMemo(
+    () => availableDataSources.find((source) => source.key === dataSourceKey),
+    [availableDataSources, dataSourceKey],
+  );
   const availableDataSourceKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     availableDataSourceKeysRef.current = new Set(availableDataSources.map((source) => source.key));
+    dataSourceNamesRef.current = new Map(
+      availableDataSources.map((source) => [source.key, source.name]),
+    );
   }, [availableDataSources]);
 
   const loadMetrics = useCallback(
-    async (metric: MetricMapping | undefined, range: (typeof RANGE_OPTIONS)[number]) => {
+    async (
+      metric: MetricMapping | undefined,
+      range: (typeof RANGE_OPTIONS)[number],
+      profile?: MetricProfile,
+    ) => {
       if (!metric) return;
       const currentRequest = ++requestId.current;
-      const end = Math.floor(Date.now() / 1000);
+      const queriedAt = Date.now();
+      const end = Math.floor(queriedAt / 1000);
       const query = {
         metric: metric.promql,
         start: end - range.seconds,
@@ -443,10 +487,35 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 : {}),
             })
           : await queryMetrics(query);
-        if (currentRequest === requestId.current) setData(result);
+        if (currentRequest === requestId.current) {
+          const summary = summarizeMetricData(result);
+          const historyEntry = createMetricsQueryHistoryEntry({
+            profileId: profile?.id ?? '',
+            profileName: profile?.name ?? '',
+            metric,
+            rangeId: range.value,
+            rangeLabel: range.label,
+            step: range.step,
+            dataSourceKey: currentDataSourceKey,
+            dataSourceName: dataSourceNamesRef.current.get(currentDataSourceKey) ?? '',
+            start: query.start,
+            end: query.end,
+            queriedAt,
+            ...(instanceId !== undefined ? { instanceId } : {}),
+            summary,
+          });
+          setData(result);
+          setActiveQuery(historyEntry);
+          setHistory((currentHistory) => {
+            const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
+            saveMetricsQueryHistory(nextHistory);
+            return nextHistory;
+          });
+        }
       } catch (error) {
         if (currentRequest === requestId.current) {
           setData(null);
+          setActiveQuery(null);
           setQueryError(getQueryErrorMessage(error, queryErrorFallback));
         }
       } finally {
@@ -466,7 +535,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         const initialMetric = initialProfile?.metrics[0];
         setProfileId(initialProfile?.id ?? '');
         setMetricId(initialMetric?.semanticMetric ?? '');
-        void loadMetrics(initialMetric, RANGE_OPTIONS[0]);
+        void loadMetrics(initialMetric, RANGE_OPTIONS[0], initialProfile);
       })
       .catch(() => {
         if (!cancelled) setProfileError(true);
@@ -486,7 +555,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     setProfileId(nextProfileId);
     setMetricId(nextMetric?.semanticMetric ?? '');
     setData(null);
-    void loadMetrics(nextMetric, selectedRange);
+    setActiveQuery(null);
+    void loadMetrics(nextMetric, selectedRange, nextProfile);
   };
 
   const handleMetricChange = (nextMetricId: string) => {
@@ -495,22 +565,30 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     );
     setMetricId(nextMetricId);
     setData(null);
-    void loadMetrics(nextMetric, selectedRange);
+    setActiveQuery(null);
+    void loadMetrics(nextMetric, selectedRange, selectedProfile);
   };
 
   const handleRangeChange = (nextRangeId: (typeof RANGE_OPTIONS)[number]['value']) => {
     const nextRange =
       RANGE_OPTIONS.find((range) => range.value === nextRangeId) ?? RANGE_OPTIONS[0];
     setRangeId(nextRangeId);
-    void loadMetrics(selectedMetric, nextRange);
+    void loadMetrics(selectedMetric, nextRange, selectedProfile);
   };
 
-  const activateDataSource = (nextKey: string, credentials?: AuthFormValues) => {
+  const activateDataSource = (
+    nextKey: string,
+    credentials?: AuthFormValues,
+    metric = selectedMetric,
+    range = selectedRange,
+    profile = selectedProfile,
+  ) => {
     dataSourceCredentialsRef.current = credentials ? { key: nextKey, ...credentials } : null;
     dataSourceKeyRef.current = nextKey;
     setDataSourceKey(nextKey);
     setData(null);
-    void loadMetrics(selectedMetric, selectedRange);
+    setActiveQuery(null);
+    void loadMetrics(metric, range, profile);
   };
 
   const handleDataSourceChange = (nextKey: string) => {
@@ -567,15 +645,175 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         dataSourceKeyRef.current = '';
         setDataSourceKey('');
         setData(null);
+        setActiveQuery(null);
         setPendingDataSource(null);
-        void loadMetrics(selectedMetric, selectedRange);
+        void loadMetrics(selectedMetric, selectedRange, selectedProfile);
       }, 0);
     }
-  }, [availableDataSources, dataSourceKey, loadMetrics, selectedMetric, selectedRange]);
+  }, [
+    availableDataSources,
+    dataSourceKey,
+    loadMetrics,
+    selectedMetric,
+    selectedProfile,
+    selectedRange,
+  ]);
 
   const pendingAuthMode = pendingDataSource
     ? getDataSourceAuthMode(pendingDataSource.auth)
     : 'none';
+  const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
+  const currentSourceName = selectedDataSource?.name ?? copy.defaultDataSource;
+  const resultSummary = useMemo(() => (data ? summarizeMetricData(data) : null), [data]);
+  const csvContext = useMemo<MetricCsvContext>(
+    () => ({
+      profileName: selectedProfile?.name ?? activeQuery?.profileName ?? '',
+      sourceName: activeQuery?.dataSourceName || currentSourceName,
+      queryStart: activeQuery?.start,
+      queryEnd: activeQuery?.end,
+      queriedAt: activeQuery?.queriedAt,
+    }),
+    [activeQuery, currentSourceName, selectedProfile],
+  );
+  const csvRows = useMemo(
+    () => (data && selectedMetric ? buildMetricCsvRows(data, selectedMetric, csvContext) : []),
+    [csvContext, data, selectedMetric],
+  );
+  const detailRows = useMemo(
+    () => (data && selectedMetric ? buildMetricSeriesDetailRows(data, selectedMetric) : []),
+    [data, selectedMetric],
+  );
+  const exportDisabled = csvRows.length === 0;
+
+  const formatSeconds = useCallback(
+    (timestamp?: number) =>
+      timestamp === undefined ? '-' : new Date(timestamp * 1000).toLocaleString(locale),
+    [locale],
+  );
+  const formatMillis = useCallback(
+    (timestamp?: number) =>
+      timestamp === undefined ? '-' : new Date(timestamp).toLocaleString(locale),
+    [locale],
+  );
+  const formatHistorySource = (entry: MetricsQueryHistoryEntry) =>
+    entry.dataSourceKey ? entry.dataSourceName || entry.dataSourceKey : copy.defaultDataSource;
+
+  const detailColumns = useMemo<ColumnsType<MetricSeriesDetailRow>>(
+    () => [
+      {
+        title: copy.series,
+        dataIndex: 'seriesLabel',
+        key: 'seriesLabel',
+        width: 220,
+        render: (value: string) => (
+          <Text ellipsis={{ tooltip: value }} style={{ maxWidth: 200 }}>
+            {value}
+          </Text>
+        ),
+      },
+      {
+        title: copy.labels,
+        dataIndex: 'labels',
+        key: 'labels',
+        width: 280,
+        render: (value: string) => (
+          <Text code copyable ellipsis={{ tooltip: value }} style={{ maxWidth: 260 }}>
+            {value}
+          </Text>
+        ),
+      },
+      {
+        title: copy.sampleType,
+        dataIndex: 'sampleType',
+        key: 'sampleType',
+        width: 120,
+        render: (value: MetricSeriesDetailRow['sampleType']) => (
+          <Tag color={value === 'histogram' ? 'purple' : 'blue'} style={{ marginInlineEnd: 0 }}>
+            {value === 'histogram' ? copy.histogram : 'scalar'}
+          </Tag>
+        ),
+      },
+      {
+        title: copy.samples,
+        dataIndex: 'sampleCount',
+        key: 'sampleCount',
+        width: 100,
+        sorter: (left, right) => left.sampleCount - right.sampleCount,
+      },
+      {
+        title: copy.latestSample,
+        dataIndex: 'latestTimestamp',
+        key: 'latestTimestamp',
+        width: 180,
+        render: (value?: number) => formatSeconds(value),
+      },
+      {
+        title: copy.value,
+        dataIndex: 'latestValue',
+        key: 'latestValue',
+        width: 120,
+        render: (value?: number) => (value === undefined ? '-' : formatMetricValue(value)),
+      },
+    ],
+    [
+      copy.histogram,
+      copy.labels,
+      copy.latestSample,
+      copy.sampleType,
+      copy.samples,
+      copy.series,
+      copy.value,
+      formatSeconds,
+    ],
+  );
+
+  const handleExportCsv = () => {
+    if (!data || !selectedMetric || csvRows.length === 0) return;
+    downloadCsv(
+      buildMetricCsvFilename(selectedMetric, activeQuery?.queriedAt),
+      buildMetricCsvFromRows(csvRows),
+    );
+  };
+
+  const handleClearHistory = () => {
+    clearMetricsQueryHistory();
+    setHistory([]);
+  };
+
+  const handleRestoreHistory = (entry: MetricsQueryHistoryEntry) => {
+    const nextProfile = profiles.find((profile) => profile.id === entry.profileId);
+    const nextMetric = nextProfile?.metrics.find(
+      (metric) => metric.semanticMetric === entry.metricId,
+    );
+    const nextRange =
+      RANGE_OPTIONS.find((range) => range.value === entry.rangeId) ?? RANGE_OPTIONS[0];
+    if (!nextProfile || !nextMetric) {
+      void message.warning(copy.unavailableHistory);
+      return;
+    }
+
+    const nextDataSource = entry.dataSourceKey
+      ? availableDataSources.find((source) => source.key === entry.dataSourceKey)
+      : undefined;
+    const nextDataSourceKey = nextDataSource?.key ?? '';
+    setProfileId(nextProfile.id);
+    setMetricId(nextMetric.semanticMetric);
+    setRangeId(nextRange.value);
+    setHistoryOpen(false);
+
+    if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
+      dataSourceCredentialsRef.current = null;
+      dataSourceKeyRef.current = nextDataSource.key;
+      setDataSourceKey(nextDataSource.key);
+      setData(null);
+      setActiveQuery(null);
+      setPendingDataSource(nextDataSource);
+      void message.info(copy.protectedHistory);
+      return;
+    }
+
+    activateDataSource(nextDataSourceKey, undefined, nextMetric, nextRange, nextProfile);
+  };
 
   return (
     <section aria-labelledby="metrics-explorer-title" style={{ marginTop: 24 }}>
@@ -632,11 +870,34 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             }
             options={RANGE_OPTIONS.map(({ label, value }) => ({ label, value }))}
           />
+          <Tooltip title={copy.history}>
+            <Button
+              aria-label={copy.history}
+              icon={<ClockCounterClockwise size={16} />}
+              onClick={() => setHistoryOpen(true)}
+            />
+          </Tooltip>
+          <Tooltip title={copy.details}>
+            <Button
+              aria-label={copy.details}
+              icon={<Eye size={16} />}
+              onClick={() => setDetailsOpen(true)}
+              disabled={!data || detailRows.length === 0}
+            />
+          </Tooltip>
+          <Tooltip title={exportDisabled ? copy.exportDisabled : copy.exportCsv}>
+            <Button
+              aria-label={copy.exportCsv}
+              icon={<DownloadSimple size={16} />}
+              onClick={handleExportCsv}
+              disabled={exportDisabled}
+            />
+          </Tooltip>
           <Tooltip title={copy.refresh}>
             <Button
               aria-label={copy.refresh}
               icon={<ArrowsClockwise size={16} />}
-              onClick={() => void loadMetrics(selectedMetric, selectedRange)}
+              onClick={() => void loadMetrics(selectedMetric, selectedRange, selectedProfile)}
               loading={queryLoading}
             />
           </Tooltip>
@@ -674,16 +935,162 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               style={{ marginBottom: 8 }}
             />
           ))}
+          {resultSummary && (
+            <>
+              <Flex gap={16} wrap="wrap" style={{ marginBottom: 12 }}>
+                <Statistic
+                  title={copy.series}
+                  value={`${resultSummary.visibleSeriesCount}/${resultSummary.seriesCount}`}
+                  style={{ minWidth: 96 }}
+                />
+                <Statistic
+                  title={copy.samples}
+                  value={resultSummary.sampleCount}
+                  style={{ minWidth: 96 }}
+                />
+                <Statistic
+                  title={copy.scalarSamples}
+                  value={resultSummary.scalarSampleCount}
+                  style={{ minWidth: 110 }}
+                />
+                <Statistic
+                  title={copy.histogramSamples}
+                  value={resultSummary.histogramSampleCount}
+                  style={{ minWidth: 130 }}
+                />
+                <Statistic
+                  title={copy.warnings}
+                  value={resultSummary.warningCount}
+                  style={{ minWidth: 96 }}
+                />
+              </Flex>
+              <Descriptions
+                size="small"
+                column={{ xs: 1, sm: 2, md: 3 }}
+                style={{ marginBottom: 12 }}
+                items={[
+                  {
+                    key: 'source',
+                    label: copy.source,
+                    children: currentSourceName,
+                  },
+                  {
+                    key: 'query-window',
+                    label: copy.queryWindow,
+                    children: `${formatSeconds(activeQuery?.start)} - ${formatSeconds(activeQuery?.end)}`,
+                  },
+                  {
+                    key: 'queried-at',
+                    label: copy.queriedAt,
+                    children: formatMillis(activeQuery?.queriedAt),
+                  },
+                  {
+                    key: 'first-sample',
+                    label: copy.firstSample,
+                    children: formatSeconds(resultSummary.earliestTimestamp),
+                  },
+                  {
+                    key: 'last-sample',
+                    label: copy.lastSample,
+                    children: formatSeconds(resultSummary.latestTimestamp),
+                  },
+                  {
+                    key: 'result-type',
+                    label: copy.resultType,
+                    children: data.resultType,
+                  },
+                ]}
+              />
+            </>
+          )}
           <MetricChart
             data={data}
             metric={selectedMetric}
-            locale={lang === 'zh' ? 'zh-CN' : 'en-US'}
+            locale={locale}
             noSamples={copy.noSamples}
             histogramLabel={copy.histogram}
             histogramTooltip={copy.histogramTooltip}
           />
         </>
       ) : null}
+      <Drawer
+        title={copy.historyTitle}
+        width={760}
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        destroyOnHidden
+        extra={
+          <Button size="small" disabled={history.length === 0} onClick={handleClearHistory}>
+            {copy.clearHistory}
+          </Button>
+        }
+      >
+        {history.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.noHistory} />
+        ) : (
+          <List
+            dataSource={history}
+            renderItem={(entry) => (
+              <List.Item
+                actions={[
+                  <Button
+                    key="restore"
+                    size="small"
+                    type="link"
+                    onClick={() => handleRestoreHistory(entry)}
+                  >
+                    {copy.restore}
+                  </Button>,
+                ]}
+              >
+                <List.Item.Meta
+                  title={
+                    <Flex gap={8} wrap="wrap" align="center">
+                      <Text strong>{entry.metricName}</Text>
+                      <Tag>{entry.rangeLabel}</Tag>
+                      <Tag>{formatHistorySource(entry)}</Tag>
+                      <Tag>{`${entry.summary.sampleCount} ${copy.samples}`}</Tag>
+                    </Flex>
+                  }
+                  description={
+                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                      <Text
+                        code
+                        copyable
+                        ellipsis={{ tooltip: entry.promql }}
+                        style={{ maxWidth: '100%' }}
+                      >
+                        {entry.promql}
+                      </Text>
+                      <Text type="secondary">
+                        {`${formatSeconds(entry.start)} - ${formatSeconds(entry.end)} · ${formatMillis(
+                          entry.queriedAt,
+                        )}`}
+                      </Text>
+                    </Space>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        )}
+      </Drawer>
+      <Drawer
+        title={copy.detailsTitle}
+        width={900}
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        destroyOnHidden
+      >
+        <Table<MetricSeriesDetailRow>
+          rowKey="key"
+          size="small"
+          dataSource={detailRows}
+          columns={detailColumns}
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          scroll={{ x: 1020 }}
+        />
+      </Drawer>
       <Modal
         title={copy.authTitle}
         open={pendingDataSource !== null}
