@@ -99,6 +99,14 @@ const testFieldNames = (auth?: string) => {
   return ['type', 'url', 'auth'];
 };
 
+const saveFieldNames: (keyof DataSourceFormValues)[] = [
+  'name',
+  'type',
+  'url',
+  'auth',
+  'instanceIds',
+];
+
 const withoutSecrets = (values: DataSourceFormValues): Partial<DataSource> => {
   const sanitized = { ...values };
   secretFieldNames.forEach((field) => {
@@ -233,7 +241,9 @@ export const DataSourceTab = () => {
 
   const handleSubmit = async () => {
     try {
-      const values = await dsForm.validateFields();
+      // Credentials are supplied per metrics query and are only used here by the
+      // connection test. Saving metadata must not require re-entering them.
+      const values = await dsForm.validateFields(saveFieldNames);
       const dataSourceValues = withoutSecrets(values);
       setSubmitting(true);
       const saved = editingDataSource

@@ -25,6 +25,7 @@ import {
   listAllDataSources,
   listDataSourcesPage,
   testDataSource,
+  updateDataSource,
 } from '../../../api/settings';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
@@ -344,6 +345,36 @@ describe('DataSourceTab', () => {
         bearerToken: 'token-1',
       });
     });
+  });
+
+  it('updates authenticated data source metadata without requiring query credentials', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(updateDataSource).mockResolvedValue({
+      ...sources[1],
+      name: 'Thanos primary',
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+    await screen.findByText('Thanos DR');
+
+    const editButtons = screen.getAllByRole('button', { name: /edit/i });
+    await user.click(editButtons[1]);
+    const dialog = await screen.findByRole('dialog');
+    const nameInput = within(dialog).getByDisplayValue('Thanos DR');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Thanos primary');
+    await user.click(within(dialog).getByRole('button', { name: 'OK' }));
+
+    await waitFor(() =>
+      expect(updateDataSource).toHaveBeenCalledWith({
+        ...sources[1],
+        name: 'Thanos primary',
+      }),
+    );
   });
 
   it('creates and tests a Grafana Mimir data source', async () => {
