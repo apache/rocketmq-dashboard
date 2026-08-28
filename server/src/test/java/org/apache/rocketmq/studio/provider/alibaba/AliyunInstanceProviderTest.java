@@ -224,6 +224,73 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldFetchExactlyFiveFullPagesTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class))).thenAnswer(invocation -> {
+            ListConsumerGroupsRequest request = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(groupsResponse(500L,
+                    groupIdsForPage(request.getPageNumber(), AliyunConverters.PAGE_SIZE)));
+        });
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).hasSize(500);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient, times(5)).listConsumerGroups(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageNumber)
+                .containsExactly(1, 2, 3, 4, 5);
+    }
+
+    @Test
+    void listConsumerGroupsShouldTraversePastLegacyFivePageCapTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class))).thenAnswer(invocation -> {
+            ListConsumerGroupsRequest request = invocation.getArgument(0);
+            int pageNumber = request.getPageNumber();
+            if (pageNumber <= 5) {
+                return CompletableFuture.completedFuture(groupsResponse(501L,
+                        groupIdsForPage(pageNumber, AliyunConverters.PAGE_SIZE)));
+            }
+            return CompletableFuture.completedFuture(groupsResponse(501L, "GID_500"));
+        });
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).hasSize(501);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient, times(6)).listConsumerGroups(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageNumber)
+                .containsExactly(1, 2, 3, 4, 5, 6);
+    }
+
+    @Test
+    void listConsumerGroupsShouldStopOnShortPageWhenTotalCountIsMissingTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class))).thenAnswer(invocation -> {
+            ListConsumerGroupsRequest request = invocation.getArgument(0);
+            if (request.getPageNumber() == 1) {
+                return CompletableFuture.completedFuture(groupsResponse(null,
+                        groupIdsForPage(1, AliyunConverters.PAGE_SIZE)));
+            }
+            return CompletableFuture.completedFuture(groupsResponse(null, "GID_100"));
+        });
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).hasSize(101);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient, times(2)).listConsumerGroups(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageNumber)
+                .containsExactly(1, 2);
+    }
+
+    @Test
     void getGroupProgressShouldMapLagRowsTest() {
         stubInstance();
         stubCallThrough();
@@ -702,6 +769,12 @@ class AliyunInstanceProviderTest {
                                 .build())
                         .build())
                 .build();
+    }
+
+    private static String[] groupIdsForPage(int pageNumber, int pageSize) {
+        return IntStream.range(0, pageSize)
+                .mapToObj(index -> "GID_" + ((pageNumber - 1) * pageSize + index))
+                .toArray(String[]::new);
     }
 
     @Test
