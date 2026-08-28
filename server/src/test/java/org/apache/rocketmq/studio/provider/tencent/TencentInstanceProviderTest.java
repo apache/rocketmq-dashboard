@@ -30,6 +30,7 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceResponse;
 import com.tencentcloudapi.trocket.v20230308.models.MessageItem;
 import com.tencentcloudapi.trocket.v20230308.models.MessageTraceItem;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListRequest;
@@ -637,6 +638,47 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getGroupSubscriptionsShouldFetchExactlyTenThousandTencentSubscriptionsTest() throws Exception {
+        when(client.DescribeTopicListByGroup(any())).thenAnswer(invocation -> {
+            DescribeTopicListByGroupRequest request = invocation.getArgument(0);
+            DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+            response.setTotalCount(10000L);
+            response.setData(subscriptionPage(request.getOffset(), request.getLimit(), 10000));
+            return response;
+        });
+
+        assertThat(provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test")).hasSize(10000);
+        verify(client, times(100)).DescribeTopicListByGroup(any());
+    }
+
+    @Test
+    void getGroupProgressShouldFetchPastLegacyTenThousandTencentSubscriptionCapTest() throws Exception {
+        when(client.DescribeTopicListByGroup(any())).thenAnswer(invocation -> {
+            DescribeTopicListByGroupRequest request = invocation.getArgument(0);
+            DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+            response.setTotalCount(10001L);
+            response.setData(subscriptionPage(request.getOffset(), request.getLimit(), 10001));
+            return response;
+        });
+
+        assertThat(provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test")).hasSize(10001);
+        verify(client, times(101)).DescribeTopicListByGroup(any());
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldStopOnShortPageWhenTencentTotalCountIsMissingTest() throws Exception {
+        when(client.DescribeTopicListByGroup(any())).thenAnswer(invocation -> {
+            DescribeTopicListByGroupRequest request = invocation.getArgument(0);
+            DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+            response.setData(subscriptionPage(request.getOffset(), request.getLimit(), 150));
+            return response;
+        });
+
+        assertThat(provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test")).hasSize(150);
+        verify(client, times(2)).DescribeTopicListByGroup(any());
+    }
+
+    @Test
     void resetOffsetShouldCallTencentOpenApiTest() throws Exception {
         when(client.ResetConsumerGroupOffset(any())).thenReturn(null);
 
@@ -665,6 +707,22 @@ class TencentInstanceProviderTest {
         subscription.setConsumeType("CLUSTERING");
         subscription.setMessageModel("CLUSTERING");
         return subscription;
+    }
+
+    private static SubscriptionData[] subscriptionPage(Long offset, Long limit, int total) {
+        int start = offset == null ? 0 : offset.intValue();
+        int size = Math.min(limit == null ? TencentInstanceProvider.PAGE_SIZE : limit.intValue(),
+                Math.max(total - start, 0));
+        return IntStream.range(0, size)
+                .mapToObj(index -> {
+                    SubscriptionData subscription = subscription("GID_test");
+                    subscription.setTopic("topic-" + (start + index));
+                    subscription.setSubString("*");
+                    subscription.setExpressionType("TAG");
+                    subscription.setConsumerLag((long) start + index);
+                    return subscription;
+                })
+                .toArray(SubscriptionData[]::new);
     }
 
     @Test

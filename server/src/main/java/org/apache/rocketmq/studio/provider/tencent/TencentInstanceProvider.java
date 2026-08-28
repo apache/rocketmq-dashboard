@@ -276,6 +276,10 @@ public class TencentInstanceProvider implements InstanceProvider {
         return totalCount != null && totalCount >= 0L && offset + pageSize >= totalCount;
     }
 
+    private static boolean hasFetchedAll(long fetched, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && fetched >= totalCount;
+    }
+
     private static PageResult<TopicVO> paginate(List<TopicVO> topics, int page, int pageSize) {
         int total = topics.size();
         long offset = Pagination.pageOffset(page, pageSize);
@@ -935,11 +939,12 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     private List<SubscriptionData> listTopicSubscriptionsByGroup(Context context, String groupName) {
         List<SubscriptionData> all = new ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
+        long fetched = 0L;
+        for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeTopicListByGroupRequest request = new DescribeTopicListByGroupRequest();
             request.setInstanceId(context.cloudInstanceId());
             request.setConsumerGroup(groupName);
-            request.setOffset((long) page * PAGE_SIZE);
+            request.setOffset(offset);
             request.setLimit((long) PAGE_SIZE);
             DescribeTopicListByGroupResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeTopicListByGroup(request));
@@ -947,8 +952,9 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (data == null || data.length == 0) {
                 break;
             }
+            fetched += data.length;
             all.addAll(Arrays.asList(data));
-            if (data.length < PAGE_SIZE) {
+            if (data.length < PAGE_SIZE || hasFetchedAll(fetched, response.getTotalCount())) {
                 break;
             }
         }
