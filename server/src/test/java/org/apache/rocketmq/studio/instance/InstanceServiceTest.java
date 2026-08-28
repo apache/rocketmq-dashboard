@@ -1283,6 +1283,9 @@ class InstanceServiceTest {
         assertThat(result.getFailed()).containsExactly("cn-broken: regional outage");
         verify(catalog).listCloudInstances(1L, "cn-working", null);
         verify(catalog).getCloudInstance(1L, "cn-working", "rmq-working");
+        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
+                argThat(detail -> detail.contains("imported=1") && detail.contains("failed=1")),
+                eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -1388,6 +1391,23 @@ class InstanceServiceTest {
         assertThat(result.getFailedCount()).isEqualTo(1);
         assertThat(result.getFailed()).containsExactly("regions: region discovery unavailable");
         verify(catalog, never()).listCloudInstances(any(Long.class), anyString(), any());
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldReportMissingCatalogProviderTest() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(null);
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("catalog: provider returned no cloud catalog");
         verifyNoInteractions(instanceRepository);
     }
 
