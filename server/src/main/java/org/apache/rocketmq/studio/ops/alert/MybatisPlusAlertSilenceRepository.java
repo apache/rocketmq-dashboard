@@ -17,13 +17,17 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertSilence;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertSilenceMapper;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -47,6 +51,35 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
         return mapper.selectList(new QueryWrapper<RmqAlertSilence>()
                         .orderByDesc("ends_at").orderByDesc("id"))
                 .stream().map(this::toVo).toList();
+    }
+
+    @Override
+    public PageResult<AlertSilenceVO> findPage(int page, int pageSize) {
+        IPage<RmqAlertSilence> mapperPage = mapper.selectPage(new Page<>(page, pageSize),
+                new QueryWrapper<RmqAlertSilence>().orderByDesc("ends_at").orderByDesc("id"));
+        return PageResult.of(mapperPage.getRecords().stream().map(this::toVo).toList(), mapperPage.getTotal(),
+                (int) mapperPage.getCurrent(), (int) mapperPage.getSize());
+    }
+
+    @Override
+    public List<AlertSilenceVO> findActiveCandidates(AlertDomain domain, Long ruleId, String instanceId,
+            LocalDateTime now) {
+        QueryWrapper<RmqAlertSilence> query = new QueryWrapper<RmqAlertSilence>()
+                .le("starts_at", now)
+                .gt("ends_at", now)
+                .and(scope -> scope.isNull("domain").or().eq("domain", domain.name()));
+        if (ruleId == null) {
+            query.isNull("rule_id");
+        } else {
+            query.and(scope -> scope.isNull("rule_id").or().eq("rule_id", ruleId));
+        }
+        if (instanceId == null) {
+            query.isNull("instance_id");
+        } else {
+            query.and(scope -> scope.isNull("instance_id").or().eq("instance_id", instanceId));
+        }
+        query.orderByDesc("ends_at").orderByDesc("id");
+        return mapper.selectList(query).stream().map(this::toVo).toList();
     }
 
     @Override

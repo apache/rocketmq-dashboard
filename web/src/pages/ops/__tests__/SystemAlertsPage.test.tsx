@@ -17,7 +17,9 @@ import {
   listAlertDeliveries,
   listRelatedSystemAlerts,
   retryAlertDelivery,
+  deleteAlertSilence,
   listAlertSilences,
+  listAlertSilencesPage,
   listSystemAlertsPage,
 } from '../../../services/opsService';
 import SystemAlertsPage from '../systemAlerts';
@@ -31,6 +33,7 @@ vi.mock('../../../services/opsService', () => ({
   listRelatedSystemAlerts: vi.fn().mockResolvedValue([]),
   retryAlertDelivery: vi.fn(),
   listAlertSilences: vi.fn(),
+  listAlertSilencesPage: vi.fn(),
   createAlertSilence: vi.fn(),
   deleteAlertSilence: vi.fn(),
 }));
@@ -87,6 +90,7 @@ describe('SystemAlertsPage', () => {
       size: 20,
     });
     vi.mocked(listAlertSilences).mockResolvedValue([]);
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({ items: [], total: 0, page: 1, size: 10 });
   });
 
   it('renders an alert with an unknown backend level', async () => {
@@ -391,16 +395,21 @@ describe('SystemAlertsPage', () => {
   });
 
   it('shows maintenance windows and creates a scoped silence', async () => {
-    vi.mocked(listAlertSilences).mockResolvedValue([
-      {
-        id: 9,
-        domain: 'CLUSTER',
-        instanceId: 'local',
-        startsAt: '2026-08-10T01:00',
-        endsAt: '2026-08-10T02:00',
-        createdBy: 'admin',
-      },
-    ]);
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          domain: 'CLUSTER',
+          instanceId: 'local',
+          startsAt: '2026-08-10T01:00',
+          endsAt: '2026-08-10T02:00',
+          createdBy: 'admin',
+        },
+      ],
+      total: 11,
+      page: 1,
+      size: 10,
+    });
     vi.mocked(createAlertSilence).mockResolvedValue({
       id: 10,
       domain: 'BUSINESS',
@@ -413,6 +422,7 @@ describe('SystemAlertsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: '维护窗口' }));
     expect(await screen.findByText(/CLUSTER.*local/)).toBeInTheDocument();
+    expect(listAlertSilencesPage).toHaveBeenCalledWith({ page: 1, pageSize: 10 });
 
     await user.type(screen.getByLabelText('规则 ID'), '42');
     await user.type(screen.getByLabelText('标签范围'), 'brokerName=broker-a,topic=orders');
@@ -430,6 +440,70 @@ describe('SystemAlertsPage', () => {
           endsAt: new Date('2026-08-11T02:00:00').toISOString(),
         }),
       );
+      expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
+    });
+  });
+
+  it('loads maintenance windows by page and backs up after deleting the last page item', async () => {
+    vi.mocked(listAlertSilencesPage)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 9,
+            domain: 'CLUSTER',
+            instanceId: 'local',
+            startsAt: '2026-08-10T01:00',
+            endsAt: '2026-08-10T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 11,
+        page: 1,
+        size: 10,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 10,
+            domain: 'BUSINESS',
+            instanceId: 'remote',
+            startsAt: '2026-08-11T01:00',
+            endsAt: '2026-08-11T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 11,
+        page: 2,
+        size: 10,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 9,
+            domain: 'CLUSTER',
+            instanceId: 'local',
+            startsAt: '2026-08-10T01:00',
+            endsAt: '2026-08-10T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 10,
+        page: 1,
+        size: 10,
+      });
+    vi.mocked(deleteAlertSilence).mockResolvedValue();
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    await user.click(await screen.findByRole('listitem', { name: '2' }));
+    expect(await screen.findByText(/BUSINESS.*remote/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /结\s*束/ }));
+
+    await waitFor(() => {
+      expect(deleteAlertSilence).toHaveBeenCalledWith(10);
+      expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
     });
   });
 });

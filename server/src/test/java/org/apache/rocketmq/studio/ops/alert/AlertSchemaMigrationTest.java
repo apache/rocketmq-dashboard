@@ -57,5 +57,13 @@ class AlertSchemaMigrationTest {
             result.next();
             assertThat(result.getInt(1)).isEqualTo(3);
         }
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM information_schema.indexes "
+                        + "WHERE table_name = 'rmq_alert_silence' "
+                        + "AND index_name = 'idx_alert_silence_expiry'")) {
+            result.next();
+            assertThat(result.getInt(1)).isGreaterThan(0);
+        }
     }
 }

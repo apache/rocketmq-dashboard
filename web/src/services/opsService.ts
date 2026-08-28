@@ -21,6 +21,7 @@ import type {
   NotificationDeliveryBulkRetryResult,
   NotificationDeliveryQuery,
   NotificationDeliveryRecord,
+  AlertSilenceQuery,
   AlertSilence,
   CreateAlertSilence,
 } from '../api/ops';
@@ -435,6 +436,19 @@ export async function listAlertDeliveriesPage(
 export async function listAlertSilences(): Promise<AlertSilence[]> {
   if (isMockMode()) return alertSilencesState.map((silence) => ({ ...silence }));
   return opsApi.listAlertSilences();
+}
+
+export async function listAlertSilencesPage(
+  params: AlertSilenceQuery = {},
+): Promise<PageResult<AlertSilence>> {
+  if (!isMockMode()) return opsApi.listAlertSilencesPage(params);
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? 10;
+  const start = (page - 1) * pageSize;
+  const items = alertSilencesState
+    .slice(start, start + pageSize)
+    .map((silence) => ({ ...silence }));
+  return { items, total: alertSilencesState.length, page, size: pageSize };
 }
 
 export async function createAlertSilence(data: CreateAlertSilence): Promise<AlertSilence> {

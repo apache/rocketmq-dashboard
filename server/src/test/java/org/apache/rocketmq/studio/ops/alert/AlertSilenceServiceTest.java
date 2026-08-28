@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,7 +67,12 @@ class AlertSilenceServiceTest {
         assertThat(captured.getValue().getInstanceId()).isEqualTo("local");
         assertThat(captured.getValue().getStartsAt()).isEqualTo(start);
         assertThat(created.getId()).isEqualTo(7L);
-        when(repository.findAll()).thenReturn(List.of(created));
+        when(repository.findActiveCandidates(AlertDomain.BUSINESS, 3L, "local", start.plusMinutes(1)))
+                .thenReturn(List.of(created));
+        when(repository.findActiveCandidates(AlertDomain.BUSINESS, 3L, "other", start.plusMinutes(1)))
+                .thenReturn(List.of());
+        when(repository.findActiveCandidates(AlertDomain.BUSINESS, 3L, "local", end))
+                .thenReturn(List.of());
 
         AlertRuleVO rule = AlertRuleVO.builder().id(3L).domain(AlertDomain.BUSINESS).build();
         assertThat(service.isActive(rule, "local", start.plusMinutes(1))).isTrue();
@@ -108,12 +114,51 @@ class AlertSilenceServiceTest {
         AlertSilenceVO silence = AlertSilenceVO.builder().domain(AlertDomain.CLUSTER).ruleId(5L)
                 .instanceId("local").labels(Map.of("brokerName", "broker-a"))
                 .startsAt(now.minusMinutes(1)).endsAt(now.plusMinutes(1)).createdBy("admin").build();
-        when(repository.findAll()).thenReturn(List.of(silence));
+        when(repository.findActiveCandidates(AlertDomain.CLUSTER, 5L, "local", now)).thenReturn(List.of(silence));
 
         AlertRuleVO rule = AlertRuleVO.builder().id(5L).domain(AlertDomain.CLUSTER).build();
         assertThat(service.isActive(rule, "local", Map.of("brokerName", "broker-a", "cluster", "Default"), now))
                 .isTrue();
         assertThat(service.isActive(rule, "local", Map.of("brokerName", "broker-b"), now)).isFalse();
         assertThat(service.isActive(rule, "local", Map.of(), now)).isFalse();
+    }
+
+    @Test
+    void listPageShouldValidateAndDelegateToRepositoryPaginationTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        AlertSilenceVO silence = AlertSilenceVO.builder().id(11L).reason("deploy").build();
+        when(repository.findPage(2, 25)).thenReturn(PageResult.of(List.of(silence), 51, 2, 25));
+
+        PageResult<AlertSilenceVO> page = service.listPage(2, 25);
+
+        assertThat(page.getTotal()).isEqualTo(51);
+        assertThat(page.getItems()).singleElement()
+                .satisfies(item -> assertThat(item.getId()).isEqualTo(11L));
+        org.mockito.Mockito.verify(repository).findPage(2, 25);
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).findAll();
+    }
+
+    @Test
+    void activeUntilShouldQueryScopedActiveCandidatesBeforeLabelMatchingTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        LocalDateTime now = LocalDateTime.of(2026, 8, 22, 10, 0);
+        AlertRuleVO rule = AlertRuleVO.builder().id(9L).domain(AlertDomain.CLUSTER).build();
+        AlertSilenceVO wrongLabel = AlertSilenceVO.builder().id(1L).domain(AlertDomain.CLUSTER).ruleId(9L)
+                .instanceId("local").labels(Map.of("brokerName", "broker-b"))
+                .startsAt(now.minusMinutes(5)).endsAt(now.plusMinutes(10)).createdBy("admin").build();
+        AlertSilenceVO firstMatch = AlertSilenceVO.builder().id(2L).domain(AlertDomain.CLUSTER).ruleId(9L)
+                .instanceId("local").labels(Map.of("brokerName", "broker-a"))
+                .startsAt(now.minusMinutes(5)).endsAt(now.plusMinutes(10)).createdBy("admin").build();
+        AlertSilenceVO overlappingMatch = AlertSilenceVO.builder().id(3L).domain(AlertDomain.CLUSTER)
+                .labels(Map.of("brokerName", "broker-a"))
+                .startsAt(now.minusMinutes(1)).endsAt(now.plusMinutes(30)).createdBy("admin").build();
+        when(repository.findActiveCandidates(AlertDomain.CLUSTER, 9L, "local", now))
+                .thenReturn(List.of(wrongLabel, firstMatch, overlappingMatch));
+
+        LocalDateTime activeUntil = service.activeUntil(rule, "local", Map.of("brokerName", "broker-a"), now);
+
+        assertThat(activeUntil).isEqualTo(now.plusMinutes(30));
+        org.mockito.Mockito.verify(repository).findActiveCandidates(AlertDomain.CLUSTER, 9L, "local", now);
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).findAll();
     }
 }

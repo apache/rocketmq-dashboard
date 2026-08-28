@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -38,6 +40,12 @@ public class AlertSilenceController {
     @GetMapping
     public Result<List<AlertSilenceVO>> list() {
         return Result.ok(silenceService.list());
+    }
+
+    @GetMapping("/page")
+    public Result<PageResult<AlertSilenceVO>> listPage(@RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(silenceService.listPage(page, pageSize));
     }
 
     @PostMapping
