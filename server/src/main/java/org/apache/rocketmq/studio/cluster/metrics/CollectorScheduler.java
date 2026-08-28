@@ -26,10 +26,18 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -79,43 +87,138 @@ public class CollectorScheduler {
             log.debug("Skipping native alert collection because another Studio replica holds the lease");
             return;
         }
-        List<Future<?>> jobs = instanceRepository.findAll().stream()
-                .map(this::submitCollection)
-                .filter(java.util.Objects::nonNull)
-                .toList();
+        List<InstanceVO> instances = instanceRepository.findAll();
+        if (instances.isEmpty()) {
+            return;
+        }
         Duration timeout = parsePositiveDuration(properties.getCollectionTimeout(), Duration.ofSeconds(15));
-        long passStartedAt = System.nanoTime();
-        long timeoutNanos = timeout.toNanos();
-        for (Future<?> job : jobs) {
-            try {
-                long remainingNanos = timeoutNanos - (System.nanoTime() - passStartedAt);
-                if (remainingNanos <= 0) {
-                    job.cancel(true);
-                    continue;
+        Duration passTimeout = timeout.multipliedBy(instances.size());
+        Instant passDeadline = Instant.now().plus(passTimeout);
+        int parallelism = Math.max(1, properties.getCollectionParallelism());
+        CompletionService<InstanceVO> completionService = new ExecutorCompletionService<>(collectionExecutor);
+        ArrayDeque<InstanceVO> pending = new ArrayDeque<>(instances);
+        List<CollectionJob> running = new ArrayList<>();
+        try {
+            submitAvailable(completionService, pending, running, parallelism, timeout, passDeadline);
+            while (!running.isEmpty()) {
+                completeFinishedJobs(running);
+                cancelExpiredJobs(running, timeout, passDeadline, passTimeout);
+                submitAvailable(completionService, pending, running, parallelism, timeout, passDeadline);
+                if (running.isEmpty()) {
+                    break;
                 }
-                job.get(remainingNanos, TimeUnit.NANOSECONDS);
-            } catch (java.util.concurrent.TimeoutException error) {
-                job.cancel(true);
-                log.warn("Native metric collection pass exceeded {} and unfinished work was cancelled", timeout);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
+                Future<InstanceVO> completed = completionService.poll(nextWaitMillis(running, passDeadline),
+                        TimeUnit.MILLISECONDS);
+                if (completed != null) {
+                    completeJob(running, completed);
+                }
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            cancelRunningJobs(running);
+            return;
+        } catch (RejectedExecutionException error) {
+            cancelRunningJobs(running);
+            log.warn("Native metric collection executor rejected new work; aborting pass with {} unstarted instance(s)",
+                    pending.size());
+        }
+        if (!pending.isEmpty()) {
+            log.warn("Native metric collection pass exceeded {}; {} instance(s) were not started", passTimeout,
+                    pending.size());
+        }
+    }
+
+    private void submitAvailable(CompletionService<InstanceVO> completionService, ArrayDeque<InstanceVO> pending,
+            List<CollectionJob> running, int parallelism, Duration timeout, Instant passDeadline) {
+        while (!pending.isEmpty() && running.size() < parallelism) {
+            Instant now = Instant.now();
+            if (!passDeadline.isAfter(now)) {
                 return;
-            } catch (java.util.concurrent.ExecutionException error) {
-                log.warn("Native metric collection job failed: {}", error.getCause().getMessage());
+            }
+            InstanceVO instance = pending.removeFirst();
+            try {
+                Future<InstanceVO> future = completionService.submit(() -> {
+                    collectClusterMetrics(instance);
+                    collectBusinessMetrics(instance);
+                    return instance;
+                });
+                running.add(new CollectionJob(instance, future, now.plus(timeout)));
+            } catch (RejectedExecutionException error) {
+                pending.addFirst(instance);
+                throw error;
             }
         }
     }
 
-    private Future<?> submitCollection(InstanceVO instance) {
-        try {
-            return collectionExecutor.submit(() -> {
-                collectClusterMetrics(instance);
-                collectBusinessMetrics(instance);
-            });
-        } catch (java.util.concurrent.RejectedExecutionException error) {
-            log.warn("Skipping native metric collection for instance {} because the collector is saturated", instance.getName());
-            return null;
+    private void completeFinishedJobs(List<CollectionJob> running) throws InterruptedException {
+        Iterator<CollectionJob> iterator = running.iterator();
+        while (iterator.hasNext()) {
+            CollectionJob job = iterator.next();
+            if (job.future().isDone()) {
+                iterator.remove();
+                awaitJob(job);
+            }
         }
+    }
+
+    private void completeJob(List<CollectionJob> running, Future<InstanceVO> completed) throws InterruptedException {
+        Iterator<CollectionJob> iterator = running.iterator();
+        while (iterator.hasNext()) {
+            CollectionJob job = iterator.next();
+            if (job.future() == completed) {
+                iterator.remove();
+                awaitJob(job);
+                return;
+            }
+        }
+    }
+
+    private void awaitJob(CollectionJob job) throws InterruptedException {
+        try {
+            job.future().get();
+        } catch (CancellationException ignored) {
+            // Already logged when the job was cancelled.
+        } catch (ExecutionException error) {
+            log.warn("Native metric collection job failed for instance {}: {}", job.instance().getName(),
+                    error.getCause().getMessage());
+        }
+    }
+
+    private void cancelExpiredJobs(List<CollectionJob> running, Duration timeout, Instant passDeadline,
+            Duration passTimeout) {
+        Instant now = Instant.now();
+        Iterator<CollectionJob> iterator = running.iterator();
+        while (iterator.hasNext()) {
+            CollectionJob job = iterator.next();
+            if (!passDeadline.isAfter(now)) {
+                job.future().cancel(true);
+                iterator.remove();
+                log.warn("Native metric collection pass exceeded {}; cancelling instance {}", passTimeout,
+                        job.instance().getName());
+            } else if (!job.deadline().isAfter(now)) {
+                job.future().cancel(true);
+                iterator.remove();
+                log.warn("Native metric collection exceeded {} for instance {} and was cancelled", timeout,
+                        job.instance().getName());
+            }
+        }
+    }
+
+    private void cancelRunningJobs(List<CollectionJob> running) {
+        for (CollectionJob job : running) {
+            job.future().cancel(true);
+        }
+        running.clear();
+    }
+
+    private long nextWaitMillis(List<CollectionJob> running, Instant passDeadline) {
+        Instant nextDeadline = passDeadline;
+        for (CollectionJob job : running) {
+            if (job.deadline().isBefore(nextDeadline)) {
+                nextDeadline = job.deadline();
+            }
+        }
+        return Math.max(1, Duration.between(Instant.now(), nextDeadline).toMillis());
     }
 
     @Scheduled(fixedDelayString = "${studio.alerting.snapshot-cleanup-interval:PT1H}")
@@ -173,6 +276,9 @@ public class CollectorScheduler {
         };
         return new ThreadPoolExecutor(parallelism, parallelism, 0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(parallelism), threadFactory, new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    private record CollectionJob(InstanceVO instance, Future<InstanceVO> future, Instant deadline) {
     }
 
     private static Duration parsePositiveDuration(String value, Duration fallback) {
