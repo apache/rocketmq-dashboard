@@ -117,6 +117,7 @@ public class AlertSchemaMigration implements ApplicationRunner {
                     "instance_id, metric_key, domain, labels_hash, availability, collected_at"),
             new Index("rmq_metric_snapshot", "idx_metric_snapshot_retention", "collected_at"),
             new Index("rmq_alert_silence", "idx_alert_silence_active", "starts_at, ends_at"),
+            new Index("rmq_alert_silence", "idx_alert_silence_expiry", "ends_at, starts_at"),
             new Index("rmq_alert_silence", "idx_alert_silence_scope", "domain, rule_id, instance_id"),
             new Index("rmq_alert_notification_outbox", "idx_alert_notification_ready", "status, next_attempt_at"),
             new Index("rmq_alert_notification_outbox", "idx_alert_notification_delivered_retention",

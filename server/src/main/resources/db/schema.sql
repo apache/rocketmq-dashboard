@@ -339,6 +339,7 @@ CREATE TABLE IF NOT EXISTS rmq_alert_silence (
   `created_by` VARCHAR(128) NOT NULL,
   PRIMARY KEY (`id`),
   INDEX idx_alert_silence_active (`starts_at`, `ends_at`),
+  INDEX idx_alert_silence_expiry (`ends_at`, `starts_at`),
   INDEX idx_alert_silence_scope (`domain`, `rule_id`, `instance_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

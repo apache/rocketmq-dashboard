@@ -145,6 +145,11 @@ export interface NotificationDeliveryQuery {
   pageSize?: number;
 }
 
+export interface AlertSilenceQuery {
+  page?: number;
+  pageSize?: number;
+}
+
 export interface AlertSilence {
   id: number;
   domain?: 'BUSINESS' | 'CLUSTER' | null;
@@ -355,6 +360,13 @@ export async function listAlertDeliveriesPage(params: NotificationDeliveryQuery 
 
 export async function listAlertSilences() {
   const res = await client.get<{ data: AlertSilence[] }>('/alert-silences');
+  return res.data.data;
+}
+
+export async function listAlertSilencesPage(params: AlertSilenceQuery = {}) {
+  const res = await client.get<{ data: PageResult<AlertSilence> }>('/alert-silences/page', {
+    params,
+  });
   return res.data.data;
 }
 

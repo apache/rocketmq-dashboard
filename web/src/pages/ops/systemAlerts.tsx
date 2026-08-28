@@ -45,7 +45,7 @@ import {
   listSystemAlertsPage,
   createAlertSilence,
   deleteAlertSilence,
-  listAlertSilences,
+  listAlertSilencesPage,
 } from '../../services/opsService';
 import type {
   AlertSilence,
@@ -158,8 +158,11 @@ const SystemAlertsPage = () => {
   const [silencesVisible, setSilencesVisible] = useState(false);
   const [silences, setSilences] = useState<AlertSilence[]>([]);
   const [loadingSilences, setLoadingSilences] = useState(false);
+  const [silencePage, setSilencePage] = useState(1);
+  const [silenceTotal, setSilenceTotal] = useState(0);
   const [savingSilence, setSavingSilence] = useState(false);
   const [deletingSilenceId, setDeletingSilenceId] = useState<number | null>(null);
+  const silencePageSize = 10;
   const [silenceForm] = Form.useForm();
 
   const currentQuery = () => {
@@ -344,10 +347,13 @@ const SystemAlertsPage = () => {
     }
   };
 
-  const loadSilences = async () => {
+  const loadSilences = async (nextPage = silencePage) => {
     setLoadingSilences(true);
     try {
-      setSilences(await listAlertSilences());
+      const result = await listAlertSilencesPage({ page: nextPage, pageSize: silencePageSize });
+      setSilences(result.items);
+      setSilenceTotal(result.total);
+      setSilencePage(result.page);
     } catch {
       message.error(t('sysAlerts.silenceLoadFailed'));
     } finally {
@@ -356,8 +362,9 @@ const SystemAlertsPage = () => {
   };
 
   const openSilences = () => {
+    setSilencePage(1);
     setSilencesVisible(true);
-    void loadSilences();
+    void loadSilences(1);
   };
 
   const createSilence = async () => {
@@ -388,7 +395,8 @@ const SystemAlertsPage = () => {
       };
       await createAlertSilence(request);
       silenceForm.resetFields();
-      await loadSilences();
+      setSilencePage(1);
+      await loadSilences(1);
       message.success(t('sysAlerts.silenceCreated'));
     } catch {
       message.error(t('sysAlerts.silenceCreateFailed'));
@@ -401,7 +409,9 @@ const SystemAlertsPage = () => {
     setDeletingSilenceId(id);
     try {
       await deleteAlertSilence(id);
-      await loadSilences();
+      const nextPage = silences.length === 1 && silencePage > 1 ? silencePage - 1 : silencePage;
+      setSilencePage(nextPage);
+      await loadSilences(nextPage);
       message.success(t('sysAlerts.silenceEnded'));
     } catch {
       message.error(t('sysAlerts.silenceEndFailed'));
@@ -875,6 +885,17 @@ const SystemAlertsPage = () => {
                 )}
               </Flex>
             ))}
+            {silenceTotal > silencePageSize && (
+              <Pagination
+                size="small"
+                current={silencePage}
+                pageSize={silencePageSize}
+                total={silenceTotal}
+                showSizeChanger={false}
+                style={{ alignSelf: 'flex-end', marginTop: 8 }}
+                onChange={(nextPage) => void loadSilences(nextPage)}
+              />
+            )}
           </Flex>
         </Spin>
       </Modal>
