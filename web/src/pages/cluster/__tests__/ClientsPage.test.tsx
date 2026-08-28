@@ -249,6 +249,24 @@ describe('Clients page', () => {
     expect(screen.queryByText('audit-svc-0@10.0.2.10:49154')).toBeNull();
   });
 
+  it('keeps incomplete client metadata searchable by address', async () => {
+    const user = userEvent.setup();
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: null,
+        address: '10.0.1.99:49152',
+        partial: true,
+      } as unknown as ClientConnection,
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('10.0.1.99:49152');
+    await user.type(screen.getByPlaceholderText('搜索 Client ID 或地址'), '10.0.1.99');
+
+    expect(screen.getByText('10.0.1.99:49152')).toBeInTheDocument();
+  });
+
   it('exports the currently filtered client connections as CSV', async () => {
     const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
       expect(blob).toBeInstanceOf(Blob);
@@ -447,9 +465,7 @@ describe('Clients page', () => {
 
     expect(await screen.findByText('Unable to load registry clusters')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /重\s*试/ }));
-    await waitFor(() =>
-      expect(clusterService.listRegistryClusters).toHaveBeenNthCalledWith(2),
-    );
+    await waitFor(() => expect(clusterService.listRegistryClusters).toHaveBeenNthCalledWith(2));
 
     await act(async () => {
       stale.resolve([]);

@@ -118,6 +118,11 @@ function getLoadErrorMessage(error: unknown): string {
   return DEFAULT_LOAD_ERROR;
 }
 
+const includesNormalized = (value: string | null | undefined, normalizedSearch: string) =>
+  (value ?? '').toLowerCase().includes(normalizedSearch);
+
+const displayMetadata = (value: string | null | undefined) => value || '-';
+
 /* ═══════════════════════════════════════════
    ClientsPage
    ═══════════════════════════════════════════ */
@@ -249,7 +254,7 @@ const ClientsPage = () => {
     const instances = Array.from(
       new Map(
         clusterConnections.map((connection) => [
-          `${connection.type}:${connection.clientId}`,
+          `${connection.type}:${connection.clientId ?? connection.address ?? connection.groupOrTopic}`,
           connection,
         ]),
       ).values(),
@@ -270,8 +275,8 @@ const ClientsPage = () => {
     const normalizedSearch = search.toLowerCase();
     return clusterConnections.filter(
       (connection) =>
-        connection.clientId.toLowerCase().includes(normalizedSearch) ||
-        connection.address?.toLowerCase().includes(normalizedSearch),
+        includesNormalized(connection.clientId, normalizedSearch) ||
+        includesNormalized(connection.address, normalizedSearch),
     );
   }, [clusterConnections, search]);
 
@@ -319,16 +324,16 @@ const ClientsPage = () => {
       key: 'clientId',
       width: 260,
       ellipsis: true,
-      render: (id: string) => (
+      render: (id?: string | null) => (
         <Text
-          copyable
+          copyable={Boolean(id)}
           style={{
             fontSize: 14,
             fontFamily: 'monospace',
             whiteSpace: 'nowrap',
           }}
         >
-          {id}
+          {displayMetadata(id)}
         </Text>
       ),
     },
@@ -379,8 +384,8 @@ const ClientsPage = () => {
       dataIndex: 'address',
       key: 'address',
       width: 180,
-      render: (addr: string) => (
-        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{addr}</Text>
+      render: (addr?: string | null) => (
+        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{displayMetadata(addr)}</Text>
       ),
     },
     {
@@ -588,7 +593,7 @@ const ClientsPage = () => {
           columns={columns}
           dataSource={filtered}
           rowKey={(connection) =>
-            `${connection.type}:${connection.clientId}:${connection.groupOrTopic}`
+            `${connection.type}:${connection.clientId ?? ''}:${connection.address ?? ''}:${connection.groupOrTopic}`
           }
           loading={loading}
           onChange={(pagination, filters, _sorter, extra) => {
@@ -612,7 +617,9 @@ const ClientsPage = () => {
       </Card>
 
       <Modal
-        title={t('clients.detailTitle', { id: selectedConnection?.clientId ?? '' })}
+        title={t('clients.detailTitle', {
+          id: displayMetadata(selectedConnection?.clientId),
+        })}
         open={Boolean(selectedConnection)}
         onCancel={() => setSelectedConnection(null)}
         footer={<Button onClick={() => setSelectedConnection(null)}>{t('common.close')}</Button>}
@@ -623,7 +630,7 @@ const ClientsPage = () => {
           <Descriptions column={1} bordered size="small">
             <Descriptions.Item label={t('clients.clientId')}>
               <Text copyable style={{ fontFamily: 'monospace' }}>
-                {selectedConnection.clientId}
+                {displayMetadata(selectedConnection.clientId)}
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.cluster')}>
@@ -641,7 +648,9 @@ const ClientsPage = () => {
               </Tag>
             </Descriptions.Item>
             <Descriptions.Item label={t('common.address')}>
-              <Text style={{ fontFamily: 'monospace' }}>{selectedConnection.address}</Text>
+              <Text style={{ fontFamily: 'monospace' }}>
+                {displayMetadata(selectedConnection.address)}
+              </Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.language')}>
               <Tag color={languageConfig[selectedConnection.language]?.color ?? 'default'}>
