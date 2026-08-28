@@ -50,9 +50,12 @@ public class QoderAgentProvider extends CliAgentProvider {
     @Override
     protected List<String> buildCommand(LlmConfigVO config, String prompt, String modelOverride) {
         List<String> command = new ArrayList<>(List.of("qodercli", "-p", prompt == null ? "" : prompt));
-        if (StringUtils.hasText(modelOverride)) {
+        String model = StringUtils.hasText(modelOverride)
+                ? modelOverride.trim()
+                : config == null ? null : config.getModel();
+        if (StringUtils.hasText(model)) {
             command.add("-m");
-            command.add(modelOverride.trim());
+            command.add(model.trim());
         }
         return command;
     }
