@@ -28,19 +28,42 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AuthCookieTest {
 
     @Test
-    void usesHttpOnlySecureCookieAndPrefersItOverAuthorizationHeader() {
+    void usesHttpOnlySecureCookie() {
         AuthProperties properties = new AuthProperties();
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.setCookies(new Cookie("rmq_studio_session", "cookie-token"));
-        request.addHeader("Authorization", "Bearer header-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         AuthCookie.write(response, properties, "cookie-token", Duration.ofMinutes(30));
 
-        assertThat(AuthCookie.authorization(request, properties)).isEqualTo("Bearer cookie-token");
         assertThat(response.getHeader("Set-Cookie"))
                 .contains("HttpOnly")
                 .contains("Secure")
                 .contains("SameSite=Strict");
+    }
+
+    @Test
+    void prefersExplicitBearerTokenOverStaleCookie() {
+        AuthProperties properties = new AuthProperties();
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setCookies(new Cookie("rmq_studio_session", "stale-cookie-token"));
+        request.addHeader("Authorization", "bearer current-header-token");
+
+        assertThat(AuthCookie.authorization(request, properties))
+                .isEqualTo("bearer current-header-token");
+    }
+
+    @Test
+    void fallsBackToCookieForEmptyOrNonBearerAuthorization() {
+        AuthProperties properties = new AuthProperties();
+        MockHttpServletRequest emptyHeaderRequest = new MockHttpServletRequest();
+        emptyHeaderRequest.setCookies(new Cookie("rmq_studio_session", "cookie-token"));
+        emptyHeaderRequest.addHeader("Authorization", "Bearer   ");
+        MockHttpServletRequest nonBearerRequest = new MockHttpServletRequest();
+        nonBearerRequest.setCookies(new Cookie("rmq_studio_session", "cookie-token"));
+        nonBearerRequest.addHeader("Authorization", "Basic credentials");
+
+        assertThat(AuthCookie.authorization(emptyHeaderRequest, properties))
+                .isEqualTo("Bearer cookie-token");
+        assertThat(AuthCookie.authorization(nonBearerRequest, properties))
+                .isEqualTo("Bearer cookie-token");
     }
 }

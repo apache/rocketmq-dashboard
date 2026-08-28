@@ -36,6 +36,12 @@ final class AuthCookie {
     }
 
     static String authorization(HttpServletRequest request, AuthProperties properties) {
+        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (hasBearerToken(authorization)) {
+            // API 客户端可能仍携带过期的浏览器 Cookie；显式 Bearer 凭据代表本次请求，
+            // 因此应优先使用。
+            return authorization;
+        }
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             for (Cookie cookie : cookies) {
@@ -46,7 +52,13 @@ final class AuthCookie {
             }
         }
         // API clients that explicitly requested a bearer token at login authenticate with this header.
-        return request.getHeader(HttpHeaders.AUTHORIZATION);
+        return authorization;
+    }
+
+    private static boolean hasBearerToken(String authorization) {
+        return authorization != null
+                && authorization.regionMatches(true, 0, TOKEN_PREFIX, 0, TOKEN_PREFIX.length())
+                && !authorization.substring(TOKEN_PREFIX.length()).isBlank();
     }
 
     static boolean requestsBearerToken(HttpServletRequest request) {
