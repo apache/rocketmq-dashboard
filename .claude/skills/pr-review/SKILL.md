@@ -1,11 +1,11 @@
 ---
 name: pr-review
-description: RocketMQ Studio 的 PR 评审助手。输入一个 GitHub PR 链接，自动用 gh 拉取 PR 及其关联 Issue，切出本地分支，编译前端与后端，用 docker compose 拉起整个项目（不改端口），并产出结构化的 PR 分析总结。当用户提到 评审 PR、review PR、看一下这个 PR、PR 分析、拉 PR 编译、检查 PR、pr review、审查合并请求 等场景时触发；即使用户只贴了一个 GitHub PR 链接，也应触发此 skill。
+description: RocketMQ Studio 的 PR 评审助手。输入一个 GitHub PR 链接，用 gh 只读拉取 PR 及关联 Issue，在 detached 临时 worktree 中检查和构建，并产出结构化分析总结。当用户提到评审 PR、review PR、看一下这个 PR、PR 分析、拉 PR 编译、检查 PR、pr review、审查合并请求等场景时触发；即使用户只贴了一个 GitHub PR 链接，也应触发此 skill。
 ---
 
 # RocketMQ Studio PR 评审
 
-对 RocketMQ Studio（`apache/rocketmq-dashboard`，分支 `rocketmq-studio`）的一个 GitHub PR 做端到端评审：拉取 PR 与关联 Issue → 本地切分支 → 编译前后端 → docker compose 拉起 → 输出结构化分析总结。
+对 RocketMQ Studio（`apache/rocketmq-dashboard`，分支 `rocketmq-studio`）的一个 GitHub PR 做端到端评审：拉取 PR 与关联 Issue → 创建隔离 worktree → 编译前后端 → 按需启动 docker compose → 输出结构化分析总结。默认只读，不修改贡献者分支、当前工作树或 GitHub 状态。
 
 ## 前置条件
 
@@ -28,16 +28,16 @@ description: RocketMQ Studio 的 PR 评审助手。输入一个 GitHub PR 链接
 
 ```
 Stage 1  拉取元信息        gh pr view → JSON + diff
-Stage 2  标题规范检查       正则校验 [Studio] type: description
+Stage 2  标题一致性检查     仓库显式规则 + 近期合并历史
 Stage 3  关联 Issue        gh issue view（若有 Closes/Fixes 引用）
-Stage 4  切出评审分支       gh pr checkout → pr-review-<PR>
-Stage 5  预检 & 修复        Dockerfile style/ 目录修复（已知问题）
+Stage 4  创建隔离工作树     fetch PR head → detached 临时 worktree
+Stage 5  只读预检           检查 diff、构建输入与工作树状态
 Stage 6  编译后端           mvn package -DskipTests（含 checkstyle）
 Stage 7  编译前端           npm ci && npm run build（tsc + vite）
 Stage 8  Docker 部署        docker compose up -d --build + 健康检查
 ```
 
-**完成后**：复原工作区（切回原分支 + stash pop）。
+**完成后**：移除干净的临时 worktree；当前工作树从始至终不切分支、不 stash。
 
 ---
 
@@ -61,38 +61,21 @@ gh pr view <PR> --repo apache/rocketmq-dashboard \
 gh pr diff <PR> --repo apache/rocketmq-dashboard > /tmp/pr-<PR>.diff
 ```
 
-### Stage 2: 检查 PR 标题是否规范
+### Stage 2: 检查 PR 标题一致性
 
-规范来源：`docs/contributing.md`「提交规范」+ `README.md`「Commit Format」+ 本仓库既有 PR/commit 历史，基于 [Conventional Commits](https://www.conventionalcommits.org/) 并带项目前缀。
+先读取仓库实际存在的 `CONTRIBUTING*`、`.github/pull_request_template*`、`README*` 和目标分支说明。不要引用不存在的文件，也不要把 README 中的 commit 约定直接宣称为 PR 标题硬规则。
 
-**格式**：`[Studio] <type>: <description>`
-
-- **`[Studio]`** 为项目前缀（必须，大小写敏感，首字母大写 `Studio`）。
-- **type** 必须为以下之一（小写）：`feat`（新功能）、`fix`（修复 Bug）、`docs`（文档）、`refactor`（重构）、`test`（测试）、`chore`（构建/工具）、`perf`（性能）。
-- `[Studio]` 与 `type` 之间有一个空格；type 后紧跟半角冒号 `:` 加一个空格，再接 **description**。
-- description 用英文小写祈使句，简洁描述改动，结尾不加句号。
-- squash 合并后 GitHub 会在标题末尾追加 ` (#PR号)`，属正常现象，检查时应先剥离该后缀。
-
-校验正则（先去掉可能存在的 ` (#N)` 尾巴）：
+若没有明确 PR 标题规则，再只读抽样近期合并记录：
 
 ```bash
-TITLE=$(gh pr view <PR> --repo apache/rocketmq-dashboard --json title -q .title)
-CLEAN=$(printf '%s' "$TITLE" | sed -E 's/ \(#[0-9]+\)$//')
-if printf '%s' "$CLEAN" | grep -Eq '^\[Studio\] (feat|fix|docs|refactor|test|chore|perf): .+'; then
-  echo "标题规范 ✅: $TITLE"
-else
-  echo "标题不规范 ❌: $TITLE"
-fi
+gh pr list --repo apache/rocketmq-dashboard --base rocketmq-studio \
+  --state merged --limit 30 --json number,title,mergedAt,url
 ```
 
-对照参考（本仓库历史）：
-- `[Studio] fix: validate audit query and cleanup parameters` ✅
-- `[Studio] fix: connect K8s certificate page to backend APIs` ✅
-- `[Studio] feat: add i18n language context with useLanguage alias` ✅
-- `[Studio][fix] Connect K8s certificate page to backend APIs` ❌（type 应在冒号前，不应使用 `[fix]` 方括号）
-- `[studio] feat: extend translation keys` ❌（`studio` 应为 `Studio`，首字母大写）
-
-不规范时在总结中明确指出问题并给出建议标题。
+当前常见形式为关联 Issue 后使用 Conventional Commit 风格，例如
+`[ISSUE #123] fix(scope): concise description`；历史一致性只能作为建议，不能伪装成强制政策。
+检查 type、可选 scope、描述清晰度，以及标题中的 Issue 是否与正文或
+`closingIssuesReferences` 一致。只有违反仓库显式规则时标记 ❌；无显式规则但偏离近期惯例时标记 ⚠️，并给出有证据的建议标题。
 
 ### Stage 3: 拉取关联 Issue（若有）
 
@@ -105,42 +88,29 @@ gh issue view <ISSUE> --repo apache/rocketmq-dashboard \
 
 用于判断 PR 是否真正解决了 Issue 描述的问题（需求对齐度）。
 
-### Stage 4: 本地切出评审分支
+### Stage 4: 创建隔离 worktree
 
-不要污染当前分支。用 `gh` 直接 checkout PR 分支（会自动创建本地分支）：
-
-```bash
-# 记录当前分支以便复原
-ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-git stash push -u -m "pr-review-stash" 2>/dev/null || true
-
-gh pr checkout <PR> --repo apache/rocketmq-dashboard --branch pr-review-<PR>
-```
-
-若因权限/fork 无法直接 checkout，退化为手动 fetch：
+记录当前工作树状态但不要修改它。将 PR head 拉到临时引用，并以 detached HEAD 创建 worktree：
 
 ```bash
-git fetch origin pull/<PR>/head:pr-review-<PR>
-git checkout pr-review-<PR>
+git status --short
+REVIEW_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/rocketmq-pr-<PR>.XXXXXX")
+git fetch upstream pull/<PR>/head
+git worktree add --detach "$REVIEW_ROOT" FETCH_HEAD
+cd "$REVIEW_ROOT"
 ```
 
-### Stage 5: 预检 & 修复（Dockerfile style/ 目录）
+若仓库没有 `upstream`，先从 `git remote -v` 选择指向 `apache/rocketmq-dashboard` 的只读远端。不要 fetch 到贡献者分支，不要使用 `gh pr checkout`、`git checkout`、stash 或 reset 改动当前工作树。
 
-**已知问题**：`server/Dockerfile` 在基准分支上缺少 `COPY style ./style`，导致 Maven checkstyle 插件在构建阶段找不到 `style/rmq_checkstyle.xml` 而报错，docker compose 无法启动。
+### Stage 5: 只读预检
 
-每次评审前检查并修复：
+核对 PR diff、构建文件和目标分支的基线差异。发现基线本身存在问题时，将其作为“非本 PR 引入”的证据记录；禁止用 `sed` 或其他命令修改被评审内容以换取构建通过。
 
 ```bash
-if ! grep -q 'COPY style' server/Dockerfile; then
-  # 在 "COPY src ./src" 后插入 "COPY style ./style"
-  sed -i '/^COPY src \.\/src$/a COPY style ./style' server/Dockerfile
-  echo "✅ 已修复 Dockerfile: 添加 COPY style ./style"
-else
-  echo "✅ Dockerfile 已包含 style/ 目录复制"
-fi
+git status --short
+git diff --check "upstream/rocketmq-studio...HEAD"
+git diff --stat "upstream/rocketmq-studio...HEAD"
 ```
-
-> 此修复仅用于本地评审，不影响 PR diff。若 PR 本身已修复此问题，此步为 no-op。
 
 ### Stage 6: 编译后端
 
@@ -198,14 +168,14 @@ docker compose -f deploy/docker-compose.yml down
 
 ---
 
-## 复原工作区
+## 清理隔离 worktree
 
-评审完成后切回原分支并恢复暂存：
+完成评审后确认没有人为源码修改，再从原仓库移除临时 worktree。若构建只产生 ignored 制品，`git worktree remove` 可清理该隔离目录；若存在非预期源码差异，先报告并保留现场，不要强制删除。
 
 ```bash
-git checkout "$ORIGINAL_BRANCH"
-git stash pop 2>/dev/null || true
-# 如需删除评审分支：git branch -D pr-review-<PR>
+git status --short
+cd -
+git worktree remove "$REVIEW_ROOT"
 ```
 
 ---
@@ -216,7 +186,7 @@ git stash pop 2>/dev/null || true
 
 ### 1. 概览
 - 标题、作者、状态、源分支 → 目标分支、PR 链接。
-- **PR 标题规范**：✅/❌（不规范时标出具体问题并附建议标题）。
+- **PR 标题一致性**：✅/⚠️/❌（区分显式规则和历史惯例，并附证据）。
 - 变更体量：`+additions / -deletions`，改动文件数。
 - 关联 Issue：编号、标题、链接（若有）。
 
@@ -238,7 +208,7 @@ git stash pop 2>/dev/null || true
 - 按模块归类改动（前端页面/组件、后端 controller/service/domain、部署、文档等）。
 - 结合六边形架构（server 用 ArchUnit 约束）判断分层是否合理。
 - i18n：新增前端文案是否中英文双语（`web/src/i18n/`）。
-- 提交规范：commit message 是否符合 `[Studio] type: description` 格式。
+- 提交规范：commit message 是否符合仓库 README 的 Conventional Commits 约定；若标题关联 Issue，同时核对编号一致性。
 
 ### 5. 风险与建议
 - 潜在逻辑问题、边界情况、安全风险（如凭据明文、公网暴露）。
@@ -260,6 +230,6 @@ git stash pop 2>/dev/null || true
 ## 注意事项
 
 - **不修改端口**：任何环节都使用既有端口，不得改 compose / nginx / env 中的端口映射。
-- **不污染主分支**：评审在独立分支进行，结束后复原。
+- **不污染任何现有分支**：评审在 detached 临时 worktree 进行；禁止 stash、checkout、reset 或自动修复被评审内容。
 - **只读默认**：默认不向 GitHub 写入评论/评审，除非用户明确要求。
 - **凭据安全**：分析 diff 时若发现 AK/SK、password、token 等明文凭据，作为高风险项在总结中显著标注。
