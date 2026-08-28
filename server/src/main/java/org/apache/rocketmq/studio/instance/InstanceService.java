@@ -304,12 +304,10 @@ public class InstanceService {
         try {
             createInstance(request);
             result.imported++;
+        } catch (DuplicateInstanceNameException ex) {
+            result.skipped++;
         } catch (BusinessException ex) {
-            if (isDuplicateInstanceNameFailure(ex)) {
-                result.skipped++;
-            } else {
-                result.addFailure(cloudInstanceId, ex);
-            }
+            result.addFailure(cloudInstanceId, ex);
         } catch (RuntimeException ex) {
             result.addFailure(cloudInstanceId, ex);
         }
@@ -323,11 +321,6 @@ public class InstanceService {
                 "vendor=" + vendor + ", imported=" + result.imported + ", skipped=" + result.skipped
                         + ", failed=" + result.failedCount);
         return result.toValue();
-    }
-
-    private boolean isDuplicateInstanceNameFailure(BusinessException ex) {
-        return ex.getCode() == 400 && ex.getMessage() != null
-                && ex.getMessage().startsWith("Instance name already exists");
     }
 
     private String normalizeCloudImportValue(String value) {
@@ -405,7 +398,7 @@ public class InstanceService {
         }
         instanceRepository.findByName(name).ifPresent(existing -> {
             if (excludeId == null || !excludeId.equals(existing.getId())) {
-                throw new BusinessException(400, "Instance name already exists: " + name);
+                throw new DuplicateInstanceNameException(name);
             }
         });
     }
