@@ -116,7 +116,7 @@ public class RocketMQBrokerConfigService {
 
     private FlushDiskType parseFlushDiskType(String value) {
         try {
-            return FlushDiskType.valueOf(value);
+            return FlushDiskType.valueOf(value.trim());
         } catch (IllegalArgumentException e) {
             return FlushDiskType.ASYNC_FLUSH;
         }
