@@ -149,6 +149,8 @@ CREATE TABLE IF NOT EXISTS rmq_instance_message (
   queried_by VARCHAR(128),
   PRIMARY KEY (`id`),
   INDEX idx_message_query_gmt_create (gmt_create),
+  INDEX idx_message_query_owner_lookup (queried_by, cluster_id, gmt_create, id),
+  INDEX idx_message_query_owner_type_lookup (queried_by, cluster_id, query_type, gmt_create, id),
   INDEX idx_topic (topic)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -165,7 +167,8 @@ CREATE TABLE IF NOT EXISTS rmq_instance_trace (
   queried_by VARCHAR(128),
   PRIMARY KEY (`id`),
   INDEX idx_msg_id (msg_id),
-  INDEX idx_trace_query_gmt_create (gmt_create)
+  INDEX idx_trace_query_gmt_create (gmt_create),
+  INDEX idx_trace_query_owner_lookup (queried_by, cluster_id, gmt_create, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 8. 操作审计日志（所有写操作）
