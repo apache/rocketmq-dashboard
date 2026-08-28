@@ -20,11 +20,15 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -88,6 +92,13 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.code").value(405));
     }
 
+    @Test
+    void unacceptableResponseMediaTypeReturns406WithEnvelopeInsteadOf500() throws Exception {
+        mockMvc.perform(get("/test/not-acceptable"))
+                .andExpect(status().isNotAcceptable())
+                .andExpect(jsonPath("$.code").value(406));
+    }
+
     @RestController
     static class FailingController {
 
@@ -100,6 +111,11 @@ class GlobalExceptionHandlerTest {
         Result<Void> failLlm() {
             throw new LlmGatewayException(504, "llm.provider.timeout",
                     "LLM provider request timed out", "Retry later.");
+        }
+
+        @GetMapping("/test/not-acceptable")
+        Result<Void> failNotAcceptable() throws HttpMediaTypeNotAcceptableException {
+            throw new HttpMediaTypeNotAcceptableException(List.of(MediaType.APPLICATION_JSON));
         }
     }
 }
