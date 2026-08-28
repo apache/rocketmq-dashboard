@@ -230,6 +230,23 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByMsgIdIgnoresUnrelatedTimeBounds() throws Exception {
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-1");
+        message.setTopic("TopicA");
+        when(adminExt.viewMessage("TopicA", "msg-1")).thenReturn(message);
+
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", "msg-1", null, null, 200L, 100L))
+                .singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo("msg-1");
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", "msg-1", null, null, 100L, 100L))
+                .singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo("msg-1");
+
+        verify(adminExt, times(2)).viewMessage("TopicA", "msg-1");
+    }
+
+    @Test
     void queryByMsgIdRejectsDecodedBrokerOutsideKnownTopology() throws Exception {
         String msgId = MessageDecoder.createMessageId(new InetSocketAddress("10.2.3.4", 10911), 12345L);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
