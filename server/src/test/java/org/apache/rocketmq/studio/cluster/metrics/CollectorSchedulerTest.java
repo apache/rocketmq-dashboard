@@ -23,12 +23,18 @@ import org.apache.rocketmq.studio.ops.alert.NativeAlertProcessor;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -37,6 +43,103 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CollectorSchedulerTest {
+
+    @Test
+    void collectsAllInstancesWhenInventoryExceedsExecutorCapacityTest() throws Exception {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionParallelism(2);
+        properties.setCollectionTimeout("PT2S");
+        InstanceRepository instances = mock(InstanceRepository.class);
+        List<InstanceVO> inventory = new ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            inventory.add(InstanceVO.builder().name("instance-" + index).endpoint("instance-" + index + ":9876").build());
+        }
+        when(instances.findAll()).thenReturn(inventory);
+
+        CountDownLatch firstWaveStarted = new CountDownLatch(2);
+        CountDownLatch releaseFirstWave = new CountDownLatch(1);
+        AtomicInteger started = new AtomicInteger();
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        for (InstanceVO instance : inventory) {
+            when(collector.supports(instance)).thenReturn(true);
+            when(collector.collect(instance)).thenAnswer(invocation -> {
+                if (started.incrementAndGet() <= 2) {
+                    firstWaveStarted.countDown();
+                    assertTrue(releaseFirstWave.await(1, TimeUnit.SECONDS), "test did not release the first wave");
+                }
+                return List.of(sampleFor(instance));
+            });
+        }
+
+        List<MetricSample> persisted = new CopyOnWriteArrayList<>();
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            persisted.addAll(invocation.getArgument(0));
+            return null;
+        }).when(snapshots).saveAll(any());
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        when(lease.tryAcquire()).thenReturn(true);
+        CollectorScheduler scheduler = new CollectorScheduler(properties, instances, List.of(collector), List.of(), snapshots,
+                mock(NativeAlertProcessor.class), lease);
+
+        Thread pass = new Thread(scheduler::collect);
+        pass.start();
+        assertTrue(firstWaveStarted.await(1, TimeUnit.SECONDS), "first wave should occupy the collector executor");
+        TimeUnit.MILLISECONDS.sleep(100);
+        releaseFirstWave.countDown();
+        pass.join(TimeUnit.SECONDS.toMillis(3));
+        scheduler.stopCollectionExecutor();
+
+        assertTrue(!pass.isAlive(), "collection pass should finish");
+        assertEquals(inventory.size(), persisted.size(), "collector saturation must not drop later instances");
+        assertEquals(inventory.stream().map(InstanceVO::getName).sorted().toList(),
+                persisted.stream().map(MetricSample::instanceId).sorted().toList());
+    }
+
+    @Test
+    void doesNotQueueMoreThanParallelismBeforeAnyCollectionCompletesTest() throws Exception {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionParallelism(2);
+        properties.setCollectionTimeout("PT2S");
+        InstanceRepository instances = mock(InstanceRepository.class);
+        List<InstanceVO> inventory = new ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            inventory.add(InstanceVO.builder().name("window-" + index).endpoint("window-" + index + ":9876").build());
+        }
+        when(instances.findAll()).thenReturn(inventory);
+
+        CountDownLatch firstWaveStarted = new CountDownLatch(2);
+        CountDownLatch releaseFirstWave = new CountDownLatch(1);
+        AtomicInteger started = new AtomicInteger();
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        for (InstanceVO instance : inventory) {
+            when(collector.supports(instance)).thenReturn(true);
+            when(collector.collect(instance)).thenAnswer(invocation -> {
+                if (started.incrementAndGet() <= 2) {
+                    firstWaveStarted.countDown();
+                    assertTrue(releaseFirstWave.await(1, TimeUnit.SECONDS), "test did not release the first wave");
+                }
+                return List.of(sampleFor(instance));
+            });
+        }
+
+        LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, queue);
+        CollectorScheduler scheduler = new CollectorScheduler(properties, instances, List.of(collector), List.of(),
+                mock(MetricSnapshotRepository.class), mock(NativeAlertProcessor.class), acquiredLease(), executor);
+
+        Thread pass = new Thread(scheduler::collect);
+        pass.start();
+        assertTrue(firstWaveStarted.await(1, TimeUnit.SECONDS), "first wave should occupy the collector executor");
+        TimeUnit.MILLISECONDS.sleep(100);
+        int queuedBeforeAnyCompletion = queue.size();
+        releaseFirstWave.countDown();
+        pass.join(TimeUnit.SECONDS.toMillis(3));
+        scheduler.stopCollectionExecutor();
+
+        assertTrue(!pass.isAlive(), "collection pass should finish");
+        assertEquals(0, queuedBeforeAnyCompletion, "collector should submit the next instance only after one finishes");
+    }
 
     @Test
     void persistsFastInstanceWhileAnotherInstanceTimesOutTest() throws Exception {
@@ -184,5 +287,16 @@ class CollectorSchedulerTest {
 
         verify(snapshots, never()).saveAll(any());
         verify(processor, never()).process(any());
+    }
+
+    private static MetricSample sampleFor(InstanceVO instance) {
+        return new MetricSample("nameserver.availability", AlertDomain.CLUSTER, instance.getName(), null,
+                null, 1D, MetricAvailability.AVAILABLE, Instant.now());
+    }
+
+    private static AlertCollectionLease acquiredLease() {
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        when(lease.tryAcquire()).thenReturn(true);
+        return lease;
     }
 }
