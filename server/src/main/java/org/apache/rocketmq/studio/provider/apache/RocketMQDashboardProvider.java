@@ -489,14 +489,22 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         try {
             String[] parts = tpsStr.trim().split("\\s+");
             if (parts.length >= 2) {
-                return (long) Double.parseDouble(parts[1]);
+                return parseTpsValue(parts[1]);
             } else if (parts.length == 1) {
-                return (long) Double.parseDouble(parts[0]);
+                return parseTpsValue(parts[0]);
             }
         } catch (NumberFormatException e) {
             log.debug("Failed to parse TPS value: {}", tpsStr);
         }
         return 0;
+    }
+
+    private long parseTpsValue(String value) {
+        double parsed = Double.parseDouble(value);
+        if (!Double.isFinite(parsed) || parsed < 0 || parsed > Long.MAX_VALUE) {
+            return 0;
+        }
+        return (long) parsed;
     }
 
     private long parseMessagesToday(Map<String, String> runtimeStats) {

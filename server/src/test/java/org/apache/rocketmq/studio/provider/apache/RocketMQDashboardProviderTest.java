@@ -485,6 +485,26 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldIgnoreNonFiniteNegativeAndOverflowingTps() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("NaN", "Infinity"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("-1", "1e300"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isZero();
+        assertThat(dashboard.getStats().getTpsOut()).isZero();
+        assertThat(dashboard.getClusters()).allSatisfy(cluster -> {
+            assertThat(cluster.getTpsIn()).isZero();
+            assertThat(cluster.getTpsOut()).isZero();
+        });
+    }
+
+    @Test
     void dashboardShouldReportMessagesProducedSinceTodayMorning() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
