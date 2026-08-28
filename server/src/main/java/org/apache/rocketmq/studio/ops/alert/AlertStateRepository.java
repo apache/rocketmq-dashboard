@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
+
 import java.time.Instant;
 import java.util.Optional;
 import java.util.List;
@@ -36,6 +38,10 @@ public interface AlertStateRepository {
     boolean acknowledge(AlertStateKey key, Instant firedAt);
 
     void deleteByRuleId(Long ruleId);
+
+    default List<ActiveAlertState> findActive(MetricCollectionScope scope, List<AlertRuleVO> rules) {
+        return List.of();
+    }
 
     default List<AlertRuleRuntimeVO> findRuntimeByRuleIds(List<AlertRuleVO> rules) {
         return List.of();

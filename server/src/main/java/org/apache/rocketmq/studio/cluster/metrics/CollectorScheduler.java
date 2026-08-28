@@ -20,6 +20,7 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.ops.alert.AlertDomain;
 import org.apache.rocketmq.studio.ops.alert.NativeAlertProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -43,6 +44,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 
 /** Runs independent, bounded collection jobs for each configured instance. */
 @Slf4j
@@ -233,7 +235,10 @@ public class CollectorScheduler {
     private void collectClusterMetrics(InstanceVO instance) {
         for (ClusterMetricsCollector collector : clusterCollectors) {
             try {
-                persist(collector.supports(instance) ? collector.collect(instance) : List.of());
+                if (collector.supports(instance)) {
+                    List<MetricSample> samples = collector.collect(instance);
+                    persist(AlertDomain.CLUSTER, instance, collector.metricKeys(), samples);
+                }
             } catch (RuntimeException error) {
                 log.warn("Native metric collector failed for instance {}: {}", instance.getName(), error.getMessage());
             }
@@ -243,23 +248,40 @@ public class CollectorScheduler {
     private void collectBusinessMetrics(InstanceVO instance) {
         for (BusinessMetricsCollector collector : businessCollectors) {
             try {
-                persist(collector.supports(instance) ? collector.collect(instance) : List.of());
+                if (collector.supports(instance)) {
+                    List<MetricSample> samples = collector.collect(instance);
+                    persist(AlertDomain.BUSINESS, instance, collector.metricKeys(), samples);
+                }
             } catch (RuntimeException error) {
                 log.warn("Native metric collector failed for instance {}: {}", instance.getName(), error.getMessage());
             }
         }
     }
 
-    private void persist(List<MetricSample> samples) {
-        if (!samples.isEmpty()) {
-            // Refresh immediately before persisting so a slow remote collection cannot write after lease loss.
-            if (!collectionLease.tryAcquire()) {
-                log.debug("Discarding native metric samples because the collection lease was lost");
-                return;
-            }
-            snapshotRepository.saveAll(samples);
-            alertProcessor.process(samples);
+    private void persist(AlertDomain domain, InstanceVO instance, Set<String> declaredMetricKeys,
+            List<MetricSample> samples) {
+        List<MetricSample> collected = samples == null ? List.of() : samples;
+        Set<String> scopeMetricKeys = metricKeys(declaredMetricKeys, collected);
+        if (scopeMetricKeys.isEmpty()) {
+            return;
         }
+        MetricCollectionScope actualScope = new MetricCollectionScope(domain, instance.getName(), scopeMetricKeys);
+        // Refresh immediately before persisting so a slow remote collection cannot write after lease loss.
+        if (!collectionLease.tryAcquire()) {
+            log.debug("Discarding native metric samples because the collection lease was lost");
+            return;
+        }
+        if (!collected.isEmpty()) {
+            snapshotRepository.saveAll(collected);
+        }
+        alertProcessor.processSuccessfulCollection(actualScope, collected);
+    }
+
+    private static Set<String> metricKeys(Set<String> declared, List<MetricSample> samples) {
+        if (declared != null && !declared.isEmpty()) {
+            return declared;
+        }
+        return samples.stream().map(MetricSample::metricKey).collect(java.util.stream.Collectors.toSet());
     }
 
     @PreDestroy

@@ -239,7 +239,7 @@ class CollectorSchedulerTest {
         new CollectorScheduler(properties, instances, List.of(collector), List.of(), snapshots, processor, lease).collect();
 
         verify(snapshots).saveAll(List.of(sample));
-        verify(processor).process(List.of(sample));
+        verify(processor).processSuccessfulCollection(any(MetricCollectionScope.class), org.mockito.ArgumentMatchers.eq(List.of(sample)));
     }
 
     @Test
@@ -287,6 +287,48 @@ class CollectorSchedulerTest {
 
         verify(snapshots, never()).saveAll(any());
         verify(processor, never()).process(any());
+        verify(processor, never()).processSuccessfulCollection(any(MetricCollectionScope.class), any());
+    }
+
+    @Test
+    void doesNotReconcileCollectionScopeWhenCollectorFailsTest() {
+        AlertingProperties properties = new AlertingProperties();
+        InstanceRepository instances = mock(InstanceRepository.class);
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+        NativeAlertProcessor processor = mock(NativeAlertProcessor.class);
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        when(instances.findAll()).thenReturn(List.of(instance));
+        when(collector.supports(instance)).thenReturn(true);
+        when(collector.collect(instance)).thenThrow(new IllegalStateException("collector failed"));
+        when(lease.tryAcquire()).thenReturn(true);
+
+        new CollectorScheduler(properties, instances, List.of(collector), List.of(), snapshots, processor, lease).collect();
+
+        verify(snapshots, never()).saveAll(any());
+        verify(processor, never()).processSuccessfulCollection(any(MetricCollectionScope.class), any());
+    }
+
+    @Test
+    void reconcilesSuccessfulEmptyCollectionWhenCollectorDeclaresMetricKeysTest() {
+        AlertingProperties properties = new AlertingProperties();
+        InstanceRepository instances = mock(InstanceRepository.class);
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+        NativeAlertProcessor processor = mock(NativeAlertProcessor.class);
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        when(instances.findAll()).thenReturn(List.of(instance));
+        when(collector.supports(instance)).thenReturn(true);
+        when(collector.metricKeys()).thenReturn(java.util.Set.of("broker.availability"));
+        when(collector.collect(instance)).thenReturn(List.of());
+        when(lease.tryAcquire()).thenReturn(true);
+
+        new CollectorScheduler(properties, instances, List.of(collector), List.of(), snapshots, processor, lease).collect();
+
+        verify(snapshots, never()).saveAll(any());
+        verify(processor).processSuccessfulCollection(any(MetricCollectionScope.class), org.mockito.ArgumentMatchers.eq(List.of()));
     }
 
     private static MetricSample sampleFor(InstanceVO instance) {

@@ -35,6 +35,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Collects TCP reachability for Proxies discovered from the selected Studio instance. */
 @Slf4j
@@ -52,6 +53,11 @@ public class ApacheRocketMqProxyMetricsCollector implements ClusterMetricsCollec
     public boolean supports(InstanceVO instance) {
         return instance != null && (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE)
                 && StringUtils.hasText(instance.getName()) && StringUtils.hasText(instance.getEndpoint());
+    }
+
+    @Override
+    public Set<String> metricKeys() {
+        return Set.of(PROXY_AVAILABILITY);
     }
 
     @Override
