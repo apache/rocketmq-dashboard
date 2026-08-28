@@ -40,4 +40,10 @@ public class AlertingProperties {
     private int notificationCleanupBatchSize = 500;
     /** Maximum number of cleanup batches executed during one scheduled pass. */
     private int notificationCleanupMaxBatches = 10;
+    /** How long a notification dispatcher may hold an outbox row without renewing it. */
+    private String notificationClaimTimeout = "PT1M";
+    /** How often an in-flight notification claim is renewed. */
+    private String notificationClaimRenewalInterval = "PT20S";
+    /** Bounded daemon threads used for notification claim renewal. */
+    private int notificationHeartbeatThreads = 2;
 }
