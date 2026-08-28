@@ -1566,7 +1566,7 @@ const TopicPage = () => {
             />
             {propsMode === 'text' && (
               <Text type="secondary" style={{ fontSize: 14 }}>
-                支持 key=value，多个属性用换行或逗号分隔
+                支持 key=value，每行填写一个属性；属性值可以包含逗号
               </Text>
             )}
           </Flex>
