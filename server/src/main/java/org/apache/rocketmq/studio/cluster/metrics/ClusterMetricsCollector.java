@@ -19,10 +19,15 @@ package org.apache.rocketmq.studio.cluster.metrics;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 
 import java.util.List;
+import java.util.Set;
 
 /** Collects operational metrics for one Studio-managed instance. */
 public interface ClusterMetricsCollector {
     boolean supports(InstanceVO instance);
 
     List<MetricSample> collect(InstanceVO instance);
+
+    default Set<String> metricKeys() {
+        return Set.of();
+    }
 }

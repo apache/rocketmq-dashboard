@@ -14,20 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cluster.metrics;
+package org.apache.rocketmq.studio.ops.alert;
 
-import org.apache.rocketmq.studio.instance.InstanceVO;
+import java.util.Map;
+import java.util.Objects;
 
-import java.util.List;
-import java.util.Set;
-
-/** Collects business-flow metrics for one Studio-managed instance. */
-public interface BusinessMetricsCollector {
-    boolean supports(InstanceVO instance);
-
-    List<MetricSample> collect(InstanceVO instance);
-
-    default Set<String> metricKeys() {
-        return Set.of();
+/** Persisted active state plus labels needed to emit a lifecycle recovery event. */
+public record ActiveAlertState(AlertStateKey key, AlertRuleState state, String instanceId, Map<String, String> labels) {
+    public ActiveAlertState {
+        Objects.requireNonNull(key, "key is required");
+        Objects.requireNonNull(state, "state is required");
+        if (instanceId == null || instanceId.isBlank()) {
+            throw new IllegalArgumentException("instanceId is required");
+        }
+        labels = Map.copyOf(labels == null ? Map.of() : labels);
     }
 }

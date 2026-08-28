@@ -31,6 +31,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Collects dead-letter message counts directly from the Apache DLQ provider. */
 @Slf4j
@@ -45,6 +46,11 @@ public class ApacheRocketMqDlqMetricsCollector implements BusinessMetricsCollect
     public boolean supports(InstanceVO instance) {
         return instance != null && (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE)
                 && instance.getName() != null;
+    }
+
+    @Override
+    public Set<String> metricKeys() {
+        return Set.of(DLQ_MESSAGE_COUNT);
     }
 
     @Override

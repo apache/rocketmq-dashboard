@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
+import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -301,6 +303,93 @@ class NativeAlertProcessorTest {
 
         verify(suppression, never()).findSuppressingClusterAlert(any());
         verify(outbox).enqueue(any(), org.mockito.ArgumentMatchers.same(rule), any());
+    }
+
+    @Test
+    void resolvesActiveFingerprintMissingFromSuccessfulCollectionScopeTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        MetricSample oldSample = sample("orders");
+        AlertStateKey oldKey = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), oldSample.instanceId(), oldSample.labels()));
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 20D,
+                oldSample.collectedAt().minusSeconds(60), oldSample.collectedAt().minusSeconds(60),
+                oldSample.collectedAt().minusSeconds(60), null);
+        ActiveAlertState active = new ActiveAlertState(oldKey, firing, oldSample.instanceId(), oldSample.labels());
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
+        AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+
+        new NativeAlertProcessor(service, new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                mock(MetricSnapshotRepository.class), alerts, outbox, suppression())
+                .processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                        java.util.Set.of("consumer.lag.total")), List.of());
+
+        org.mockito.ArgumentCaptor<AlertRuleState> state = org.mockito.ArgumentCaptor.forClass(AlertRuleState.class);
+        org.mockito.ArgumentCaptor<SystemAlertVO> event = org.mockito.ArgumentCaptor.forClass(SystemAlertVO.class);
+        verify(states).save(eq(oldKey), state.capture());
+        verify(alerts).saveAlert(event.capture());
+        assertThat(state.getValue().status()).isEqualTo(AlertStateStatus.RESOLVED);
+        assertThat(event.getValue().getTransition()).isEqualTo(AlertStateTransition.RESOLVED.name());
+        assertThat(event.getValue().getLabels()).isEqualTo(oldSample.labels());
+        verify(outbox).enqueue(any(SystemAlertVO.class), eq(rule), eq(oldSample.labels()));
+    }
+
+    @Test
+    void keepsActiveFingerprintWhenItAppearsInSuccessfulCollectionScopeTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        MetricSample current = sample("orders");
+        AlertStateKey key = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), current.instanceId(), current.labels()));
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 20D,
+                current.collectedAt().minusSeconds(60), current.collectedAt().minusSeconds(60),
+                current.collectedAt().minusSeconds(60), null);
+        ActiveAlertState active = new ActiveAlertState(key, firing, current.instanceId(), current.labels());
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.find(key)).thenReturn(Optional.of(firing));
+        when(states.save(eq(key), any(AlertRuleState.class))).thenReturn(true);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        AlertRepository alerts = mock(AlertRepository.class);
+
+        new NativeAlertProcessor(service, new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                mock(MetricSnapshotRepository.class), alerts, mock(NotificationOutboxService.class), suppression())
+                .processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                        java.util.Set.of("consumer.lag.total")), List.of(current));
+
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
+    }
+
+    @Test
+    void doesNotResolveMissingActiveStateWhenCollectionReportsWholeScopeUnavailableTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        MetricSample oldSample = sample("orders");
+        AlertStateKey oldKey = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), oldSample.instanceId(), oldSample.labels()));
+        ActiveAlertState active = new ActiveAlertState(oldKey,
+                new AlertRuleState(AlertStateStatus.FIRING, 1, 20D, oldSample.collectedAt().minusSeconds(60),
+                        oldSample.collectedAt().minusSeconds(60), oldSample.collectedAt().minusSeconds(60), null),
+                oldSample.instanceId(), oldSample.labels());
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        AlertRepository alerts = mock(AlertRepository.class);
+
+        new NativeAlertProcessor(service, new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                mock(MetricSnapshotRepository.class), alerts, mock(NotificationOutboxService.class), suppression())
+                .processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                        java.util.Set.of("consumer.lag.total")), List.of(new MetricSample("consumer.lag.total",
+                        AlertDomain.BUSINESS, "local", null, Map.of(), null, MetricAvailability.UNAVAILABLE,
+                        Instant.now(), "BUSINESS_METRICS_COLLECTION_FAILED")));
+
+        verify(states, never()).save(eq(oldKey), any(AlertRuleState.class));
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
     }
 
     private static AlertNotificationSuppressionService suppression() {

@@ -34,6 +34,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Collects consumer-group lag directly from Studio's Apache instance provider. */
 @Slf4j
@@ -51,6 +52,11 @@ public class ApacheRocketMqBusinessMetricsCollector implements BusinessMetricsCo
     public boolean supports(InstanceVO instance) {
         return instance != null && (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE)
                 && instance.getName() != null;
+    }
+
+    @Override
+    public Set<String> metricKeys() {
+        return Set.of(CONSUMER_LAG_TOTAL, CONSUMER_LAG_MAX_QUEUE, CONSUMER_DELAY_SECONDS, TOPIC_BACKLOG_TOTAL);
     }
 
     @Override
