@@ -37,13 +37,17 @@ const instanceFilterMocks = vi.hoisted(() => ({
 vi.mock('../../../services/messageService', () => ({
   ...serviceMocks,
   queryMessagePage: ({ page = 1, pageSize = 50, ...params }: Record<string, unknown>) =>
-    Promise.resolve(serviceMocks.queryMessages(params)).then((items) => ({
-      items,
-      total: items.length,
-      page,
-      size: pageSize,
-      resultMayBeTruncated: false,
-    })),
+    Promise.resolve(serviceMocks.queryMessages(params)).then((result) =>
+      Array.isArray(result)
+        ? {
+            items: result,
+            total: result.length,
+            page,
+            size: pageSize,
+            resultMayBeTruncated: false,
+          }
+        : result,
+    ),
 }));
 vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 
@@ -165,6 +169,66 @@ describe('MessagePage async request ownership', () => {
     expect(screen.queryByText('late-after-reset')).not.toBeInTheDocument();
   });
 
+  it('resets pagination and the truncated-result warning', async () => {
+    serviceMocks.queryMessages.mockResolvedValue({
+      items: [createMessage('message-on-page-two')],
+      total: 101,
+      page: 2,
+      size: 50,
+      resultMayBeTruncated: true,
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    expect(await screen.findByText('message-on-page-two')).toBeInTheDocument();
+    expect(screen.getByText('共 101 条消息')).toBeInTheDocument();
+    expect(screen.getByText(/查询结果达到服务端扫描上限/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重置/ }));
+
+    expect(screen.queryByText('message-on-page-two')).not.toBeInTheDocument();
+    expect(screen.queryByText('共 101 条消息')).not.toBeInTheDocument();
+    expect(screen.queryByText(/查询结果达到服务端扫描上限/)).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-pagination-item-active')).not.toBeInTheDocument();
+  });
+
+  it('clears query state and invalidates an in-flight request when the query mode changes', async () => {
+    const lateQuery = createDeferred<MessageRecord[]>();
+    serviceMocks.queryMessages
+      .mockResolvedValueOnce({
+        items: [createMessage('topic-result')],
+        total: 101,
+        page: 2,
+        size: 50,
+        resultMayBeTruncated: true,
+      })
+      .mockReturnValueOnce(lateQuery.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    const queryButton = screen.getByRole('button', { name: /^search查询$/ });
+    await user.click(queryButton);
+    expect(await screen.findByText('topic-result')).toBeInTheDocument();
+    await user.click(queryButton);
+    await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(2));
+
+    await user.click(screen.getByText('按 Message Key'));
+
+    expect(screen.queryByText('topic-result')).not.toBeInTheDocument();
+    expect(screen.queryByText('共 101 条消息')).not.toBeInTheDocument();
+    expect(screen.queryByText(/查询结果达到服务端扫描上限/)).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-pagination-item-active')).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-table-wrapper .ant-spin-spinning')).not.toBeInTheDocument();
+
+    await act(async () => {
+      lateQuery.resolve([createMessage('late-topic-result')]);
+    });
+    expect(screen.queryByText('late-topic-result')).not.toBeInTheDocument();
+  });
+
   it('clears query results and message details when the selected instance changes', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-from-instance-a')]);
     let currentInstanceId = 1;
@@ -229,6 +293,34 @@ describe('MessagePage async request ownership', () => {
     expect(
       await within(dialog).findByText('Message query provider is not configured'),
     ).toBeInTheDocument();
+  });
+
+  it('loads a message trace lazily and reuses it for the same message', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockResolvedValue(createTrace('cached-trace'));
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    let dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(serviceMocks.getMessageTrace).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByText('消息轨迹'));
+    expect(await within(dialog).findByText('cached-trace description')).toBeInTheDocument();
+    expect(serviceMocks.getMessageTrace).toHaveBeenCalledTimes(1);
+    await user.click(within(dialog).getByText('消息内容'));
+    await user.click(within(dialog).getByText('消息轨迹'));
+    expect(serviceMocks.getMessageTrace).toHaveBeenCalledTimes(1);
+
+    await user.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    await user.click(within(dialog).getByText('消息轨迹'));
+    expect(await within(dialog).findByText('cached-trace description')).toBeInTheDocument();
+    expect(serviceMocks.getMessageTrace).toHaveBeenCalledTimes(1);
   });
 
   it('requiresGroupAndClientBeforeDirectConsumeTest', async () => {
