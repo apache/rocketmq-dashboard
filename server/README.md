@@ -1,23 +1,23 @@
 # RocketMQ Studio Server — 后端包结构
 
 Spring Boot 3.5 / Java 21 / MyBatis-Plus 单体后端，包根 `org.apache.rocketmq.studio`，
-入口 `StudioApplication`。全部源码约 367 个 Java 文件，按业务域划包，本文档描述各包职责与分层约定。
+入口 `StudioApplication`。源码按业务域划包，本文档描述各包职责与分层约定。
 
 ## 顶层包总览
 
 ```
 org.apache.rocketmq.studio
 ├── StudioApplication          # Spring Boot 入口
-├── auth                       # 登录认证与会话（10 文件）
-├── audit                      # 操作审计（1 文件）
-├── cluster                    # 集群域：拓扑/集群/Proxy/NameServer/指标/K8s（75 文件）
-├── common                     # 公共基础：domain/exception/util/config（26 文件）
-├── instance                   # 实例域：实例注册 + Topic/Group/消息/DLQ/ACL/查询历史（68 文件）
-├── model                      # 遗留共享模型（admin 客户端交互对象）（41 文件）
-├── ops                        # 运维域：AI 助手/告警/审计/Dashboard（73 文件）
-├── persistence                # MyBatis-Plus 实体与 Mapper（32 文件）
-├── provider                   # 多厂商 SPI、实现与云凭据（apache/alibaba/tencent/credential）（32 文件）
-└── settings                   # 通用设置与数据源（9 文件）
+├── auth                       # 登录认证与会话
+├── audit                      # 操作审计
+├── cluster                    # 集群域：拓扑/集群/Proxy/NameServer/指标/K8s
+├── common                     # 公共基础：domain/exception/util/config
+├── instance                   # 实例域：实例注册 + Topic/Group/消息/DLQ/ACL/查询历史
+├── model                      # 遗留共享模型（admin 客户端交互对象）
+├── ops                        # 运维域：AI 助手/告警/审计/Dashboard
+├── persistence                # MyBatis-Plus 实体与 Mapper
+├── provider                   # 多厂商 SPI、实现与云凭据（apache/alibaba/tencent/credential）
+└── settings                   # 通用设置与数据源
 ```
 
 ## 各包职责
@@ -38,8 +38,8 @@ org.apache.rocketmq.studio
 | `cluster.config` | Broker 配置更新 DTO/VO |
 
 ### common — 公共基础
-- `common.domain`：`Result<T>` 统一响应包装、`PageResult`、`BaseEntity`（id/createdAt/updatedAt）、
-  `DeleteRequestDTO`（通用删除入参）、`enums/`（InstanceType、InstanceVendor、TopicType 等 17 个枚举）
+- `common.domain`：`Result<T>` 统一响应包装、`PageResult`、`BaseEntity`（id/gmtCreate/gmtModified）、
+  `DeleteRequestDTO`（通用删除入参）、`enums/`（InstanceType、InstanceVendor、TopicType 等枚举）
 - `common.exception`：`BusinessException(code, msg)` + `GlobalExceptionHandler`（统一转 `Result`）
 - `common.util`：`CredentialUtils` 等共享工具
 - `common.config`：CORS / Web MVC 配置
@@ -50,7 +50,7 @@ org.apache.rocketmq.studio
 
 | 子包 | 职责 |
 |---|---|
-| `instance`（顶层） | 实例 CRUD；vendor 分支创建（APACHE 手填 endpoint / ALIYUN 经云目录选择 / TENCENT 501） |
+| `instance`（顶层） | 实例 CRUD；APACHE 实例手填 endpoint，ALIYUN/TENCENT 实例经对应云目录选择 |
 | `instance.topic` | Topic CRUD/路由/订阅者、`MetadataService`（按 instanceId 路由到 provider）、消息发送、LiteTopic 子系统 |
 | `instance.group` | 消费组 CRUD/进度/订阅/重置位点/诊断栈 |
 | `instance.message` | 消息查询与轨迹（`MessageProvider` SPI）、查询历史（与实例绑定，随实例上下文记录/回放） |
@@ -69,7 +69,9 @@ org.apache.rocketmq.studio
 - `provider.alibaba`：阿里云 RocketMQ 5.x OpenAPI 完整实现（`AliyunClientFactory` 按
   credential#region 缓存 AsyncClient、异常统一映射、`AliyunConverters` 集中模型转换、
   `/api/cloud/aliyun/*` 目录端点）
-- `provider.tencent`：占位实现（全部 `UnsupportedOperationException` → 501）
+- `provider.tencent`：腾讯云 RocketMQ 5.x Trocket OpenAPI 实现；`TencentCatalogService` 提供
+  region/实例目录，`TencentInstanceProvider` 提供 Topic、消费组、消息查询与轨迹能力，
+  `TencentAclService` 提供 ACL 管理，目录端点位于 `/api/cloud/tencent/*`
 - `provider.credential`：云厂商凭据管理（`rmq_cloud_credential` 表 CRUD，`/api/cloud-credentials`）：
   vendor+access_key 唯一键，SK base64 存储，列表打码 + `/{id}/credentials` reveal 接口，
   编解码与打码统一走 `common.util.CredentialUtils`
@@ -93,17 +95,13 @@ org.apache.rocketmq.studio
   云厂商实现放 `provider/<vendor>/` 保持高内聚
 - **敏感字段**：VO 上 `@ToString.Exclude`；存储 base64（见 `CredentialUtils`）；
   列表打码、reveal 接口 admin-only
-- **实例标识：禁用 UUID**。系统不使用 UUID（或任何随机代理键）作为实例标识；
-  实例 ID（用户输入、人类可读、全局唯一、≤64 字符）是实例的唯一标识，
-  直接作为 `rmq_instance` 主键（`InstanceService.createInstance` 中 `id = name`），
-  创建后不可变（更新传入不同名称直接 400 `Instance ID cannot be changed after creation`）。
-  REST 参数（`instanceId`）与关联表外键列（`rmq_topic.instance_id`、`rmq_group.instance_id`、
-  ACL scope、数据源绑定等）一律使用实例 ID；不存在"实例名称"概念，
-  实例只有**实例 ID** 与 **备注（remark）** 两个文本属性。
-  解析实例统一走 `InstanceRepository#findByIdentifier`（优先实例 ID，兜底历史主键引用），
-  不要直接 `findById`；存量 UUID 数据经 `deploy/mysql/upgrade-instance-id-pk.sql` 迁移，
-  新功能不得新增随机 ID 作为对外标识
-- **测试命名**：Test 方法名以 `Test` 结尾（如 `syncProxyClusterAddsNewInstanceTest`）
+- **实例标识**：`rmq_instance.id` 是数据库内部使用的自增 `BIGINT` 主键，`name` 是带唯一约束、
+  创建后不可变的人类可读外部标识。REST 的 `instanceId` 参数应通过
+  `InstanceRepository#findByIdentifier` 或 `InstanceService#resolveInstanceId` 解析：先按唯一名称查找，
+  再兼容数字主键。Topic、消费组和数据源绑定等现有字符串关联保存实例名称；新增代码应区分
+  内部数字主键与外部实例名称，不要假定 `name` 是 `rmq_instance` 的数据库主键
+- **测试命名**：测试类使用 Maven Surefire 可发现的 `*Test` 命名；测试方法使用能描述行为的
+  camelCase 名称并遵循相邻测试风格，不强制添加 `Test` 后缀
 - **checkstyle**：validate 阶段强制，禁止中文字符，Java 代码注释一律用英文
 
 ## 构建与测试
@@ -111,10 +109,11 @@ org.apache.rocketmq.studio
 ```bash
 cd server
 mvn -B -ntp package -DskipTests      # 构建（checkstyle 在 validate 阶段强制）
-mvn -B -ntp -T 32 test               # 全量单测（752 个）
+mvn -B -ntp test                      # 运行全部测试
+mvn -B -ntp -Dtest=AuthServiceTest test  # 运行指定测试类；可替换为目标类名
 ```
 
 依赖纪律：RocketMQ 系依赖（`org.apache.rocketmq:*`）只用 Apache 开源版本（当前基线 5.5.0），
 禁止内部/商业版本号；禁用 `com.aliyun.openservices:ons-client`，客户端收发用开源
 `rocketmq-client`；云厂商管控面走 OpenAPI SDK（`alibabacloud-rocketmq20220801` /
-`tencentcloud-sdk-java-tdmq`）。
+`tencentcloud-sdk-java-trocket`）。
