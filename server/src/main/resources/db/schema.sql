@@ -288,6 +288,8 @@ CREATE TABLE IF NOT EXISTS rmq_metric_snapshot (
   `collected_at` DATETIME NOT NULL,
   PRIMARY KEY (`id`),
   INDEX idx_metric_snapshot_lookup (`instance_id`, `metric_key`, `collected_at`),
+  INDEX idx_metric_snapshot_scope_cluster (`instance_id`, `metric_key`, `domain`, `labels_hash`, `cluster_id`, `availability`, `collected_at`),
+  INDEX idx_metric_snapshot_scope_global (`instance_id`, `metric_key`, `domain`, `labels_hash`, `availability`, `collected_at`),
   INDEX idx_metric_snapshot_retention (`collected_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
