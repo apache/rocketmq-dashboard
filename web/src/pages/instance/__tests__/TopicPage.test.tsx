@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { BrokerRoute, Topic } from '../../../api/metadata';
 import { parseMessageProperties } from '../../../utils/messageProperties';
@@ -191,6 +191,7 @@ describe('TopicPage', () => {
   });
 
   afterEach(() => {
+    Modal.destroyAll();
     vi.clearAllMocks();
   });
 
@@ -411,7 +412,20 @@ describe('TopicPage', () => {
 
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
     const user = userEvent.setup();
-    mockTopicsList(buildTopics(3));
+    const remainingTopics = [buildTopics(3)[1]];
+    topicServiceMocks.listTopicsPage
+      .mockResolvedValueOnce({
+        items: buildTopics(3),
+        total: 3,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: remainingTopics,
+        total: 1,
+        page: 1,
+        size: 20,
+      });
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({
       deleted: ['topic-01', 'topic-03'],
       failed: ['topic-02'],
@@ -430,6 +444,104 @@ describe('TopicPage', () => {
     expect(screen.queryByText('topic-03')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
     expect(screen.getByText('已删除 2 个 Topic，1 个删除失败')).toBeInTheDocument();
+    expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith({
+      instanceId: 'instance-proxy-1',
+      type: undefined,
+      search: undefined,
+      page: 1,
+      pageSize: 20,
+    });
+  });
+
+  it('reloads the server page after deleting one topic', async () => {
+    const user = userEvent.setup();
+    const topic = buildTopics(1)[0];
+    topicServiceMocks.listTopicsPage
+      .mockResolvedValueOnce({
+        items: [topic],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        page: 1,
+        size: 20,
+      });
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    renderWithProviders();
+
+    const row = await screen.findByRole('row', { name: /topic-01/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+    const dialog = (await screen.findByText(/确定要删除 Topic「topic-01」/)).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    await waitFor(() => expect(screen.queryByText('topic-01')).not.toBeInTheDocument());
+    expect(screen.getByText('共 0 个 Topic')).toBeInTheDocument();
+    expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('moves back from an emptied last topic page after batch deletion', async () => {
+    const user = userEvent.setup();
+    const firstPage = buildTopics(20);
+    const secondPage = [buildTopics(21)[20]];
+    let deletedLastPage = false;
+    topicServiceMocks.listTopicsPage.mockImplementation(async (params) => {
+      if (params.page === 2) {
+        return {
+          items: deletedLastPage ? [] : secondPage,
+          total: deletedLastPage ? 20 : 21,
+          page: 2,
+          size: 20,
+        };
+      }
+      return {
+        items: firstPage,
+        total: deletedLastPage ? 20 : 21,
+        page: 1,
+        size: 20,
+      };
+    });
+    topicServiceMocks.batchDeleteTopics.mockImplementation(async () => {
+      deletedLastPage = true;
+      return {
+        deleted: ['topic-21'],
+        failed: [],
+      };
+    });
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-pagination-item-2') as HTMLElement);
+    expect(await screen.findByText('topic-21')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: /删除 \(1\)$/ }));
+    const dialog = (await screen.findByText(/确定要删除选中的 1 个 Topic/)).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.batchDeleteTopics).toHaveBeenCalledWith(
+        ['topic-21'],
+        'instance-proxy-1',
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText('topic-21')).not.toBeInTheDocument());
+    expect(screen.getByText('topic-01')).toBeInTheDocument();
+    expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith({
+      instanceId: 'instance-proxy-1',
+      type: undefined,
+      search: undefined,
+      page: 1,
+      pageSize: 20,
+    });
   });
 
   it('filters topics by the instance from the route and shows its endpoint', async () => {

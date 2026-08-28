@@ -355,6 +355,42 @@ const TopicPage = () => {
   const consumersRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
 
+  const loadTopicPage = useCallback(
+    async (pageToLoad = tablePage, pageSizeToLoad = tablePageSize) => {
+      if (!selectedInstanceId) return undefined;
+      const requestId = ++topicRequestIdRef.current;
+      setLoading(true);
+      try {
+        const result = await listTopicsPage({
+          instanceId: selectedInstanceId,
+          type: typeFilter || undefined,
+          search: searchText.trim() || undefined,
+          page: pageToLoad,
+          pageSize: pageSizeToLoad,
+        });
+        if (requestId === topicRequestIdRef.current) {
+          setTopics(result.items);
+          setTotalTopics(result.total);
+        }
+        return requestId === topicRequestIdRef.current ? result : undefined;
+      } catch {
+        if (requestId === topicRequestIdRef.current)
+          message.error('Topic 列表加载失败，请稍后重试');
+        return undefined;
+      } finally {
+        if (requestId === topicRequestIdRef.current) setLoading(false);
+      }
+    },
+    [selectedInstanceId, typeFilter, searchText, tablePage, tablePageSize],
+  );
+
+  const reloadTopicPageAfterDelete = useCallback(async () => {
+    const result = await loadTopicPage(tablePage, tablePageSize);
+    if (result && tablePage > 1 && result.items.length === 0 && result.total > 0) {
+      setTablePage(tablePage - 1);
+    }
+  }, [loadTopicPage, tablePage, tablePageSize]);
+
   useEffect(() => {
     if (!selectedInstanceId) {
       topicRequestIdRef.current += 1;
@@ -368,35 +404,14 @@ const TopicPage = () => {
         window.clearTimeout(resetTimer);
       };
     }
-    const requestId = ++topicRequestIdRef.current;
     const timer = window.setTimeout(() => {
-      setLoading(true);
-      void listTopicsPage({
-        instanceId: selectedInstanceId,
-        type: typeFilter || undefined,
-        search: searchText.trim() || undefined,
-        page: tablePage,
-        pageSize: tablePageSize,
-      })
-        .then((result) => {
-          if (requestId === topicRequestIdRef.current) {
-            setTopics(result.items);
-            setTotalTopics(result.total);
-          }
-        })
-        .catch(() => {
-          if (requestId === topicRequestIdRef.current)
-            message.error('Topic 列表加载失败，请稍后重试');
-        })
-        .finally(() => {
-          if (requestId === topicRequestIdRef.current) setLoading(false);
-        });
+      void loadTopicPage(tablePage, tablePageSize);
     }, 0);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId, typeFilter, searchText, tablePage, tablePageSize, instancesLoading]);
+  }, [selectedInstanceId, tablePage, tablePageSize, instancesLoading, loadTopicPage]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -563,7 +578,7 @@ const TopicPage = () => {
         onOk: async () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
-            setTopics((previous) => previous.filter((item) => item.name !== topic.name));
+            await reloadTopicPageAfterDelete();
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
             message.error('删除 Topic 失败，请稍后重试');
@@ -1327,12 +1342,7 @@ const TopicPage = () => {
                         names,
                         selectedInstanceId || undefined,
                       );
-                      if (deleted.length > 0) {
-                        const deletedNames = new Set(deleted);
-                        setTopics((previous) =>
-                          previous.filter((topic) => !deletedNames.has(topic.name)),
-                        );
-                      }
+                      if (deleted.length > 0) await reloadTopicPageAfterDelete();
                       setSelectedRowKeys(failed);
 
                       if (failed.length === 0) {
