@@ -9,7 +9,7 @@
 ```
 
 脚本自动完成：本地构建 → 导出镜像 → SCP 传输 → 远程加载 → 重启容器 → 验证。
-后端通过 Maven 容器构建，并默认挂载宿主机的 `~/.m2`，后续构建会复用已下载的依赖。
+后端通过目标机上的 Maven 容器构建，并默认挂载目标登录用户的 `~/.m2`，后续构建会复用已下载的依赖。
 
 ## 配置
 
@@ -23,10 +23,16 @@ PUBLIC_PORT=8080
 
 # 可选：自定义宿主机 Maven 缓存和构建镜像
 MAVEN_CACHE_DIR=/home/your-user/.m2
-MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-21
+MAVEN_IMAGE=maven:3.9.16-eclipse-temurin-21
 ```
 
-`MAVEN_CACHE_DIR` 默认为当前用户的 `~/.m2`。如果其中存在 `settings.xml`，构建容器也会自动使用该配置。
+`REMOTE_PATH` 必须是不含空白、单引号或冒号的绝对路径。`MAVEN_CACHE_DIR` 也是目标机上的绝对路径
+（不含换行或冒号），默认为远程登录用户的 `~/.m2`；路径可以包含空格。脚本会将同一路径挂载为
+`/maven-cache`，如果其中存在 `settings.xml`，构建容器也会自动使用该配置。
+
+`deploy.sh` 以本地 `deploy/.env` 作为唯一部署配置，并随源码同步到远端
+`$REMOTE_PATH/deploy/.env`。Compose 启动同样读取该文件，因此首次部署不需要手工创建远端根目录
+`.env`。`PUBLIC_PORT` 同时控制 Compose 的前端端口映射和脚本的部署验证地址。
 
 ## 本地 Docker Compose
 

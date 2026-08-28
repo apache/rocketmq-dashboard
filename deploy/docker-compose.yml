@@ -78,7 +78,7 @@ services:
     container_name: rocketmq-web
     restart: unless-stopped
     ports:
-      - "6789:80"
+      - "${PUBLIC_PORT:-6789}:80"
     depends_on:
       rocketmq-server:
         condition: service_healthy
