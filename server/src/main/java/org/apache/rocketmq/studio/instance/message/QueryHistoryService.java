@@ -16,8 +16,8 @@
  */
 package org.apache.rocketmq.studio.instance.message;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,10 +38,17 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
 
 @Slf4j
 @Service
 public class QueryHistoryService {
+
+    private static final int DEFAULT_CLEANUP_BATCH_SIZE = 500;
+    private static final int MAX_CLEANUP_BATCH_SIZE = 5_000;
+    private static final int DEFAULT_CLEANUP_MAX_BATCHES = 20;
+    private static final int MAX_CLEANUP_MAX_BATCHES = 100;
 
     private final RmqMessageQueryMapper messageQueryMapper;
     private final RmqTraceQueryMapper traceQueryMapper;
@@ -239,8 +246,7 @@ public class QueryHistoryService {
 
     private void deleteExpiredMessageQueries(LocalDateTime cutoff) {
         try {
-            int deleted = messageQueryMapper.delete(Wrappers.<RmqMessageQuery>query()
-                    .lt("gmt_create", cutoff));
+            int deleted = deleteExpiredInBatches(messageQueryMapper, RmqMessageQuery::getId, cutoff);
             log.debug("Purged {} expired message query records", deleted);
         } catch (RuntimeException e) {
             log.warn("Failed to purge expired message query records: {}", e.getMessage());
@@ -249,12 +255,50 @@ public class QueryHistoryService {
 
     private void deleteExpiredTraceQueries(LocalDateTime cutoff) {
         try {
-            int deleted = traceQueryMapper.delete(Wrappers.<RmqTraceQuery>query()
-                    .lt("gmt_create", cutoff));
+            int deleted = deleteExpiredInBatches(traceQueryMapper, RmqTraceQuery::getId, cutoff);
             log.debug("Purged {} expired trace query records", deleted);
         } catch (RuntimeException e) {
             log.warn("Failed to purge expired trace query records: {}", e.getMessage());
         }
+    }
+
+    private <T> int deleteExpiredInBatches(BaseMapper<T> mapper, Function<T, Long> idExtractor,
+                                          LocalDateTime cutoff) {
+        int batchSize = boundedPositive(properties.getCleanupBatchSize(),
+                DEFAULT_CLEANUP_BATCH_SIZE, MAX_CLEANUP_BATCH_SIZE);
+        int maxBatches = boundedPositive(properties.getCleanupMaxBatches(),
+                DEFAULT_CLEANUP_MAX_BATCHES, MAX_CLEANUP_MAX_BATCHES);
+        int totalDeleted = 0;
+        for (int batch = 0; batch < maxBatches; batch++) {
+            List<T> expired = mapper.selectList(new QueryWrapper<T>()
+                    .select("id")
+                    .lt("gmt_create", cutoff)
+                    .orderByAsc("gmt_create", "id")
+                    .last("LIMIT " + batchSize));
+            if (expired.isEmpty()) {
+                break;
+            }
+            List<Long> ids = expired.stream()
+                    .map(idExtractor)
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (ids.isEmpty()) {
+                break;
+            }
+            int deleted = mapper.deleteByIds(ids);
+            totalDeleted += deleted;
+            if (deleted < batchSize) {
+                break;
+            }
+        }
+        return totalDeleted;
+    }
+
+    private static int boundedPositive(int value, int defaultValue, int maxValue) {
+        if (value <= 0) {
+            return defaultValue;
+        }
+        return Math.min(value, maxValue);
     }
 
     private static LocalDateTime latestOf(LocalDateTime left, LocalDateTime right) {

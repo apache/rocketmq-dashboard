@@ -95,9 +95,31 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     }
 
     @Override
-    public int deleteBefore(LocalDateTime cutoff) {
-        return Math.toIntExact(auditMapper.delete(
-                new QueryWrapper<RmqOperationAudit>().lt("gmt_create", cutoff)));
+    public int deleteBefore(LocalDateTime cutoff, int batchSize, int maxBatches) {
+        int totalDeleted = 0;
+        for (int batch = 0; batch < maxBatches; batch++) {
+            List<RmqOperationAudit> expired = auditMapper.selectList(new QueryWrapper<RmqOperationAudit>()
+                    .select("id")
+                    .lt("gmt_create", cutoff)
+                    .orderByAsc("gmt_create", "id")
+                    .last("LIMIT " + batchSize));
+            if (expired.isEmpty()) {
+                break;
+            }
+            List<Long> ids = expired.stream()
+                    .map(RmqOperationAudit::getId)
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (ids.isEmpty()) {
+                break;
+            }
+            int deleted = auditMapper.deleteByIds(ids);
+            totalDeleted += deleted;
+            if (deleted < batchSize) {
+                break;
+            }
+        }
+        return totalDeleted;
     }
 
     private List<String> findDistinctValues(List<Map<String, Object>> rows, String column) {
