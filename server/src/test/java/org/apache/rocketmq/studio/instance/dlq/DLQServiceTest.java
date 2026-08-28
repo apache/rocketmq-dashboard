@@ -90,6 +90,47 @@ class DLQServiceTest {
     }
 
     @Test
+    void actionsShouldNormalizeIdentifiersBeforeDelegatingTest() {
+        List<String> msgIds = List.of(" msg-1 ", " msg-2 ");
+
+        dlqService.resendMessages("instance-1", " group-1 ", 1000L, 2000L, " target-topic ");
+        dlqService.exportMessages("instance-1", " group-1 ", 1000L, 2000L, 100);
+        dlqService.listMessages("instance-1", " group-1 ", 1000L, 2000L, 1, 20);
+        dlqService.resendSelectedMessages("instance-1", " group-1 ", msgIds, " target-topic ");
+        dlqService.exportExcel("instance-1", " group-1 ", 1000L, 2000L, msgIds);
+
+        verify(dlqProvider).resendMessages(
+                "instance-1", "group-1", 1000L, 2000L, "target-topic");
+        verify(dlqProvider).exportMessages("instance-1", "group-1", 1000L, 2000L, 100);
+        verify(dlqProvider).listMessages("instance-1", "group-1", 1000L, 2000L, 1, 20);
+        verify(dlqProvider).resendMessages(
+                "instance-1", "group-1", List.of("msg-1", "msg-2"), "target-topic");
+        verify(dlqProvider).exportExcel(
+                "instance-1", "group-1", 1000L, 2000L, List.of("msg-1", "msg-2"));
+    }
+
+    @Test
+    void resendMessagesShouldTreatBlankTargetTopicAsAbsentTest() {
+        dlqService.resendMessages("instance-1", "group-1", 1000L, 2000L, "   ");
+
+        verify(dlqProvider).resendMessages("instance-1", "group-1", 1000L, 2000L, null);
+    }
+
+    @Test
+    void selectedActionsShouldRejectBlankMsgIdsTest() {
+        assertThatThrownBy(() -> dlqService.resendSelectedMessages(
+                "instance-1", "group-1", List.of("msg-1", " "), null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("msgId must not be blank");
+        assertThatThrownBy(() -> dlqService.exportExcel(
+                "instance-1", "group-1", null, null, List.of("msg-1", " ")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("msgId must not be blank");
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
     void resendMessagesShouldAcceptNullTimeRange() {
         dlqService.resendMessages("instance-1", "group-1", null, null, "target-topic");
 

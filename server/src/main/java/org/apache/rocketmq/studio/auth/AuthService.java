@@ -213,6 +213,9 @@ public class AuthService {
     public RmqStudioUser setUserEnabled(Long userId, boolean enabled) {
         requireDatabaseBacked();
         RmqStudioUser user = getUser(userId);
+        if (Boolean.valueOf(enabled).equals(user.getEnabled())) {
+            return user;
+        }
         if (!enabled && Boolean.TRUE.equals(user.getAdmin())) {
             // Lock the enabled administrator rows so concurrent disables serialize. A plain
             // count would let two requests both observe a count of 2 and disable everyone.
