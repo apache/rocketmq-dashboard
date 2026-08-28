@@ -111,7 +111,14 @@ describe('instance API', () => {
   });
 
   it('posts cloud import requests for cloud vendors', async () => {
-    const result = { discovered: 4, imported: 1, skipped: 3, failed: [] };
+    const result = {
+      discovered: 4,
+      imported: 1,
+      skipped: 3,
+      failed: [],
+      failedCount: 0,
+      failureDetailsTruncated: false,
+    };
     mock.onPost('/instances/import-cloud').reply((config) => {
       expect(JSON.parse(config.data)).toEqual({ vendor: 'TENCENT', credentialId: 201 });
       return [200, { code: 200, data: result }];

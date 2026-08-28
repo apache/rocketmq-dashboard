@@ -36,5 +36,17 @@ public class CloudImportResultVO {
 
     private int skipped;
 
+    /**
+     * Total number of failures encountered during discovery or import. The {@link #failed}
+     * list is intentionally bounded for API and UI safety, so callers must use this value for
+     * the complete failure count.
+     */
+    private int failedCount;
+
+    /**
+     * Whether the {@link #failed} list contains only the first bounded portion of failures.
+     */
+    private boolean failureDetailsTruncated;
+
     private List<String> failed;
 }

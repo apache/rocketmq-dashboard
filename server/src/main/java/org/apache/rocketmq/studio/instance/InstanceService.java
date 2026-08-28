@@ -45,9 +45,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -72,6 +75,8 @@ public class InstanceService {
     static final int COUNT_PARALLELISM = 8;
     static final long COUNT_TIMEOUT_SECONDS = 3;
     private static final int MAX_BATCH_FAILURE_MESSAGE_LENGTH = 500;
+    static final int MAX_CLOUD_IMPORT_FAILURE_DETAILS = 100;
+    static final int MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH = 500;
 
     private final ExecutorService countExecutor = Executors.newFixedThreadPool(COUNT_PARALLELISM, runnable -> {
         Thread thread = new Thread(runnable, "instance-resource-counts");
@@ -198,8 +203,9 @@ public class InstanceService {
     /**
      * Imports every cloud instance visible to the credential by walking all catalog regions.
      * Remarks are resolved from the cloud instance detail during creation. Instances whose
-     * resolved name already exists are skipped; per-instance failures are collected instead
-     * of aborting the batch.
+     * resolved name already exists are skipped; region and per-instance failures are collected
+     * instead of aborting the batch. Failure details are bounded while the result retains the
+     * complete failure count.
      */
     public CloudImportResultVO importCloudInstances(InstanceVendor vendor, Long credentialId) {
         if (vendor == null || vendor == InstanceVendor.APACHE) {
@@ -213,58 +219,184 @@ public class InstanceService {
         if (credential.getVendor() != vendor) {
             throw new BusinessException(400, "Cloud credential vendor does not match " + vendor);
         }
-        CloudCatalogProvider catalog = providerRegistry.catalogFor(vendor);
+        CloudImportAccumulator result = new CloudImportAccumulator();
+        CloudCatalogProvider catalog;
+        try {
+            catalog = providerRegistry.catalogFor(vendor);
+        } catch (RuntimeException ex) {
+            result.addFailure("catalog", ex);
+            return finishCloudImport(vendor, credentialId, result);
+        }
+        if (catalog == null) {
+            result.addFailure("catalog", "provider returned no cloud catalog");
+            return finishCloudImport(vendor, credentialId, result);
+        }
 
-        int discovered = 0;
-        int imported = 0;
-        int skipped = 0;
-        List<String> failed = new ArrayList<>();
-        for (CloudRegionVO region : catalog.listRegions(credentialId)) {
-            if (region == null || !StringUtils.hasText(region.getRegionId())) {
+        List<CloudRegionVO> regions;
+        try {
+            regions = catalog.listRegions(credentialId);
+        } catch (RuntimeException ex) {
+            result.addFailure("regions", ex);
+            return finishCloudImport(vendor, credentialId, result);
+        }
+        if (regions == null) {
+            result.addFailure("regions", "catalog returned a null region list");
+            return finishCloudImport(vendor, credentialId, result);
+        }
+
+        Set<String> seenRegions = new LinkedHashSet<>();
+        for (CloudRegionVO region : regions) {
+            String regionId = normalizeCloudImportValue(region == null ? null : region.getRegionId());
+            if (regionId == null) {
+                result.addFailure("region", "catalog returned an invalid region entry");
                 continue;
             }
-            List<CloudInstanceOptionVO> options;
-            try {
-                options = catalog.listCloudInstances(credentialId, region.getRegionId(), null);
-            } catch (BusinessException ex) {
-                failed.add(region.getRegionId() + ": " + ex.getMessage());
+            if (!seenRegions.add(regionId)) {
                 continue;
             }
-            for (CloudInstanceOptionVO option : options) {
-                if (option == null || !StringUtils.hasText(option.getInstanceId())) {
-                    continue;
-                }
-                discovered++;
-                InstanceVO request = InstanceVO.builder()
-                        .vendor(vendor)
-                        .credentialId(credentialId)
-                        .regionId(region.getRegionId())
-                        .cloudInstanceId(option.getInstanceId())
-                        .name(option.getInstanceId())
-                        .build();
-                try {
-                    createInstance(request);
-                    imported++;
-                } catch (BusinessException ex) {
-                    if (ex.getMessage() != null && ex.getMessage().startsWith("Instance name already exists")) {
-                        skipped++;
-                    } else {
-                        failed.add(option.getInstanceId() + ": " + ex.getMessage());
-                    }
-                }
+            importCloudRegion(catalog, vendor, credentialId, regionId, result);
+        }
+        return finishCloudImport(vendor, credentialId, result);
+    }
+
+    private void importCloudRegion(CloudCatalogProvider catalog, InstanceVendor vendor, Long credentialId,
+                                   String regionId, CloudImportAccumulator result) {
+        List<CloudInstanceOptionVO> options;
+        try {
+            options = catalog.listCloudInstances(credentialId, regionId, null);
+        } catch (RuntimeException ex) {
+            result.addFailure(regionId, ex);
+            return;
+        }
+        if (options == null) {
+            result.addFailure(regionId, "catalog returned a null instance list");
+            return;
+        }
+
+        for (int index = 0; index < options.size(); index++) {
+            CloudInstanceOptionVO option = options.get(index);
+            String rowTarget = regionId + " row " + (index + 1);
+            if (option == null) {
+                result.addFailure(rowTarget, "catalog returned a null instance entry");
+                continue;
+            }
+            String cloudInstanceId = normalizeCloudImportValue(option.getInstanceId());
+            if (cloudInstanceId == null) {
+                result.addFailure(rowTarget, "catalog returned an instance without an id");
+                continue;
+            }
+            if (!result.markDiscovered(regionId, cloudInstanceId)) {
+                continue;
+            }
+            importCloudInstance(vendor, credentialId, regionId, cloudInstanceId, result);
+        }
+    }
+
+    private void importCloudInstance(InstanceVendor vendor, Long credentialId,
+                                     String regionId, String cloudInstanceId, CloudImportAccumulator result) {
+        InstanceVO request = InstanceVO.builder()
+                .vendor(vendor)
+                .credentialId(credentialId)
+                .regionId(regionId)
+                .cloudInstanceId(cloudInstanceId)
+                .name(cloudInstanceId)
+                .build();
+        try {
+            createInstance(request);
+            result.imported++;
+        } catch (BusinessException ex) {
+            if (isDuplicateInstanceNameFailure(ex)) {
+                result.skipped++;
+            } else {
+                result.addFailure(cloudInstanceId, ex);
+            }
+        } catch (RuntimeException ex) {
+            result.addFailure(cloudInstanceId, ex);
+        }
+    }
+
+    private CloudImportResultVO finishCloudImport(InstanceVendor vendor, Long credentialId,
+                                                  CloudImportAccumulator result) {
+        log.info("Cloud import finished: vendor={}, credentialId={}, discovered={}, imported={}, skipped={}, failed={}",
+                vendor, credentialId, result.discovered, result.imported, result.skipped, result.failedCount);
+        recordAudit("IMPORT_CLOUD_INSTANCES", "INSTANCE", String.valueOf(credentialId), null,
+                "vendor=" + vendor + ", imported=" + result.imported + ", skipped=" + result.skipped
+                        + ", failed=" + result.failedCount);
+        return result.toValue();
+    }
+
+    private boolean isDuplicateInstanceNameFailure(BusinessException ex) {
+        return ex.getCode() == 400 && ex.getMessage() != null
+                && ex.getMessage().startsWith("Instance name already exists");
+    }
+
+    private String normalizeCloudImportValue(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private static String cloudImportFailureMessage(Throwable failure) {
+        String message = failure == null ? null : failure.getMessage();
+        if (!StringUtils.hasText(message)) {
+            message = failure == null ? "unknown failure" : failure.getClass().getSimpleName();
+        }
+        return boundedCloudImportText(message, MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH);
+    }
+
+    private static String boundedCloudImportText(String value, int maxLength) {
+        String singleLine = value == null ? "" : value.replaceAll("\\s+", " ").trim();
+        if (singleLine.length() <= maxLength) {
+            return singleLine;
+        }
+        return singleLine.substring(0, maxLength - 1) + "…";
+    }
+
+    private static final class CloudImportAccumulator {
+
+        private final List<String> failed = new ArrayList<>();
+        private final Set<CloudInstanceKey> discoveredKeys = new HashSet<>();
+        private int discovered;
+        private int imported;
+        private int skipped;
+        private int failedCount;
+        private boolean failureDetailsTruncated;
+
+        private boolean markDiscovered(String regionId, String cloudInstanceId) {
+            if (!discoveredKeys.add(new CloudInstanceKey(regionId, cloudInstanceId))) {
+                return false;
+            }
+            discovered++;
+            return true;
+        }
+
+        private void addFailure(String target, Throwable failure) {
+            addFailure(target, cloudImportFailureMessage(failure));
+        }
+
+        private void addFailure(String target, String message) {
+            failedCount++;
+            if (failed.size() < MAX_CLOUD_IMPORT_FAILURE_DETAILS) {
+                String safeTarget = boundedCloudImportText(target, MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH);
+                String safeMessage = boundedCloudImportText(message, MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH);
+                failed.add(boundedCloudImportText(safeTarget + ": " + safeMessage,
+                        MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH));
+            } else {
+                failureDetailsTruncated = true;
             }
         }
-        log.info("Cloud import finished: vendor={}, credentialId={}, discovered={}, imported={}, skipped={}, failed={}",
-                vendor, credentialId, discovered, imported, skipped, failed.size());
-        recordAudit("IMPORT_CLOUD_INSTANCES", "INSTANCE", String.valueOf(credentialId), null,
-                "vendor=" + vendor + ", imported=" + imported + ", skipped=" + skipped
-                        + ", failed=" + failed.size());
-        return CloudImportResultVO.builder()
-                .discovered(discovered)
-                .imported(imported)
-                .skipped(skipped)
-                .failed(failed)
-                .build();
+
+        private CloudImportResultVO toValue() {
+            return CloudImportResultVO.builder()
+                    .discovered(discovered)
+                    .imported(imported)
+                    .skipped(skipped)
+                    .failedCount(failedCount)
+                    .failureDetailsTruncated(failureDetailsTruncated)
+                    .failed(List.copyOf(failed))
+                    .build();
+        }
+    }
+
+    private record CloudInstanceKey(String regionId, String cloudInstanceId) {
     }
 
     private void requireUniqueInstanceName(String name, Long excludeId) {
