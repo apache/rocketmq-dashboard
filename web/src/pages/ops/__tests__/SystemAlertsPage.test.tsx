@@ -10,7 +10,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
+import { downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
   createAlertSilence,
@@ -34,6 +36,12 @@ vi.mock('../../../services/opsService', () => ({
   createAlertSilence: vi.fn(),
   deleteAlertSilence: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return { ...actual, downloadCsv: vi.fn() };
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -87,6 +95,51 @@ describe('SystemAlertsPage', () => {
       size: 20,
     });
     vi.mocked(listAlertSilences).mockResolvedValue([]);
+  });
+
+  it('finishes an export when a later page is empty after the result set shrinks', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(listSystemAlertsPage)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            level: 'error',
+            title: 'Broker unavailable',
+            description: 'broker a',
+            time: '2026-08-10 01:00',
+            acknowledged: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            level: 'error',
+            title: 'Broker unavailable',
+            description: 'broker a',
+            time: '2026-08-10 01:00',
+            acknowledged: false,
+          },
+        ],
+        total: 200,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({ items: [], total: 200, page: 2, size: 100 });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker unavailable');
+
+    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    await waitFor(() => expect(downloadCsv).toHaveBeenCalledTimes(1));
+    expect(listSystemAlertsPage).toHaveBeenCalledTimes(3);
+    expect(listSystemAlertsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 100 });
   });
 
   it('renders an alert with an unknown backend level', async () => {

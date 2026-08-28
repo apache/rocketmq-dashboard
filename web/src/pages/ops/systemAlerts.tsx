@@ -60,6 +60,9 @@ import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
+const ALERT_EXPORT_PAGE_SIZE = 100;
+const ALERT_EXPORT_MAX_PAGES = 10_000;
+
 const normalizeAlertLevel = (level?: string | null) => (level ?? '').toLowerCase();
 const formatAlertTransition = (
   transition: SystemAlert['transition'] | undefined,
@@ -256,11 +259,27 @@ const SystemAlertsPage = () => {
     setExporting(true);
     try {
       const query = currentQuery();
-      const first = await listSystemAlertsPage({ ...query, page: 1, pageSize: 100 });
+      const first = await listSystemAlertsPage({
+        ...query,
+        page: 1,
+        pageSize: ALERT_EXPORT_PAGE_SIZE,
+      });
       const rows = [...first.items];
-      for (let currentPage = 2; rows.length < first.total; currentPage += 1) {
-        const result = await listSystemAlertsPage({ ...query, page: currentPage, pageSize: 100 });
+      let expectedTotal = first.total;
+      let currentPage = 2;
+      while (rows.length < expectedTotal) {
+        if (currentPage > ALERT_EXPORT_MAX_PAGES) {
+          throw new Error('System alert export exceeded the pagination limit');
+        }
+        const result = await listSystemAlertsPage({
+          ...query,
+          page: currentPage,
+          pageSize: ALERT_EXPORT_PAGE_SIZE,
+        });
+        if (result.items.length === 0) break;
         rows.push(...result.items);
+        expectedTotal = Math.min(expectedTotal, result.total);
+        currentPage += 1;
       }
       downloadCsv(
         `rocketmq-system-alerts-${new Date().toISOString().slice(0, 10)}.csv`,
