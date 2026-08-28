@@ -115,28 +115,27 @@ public class RocketMQMessageProvider implements MessageProvider {
                                                  String topic, String msgId, String tag, String key,
                                                  Long startTime, Long endTime) {
 
+        if (StringUtils.hasText(msgId)) {
+            return queryByMsgId(adminExt, topic, msgId);
+        }
+
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
         if (begin >= end) {
             throw new BusinessException(400, "Message query start time must be before end time");
         }
-
-        List<MessageRecordVO> result;
-        if (StringUtils.hasText(msgId)) {
-            result = queryByMsgId(adminExt, topic, msgId);
-        } else if (StringUtils.hasText(topic) && StringUtils.hasText(key)) {
-            result = queryByKey(adminExt, topic, key, tag, begin, end);
-        } else if (StringUtils.hasText(topic)) {
+        if (StringUtils.hasText(topic) && StringUtils.hasText(key)) {
+            return queryByKey(adminExt, topic, key, tag, begin, end);
+        }
+        if (StringUtils.hasText(topic)) {
             if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
                 throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
             }
-            result = queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
-        } else {
-            log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
-            return Collections.emptyList();
+            return queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         }
 
-        return result;
+        log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
+        return Collections.emptyList();
     }
 
     private List<MessageRecordVO> queryByMsgId(DefaultMQAdminExt adminExt, String topic, String msgId) {
