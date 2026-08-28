@@ -33,11 +33,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -83,17 +85,70 @@ class QueryHistoryServiceTest {
     @Test
     void purgesBothQueryHistoriesUsingConfiguredRetention() {
         properties.setRetentionDays(7);
-        when(messageQueryMapper.delete(any())).thenReturn(2);
-        when(traceQueryMapper.delete(any())).thenReturn(3);
+        when(messageQueryMapper.selectList(any())).thenReturn(List.of());
+        when(traceQueryMapper.selectList(any())).thenReturn(List.of());
 
         service.purgeExpiredQueries();
 
         ArgumentCaptor<Wrapper<RmqMessageQuery>> messageCaptor = ArgumentCaptor.forClass(Wrapper.class);
         ArgumentCaptor<Wrapper<RmqTraceQuery>> traceCaptor = ArgumentCaptor.forClass(Wrapper.class);
-        verify(messageQueryMapper).delete(messageCaptor.capture());
-        verify(traceQueryMapper).delete(traceCaptor.capture());
-        assertThat(messageCaptor.getValue().getCustomSqlSegment()).contains("gmt_create");
-        assertThat(traceCaptor.getValue().getCustomSqlSegment()).contains("gmt_create");
+        verify(messageQueryMapper).selectList(messageCaptor.capture());
+        verify(traceQueryMapper).selectList(traceCaptor.capture());
+        assertThat(messageCaptor.getValue().getCustomSqlSegment())
+                .contains("gmt_create", "ORDER BY gmt_create ASC,id ASC", "LIMIT 500");
+        assertThat(traceCaptor.getValue().getCustomSqlSegment())
+                .contains("gmt_create", "ORDER BY gmt_create ASC,id ASC", "LIMIT 500");
+    }
+
+    @Test
+    void purgeExpiredQueriesDeletesMessageAndTraceHistoryInBoundedBatchesTest() {
+        properties.setRetentionDays(7);
+        properties.setCleanupBatchSize(2);
+        properties.setCleanupMaxBatches(3);
+        RmqMessageQuery message1 = messageQuery(1L);
+        RmqMessageQuery message2 = messageQuery(2L);
+        RmqMessageQuery message3 = messageQuery(3L);
+        RmqTraceQuery trace1 = traceQuery(11L);
+        RmqTraceQuery trace2 = traceQuery(12L);
+        when(messageQueryMapper.selectList(any()))
+                .thenReturn(List.of(message1, message2), List.of(message3));
+        when(traceQueryMapper.selectList(any()))
+                .thenReturn(List.of(trace1, trace2), List.of());
+        when(messageQueryMapper.deleteByIds(List.of(1L, 2L))).thenReturn(2);
+        when(messageQueryMapper.deleteByIds(List.of(3L))).thenReturn(1);
+        when(traceQueryMapper.deleteByIds(List.of(11L, 12L))).thenReturn(2);
+
+        service.purgeExpiredQueries();
+
+        ArgumentCaptor<Wrapper<RmqMessageQuery>> messageQueryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        ArgumentCaptor<Wrapper<RmqTraceQuery>> traceQueryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(messageQueryMapper, times(2)).selectList(messageQueryCaptor.capture());
+        verify(traceQueryMapper, times(2)).selectList(traceQueryCaptor.capture());
+        assertThat(messageQueryCaptor.getAllValues().get(0).getCustomSqlSegment())
+                .contains("gmt_create", "ORDER BY gmt_create ASC,id ASC", "LIMIT 2");
+        assertThat(traceQueryCaptor.getAllValues().get(0).getCustomSqlSegment())
+                .contains("gmt_create", "ORDER BY gmt_create ASC,id ASC", "LIMIT 2");
+        verify(messageQueryMapper).deleteByIds(List.of(1L, 2L));
+        verify(messageQueryMapper).deleteByIds(List.of(3L));
+        verify(traceQueryMapper).deleteByIds(List.of(11L, 12L));
+        verify(messageQueryMapper, never()).delete(any());
+        verify(traceQueryMapper, never()).delete(any());
+    }
+
+    @Test
+    void purgeExpiredQueriesContinuesTraceCleanupWhenMessageCleanupFailsTest() {
+        properties.setRetentionDays(7);
+        properties.setCleanupBatchSize(2);
+        properties.setCleanupMaxBatches(3);
+        when(messageQueryMapper.selectList(any())).thenThrow(new IllegalStateException("message db down"));
+        RmqTraceQuery trace = traceQuery(21L);
+        when(traceQueryMapper.selectList(any())).thenReturn(List.of(trace));
+        when(traceQueryMapper.deleteByIds(List.of(21L))).thenReturn(1);
+
+        service.purgeExpiredQueries();
+
+        verify(traceQueryMapper).selectList(any());
+        verify(traceQueryMapper).deleteByIds(List.of(21L));
     }
 
     @Test
@@ -164,5 +219,17 @@ class QueryHistoryServiceTest {
         verify(traceQueryMapper).selectCount(traceCountCaptor.capture());
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
+    }
+
+    private static RmqMessageQuery messageQuery(Long id) {
+        RmqMessageQuery query = new RmqMessageQuery();
+        query.setId(id);
+        return query;
+    }
+
+    private static RmqTraceQuery traceQuery(Long id) {
+        RmqTraceQuery query = new RmqTraceQuery();
+        query.setId(id);
+        return query;
     }
 }

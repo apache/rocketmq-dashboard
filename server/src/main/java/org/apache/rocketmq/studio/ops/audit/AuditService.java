@@ -37,6 +37,8 @@ public class AuditService {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_EXPORT_RECORDS = 10_000;
+    private static final int CLEANUP_BATCH_SIZE = 500;
+    private static final int CLEANUP_MAX_BATCHES = 20;
     private static final String CSV_HEADER =
             "timestamp,operator,operationType,resourceType,target,clusterId,detail,result,errorMessage\r\n";
 
@@ -118,7 +120,7 @@ public class AuditService {
         }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
-        return auditRepository.deleteBefore(cutoff);
+        return auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
     }
 
     private void validatePagination(int page, int pageSize) {
