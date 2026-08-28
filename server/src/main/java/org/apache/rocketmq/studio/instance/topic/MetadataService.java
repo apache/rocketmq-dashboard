@@ -16,6 +16,10 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.Operation;
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.ResourceType;
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.Result;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -34,6 +38,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 @Slf4j
 @Service
@@ -46,6 +51,7 @@ public class MetadataService {
     private final AdminClient adminClient;
     private final InstanceProviderRegistry providerRegistry;
     private final org.apache.rocketmq.studio.instance.InstanceRepository instanceRepository;
+    private final OperationAuditService operationAuditService;
 
     /**
      * External callers address instances by their globally unique instance ID (name);
@@ -100,14 +106,18 @@ public class MetadataService {
     public TopicVO createTopic(TopicVO topic) {
         requireTopic(topic);
         String instanceId = topic.getInstanceId();
-        return resolve(instanceId).createTopic(instanceId, topic);
+        InstanceProvider provider = resolve(instanceId);
+        return executeWithAudit(provider, Operation.CREATE_TOPIC, ResourceType.TOPIC, topic.getName(),
+                instanceId, topicDetail(topic), () -> provider.createTopic(instanceId, topic));
     }
 
 
     public TopicVO updateTopic(TopicVO topic) {
         requireTopic(topic);
         String instanceId = topic.getInstanceId();
-        return resolve(instanceId).updateTopic(instanceId, topic);
+        InstanceProvider provider = resolve(instanceId);
+        return executeWithAudit(provider, Operation.UPDATE_TOPIC, ResourceType.TOPIC, topic.getName(),
+                instanceId, topicDetail(topic), () -> provider.updateTopic(instanceId, topic));
     }
 
 
@@ -117,7 +127,11 @@ public class MetadataService {
 
     public void deleteTopic(String instanceId, String name) {
         instanceId = normalizeInstanceId(instanceId);
-        resolve(instanceId).deleteTopic(instanceId, requireName(name, "topic name"));
+        String topicName = requireName(name, "topic name");
+        InstanceProvider provider = resolve(instanceId);
+        String normalizedInstanceId = instanceId;
+        executeWithAudit(provider, Operation.DELETE_TOPIC, ResourceType.TOPIC,
+                topicName, instanceId, null, () -> provider.deleteTopic(normalizedInstanceId, topicName));
     }
 
 
@@ -253,7 +267,10 @@ public class MetadataService {
 
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
         String instanceId = group == null ? null : group.getInstanceId();
-        return resolve(instanceId).createConsumerGroup(instanceId, group);
+        InstanceProvider provider = resolve(instanceId);
+        return executeWithAudit(provider, Operation.CREATE_GROUP, ResourceType.GROUP,
+                group == null ? null : group.getName(), instanceId, consumerGroupDetail(group),
+                () -> provider.createConsumerGroup(instanceId, group));
     }
 
     public ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name) {
@@ -266,8 +283,8 @@ public class MetadataService {
                                                                  int retryMaxTimes) {
         instanceId = normalizeInstanceId(instanceId);
         requireApacheInstance(instanceId);
-        return adminClient.updateConsumerGroupSettings(instanceId, requireName(name, "consumer group name"),
-                retryQueueNums, retryMaxTimes);
+        String groupName = requireName(name, "consumer group name");
+        return adminClient.updateConsumerGroupSettings(instanceId, groupName, retryQueueNums, retryMaxTimes);
     }
 
 
@@ -277,7 +294,11 @@ public class MetadataService {
 
     public void deleteConsumerGroup(String instanceId, String name) {
         instanceId = normalizeInstanceId(instanceId);
-        resolve(instanceId).deleteConsumerGroup(instanceId, name);
+        String groupName = requireName(name, "consumer group name");
+        InstanceProvider provider = resolve(instanceId);
+        String normalizedInstanceId = instanceId;
+        executeWithAudit(provider, Operation.DELETE_GROUP, ResourceType.GROUP,
+                groupName, instanceId, null, () -> provider.deleteConsumerGroup(normalizedInstanceId, groupName));
     }
 
 
@@ -287,7 +308,12 @@ public class MetadataService {
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
         instanceId = normalizeInstanceId(instanceId);
-        resolve(instanceId).resetOffset(instanceId, name, timestamp, topic);
+        String groupName = requireName(name, "consumer group name");
+        InstanceProvider provider = resolve(instanceId);
+        String normalizedInstanceId = instanceId;
+        executeWithAudit(provider, Operation.RESET_OFFSET, ResourceType.GROUP, groupName, instanceId,
+                "topic=" + optionalDetail(topic) + ", timestamp=" + timestamp,
+                () -> provider.resetOffset(normalizedInstanceId, groupName, timestamp, topic));
     }
 
 
@@ -336,5 +362,72 @@ public class MetadataService {
             throw new BusinessException(400, fieldName + " is required");
         }
         return value.trim();
+    }
+
+    private String topicDetail(TopicVO topic) {
+        return "type=" + optionalDetail(topic.getType())
+                + ", writeQueues=" + topic.getWriteQueues()
+                + ", readQueues=" + topic.getReadQueues()
+                + ", perm=" + optionalDetail(topic.getPerm());
+    }
+
+    private String consumerGroupDetail(ConsumerGroupVO group) {
+        if (group == null) {
+            return null;
+        }
+        return "consumeType=" + optionalDetail(group.getConsumeType())
+                + ", subscriptionMode=" + optionalDetail(group.getSubscriptionMode())
+                + ", retryMaxTimes=" + group.getRetryMaxTimes();
+    }
+
+    private String optionalDetail(Object value) {
+        if (value == null) {
+            return "-";
+        }
+        String text = value.toString();
+        return StringUtils.hasText(text) ? text.trim() : "-";
+    }
+
+    private <T> T executeWithAudit(InstanceProvider provider, String operation, String resourceType,
+                                   String resourceName, String instanceId, String detail, Supplier<T> action) {
+        if (provider.vendor() == InstanceVendor.APACHE) {
+            return action.get();
+        }
+        try {
+            T result = action.get();
+            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.SUCCESS, null);
+            return result;
+        } catch (RuntimeException failure) {
+            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.FAILED,
+                    failure.getMessage());
+            throw failure;
+        }
+    }
+
+    private void executeWithAudit(InstanceProvider provider, String operation, String resourceType,
+                                  String resourceName, String instanceId, String detail, Runnable action) {
+        if (provider.vendor() == InstanceVendor.APACHE) {
+            action.run();
+            return;
+        }
+        try {
+            action.run();
+            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.SUCCESS, null);
+        } catch (RuntimeException failure) {
+            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.FAILED,
+                    failure.getMessage());
+            throw failure;
+        }
+    }
+
+    private void recordAudit(String operation, String resourceType, String resourceName, String instanceId,
+                             String detail, String result, String errorMessage) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, instanceId,
+                    detail, result, errorMessage);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
     }
 }
