@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { CloudCredentialPage } from '../../../api/cloudCredential';
@@ -198,6 +198,44 @@ describe('CloudCredentialTab', () => {
     await waitFor(() =>
       expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, '', 1, 20),
     );
+  });
+
+  it('submits a credential only once and keeps the editor open while saving', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const save = deferred<CloudCredentialPage['items'][number]>();
+    vi.mocked(createCloudCredential).mockReturnValue(save.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+    await screen.findByText('aliyun-test');
+    await user.click(screen.getByRole('button', { name: /Add credential/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByPlaceholderText('Example: Aliyun test account'),
+      'tencent-prod',
+    );
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
+    await user.click(await screen.findByText('Tencent Cloud'));
+    await user.type(screen.getByPlaceholderText('LTAI...'), 'AKID000000009999');
+    await user.type(screen.getByPlaceholderText('Enter a SecretKey'), 'secret-9999');
+    const okButton = within(dialog).getByRole('button', { name: 'OK' });
+
+    fireEvent.click(okButton);
+    fireEvent.click(okButton);
+
+    await waitFor(() => expect(createCloudCredential).toHaveBeenCalledTimes(1));
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    save.resolve({
+      id: 2,
+      name: 'tencent-prod',
+      vendor: 'TENCENT',
+      accessKey: 'AKID****9999',
+      gmtCreate: '2026-08-18T11:00:00',
+    });
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledTimes(2));
+    expect(createCloudCredential).toHaveBeenCalledTimes(1);
   });
 
   it('updates name and remark while keeping the secret unchanged when blank', async () => {
