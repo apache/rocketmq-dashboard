@@ -74,6 +74,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.yes': { zh: '是', en: 'Yes' },
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
+  'common.unavailable': { zh: '不可用', en: 'Unavailable' },
 
   // ─── Global layout controls ───
   'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
@@ -204,11 +205,19 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── Instance / Topic / Group / ACL / Message ───
   'instance.title': { zh: '实例列表', en: 'Instance List' },
   'instance.subtitle': { zh: '管理 RocketMQ 集群连接', en: 'Manage RocketMQ cluster connections' },
+  'instance.managementSubtitle': {
+    zh: '接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {count} 个实例',
+    en: 'Connect and manage RocketMQ instances (Apache / Aliyun / Tencent). Showing {count} instances.',
+  },
   'instance.count': { zh: '共 {n} 个实例', en: '{n} instances' },
   'instance.searchPlaceholder': { zh: '搜索实例 ID 或地址', en: 'Search instance ID or endpoint' },
   'instance.allTypes': { zh: '全部架构', en: 'All Types' },
+  'instance.cloudType': { zh: '云服务', en: 'Cloud Service' },
+  'instance.proxyLocalMode': { zh: 'Proxy Local 模式', en: 'Proxy Local Mode' },
+  'instance.proxyClusterMode': { zh: 'Proxy Cluster 模式', en: 'Proxy Cluster Mode' },
   'instance.directMode': { zh: 'Direct 模式', en: 'Direct Mode' },
   'instance.addInstance': { zh: '添加实例', en: 'Add Instance' },
+  'instance.editInstanceTitle': { zh: '编辑实例 — {name}', en: 'Edit Instance — {name}' },
   'instance.instanceName': { zh: '实例 ID', en: 'Instance ID' },
   'instance.namePlaceholder': { zh: '例：rocketmq-production', en: 'e.g. rocketmq-production' },
   'instance.accessType': { zh: '接入方式', en: 'Access Type' },
@@ -219,21 +228,240 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'e.g. proxy.example.com:8080',
   },
   'instance.remark': { zh: '备注', en: 'Remark' },
+  'instance.remarkPlaceholder': {
+    zh: '可选，描述实例用途',
+    en: 'Optional, describe the instance purpose',
+  },
+  'instance.remarkEditPlaceholder': { zh: '描述实例用途', en: 'Describe the instance purpose' },
   'instance.connect': { zh: '连接', en: 'Connect' },
   'instance.cancel': { zh: '取消', en: 'Cancel' },
   'instance.edit': { zh: '编辑', en: 'Edit' },
   'instance.delete': { zh: '删除', en: 'Delete' },
   'instance.confirmDelete': { zh: '确认删除 "{name}"？', en: 'Delete "{name}"?' },
+  'instance.confirmBatchDelete': {
+    zh: '确认删除选中的 {count} 个实例？',
+    en: 'Delete {count} selected instances?',
+  },
+  'instance.batchDeleteContent': {
+    zh: '将删除：{names}。{warning}',
+    en: 'Instances to delete: {names}. {warning}',
+  },
+  'instance.cloudBatchDeleteWarning': {
+    zh: '云厂商实例仅从 Studio 移除记录，不会释放云上的 RocketMQ 实例；仍有 Topic/Group 的开源实例无法删除。',
+    en: 'Cloud instances are only removed from Studio; the RocketMQ instances in the cloud are not released. Apache instances with Topic/Group resources still cannot be deleted.',
+  },
+  'instance.batchDeleteWarning': {
+    zh: '仍有 Topic/Group 的开源实例无法删除。',
+    en: 'Apache instances with Topic/Group resources still cannot be deleted.',
+  },
+  'instance.cloudDeleteWarning': {
+    zh: '仅从 Studio 移除该实例记录，不会释放云上的 RocketMQ 实例。',
+    en: 'Only removes this instance record from Studio. The RocketMQ instance in the cloud is not released.',
+  },
   'instance.deleteWarning': { zh: '此操作不可恢复。', en: 'This cannot be undone.' },
   'instance.deleted': { zh: '已删除', en: 'Deleted' },
-  'instance.added': { zh: '实例添加成功', en: 'Instance added' },
+  'instance.added': { zh: '实例「{name}」添加成功', en: 'Instance "{name}" added' },
+  'instance.updated': { zh: '实例「{name}」已更新', en: 'Instance "{name}" updated' },
   'instance.enter': { zh: '进入 {name}', en: 'Enter {name}' },
   'instance.createdAt': { zh: '创建时间', en: 'Created' },
   'instance.updatedAt': { zh: '修改时间', en: 'Updated' },
+  'instance.region': { zh: '地域', en: 'Region' },
+  'instance.vendor': { zh: '厂商', en: 'Vendor' },
+  'instance.aliyunEdition': { zh: 'Aliyun 版', en: 'Aliyun' },
+  'instance.tencentEdition': { zh: 'Tencent 版', en: 'Tencent' },
+  'instance.apacheDescription': {
+    zh: '接入自建 Apache RocketMQ 开源集群，支持 Proxy / Direct 两种接入方式',
+    en: 'Connect a self-managed Apache RocketMQ cluster through Proxy or Direct access',
+  },
+  'instance.aliyunDescription': {
+    zh: '选择已录入的云凭据与云上实例完成接入，接入点自动解析',
+    en: 'Select stored cloud credentials and a cloud instance; the endpoint is resolved automatically',
+  },
+  'instance.tencentDescription': {
+    zh: '接入腾讯云 TDMQ RocketMQ 版实例，接入地址填写实例的接入点',
+    en: 'Connect a Tencent Cloud TDMQ for RocketMQ instance using its endpoint',
+  },
+  'instance.openSourceEdition': { zh: '开源版', en: 'Apache' },
+  'instance.listLoadFailed': {
+    zh: '实例列表加载失败，请稍后重试',
+    en: 'Failed to load instances. Please try again later.',
+  },
+  'instance.cloudCredentialLoadFailed': {
+    zh: '云凭据列表加载失败',
+    en: 'Failed to load cloud credentials',
+  },
+  'instance.cloudRegionLoadFailed': {
+    zh: '云地域列表加载失败',
+    en: 'Failed to load cloud regions',
+  },
+  'instance.cloudInstanceLoadFailed': {
+    zh: '云实例列表加载失败',
+    en: 'Failed to load cloud instances',
+  },
+  'instance.createFailed': {
+    zh: '添加实例失败，请稍后重试',
+    en: 'Failed to add instance. Please try again later.',
+  },
+  'instance.updateFailed': {
+    zh: '更新实例失败，请稍后重试',
+    en: 'Failed to update instance. Please try again later.',
+  },
+  'instance.deleteFailed': {
+    zh: '删除实例失败，请稍后重试',
+    en: 'Failed to delete instance. Please try again later.',
+  },
+  'instance.batchDeleteFailed': {
+    zh: '批量删除失败，请稍后重试',
+    en: 'Failed to delete selected instances. Please try again later.',
+  },
+  'instance.selectCloudCredentialFirst': {
+    zh: '请先选择云凭据',
+    en: 'Select cloud credentials first',
+  },
+  'instance.importAll': { zh: '一键导入', en: 'Import All' },
+  'instance.importAllTooltip': {
+    zh: '遍历该凭据下全部地域，将所有云上实例导入（幂等，已存在的自动跳过），备注自动取自云上实例',
+    en: 'Scan all regions for this credential and import cloud instances. Existing instances are skipped and remarks come from the cloud instance.',
+  },
+  'instance.importSuccess': {
+    zh: '导入完成：共同步 {total} 个实例（新导入 {imported}，已存在跳过 {skipped}）',
+    en: 'Import complete: synced {total} instances ({imported} imported, {skipped} skipped)',
+  },
+  'instance.importAllSkipped': {
+    zh: '云上实例均已在 Studio 中（共 {skipped} 个），无需重复导入',
+    en: 'All cloud instances are already in Studio ({skipped} total). Nothing to import.',
+  },
+  'instance.importIncomplete': {
+    zh: '导入未完成：新导入 {imported} 个，已存在跳过 {skipped} 个',
+    en: 'Import incomplete: {imported} imported, {skipped} skipped',
+  },
+  'instance.importPartialFailure': {
+    zh: '{summary}，失败 {count} 个{omitted}{details}',
+    en: '{summary}. {count} failed{omitted}{details}',
+  },
+  'instance.importFailureDetailsTruncated': {
+    zh: '（仅显示前 {count} 条）',
+    en: ' (showing the first {count})',
+  },
+  'instance.importFailed': {
+    zh: '一键导入失败，请稍后重试',
+    en: 'Failed to import cloud instances. Please try again later.',
+  },
+  'instance.deletedCount': { zh: '已删除 {count} 个', en: 'Deleted {count}' },
+  'instance.batchDeletePartialFailure': {
+    zh: '{summary}，{count} 个未能删除：{failed}',
+    en: '{summary}. {count} failed to delete: {failed}',
+  },
+  'instance.cloudCredential': { zh: '云凭据', en: 'Cloud Credential' },
+  'instance.cloudCredentialRequired': { zh: '请选择云凭据', en: 'Select cloud credentials' },
+  'instance.cloudCredentialExtraPrefix': {
+    zh: '凭据为{vendor}账号的 AK/SK，',
+    en: 'Credentials are the AK/SK of the {vendor} account. ',
+  },
+  'instance.cloudCredentialSettingsLink': {
+    zh: '前往「设置 - 云凭据管理」添加',
+    en: 'Add them in Settings - Cloud Credentials',
+  },
+  'instance.selectStoredCredential': {
+    zh: '选择已录入的 AK/SK 凭据',
+    en: 'Select stored AK/SK credentials',
+  },
+  'instance.loading': { zh: '加载中…', en: 'Loading...' },
+  'instance.noCloudCredential': {
+    zh: '暂无{vendor}凭据，',
+    en: 'No {vendor} credentials. ',
+  },
+  'instance.addInSettings': { zh: '去设置中添加', en: 'Add in settings' },
+  'instance.regionRequired': { zh: '请选择地域', en: 'Select a region' },
+  'instance.selectRegion': { zh: '选择地域', en: 'Select a region' },
+  'instance.cloudInstance': { zh: '云上实例', en: 'Cloud Instance' },
+  'instance.cloudInstanceRequired': { zh: '请选择云上实例', en: 'Select a cloud instance' },
+  'instance.cloudInstanceExtra': {
+    zh: '商业版实例来自云端目录，无法手工创建',
+    en: 'Commercial instances come from the cloud catalog and cannot be created manually',
+  },
+  'instance.selectCloudInstance': { zh: '选择云上实例', en: 'Select a cloud instance' },
+  'instance.selectRegionFirst': { zh: '请先选择地域', en: 'Select a region first' },
+  'instance.nameRequired': { zh: '请输入实例 ID', en: 'Enter an instance ID' },
+  'instance.nameMax': {
+    zh: '实例 ID 不能超过 64 个字符',
+    en: 'Instance ID cannot exceed 64 characters',
+  },
+  'instance.cloudNamePlaceholder': {
+    zh: '默认取云上实例 ID',
+    en: 'Defaults to the cloud instance ID',
+  },
+  'instance.accessTypeRequired': { zh: '请选择接入方式', en: 'Select an access type' },
+  'instance.endpointRequired': { zh: '请输入接入地址', en: 'Enter an endpoint' },
+  'instance.endpointHelp': {
+    zh: '接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。',
+    en: 'The endpoint is the client access entry and is shown on Topic pages for client configuration. If clients cannot resolve it, configure DNS or hosts mapping.',
+  },
+  'instance.directEndpointExtra': {
+    zh: 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）',
+    en: 'For Direct mode, enter the NameServer SLB address. In K8s this is usually the NameServer Service address, such as namesrv.mq.svc:9876.',
+  },
+  'instance.proxyLocalEndpointExtra': {
+    zh: 'Proxy Local 模式请填写与 Broker 同进程部署的 Proxy 接入地址（如 broker-proxy.mq.svc:8080）',
+    en: 'For Proxy Local mode, enter the Proxy endpoint deployed with the Broker, such as broker-proxy.mq.svc:8080.',
+  },
+  'instance.proxyClusterEndpointExtra': {
+    zh: 'Proxy Cluster 模式请填写独立 Proxy 集群的 SLB 内网地址（如 proxy.mq.svc:8080）',
+    en: 'For Proxy Cluster mode, enter the internal SLB endpoint of the standalone Proxy cluster, such as proxy.mq.svc:8080.',
+  },
+  'instance.cloudEndpointExtra': {
+    zh: '云服务实例接入地址由云厂商目录解析，不支持手动修改',
+    en: 'Cloud instance endpoints are resolved from the cloud catalog and cannot be edited manually.',
+  },
+  'instance.selectAccessTypeFirst': {
+    zh: '请先选择接入方式',
+    en: 'Select an access type first',
+  },
+  'instance.directEndpointPlaceholder': {
+    zh: '例：namesrv.mq.svc.cluster.local:9876',
+    en: 'e.g. namesrv.mq.svc.cluster.local:9876',
+  },
+  'instance.proxyEndpointPlaceholder': {
+    zh: '例：proxy.mq.svc.cluster.local:8080',
+    en: 'e.g. proxy.mq.svc.cluster.local:8080',
+  },
+  'instance.adminCredentialRef': { zh: '管理凭据引用', en: 'Admin Credential Ref' },
+  'instance.adminCredentialRefExtra': {
+    zh: '可选。仅保存服务端配置中的凭据引用，不会保存或传输 AK/SK。',
+    en: 'Optional. Only stores the credential reference in server config; AK/SK is not stored or transferred.',
+  },
+  'instance.adminCredentialRefEditExtra': {
+    zh: '仅保存服务端配置中的引用，不会保存或传输 AK/SK。',
+    en: 'Only stores the reference in server config; AK/SK is not stored or transferred.',
+  },
+  'instance.adminCredentialRefPlaceholder': {
+    zh: '例：production-admin',
+    en: 'e.g. production-admin',
+  },
   'topic.title': { zh: 'Topic 管理', en: 'Topic Management' },
   'group.title': { zh: 'Group 管理', en: 'Group Management' },
   'acl.title': { zh: 'ACL 管理', en: 'ACL Management' },
   'message.title': { zh: '消息查询', en: 'Message Search' },
+
+  // ─── Message Query History ───
+  'messageHistory.title': { zh: '服务端查询历史', en: 'Server Query History' },
+  'messageHistory.messageQueries': { zh: '消息查询', en: 'Message Queries' },
+  'messageHistory.traceQueries': { zh: '轨迹查询', en: 'Trace Queries' },
+  'messageHistory.latestQuery': { zh: '最近查询', en: 'Latest Query' },
+  'messageHistory.searchPlaceholder': {
+    zh: '搜索 Topic、轨迹 Topic、Message ID、Key 或操作者',
+    en: 'Search Topic, trace Topic, Message ID, Key or operator',
+  },
+  'messageHistory.loadFailed': {
+    zh: '查询历史加载失败',
+    en: 'Failed to load query history',
+  },
+  'messageHistory.resultCount': { zh: '结果数', en: 'Results' },
+  'messageHistory.operator': { zh: '操作者', en: 'Operator' },
+  'messageHistory.queryTime': { zh: '查询时间', en: 'Query Time' },
+  'messageHistory.traceTopic': { zh: '轨迹 Topic', en: 'Trace Topic' },
+  'messageHistory.traceNodes': { zh: '轨迹节点', en: 'Trace Nodes' },
+  'messageHistory.consumers': { zh: '消费者', en: 'Consumers' },
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
