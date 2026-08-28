@@ -24,26 +24,30 @@ final class AlertRuleDuration {
         if (!StringUtils.hasText(value)) {
             return Duration.ZERO;
         }
-        Matcher matcher = PART.matcher(value.trim());
-        Duration result = Duration.ZERO;
-        int end = 0;
-        while (matcher.find()) {
-            if (matcher.start() != end) {
+        try {
+            Matcher matcher = PART.matcher(value.trim());
+            Duration result = Duration.ZERO;
+            int end = 0;
+            while (matcher.find()) {
+                if (matcher.start() != end) {
+                    throw invalid(value);
+                }
+                long amount;
+                try {
+                    amount = Long.parseLong(matcher.group(1));
+                } catch (NumberFormatException error) {
+                    throw invalid(value);
+                }
+                result = result.plus(toDuration(amount, matcher.group(2), value));
+                end = matcher.end();
+            }
+            if (end != value.trim().length()) {
                 throw invalid(value);
             }
-            long amount;
-            try {
-                amount = Long.parseLong(matcher.group(1));
-            } catch (NumberFormatException error) {
-                throw invalid(value);
-            }
-            result = result.plus(toDuration(amount, matcher.group(2), value));
-            end = matcher.end();
-        }
-        if (end != value.trim().length()) {
+            return result;
+        } catch (ArithmeticException error) {
             throw invalid(value);
         }
-        return result;
     }
 
     private static BusinessException invalid(String value) {

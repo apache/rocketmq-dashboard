@@ -107,6 +107,16 @@ class NativeAlertRulePolicyTest {
         }
     }
 
+    @Test
+    void rejectsOverflowingNativeRuleDurationsBeforePersistenceTest() {
+        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").duration("9223372036854775807y").build()))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid alert duration");
+        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").reminderInterval("9223372036854775807y").build()))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid alert duration");
+    }
+
     private static AlertRuleVO.AlertRuleVOBuilder rule(AlertDomain domain, String metric) {
         return AlertRuleVO.builder().domain(domain).name("Test rule").metric(metric).consecutiveSamples(1);
     }

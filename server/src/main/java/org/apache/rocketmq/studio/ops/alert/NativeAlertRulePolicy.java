@@ -74,6 +74,8 @@ final class NativeAlertRulePolicy {
         if (StringUtils.hasText(rule.getTopic()) && !TOPIC_SCOPED_METRICS.contains(rule.getMetric())) {
             throw new BusinessException(400, "topic is not supported for metric " + rule.getMetric());
         }
+        AlertRuleDuration.parse(rule.getDuration());
+        AlertRuleDuration.parse(rule.getReminderInterval());
         if (rule.getConsecutiveSamples() < 1) {
             throw new BusinessException(400, "consecutiveSamples must be at least 1");
         }
