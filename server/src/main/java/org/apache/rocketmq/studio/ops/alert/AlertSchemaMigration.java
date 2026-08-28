@@ -111,6 +111,10 @@ public class AlertSchemaMigration implements ApplicationRunner {
             new Column("rmq_instance_message", "result_snapshot", "MEDIUMTEXT"));
     private static final List<Index> INDEXES = List.of(
             new Index("rmq_metric_snapshot", "idx_metric_snapshot_lookup", "instance_id, metric_key, collected_at"),
+            new Index("rmq_metric_snapshot", "idx_metric_snapshot_scope_cluster",
+                    "instance_id, metric_key, domain, labels_hash, cluster_id, availability, collected_at"),
+            new Index("rmq_metric_snapshot", "idx_metric_snapshot_scope_global",
+                    "instance_id, metric_key, domain, labels_hash, availability, collected_at"),
             new Index("rmq_metric_snapshot", "idx_metric_snapshot_retention", "collected_at"),
             new Index("rmq_alert_silence", "idx_alert_silence_active", "starts_at, ends_at"),
             new Index("rmq_alert_silence", "idx_alert_silence_scope", "domain, rule_id, instance_id"),
