@@ -55,16 +55,11 @@ const NotificationDeliveriesPage = () => {
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
   const [retryingVisible, setRetryingVisible] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   const refresh = () => {
     setLoading(true);
-    void listAlertDeliveriesPage({ channel, status, instanceId, page, pageSize })
-      .then((result) => {
-        setItems(result.items);
-        setTotal(result.total);
-      })
-      .catch(() => message.error(t('deliveries.loadFailed')))
-      .finally(() => setLoading(false));
+    setRefreshNonce((current) => current + 1);
   };
 
   const retryDelivery = async (record: NotificationDeliveryRecord) => {
@@ -133,7 +128,7 @@ const NotificationDeliveriesPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [channel, status, instanceId, page, pageSize, t]);
+  }, [channel, status, instanceId, page, pageSize, refreshNonce, t]);
 
   const resetPage = (change: () => void) => {
     setLoading(true);
