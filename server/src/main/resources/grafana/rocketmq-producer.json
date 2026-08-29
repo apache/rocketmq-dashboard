@@ -116,8 +116,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 6
+        "x": 6,
+        "y": 0
       },
       "fieldConfig": {
         "defaults": {
@@ -159,7 +159,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 8
       },
       "fieldConfig": {
         "defaults": {
