@@ -64,7 +64,7 @@ import {
   type AiChatDataMode,
   useAiChatHistoryStore,
 } from '../../stores/aiChatHistoryStore';
-import { getChatDraft, type ChatMode } from './chatDraft';
+import { getChatDraft, shouldOpenChatHistory, type ChatMode } from './chatDraft';
 
 const { Text } = Typography;
 
@@ -542,10 +542,16 @@ const AiPage = () => {
 
   useEffect(() => {
     const draft = getChatDraft(location.state);
-    if (!draft || consumedDraftRef.current) return;
+    const openHistory = shouldOpenChatHistory(location.state);
+    if ((!draft && !openHistory) || consumedDraftRef.current) return;
     consumedDraftRef.current = true;
 
     void Promise.resolve().then(() => {
+      if (openHistory) setHistoryOpen(true);
+      if (!draft) {
+        navigate('/ai', { replace: true, state: null });
+        return;
+      }
       if (draft.newConversation) {
         const nextConversationId = newConversationId();
         startConversation(chatMode, nextConversationId);

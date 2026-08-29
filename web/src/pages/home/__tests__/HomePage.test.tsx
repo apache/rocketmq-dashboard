@@ -122,6 +122,35 @@ describe('HomePage LLM models', () => {
 
     expect(navigateMock).not.toHaveBeenCalled();
   });
+
+  it('opens the AI page with history intent from the accessible history action', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+
+    const historyButton = screen.getByRole('button', { name: 'AI 对话历史' });
+    expect(historyButton).toHaveAttribute('type', 'button');
+    expect(historyButton).toHaveAttribute('title', 'AI 对话历史');
+
+    await user.click(historyButton);
+
+    expect(navigateMock).toHaveBeenCalledWith('/ai', {
+      state: { historyIntent: 'open' },
+    });
+  });
+
+  it('supports keyboard activation for the history action', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+
+    screen.getByRole('button', { name: 'AI 对话历史' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(navigateMock).toHaveBeenCalledWith('/ai', {
+      state: { historyIntent: 'open' },
+    });
+  });
 });
 
 describe('HomePage footer', () => {
