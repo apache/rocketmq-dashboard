@@ -71,6 +71,15 @@ describe('navigation search helpers', () => {
 
   it('recognizes Control/Command-K but rejects alternative shortcuts', () => {
     expect(
+      isNavigationSearchShortcut({
+        key: 'k',
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: true,
+      }),
+    ).toBe(false);
+    expect(
       isNavigationSearchShortcut({ key: 'k', ctrlKey: true, metaKey: false, altKey: false }),
     ).toBe(true);
     expect(

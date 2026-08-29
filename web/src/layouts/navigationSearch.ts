@@ -69,6 +69,7 @@ export function isNavigationSearchShortcut(event: {
   metaKey: boolean;
   ctrlKey: boolean;
   altKey: boolean;
+  shiftKey?: boolean;
   target?: EventTarget | null;
 }): boolean {
   const isEditableTarget =
@@ -81,6 +82,7 @@ export function isNavigationSearchShortcut(event: {
     event.key.toLowerCase() === 'k' &&
     (event.metaKey || event.ctrlKey) &&
     !event.altKey &&
+    !event.shiftKey &&
     !isEditableTarget
   );
 }
