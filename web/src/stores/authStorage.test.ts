@@ -60,6 +60,13 @@ describe('auth session storage', () => {
     expect(readAuthSession()).toEqual({ user: 'studio-admin', userId: null, admin: true });
   });
 
+  it('rejects corrupted identity and permission values', () => {
+    localStorage.setItem(USER_ID_STORAGE_KEY, '-1.5');
+    localStorage.setItem(USER_ADMIN_STORAGE_KEY, 'yes');
+
+    expect(readAuthSession()).toEqual({ user: null, userId: null, admin: null });
+  });
+
   it('clears every persisted session key', () => {
     localStorage.setItem('token', 'legacy-token');
     persistAuthSession('studio-admin', 7, true);

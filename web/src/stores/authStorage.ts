@@ -30,7 +30,13 @@ function parseUserId(raw: string | null): number | null {
     return null;
   }
   const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseAdmin(raw: string | null): boolean | null {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return null;
 }
 
 export function readAuthSession(): AuthSession {
@@ -39,7 +45,7 @@ export function readAuthSession(): AuthSession {
     return {
       user: localStorage.getItem(USER_STORAGE_KEY),
       userId: parseUserId(localStorage.getItem(USER_ID_STORAGE_KEY)),
-      admin: admin != null ? admin === 'true' : null,
+      admin: parseAdmin(admin),
     };
   } catch {
     return { user: null, userId: null, admin: null };
