@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.cluster.config.BrokerConfigDiffVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
@@ -42,6 +43,7 @@ public class ClusterController {
 
     private final ClusterService clusterService;
     private final ClusterConnectionService clusterConnectionService;
+    private final BrokerConfigDiffService brokerConfigDiffService;
 
     @GetMapping
     public Result<List<ClusterVO>> listClusters(@RequestParam(required = false) String instanceId) {
@@ -74,6 +76,13 @@ public class ClusterController {
     public Result<ClusterConfigPreviewVO> previewClusterConfig(@Valid @RequestBody(required = false) UpdateConfigDTO command) {
         requireUpdateConfigCommand(command);
         return Result.ok(clusterService.previewClusterConfig(command));
+    }
+
+    @GetMapping("/{id}/broker-config-diff")
+    public Result<BrokerConfigDiffVO> compareBrokerConfiguration(
+            @PathVariable String id,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(brokerConfigDiffService.compare(id, instanceId));
     }
 
     @PostMapping("/{clusterId}/brokers/{name}/restart")
