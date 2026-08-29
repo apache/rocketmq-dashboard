@@ -74,6 +74,22 @@ class RocketMQClusterProviderTest {
     }
 
     @Test
+    void discoverClustersShouldConvertDiskRatioToPercentage() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        KVTable runtime = runtimeStats();
+        runtime.getTable().put("commitLogDiskRatio", "0.625");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(broker -> broker.getDiskUsage())
+                .isEqualTo(62.5D);
+    }
+
+    @Test
     void discoverClustersShouldPopulateSafeDefaults() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = newProvider(adminExt);
