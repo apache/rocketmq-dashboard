@@ -17,12 +17,14 @@
 
 import { App } from 'antd';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import {
   listAllStudioUsers as downloadStudioUsers,
   listStudioUsers,
+  setStudioUserEnabled,
+  type StudioUser,
 } from '../../../api/studioUsers';
 import { downloadCsv } from '../../../utils/download';
 import UserManagementPage from '../UserManagement';
@@ -156,5 +158,24 @@ describe('UserManagementPage', () => {
     expect(exportedCsv).toContain('"operator"');
     expect(exportedCsv).toContain('"User"');
     expect(exportedCsv).toContain('"Enabled"');
+  });
+
+  it('does not overlap status updates for the same user', async () => {
+    let resolveUpdate!: () => void;
+    vi.mocked(setStudioUserEnabled).mockImplementationOnce(
+      () =>
+        new Promise<StudioUser>((resolve) => {
+          resolveUpdate = () => resolve({ ...studioUserPage.items[0], enabled: false });
+        }),
+    );
+    renderPage();
+
+    const toggle = await screen.findByRole('switch');
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+
+    expect(setStudioUserEnabled).toHaveBeenCalledTimes(1);
+    expect(setStudioUserEnabled).toHaveBeenCalledWith(7, false);
+    await act(async () => resolveUpdate());
   });
 });
