@@ -49,6 +49,8 @@ export const FALLBACK_MODELS: Record<string, string[]> = {
 };
 
 export function fallbackModelOptions(provider: string, model?: string) {
-  const fallback = FALLBACK_MODELS[provider] || [model || ''].filter(Boolean);
-  return fallback.map((item) => ({ value: item, label: item }));
+  const currentModel = model?.trim();
+  const fallback = FALLBACK_MODELS[provider] || [];
+  const models = [...new Set([...fallback, ...(currentModel ? [currentModel] : [])])];
+  return models.map((item) => ({ value: item, label: item }));
 }

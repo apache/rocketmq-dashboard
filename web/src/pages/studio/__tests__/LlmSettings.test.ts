@@ -61,4 +61,11 @@ describe('LlmSettingsPage', () => {
       { value: 'custom-model', label: 'custom-model' },
     ]);
   });
+
+  it('keeps a saved custom model visible for a known provider', () => {
+    expect(fallbackModelOptions('openai', ' custom-deployment ')).toContainEqual({
+      value: 'custom-deployment',
+      label: 'custom-deployment',
+    });
+  });
 });
