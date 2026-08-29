@@ -23,6 +23,16 @@ const getBarHeights = () =>
   Array.from(screen.getByRole('img').children, (bar) => (bar as HTMLElement).style.height);
 
 describe('MiniBar', () => {
+  it('renders finite non-negative heights for malformed metric samples', () => {
+    const { container } = render(<MiniBar data={[Number.NaN, Number.POSITIVE_INFINITY, -5, 10]} />);
+
+    const heights = [...container.querySelectorAll('[role="img"] > div')].map(
+      (bar) => (bar as HTMLElement).style.height,
+    );
+    expect(heights).toEqual(['0px', '0px', '0px', '32px']);
+    expect(container.innerHTML).not.toMatch(/NaN|Infinity|-\d+px/);
+  });
+
   it('renders zero values without a visible bar', () => {
     render(<MiniBar data={[0, 0, 0]} height={20} label="Throughput trend" />);
 

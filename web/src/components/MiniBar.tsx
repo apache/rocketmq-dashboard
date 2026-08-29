@@ -32,13 +32,16 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
     );
   }
 
-  const max = Math.max(...data, 1);
+  // Metric backends can temporarily emit non-finite or negative samples. Keep
+  // those values from leaking into CSS lengths and collapsing the sparkline.
+  const safeData = data.map((value) => (Number.isFinite(value) && value > 0 ? value : 0));
+  const max = Math.max(...safeData, 1);
   const barWidth = Math.max(2, (width - (data.length - 1) * 2) / data.length);
 
   return (
     <div
       role="img"
-      aria-label={label || `趋势数据：${data.join('、')}`}
+      aria-label={label || `趋势数据：${safeData.join('、')}`}
       style={{
         display: 'inline-flex',
         alignItems: 'flex-end',
@@ -47,7 +50,7 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
         width,
       }}
     >
-      {data.map((value, i) => (
+      {safeData.map((value, i) => (
         <div
           key={i}
           style={{
