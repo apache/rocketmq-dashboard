@@ -20,6 +20,14 @@ import { describe, expect, it } from 'vitest';
 import { tableScrollX } from './table';
 
 describe('tableScrollX', () => {
+  it('falls back for non-positive and non-finite widths without reducing scroll space', () => {
+    expect(
+      tableScrollX([{ width: -40 }, { width: Number.NaN }, { width: '0px' }, { width: '80px' }], {
+        extra: Number.NEGATIVE_INFINITY,
+      }),
+    ).toBe(440);
+  });
+
   it('sums the declared column widths', () => {
     expect(tableScrollX([{ width: 220 }, { width: 200 }, { width: 100 }])).toBe(520);
   });

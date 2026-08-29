@@ -61,11 +61,13 @@ function columnWidth(column: ColumnLike): number {
     return column.children.reduce((total, child) => total + columnWidth(child), 0);
   }
   if (typeof column.width === 'number') {
-    return column.width;
+    return Number.isFinite(column.width) && column.width > 0 ? column.width : UNSIZED_COLUMN_WIDTH;
   }
   if (typeof column.width === 'string') {
     const parsed = Number.parseFloat(column.width);
-    return Number.isFinite(parsed) && column.width.endsWith('px') ? parsed : UNSIZED_COLUMN_WIDTH;
+    return Number.isFinite(parsed) && parsed > 0 && column.width.endsWith('px')
+      ? parsed
+      : UNSIZED_COLUMN_WIDTH;
   }
   return UNSIZED_COLUMN_WIDTH;
 }
@@ -80,6 +82,6 @@ export function tableScrollX(
     declared +
     (options.selection ? SELECTION_COLUMN_WIDTH : 0) +
     (options.expandable ? EXPAND_COLUMN_WIDTH : 0) +
-    (options.extra ?? 0)
+    (Number.isFinite(options.extra) && (options.extra ?? 0) > 0 ? options.extra! : 0)
   );
 }
