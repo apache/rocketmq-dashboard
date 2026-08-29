@@ -70,6 +70,14 @@ describe('Producer API', () => {
     expect(result).toEqual([]);
   });
 
+  it('normalizes duplicate and blank topic suggestions', async () => {
+    mock.onGet('/topics').reply(200, {
+      topicList: [' orders ', '', 'payments', 'orders'],
+    });
+
+    await expect(fetchTopicList('instance-1')).resolves.toEqual(['orders', 'payments']);
+  });
+
   it('fetches active producer group suggestions', async () => {
     mock.onGet('/producer/groups').reply((config) => {
       expect(config.params.instanceId).toBe('instance-1');
@@ -88,6 +96,15 @@ describe('Producer API', () => {
     await expect(
       fetchProducerGroups('instance-1', { topic: 'order-events', query: 'pg', limit: 20 }),
     ).resolves.toEqual(['pg-order', 'pg-payment']);
+  });
+
+  it('normalizes producer group suggestions while preserving backend order', async () => {
+    mock.onGet('/producer/groups').reply(200, {
+      code: 200,
+      data: [' pg-orders ', '', 'pg-payments', 'pg-orders'],
+    });
+
+    await expect(fetchProducerGroups('instance-1')).resolves.toEqual(['pg-orders', 'pg-payments']);
   });
 
   it('queries producer connections by topic and group', async () => {

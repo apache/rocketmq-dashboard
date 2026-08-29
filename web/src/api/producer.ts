@@ -69,6 +69,10 @@ interface ProducerConnectionResponse {
   summary?: ProducerConnectionSummary;
 }
 
+const normalizeSuggestions = (values: string[]): string[] => [
+  ...new Set(values.map((value) => value.trim()).filter(Boolean)),
+];
+
 // ─── API ────────────────────────────────────────────────────────
 
 const hasText = (value?: string | null) => Boolean(value?.trim() && value.trim() !== 'null');
@@ -153,7 +157,7 @@ export function buildProducerConnectionSummary(
 export async function fetchTopicList(instanceId: string): Promise<string[]> {
   const res = await client.get<TopicListResponse>('/topics', { params: { instanceId } });
   const topics = res.data.data?.map((topic) => topic.name) ?? res.data.topicList ?? [];
-  return topics.sort();
+  return normalizeSuggestions(topics).sort((left, right) => left.localeCompare(right));
 }
 
 /** Fetch active producer groups for query suggestions */
@@ -173,7 +177,7 @@ export async function fetchProducerGroups(
       limit: options.limit,
     },
   });
-  return res.data.data ?? [];
+  return normalizeSuggestions(res.data.data ?? []);
 }
 
 /** Query producer connections by topic and producer group */
