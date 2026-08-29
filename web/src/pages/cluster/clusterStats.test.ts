@@ -107,4 +107,12 @@ describe('countClusterComponents', () => {
     ];
     expect(countClusterComponents(clusters)).toEqual({ brokers: 0, nameServers: 0, proxies: 0 });
   });
+
+  it('skips null rows from partially malformed cluster responses', () => {
+    expect(countClusterComponents([null, baseCluster, undefined])).toEqual({
+      brokers: 0,
+      nameServers: 0,
+      proxies: 0,
+    });
+  });
 });

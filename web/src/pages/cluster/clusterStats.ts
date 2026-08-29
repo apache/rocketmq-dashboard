@@ -31,12 +31,14 @@ export interface ClusterComponentCounts {
  * `nameServers` as null. Guard every field so the summary never crashes on
  * such payloads.
  */
-export function countClusterComponents(clusters: ClusterInfo[]): ClusterComponentCounts {
+export function countClusterComponents(
+  clusters: readonly (ClusterInfo | null | undefined)[],
+): ClusterComponentCounts {
   return clusters.reduce(
-    (acc, c) => ({
-      brokers: acc.brokers + (c.brokers ?? []).length,
-      nameServers: acc.nameServers + (c.nameServers ?? []).length,
-      proxies: acc.proxies + (c.proxies ?? []).length,
+    (acc, cluster) => ({
+      brokers: acc.brokers + (cluster?.brokers ?? []).length,
+      nameServers: acc.nameServers + (cluster?.nameServers ?? []).length,
+      proxies: acc.proxies + (cluster?.proxies ?? []).length,
     }),
     { brokers: 0, nameServers: 0, proxies: 0 },
   );
