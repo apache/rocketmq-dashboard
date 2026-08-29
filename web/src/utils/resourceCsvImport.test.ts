@@ -23,6 +23,7 @@ import {
   validateResourceName,
   validateTopicCsvImport,
 } from './resourceCsvImport';
+import { buildCsv } from './download';
 
 describe('resourceCsvImport', () => {
   it('parses RFC4180 CSV with BOM, CRLF, quoted commas, newlines, and escaped quotes', () => {
@@ -57,13 +58,20 @@ describe('resourceCsvImport', () => {
   });
 
   it('round-trips formula-safe apostrophes from exported cells', () => {
-    const records = parseCsvTable('"Name","Remark"\n"\'-topic","\'=keep-original"');
+    const csv = buildCsv(
+      [
+        { header: 'Name', value: (row: { name: string; remark: string }) => row.name },
+        { header: 'Remark', value: (row: { name: string; remark: string }) => row.remark },
+      ],
+      [{ name: '-topic', remark: "'=keep-original" }],
+    );
+    const records = parseCsvTable(csv);
     const validation = validateTopicCsvImport(records, 'instance-1');
 
     expect(validation.errors).toEqual([]);
     expect(validation.rows[0].payload).toMatchObject({
       name: '-topic',
-      remark: '=keep-original',
+      remark: "'=keep-original",
       instanceId: 'instance-1',
     });
   });
