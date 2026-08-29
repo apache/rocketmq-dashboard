@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.nameserver;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.commons.validator.routines.InetAddressValidator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +32,7 @@ public final class NamesrvAddrParser {
 
     private static final int MIN_PORT = 1;
     private static final int MAX_PORT = 65535;
+    private static final InetAddressValidator ADDRESS_VALIDATOR = InetAddressValidator.getInstance();
 
     private NamesrvAddrParser() {
     }
@@ -40,7 +42,7 @@ public final class NamesrvAddrParser {
             throw new BusinessException(400, "namesrvAddr must not be blank");
         }
         List<String> segments = new ArrayList<>();
-        for (String part : raw.split("[,;]")) {
+        for (String part : raw.split("[,;]", -1)) {
             String segment = part.trim();
             if (segment.isEmpty()) {
                 throw new BusinessException(400, "namesrvAddr contains an empty address segment");
@@ -86,18 +88,6 @@ public final class NamesrvAddrParser {
     }
 
     private static boolean isValidIpv6Literal(String ipv6) {
-        if (ipv6.isEmpty() || ipv6.chars().filter(ch -> ch == ':').count() < 2) {
-            return false;
-        }
-        for (char ch : ipv6.toCharArray()) {
-            boolean valid = ch == ':'
-                    || Character.isDigit(ch)
-                    || ch >= 'a' && ch <= 'f'
-                    || ch >= 'A' && ch <= 'F';
-            if (!valid) {
-                return false;
-            }
-        }
-        return true;
+        return ADDRESS_VALIDATOR.isValidInet6Address(ipv6);
     }
 }

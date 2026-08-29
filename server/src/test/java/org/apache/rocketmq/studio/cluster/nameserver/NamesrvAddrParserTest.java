@@ -81,6 +81,16 @@ class NamesrvAddrParserTest {
     }
 
     @Test
+    void rejectsTrailingSeparatorsTest() {
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("ns1:9876,"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("empty address segment");
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("ns1:9876;"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("empty address segment");
+    }
+
+    @Test
     void rejectsMissingPortTest() {
         assertThatThrownBy(() -> NamesrvAddrParser.normalize("ns1"))
                 .isInstanceOf(BusinessException.class)
@@ -134,6 +144,12 @@ class NamesrvAddrParserTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("malformed IPv6");
         assertThatThrownBy(() -> NamesrvAddrParser.normalize("[::1-g]:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("malformed IPv6");
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("[1:2:3]:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("malformed IPv6");
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("[1::2::3]:9876"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("malformed IPv6");
     }
