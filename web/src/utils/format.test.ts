@@ -54,6 +54,7 @@ describe('formatBytes', () => {
   });
 
   it('treats timezone-less alert timestamps as UTC', () => {
+    expect(formatUtcDateTime(' 2026-08-23T10:35:38 ', 'UTC')).toBe('2026-08-23 10:35:38 UTC');
     expect(formatUtcDateTime('2026-08-23T10:35:38.590731', 'America/Los_Angeles')).toBe(
       '2026-08-23 03:35:38 PDT',
     );

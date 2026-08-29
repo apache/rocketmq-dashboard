@@ -42,10 +42,11 @@ export function formatUtcDateTime(
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
+  const normalizedDate = typeof date === 'string' ? date.trim() : date;
   const utcDate =
-    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
-      ? new Date(`${date}Z`)
-      : new Date(date);
+    typeof normalizedDate === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalizedDate)
+      ? new Date(`${normalizedDate}Z`)
+      : new Date(normalizedDate);
   if (Number.isNaN(utcDate.getTime())) return '-';
 
   const parts = new Intl.DateTimeFormat('en-US', {
