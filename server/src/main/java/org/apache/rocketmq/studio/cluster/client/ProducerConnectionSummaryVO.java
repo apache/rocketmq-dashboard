@@ -71,6 +71,7 @@ public class ProducerConnectionSummaryVO {
         return (int) connections.stream()
                 .map(extractor)
                 .filter(ProducerConnectionSummaryVO::hasText)
+                .map(String::trim)
                 .distinct()
                 .count();
     }
@@ -95,6 +96,7 @@ public class ProducerConnectionSummaryVO {
         return connections.stream()
                 .map(ProducerConnectionVO::getClientId)
                 .filter(ProducerConnectionSummaryVO::hasText)
+                .map(String::trim)
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
                 .entrySet()
                 .stream()

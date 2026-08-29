@@ -79,6 +79,18 @@ class ProducerConnectionSummaryVOTest {
                 .containsExactly("UNKNOWN");
     }
 
+    @Test
+    void fromShouldCanonicalizeClientIdsAndAddressesBeforeCounting() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(List.of(
+                connection("producer-a", "10.0.0.1:38888", "Java", "5.1.0"),
+                connection(" producer-a ", " 10.0.0.1:38888 ", "Java", "5.1.0")));
+
+        assertThat(summary.getUniqueClientCount()).isEqualTo(1);
+        assertThat(summary.getUniqueAddressCount()).isEqualTo(1);
+        assertThat(summary.getDuplicateClientIds()).containsExactly("producer-a");
+        assertThat(summary.getWarnings()).contains(ProducerConnectionSummaryVO.DUPLICATE_CLIENT_ID);
+    }
+
     private ProducerConnectionVO connection(String clientId, String address, String language, String version) {
         return ProducerConnectionVO.builder()
                 .clientId(clientId)
