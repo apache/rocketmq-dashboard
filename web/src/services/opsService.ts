@@ -29,7 +29,11 @@ import { mockAuditRecords } from '../mock/audit';
 import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
 
 let auditRecordsState = mockAuditRecords as unknown as AuditRecord[];
-const alertRulesState = mockAlertRules as unknown as AlertRule[];
+const initialAlertRules = mockAlertRules as unknown as AlertRule[];
+const alertRulesState: Record<AlertRuleDomain, AlertRule[]> = {
+  CLUSTER: initialAlertRules.map(copyAlertRule),
+  BUSINESS: initialAlertRules.map(copyAlertRule),
+};
 let alertSilencesState: AlertSilence[] = [];
 
 function copyAlertRule(rule: AlertRule): AlertRule {
@@ -112,7 +116,7 @@ function formatAuditCsv(records: AuditRecord[]): string {
 }
 
 export async function listAlertRules(domain: AlertRuleDomain = 'CLUSTER'): Promise<AlertRule[]> {
-  if (isMockMode()) return alertRulesState.map(copyAlertRule);
+  if (isMockMode()) return alertRulesState[domain].map(copyAlertRule);
   return opsApi.listAlertRules(domain);
 }
 export async function listAlertRulesPage(
@@ -124,7 +128,7 @@ export async function listAlertRulesPage(
   const search = query.search?.trim().toLowerCase();
   const page = Math.max(1, query.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
-  const filtered = alertRulesState
+  const filtered = alertRulesState[domain]
     .filter((rule) => query.enabled == null || rule.enabled === query.enabled)
     .filter(
       (rule) =>
@@ -149,7 +153,8 @@ export async function listAlertRuleRuntime(
 export async function exportAlertRulesTransfer(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRuleTransfer> {
-  if (isMockMode()) return { version: 1, domain, rules: alertRulesState.map(copyAlertRule) };
+  if (isMockMode())
+    return { version: 1, domain, rules: alertRulesState[domain].map(copyAlertRule) };
   return opsApi.exportAlertRulesTransfer(domain);
 }
 
@@ -163,7 +168,7 @@ export async function importAlertRulesTransfer(
     ...copyAlertRule(rule as AlertRule),
     id: startId + index,
   }));
-  alertRulesState.push(...imported);
+  alertRulesState[domain].push(...imported);
   return imported.map(copyAlertRule);
 }
 
@@ -236,7 +241,7 @@ export async function createAlertRule(
       ...data,
       channels: [...(data.channels ?? [])],
     };
-    alertRulesState.push(rule);
+    alertRulesState[domain].push(rule);
     return copyAlertRule(rule);
   }
   return opsApi.createAlertRule(data, domain);
@@ -247,10 +252,10 @@ export async function updateAlertRule(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule> {
   if (isMockMode()) {
-    const index = alertRulesState.findIndex((rule) => rule.id === data.id);
+    const index = alertRulesState[domain].findIndex((rule) => rule.id === data.id);
     if (index < 0) throw new Error(`Alert rule not found: ${data.id}`);
     const rule = copyAlertRule(data);
-    alertRulesState[index] = rule;
+    alertRulesState[domain][index] = rule;
     return copyAlertRule(rule);
   }
   return opsApi.updateAlertRule(data, domain);
@@ -262,7 +267,7 @@ export async function toggleAlertRule(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule> {
   if (isMockMode()) {
-    const rule = alertRulesState.find((item) => item.id === id);
+    const rule = alertRulesState[domain].find((item) => item.id === id);
     if (!rule) throw new Error(`Alert rule not found: ${id}`);
     rule.enabled = enabled;
     return copyAlertRule(rule);
@@ -275,8 +280,8 @@ export async function deleteAlertRule(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<void> {
   if (isMockMode()) {
-    const idx = alertRulesState.findIndex((rule) => rule.id === id);
-    if (idx >= 0) alertRulesState.splice(idx, 1);
+    const idx = alertRulesState[domain].findIndex((rule) => rule.id === id);
+    if (idx >= 0) alertRulesState[domain].splice(idx, 1);
     return;
   }
   return opsApi.deleteAlertRule(id, domain);
@@ -292,7 +297,7 @@ export async function bulkToggleAlertRules(
   const failures: Record<string, string> = {};
   const updatedRules: AlertRule[] = [];
   for (const id of [...new Set(ids)]) {
-    const rule = alertRulesState.find((item) => item.id === id);
+    const rule = alertRulesState[domain].find((item) => item.id === id);
     if (!rule) {
       failures[String(id)] = 'Alert rule not found';
       continue;
@@ -312,12 +317,12 @@ export async function bulkDeleteAlertRules(
   const succeededIds: number[] = [];
   const failures: Record<string, string> = {};
   for (const id of [...new Set(ids)]) {
-    const index = alertRulesState.findIndex((item) => item.id === id);
+    const index = alertRulesState[domain].findIndex((item) => item.id === id);
     if (index < 0) {
       failures[String(id)] = 'Alert rule not found';
       continue;
     }
-    alertRulesState.splice(index, 1);
+    alertRulesState[domain].splice(index, 1);
     succeededIds.push(id);
   }
   return { succeededIds, failures, updatedRules: [] };
