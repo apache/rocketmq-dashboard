@@ -108,6 +108,14 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/c
     </App>,
   );
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
+
 describe('Consumer page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -910,6 +918,71 @@ describe('Consumer page', () => {
       });
     });
     expect(await screen.findByText('消费组配置已保存')).toBeInTheDocument();
+  });
+
+  it('ignores a stale settings response that resolves after another group opened', async () => {
+    type GroupSettings = {
+      groupName: string;
+      retryQueueNums: number;
+      retryMaxTimes: number;
+    };
+    const staleRequest = deferred<GroupSettings>();
+    const freshRequest = deferred<GroupSettings>();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        { ...group, name: 'stale-cg' },
+        { ...group, name: 'fresh-cg' },
+      ]),
+    );
+    vi.mocked(consumerService.getConsumerGroupSettings).mockImplementation((name: string) =>
+      name === 'stale-cg' ? staleRequest.promise : freshRequest.promise,
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    const staleRow = await screen.findByRole('row', { name: /stale-cg/ });
+    await user.click(within(staleRow).getByRole('button', { name: /详\s*情/ }));
+    const staleDialog = await screen.findByRole('dialog', { name: /stale-cg/ });
+    await user.click(within(staleDialog).getByRole('tab', { name: /配\s*置/ }));
+    await waitFor(() =>
+      expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
+        'stale-cg',
+        'instance-1',
+      ),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    // jsdom never finishes the zoom-leave transition, so wait for the leave
+    // state instead of the dialog being removed from the DOM
+    await waitFor(() => expect(staleDialog).toHaveClass('ant-zoom-leave'));
+
+    const freshRow = await screen.findByRole('row', { name: /fresh-cg/ });
+    await user.click(within(freshRow).getByRole('button', { name: /详\s*情/ }));
+    const freshDialog = await screen.findByRole('dialog', { name: /fresh-cg/ });
+    await user.click(within(freshDialog).getByRole('tab', { name: /概\s*览/ }));
+    await user.click(within(freshDialog).getByRole('tab', { name: /配\s*置/ }));
+    await waitFor(() =>
+      expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
+        'fresh-cg',
+        'instance-1',
+      ),
+    );
+
+    act(() => {
+      freshRequest.resolve({ groupName: 'fresh-cg', retryQueueNums: 2, retryMaxTimes: 8 });
+    });
+    await waitFor(() =>
+      expect(within(freshDialog).getByLabelText('最大重试次数')).toHaveValue('8'),
+    );
+
+    // stale-cg resolves after fresh-cg was already applied; it must not overwrite the form
+    act(() => {
+      staleRequest.resolve({ groupName: 'stale-cg', retryQueueNums: 7, retryMaxTimes: 7 });
+    });
+
+    expect(within(freshDialog).getByLabelText('重试队列数')).toHaveValue('2');
+    expect(within(freshDialog).getByLabelText('最大重试次数')).toHaveValue('8');
   });
 
   it('renders an unknown (-1) lag as unavailable in the table and the lag detail', async () => {

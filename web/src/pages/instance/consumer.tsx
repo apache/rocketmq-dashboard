@@ -273,6 +273,7 @@ const ConsumerPageContent = ({
 
   const groupRequestIdRef = useRef(0);
   const stackRequestIdRef = useRef(0);
+  const settingsRequestIdRef = useRef(0);
 
   const [autoRefresh, setAutoRefresh] = useState(false);
   const silentRefreshRef = useRef(false);
@@ -433,15 +434,22 @@ const ConsumerPageContent = ({
 
   const loadGroupSettings = async (group: ConsumerGroup) => {
     if (!selectedInstanceId) return;
+    const requestId = ++settingsRequestIdRef.current;
     setSettingsGroup(group);
     setSettingsLoading(true);
     try {
       const settings = await getConsumerGroupSettings(group.name, selectedInstanceId);
-      settingsForm.setFieldsValue(settings);
+      if (requestId === settingsRequestIdRef.current) {
+        settingsForm.setFieldsValue(settings);
+      }
     } catch {
-      message.error('加载消费组配置失败，请稍后重试');
+      if (requestId === settingsRequestIdRef.current) {
+        message.error('加载消费组配置失败，请稍后重试');
+      }
     } finally {
-      setSettingsLoading(false);
+      if (requestId === settingsRequestIdRef.current) {
+        setSettingsLoading(false);
+      }
     }
   };
 
@@ -1263,6 +1271,7 @@ const ConsumerPageContent = ({
         }
         open={modalOpen}
         onCancel={() => {
+          settingsRequestIdRef.current += 1;
           setModalOpen(false);
           setSelectedGroup(null);
           setShowOnlyInconsistent(false);
