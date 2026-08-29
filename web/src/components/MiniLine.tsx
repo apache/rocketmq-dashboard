@@ -47,8 +47,9 @@ const MiniLine = ({
   animated = true,
   responsive = false,
 }: MiniLineProps) => {
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
+  const safeData = data.map((value) => (Number.isFinite(value) ? value : 0));
+  const max = Math.max(...safeData, 1);
+  const min = Math.min(...safeData, 0);
   const range = max - min || 1;
 
   const pad = 4;
@@ -61,8 +62,8 @@ const MiniLine = ({
   if (data.length < 2) return null;
 
   // Build smooth Catmull-Rom → Bezier control points
-  const points = data.map((v, i) => ({
-    x: pad + (i / (data.length - 1)) * innerW,
+  const points = safeData.map((v, i) => ({
+    x: pad + (i / (safeData.length - 1)) * innerW,
     y: pad + innerH - ((v - min) / range) * innerH,
   }));
 
