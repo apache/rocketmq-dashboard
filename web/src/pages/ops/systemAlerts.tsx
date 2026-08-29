@@ -43,6 +43,7 @@ import {
   listRelatedSystemAlerts,
   retryAlertDelivery,
   listSystemAlertsPage,
+  listAllSystemAlerts,
   createAlertSilence,
   deleteAlertSilence,
   listAlertSilences,
@@ -255,13 +256,7 @@ const SystemAlertsPage = () => {
   const exportAlerts = async () => {
     setExporting(true);
     try {
-      const query = currentQuery();
-      const first = await listSystemAlertsPage({ ...query, page: 1, pageSize: 100 });
-      const rows = [...first.items];
-      for (let currentPage = 2; rows.length < first.total; currentPage += 1) {
-        const result = await listSystemAlertsPage({ ...query, page: currentPage, pageSize: 100 });
-        rows.push(...result.items);
-      }
+      const rows = await listAllSystemAlerts(currentQuery());
       downloadCsv(
         `rocketmq-system-alerts-${new Date().toISOString().slice(0, 10)}.csv`,
         buildCsv(ALERT_EXPORT_COLUMNS, rows),

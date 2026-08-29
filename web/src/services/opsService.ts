@@ -28,6 +28,9 @@ import { mockAlertRules } from '../mock/alerts';
 import { mockAuditRecords } from '../mock/audit';
 import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
 
+const EXPORT_PAGE_SIZE = 100;
+const MAX_EXPORT_PAGES = 100;
+
 let auditRecordsState = mockAuditRecords as unknown as AuditRecord[];
 const alertRulesState = mockAlertRules as unknown as AlertRule[];
 let alertSilencesState: AlertSilence[] = [];
@@ -369,6 +372,25 @@ export async function listSystemAlertsPage(
     size: pageSize,
   };
 }
+
+export const listAllSystemAlerts = async (query: SystemAlertQuery = {}): Promise<SystemAlert[]> => {
+  const alerts: SystemAlert[] = [];
+  let page = 1;
+
+  while (page <= MAX_EXPORT_PAGES) {
+    const result = await listSystemAlertsPage({
+      ...query,
+      page,
+      pageSize: EXPORT_PAGE_SIZE,
+    });
+    alerts.push(...result.items);
+    const total = result.total ?? alerts.length;
+    if (result.items.length === 0 || alerts.length >= total) return alerts;
+    page += 1;
+  }
+
+  throw new Error(`System alert export exceeded ${MAX_EXPORT_PAGES} pages`);
+};
 
 export async function listRelatedSystemAlerts(id: number): Promise<SystemAlert[]> {
   if (isMockMode()) return [];

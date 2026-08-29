@@ -19,6 +19,7 @@ import {
   retryAlertDelivery,
   listAlertSilences,
   listSystemAlertsPage,
+  listAllSystemAlerts,
 } from '../../../services/opsService';
 import SystemAlertsPage from '../systemAlerts';
 
@@ -26,6 +27,7 @@ vi.mock('../../../services/opsService', () => ({
   acknowledgeAlert: vi.fn(),
   clearAcknowledgedAlerts: vi.fn(),
   listSystemAlertsPage: vi.fn(),
+  listAllSystemAlerts: vi.fn(),
   getCollectorStatus: vi.fn().mockResolvedValue({ collectionInterval: 'PT30S' }),
   listAlertDeliveries: vi.fn().mockResolvedValue([]),
   listRelatedSystemAlerts: vi.fn().mockResolvedValue([]),
@@ -229,6 +231,75 @@ describe('SystemAlertsPage', () => {
         }),
       );
     });
+  });
+
+  it('exports all matching system alerts through the paginated collector', async () => {
+    const createObjectURL = vi.fn().mockReturnValue('blob:alerts');
+    const revokeObjectURL = vi.fn();
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    try {
+      vi.mocked(listAllSystemAlerts).mockResolvedValue([
+        {
+          id: 1,
+          level: 'error',
+          title: 'Broker unavailable',
+          description: 'broker a',
+          time: '2026-08-10 01:00',
+          acknowledged: false,
+        },
+        {
+          id: 2,
+          level: 'warning',
+          title: 'Consumer lag',
+          description: 'consumer b',
+          time: '2026-08-10 01:01',
+          acknowledged: false,
+        },
+      ]);
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText('Broker unavailable');
+
+      await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+
+      await waitFor(() => expect(listAllSystemAlerts).toHaveBeenCalledTimes(1));
+      expect(listAllSystemAlerts).toHaveBeenCalledWith({
+        level: undefined,
+        domain: undefined,
+        transition: undefined,
+        notificationSuppressed: undefined,
+        instanceId: undefined,
+        labelKey: undefined,
+        labelValue: undefined,
+        from: undefined,
+        to: undefined,
+      });
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      await expect(blob.text()).resolves.toContain('Broker unavailable');
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:alerts');
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(URL, 'createObjectURL', {
+        configurable: true,
+        value: originalCreate,
+      });
+      Object.defineProperty(URL, 'revokeObjectURL', {
+        configurable: true,
+        value: originalRevoke,
+      });
+      clickSpy.mockRestore();
+    }
   });
 
   it('does not offer acknowledgement for resolved alert history', async () => {

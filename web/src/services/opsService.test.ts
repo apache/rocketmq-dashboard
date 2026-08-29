@@ -24,6 +24,7 @@ import {
   getAuditFilterOptions,
   listAlertRules,
   listAlertRulesPage,
+  listAllSystemAlerts,
   listAuditRecords,
   listSystemAlerts,
   listSystemAlertsPage,
@@ -31,10 +32,18 @@ import {
   updateAlertRule,
 } from './opsService';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const { mode, opsApi } = vi.hoisted(() => ({
+  mode: { mock: true },
+  opsApi: {
+    listSystemAlertsPage: vi.fn(),
+  },
+}));
+
+vi.mock('./dataMode', () => ({ isMockMode: () => mode.mock }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
+vi.mock('../api/ops', () => opsApi);
 
 describe('ops service mock data', () => {
   const auditRecords = mockAuditRecords as unknown as AuditRecord[];
@@ -232,5 +241,110 @@ describe('ops service mock data', () => {
       '"2026-08-01 10:00:00","\'=admin","DELETE","TOPIC","csv-export-target",' +
         '"prod-cn","removed ""topic"", safely","SUCCESS","\'=denied"',
     );
+  });
+});
+
+describe('ops service system alert export pagination', () => {
+  const alert = (id: number, title: string) => ({
+    id,
+    level: 'error',
+    title,
+    description: '',
+    time: '2026-08-10 01:00',
+    acknowledged: false,
+  });
+
+  afterEach(() => {
+    mode.mock = true;
+    opsApi.listSystemAlertsPage.mockReset();
+  });
+
+  it('collects every API system alert page until the reported total is reached', async () => {
+    mode.mock = false;
+    opsApi.listSystemAlertsPage
+      .mockResolvedValueOnce({
+        items: [alert(1, 'first alert')],
+        total: 2,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({
+        items: [alert(2, 'second alert')],
+        total: 2,
+        page: 2,
+        size: 100,
+      });
+
+    const alerts = await listAllSystemAlerts({ level: 'error' });
+
+    expect(opsApi.listSystemAlertsPage).toHaveBeenNthCalledWith(1, {
+      level: 'error',
+      page: 1,
+      pageSize: 100,
+    });
+    expect(opsApi.listSystemAlertsPage).toHaveBeenNthCalledWith(2, {
+      level: 'error',
+      page: 2,
+      pageSize: 100,
+    });
+    expect(alerts.map((item) => item.id)).toEqual([1, 2]);
+  });
+
+  it('stops exporting when the result set shrinks and a page comes back empty', async () => {
+    mode.mock = false;
+    opsApi.listSystemAlertsPage
+      .mockResolvedValueOnce({
+        items: [alert(1, 'first alert')],
+        total: 3,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        total: 1,
+        page: 2,
+        size: 100,
+      });
+
+    const alerts = await listAllSystemAlerts();
+
+    expect(opsApi.listSystemAlertsPage).toHaveBeenCalledTimes(2);
+    expect(alerts.map((item) => item.id)).toEqual([1]);
+  });
+
+  it('honors a lower total reported by a later page', async () => {
+    mode.mock = false;
+    opsApi.listSystemAlertsPage
+      .mockResolvedValueOnce({
+        items: [alert(1, 'first alert'), alert(2, 'second alert')],
+        total: 5,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({
+        items: [alert(3, 'third alert')],
+        total: 3,
+        page: 2,
+        size: 100,
+      });
+
+    const alerts = await listAllSystemAlerts();
+
+    expect(opsApi.listSystemAlertsPage).toHaveBeenCalledTimes(2);
+    expect(alerts.map((item) => item.id)).toEqual([1, 2, 3]);
+  });
+
+  it('stops API system alert export when pagination exceeds the safety limit', async () => {
+    mode.mock = false;
+    opsApi.listSystemAlertsPage.mockResolvedValue({
+      items: [alert(1, 'first alert')],
+      total: Number.MAX_SAFE_INTEGER,
+      page: 1,
+      size: 100,
+    });
+
+    await expect(listAllSystemAlerts()).rejects.toThrow('System alert export exceeded 100 pages');
+    expect(opsApi.listSystemAlertsPage).toHaveBeenCalledTimes(100);
+    expect(opsApi.listSystemAlertsPage).toHaveBeenLastCalledWith({ page: 100, pageSize: 100 });
   });
 });
