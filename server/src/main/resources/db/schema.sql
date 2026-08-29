@@ -57,6 +57,21 @@ CREATE TABLE IF NOT EXISTS rmq_nameserver (
   UNIQUE KEY uk_nameserver_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Cloud provider credentials (defined before rmq_instance for the FK below;
+-- secret_key is base64-encoded and never seeded).
+CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
+  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  name VARCHAR(128) NOT NULL COMMENT 'Credential display name',
+  vendor VARCHAR(32) NOT NULL COMMENT 'ALIYUN/TENCENT',
+  access_key VARCHAR(255) NOT NULL,
+  secret_key VARCHAR(512) NOT NULL COMMENT 'Base64-encoded secret key',
+  remark VARCHAR(255),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_vendor_access_key (vendor, access_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 2. 实例注册表（实例管理页的数据源，topic/group 按 instance_id 归属统计）
 CREATE TABLE IF NOT EXISTS rmq_instance (
   `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -72,7 +87,10 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   admin_credential_ref VARCHAR(128) COMMENT 'External Apache admin credential reference; no secret material',
   region_id VARCHAR(128),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_instance_name (name)
+  UNIQUE KEY uk_instance_name (name),
+  INDEX idx_instance_credential_id (credential_id),
+  CONSTRAINT fk_instance_cloud_credential FOREIGN KEY (credential_id)
+    REFERENCES rmq_cloud_credential(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 3. Topic 管理记录（通过 Studio 创建/管理的 Topic 元数据）
@@ -394,20 +412,6 @@ CREATE TABLE IF NOT EXISTS rmq_system_alert (
   INDEX idx_acknowledged (acknowledged),
   INDEX idx_system_alert_domain_time (domain, time),
   INDEX idx_system_alert_feed (domain, instance_id, transition, time)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 15. Cloud provider credentials (secret_key is base64-encoded and never seeded).
-CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
-  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
-  name VARCHAR(128) NOT NULL COMMENT 'Credential display name',
-  vendor VARCHAR(32) NOT NULL COMMENT 'ALIYUN/TENCENT',
-  access_key VARCHAR(255) NOT NULL,
-  secret_key VARCHAR(512) NOT NULL COMMENT 'Base64-encoded secret key',
-  remark VARCHAR(255),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY uk_vendor_access_key (vendor, access_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Idempotent upgrades for databases created before the corresponding CREATE statements

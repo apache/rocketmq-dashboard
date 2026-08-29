@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -130,8 +131,12 @@ public class CloudCredentialService {
         if (instanceRepository.existsByCredentialId(id)) {
             throw new BusinessException(400, "Cloud credential is referenced by existing instances");
         }
-        if (!credentialRepository.deleteById(id)) {
-            throw new BusinessException(404, "Cloud credential not found: " + id);
+        try {
+            if (!credentialRepository.deleteById(id)) {
+                throw new BusinessException(404, "Cloud credential not found: " + id);
+            }
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(409, "Cloud credential is referenced by existing instances");
         }
         invalidateCloudClients(existing);
         recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(id), null,

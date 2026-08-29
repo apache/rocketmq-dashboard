@@ -39,6 +39,7 @@ import org.apache.rocketmq.studio.settings.SettingsRepository;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -194,7 +195,15 @@ public class InstanceService {
         requireUniqueInstanceName(instance.getName(), null);
         instance.setGmtCreate(LocalDateTime.now());
         instance.setGmtModified(LocalDateTime.now());
-        InstanceVO saved = instanceRepository.save(instance);
+        InstanceVO saved;
+        try {
+            saved = instanceRepository.save(instance);
+        } catch (DataIntegrityViolationException exception) {
+            if (vendor != InstanceVendor.APACHE && isCloudCredentialReferenceViolation(exception)) {
+                throw new BusinessException(409, "Cloud credential no longer exists: " + instance.getCredentialId());
+            }
+            throw exception;
+        }
         recordAudit("CREATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
@@ -679,6 +688,26 @@ public class InstanceService {
     private String instanceAuditDetail(InstanceVO instance) {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         return "name=" + instance.getName() + ", vendor=" + vendor + ", type=" + instance.getType();
+    }
+
+    private boolean isCloudCredentialReferenceViolation(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                boolean foreignKeyFailure = lower.contains("foreign key")
+                        || lower.contains("referential integrity");
+                boolean credentialReference = lower.contains("credential_id")
+                        || lower.contains("rmq_cloud_credential");
+                if (lower.contains("fk_instance_cloud_credential")
+                        || foreignKeyFailure && credentialReference) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private InstanceVO copyOf(InstanceVO instance) {

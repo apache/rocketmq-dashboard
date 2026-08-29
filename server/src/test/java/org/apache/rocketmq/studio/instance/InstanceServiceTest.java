@@ -40,6 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -1519,6 +1520,62 @@ class InstanceServiceTest {
         assertThat(created.getEndpoint()).isEqualTo("vpc.tencent:8080");
         assertThat(created.getType()).isEqualTo(InstanceType.CLOUD);
         assertThat(created.getVendor()).isEqualTo(InstanceVendor.TENCENT);
+    }
+
+    @Test
+    void createCloudInstanceShouldTranslateDeletedCredentialDuringSaveToConflictTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId(1L)
+                .cloudInstanceId("rmq-cn-race")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-race");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-cn-race")).thenReturn(detail);
+        when(instanceRepository.save(any(InstanceVO.class)))
+                .thenThrow(new DataIntegrityViolationException(
+                        "foreign key constraint fk_instance_cloud_credential"));
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential no longer exists: 1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        verify(operationAuditService, never()).record(anyString(), anyString(), anyString(), any(), anyString(),
+                anyString(), any());
+    }
+
+    @Test
+    void createCloudInstanceShouldNotTranslateUnrelatedForeignKeyViolationTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId(1L)
+                .cloudInstanceId("rmq-cn-race")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-race");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-cn-race")).thenReturn(detail);
+        DataIntegrityViolationException violation = new DataIntegrityViolationException(
+                "foreign key constraint fk_instance_owner");
+        when(instanceRepository.save(any(InstanceVO.class))).thenThrow(violation);
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance)).isSameAs(violation);
     }
 
     @Test
