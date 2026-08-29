@@ -52,14 +52,25 @@ public class LiteTopicSummary {
             return "UNKNOWN";
         }
 
+        if (averageTTL == null || averageTTL <= 0) {
+            return "ACTIVE";
+        }
         long now = System.currentTimeMillis();
-        long elapsed = now - lastActiveTime.getTime();
+        if (lastActiveTime.getTime() >= now) {
+            return "ACTIVE";
+        }
+        long elapsed;
+        try {
+            elapsed = Math.subtractExact(now, lastActiveTime.getTime());
+        } catch (ArithmeticException exception) {
+            return "EXPIRED";
+        }
 
         // EXPIRED must be checked first: elapsed > averageTTL implies elapsed > averageTTL * 0.8,
         // so ordering it second would make EXPIRED unreachable.
-        if (averageTTL != null && elapsed > averageTTL) {
+        if (elapsed > averageTTL) {
             return "EXPIRED";
-        } else if (averageTTL != null && elapsed > averageTTL * 0.8) {
+        } else if (elapsed > averageTTL * 0.8) {
             return "EXPIRING_SOON";
         } else {
             return "ACTIVE";
@@ -67,7 +78,7 @@ public class LiteTopicSummary {
     }
 
     public double getConsumerDensity() {
-        if (topicCount == null || topicCount == 0 || consumerCount == null) {
+        if (topicCount == null || topicCount <= 0 || consumerCount == null || consumerCount <= 0) {
             return 0.0;
         }
         return (double) consumerCount / topicCount;

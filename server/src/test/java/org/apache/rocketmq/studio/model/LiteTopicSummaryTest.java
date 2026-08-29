@@ -52,4 +52,25 @@ class LiteTopicSummaryTest {
         assertThat(summary.getConsumerDensity()).isZero();
         assertThat(summary.isEmptyAggregation()).isTrue();
     }
+
+    @Test
+    void ttlAndDensityShouldIgnoreInvalidNegativeInputs() {
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setLastActiveTime(new Date(System.currentTimeMillis() - 1_000));
+        summary.setAverageTTL(-1L);
+        summary.setTopicCount(-2);
+        summary.setConsumerCount(3);
+
+        assertThat(summary.getTTLStatus()).isEqualTo("ACTIVE");
+        assertThat(summary.getConsumerDensity()).isZero();
+    }
+
+    @Test
+    void futureActivityShouldNotAppearExpired() {
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setLastActiveTime(new Date(System.currentTimeMillis() + 60_000));
+        summary.setAverageTTL(10_000L);
+
+        assertThat(summary.getTTLStatus()).isEqualTo("ACTIVE");
+    }
 }
