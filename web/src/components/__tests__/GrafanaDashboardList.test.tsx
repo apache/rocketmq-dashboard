@@ -231,6 +231,44 @@ describe('GrafanaDashboardList', () => {
     });
   });
 
+  it('deduplicates a dashboard export before loading state renders', async () => {
+    let resolveExport!: (value: Blob) => void;
+    vi.mocked(exportGrafanaDashboard).mockImplementation(
+      () => new Promise((resolve) => (resolveExport = resolve)),
+    );
+    renderDashboardList();
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    const exportButtons = screen.getAllByRole('button', { name: /^(Export|导出)$/ });
+    act(() => {
+      exportButtons[0].click();
+      exportButtons[0].click();
+    });
+
+    expect(exportGrafanaDashboard).toHaveBeenCalledTimes(1);
+    await act(async () => resolveExport(new Blob(['dashboard'])));
+  });
+
+  it('deduplicates bulk export before loading state renders', async () => {
+    let resolveExport!: (value: Awaited<ReturnType<typeof exportGrafanaDashboards>>) => void;
+    vi.mocked(exportGrafanaDashboards).mockImplementation(
+      () => new Promise((resolve) => (resolveExport = resolve)),
+    );
+    renderDashboardList();
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    const exportAll = screen.getByRole('button', { name: /Export all|导出全部/ });
+    act(() => {
+      exportAll.click();
+      exportAll.click();
+    });
+
+    expect(exportGrafanaDashboards).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      resolveExport({ blob: new Blob(['dashboards']), filename: 'dashboards.zip' }),
+    );
+  });
+
   it('exports a dashboard and triggers a download', async () => {
     const user = userEvent.setup();
     const createObjectURL = vi.fn().mockReturnValue('blob:grafana');
