@@ -356,7 +356,9 @@ CREATE TABLE IF NOT EXISTS rmq_alert_notification_outbox (
   `delivered_at` DATETIME NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY uk_alert_notification_outbox (`alert_id`, `channel`),
-  INDEX idx_alert_notification_ready (`status`, `next_attempt_at`)
+  INDEX idx_alert_notification_ready (`status`, `next_attempt_at`),
+  INDEX idx_alert_notification_delivered_retention (`status`, `delivered_at`),
+  INDEX idx_alert_notification_modified_retention (`status`, `gmt_modified`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 15. 系统告警事件

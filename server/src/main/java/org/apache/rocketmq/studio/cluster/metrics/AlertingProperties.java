@@ -34,4 +34,10 @@ public class AlertingProperties {
     private String collectionLeaseDuration = "PT1M";
     /** Retain short-lived diagnostic samples without allowing the snapshot table to grow indefinitely. */
     private String snapshotRetention = "PT24H";
+    /** Retain terminal notification deliveries before deleting them from the outbox. */
+    private String notificationRetention = "P30D";
+    /** Maximum number of terminal notification deliveries deleted per cleanup batch. */
+    private int notificationCleanupBatchSize = 500;
+    /** Maximum number of cleanup batches executed during one scheduled pass. */
+    private int notificationCleanupMaxBatches = 10;
 }
