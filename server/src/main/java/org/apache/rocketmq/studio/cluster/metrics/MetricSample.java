@@ -55,6 +55,9 @@ public record MetricSample(
         if (availability == MetricAvailability.AVAILABLE && value == null) {
             throw new IllegalArgumentException("Available metric samples require a value");
         }
+        if (availability == MetricAvailability.AVAILABLE && !Double.isFinite(value)) {
+            throw new IllegalArgumentException("Available metric samples require a finite value");
+        }
         if (availability == MetricAvailability.AVAILABLE && unavailableReason != null) {
             throw new IllegalArgumentException("Available metric samples cannot have an unavailable reason");
         }

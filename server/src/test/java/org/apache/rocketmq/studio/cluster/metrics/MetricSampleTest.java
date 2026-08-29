@@ -40,4 +40,16 @@ class MetricSampleTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Available metric samples require a value");
     }
+
+    @Test
+    void availableSamplesRequireAFiniteValueTest() {
+        assertThatThrownBy(() -> new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                null, Double.NaN, MetricAvailability.AVAILABLE, Instant.now()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Available metric samples require a finite value");
+        assertThatThrownBy(() -> new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                null, Double.POSITIVE_INFINITY, MetricAvailability.AVAILABLE, Instant.now()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Available metric samples require a finite value");
+    }
 }
