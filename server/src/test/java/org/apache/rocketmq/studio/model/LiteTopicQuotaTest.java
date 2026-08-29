@@ -65,4 +65,17 @@ class LiteTopicQuotaTest {
         assertThat(quota.getSessionUsageRate()).isZero();
         assertThat(quota.getRemainingQuota()).isEqualTo(10);
     }
+
+    @Test
+    void negativeCurrentCountsShouldBehaveLikeZeroWithoutOverflow() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxTopicCount(Integer.MAX_VALUE);
+        quota.setCurrentTopicCount(Integer.MIN_VALUE);
+        quota.setMaxSessionCount(10);
+        quota.setCurrentSessionCount(-1);
+
+        assertThat(quota.getUsageRate()).isZero();
+        assertThat(quota.getSessionUsageRate()).isZero();
+        assertThat(quota.getRemainingQuota()).isEqualTo(Integer.MAX_VALUE);
+    }
 }

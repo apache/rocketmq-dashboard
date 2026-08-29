@@ -41,14 +41,14 @@ public class LiteTopicQuota {
         if (maxTopicCount == null || maxTopicCount <= 0 || currentTopicCount == null) {
             return 0.0;
         }
-        return (double) currentTopicCount / maxTopicCount;
+        return (double) Math.max(0, currentTopicCount) / maxTopicCount;
     }
 
     public double getSessionUsageRate() {
         if (maxSessionCount == null || maxSessionCount <= 0 || currentSessionCount == null) {
             return 0.0;
         }
-        return (double) currentSessionCount / maxSessionCount;
+        return (double) Math.max(0, currentSessionCount) / maxSessionCount;
     }
 
     public boolean isNearQuotaLimit(double threshold) {
@@ -65,6 +65,7 @@ public class LiteTopicQuota {
         if (maxTopicCount == null || maxTopicCount <= 0) {
             return 0;
         }
-        return Math.max(0, maxTopicCount - (currentTopicCount == null ? 0 : currentTopicCount));
+        int current = currentTopicCount == null ? 0 : Math.max(0, currentTopicCount);
+        return Math.max(0, maxTopicCount - current);
     }
 }
