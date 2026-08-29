@@ -92,6 +92,35 @@ describe('message API', () => {
     ]);
   });
 
+  it('places malformed store times last without reordering them', async () => {
+    const record = (msgId: string, storeTime: number | string) => ({
+      msgId,
+      topic: 'orders',
+      tag: '',
+      key: '',
+      body: '',
+      storeTime,
+      bornHost: '',
+      storeHost: '',
+      properties: {},
+      size: 0,
+    });
+    mock.onGet('/messages').reply(200, {
+      code: 200,
+      data: [
+        record('nan', Number.NaN),
+        record('valid', 100),
+        record('infinite', Number.POSITIVE_INFINITY),
+      ],
+    });
+
+    await expect(queryMessages({ topic: 'orders' })).resolves.toMatchObject([
+      { msgId: 'valid' },
+      { msgId: 'nan' },
+      { msgId: 'infinite' },
+    ]);
+  });
+
   it('uses the paged query contract and preserves its truncation state', async () => {
     const params = { instanceId: 'instance-1', topic: 'orders', page: 2, pageSize: 50 };
     const page = { items: [], total: 200, page: 2, size: 50, resultMayBeTruncated: true };

@@ -71,15 +71,21 @@ export interface DirectConsumeMessageResult {
   autoCommit: boolean;
 }
 
-const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
-  if (typeof storeTime === 'number') return storeTime;
+const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number | null => {
+  if (typeof storeTime === 'number') return Number.isFinite(storeTime) ? storeTime : null;
 
   const parsed = Date.parse(storeTime);
-  return Number.isNaN(parsed) ? 0 : parsed;
+  return Number.isNaN(parsed) ? null : parsed;
 };
 
 export const sortMessagesByStoreTimeDesc = (messages: MessageRecord[]): MessageRecord[] =>
-  [...messages].sort((a, b) => toStoreTimestamp(b.storeTime) - toStoreTimestamp(a.storeTime));
+  [...messages].sort((a, b) => {
+    const left = toStoreTimestamp(a.storeTime);
+    const right = toStoreTimestamp(b.storeTime);
+    if (left === null) return right === null ? 0 : 1;
+    if (right === null) return -1;
+    return right - left;
+  });
 
 // Matches mock/dlq.ts
 export interface DLQGroup {
