@@ -31,6 +31,12 @@ interface InstanceSelectProps {
   placeholder?: string;
 }
 
+const normalizeFilterText = (value: string): string => value.normalize('NFKC').trim().toLowerCase();
+
+export function matchesInstanceOption(input: string, label: unknown): boolean {
+  return normalizeFilterText(String(label ?? '')).includes(normalizeFilterText(input));
+}
+
 /**
  * 实例维度页面统一的实例选择器：支持输入并按实例 ID 筛选（showSearch），
  * 选中后由页面通过 onChange 切换路由实例。
@@ -60,11 +66,7 @@ export function InstanceSelect({
       }}
       options={options}
       optionFilterProp="label"
-      filterOption={(input, option) =>
-        String(option?.label ?? '')
-          .toLowerCase()
-          .includes(input.toLowerCase())
-      }
+      filterOption={(input, option) => matchesInstanceOption(input, option?.label)}
       notFoundContent="暂无匹配实例"
       style={style ?? { width: 220 }}
     />
