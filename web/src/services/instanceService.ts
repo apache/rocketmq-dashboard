@@ -41,18 +41,19 @@ const CLOUD_CAPABILITIES: InstanceCapabilities['capabilities'] = [
 const inflightListRequests = new Map<string, Promise<Instance[]>>();
 
 export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
-  const key = JSON.stringify([query.type ?? null, query.search?.trim() || null]);
+  const mockMode = isMockMode();
+  const key = JSON.stringify([mockMode, query.type ?? null, query.search?.trim() || null]);
   const inflight = inflightListRequests.get(key);
   if (inflight) {
     return inflight.then((items) => items.map(copyInstance));
   }
-  const request = fetchInstances(query).finally(() => inflightListRequests.delete(key));
+  const request = fetchInstances(query, mockMode).finally(() => inflightListRequests.delete(key));
   inflightListRequests.set(key, request);
   return request.then((items) => items.map(copyInstance));
 }
 
-async function fetchInstances(query: InstanceQuery): Promise<Instance[]> {
-  if (isMockMode()) {
+async function fetchInstances(query: InstanceQuery, mockMode: boolean): Promise<Instance[]> {
+  if (mockMode) {
     const search = query.search?.trim().toLowerCase();
     return mockInstances
       .filter((instance) => matchesType(instance, query.type))
