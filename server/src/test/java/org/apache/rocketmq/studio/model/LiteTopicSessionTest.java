@@ -38,4 +38,19 @@ class LiteTopicSessionTest {
 
         assertThat(session.getConsumptionProgress()).isEqualTo(40.0);
     }
+
+    @Test
+    void consumptionProgressShouldStayWithinPercentageBounds() {
+        LiteTopicSession session = new LiteTopicSession();
+        session.setTotalMessages(10L);
+
+        session.setConsumedMessages(-1L);
+        assertThat(session.getConsumptionProgress()).isZero();
+
+        session.setConsumedMessages(11L);
+        assertThat(session.getConsumptionProgress()).isEqualTo(100.0);
+
+        session.setTotalMessages(-10L);
+        assertThat(session.getConsumptionProgress()).isZero();
+    }
 }

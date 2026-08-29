@@ -72,10 +72,11 @@ public class LiteTopicSession {
     }
 
     public double getConsumptionProgress() {
-        if (totalMessages == null || totalMessages == 0 || consumedMessages == null) {
+        if (totalMessages == null || totalMessages <= 0 || consumedMessages == null) {
             return 0.0;
         }
-        return (double) consumedMessages / totalMessages * 100.0;
+        double progress = (double) consumedMessages / totalMessages * 100.0;
+        return Math.min(100.0, Math.max(0.0, progress));
     }
 
     @Data
