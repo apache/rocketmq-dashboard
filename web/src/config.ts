@@ -10,4 +10,6 @@
 export const USE_MOCK = false;
 
 /** API prefix for browser requests. Defaults to the reverse-proxy friendly `/api`. */
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+export const normalizeApiBaseUrl = (value: string): string => value.trim().replace(/\/+$/, '');
+
+export const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL || '/api');

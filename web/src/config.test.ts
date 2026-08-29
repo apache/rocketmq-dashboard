@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, normalizeApiBaseUrl } from './config';
 
 describe('config API base url', () => {
   it('defaults to a relative /api path when no env override is set', () => {
@@ -29,7 +29,10 @@ describe('config API base url', () => {
     expect(API_BASE_URL.startsWith('//localhost')).toBe(false);
   });
 
-  it('strips a single trailing slash', () => {
+  it('strips trailing slashes and accidental whitespace from overrides', () => {
     expect(API_BASE_URL.endsWith('/')).toBe(false);
+    expect(normalizeApiBaseUrl('  https://studio.example/api///  ')).toBe(
+      'https://studio.example/api',
+    );
   });
 });
