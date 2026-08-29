@@ -88,6 +88,10 @@ studio:
     snapshot-retention: ${STUDIO_ALERTING_SNAPSHOT_RETENTION:PT24H}
     snapshot-cleanup-interval: ${STUDIO_ALERTING_SNAPSHOT_CLEANUP_INTERVAL:PT1H}
     notification-dispatch-interval: ${STUDIO_ALERTING_NOTIFICATION_DISPATCH_INTERVAL:PT10S}
+    notification-retention: ${STUDIO_ALERTING_NOTIFICATION_RETENTION:P30D}
+    notification-cleanup-interval: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_INTERVAL:PT1H}
+    notification-cleanup-batch-size: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_BATCH_SIZE:500}
+    notification-cleanup-max-batches: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_MAX_BATCHES:10}
   llm:
     token: ${RMQ_LLM_TOKEN:}
     anthropic-base-url: ${RMQ_ANTHROPIC_BASE_URL:}

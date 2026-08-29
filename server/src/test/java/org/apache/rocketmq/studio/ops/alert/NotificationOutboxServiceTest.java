@@ -9,6 +9,7 @@ package org.apache.rocketmq.studio.ops.alert;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertNotificationOutbox;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertNotificationOutboxMapper;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
@@ -44,6 +45,110 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class NotificationOutboxServiceTest {
+    @Test
+    void cleanupShouldDeleteOnlyTerminalDeliveriesOlderThanRetentionTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT24H");
+        properties.setNotificationCleanupBatchSize(50);
+        properties.setNotificationCleanupMaxBatches(1);
+        when(mapper.deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class))).thenReturn(3);
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isEqualTo(3);
+        org.mockito.ArgumentCaptor<LocalDateTime> cutoff =
+                org.mockito.ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(mapper).deleteTerminalBefore(cutoff.capture(), org.mockito.ArgumentMatchers.eq(50));
+        assertThat(Duration.between(cutoff.getValue().toInstant(ZoneOffset.UTC),
+                java.time.Instant.now().minus(Duration.ofHours(24))).abs()).isLessThan(Duration.ofSeconds(2));
+    }
+
+    @Test
+    void cleanupShouldStopAtTheConfiguredMaximumBatchCountTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT24H");
+        properties.setNotificationCleanupBatchSize(2);
+        properties.setNotificationCleanupMaxBatches(3);
+        when(mapper.deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class))).thenReturn(2, 2, 2);
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isEqualTo(6);
+        verify(mapper, org.mockito.Mockito.times(3)).deleteTerminalBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(2));
+    }
+
+    @Test
+    void cleanupShouldStopAfterAPartialBatchTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT24H");
+        properties.setNotificationCleanupBatchSize(10);
+        properties.setNotificationCleanupMaxBatches(5);
+        when(mapper.deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class))).thenReturn(10, 4);
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isEqualTo(14);
+        verify(mapper, org.mockito.Mockito.times(2)).deleteTerminalBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(10));
+    }
+
+    @Test
+    void cleanupShouldBeDisabledWhenRetentionIsNonPositiveTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT0S");
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isZero();
+        verify(mapper, never()).deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class));
+    }
+
+    @Test
+    void cleanupShouldIsolateInvalidRetentionConfigurationTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("30d");
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isZero();
+        verify(mapper, never()).deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class));
+    }
+
+    @Test
+    void cleanupShouldStopWhenOneBatchFailsTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT24H");
+        properties.setNotificationCleanupBatchSize(10);
+        properties.setNotificationCleanupMaxBatches(3);
+        when(mapper.deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class))).thenReturn(10)
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isEqualTo(10);
+        verify(mapper, org.mockito.Mockito.times(2)).deleteTerminalBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(10));
+    }
+
     @Test
     void schedulesOutboxWorkInUtcRegardlessOfTheJvmDefaultTimeZoneTest() {
         TimeZone previous = TimeZone.getDefault();

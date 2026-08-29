@@ -53,9 +53,19 @@ class AlertSchemaMigrationTest {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
                 ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM information_schema.columns "
                         + "WHERE table_name = 'rmq_alert_notification_outbox' AND column_name IN "
-                        + "('sending_started_at', 'claim_token', 'message_content')")) {
+                        + "('gmt_create', 'gmt_modified', 'attempt_count', 'last_error', 'delivered_at', "
+                        + "'sending_started_at', 'claim_token', 'message_content')")) {
             result.next();
-            assertThat(result.getInt(1)).isEqualTo(3);
+            assertThat(result.getInt(1)).isEqualTo(8);
+        }
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM information_schema.indexes "
+                        + "WHERE table_name = 'rmq_alert_notification_outbox' AND index_name IN "
+                        + "('idx_alert_notification_delivered_retention', "
+                        + "'idx_alert_notification_modified_retention')")) {
+            result.next();
+            assertThat(result.getInt(1)).isEqualTo(2);
         }
     }
 }

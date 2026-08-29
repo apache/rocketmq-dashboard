@@ -13,6 +13,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
@@ -64,33 +65,50 @@ public class NotificationOutboxService {
     private final OperationAuditService operationAuditService;
     private final RestTemplate restTemplate;
     private final Supplier<JavaMailSender> mailSender;
+    private final AlertingProperties alertingProperties;
 
     NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
             AlertSilenceService silenceService, AlertRepository alertRepository,
             OperationAuditService operationAuditService) {
         this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, newClient(),
-                () -> null);
+                () -> null, new AlertingProperties());
     }
 
     @Autowired
     public NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
             AlertSilenceService silenceService, AlertRepository alertRepository,
-            OperationAuditService operationAuditService, ObjectProvider<JavaMailSender> mailSender) {
+            OperationAuditService operationAuditService, ObjectProvider<JavaMailSender> mailSender,
+            AlertingProperties alertingProperties) {
         this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, newClient(),
-                mailSender::getIfAvailable);
+                mailSender::getIfAvailable, alertingProperties);
     }
 
     NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
             AlertSilenceService silenceService, AlertRepository alertRepository,
             OperationAuditService operationAuditService, RestTemplate restTemplate) {
         this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, restTemplate,
-                () -> null);
+                () -> null, new AlertingProperties());
+    }
+
+    NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
+            AlertSilenceService silenceService, AlertRepository alertRepository,
+            OperationAuditService operationAuditService, AlertingProperties alertingProperties) {
+        this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, newClient(),
+                () -> null, alertingProperties);
     }
 
     NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
             AlertSilenceService silenceService, AlertRepository alertRepository,
             OperationAuditService operationAuditService, RestTemplate restTemplate,
             Supplier<JavaMailSender> mailSender) {
+        this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, restTemplate,
+                mailSender, new AlertingProperties());
+    }
+
+    NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
+            AlertSilenceService silenceService, AlertRepository alertRepository,
+            OperationAuditService operationAuditService, RestTemplate restTemplate,
+            Supplier<JavaMailSender> mailSender, AlertingProperties alertingProperties) {
         this.mapper = mapper;
         this.settingsRepository = settingsRepository;
         this.silenceService = silenceService;
@@ -98,6 +116,7 @@ public class NotificationOutboxService {
         this.operationAuditService = operationAuditService;
         this.restTemplate = restTemplate;
         this.mailSender = mailSender;
+        this.alertingProperties = alertingProperties == null ? new AlertingProperties() : alertingProperties;
     }
 
     public void enqueue(SystemAlertVO alert, AlertRuleVO rule) {
@@ -250,6 +269,39 @@ public class NotificationOutboxService {
             }
             send(row, now, claimToken);
         }
+    }
+
+    @Scheduled(fixedDelayString = "${studio.alerting.notification-cleanup-interval:PT1H}")
+    public int cleanupTerminalDeliveries() {
+        Duration retention;
+        try {
+            retention = Duration.parse(alertingProperties.getNotificationRetention());
+        } catch (RuntimeException error) {
+            log.warn("Skipping alert notification cleanup because retention is invalid: {}",
+                    alertingProperties.getNotificationRetention());
+            return 0;
+        }
+        if (retention.isZero() || retention.isNegative()) {
+            return 0;
+        }
+        int batchSize = Math.max(1, alertingProperties.getNotificationCleanupBatchSize());
+        int maxBatches = Math.max(1, alertingProperties.getNotificationCleanupMaxBatches());
+        LocalDateTime cutoff = utcNow().minus(retention);
+        int total = 0;
+        for (int batch = 0; batch < maxBatches; batch++) {
+            int deleted;
+            try {
+                deleted = mapper.deleteTerminalBefore(cutoff, batchSize);
+            } catch (RuntimeException error) {
+                log.warn("Stopped alert notification cleanup after deleting {} rows", total, error);
+                return total;
+            }
+            total += deleted;
+            if (deleted < batchSize) {
+                break;
+            }
+        }
+        return total;
     }
 
     private void send(RmqAlertNotificationOutbox row, LocalDateTime now, String claimToken) {
