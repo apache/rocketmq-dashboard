@@ -19,6 +19,13 @@ import { describe, expect, it } from 'vitest';
 import { getChatDraft } from './chatDraft';
 
 describe('AI chat draft navigation state', () => {
+  it('normalizes conversation identifiers before history lookup', () => {
+    expect(getChatDraft({ conversationId: ' conversation-1 ' })).toEqual({
+      prompt: '',
+      conversationId: 'conversation-1',
+    });
+  });
+
   it('normalizes a prompt and preserves a selected model', () => {
     expect(getChatDraft({ prompt: '  检查集群状态  ', model: '  qwen3.7-max  ' })).toEqual({
       prompt: '检查集群状态',

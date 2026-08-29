@@ -34,7 +34,7 @@ export function getChatDraft(state: unknown): ChatDraft | null {
   const prompt = typeof candidate.prompt === 'string' ? candidate.prompt.trim() : '';
   const conversationId =
     typeof candidate.conversationId === 'string' && candidate.conversationId.trim()
-      ? candidate.conversationId
+      ? candidate.conversationId.trim()
       : undefined;
   if (!prompt && !conversationId) return null;
   const model = typeof candidate.model === 'string' ? candidate.model.trim() : '';
