@@ -50,6 +50,7 @@ class RegionNamesTest {
     @Test
     void resolveShouldFallBackToRawIdForUnknownRegionsTest() {
         assertThat(regionNames.resolve("mars-north-1")).isEqualTo("mars-north-1");
+        assertThat(regionNames.resolve(" mars-north-1 ")).isEqualTo("mars-north-1");
         assertThat(regionNames.resolve(" cn-hangzhou ")).isEqualTo("\u534e\u4e1c1\uff08\u676d\u5dde\uff09");
     }
 

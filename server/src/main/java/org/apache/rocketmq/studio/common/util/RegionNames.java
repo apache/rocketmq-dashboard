@@ -64,6 +64,7 @@ public class RegionNames {
         if (regionId == null || regionId.isBlank()) {
             return regionId;
         }
-        return names.getOrDefault(regionId.trim(), regionId);
+        String normalizedRegionId = regionId.trim();
+        return names.getOrDefault(normalizedRegionId, normalizedRegionId);
     }
 }
