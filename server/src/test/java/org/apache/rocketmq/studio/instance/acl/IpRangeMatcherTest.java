@@ -65,6 +65,8 @@ class IpRangeMatcherTest {
 
     @Test
     void malformedInputReturnsFalse() {
+        assertThat(IpRangeMatcher.isInRange("not-an-ip", "0.0.0.0")).isFalse();
+        assertThat(IpRangeMatcher.isInRange("not-an-ip", "::/0")).isFalse();
         assertThat(IpRangeMatcher.isInRange("not-an-ip", "192.168.1.0/24")).isFalse();
         assertThat(IpRangeMatcher.isInRange("192.168.1.10", "not-an-ip/24")).isFalse();
         assertThat(IpRangeMatcher.isInRange("192.168.1.10", "192.168.1.0/99")).isFalse();

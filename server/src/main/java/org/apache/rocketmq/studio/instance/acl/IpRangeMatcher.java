@@ -53,7 +53,7 @@ public final class IpRangeMatcher {
      * Returns {@code true} when {@code ip} is within {@code cidrOrIp}.
      *
      * <ul>
-     *   <li>{@code 0.0.0.0}, {@code 0.0.0.0/0} or {@code ::/0} match any non-blank ip.</li>
+     *   <li>{@code 0.0.0.0}, {@code 0.0.0.0/0} or {@code ::/0} match any valid IP literal.</li>
      *   <li>An entry without a {@code /} matches the equivalent IPv4 or IPv6 literal.</li>
      *   <li>IPv4 and IPv6 CIDR entries are matched using their respective prefix widths.</li>
      *   <li>Any unparseable input or address-family mismatch returns {@code false}.</li>
@@ -71,7 +71,7 @@ public final class IpRangeMatcher {
         String entry = cidrOrIp.trim();
 
         if (WILDCARD_V4.equals(entry) || WILDCARD_V4_CIDR.equals(entry) || WILDCARD_V6_CIDR.equals(entry)) {
-            return true;
+            return parseAddressLiteral(target) != null;
         }
 
         int slash = entry.indexOf('/');
