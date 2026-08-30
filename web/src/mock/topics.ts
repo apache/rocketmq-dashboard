@@ -240,9 +240,17 @@ export const topics: Topic[] = [
 export interface BrokerRoute {
   brokerName: string;
   brokerAddr: string;
+  masterAddr?: string;
+  brokerAddrs?: Record<string, string>;
+  brokerIds?: number[];
+  replicaCount?: number;
   writeQueues: number;
   readQueues: number;
   perm: string;
+  permCode?: number;
+  readable?: boolean;
+  writable?: boolean;
+  topicSysFlag?: number;
 }
 
 export const topicRoutes: Record<string, BrokerRoute[]> = {
@@ -250,16 +258,38 @@ export const topicRoutes: Record<string, BrokerRoute[]> = {
     {
       brokerName: 'broker-a-0',
       brokerAddr: '10.0.1.10:10911',
+      masterAddr: '10.0.1.10:10911',
+      brokerAddrs: {
+        '0': '10.0.1.10:10911',
+        '1': '10.0.1.12:10911',
+      },
+      brokerIds: [0, 1],
+      replicaCount: 1,
       writeQueues: 8,
       readQueues: 8,
       perm: 'RW',
+      permCode: 6,
+      readable: true,
+      writable: true,
+      topicSysFlag: 0,
     },
     {
       brokerName: 'broker-b-0',
       brokerAddr: '10.0.1.11:10911',
+      masterAddr: '10.0.1.11:10911',
+      brokerAddrs: {
+        '0': '10.0.1.11:10911',
+        '1': '10.0.1.13:10911',
+      },
+      brokerIds: [0, 1],
+      replicaCount: 1,
       writeQueues: 8,
       readQueues: 8,
       perm: 'RW',
+      permCode: 6,
+      readable: true,
+      writable: true,
+      topicSysFlag: 0,
     },
   ],
   'user-activity-log': [

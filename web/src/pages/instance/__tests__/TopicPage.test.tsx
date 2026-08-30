@@ -21,7 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
-import type { Topic } from '../../../api/metadata';
+import type { BrokerRoute, Topic } from '../../../api/metadata';
 import { parseMessageProperties } from '../../../utils/messageProperties';
 import TopicPage from '../topic';
 
@@ -340,6 +340,61 @@ describe('TopicPage', () => {
       }),
     );
     expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith('topic-01', 'instance-a');
+  });
+
+  it('renders topic route health diagnostics in the detail modal', async () => {
+    const user = userEvent.setup();
+    const routes: BrokerRoute[] = [
+      {
+        brokerName: 'broker-a',
+        brokerAddr: '',
+        masterAddr: '',
+        brokerAddrs: {
+          '1': '10.0.0.2:10911',
+        },
+        brokerIds: [1],
+        replicaCount: 1,
+        writeQueues: 12,
+        readQueues: 0,
+        perm: 'WO',
+        permCode: 2,
+        readable: false,
+        writable: true,
+        topicSysFlag: 0,
+      },
+      {
+        brokerName: 'broker-b',
+        brokerAddr: '10.0.0.3:10911',
+        masterAddr: '10.0.0.3:10911',
+        brokerAddrs: {
+          '0': '10.0.0.3:10911',
+        },
+        brokerIds: [0],
+        replicaCount: 0,
+        writeQueues: 2,
+        readQueues: 8,
+        perm: 'RW',
+        permCode: 6,
+        readable: true,
+        writable: true,
+        topicSysFlag: 0,
+      },
+    ];
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicRoutes.mockResolvedValue(routes);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('路由诊断：不可用')).toBeInTheDocument();
+    expect(screen.getByText('可写 Broker')).toBeInTheDocument();
+    expect(screen.getByText('14 个写队列')).toBeInTheDocument();
+    expect(screen.getByText('Replica 1')).toBeInTheDocument();
+    expect(screen.getAllByText('写队列分布不均').length).toBeGreaterThan(0);
+    expect(screen.getByText('broker-a：读队列不可用')).toBeInTheDocument();
+    expect(
+      screen.getByText('检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。'),
+    ).toBeInTheDocument();
   });
 
   it('keeps failed topics selected after a partially successful batch deletion', async () => {

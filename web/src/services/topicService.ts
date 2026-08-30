@@ -16,7 +16,12 @@ const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
 
 const cloneTopic = (topic: Topic): Topic => ({ ...topic });
-const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] => routes.map((route) => ({ ...route }));
+const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] =>
+  routes.map((route) => ({
+    ...route,
+    brokerAddrs: route.brokerAddrs ? { ...route.brokerAddrs } : undefined,
+    brokerIds: route.brokerIds ? [...route.brokerIds] : undefined,
+  }));
 const cloneConsumers = (consumers: ConsumerGroupInfo[]): ConsumerGroupInfo[] =>
   consumers.map((consumer) => ({ ...consumer }));
 

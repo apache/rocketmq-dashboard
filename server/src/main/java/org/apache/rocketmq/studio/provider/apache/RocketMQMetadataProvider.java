@@ -66,6 +66,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -417,20 +418,24 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             if (routeData.getQueueDatas() != null) {
                 for (QueueData qd : routeData.getQueueDatas()) {
                     BrokerData bd = brokerDataMap.get(qd.getBrokerName());
-                    String brokerAddr = "";
-                    if (bd != null && bd.getBrokerAddrs() != null && !bd.getBrokerAddrs().isEmpty()) {
-                        brokerAddr = bd.getBrokerAddrs().get(MixAll.MASTER_ID);
-                        if (brokerAddr == null) {
-                            brokerAddr = bd.getBrokerAddrs().values().iterator().next();
-                        }
-                    }
+                    Map<Long, String> brokerAddrs = orderedBrokerAddrs(bd);
+                    String masterAddr = brokerAddrs.get(MixAll.MASTER_ID);
+                    int perm = qd.getPerm();
 
                     routes.add(BrokerRouteVO.builder()
                             .brokerName(qd.getBrokerName())
-                            .brokerAddr(brokerAddr)
+                            .brokerAddr(selectBrokerAddr(brokerAddrs))
+                            .masterAddr(masterAddr)
+                            .brokerAddrs(brokerAddrs)
+                            .brokerIds(new ArrayList<>(brokerAddrs.keySet()))
+                            .replicaCount(countReplicaAddrs(brokerAddrs))
                             .writeQueues(qd.getWriteQueueNums())
                             .readQueues(qd.getReadQueueNums())
-                            .perm(mapPerm(qd.getPerm()))
+                            .perm(mapPerm(perm))
+                            .permCode(perm)
+                            .readable(PermName.isReadable(perm))
+                            .writable(PermName.isWriteable(perm))
+                            .topicSysFlag(qd.getTopicSysFlag())
                             .build());
                 }
             }
@@ -439,6 +444,32 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get routes for topic " + name + ": " + e.getMessage());
         }
+    }
+
+    private Map<Long, String> orderedBrokerAddrs(BrokerData brokerData) {
+        if (brokerData == null || brokerData.getBrokerAddrs() == null
+                || brokerData.getBrokerAddrs().isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> sorted = new LinkedHashMap<>();
+        brokerData.getBrokerAddrs().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> sorted.put(entry.getKey(), entry.getValue()));
+        return sorted;
+    }
+
+    private String selectBrokerAddr(Map<Long, String> brokerAddrs) {
+        String masterAddr = brokerAddrs.get(MixAll.MASTER_ID);
+        if (masterAddr != null) {
+            return masterAddr;
+        }
+        return brokerAddrs.values().stream().findFirst().orElse("");
+    }
+
+    private int countReplicaAddrs(Map<Long, String> brokerAddrs) {
+        return (int) brokerAddrs.keySet().stream()
+                .filter(id -> !Long.valueOf(MixAll.MASTER_ID).equals(id))
+                .count();
     }
 
     @Override

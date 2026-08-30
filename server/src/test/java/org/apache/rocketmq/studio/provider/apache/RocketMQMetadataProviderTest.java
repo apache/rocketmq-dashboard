@@ -281,6 +281,47 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicRoutesShouldExposeBrokerTopologyDetails() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName("broker-a");
+        queueData.setReadQueueNums(4);
+        queueData.setWriteQueueNums(6);
+        queueData.setPerm(6);
+        queueData.setTopicSysFlag(1);
+
+        HashMap<Long, String> brokerAddrs = new LinkedHashMap<>();
+        brokerAddrs.put(1L, "10.0.0.2:10911");
+        brokerAddrs.put(0L, "10.0.0.1:10911");
+        brokerAddrs.put(2L, "10.0.0.3:10911");
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-a");
+        brokerData.setBrokerAddrs(brokerAddrs);
+
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(queueData));
+        routeData.setBrokerDatas(List.of(brokerData));
+        when(admin.examineTopicRouteInfo("TopicA")).thenReturn(routeData);
+
+        List<BrokerRouteVO> routes = newLiveProvider(admin).getTopicRoutes(null, "TopicA");
+
+        assertThat(routes).singleElement().satisfies(route -> {
+            assertThat(route.getBrokerAddr()).isEqualTo("10.0.0.1:10911");
+            assertThat(route.getMasterAddr()).isEqualTo("10.0.0.1:10911");
+            assertThat(route.getBrokerAddrs()).containsExactly(
+                    Map.entry(0L, "10.0.0.1:10911"),
+                    Map.entry(1L, "10.0.0.2:10911"),
+                    Map.entry(2L, "10.0.0.3:10911"));
+            assertThat(route.getBrokerIds()).containsExactly(0L, 1L, 2L);
+            assertThat(route.getReplicaCount()).isEqualTo(2);
+            assertThat(route.getPermCode()).isEqualTo(6);
+            assertThat(route.isReadable()).isTrue();
+            assertThat(route.isWritable()).isTrue();
+            assertThat(route.getTopicSysFlag()).isEqualTo(1);
+        });
+    }
+
+    @Test
     void getTopicConsumersShouldUseSelectedInstanceRuntimeClient() {
         TopicConsumerPageVO consumers = TopicConsumerPageVO.builder()
                 .items(List.of(TopicConsumerVO.builder().group("cg-orders").build()))
