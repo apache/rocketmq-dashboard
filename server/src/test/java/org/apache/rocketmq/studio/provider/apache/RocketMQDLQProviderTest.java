@@ -237,9 +237,86 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void resendMessagesRejectsRetryAndDlqTopicsAsTarget() throws Exception {
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "%DLQ%group-a"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not be a RocketMQ system, retry or DLQ topic")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(adminExt, never()).fetchAllTopicList();
+    }
+
+    @Test
+    void resendMessagesRejectsSystemTopicsAsTarget() {
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "RMQ_SYS_TRACE_TOPIC"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not be a RocketMQ system, retry or DLQ topic");
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @Test
+    void resendMessagesRejectsInvalidTargetTopicName() throws Exception {
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "not a valid topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("not a valid RocketMQ topic name");
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(adminExt, never()).fetchAllTopicList();
+    }
+
+    @Test
+    void resendMessagesRejectsTargetTopicMissingFromInstance() throws Exception {
+        TopicList otherTopics = new TopicList();
+        otherTopics.setTopicList(Set.of("unrelated-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(otherTopics);
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("targetTopic does not exist on the selected instance");
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendSelectedMessagesRejectsSystemTopicAsTarget() throws Exception {
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", List.of("msg-1"), "%DLQ%group-a"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not be a RocketMQ system, retry or DLQ topic");
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(adminExt, never()).fetchAllTopicList();
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendMessagesFailsGracefullyWhenTopicListCannotBeRead() throws Exception {
+        when(adminExt.fetchAllTopicList()).thenThrow(new IllegalStateException("nameserver unreachable"));
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to verify targetTopic on the selected instance")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
     void resendMessagesShouldNormalizeGroupNameBeforeBuildingDlqTopicAndAuditing() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(null);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         provider.resendMessages("instance-a", " group-a ", 100L, 200L, "target-topic");
 
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
@@ -253,6 +330,9 @@ class RocketMQDLQProviderTest {
     void resendMessagesDoesNotPullWhenDlqQueueSetIsNull() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(null);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
@@ -285,6 +365,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
@@ -296,6 +379,9 @@ class RocketMQDLQProviderTest {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
                 .thenThrow(new IllegalStateException("broker unavailable"));
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Failed to scan DLQ topic " + dlqTopic)
@@ -322,6 +408,9 @@ class RocketMQDLQProviderTest {
                 .thenThrow(new IllegalStateException("broker unavailable"));
         when(pullConsumer.searchOffset(eq(emptyQueue), anyLong())).thenReturn(0L);
         when(pullConsumer.pull(eq(emptyQueue), eq("*"), eq(0L), eq(32))).thenReturn(emptyResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .extracting("matched", "resent", "failed", "outcome", "scanIncomplete", "failedQueueCount")
                 .containsExactly(0, 0, 0, "PARTIAL", true, 1);
@@ -345,6 +434,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(10L);
         when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
         verify(pullConsumer, times(1)).pull(queue, "*", 10L, 32);
@@ -373,6 +465,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.pull(queue, "*", 20L, 32)).thenReturn(foundAfterCorrection);
         when(pullConsumer.pull(queue, "*", 40L, 32)).thenReturn(endOfQueue);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("orders"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "orders"))
                 .extracting("matched", "resent", "failed", "outcome")
                 .containsExactly(1, 1, 0, "SUCCESS");
@@ -409,6 +504,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .extracting("matched", "resent", "failed", "outcome")
                 .containsExactly(1, 0, 1, "FAILED");
@@ -446,6 +544,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .extracting("matched", "resent", "failed", "outcome")
                 .containsExactly(1, 1, 0, "SUCCESS");
@@ -474,6 +575,9 @@ class RocketMQDLQProviderTest {
 
         when(adminExt.viewMessage(dlqTopic, "old-msg")).thenReturn(oldDeadLetter);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
 
         assertThat(provider.resendMessages(
                 "instance-a", "group-a", List.of("old-msg"), "target-topic"))
@@ -498,6 +602,9 @@ class RocketMQDLQProviderTest {
                 .thenThrow(new IllegalStateException("message not found"));
         when(adminExt.viewMessage(dlqTopic, "found-msg")).thenReturn(found);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
 
         assertThat(provider.resendMessages(
                 "instance-a", "group-a", List.of("missing-msg", "found-msg"), "target-topic"))
@@ -531,6 +638,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.searchOffset(queue, 200L)).thenReturn(5001L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .extracting("matched", "resent", "failed", "outcome", "scanIncomplete", "failedQueueCount")
                 .containsExactly(5000, 5000, 0, "PARTIAL", true, 0);
