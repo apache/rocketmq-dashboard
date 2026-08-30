@@ -57,7 +57,11 @@ public class NameserverRegistryService {
             // The unique index is the final guard against concurrent duplicate creates.
             throw duplicateName(name);
         }
-        return toVO(nameserverMapper.selectById(entity.getId()));
+        RmqNameserver stored = nameserverMapper.selectById(entity.getId());
+        if (stored == null) {
+            throw concurrentlyDeleted(entity.getId());
+        }
+        return toVO(stored);
     }
 
     public NameserverRegistryVO update(UpdateNameserverRegistryDTO command) {
