@@ -52,6 +52,8 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
     private static final String ANTHROPIC_APP_SUFFIX = "/apps/anthropic";
     private static final long STREAM_TIMEOUT_SECONDS = 300;
     private static final long OUTPUT_DRAIN_TIMEOUT_SECONDS = 10;
+    private static final int MAX_STDERR_BYTES = 64 * 1024;
+    private static final String STDERR_TRUNCATED_SUFFIX = "\n...[stderr truncated]";
 
     private final LlmProperties llmProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -179,7 +181,11 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         CompletableFuture<String> result = new CompletableFuture<>();
         Thread.ofVirtual().start(() -> {
             try (stream) {
-                result.complete(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+                byte[] bytes = stream.readNBytes(MAX_STDERR_BYTES + 1);
+                boolean truncated = bytes.length > MAX_STDERR_BYTES;
+                int length = Math.min(bytes.length, MAX_STDERR_BYTES);
+                String output = new String(bytes, 0, length, StandardCharsets.UTF_8);
+                result.complete(truncated ? output + STDERR_TRUNCATED_SUFFIX : output);
             } catch (Exception exception) {
                 result.completeExceptionally(exception);
             }
