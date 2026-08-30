@@ -201,6 +201,24 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void createShouldThrowWhenEntryVanishesBeforeReloadTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(12L);
+            return 1;
+        });
+        when(nameserverMapper.selectById(12L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr("10.0.0.1:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("deleted concurrently");
+    }
+
+    @Test
     void updateShouldPersistAndReturnStoredEntryTest() {
         RmqNameserver existing = new RmqNameserver();
         existing.setId(1L);
