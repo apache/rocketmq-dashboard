@@ -77,4 +77,22 @@ describe('connectionsService mock connections', () => {
       listConnections({ namesrvAddr: '10.101.2.1:9876', clusterId: 'ns-pre' }),
     ).resolves.toEqual([]);
   });
+
+  it('normalizes optional filters like the real endpoint', async () => {
+    const padded = await listConnections({
+      namesrvAddr: '10.101.2.1:9876',
+      clusterId: ' ns-prod ',
+      type: ' Consumer ',
+    });
+    const blank = await listConnections({
+      namesrvAddr: '10.101.2.1:9876',
+      clusterId: '  ',
+      type: '  ',
+    });
+
+    expect(padded).not.toHaveLength(0);
+    expect(padded.every((connection) => connection.clusterName === 'ns-prod')).toBe(true);
+    expect(padded.every((connection) => connection.type === 'Consumer')).toBe(true);
+    expect(blank).not.toHaveLength(0);
+  });
 });
