@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -91,6 +92,19 @@ class NativeAlertRulePolicyTest {
         assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
                 "rocketmq_consumer_lag_messages").channels(List.of("webhook")).build()))
                 .isInstanceOf(BusinessException.class).hasMessageContaining("Unsupported notification channel");
+    }
+
+    @Test
+    void acceptsNotificationChannelsIndependentlyOfTheDefaultLocaleTest() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
+                    "rocketmq_consumer_lag_messages").channels(List.of(" DINGTALK ")).build()))
+                    .doesNotThrowAnyException();
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     private static AlertRuleVO.AlertRuleVOBuilder rule(AlertDomain domain, String metric) {
