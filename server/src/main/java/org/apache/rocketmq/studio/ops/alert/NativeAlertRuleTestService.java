@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.metrics.BusinessMetricsCollector;
 import org.apache.rocketmq.studio.cluster.metrics.ClusterMetricsCollector;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
@@ -31,6 +32,7 @@ import java.util.List;
 /** Executes a native rule once without persisting a snapshot, state, or event. */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NativeAlertRuleTestService {
     private final InstanceRepository instanceRepository;
     private final List<ClusterMetricsCollector> clusterCollectors;
@@ -43,11 +45,27 @@ public class NativeAlertRuleTestService {
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + rule.getInstanceId()));
         List<MetricSample> samples = new ArrayList<>();
         if (rule.getDomain() == AlertDomain.CLUSTER) {
-            clusterCollectors.stream().filter(collector -> collector.supports(instance))
-                    .forEach(collector -> samples.addAll(collector.collect(instance)));
+            for (ClusterMetricsCollector collector : clusterCollectors) {
+                try {
+                    if (collector.supports(instance)) {
+                        samples.addAll(collector.collect(instance));
+                    }
+                } catch (RuntimeException error) {
+                    log.warn("Native cluster metric test collector failed for instance {}: {}",
+                            instance.getName(), error.getMessage());
+                }
+            }
         } else {
-            businessCollectors.stream().filter(collector -> collector.supports(instance))
-                    .forEach(collector -> samples.addAll(collector.collect(instance)));
+            for (BusinessMetricsCollector collector : businessCollectors) {
+                try {
+                    if (collector.supports(instance)) {
+                        samples.addAll(collector.collect(instance));
+                    }
+                } catch (RuntimeException error) {
+                    log.warn("Native business metric test collector failed for instance {}: {}",
+                            instance.getName(), error.getMessage());
+                }
+            }
         }
         return AlertRuleTestResultVO.builder().samples(samples.stream()
                 .filter(sample -> rule.getMetric().equals(sample.metricKey()))
