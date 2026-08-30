@@ -40,6 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -150,6 +151,26 @@ class MybatisPlusAclRepositoryTest {
         assertThat(((QueryWrapper<RmqAclUser>) queryCaptor.getValue()).getParamNameValuePairs())
                 .containsValue("%orders%");
         verify(userMapper, never()).selectList(any(QueryWrapper.class));
+    }
+
+    @Test
+    void findUserPageShouldNormalizeSearchWithRootLocale() {
+        Page<RmqAclUser> mapperPage = new Page<RmqAclUser>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(userMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            repository.findUserPage(" INSTANCE ", 1, 20);
+        } finally {
+            Locale.setDefault(previous);
+        }
+        ArgumentCaptor<Wrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(userMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAclUser> query = (QueryWrapper<RmqAclUser>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("username", "access_key");
+        assertThat(query.getParamNameValuePairs()).containsValue("%instance%");
     }
 
     @Test
