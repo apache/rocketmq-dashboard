@@ -84,12 +84,19 @@ public class CollectorScheduler {
                 .filter(java.util.Objects::nonNull)
                 .toList();
         Duration timeout = parsePositiveDuration(properties.getCollectionTimeout(), Duration.ofSeconds(15));
+        long passStartedAt = System.nanoTime();
+        long timeoutNanos = timeout.toNanos();
         for (Future<?> job : jobs) {
             try {
-                job.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                long remainingNanos = timeoutNanos - (System.nanoTime() - passStartedAt);
+                if (remainingNanos <= 0) {
+                    job.cancel(true);
+                    continue;
+                }
+                job.get(remainingNanos, TimeUnit.NANOSECONDS);
             } catch (java.util.concurrent.TimeoutException error) {
                 job.cancel(true);
-                log.warn("Native metric collection exceeded {} for one instance and was cancelled", timeout);
+                log.warn("Native metric collection pass exceeded {} and unfinished work was cancelled", timeout);
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 return;

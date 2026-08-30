@@ -84,6 +84,40 @@ class CollectorSchedulerTest {
     }
 
     @Test
+    void appliesCollectionTimeoutToTheWholePassInsteadOfEachInstanceTest() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionTimeout("PT0.25S");
+        InstanceRepository instances = mock(InstanceRepository.class);
+        when(instances.findAll()).thenReturn(List.of(
+                InstanceVO.builder().name("slow-a").build(),
+                InstanceVO.builder().name("slow-b").build(),
+                InstanceVO.builder().name("slow-c").build()));
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        when(collector.supports(any(InstanceVO.class))).thenReturn(true);
+        when(collector.collect(any(InstanceVO.class))).thenAnswer(invocation -> {
+            try {
+                Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            return List.of();
+        });
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        when(lease.tryAcquire()).thenReturn(true);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        CollectorScheduler scheduler = new CollectorScheduler(properties, instances, List.of(collector), List.of(),
+                mock(MetricSnapshotRepository.class), mock(NativeAlertProcessor.class), lease, executor);
+
+        long startedAt = System.nanoTime();
+        scheduler.collect();
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+        scheduler.stopCollectionExecutor();
+
+        assertTrue(elapsedMillis < 600,
+                "the configured timeout should cap the complete pass, elapsed=" + elapsedMillis + "ms");
+    }
+
+    @Test
     void collectsAndPersistsSupportedSamplesTest() {
         AlertingProperties properties = new AlertingProperties();
         InstanceRepository instances = mock(InstanceRepository.class);
