@@ -12,7 +12,7 @@ export async function listGrafanaDashboards(): Promise<GrafanaDashboardInfo[]> {
       uid,
       title,
       description,
-      tags,
+      tags: [...tags],
     }));
   }
   return metricsApi.listGrafanaDashboards();
@@ -24,7 +24,7 @@ export async function getGrafanaDashboard(uid: string): Promise<Record<string, u
     if (!found) {
       throw new Error(`Grafana dashboard not found: ${uid}`);
     }
-    return found.model;
+    return structuredClone(found.model);
   }
   return metricsApi.getGrafanaDashboard(uid);
 }
