@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.alert;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.util.StringUtils;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -83,7 +84,8 @@ final class NativeAlertRulePolicy {
             return;
         }
         for (String channel : rule.getChannels()) {
-            if (!StringUtils.hasText(channel) || !NOTIFICATION_CHANNELS.contains(channel.trim().toLowerCase())) {
+            if (!StringUtils.hasText(channel)
+                    || !NOTIFICATION_CHANNELS.contains(channel.trim().toLowerCase(Locale.ROOT))) {
                 throw new BusinessException(400, "Unsupported notification channel: " + channel);
             }
         }
