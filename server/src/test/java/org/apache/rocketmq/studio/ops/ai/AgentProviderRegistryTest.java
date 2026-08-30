@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -40,5 +41,27 @@ class AgentProviderRegistryTest {
         } finally {
             Locale.setDefault(original);
         }
+    }
+
+    @Test
+    void shouldNormalizeProviderEngineDuringRegistration() {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(provider.engine()).thenReturn(" CLI ");
+
+        AgentProviderRegistry registry = new AgentProviderRegistry(List.of(provider));
+
+        assertThat(registry.forEngine("cli")).isSameAs(provider);
+    }
+
+    @Test
+    void shouldRejectDuplicateNormalizedProviderEngines() {
+        AgentProvider first = mock(AgentProvider.class);
+        AgentProvider second = mock(AgentProvider.class);
+        when(first.engine()).thenReturn("CLI");
+        when(second.engine()).thenReturn(" cli ");
+
+        assertThatThrownBy(() -> new AgentProviderRegistry(List.of(first, second)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Duplicate agent provider engine: cli");
     }
 }
