@@ -69,9 +69,10 @@ const formatDuration = (ms: number | undefined | null): string => {
   return `${(ms / 3600000).toFixed(1)}h`;
 };
 
-const formatTime = (timestamp: number | undefined | null): string => {
-  if (!timestamp) return '-';
-  return new Date(timestamp).toLocaleString();
+export const formatTime = (timestamp: number | undefined | null): string => {
+  if (timestamp == null || !Number.isFinite(timestamp)) return '-';
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
 };
 
 const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' => {

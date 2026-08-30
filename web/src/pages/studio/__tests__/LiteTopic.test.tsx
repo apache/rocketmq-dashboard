@@ -22,7 +22,7 @@ import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
 import { downloadCsv } from '../../../utils/download';
-import LiteTopic from '../LiteTopic';
+import LiteTopic, { formatTime } from '../LiteTopic';
 
 const apiMocks = vi.hoisted(() => ({
   queryLiteTopicCapability: vi.fn(),
@@ -77,6 +77,14 @@ const createDeferred = <T,>() => {
   });
   return { promise, resolve, reject };
 };
+
+describe('LiteTopic time formatting', () => {
+  it('preserves epoch timestamps and rejects invalid provider values', () => {
+    expect(formatTime(0)).toBe(new Date(0).toLocaleString());
+    expect(formatTime(Number.POSITIVE_INFINITY)).toBe('-');
+    expect(formatTime(Number.MAX_VALUE)).toBe('-');
+  });
+});
 
 const createQuota = (currentTopicCount: number): LiteTopicQuota => ({
   currentTopicCount,
