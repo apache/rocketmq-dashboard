@@ -78,9 +78,9 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-const formatDateTime = (iso?: string | null): string => {
-  if (!iso) return '-';
-  const d = new Date(iso);
+export const formatDateTime = (value?: string | number | null): string => {
+  if (value === undefined || value === null || value === '') return '-';
+  const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '-';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -534,9 +534,7 @@ const DLQPage = () => {
       key: 'storeTime',
       width: 160,
       render: (storeTime: number) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>
-          {formatDateTime(new Date(storeTime).toISOString())}
-        </Text>
+        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatDateTime(storeTime)}</Text>
       ),
     },
     {
@@ -555,7 +553,7 @@ const DLQPage = () => {
       ellipsis: true,
       render: (body: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {body && body.length > 80 ? `${body.slice(0, 80)}…` : body ?? '-'}
+          {body && body.length > 80 ? `${body.slice(0, 80)}…` : (body ?? '-')}
         </Text>
       ),
     },
@@ -791,7 +789,10 @@ const DLQPage = () => {
             >
               <Space size={24} wrap>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
+                  >
                     DLQ Topic
                   </Text>
                   <Text copyable style={{ fontFamily: 'monospace' }}>
@@ -799,17 +800,26 @@ const DLQPage = () => {
                   </Text>
                 </div>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
+                  >
                     死信数量
                   </Text>
-                  <Text strong style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}>
+                  <Text
+                    strong
+                    style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}
+                  >
                     {detailGroup.statsAvailable === false
                       ? '不可用'
                       : detailGroup.messageCount.toLocaleString()}
                   </Text>
                 </div>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
+                  >
                     最近入队时间
                   </Text>
                   <Text style={{ fontFamily: 'monospace' }}>
