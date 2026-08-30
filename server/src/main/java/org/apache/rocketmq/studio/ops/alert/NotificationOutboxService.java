@@ -35,6 +35,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.ArrayList;
@@ -131,7 +132,7 @@ public class NotificationOutboxService {
         Set<String> channels = new LinkedHashSet<>();
         if (rule.getChannels() != null) {
             rule.getChannels().stream().filter(StringUtils::hasText)
-                    .map(value -> value.trim().toLowerCase()).forEach(channels::add);
+                    .map(value -> value.trim().toLowerCase(Locale.ROOT)).forEach(channels::add);
         }
         for (String channel : channels) {
             if (!"dingtalk".equals(channel) && !"sms".equals(channel) && !"email".equals(channel)) {
@@ -218,7 +219,7 @@ public class NotificationOutboxService {
 
     private static String normalizeFilter(String value) {
         String normalized = normalizeTrim(value);
-        return normalized == null ? null : normalized.toLowerCase();
+        return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
     }
 
     private static String normalizeTrim(String value) {
@@ -231,7 +232,7 @@ public class NotificationOutboxService {
             return null;
         }
         try {
-            return NotificationOutboxStatus.valueOf(value.toUpperCase()).name();
+            return NotificationOutboxStatus.valueOf(value.toUpperCase(Locale.ROOT)).name();
         } catch (IllegalArgumentException error) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Unknown notification delivery status: " + status);
