@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AlertStateMachineTest {
     private final AlertStateMachine stateMachine = new AlertStateMachine();
@@ -101,6 +102,17 @@ class AlertStateMachineTest {
         assertThat(reminder.transition()).isEqualTo(AlertStateTransition.REMINDER);
         assertThat(reminder.state().lastNotifiedAt()).isEqualTo(now.plusSeconds(30 * 60));
         assertThat(noReminder.transition()).isEqualTo(AlertStateTransition.NONE);
+    }
+
+    @Test
+    void rejectsInvalidReminderIntervalsTest() {
+        assertThatThrownBy(() -> stateMachine.advance(null, met(), 1, Duration.ZERO, null, now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("reminderInterval must not be negative");
+        assertThatThrownBy(() -> stateMachine.advance(null, met(), 1, Duration.ZERO,
+                Duration.ofSeconds(-1), now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("reminderInterval must not be negative");
     }
 
     private static AlertEvaluationResult met() {
