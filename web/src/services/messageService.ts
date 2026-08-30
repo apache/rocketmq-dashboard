@@ -61,6 +61,9 @@ export async function queryMessagePage(
     const items = await queryMessages(params);
     const page = params.page ?? 1;
     const pageSize = params.pageSize ?? 50;
+    if (page < 1 || pageSize < 1 || pageSize > 200) {
+      throw new Error('page must be positive and pageSize must be between 1 and 200');
+    }
     const from = Math.min((page - 1) * pageSize, items.length);
     return {
       items: items.slice(from, from + pageSize),
