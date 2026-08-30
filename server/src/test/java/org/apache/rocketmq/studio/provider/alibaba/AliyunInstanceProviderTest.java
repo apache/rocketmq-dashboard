@@ -44,6 +44,7 @@ import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
@@ -256,6 +257,37 @@ class AliyunInstanceProviderTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(totalRow.getDiffTotal()).isEqualTo(100L);
+    }
+
+    @Test
+    void previewResetOffsetShouldAllowLimitedCloudPreviewTest() {
+        stubInstance();
+        stubCallThrough();
+        GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetConsumerGroupLagResponseBody.builder()
+                        .data(GetConsumerGroupLagResponseBody.Data.builder()
+                                .consumerGroupId("GID_test")
+                                .topicLagMap(Map.of("topic-a",
+                                        DataTopicLagMapValue.builder().readyCount(42L).build()))
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.getConsumerGroupLag(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        ResetConsumerOffsetPreviewVO preview = provider.previewResetOffset(
+                STUDIO_INSTANCE_ID, "GID_test", 1679458628000L, "topic-a");
+
+        assertThat(preview.isComplete()).isFalse();
+        assertThat(preview.isAllowReset()).isTrue();
+        assertThat(preview.getQueueCount()).isEqualTo(1);
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(42L);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(-1L);
+        assertThat(preview.getWarnings())
+                .containsExactly("Provider does not expose per-queue target offset preview; confirm with current lag only");
+        assertThat(preview.getQueues().get(0).getTargetOffset()).isEqualTo(-1L);
+        assertThat(preview.getQueues().get(0).getRiskLevel()).isEqualTo("WARNING");
     }
 
     @Test

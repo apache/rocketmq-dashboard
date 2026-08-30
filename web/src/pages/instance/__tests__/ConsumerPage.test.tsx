@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-import { App, Modal } from 'antd';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { App, Modal, message } from 'antd';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConsumerGroup } from '../../../api/metadata';
 import * as instanceService from '../../../services/instanceService';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -39,6 +39,7 @@ vi.mock('../../../services/consumerService', () => ({
   getConsumerGroupSettings: vi.fn(),
   importConsumerGroups: vi.fn(),
   listAllConsumerGroups: vi.fn(),
+  previewConsumerOffsetReset: vi.fn(),
   updateConsumerGroupSettings: vi.fn(),
   listConsumerGroupPage: vi.fn(),
   refreshConsumerGroup: vi.fn(),
@@ -48,7 +49,7 @@ const instanceServiceMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
 
 vi.mock('../../../services/instanceService', () => instanceServiceMocks);
 
-beforeAll(() => {
+const installBrowserMocks = () => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -70,7 +71,7 @@ beforeAll(() => {
     writable: true,
     value: vi.fn(),
   });
-});
+};
 
 const group: ConsumerGroup = {
   name: 'remote-cg',
@@ -118,9 +119,13 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/c
     </App>,
   );
 
+beforeAll(installBrowserMocks);
+
 describe('Consumer page', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.resetAllMocks();
+    installBrowserMocks();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
         id: 1,
@@ -205,6 +210,39 @@ describe('Consumer page', () => {
         consistency: '一致',
       },
     ]);
+    vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
+      instanceId: 'instance-1',
+      groupName: 'remote-cg',
+      topic: 'remote-topic',
+      timestamp: 1784246400000,
+      complete: true,
+      allowReset: true,
+      queueCount: 1,
+      warningCount: 1,
+      rewindQueueCount: 1,
+      fastForwardQueueCount: 0,
+      currentTotalLag: 30,
+      projectedTotalLag: 40,
+      totalOffsetDelta: -10,
+      warnings: ['1 queue(s) will move backward and may replay consumed messages'],
+      queues: [
+        {
+          topic: 'remote-topic',
+          broker: 'broker-a',
+          queueId: 0,
+          minOffset: 0,
+          maxOffset: 200,
+          brokerOffset: 120,
+          consumerOffset: 90,
+          targetOffset: 80,
+          currentLag: 30,
+          projectedLag: 40,
+          offsetDelta: -10,
+          riskLevel: 'WARNING',
+          message: 'Replays 10 message(s)',
+        },
+      ],
+    });
     vi.mocked(consumerService.getConsumerStack).mockResolvedValue({
       groupName: 'remote-cg',
       clientId: 'client-1',
@@ -248,6 +286,12 @@ describe('Consumer page', () => {
       pageSize: 20,
       search: undefined,
     });
+  });
+
+  afterEach(() => {
+    cleanup();
+    Modal.destroyAll();
+    message.destroy();
   });
 
   it('submits the canonical global delivery order type', async () => {
@@ -469,7 +513,7 @@ describe('Consumer page', () => {
     );
   });
 
-  it('requires and submits a target topic when resetting consumer offsets', async () => {
+  it('previews queue impact before resetting consumer offsets', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
 
@@ -494,6 +538,22 @@ describe('Consumer page', () => {
       return element;
     });
     await user.click(option);
+    expect(confirm).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /预览影响/ }));
+
+    await waitFor(() =>
+      expect(consumerService.previewConsumerOffsetReset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'remote-cg',
+          instanceId: 'instance-1',
+          topic: 'remote-topic',
+          timestamp: expect.any(Number),
+        }),
+      ),
+    );
+    expect(await screen.findByText('重置后总堆积')).toBeInTheDocument();
+    expect(await screen.findByText('将回放 10 条消息')).toBeInTheDocument();
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
@@ -507,6 +567,87 @@ describe('Consumer page', () => {
         }),
       ),
     );
+  });
+
+  it('invalidates the reset preview when reset parameters change', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /重置位点/ }));
+    const topicSelect = screen.getByRole('combobox', { name: '目标 Topic' });
+    await user.click(topicSelect);
+    const option = await waitFor(() => {
+      const element = screen
+        .getAllByText('remote-topic')
+        .find((candidate) => candidate.classList.contains('ant-select-item-option-content'));
+      if (!element) throw new Error('Missing target Topic option');
+      return element;
+    });
+    await user.click(option);
+    await user.click(screen.getByRole('button', { name: /预览影响/ }));
+
+    expect(await screen.findByText('将回放 10 条消息')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '确认重置' })).toBeEnabled());
+
+    await user.click(screen.getByRole('button', { name: '1 小时前' }));
+
+    expect(screen.queryByText('将回放 10 条消息')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认重置' })).toBeDisabled();
+  });
+
+  it('blocks reset confirmation when the preview has failed queues', async () => {
+    vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
+      instanceId: 'instance-1',
+      groupName: 'remote-cg',
+      topic: 'remote-topic',
+      timestamp: 1784246400000,
+      complete: false,
+      allowReset: false,
+      queueCount: 1,
+      warningCount: 1,
+      rewindQueueCount: 0,
+      fastForwardQueueCount: 0,
+      currentTotalLag: 30,
+      projectedTotalLag: 30,
+      totalOffsetDelta: 0,
+      warnings: ['Failed to preview 1 queue(s); retry before applying the reset'],
+      queues: [
+        {
+          topic: 'remote-topic',
+          broker: 'broker-a',
+          queueId: 0,
+          minOffset: -1,
+          maxOffset: -1,
+          brokerOffset: 120,
+          consumerOffset: 90,
+          targetOffset: 90,
+          currentLag: 30,
+          projectedLag: 30,
+          offsetDelta: 0,
+          riskLevel: 'ERROR',
+          message: 'Failed to preview queue offset: timeout',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /重置位点/ }));
+    await user.click(screen.getByRole('combobox', { name: '目标 Topic' }));
+    const option = await waitFor(() => {
+      const element = screen
+        .getAllByText('remote-topic')
+        .find((candidate) => candidate.classList.contains('ant-select-item-option-content'));
+      if (!element) throw new Error('Missing target Topic option');
+      return element;
+    });
+    await user.click(option);
+    await user.click(screen.getByRole('button', { name: /预览影响/ }));
+
+    expect(await screen.findByText('不完整')).toBeInTheDocument();
+    expect(await screen.findByText('Failed to preview queue offset: timeout')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认重置' })).toBeDisabled();
+    expect(consumerService.resetConsumerOffset).not.toHaveBeenCalled();
   });
 
   it('reloads same-named group diagnostics after changing the selected instance', async () => {

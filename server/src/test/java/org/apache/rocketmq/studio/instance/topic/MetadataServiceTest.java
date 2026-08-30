@@ -28,6 +28,8 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
+
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
@@ -609,6 +611,41 @@ class MetadataServiceTest {
         verifyNoInteractions(apacheProvider);
     }
 
+    @Test
+    void previewResetOffsetShouldNormalizeAndDelegateToProvider() {
+        ResetConsumerOffsetPreviewVO preview = ResetConsumerOffsetPreviewVO.builder()
+                .instanceId("instance-a")
+                .groupName("cg-orders")
+                .topic("orders")
+                .timestamp(1784246400000L)
+                .complete(true)
+                .allowReset(true)
+                .queueCount(0)
+                .warnings(List.of())
+                .queues(List.of())
+                .build();
+        when(apacheProvider.previewResetOffset("instance-a", "cg-orders", 1784246400000L, "orders"))
+                .thenReturn(preview);
+
+        ResetConsumerOffsetPreviewVO result = metadataService.previewResetOffset(
+                "instance-a", " cg-orders ", 1784246400000L, " orders ");
+
+        assertThat(result).isSameAs(preview);
+        verify(apacheProvider).previewResetOffset("instance-a", "cg-orders", 1784246400000L, "orders");
+    }
+
+    @Test
+    void previewResetOffsetShouldRejectBlankTopicBeforeProviderResolution() {
+        assertThatThrownBy(() -> metadataService.previewResetOffset("instance-a", "cg-orders",
+                1784246400000L, " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic name is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+
+        verifyNoInteractions(apacheProvider);
+    }
+
     private ConsumerGroupVO consumerGroup(String name, String namespace, long lag, SubscriptionMode mode) {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName(name);
@@ -668,5 +705,6 @@ class MetadataServiceTest {
         return request;
 
     }
+
 
 }

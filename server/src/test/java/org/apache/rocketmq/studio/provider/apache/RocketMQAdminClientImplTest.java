@@ -22,7 +22,10 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
@@ -35,6 +38,8 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetQueuePreviewVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -62,6 +67,8 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -242,6 +249,107 @@ class RocketMQAdminClientImplTest {
         verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
         verify(auditService).record("RESET_OFFSET", "GROUP", "cg-orders", null,
                 "instanceId=instance-a, topic=orders, timestamp=1784246400000", "SUCCESS");
+    }
+
+    @Test
+    void previewResetOffsetShouldComputeQueueImpactWithoutMutatingBrokerOffsets() throws Exception {
+        long timestamp = 1784246400000L;
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue rewindQueue = new MessageQueue("orders", "broker-a", 0);
+        MessageQueue fastForwardQueue = new MessageQueue("orders", "broker-b", 1);
+        MessageQueue skippedQueue = new MessageQueue("payments", "broker-a", 0);
+        stats.getOffsetTable().put(rewindQueue, offsetWrapper(120L, 90L));
+        stats.getOffsetTable().put(fastForwardQueue, offsetWrapper(200L, 150L));
+        stats.getOffsetTable().put(skippedQueue, offsetWrapper(50L, 40L));
+        when(adminExt.examineConsumeStats("cg-orders")).thenReturn(stats);
+        when(adminExt.minOffset(rewindQueue)).thenReturn(0L);
+        when(adminExt.maxOffset(rewindQueue)).thenReturn(200L);
+        when(adminExt.searchOffset("broker-a", "orders", 0, timestamp, 3_000L)).thenReturn(80L);
+        when(adminExt.minOffset(fastForwardQueue)).thenReturn(0L);
+        when(adminExt.maxOffset(fastForwardQueue)).thenReturn(220L);
+        when(adminExt.searchOffset("broker-b", "orders", 1, timestamp, 3_000L)).thenReturn(170L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", timestamp, "orders");
+
+        assertThat(preview.isComplete()).isTrue();
+        assertThat(preview.isAllowReset()).isTrue();
+        assertThat(preview.getQueueCount()).isEqualTo(2);
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(80L);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(70L);
+        assertThat(preview.getRewindQueueCount()).isEqualTo(1);
+        assertThat(preview.getFastForwardQueueCount()).isEqualTo(1);
+        assertThat(preview.getTotalOffsetDelta()).isEqualTo(10L);
+        assertThat(preview.getWarnings())
+                .contains("1 queue(s) will move forward and may skip unconsumed messages",
+                        "1 queue(s) will move backward and may replay consumed messages");
+        assertThat(preview.getQueues())
+                .extracting(ResetConsumerOffsetQueuePreviewVO::getBroker,
+                        ResetConsumerOffsetQueuePreviewVO::getQueueId,
+                        ResetConsumerOffsetQueuePreviewVO::getTargetOffset,
+                        ResetConsumerOffsetQueuePreviewVO::getOffsetDelta,
+                        ResetConsumerOffsetQueuePreviewVO::getProjectedLag)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("broker-a", 0, 80L, -10L, 40L),
+                        org.assertj.core.groups.Tuple.tuple("broker-b", 1, 170L, 20L, 30L));
+        verify(adminExt, never()).resetOffsetByTimestamp(anyString(), anyString(), anyString(),
+                anyLong(), anyBoolean());
+    }
+
+    @Test
+    void previewResetOffsetShouldMarkFailedQueuesIncomplete() throws Exception {
+        long timestamp = 1784246400000L;
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue queue = new MessageQueue("orders", "broker-a", 0);
+        stats.getOffsetTable().put(queue, offsetWrapper(120L, 90L));
+        when(adminExt.examineConsumeStats("cg-orders")).thenReturn(stats);
+        when(adminExt.minOffset(queue)).thenThrow(new IllegalStateException("offset unavailable"));
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", timestamp, "orders");
+
+        assertThat(preview.isComplete()).isFalse();
+        assertThat(preview.isAllowReset()).isFalse();
+        assertThat(preview.getWarningCount()).isEqualTo(1);
+        assertThat(preview.getWarnings())
+                .containsExactly("Failed to preview 1 queue(s); retry before applying the reset");
+        assertThat(preview.getQueues()).hasSize(1);
+        ResetConsumerOffsetQueuePreviewVO row = preview.getQueues().get(0);
+        assertThat(row.getRiskLevel()).isEqualTo("ERROR");
+        assertThat(row.getTargetOffset()).isEqualTo(90L);
+        assertThat(row.getProjectedLag()).isEqualTo(30L);
+        assertThat(row.getMessage()).contains("offset unavailable");
+        verify(adminExt, never()).resetOffsetByTimestamp(anyString(), anyString(), anyString(),
+                anyLong(), anyBoolean());
+    }
+
+    @Test
+    void previewResetOffsetShouldReturnEmptyPreviewWhenTopicHasNoOffsets() throws Exception {
+        ConsumeStats stats = new ConsumeStats();
+        stats.getOffsetTable().put(new MessageQueue("payments", "broker-a", 0), offsetWrapper(120L, 90L));
+        when(adminExt.examineConsumeStats("cg-orders")).thenReturn(stats);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", 1784246400000L, "orders");
+
+        assertThat(preview.isComplete()).isFalse();
+        assertThat(preview.isAllowReset()).isFalse();
+        assertThat(preview.getQueueCount()).isZero();
+        assertThat(preview.getWarnings()).containsExactly("No consume offset data found for topic orders");
+        verify(adminExt, never()).resetOffsetByTimestamp(anyString(), anyString(), anyString(),
+                anyLong(), anyBoolean());
+    }
+
+    @Test
+    void previewResetOffsetShouldRejectBlankTopicBeforeResolvingAdmin() {
+        assertThatThrownBy(() -> adminClient.previewResetOffset("instance-a", "cg-orders", 1784246400000L, " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required for offset reset preview")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(runtimeAdminClientResolver);
+        verify(adminFactory, never()).execute(anyString(), any(), any());
+        verifyNoInteractions(auditService);
     }
 
     @Test
@@ -731,6 +839,13 @@ class RocketMQAdminClientImplTest {
         brokerAddrTable.put("broker-2", secondBroker);
         clusterInfo.setBrokerAddrTable(brokerAddrTable);
         return clusterInfo;
+    }
+
+    private OffsetWrapper offsetWrapper(long brokerOffset, long consumerOffset) {
+        OffsetWrapper wrapper = new OffsetWrapper();
+        wrapper.setBrokerOffset(brokerOffset);
+        wrapper.setConsumerOffset(consumerOffset);
+        return wrapper;
     }
 
     @Test

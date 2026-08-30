@@ -25,6 +25,7 @@ import {
   listAllConsumerGroups,
   listConsumerGroupPage,
   listConsumerGroups,
+  previewConsumerOffsetReset,
 } from './consumerService';
 
 const { mode, metadataApi } = vi.hoisted(() => ({
@@ -33,6 +34,7 @@ const { mode, metadataApi } = vi.hoisted(() => ({
     getConsumerGroup: vi.fn(),
     listConsumerGroupPage: vi.fn(),
     listConsumerGroups: vi.fn(),
+    previewConsumerOffsetReset: vi.fn(),
   },
 }));
 
@@ -185,6 +187,67 @@ describe('consumer service mock data', () => {
     expect(secondSubscriptions[0].topic).not.toBe('mutated-topic');
     expect(secondProgress[0]).not.toBe(firstProgress[0]);
     expect(secondSubscriptions[0]).not.toBe(firstSubscriptions[0]);
+  });
+
+  it('builds copied reset offset previews in mock mode', async () => {
+    const firstPreview = await previewConsumerOffsetReset({
+      name: 'cg-order-notify',
+      instanceId: 'instance-proxy-1',
+      topic: 'order-create',
+      timestamp: 1784246400000,
+    });
+
+    expect(firstPreview.groupName).toBe('cg-order-notify');
+    expect(firstPreview.topic).toBe('order-create');
+    expect(firstPreview.complete).toBe(true);
+    expect(firstPreview.queueCount).toBeGreaterThan(0);
+    expect(firstPreview.rewindQueueCount).toBeGreaterThan(0);
+    expect(firstPreview.queues[0].topic).toBe('order-create');
+    firstPreview.queues[0].broker = 'mutated-broker';
+    firstPreview.warnings.push('mutated-warning');
+
+    const secondPreview = await previewConsumerOffsetReset({
+      name: 'cg-order-notify',
+      instanceId: 'instance-proxy-1',
+      topic: 'order-create',
+      timestamp: 1784246400000,
+    });
+    expect(secondPreview.queues[0].broker).not.toBe('mutated-broker');
+    expect(secondPreview.warnings).not.toContain('mutated-warning');
+  });
+
+  it('forwards reset offset previews in API mode', async () => {
+    mode.mock = false;
+    const request = {
+      name: 'cg-orders',
+      instanceId: 'instance-1',
+      topic: 'orders',
+      timestamp: 1784246400000,
+    };
+    const preview = {
+      instanceId: 'instance-1',
+      groupName: 'cg-orders',
+      topic: 'orders',
+      timestamp: 1784246400000,
+      complete: true,
+      allowReset: true,
+      queueCount: 0,
+      warningCount: 0,
+      rewindQueueCount: 0,
+      fastForwardQueueCount: 0,
+      currentTotalLag: 0,
+      projectedTotalLag: 0,
+      totalOffsetDelta: 0,
+      warnings: [],
+      queues: [],
+    };
+    metadataApi.previewConsumerOffsetReset.mockResolvedValue(preview);
+    try {
+      await expect(previewConsumerOffsetReset(request)).resolves.toEqual(preview);
+      expect(metadataApi.previewConsumerOffsetReset).toHaveBeenCalledWith(request);
+    } finally {
+      mode.mock = true;
+    }
   });
 
   it('returns an empty mock consumer stack trace', async () => {

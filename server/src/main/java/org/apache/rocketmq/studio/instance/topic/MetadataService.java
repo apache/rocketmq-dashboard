@@ -34,6 +34,7 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
@@ -315,6 +316,14 @@ public class MetadataService {
 
     public void resetOffset(String name, long timestamp, String topic) {
         resetOffset(null, name, timestamp, topic);
+    }
+
+    public ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String name,
+                                                           long timestamp, String topic) {
+        instanceId = normalizeInstanceId(instanceId);
+        String groupName = requireName(name, "consumer group name");
+        String topicName = requireName(topic, "topic name");
+        return resolve(instanceId).previewResetOffset(instanceId, groupName, timestamp, topicName);
     }
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
