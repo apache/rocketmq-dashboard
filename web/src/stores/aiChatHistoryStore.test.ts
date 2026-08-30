@@ -160,6 +160,25 @@ describe('aiChatHistoryStore', () => {
     );
   });
 
+  it('measures the persisted history limit in UTF-8 bytes', async () => {
+    const { MAX_AI_CHAT_HISTORY_BYTES } = await import('./aiChatHistoryStore');
+    const store = await loadStore();
+    for (let index = 0; index < 20; index += 1) {
+      store
+        .getState()
+        .setMessages('real', `conversation-${index}`, [
+          { id: `message-${index}`, role: 'user', text: '界'.repeat(16 * 1024) },
+        ]);
+    }
+
+    const serialized = JSON.stringify({
+      conversations: store.getState().histories.real.conversations,
+    });
+    expect(new TextEncoder().encode(serialized).byteLength).toBeLessThanOrEqual(
+      MAX_AI_CHAT_HISTORY_BYTES,
+    );
+  });
+
   it('clears pending throttled persistence when histories are cleared', async () => {
     vi.useFakeTimers();
     const store = await loadStore();
