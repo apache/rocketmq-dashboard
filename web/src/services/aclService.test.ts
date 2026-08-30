@@ -23,6 +23,7 @@ import {
   examineBrokerClusterAclConfig,
   listAclRules,
   listAclUsers,
+  pageAclUsers,
   updateAclRule,
   updateAclUser,
 } from './aclService';
@@ -79,6 +80,13 @@ describe('ACL service mock data', () => {
     expect(second[0].username).toBe('user-admin');
     expect(second[0].clusters).not.toContain('mutated-cluster');
     expect(second[0]).not.toBe(first[0]);
+  });
+
+  it('validates ACL user pagination like the backend', async () => {
+    await expect(pageAclUsers({ page: 0, pageSize: 20 })).rejects.toThrow('page must be >= 1');
+    await expect(pageAclUsers({ page: 1, pageSize: 101 })).rejects.toThrow(
+      'pageSize must be between 1 and 100',
+    );
   });
 
   it('copies ACL user arrays on create and update', async () => {

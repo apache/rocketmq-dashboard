@@ -96,6 +96,9 @@ export async function pageAclUsers(params: {
   pageSize: number;
 }): Promise<AclUserPage> {
   if (isMockMode()) {
+    if (params.page < 1 || params.pageSize < 1 || params.pageSize > 100) {
+      throw new Error('page must be >= 1 and pageSize must be between 1 and 100');
+    }
     const users = await listAclUsers(params);
     const from = (params.page - 1) * params.pageSize;
     return {
