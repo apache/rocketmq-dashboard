@@ -49,10 +49,18 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
                 .map(MybatisPlusCloudCredentialRepository::toVO)
                 .collect(Collectors.toList());
     }
-    @Override public PageResult<CloudCredentialVO> findPage(InstanceVendor vendor, String search, int page, int pageSize) {
-        QueryWrapper<RmqCloudCredential> q = new QueryWrapper<RmqCloudCredential>().eq(vendor != null, "vendor", vendor == null ? null : vendor.name()).like(search != null && !search.isBlank(), "name", search).orderByDesc("gmt_modified", "id");
+    @Override
+    public PageResult<CloudCredentialVO> findPage(InstanceVendor vendor, String search, int page, int pageSize) {
+        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
+        QueryWrapper<RmqCloudCredential> q = new QueryWrapper<RmqCloudCredential>()
+                .eq(vendor != null, "vendor", vendor == null ? null : vendor.name())
+                .like(normalizedSearch != null, "name", normalizedSearch)
+                .orderByDesc("gmt_modified", "id");
         Page<RmqCloudCredential> result = credentialMapper.selectPage(new Page<>(page, pageSize), q);
-        return PageResult.of(result.getRecords().stream().map(MybatisPlusCloudCredentialRepository::toVO).toList(), result.getTotal(), page, pageSize);
+        return PageResult.of(result.getRecords().stream()
+                        .map(MybatisPlusCloudCredentialRepository::toVO)
+                        .toList(),
+                result.getTotal(), page, pageSize);
     }
 
     @Override
