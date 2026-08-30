@@ -25,5 +25,5 @@ public class AlertRuleTransferDTO {
     private AlertDomain domain;
 
     @NotEmpty(message = "rules must not be empty")
-    private List<@Valid AlertRuleRequestDTO> rules;
+    private List<@NotNull(message = "rule must not be null") @Valid AlertRuleRequestDTO> rules;
 }
