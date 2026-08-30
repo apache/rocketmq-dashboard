@@ -54,7 +54,7 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .ge(startDate != null, "gmt_create", startDate)
                 .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result)
-                .orderByDesc("gmt_create");
+                .orderByDesc("gmt_create", "id");
         Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
                 new Page<>(page, pageSize), query);
         List<AuditRecordVO> records = resultPage.getRecords().stream()
