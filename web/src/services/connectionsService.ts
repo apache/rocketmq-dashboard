@@ -16,10 +16,11 @@ export async function listConnections(params?: ClientConnectionQuery): Promise<C
     const instanceCluster = mockClientClusterByNamesrvAddr[namesrvAddr];
     if (!instanceCluster) return [];
 
+    const clusterId = params?.clusterId?.trim();
+    const type = params?.type?.trim();
     let result = mockClients.filter((connection) => connection.clusterName === instanceCluster);
-    if (params?.clusterId)
-      result = result.filter((connection) => connection.clusterName === params.clusterId);
-    if (params?.type) result = result.filter((c) => c.type === params.type);
+    if (clusterId) result = result.filter((connection) => connection.clusterName === clusterId);
+    if (type) result = result.filter((connection) => connection.type === type);
     return (result as unknown as ClientConnection[]).map(copyConnection);
   }
   return connApi.listConnections(params);
