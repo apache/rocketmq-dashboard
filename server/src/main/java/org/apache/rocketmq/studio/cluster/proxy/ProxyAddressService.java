@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.cluster.proxy;
 
+import org.apache.commons.validator.routines.InetAddressValidator;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
@@ -53,6 +54,7 @@ public class ProxyAddressService {
 
     private static final Pattern PROXY_ADDR_PATTERN =
             Pattern.compile("^(\\[[0-9a-fA-F:.]+]|[A-Za-z0-9._-]+):(\\d{1,5})$");
+    private static final InetAddressValidator INET_ADDRESS_VALIDATOR = InetAddressValidator.getInstance();
     private static final int MIN_PORT = 1;
     private static final int MAX_PORT = 65535;
 
@@ -310,6 +312,11 @@ public class ProxyAddressService {
         Matcher matcher = PROXY_ADDR_PATTERN.matcher(normalized);
         if (!matcher.matches()) {
             throw new BusinessException(400, fieldName + " must be in host:port or [ipv6]:port format");
+        }
+        String host = matcher.group(1);
+        if (host.startsWith("[")
+                && !INET_ADDRESS_VALIDATOR.isValidInet6Address(host.substring(1, host.length() - 1))) {
+            throw new BusinessException(400, fieldName + " contains a malformed IPv6 address");
         }
         int port = Integer.parseInt(matcher.group(2));
         if (port < MIN_PORT || port > MAX_PORT) {
