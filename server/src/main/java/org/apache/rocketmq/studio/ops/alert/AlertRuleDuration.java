@@ -37,7 +37,11 @@ final class AlertRuleDuration {
             } catch (NumberFormatException error) {
                 throw invalid(value);
             }
-            result = result.plus(toDuration(amount, matcher.group(2), value));
+            try {
+                result = result.plus(toDuration(amount, matcher.group(2), value));
+            } catch (ArithmeticException error) {
+                throw invalid(value);
+            }
             end = matcher.end();
         }
         if (end != value.trim().length()) {
