@@ -18,7 +18,11 @@ package org.apache.rocketmq.studio.common.domain;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PageResultTest {
 
@@ -27,5 +31,17 @@ class PageResultTest {
         PageResult<String> result = PageResult.of(null, 0, 1, 20);
 
         assertThat(result.getItems()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void ofShouldIsolateItemsFromTheSourceList() {
+        List<String> source = new ArrayList<>(List.of("first"));
+
+        PageResult<String> result = PageResult.of(source, 1, 1, 20);
+        source.add("later");
+
+        assertThat(result.getItems()).containsExactly("first");
+        assertThatThrownBy(() -> result.getItems().add("mutated"))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 }
