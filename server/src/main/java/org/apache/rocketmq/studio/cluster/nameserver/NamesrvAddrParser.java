@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Parses the NameServer address list stored in the registry. Accepts comma or semicolon
@@ -62,7 +63,7 @@ public final class NamesrvAddrParser {
             if (!isValidIpv6Literal(ipv6)) {
                 throw new BusinessException(400, "namesrvAddr segment has a malformed IPv6 literal: " + segment);
             }
-            normalizedHost = "[" + ipv6.toLowerCase() + "]";
+            normalizedHost = "[" + ipv6.toLowerCase(Locale.ROOT) + "]";
         } else {
             if (host.isEmpty()) {
                 throw new BusinessException(400, "namesrvAddr segment is missing a host: " + segment);
@@ -70,7 +71,7 @@ public final class NamesrvAddrParser {
             if (host.chars().anyMatch(ch -> ch == ':' || Character.isWhitespace(ch))) {
                 throw new BusinessException(400, "namesrvAddr segment has an unexpected character: " + segment);
             }
-            normalizedHost = host.toLowerCase();
+            normalizedHost = host.toLowerCase(Locale.ROOT);
         }
         int port;
         try {
