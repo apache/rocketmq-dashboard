@@ -43,6 +43,9 @@ public class AlertStateMachine {
         if (requiredDuration == null || requiredDuration.isNegative()) {
             throw new IllegalArgumentException("requiredDuration must not be negative");
         }
+        if (reminderInterval == null || reminderInterval.isNegative()) {
+            throw new IllegalArgumentException("reminderInterval must not be negative");
+        }
         AlertRuleState state = previous == null ? AlertRuleState.initial() : previous;
         if (!evaluation.matches()) {
             return new AlertStateUpdate(state, AlertStateTransition.NONE);
