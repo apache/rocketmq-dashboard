@@ -37,4 +37,13 @@ class AlertFingerprintTest {
                 .isEqualTo(AlertFingerprint.of(7L, "local", second))
                 .hasSize(64);
     }
+
+    @Test
+    void separatorCharactersCannotCreateTheSameFingerprintForDifferentLabelsTest() {
+        Map<String, String> embeddedLabel = Map.of("a", "b\nc=d");
+        Map<String, String> separateLabels = Map.of("a", "b", "c", "d");
+
+        assertThat(AlertFingerprint.of(7L, "local", embeddedLabel))
+                .isNotEqualTo(AlertFingerprint.of(7L, "local", separateLabels));
+    }
 }

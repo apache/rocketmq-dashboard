@@ -27,9 +27,9 @@ public final class AlertFingerprint {
     }
 
     public static String of(long ruleId, String instanceId, Map<String, String> labels) {
-        StringBuilder input = new StringBuilder().append(ruleId).append('\n').append(instanceId).append('\n');
-        new TreeMap<>(labels == null ? Map.of() : labels).forEach((key, value) -> input.append(key)
-                .append('=').append(value).append('\n'));
+        StringBuilder input = new StringBuilder().append(ruleId).append('\n').append(escape(instanceId)).append('\n');
+        new TreeMap<>(labels == null ? Map.of() : labels).forEach((key, value) -> input.append(escape(key))
+                .append('=').append(escape(value)).append('\n'));
         try {
             byte[] bytes = MessageDigest.getInstance("SHA-256").digest(input.toString().getBytes(StandardCharsets.UTF_8));
             StringBuilder fingerprint = new StringBuilder(bytes.length * 2);
@@ -40,5 +40,14 @@ public final class AlertFingerprint {
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is not available", impossible);
         }
+    }
+
+    private static String escape(String value) {
+        if (value == null) {
+            return "null";
+        }
+        return value.replace("\\", "\\\\")
+                .replace("\n", "\\n")
+                .replace("=", "\\=");
     }
 }
