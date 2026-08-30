@@ -291,7 +291,8 @@ class MybatisPlusAlertRepositoryTest {
         repository.findAlertsPage(new SystemAlertQuery(null, null, null, null,
                 null, null, null, null, 1, 20));
 
-        verify(alertMapper).selectPage(any(Page.class), any());
+        verify(alertMapper).selectPage(any(Page.class),
+                argThat(MybatisPlusAlertRepositoryTest::hasStableAlertOrdering));
     }
 
     private static boolean hasScopeLabelAndTimeFilters(Wrapper<RmqSystemAlert> query) {
@@ -312,6 +313,13 @@ class MybatisPlusAlertRepositoryTest {
         }
         queryWrapper.getCustomSqlSegment();
         return queryWrapper.getParamNameValuePairs().containsValue("info");
+    }
+
+    private static boolean hasStableAlertOrdering(Wrapper<RmqSystemAlert> query) {
+        if (!(query instanceof QueryWrapper<?> queryWrapper)) {
+            return false;
+        }
+        return queryWrapper.getCustomSqlSegment().contains("ORDER BY time DESC,id DESC");
     }
 
     private static boolean hasBusinessRulePageFilters(Wrapper<RmqAlertRule> query) {
