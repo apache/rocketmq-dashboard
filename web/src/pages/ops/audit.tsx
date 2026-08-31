@@ -46,6 +46,7 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
+import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 const emptyFilterOptions: AuditFilterOptions = {
@@ -233,17 +234,20 @@ const AuditPage: React.FC = () => {
       width: 180,
       sorter: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
       defaultSortOrder: 'descend',
+      render: (timestamp: string) => formatDateTime(timestamp),
     },
     {
       title: t('audit.operator'),
       dataIndex: 'operator',
       width: 130,
+      align: 'center',
       sorter: (a, b) => (a.operator ?? '').localeCompare(b.operator ?? ''),
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
       width: 190,
+      align: 'center',
       sorter: (a, b) => (a.operationType ?? '').localeCompare(b.operationType ?? ''),
       render: (type: string) => <Tag>{formatFilterLabel(type)}</Tag>,
     },
@@ -252,6 +256,7 @@ const AuditPage: React.FC = () => {
       dataIndex: 'resourceType',
       width: 120,
       ellipsis: true,
+      align: 'right',
       sorter: (a, b) => (a.resourceType ?? '').localeCompare(b.resourceType ?? ''),
     },
     {
@@ -266,6 +271,7 @@ const AuditPage: React.FC = () => {
       dataIndex: 'target',
       width: 200,
       ellipsis: true,
+      align: 'center',
     },
     {
       title: t('audit.detail'),
@@ -276,6 +282,7 @@ const AuditPage: React.FC = () => {
       title: t('audit.result'),
       dataIndex: 'result',
       width: 80,
+      align: 'center',
       sorter: (a, b) => (a.result ?? '').localeCompare(b.result ?? ''),
       render: (result: string) => (
         <Tag color={resultColor(result)}>{formatFilterLabel(result)}</Tag>
