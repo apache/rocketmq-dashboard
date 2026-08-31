@@ -46,6 +46,7 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
+import { toToken } from '../../utils/localeToken';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
@@ -59,9 +60,9 @@ const emptyFilterOptions: AuditFilterOptions = {
 const formatFilterLabel = (value: string) => value.trim().replace(/_/g, ' ');
 
 const resultColor = (result: string) => {
-  const normalized = result.toUpperCase();
-  if (normalized === 'SUCCESS') return 'green';
-  if (normalized === 'PARTIAL') return 'orange';
+  const normalized = toToken(result);
+  if (normalized === 'success') return 'green';
+  if (normalized === 'partial') return 'orange';
   return 'red';
 };
 

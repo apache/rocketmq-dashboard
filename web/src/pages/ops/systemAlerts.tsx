@@ -56,6 +56,7 @@ import type {
   SystemAlert,
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
+import { toToken } from '../../utils/localeToken';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
@@ -63,7 +64,7 @@ const { Text } = Typography;
 const ALERT_EXPORT_PAGE_SIZE = 100;
 const ALERT_EXPORT_MAX_PAGES = 10_000;
 
-const normalizeAlertLevel = (level?: string | null) => (level ?? '').toLowerCase();
+const normalizeAlertLevel = (level?: string | null) => toToken(level);
 const formatAlertTransition = (
   transition: SystemAlert['transition'] | undefined,
   firingLabel: string,

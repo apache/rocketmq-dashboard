@@ -62,6 +62,7 @@ import {
   updateAlertRule,
 } from '../../services/opsService';
 import { tableScrollX } from '../../utils/table';
+import { toToken } from '../../utils/localeToken';
 import { formatDateTime } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
@@ -280,7 +281,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       const transfer = await exportAlertRulesTransfer(domain);
       downloadBlob(
         new Blob([JSON.stringify(transfer, null, 2)], { type: 'application/json;charset=utf-8' }),
-        `rocketmq-studio-${domain.toLowerCase()}-alert-rules.json`,
+        `rocketmq-studio-${toToken(domain)}-alert-rules.json`,
       );
       message.success(t('alerts.exportSuccess'));
     } catch {
