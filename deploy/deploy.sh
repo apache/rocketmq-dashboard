@@ -53,8 +53,10 @@ check_prereqs() {
 
 package_source() {
   info "📦 本地打包源码..."
+  # deploy/.env 是环境专属配置（如 STUDIO_METRICS_PROMETHEUS_BASE_URL），不随源码覆盖远端
   tar czf "$SRC_TAR" -C "$PROJECT_DIR" \
     --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
+    --exclude='deploy/.env' \
     server web deploy
   log "打包完成 ($(du -h "$SRC_TAR" | cut -f1))"
 }
@@ -63,7 +65,10 @@ upload_source() {
   info "📤 传输源码到 $REMOTE:$REMOTE_PATH ..."
   run_remote "mkdir -p $REMOTE_PATH"
   scp -q "$SRC_TAR" "$REMOTE:$REMOTE_PATH/"
-  run_remote "cd $REMOTE_PATH && rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR")"
+  # 保留远端环境专属配置（tar 已排除，这里防 rm -rf 误删）
+  run_remote "cd $REMOTE_PATH && [ -f deploy/.env ] && cp deploy/.env /tmp/deploy-env-backup; \
+    rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
+    [ -f /tmp/deploy-env-backup ] && mv /tmp/deploy-env-backup deploy/.env || true"
   run_remote 'docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net'
   log "源码就位，rocketmq_net 网络就绪"
 }
