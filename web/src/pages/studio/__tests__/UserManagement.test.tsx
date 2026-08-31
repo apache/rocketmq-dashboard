@@ -27,7 +27,7 @@ import {
   type StudioUser,
 } from '../../../api/studioUsers';
 import { downloadCsv } from '../../../utils/download';
-import UserManagementPage from '../UserManagement';
+import UserManagementPage, { dateTime } from '../UserManagement';
 
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
 vi.mock('../../../api/studioUsers', () => ({
@@ -67,6 +67,21 @@ const studioUserPage = {
   page: 1,
   size: 20,
 };
+
+describe('dateTime', () => {
+  it('renders a placeholder for missing values', () => {
+    expect(dateTime(undefined)).toBe('-');
+    expect(dateTime('')).toBe('-');
+  });
+
+  it('renders a placeholder for unparseable values', () => {
+    expect(dateTime('not-a-timestamp')).toBe('-');
+  });
+
+  it('renders parseable values localized', () => {
+    expect(dateTime('2026-08-22T08:00:00')).toBe(new Date('2026-08-22T08:00:00').toLocaleString());
+  });
+});
 
 const renderPage = () =>
   render(
