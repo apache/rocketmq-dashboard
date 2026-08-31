@@ -126,6 +126,22 @@ class NamesrvAddrParserTest {
     }
 
     @Test
+    void rejectsIpv6LiteralsWithTooFewGroupsTest() {
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("[1:2:3]:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("malformed IPv6 literal");
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("[ffff:0]:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("malformed IPv6 literal");
+    }
+
+    @Test
+    void acceptsFullFormIpv6LiteralsTest() {
+        assertThat(NamesrvAddrParser.normalize("[2001:0DB8:0000:0000:0000:0000:0000:0001]:9876"))
+                .isEqualTo("[2001:0db8:0000:0000:0000:0000:0000:0001]:9876");
+    }
+
+    @Test
     void rejectsMalformedIpv6LiteralsTest() {
         assertThatThrownBy(() -> NamesrvAddrParser.normalize("[abc]:9876"))
                 .isInstanceOf(BusinessException.class)
