@@ -29,8 +29,8 @@ import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
 
-const renderTopologyCount = (value: number | null) =>
-  value === null ? 'N/A' : value.toLocaleString();
+export const renderCount = (value: number | null | undefined): string =>
+  value == null || Number.isNaN(value) ? 'N/A' : value.toLocaleString('en-US');
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -147,7 +147,7 @@ const DashboardPage = () => {
       icon: <ClusterOutlined style={{ fontSize: 22, color: '#52c41a' }} />,
       color: '#52c41a',
       suffix: '',
-      detail: `${stats.totalBrokers} Brokers · ${renderTopologyCount(stats.totalProxies)} Proxy`,
+      detail: `${stats.totalBrokers} Brokers · ${renderCount(stats.totalProxies)} Proxy`,
     },
     {
       title: t('dashboard.topics'),
@@ -163,7 +163,7 @@ const DashboardPage = () => {
       icon: <ArrowDown size={22} weight="duotone" color="#fa8c16" />,
       color: '#fa8c16',
       suffix: '/s',
-      detail: `${t('dashboard.tpsOut')}: ${stats.tpsOut.toLocaleString()}/s`,
+      detail: `${t('dashboard.tpsOut')}: ${renderCount(stats.tpsOut)}/s`,
     },
     {
       title: t('dashboard.todayMessages'),
@@ -172,7 +172,9 @@ const DashboardPage = () => {
       color: '#722ed1',
       suffix: '',
       detail: t('dashboard.millionMessages', {
-        n: (stats.totalMessagesToday / 1_000_000).toFixed(1),
+        n: Number.isFinite(stats.totalMessagesToday)
+          ? (stats.totalMessagesToday / 1_000_000).toFixed(1)
+          : '0',
       }),
     },
   ];
@@ -212,7 +214,7 @@ const DashboardPage = () => {
       key: 'brokers',
       width: 80,
       align: 'center' as const,
-      render: renderTopologyCount,
+      render: renderCount,
     },
     {
       title: t('dashboard.proxy'),
@@ -220,7 +222,7 @@ const DashboardPage = () => {
       key: 'proxies',
       width: 80,
       align: 'center' as const,
-      render: renderTopologyCount,
+      render: renderCount,
     },
     {
       title: t('dashboard.topic'),
@@ -242,7 +244,7 @@ const DashboardPage = () => {
       key: 'tpsIn',
       width: 90,
       align: 'right' as const,
-      render: (v: number) => v.toLocaleString(),
+      render: renderCount,
     },
     {
       title: t('dashboard.tpsOut'),
@@ -250,7 +252,7 @@ const DashboardPage = () => {
       key: 'tpsOut',
       width: 90,
       align: 'right' as const,
-      render: (v: number) => v.toLocaleString(),
+      render: renderCount,
     },
     {
       title: t('dashboard.trend'),
@@ -259,7 +261,7 @@ const DashboardPage = () => {
       width: 110,
       render: (data: number[], record: DashboardData['clusters'][0]) => (
         <MiniBar
-          data={data}
+          data={Array.isArray(data) ? data : []}
           color={
             record.status === 'healthy'
               ? '#52c41a'

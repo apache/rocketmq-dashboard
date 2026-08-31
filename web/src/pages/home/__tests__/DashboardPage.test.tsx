@@ -15,7 +15,7 @@ import type { DashboardData } from '../../../api/metrics';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as dashboardService from '../../../services/dashboardService';
 import * as instanceService from '../../../services/instanceService';
-import DashboardPage from '../dashboard';
+import DashboardPage, { renderCount } from '../dashboard';
 
 vi.mock('../../../services/dashboardService', () => ({ getDashboard: vi.fn() }));
 vi.mock('../../../services/instanceService', () => ({ listInstances: vi.fn() }));
@@ -259,5 +259,33 @@ describe('DashboardPage', () => {
     expect(
       screen.queryByText('cloud-instance', { selector: '.ant-select-item-option-content' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('renders clusters with missing throughput or TPS numbers without crashing', async () => {
+    const data: DashboardData = dashboard('broken-cluster');
+    data.clusters = [
+      {
+        ...data.clusters[0],
+        tpsIn: null as unknown as number,
+        tpsOut: null as unknown as number,
+        throughput: undefined as unknown as number[],
+      },
+    ];
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(data);
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('broken-cluster');
+    const row = screen.getByText('broken-cluster').closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getAllByText('N/A').length).toBeGreaterThanOrEqual(2);
+    expect(within(row as HTMLElement).getByText('—')).toBeInTheDocument();
+  });
+
+  it('formats dashboard counts with a stable locale and N/A placeholders', () => {
+    expect(renderCount(1234567)).toBe('1,234,567');
+    expect(renderCount(0)).toBe('0');
+    expect(renderCount(null)).toBe('N/A');
+    expect(renderCount(undefined)).toBe('N/A');
+    expect(renderCount(Number.NaN)).toBe('N/A');
   });
 });
