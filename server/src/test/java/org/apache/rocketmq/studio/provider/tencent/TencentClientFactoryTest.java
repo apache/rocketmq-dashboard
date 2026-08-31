@@ -20,10 +20,12 @@ import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -79,6 +81,36 @@ class TencentClientFactoryTest {
         assertThat(factory.creationCount).hasValue(2);
     }
 
+    @Test
+    void clientShouldNotReturnClientEvictedByConcurrentInvalidationTest() throws Exception {
+        long credentialId = 1L;
+        String region = "ap-shanghai";
+        StaleReadFactory factory = new StaleReadFactory();
+        TrocketClient cached = factory.client(credentialId, region);
+
+        Thread lookupThread = new Thread(() ->
+                factory.observed.set(factory.client(credentialId, region)),
+                "tencent-client-stale-read-test");
+        lookupThread.start();
+        assertThat(factory.readCompleted.await(5, TimeUnit.SECONDS)).isTrue();
+
+        Thread invalidationThread = new Thread(() -> {
+            factory.invalidateCredential(credentialId);
+            factory.invalidationCompleted.set(Instant.now());
+        }, "tencent-client-invalidation-test");
+        invalidationThread.start();
+        awaitBlockedOrTerminated(invalidationThread);
+
+        factory.allowReturn.countDown();
+        lookupThread.join(TimeUnit.SECONDS.toMillis(5));
+        invalidationThread.join(TimeUnit.SECONDS.toMillis(5));
+
+        // The lookup may return the cached client, but only if the invalidation that evicted it
+        // had not finished before the lookup returned.
+        assertThat(factory.observed.get()).isSameAs(cached);
+        assertThat(factory.lookupCompleted.get()).isBefore(factory.invalidationCompleted.get());
+    }
+
     private static void awaitBlockedOrTerminated(Thread thread) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (thread.getState() != Thread.State.BLOCKED && thread.isAlive()
@@ -86,6 +118,43 @@ class TencentClientFactoryTest {
             Thread.onSpinWait();
         }
         assertThat(thread.getState() == Thread.State.BLOCKED || !thread.isAlive()).isTrue();
+    }
+
+    private static final class StaleReadFactory extends TencentClientFactory {
+        final CountDownLatch readCompleted = new CountDownLatch(1);
+        final CountDownLatch allowReturn = new CountDownLatch(1);
+        final AtomicReference<TrocketClient> observed = new AtomicReference<>();
+        final AtomicReference<Instant> lookupCompleted = new AtomicReference<>();
+        final AtomicReference<Instant> invalidationCompleted = new AtomicReference<>();
+
+        private StaleReadFactory() {
+            super(mock(CloudCredentialRepository.class));
+        }
+
+        @Override
+        protected TrocketClient createClient(Long credentialId, String region) {
+            return mock(TrocketClient.class);
+        }
+
+        @Override
+        TrocketClient cachedClient(String key) {
+            TrocketClient cached = super.cachedClient(key);
+            if (cached == null) {
+                return cached;
+            }
+            // Simulate a thread suspended between the cache read and the return, while a
+            // concurrent credential rotation runs. The completion timestamp is stamped while
+            // still inside client(), so the ordering against the invalidation is exact.
+            readCompleted.countDown();
+            try {
+                assertThat(allowReturn.await(5, TimeUnit.SECONDS)).isTrue();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Stale read interrupted", exception);
+            }
+            lookupCompleted.set(Instant.now());
+            return cached;
+        }
     }
 
     private static final class BlockingClientFactory extends TencentClientFactory {
