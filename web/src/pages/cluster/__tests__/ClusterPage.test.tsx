@@ -441,6 +441,24 @@ describe('Cluster page', () => {
     expect(screen.getByPlaceholderText('搜索 Proxy 地址')).toHaveValue('not-found');
   });
 
+  it('keeps all broker rows visible when the broker search is whitespace-only', async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<ClusterPage />);
+    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
+
+    const input = screen.getByPlaceholderText('搜索集群名称、Broker 名称或地址');
+    await user.type(input, '   ');
+    const searchBox = input.closest('.ant-input-search');
+    expect(searchBox).not.toBeNull();
+    const searchButton = (searchBox as HTMLElement).querySelector('.ant-input-search-button');
+    expect(searchButton).not.toBeNull();
+    await user.click(searchButton as HTMLElement);
+
+    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
+    expect(screen.getByText('rocketmq-prod-1')).toBeInTheDocument();
+  });
+
   it('creates and deletes nameserver registry entries', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ClusterPage />);
