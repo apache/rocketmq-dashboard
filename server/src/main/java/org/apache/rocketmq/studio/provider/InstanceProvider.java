@@ -59,7 +59,7 @@ public interface InstanceProvider {
         int total = topics.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
+        int to = from + (int) Math.min(Math.max(pageSize, 0), total - from);
         return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 
@@ -76,7 +76,7 @@ public interface InstanceProvider {
         int total = consumers.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
+        int to = from + (int) Math.min(Math.max(pageSize, 0), total - from);
         return TopicConsumerPageVO.builder()
                 .items(consumers.subList(from, to))
                 .total(total)
@@ -93,7 +93,7 @@ public interface InstanceProvider {
         int total = groups.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
+        int to = from + (int) Math.min(Math.max(pageSize, 0), total - from);
         return PageResult.of(groups.subList(from, to), total, page, pageSize);
     }
 

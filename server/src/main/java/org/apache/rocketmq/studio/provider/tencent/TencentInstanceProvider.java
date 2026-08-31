@@ -280,7 +280,7 @@ public class TencentInstanceProvider implements InstanceProvider {
         int total = topics.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
+        int to = from + (int) Math.min(Math.max(pageSize, 0), total - from);
         return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 

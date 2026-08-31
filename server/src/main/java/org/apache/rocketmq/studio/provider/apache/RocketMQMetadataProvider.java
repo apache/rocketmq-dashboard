@@ -477,7 +477,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             int total = sortedGroups.size();
             long offset = Pagination.pageOffset(page, pageSize);
             int from = (int) Math.min(offset, total);
-            int to = from + (int) Math.min(pageSize, total - from);
+            int to = from + (int) Math.min(Math.max(pageSize, 0), total - from);
             List<TopicConsumerVO> consumers = new ArrayList<>();
             for (String group : sortedGroups.subList(from, to)) {
                 try {
