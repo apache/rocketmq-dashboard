@@ -147,6 +147,28 @@ public class SettingsService {
             if (!StringUtils.hasText(settings.getAwsRegion())) {
                 settings.setAwsRegion(currentSettings.getAwsRegion());
             }
+            // The settings blob has two partial writers: the general-settings save does not
+            // manage the LLM tuning values, and the LLM-config save does not manage the
+            // notification fields. An absent (null) value therefore inherits the stored one,
+            // while an explicit empty string still clears a text field.
+            if (settings.getDingtalkWebhook() == null) {
+                settings.setDingtalkWebhook(currentSettings.getDingtalkWebhook());
+            }
+            if (settings.getSmsWebhook() == null) {
+                settings.setSmsWebhook(currentSettings.getSmsWebhook());
+            }
+            if (settings.getEmailRecipients() == null) {
+                settings.setEmailRecipients(currentSettings.getEmailRecipients());
+            }
+            if (settings.getLlmEngine() == null) {
+                settings.setLlmEngine(currentSettings.getLlmEngine());
+            }
+            if (settings.getMaxTokens() == null) {
+                settings.setMaxTokens(currentSettings.getMaxTokens());
+            }
+            if (settings.getTemperature() == null) {
+                settings.setTemperature(currentSettings.getTemperature());
+            }
         }
         settings.setClearApiKey(false);
         settings.setClearDingtalkSigningSecret(false);
