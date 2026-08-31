@@ -98,6 +98,22 @@ const baseUrlPresets = (
   ollama: [{ value: 'http://localhost:11434/v1', label: t('settings.ollamaLocal') }],
 });
 
+/**
+ * Case-insensitive AutoComplete filter for model / API-base suggestions.
+ * Both the search string and the option value/label are coerced with
+ * String() and null-guaranteed so a non-string preset entry or a missing
+ * search value cannot throw inside the dropdown filter.
+ */
+export const matchesAiOption = (
+  input: string | null | undefined,
+  option?: { value?: unknown; label?: unknown } | null,
+) => {
+  const keyword = String(input ?? '').toLowerCase();
+  return [option?.value, option?.label].some(
+    (part) => String(part ?? '').toLowerCase().includes(keyword),
+  );
+};
+
 interface TestState {
   success: boolean;
   msg: string;
@@ -364,11 +380,7 @@ export const AiAssistantTab = () => {
               <AutoComplete
                 options={modelOptions}
                 placeholder={t('settings.selectOrEnterModel')}
-                filterOption={(input, option) =>
-                  String(option?.value ?? '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
+                filterOption={(input, option) => matchesAiOption(input, option)}
                 allowClear
               />
             </Form.Item>
@@ -431,10 +443,7 @@ export const AiAssistantTab = () => {
                 options={baseUrlPresets(t)[selectedProvider ?? 'tongyi'] ?? []}
                 placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
                 suffixIcon={<CaretDownOutlined style={{ color: '#9CA3AF' }} />}
-                filterOption={(input, option) =>
-                  (option?.value ?? '').toLowerCase().includes(input.toLowerCase()) ||
-                  (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
-                }
+                filterOption={(input, option) => matchesAiOption(input, option)}
               />
             </Form.Item>
 
