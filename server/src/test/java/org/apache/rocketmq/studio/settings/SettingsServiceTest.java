@@ -179,6 +179,67 @@ class SettingsServiceTest {
     }
 
     @Test
+    void saveGeneralSettingsShouldPreserveLlmTuningWhenGeneralSaveOmitsItTest() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .maxTokens(4096)
+                .temperature(0.7)
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getMaxTokens()).isEqualTo(4096);
+        assertThat(update.getTemperature()).isEqualTo(0.7);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldPreserveNotificationFieldsWhenLlmSaveOmitsThemTest() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access-token=tok")
+                .smsWebhook("https://sms.example.com/hook")
+                .emailRecipients("ops@example.com")
+                .llmEngine("http")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .llmProvider("tongyi")
+                .maxTokens(2048)
+                .temperature(0.5)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkWebhook())
+                .isEqualTo("https://oapi.dingtalk.com/robot/send?access-token=tok");
+        assertThat(update.getSmsWebhook()).isEqualTo("https://sms.example.com/hook");
+        assertThat(update.getEmailRecipients()).isEqualTo("ops@example.com");
+        assertThat(update.getLlmEngine()).isEqualTo("http");
+    }
+
+    @Test
+    void saveGeneralSettingsShouldStillClearNotificationFieldsWhenExplicitlyEmptiedTest() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access-token=tok")
+                .smsWebhook("https://sms.example.com/hook")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .dingtalkWebhook("")
+                .smsWebhook("")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkWebhook()).isEmpty();
+        assertThat(update.getSmsWebhook()).isEmpty();
+    }
+
+    @Test
     void saveGeneralSettingsShouldRejectMetadataLlmBaseUrlBeforePersistingTest() {
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .baseUrl("http://169.254.169.254/latest/meta-data")
