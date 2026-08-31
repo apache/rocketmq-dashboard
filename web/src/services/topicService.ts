@@ -2,6 +2,7 @@ import { isMockMode } from './dataMode';
 import * as metadataApi from '../api/metadata';
 import type {
   Topic,
+  TopicExportQuery,
   TopicQuery,
   TopicPage,
   BrokerRoute,
@@ -9,11 +10,28 @@ import type {
   TopicConsumerPage,
   SendTopicMessageRequest,
   SendTopicMessageResult,
+  ImportTopicsResult,
 } from '../api/metadata';
 import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
+import { buildCsv, type CsvColumn } from '../utils/download';
 
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
+const TOPIC_EXPORT_COLUMNS: CsvColumn<Topic>[] = [
+  { header: 'Name', value: (topic) => topic.name },
+  { header: 'Namespace', value: (topic) => topic.namespace },
+  { header: 'Type', value: (topic) => topic.type },
+  { header: 'Cluster ID', value: (topic) => topic.clusterId },
+  { header: 'Write Queues', value: (topic) => topic.writeQueues },
+  { header: 'Read Queues', value: (topic) => topic.readQueues },
+  { header: 'Permission', value: (topic) => topic.perm },
+  { header: 'Message Count', value: (topic) => topic.messageCount },
+  { header: 'TPS', value: (topic) => topic.tps },
+  { header: 'Consumer Groups', value: (topic) => topic.consumerGroupCount },
+  { header: 'Remark', value: (topic) => topic.remark },
+  { header: 'Created At', value: (topic) => topic.gmtCreate },
+  { header: 'Updated At', value: (topic) => topic.gmtModified },
+];
 
 const cloneTopic = (topic: Topic): Topic => ({ ...topic });
 const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] =>
@@ -35,6 +53,15 @@ function filterMockTopics(params?: TopicQuery): Topic[] {
   if (params?.clusterId) result = result.filter((t) => t.clusterId === params.clusterId);
   if (params?.instanceId) result = result.filter((t) => t.instanceId === params.instanceId);
   return (result as unknown as Topic[]).map(cloneTopic);
+}
+
+function visibleExportTopics(topics: Topic[], params?: TopicExportQuery): Topic[] {
+  let result = topics;
+  if (params?.names?.length) {
+    const selectedNames = new Set(params.names);
+    result = result.filter((topic) => selectedNames.has(topic.name));
+  }
+  return [...result].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
@@ -96,6 +123,37 @@ export async function createTopic(data: Partial<Topic>): Promise<Topic> {
     return cloneTopic(topic);
   }
   return metadataApi.createTopic(data);
+}
+
+export async function importTopics(
+  instanceId: string,
+  topics: Partial<Topic>[],
+): Promise<ImportTopicsResult> {
+  if (isMockMode()) {
+    const imported: Topic[] = [];
+    const failures: ImportTopicsResult['failures'] = [];
+    for (const [index, topic] of topics.entries()) {
+      try {
+        imported.push(await createTopic({ ...topic, instanceId }));
+      } catch (error) {
+        failures.push({
+          index,
+          name: topic.name,
+          message: error instanceof Error ? error.message : '创建失败',
+        });
+      }
+    }
+    return { imported: imported.length, failed: failures.length, topics: imported, failures };
+  }
+  return metadataApi.importTopics({ instanceId, topics });
+}
+
+export async function exportTopics(params: TopicExportQuery = {}): Promise<string> {
+  if (isMockMode()) {
+    const topics = await listAllTopics(params);
+    return buildCsv(TOPIC_EXPORT_COLUMNS, visibleExportTopics(topics, params));
+  }
+  return metadataApi.exportTopics(params);
 }
 
 export async function updateTopic(data: Partial<Topic>): Promise<Topic> {

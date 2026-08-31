@@ -30,6 +30,10 @@ export interface TopicQuery {
   search?: string;
 }
 
+export interface TopicExportQuery extends TopicQuery {
+  names?: string[];
+}
+
 export interface BrokerRoute {
   brokerName: string;
   brokerAddr: string;
@@ -67,6 +71,24 @@ export interface PageResult<T> {
   total: number;
   page: number;
   size: number;
+}
+
+export interface ImportTopicsRequest {
+  instanceId: string;
+  topics: Partial<Topic>[];
+}
+
+export interface ImportTopicsFailure {
+  index: number;
+  name?: string;
+  message: string;
+}
+
+export interface ImportTopicsResult {
+  imported: number;
+  failed: number;
+  topics: Topic[];
+  failures: ImportTopicsFailure[];
 }
 
 // ─── Consumer Group (matches mock/consumers.ts) ─────────────────
@@ -191,6 +213,18 @@ export interface TopicPage {
 
 export async function listTopicsPage(params?: TopicQuery & { page?: number; pageSize?: number }) {
   const res = await client.get<{ data: TopicPage }>('/topics/page', { params });
+  return res.data.data;
+}
+
+export async function exportTopics(params?: TopicExportQuery) {
+  const res = await client.get<{ data: string }>('/topics/export', {
+    params: { ...params, names: params?.names?.join(',') },
+  });
+  return res.data.data;
+}
+
+export async function importTopics(data: ImportTopicsRequest) {
+  const res = await client.post<{ data: ImportTopicsResult }>('/topics/import', data);
   return res.data.data;
 }
 

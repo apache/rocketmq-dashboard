@@ -145,6 +145,22 @@ class TopicControllerTest {
     }
 
     @Test
+    void exportTopicsShouldPassFiltersAndSelectedNames() throws Exception {
+        when(metadataService.exportTopics("instance-a", "FIFO", "orders", List.of("topic-a", "topic-b")))
+                .thenReturn("\"Name\"\n\"topic-a\"");
+
+        mockMvc.perform(get("/api/topics/export")
+                        .param("instanceId", "instance-a")
+                        .param("type", "FIFO")
+                        .param("search", "orders")
+                        .param("names", "topic-a, topic-b,topic-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value("\"Name\"\n\"topic-a\""));
+
+        verify(metadataService).exportTopics("instance-a", "FIFO", "orders", List.of("topic-a", "topic-b"));
+    }
+
+    @Test
     void createTopicShouldReturnCreatedTopic() throws Exception {
         TopicVO input = new TopicVO();
         input.setName("new-topic");
@@ -174,6 +190,44 @@ class TopicControllerTest {
         assertThat(captor.getValue().getInstanceId()).isEqualTo("open-source-local");
         assertThat(captor.getValue().getWriteQueues()).isEqualTo(16);
         assertThat(captor.getValue().getReadQueues()).isEqualTo(16);
+    }
+
+    @Test
+    void importTopicsShouldNormalizeInstanceAndDelegateBatch() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "1",
+                "topics", List.of(Map.of(
+                        "name", "imported-topic",
+                        "type", "NORMAL",
+                        "writeQueues", 8,
+                        "readQueues", 8,
+                        "perm", "RW"
+                ))
+        );
+        TopicVO imported = new TopicVO();
+        imported.setName("imported-topic");
+        when(instanceService.normalizeIdentifier("1")).thenReturn("open-source-local");
+        when(metadataService.importTopics(eq("open-source-local"), any()))
+                .thenReturn(ImportTopicsResultVO.builder()
+                        .imported(1)
+                        .failed(0)
+                        .topics(List.of(imported))
+                        .failures(List.of())
+                        .build());
+
+        mockMvc.perform(post("/api/topics/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.topics[0].name").value("imported-topic"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<CreateTopicDTO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(metadataService).importTopics(eq("open-source-local"), captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).getName()).isEqualTo("imported-topic");
+        assertThat(captor.getValue().get(0).getWriteQueues()).isEqualTo(8);
     }
 
     @Test

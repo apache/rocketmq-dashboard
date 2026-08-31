@@ -22,6 +22,8 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
@@ -177,6 +179,20 @@ class MetadataServiceTest {
     }
 
     @Test
+    void createTopicShouldRejectSystemTopicNamesTest() {
+        TopicVO systemTopic = new TopicVO();
+        systemTopic.setName("TBW102");
+        systemTopic.setWriteQueues(8);
+        systemTopic.setReadQueues(8);
+
+        assertThatThrownBy(() -> metadataService.createTopic(systemTopic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("System topics cannot be created");
+
+        verify(apacheProvider, org.mockito.Mockito.never()).createTopic(any(), any(TopicVO.class));
+    }
+
+    @Test
     void apacheTopicWriteOperationsShouldNotDuplicateProviderAudit() {
         TopicVO topic = new TopicVO();
         topic.setName("orders");
@@ -247,6 +263,52 @@ class MetadataServiceTest {
 
         verify(operationAuditService).record("CREATE_TOPIC", "TOPIC", "orders", "cloud-instance",
                 "type=-, writeQueues=4, readQueues=4, perm=-", "FAILED", "open api unavailable");
+    }
+
+    @Test
+    void exportTopicsShouldApplyFiltersSelectedNamesSortingAndCsvEscaping() {
+        TopicVO low = topic("orders-low", "\t=orders", TopicType.NORMAL);
+        TopicVO high = topic("orders-high", "critical", TopicType.FIFO);
+        TopicVO hidden = topic("users-topic", "=formula", TopicType.NORMAL);
+        when(apacheProvider.listTopics("instance-a", "NORMAL", "orders")).thenReturn(List.of(low, hidden, high));
+
+        String csv = metadataService.exportTopics("instance-a", " NORMAL ", " orders ",
+                List.of("orders-high", "orders-low"));
+
+        assertThat(csv).contains("\"Name\",\"Namespace\",\"Type\"");
+        assertThat(csv).contains("\"orders-high\",\"critical\",\"FIFO\"");
+        assertThat(csv).contains("\"orders-low\",\"'\t=orders\",\"NORMAL\"");
+        assertThat(csv).doesNotContain("users-topic");
+        assertThat(csv.indexOf("\"orders-high\"")).isLessThan(csv.indexOf("\"orders-low\""));
+        verify(apacheProvider).listTopics("instance-a", "NORMAL", "orders");
+    }
+
+    @Test
+    void importTopicsShouldContinueAfterRowFailure() {
+        when(apacheProvider.createTopic(eq("instance-a"), any(TopicVO.class))).thenAnswer(invocation -> {
+            TopicVO topic = invocation.getArgument(1);
+            if ("topic-fail".equals(topic.getName())) {
+                throw new BusinessException(500, "broker rejected topic");
+            }
+            topic.setClusterId("cluster-a");
+            return topic;
+        });
+
+        ImportTopicsResultVO result = metadataService.importTopics("instance-a",
+                List.of(topicImportRequest("topic-ok", "other-instance"), topicImportRequest("topic-fail", "other-instance")));
+
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getTopics()).extracting(TopicVO::getName).containsExactly("topic-ok");
+        assertThat(result.getFailures()).hasSize(1);
+        assertThat(result.getFailures().get(0).getIndex()).isEqualTo(1);
+        assertThat(result.getFailures().get(0).getName()).isEqualTo("topic-fail");
+        assertThat(result.getFailures().get(0).getMessage()).isEqualTo("broker rejected topic");
+
+        ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
+        verify(apacheProvider, org.mockito.Mockito.times(2)).createTopic(eq("instance-a"), captor.capture());
+        assertThat(captor.getAllValues()).extracting(TopicVO::getInstanceId)
+                .containsExactly("instance-a", "instance-a");
     }
 
     @Test
@@ -573,6 +635,36 @@ class MetadataServiceTest {
         request.setConsumeType(ConsumeType.CLUSTERING);
         request.setRetryMaxTimes(16);
         request.setSubscriptionDataType("NORMAL");
+        return request;
+
+    }
+
+    private TopicVO topic(String name, String namespace, TopicType type) {
+        TopicVO topic = new TopicVO();
+        topic.setName(name);
+        topic.setNamespace(namespace);
+        topic.setType(type);
+        topic.setClusterId("cluster-a");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
+        topic.setPerm(TopicPerm.RW);
+        topic.setMessageCount(100);
+        topic.setTps(2.5);
+        topic.setConsumerGroupCount(3);
+        topic.setRemark("remark");
+        topic.setGmtCreate(LocalDateTime.of(2026, 8, 27, 10, 0));
+        topic.setGmtModified(LocalDateTime.of(2026, 8, 27, 11, 0));
+        return topic;
+    }
+
+    private CreateTopicDTO topicImportRequest(String name, String instanceId) {
+        CreateTopicDTO request = new CreateTopicDTO();
+        request.setName(name);
+        request.setInstanceId(instanceId);
+        request.setType(TopicType.NORMAL);
+        request.setWriteQueues(8);
+        request.setReadQueues(8);
+        request.setPerm(TopicPerm.RW);
         return request;
 
     }

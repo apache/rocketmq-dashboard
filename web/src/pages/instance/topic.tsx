@@ -67,9 +67,10 @@ import {
   batchDeleteTopics,
   createTopic,
   deleteTopic,
+  exportTopics,
   getTopicConsumerPage,
   getTopicRoutes,
-  listAllTopics,
+  importTopics,
   listTopicsPage,
   sendTopicMessage,
 } from '../../services/topicService';
@@ -82,7 +83,7 @@ import {
   validateTopicCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { downloadCsv } from '../../utils/download';
 import { parseMessageProperties } from '../../utils/messageProperties';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -146,24 +147,6 @@ const TOPIC_TYPE_CARDS = [
 
 // ─── Perm label ───────────────────────────────────────────────────
 const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
-
-const TOPIC_EXPORT_COLUMNS: CsvColumn<Topic>[] = [
-  { header: 'Name', value: (topic) => topic.name },
-  { header: 'Namespace', value: (topic) => topic.namespace },
-  { header: 'Type', value: (topic) => topic.type },
-  { header: 'Cluster ID', value: (topic) => topic.clusterId },
-  { header: 'Write Queues', value: (topic) => topic.writeQueues },
-  { header: 'Read Queues', value: (topic) => topic.readQueues },
-  { header: 'Permission', value: (topic) => topic.perm },
-  { header: 'Message Count', value: (topic) => topic.messageCount },
-  { header: 'TPS', value: (topic) => topic.tps },
-  { header: 'Consumer Groups', value: (topic) => topic.consumerGroupCount },
-  { header: 'Remark', value: (topic) => topic.remark },
-  { header: 'Created At', value: (topic) => topic.gmtCreate },
-  { header: 'Updated At', value: (topic) => topic.gmtModified },
-];
-
-const buildTopicCsv = (topics: Topic[]) => buildCsv(TOPIC_EXPORT_COLUMNS, topics);
 
 const visibleTopics = (
   topics: Topic[],
@@ -593,18 +576,14 @@ const TopicPage = () => {
   const handleExport = () => {
     setExporting(true);
 
-    void listAllTopics({
+    void exportTopics({
       instanceId: selectedInstanceId || undefined,
       type: typeFilter || undefined,
       search: searchText.trim() || undefined,
     })
-      .then((allTopics) => {
-        const exportTopics = visibleTopics(allTopics, selectedInstanceId, searchText, typeFilter);
-        downloadCsv(
-          `rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`,
-          buildTopicCsv(exportTopics),
-        );
-        message.success(`已导出 ${exportTopics.length} 个 Topic`);
+      .then((csv) => {
+        downloadCsv(`rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+        message.success('Topic 导出完成');
       })
       .catch(() => {
         message.error('导出 Topic 失败，请稍后重试');
@@ -1121,22 +1100,37 @@ const TopicPage = () => {
 
     setImporting(true);
     const nextRows = importRows.map((row) => ({ ...row }));
-    const createdTopics: Topic[] = [];
+    let createdTopics: Topic[] = [];
 
-    for (const { row, index } of targetIndexes) {
-      try {
-        const created = await createTopic(row.payload);
-        createdTopics.push(created);
-        nextRows[index] = { ...nextRows[index], status: 'success', message: '已创建' };
-      } catch (error) {
+    try {
+      const result = await importTopics(
+        selectedInstanceId,
+        targetIndexes.map(({ row }) => row.payload),
+      );
+      createdTopics = result.topics;
+      const failureByIndex = new Map(result.failures.map((failure) => [failure.index, failure]));
+      targetIndexes.forEach(({ index }, requestIndex) => {
+        const failure = failureByIndex.get(requestIndex);
+        nextRows[index] = failure
+          ? {
+              ...nextRows[index],
+              status: 'failed',
+              message: failure.message || '创建失败',
+            }
+          : { ...nextRows[index], status: 'success', message: '已创建' };
+      });
+    } catch (error) {
+      for (const { index } of targetIndexes) {
         nextRows[index] = {
           ...nextRows[index],
           status: 'failed',
           message: error instanceof Error ? error.message : '创建失败',
         };
       }
-      setImportRows([...nextRows]);
+    } finally {
+      setImporting(false);
     }
+    setImportRows([...nextRows]);
 
     if (createdTopics.length > 0) {
       setTopics((previous) => {
@@ -1158,7 +1152,6 @@ const TopicPage = () => {
     } else {
       message.error(`${failedCount} 个 Topic 导入失败`);
     }
-    setImporting(false);
   };
 
   const topicImportColumns: TableColumnsType<ResourceImportRow<Partial<Topic>>> = [
@@ -1624,7 +1617,7 @@ const TopicPage = () => {
             <Alert
               type="info"
               showIcon
-              message={`检测到 ${importRows.length} 个 Topic，将按顺序调用创建接口`}
+              message={`检测到 ${importRows.length} 个 Topic，将通过后端批量导入`}
               description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
             />
           )}
