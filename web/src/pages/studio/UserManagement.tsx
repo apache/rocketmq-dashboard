@@ -57,7 +57,11 @@ interface PasswordFormValues {
   newPassword: string;
 }
 
-const dateTime = (value?: string) => (value ? new Date(value).toLocaleString() : '-');
+export const dateTime = (value?: string): string => {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString();
+};
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 type RoleFilter = 'admin' | 'reader';
