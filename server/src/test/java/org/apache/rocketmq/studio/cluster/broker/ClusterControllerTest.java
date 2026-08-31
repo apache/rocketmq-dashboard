@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.cluster.config.BrokerConfigDiffVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
@@ -66,6 +67,9 @@ class ClusterControllerTest {
 
     @MockBean
     private ClusterConnectionService clusterConnectionService;
+
+    @MockBean
+    private BrokerConfigDiffService brokerConfigDiffService;
 
     @Test
     void listRegistryClustersShouldReturnDiscoveredClustersTest() throws Exception {
@@ -258,6 +262,63 @@ class ClusterControllerTest {
                 .andExpect(jsonPath("$.data.changes[0].brokerProperty").value("defaultTopicQueueNums"));
 
         verify(clusterService).previewClusterConfig(any(UpdateConfigDTO.class));
+    }
+
+    @Test
+    void brokerConfigCompareShouldReturnDriftResultTest() throws Exception {
+        when(brokerConfigDiffService.compare("cluster-1", "instance-1")).thenReturn(
+                BrokerConfigDiffVO.builder()
+                        .cluster("cluster-1")
+                        .complete(true)
+                        .driftDetected(true)
+                        .brokerCount(2)
+                        .reachableBrokerCount(2)
+                        .comparedFields(Arrays.asList("flushDiskType", "writeQueueNums"))
+                        .brokers(Arrays.asList(
+                                BrokerConfigDiffVO.BrokerStatusVO.builder()
+                                        .name("broker-a")
+                                        .address("10.0.0.1:10911")
+                                        .reachable(true)
+                                        .build(),
+                                BrokerConfigDiffVO.BrokerStatusVO.builder()
+                                        .name("broker-b")
+                                        .address("10.0.0.2:10911")
+                                        .reachable(true)
+                                        .build()))
+                        .differences(Collections.singletonList(
+                                BrokerConfigDiffVO.ConfigDifferenceVO.builder()
+                                        .field("writeQueueNums")
+                                        .brokerProperty("defaultTopicQueueNums")
+                                        .values(Arrays.asList(
+                                                BrokerConfigDiffVO.ConfigValueVO.builder()
+                                                        .brokerName("broker-a")
+                                                        .address("10.0.0.1:10911")
+                                                        .configured(true)
+                                                        .value("8")
+                                                        .build(),
+                                                BrokerConfigDiffVO.ConfigValueVO.builder()
+                                                        .brokerName("broker-b")
+                                                        .address("10.0.0.2:10911")
+                                                        .configured(true)
+                                                        .value("16")
+                                                        .build()))
+                                        .build()))
+                        .build());
+
+        mockMvc.perform(get("/api/clusters/cluster-1/broker-config-diff")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.complete").value(true))
+                .andExpect(jsonPath("$.data.driftDetected").value(true))
+                .andExpect(jsonPath("$.data.brokerCount").value(2))
+                .andExpect(jsonPath("$.data.reachableBrokerCount").value(2))
+                .andExpect(jsonPath("$.data.brokers[0].address").value("10.0.0.1:10911"))
+                .andExpect(jsonPath("$.data.differences[0].field").value("writeQueueNums"))
+                .andExpect(jsonPath("$.data.differences[0].brokerProperty").value("defaultTopicQueueNums"))
+                .andExpect(jsonPath("$.data.differences[0].values[1].value").value("16"));
+
+        verify(brokerConfigDiffService).compare("cluster-1", "instance-1");
     }
 
     @Test

@@ -1,6 +1,7 @@
 import { isMockMode } from './dataMode';
 import * as clusterApi from '../api/cluster';
 import type {
+  BrokerConfigDiffResult,
   ClusterConfig,
   ClusterConfigPreviewResult,
   ClusterConfigUpdateResult,
@@ -134,6 +135,59 @@ export async function getNameServerConfigDiff(
               address,
               configured: true,
               value: index === 0 ? '8' : '12',
+            })),
+          },
+        ]
+      : [],
+  };
+}
+
+export async function getBrokerConfigDiff(
+  clusterId: string,
+  instanceId?: string,
+): Promise<BrokerConfigDiffResult> {
+  if (!isMockMode()) return clusterApi.getBrokerConfigDiff(clusterId, instanceId);
+
+  const cluster = getMockCluster(clusterId);
+  const brokers = cluster.brokers
+    .filter((broker) => broker.addr)
+    .map((broker) => ({
+      name: broker.name,
+      address: broker.addr,
+      reachable: String(broker.status) !== 'offline',
+    }));
+  const reachableBrokers = brokers.filter((broker) => broker.reachable);
+  const driftDetected = cluster.id === 'cluster-prod' && reachableBrokers.length > 1;
+
+  return {
+    cluster: cluster.id,
+    complete: reachableBrokers.length === brokers.length,
+    driftDetected,
+    brokerCount: brokers.length,
+    reachableBrokerCount: reachableBrokers.length,
+    comparedFields: [
+      'flushDiskType',
+      'autoCreateTopicEnable',
+      'autoCreateSubscriptionGroup',
+      'maxMessageSize',
+      'msgTraceTopicName',
+      'deleteWhen',
+      'fileReservedTime',
+      'writeQueueNums',
+      'readQueueNums',
+      'brokerPermission',
+    ],
+    brokers,
+    differences: driftDetected
+      ? [
+          {
+            field: 'writeQueueNums',
+            brokerProperty: 'defaultTopicQueueNums',
+            values: reachableBrokers.map((broker, index) => ({
+              brokerName: broker.name,
+              address: broker.address,
+              configured: true,
+              value: index === 0 ? String(cluster.config.writeQueueNums) : '16',
             })),
           },
         ]

@@ -23,6 +23,7 @@ import {
   createNameServer,
   deleteK8sCert,
   deleteNameServer,
+  getBrokerConfigDiff,
   getNameServerConfigDiff,
   getCluster,
   listK8sCerts,
@@ -234,6 +235,43 @@ describe('K8s certificate API', () => {
       });
 
     await expect(getNameServerConfigDiff('cluster-1', 'instance-proxy-1')).resolves.toEqual(result);
+  });
+
+  it('loads broker configuration drift for the selected cluster', async () => {
+    const result = {
+      cluster: 'cluster/prod:1',
+      complete: true,
+      driftDetected: true,
+      brokerCount: 2,
+      reachableBrokerCount: 2,
+      comparedFields: ['flushDiskType', 'writeQueueNums'],
+      brokers: [
+        { name: 'broker-a', address: '10.0.0.1:10911', reachable: true },
+        { name: 'broker-b', address: '10.0.0.2:10911', reachable: true },
+      ],
+      differences: [
+        {
+          field: 'writeQueueNums',
+          brokerProperty: 'defaultTopicQueueNums',
+          values: [
+            { brokerName: 'broker-a', address: '10.0.0.1:10911', configured: true, value: '8' },
+            { brokerName: 'broker-b', address: '10.0.0.2:10911', configured: true, value: '16' },
+          ],
+        },
+      ],
+    };
+    mock
+      .onGet('/clusters/cluster%2Fprod%3A1/broker-config-diff', {
+        params: { instanceId: 'instance-proxy-1' },
+      })
+      .reply(200, {
+        code: 200,
+        data: result,
+      });
+
+    await expect(getBrokerConfigDiff('cluster/prod:1', 'instance-proxy-1')).resolves.toEqual(
+      result,
+    );
   });
 
   it('sends the proxy restart target', async () => {

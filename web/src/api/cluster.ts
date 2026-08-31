@@ -122,6 +122,37 @@ export interface ClusterConfigPreviewResult {
   changed: boolean;
 }
 
+export interface BrokerConfigDiffBroker {
+  name: string;
+  address: string;
+  reachable: boolean;
+  message?: string | null;
+}
+
+export interface BrokerConfigDiffValue {
+  brokerName: string;
+  address: string;
+  configured: boolean;
+  value: string | null;
+}
+
+export interface BrokerConfigDifference {
+  field: string;
+  brokerProperty: string;
+  values: BrokerConfigDiffValue[];
+}
+
+export interface BrokerConfigDiffResult {
+  cluster: string;
+  complete: boolean;
+  driftDetected: boolean;
+  brokerCount: number;
+  reachableBrokerCount: number;
+  comparedFields: string[];
+  brokers: BrokerConfigDiffBroker[];
+  differences: BrokerConfigDifference[];
+}
+
 export interface ClusterProbeResult {
   connected: boolean;
   namesrvAddr: string;
@@ -212,6 +243,14 @@ export async function previewClusterConfig(
   const res = await client.post<{ data: ClusterConfigPreviewResult }>(
     '/clusters/config/preview',
     data,
+  );
+  return res.data.data;
+}
+
+export async function getBrokerConfigDiff(clusterId: string, instanceId?: string) {
+  const res = await client.get<{ data: BrokerConfigDiffResult }>(
+    `/clusters/${pathSegment(clusterId)}/broker-config-diff`,
+    { params: instanceId ? { instanceId } : undefined },
   );
   return res.data.data;
 }
