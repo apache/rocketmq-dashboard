@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.util.TimeZone;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -338,6 +339,24 @@ class NotificationOutboxServiceTest {
 
         assertThat(result.getTotal()).isEqualTo(1);
         assertThat(result.getItems()).containsExactly(delivery);
+    }
+
+    @Test
+    void normalizesDeliveryFiltersIndependentlyOfTheDefaultLocaleTest() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+            when(mapper.countPage("dingtalk", "PENDING", "Local")).thenReturn(0L);
+
+            new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
+                    mock(AlertRepository.class), mock(OperationAuditService.class))
+                    .listDeliveries(" DINGTALK ", "pending", "Local", 1, 20);
+
+            verify(mapper).countPage("dingtalk", "PENDING", "Local");
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test

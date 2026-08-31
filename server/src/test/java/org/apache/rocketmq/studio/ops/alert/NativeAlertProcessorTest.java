@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -202,6 +203,36 @@ class NativeAlertProcessorTest {
             assertThat(state.status()).isEqualTo(AlertStateStatus.FIRING);
             assertThat(state.currentValue()).isEqualTo(60D);
         });
+    }
+
+    @Test
+    void evaluatesAggregationIndependentlyOfTheDefaultLocaleTest() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            AlertService service = mock(AlertService.class);
+            AlertRuleVO rule = AlertRuleVO.builder().id(1L).domain(AlertDomain.BUSINESS).name("Orders lag")
+                    .metric("consumer.lag.total").operator(">").threshold(5).enabled(true).instanceId("local")
+                    .consumerGroup("orders").aggregation("min").windowSeconds(300).build();
+            when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+            MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+            MetricSample current = sample("orders", 20D);
+            when(snapshots.findRecent(any(MetricSample.class), any(Instant.class)))
+                    .thenReturn(List.of(sample("orders", 10D), sample("orders", 30D), current));
+            AlertStateRepository states = mock(AlertStateRepository.class);
+            when(states.find(any(AlertStateKey.class))).thenReturn(Optional.empty());
+            when(states.save(any(AlertStateKey.class), any(AlertRuleState.class))).thenReturn(true);
+
+            new NativeAlertProcessor(service, new AlertRuleEvaluator(), new AlertStateMachine(), states, snapshots,
+                    mock(AlertRepository.class), mock(NotificationOutboxService.class), suppression())
+                    .process(List.of(current));
+
+            org.mockito.ArgumentCaptor<AlertRuleState> saved = org.mockito.ArgumentCaptor.forClass(AlertRuleState.class);
+            verify(states).save(any(AlertStateKey.class), saved.capture());
+            assertThat(saved.getValue().currentValue()).isEqualTo(10D);
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test

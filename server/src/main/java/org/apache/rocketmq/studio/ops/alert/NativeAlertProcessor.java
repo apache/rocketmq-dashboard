@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
 import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -122,7 +123,7 @@ public class NativeAlertProcessor {
         if (window.isEmpty()) {
             return sample;
         }
-        double value = switch (rule.getAggregation() == null ? "LAST" : rule.getAggregation().toUpperCase()) {
+        double value = switch (rule.getAggregation() == null ? "LAST" : rule.getAggregation().toUpperCase(Locale.ROOT)) {
             case "MAX" -> window.stream().mapToDouble(item -> item.value()).max().orElse(sample.value());
             case "MIN" -> window.stream().mapToDouble(item -> item.value()).min().orElse(sample.value());
             case "AVG" -> window.stream().mapToDouble(item -> item.value()).average().orElse(sample.value());
