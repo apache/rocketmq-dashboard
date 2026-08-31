@@ -453,4 +453,43 @@ describe('AiPage tool runner', () => {
     expect(await screen.findByText('工具参数必须是有效的 JSON 对象')).toBeInTheDocument();
     expect(executeTool).not.toHaveBeenCalled();
   });
+
+  it('discards a tool execution result after the selected tool changes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listTools).mockResolvedValue([
+      { name: 'rmq.first', description: 'first', parameters: {} },
+      { name: 'rmq.second', description: 'second', parameters: {} },
+    ]);
+    let resolveFirst!: (value: unknown) => void;
+    vi.mocked(executeTool).mockImplementation((name) =>
+      name === 'rmq.first'
+        ? new Promise((resolve) => {
+            resolveFirst = resolve;
+          })
+        : Promise.resolve({ tool: name }),
+    );
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    await waitFor(() => expect(executeTool).toHaveBeenCalledWith('rmq.first', {}));
+
+    const toolSelect = within(dialog).getByRole('combobox', { name: '选择工具' });
+    await user.click(toolSelect);
+    await user.click(
+      await screen.findByText('rmq.second', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await act(async () => resolveFirst({ tool: 'rmq.first', stale: true }));
+    await act(async () => {});
+    expect(within(dialog).queryByTestId('tool-result')).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    const result = await within(dialog).findByTestId('tool-result');
+    expect(result).toHaveTextContent('"tool": "rmq.second"');
+    expect(result).not.toHaveTextContent('stale');
+  });
 });
