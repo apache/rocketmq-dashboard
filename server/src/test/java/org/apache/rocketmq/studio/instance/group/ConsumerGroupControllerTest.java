@@ -320,6 +320,65 @@ class ConsumerGroupControllerTest {
     }
 
     @Test
+    void previewResetOffsetShouldPassValidatedRequestAndReturnQueueImpact() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
+                "name", "cg-orders",
+                "topic", "orders",
+                "timestamp", 1784246400000L
+        );
+        ResetConsumerOffsetQueuePreviewVO queue = ResetConsumerOffsetQueuePreviewVO.builder()
+                .topic("orders")
+                .broker("broker-a")
+                .queueId(0)
+                .minOffset(0L)
+                .maxOffset(200L)
+                .brokerOffset(120L)
+                .consumerOffset(90L)
+                .targetOffset(80L)
+                .currentLag(30L)
+                .projectedLag(40L)
+                .offsetDelta(-10L)
+                .riskLevel("WARNING")
+                .message("Replays 10 message(s)")
+                .build();
+        ResetConsumerOffsetPreviewVO preview = ResetConsumerOffsetPreviewVO.builder()
+                .instanceId("instance-a")
+                .groupName("cg-orders")
+                .topic("orders")
+                .timestamp(1784246400000L)
+                .complete(true)
+                .allowReset(true)
+                .queueCount(1)
+                .warningCount(1)
+                .rewindQueueCount(1)
+                .fastForwardQueueCount(0)
+                .currentTotalLag(30L)
+                .projectedTotalLag(40L)
+                .totalOffsetDelta(-10L)
+                .warnings(List.of("1 queue(s) will move backward and may replay consumed messages"))
+                .queues(List.of(queue))
+                .build();
+        when(metadataService.previewResetOffset("instance-a", "cg-orders", 1784246400000L, "orders"))
+                .thenReturn(preview);
+
+        mockMvc.perform(post("/api/groups/reset-offset/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.groupName").value("cg-orders"))
+                .andExpect(jsonPath("$.data.allowReset").value(true))
+                .andExpect(jsonPath("$.data.queueCount").value(1))
+                .andExpect(jsonPath("$.data.projectedTotalLag").value(40))
+                .andExpect(jsonPath("$.data.queues[0].targetOffset").value(80))
+                .andExpect(jsonPath("$.data.queues[0].riskLevel").value("WARNING"));
+
+        verify(metadataService).previewResetOffset(eq("instance-a"), eq("cg-orders"),
+                eq(1784246400000L), eq("orders"));
+    }
+
+    @Test
     void deleteConsumerGroupShouldReturnSuccess() throws Exception {
         mockMvc.perform(post("/api/groups/delete")
                         .contentType(MediaType.APPLICATION_JSON)

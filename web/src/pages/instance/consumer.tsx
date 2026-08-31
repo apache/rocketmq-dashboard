@@ -72,6 +72,8 @@ import type {
   ConsumerInstance,
   ConsumerStackTrace,
   QueueProgress,
+  ResetConsumerOffsetPreview,
+  ResetConsumerOffsetQueuePreview,
   SubscriptionEntry,
 } from '../../api/metadata';
 import {
@@ -84,6 +86,7 @@ import {
   getConsumerSubscriptions,
   importConsumerGroups,
   listConsumerGroupPage,
+  previewConsumerOffsetReset,
   refreshConsumerGroup,
   resetConsumerOffset,
   getConsumerGroupSettings,
@@ -165,6 +168,50 @@ const isConsistentSubscription = (subscription: SubscriptionEntry): boolean =>
 const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
   isInconsistentValue(subscription.consistency);
 
+const formatOffsetValue = (value: number) =>
+  Number.isFinite(value) && value >= 0 ? value.toLocaleString() : '-';
+
+const formatOffsetDelta = (value: number) => {
+  if (value > 0) return `+${value.toLocaleString()}`;
+  return value.toLocaleString();
+};
+
+const resetPreviewRiskColor = (riskLevel: string) => {
+  if (riskLevel === 'ERROR') return 'red';
+  if (riskLevel === 'WARNING') return 'orange';
+  return 'green';
+};
+
+const resetPreviewRiskLabel = (riskLevel: string) => {
+  if (riskLevel === 'ERROR') return '失败';
+  if (riskLevel === 'WARNING') return '需确认';
+  return '正常';
+};
+
+const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
+  const messages: string[] = [];
+  if (queue.riskLevel === 'ERROR') {
+    return queue.message || '预览失败';
+  }
+  if (queue.targetOffset < 0 || queue.consumerOffset < 0) {
+    return queue.message || '目标位点不可用';
+  }
+  if (queue.offsetDelta < 0) {
+    messages.push(`将回放 ${Math.abs(queue.offsetDelta).toLocaleString()} 条消息`);
+  } else if (queue.offsetDelta > 0) {
+    messages.push(`将跳过 ${queue.offsetDelta.toLocaleString()} 条未消费消息`);
+  } else {
+    messages.push('位点不变');
+  }
+  if (queue.minOffset >= 0 && queue.targetOffset === queue.minOffset) {
+    messages.push('目标为最小保留位点');
+  }
+  if (queue.maxOffset >= 0 && queue.targetOffset === queue.maxOffset) {
+    messages.push('目标为最新位点');
+  }
+  return messages.join('；');
+};
+
 // Shared helper exported alongside the page component; fast-refresh rule waived.
 // eslint-disable-next-line react-refresh/only-export-components
 export const diagnosticCacheKey = (instanceId: string | undefined, groupName: string) =>
@@ -210,6 +257,10 @@ const ConsumerPageContent = ({
   const [resetGroup, setResetGroup] = useState<ConsumerGroup | null>(null);
   const [resetTopic, setResetTopic] = useState<string>();
   const [resetTime, setResetTime] = useState<Dayjs>(dayjs().subtract(3, 'hour'));
+  const [resetPreview, setResetPreview] = useState<ResetConsumerOffsetPreview | null>(null);
+  const [resetPreviewKey, setResetPreviewKey] = useState('');
+  const [resetPreviewLoading, setResetPreviewLoading] = useState(false);
+  const [resetPreviewError, setResetPreviewError] = useState<string | null>(null);
   const [subscriptionsByGroup, setSubscriptionsByGroup] = useState<
     Record<string, SubscriptionEntry[]>
   >({});
@@ -244,6 +295,11 @@ const ConsumerPageContent = ({
   const triggerRefresh = useCallback((silent: boolean) => {
     silentRefreshRef.current = silent;
     setRefreshKey((key) => key + 1);
+  }, []);
+  const clearResetPreview = useCallback(() => {
+    setResetPreview(null);
+    setResetPreviewKey('');
+    setResetPreviewError(null);
   }, []);
   const selectedGroupName = selectedGroup?.name;
 
@@ -334,8 +390,8 @@ const ConsumerPageContent = ({
   );
 
   useEffect(() => {
-    if (!modalOpen || !selectedGroup || !selectedInstanceId) return undefined;
-    const groupName = selectedGroup.name;
+    if (!modalOpen || !selectedGroupName || !selectedInstanceId) return undefined;
+    const groupName = selectedGroupName;
     let inFlight = false;
     const tick = async () => {
       if (inFlight) return;
@@ -355,7 +411,7 @@ const ConsumerPageContent = ({
     };
     const interval = window.setInterval(() => void tick(), 2000);
     return () => window.clearInterval(interval);
-  }, [modalOpen, selectedGroup?.name, selectedInstanceId, loadProgress]);
+  }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress]);
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
@@ -456,6 +512,17 @@ const ConsumerPageContent = ({
   const resetDiagnosticKey = resetGroup
     ? diagnosticCacheKey(selectedInstanceId, resetGroup.name)
     : '';
+  const resetTimestamp = resetTime.valueOf();
+  const currentResetPreviewKey =
+    resetGroup && resetTopic
+      ? [selectedInstanceId ?? '', resetGroup.name, resetTopic, resetTimestamp].join('\u0000')
+      : '';
+  const hasCurrentResetPreview = Boolean(
+    resetPreview && resetPreviewKey === currentResetPreviewKey,
+  );
+  const resetPreviewQueues = hasCurrentResetPreview ? (resetPreview?.queues ?? []) : [];
+  const resetPreviewWarnings = hasCurrentResetPreview ? (resetPreview?.warnings ?? []) : [];
+  const resetPreviewCanApply = Boolean(hasCurrentResetPreview && resetPreview?.allowReset);
   const resetTopicOptions = useMemo(() => {
     const topics = new Set(resetGroup?.subscribedTopics ?? []);
     for (const subscription of subscriptionsByGroup[resetDiagnosticKey] ?? []) {
@@ -500,6 +567,73 @@ const ConsumerPageContent = ({
     (sum, q) => sum + (isLagAvailable(q.diffTotal) ? q.diffTotal : 0),
     0,
   );
+
+  const handlePreviewResetOffset = async () => {
+    if (!resetGroup || !resetTopic) {
+      message.warning('请先选择要重置的 Topic');
+      return;
+    }
+    const previewKey = currentResetPreviewKey;
+    setResetPreviewLoading(true);
+    setResetPreviewError(null);
+    try {
+      const preview = await previewConsumerOffsetReset({
+        name: resetGroup.name,
+        instanceId: selectedInstanceId || undefined,
+        topic: resetTopic,
+        timestamp: resetTimestamp,
+      });
+      setResetPreview(preview);
+      setResetPreviewKey(previewKey);
+      if (preview.complete && preview.queueCount > 0) {
+        message.success(`已预览 ${preview.queueCount} 个 Queue`);
+      } else {
+        message.warning('预览未覆盖可重置队列，请检查 Group/Topic 状态');
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : '预览重置影响失败';
+      setResetPreview(null);
+      setResetPreviewKey('');
+      setResetPreviewError(reason);
+      message.error(reason);
+    } finally {
+      setResetPreviewLoading(false);
+    }
+  };
+
+  const handleResetOffset = async () => {
+    if (!resetGroup || !resetTopic) return;
+    if (!resetPreviewCanApply) {
+      message.warning('请先预览并确认位点影响');
+      return;
+    }
+    setResetSubmitting(true);
+    try {
+      await resetConsumerOffset({
+        name: resetGroup.name,
+        instanceId: selectedInstanceId || undefined,
+        topic: resetTopic,
+        timestamp: resetTimestamp,
+      });
+      message.success(
+        `${resetGroup.name} 在 ${resetTopic} 的消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
+      );
+      setProgressByGroup((prev) => {
+        const next = { ...prev };
+        delete next[resetDiagnosticKey];
+        return next;
+      });
+      triggerRefresh(true);
+      setResetModalOpen(false);
+      setResetGroup(null);
+      setResetTopic(undefined);
+      clearResetPreview();
+    } catch {
+      message.error(t('consumer.resetFailed'));
+    } finally {
+      setResetSubmitting(false);
+    }
+  };
 
   const openStackModal = async (consumerInstance: ConsumerInstance) => {
     if (!selectedGroup) return;
@@ -784,6 +918,7 @@ const ConsumerPageContent = ({
               setResetGroup(record);
               setResetTopic(undefined);
               setResetTime(dayjs().subtract(3, 'hour'));
+              clearResetPreview();
               setResetModalOpen(true);
               void loadSubscriptions(record.name);
             }}
@@ -1033,6 +1168,111 @@ const ConsumerPageContent = ({
           </Text>
         );
       },
+    },
+  ];
+
+  const resetPreviewColumns: ColumnsType<ResetConsumerOffsetQueuePreview> = [
+    {
+      title: 'Broker',
+      dataIndex: 'broker',
+      key: 'broker',
+      width: 140,
+      ellipsis: true,
+      render: (broker: string) => (
+        <Text strong style={{ fontSize: 14 }} title={broker}>
+          {broker || '-'}
+        </Text>
+      ),
+    },
+    {
+      title: 'Queue ID',
+      dataIndex: 'queueId',
+      key: 'queueId',
+      width: 86,
+      align: 'center',
+      render: (id: number) => <Tag color="blue">Queue {id}</Tag>,
+    },
+    {
+      title: '当前位点',
+      dataIndex: 'consumerOffset',
+      key: 'consumerOffset',
+      width: 120,
+      align: 'right',
+      render: (offset: number) => (
+        <Text style={{ fontFamily: 'monospace' }}>{formatOffsetValue(offset)}</Text>
+      ),
+    },
+    {
+      title: '目标位点',
+      dataIndex: 'targetOffset',
+      key: 'targetOffset',
+      width: 120,
+      align: 'right',
+      render: (offset: number) => (
+        <Text strong style={{ fontFamily: 'monospace' }}>
+          {formatOffsetValue(offset)}
+        </Text>
+      ),
+    },
+    {
+      title: '变化',
+      dataIndex: 'offsetDelta',
+      key: 'offsetDelta',
+      width: 100,
+      align: 'right',
+      render: (delta: number, row: ResetConsumerOffsetQueuePreview) => (
+        <Text
+          style={{
+            color: delta > 0 ? '#fa8c16' : delta < 0 ? '#1677ff' : undefined,
+            fontFamily: 'monospace',
+            fontWeight: 600,
+          }}
+        >
+          {row.targetOffset < 0 || row.consumerOffset < 0 ? '-' : formatOffsetDelta(delta)}
+        </Text>
+      ),
+    },
+    {
+      title: '当前堆积',
+      dataIndex: 'currentLag',
+      key: 'currentLag',
+      width: 110,
+      align: 'right',
+      render: (lag: number) => (
+        <Text style={{ fontFamily: 'monospace' }}>{formatOffsetValue(lag)}</Text>
+      ),
+    },
+    {
+      title: '重置后堆积',
+      dataIndex: 'projectedLag',
+      key: 'projectedLag',
+      width: 124,
+      align: 'right',
+      render: (lag: number) => (
+        <Text style={{ fontFamily: 'monospace', color: lagColor(lag), fontWeight: 600 }}>
+          {formatOffsetValue(lag)}
+        </Text>
+      ),
+    },
+    {
+      title: '风险',
+      dataIndex: 'riskLevel',
+      key: 'riskLevel',
+      width: 86,
+      render: (riskLevel: string) => (
+        <Tag color={resetPreviewRiskColor(riskLevel)}>{resetPreviewRiskLabel(riskLevel)}</Tag>
+      ),
+    },
+    {
+      title: '说明',
+      key: 'message',
+      width: 240,
+      ellipsis: true,
+      render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => (
+        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record)}>
+          {resetPreviewQueueMessage(record)}
+        </Text>
+      ),
     },
   ];
 
@@ -1919,54 +2159,29 @@ const ConsumerPageContent = ({
           setResetModalOpen(false);
           setResetGroup(null);
           setResetTopic(undefined);
+          clearResetPreview();
         }}
-        onOk={async () => {
-          if (!resetGroup || !resetTopic) return;
-          setResetSubmitting(true);
-          try {
-            await resetConsumerOffset({
-              name: resetGroup.name,
-              instanceId: selectedInstanceId || undefined,
-              topic: resetTopic,
-              timestamp: resetTime.valueOf(),
-            });
-            message.success(
-              `${resetGroup.name} 在 ${resetTopic} 的消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
-            );
-          } catch {
-            message.error(t('consumer.resetFailed'));
-            return;
-          } finally {
-            setResetSubmitting(false);
-          }
-          setResetModalOpen(false);
-          setResetGroup(null);
-          setResetTopic(undefined);
-        }}
+        onOk={() => void handleResetOffset()}
         confirmLoading={resetSubmitting}
         okButtonProps={{
-          disabled: !resetTopic || Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
+          disabled:
+            !resetPreviewCanApply ||
+            resetPreviewLoading ||
+            Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
         }}
         okText="确认重置"
         cancelText="取消"
-        width={480}
+        width={1200}
         destroyOnHidden
       >
         {resetGroup && (
-          <div style={{ marginTop: 16 }}>
-            <div
-              style={{
-                marginBottom: 16,
-                padding: '12px 16px',
-                background: '#fff7e6',
-                borderRadius: 8,
-                border: '1px solid #ffd591',
-              }}
-            >
-              <Text type="warning" style={{ fontSize: 14 }}>
-                ⚠️ 此操作将影响消息消费进度，请谨慎操作。重置后消费者将从指定时间点开始重新消费。
-              </Text>
-            </div>
+          <Space direction="vertical" size={16} style={{ width: '100%', marginTop: 16 }}>
+            <Alert
+              showIcon
+              type="warning"
+              message="此操作将影响消息消费进度"
+              description="请先预览每个 Queue 的目标位点和堆积变化，确认预览结果后再执行重置。预览为时点快照、属页面操作引导（非服务端控制），预览期间消息持续写入，实际效果以执行时 Broker 状态为准。"
+            />
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                 目标 Group
@@ -1988,7 +2203,10 @@ const ConsumerPageContent = ({
                 options={resetTopicOptions}
                 loading={subscriptionLoadingByGroup[resetDiagnosticKey]}
                 placeholder="选择要重置消费位点的 Topic"
-                onChange={setResetTopic}
+                onChange={(value) => {
+                  setResetTopic(value);
+                  clearResetPreview();
+                }}
                 notFoundContent={
                   subscriptionErrorByGroup[resetDiagnosticKey]
                     ? '订阅 Topic 加载失败'
@@ -2005,7 +2223,10 @@ const ConsumerPageContent = ({
                 style={{ width: '100%' }}
                 value={resetTime}
                 onChange={(val) => {
-                  if (val) setResetTime(val);
+                  if (val) {
+                    setResetTime(val);
+                    clearResetPreview();
+                  }
                 }}
                 format="YYYY-MM-DD HH:mm:ss"
                 placeholder="选择重置时间点"
@@ -2016,27 +2237,131 @@ const ConsumerPageContent = ({
                 快捷选择
               </Text>
               <Space wrap>
-                <Button size="small" onClick={() => setResetTime(dayjs().subtract(1, 'hour'))}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setResetTime(dayjs().subtract(1, 'hour'));
+                    clearResetPreview();
+                  }}
+                >
                   1 小时前
                 </Button>
-                <Button size="small" onClick={() => setResetTime(dayjs().subtract(3, 'hour'))}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setResetTime(dayjs().subtract(3, 'hour'));
+                    clearResetPreview();
+                  }}
+                >
                   3 小时前
                 </Button>
-                <Button size="small" onClick={() => setResetTime(dayjs().subtract(6, 'hour'))}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setResetTime(dayjs().subtract(6, 'hour'));
+                    clearResetPreview();
+                  }}
+                >
                   6 小时前
                 </Button>
-                <Button size="small" onClick={() => setResetTime(dayjs().subtract(12, 'hour'))}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setResetTime(dayjs().subtract(12, 'hour'));
+                    clearResetPreview();
+                  }}
+                >
                   12 小时前
                 </Button>
-                <Button size="small" onClick={() => setResetTime(dayjs().subtract(1, 'day'))}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setResetTime(dayjs().subtract(1, 'day'));
+                    clearResetPreview();
+                  }}
+                >
                   1 天前
                 </Button>
-                <Button size="small" onClick={() => setResetTime(dayjs().subtract(3, 'day'))}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setResetTime(dayjs().subtract(3, 'day'));
+                    clearResetPreview();
+                  }}
+                >
                   3 天前
                 </Button>
               </Space>
             </div>
-          </div>
+            <Flex justify="space-between" align="center" gap={12}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
+                预览不会修改 broker 位点，仅计算目标时间对应的 Queue offset。
+              </Text>
+              <Button
+                icon={<Eye size={14} />}
+                loading={resetPreviewLoading}
+                disabled={
+                  !resetTopic ||
+                  Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]) ||
+                  resetSubmitting
+                }
+                onClick={() => void handlePreviewResetOffset()}
+              >
+                预览影响
+              </Button>
+            </Flex>
+            {resetPreviewError && (
+              <Alert showIcon type="error" message="位点预览失败" description={resetPreviewError} />
+            )}
+            {hasCurrentResetPreview && resetPreview && (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Descriptions bordered size="small" column={4}>
+                  <Descriptions.Item label="Queue 数">{resetPreview.queueCount}</Descriptions.Item>
+                  <Descriptions.Item label="当前总堆积">
+                    {formatOffsetValue(resetPreview.currentTotalLag)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="重置后总堆积">
+                    {formatOffsetValue(resetPreview.projectedTotalLag)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="位点净变化">
+                    {formatOffsetDelta(resetPreview.totalOffsetDelta)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="回放 Queue">
+                    {resetPreview.rewindQueueCount}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="跳过 Queue">
+                    {resetPreview.fastForwardQueueCount}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="预览状态" span={2}>
+                    <Tag
+                      color={
+                        resetPreview.complete ? 'green' : resetPreview.allowReset ? 'orange' : 'red'
+                      }
+                    >
+                      {resetPreview.complete ? '完整' : resetPreview.allowReset ? '有限' : '不完整'}
+                    </Tag>
+                  </Descriptions.Item>
+                </Descriptions>
+                {resetPreviewWarnings.length > 0 && (
+                  <Alert
+                    showIcon
+                    type={resetPreview.complete ? 'warning' : 'error'}
+                    message="请确认以下影响"
+                    description={resetPreviewWarnings.join('；')}
+                  />
+                )}
+                <Table
+                  columns={resetPreviewColumns}
+                  dataSource={resetPreviewQueues}
+                  rowKey={(row) => `${row.topic}-${row.broker}-${row.queueId}`}
+                  pagination={false}
+                  size="small"
+                  scroll={{ x: tableScrollX(resetPreviewColumns), y: 260 }}
+                  locale={{ emptyText: '未找到可预览的 Queue 位点' }}
+                />
+              </Space>
+            )}
+          </Space>
         )}
       </Modal>
     </div>

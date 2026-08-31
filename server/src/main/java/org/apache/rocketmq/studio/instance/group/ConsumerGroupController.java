@@ -157,4 +157,11 @@ public class ConsumerGroupController {
                 .distinct()
                 .toList();
     }
+
+    @PostMapping("/reset-offset/preview")
+    public Result<ResetConsumerOffsetPreviewVO> previewResetOffset(@Valid @RequestBody ResetConsumerOffsetDTO request) {
+        return Result.ok(metadataService.previewResetOffset(request.getInstanceId(), request.getName(),
+                request.getTimestamp(), request.getTopic()));
+
+    }
 }

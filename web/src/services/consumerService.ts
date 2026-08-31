@@ -11,6 +11,8 @@ import type {
   ImportConsumerGroupsResult,
   PageResult,
   QueueProgress,
+  ResetConsumerOffsetPreview,
+  ResetConsumerOffsetQueuePreview,
   ResetConsumerOffsetRequest,
   SubscriptionEntry,
 } from '../api/metadata';
@@ -61,6 +63,14 @@ function copyQueueProgress(progress: QueueProgress): QueueProgress {
 
 function copySubscription(subscription: SubscriptionEntry): SubscriptionEntry {
   return { ...subscription };
+}
+
+function copyResetOffsetPreview(preview: ResetConsumerOffsetPreview): ResetConsumerOffsetPreview {
+  return {
+    ...preview,
+    warnings: [...preview.warnings],
+    queues: preview.queues.map((queue) => ({ ...queue })),
+  };
 }
 
 const normalizeConsumerGroup = <T extends ConsumerGroup>(group: T): T => ({
@@ -294,6 +304,96 @@ export async function deleteConsumerGroup(name: string, instanceId?: string): Pr
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Promise<void> {
   if (isMockMode()) return;
   return metadataApi.resetConsumerOffset(data);
+}
+
+export async function previewConsumerOffsetReset(
+  data: ResetConsumerOffsetRequest,
+): Promise<ResetConsumerOffsetPreview> {
+  if (isMockMode()) return buildMockResetOffsetPreview(data);
+  return metadataApi.previewConsumerOffsetReset(data);
+}
+
+function buildMockResetOffsetPreview(data: ResetConsumerOffsetRequest): ResetConsumerOffsetPreview {
+  const progressRows = ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
+    (progress) => !progress.topic || progress.topic === data.topic,
+  );
+  const queues = progressRows.map((progress) =>
+    buildMockResetOffsetQueuePreview(data.topic, progress),
+  );
+  const currentTotalLag = queues.reduce((sum, queue) => sum + queue.currentLag, 0);
+  const projectedTotalLag = queues.reduce((sum, queue) => sum + queue.projectedLag, 0);
+  const rewindQueueCount = queues.filter((queue) => queue.offsetDelta < 0).length;
+  const fastForwardQueueCount = queues.filter((queue) => queue.offsetDelta > 0).length;
+  const warnings = buildMockResetOffsetWarnings(queues, rewindQueueCount, fastForwardQueueCount);
+
+  return copyResetOffsetPreview({
+    instanceId: data.instanceId,
+    groupName: data.name,
+    topic: data.topic,
+    timestamp: data.timestamp,
+    complete: queues.length > 0,
+    allowReset: queues.length > 0,
+    queueCount: queues.length,
+    warningCount: warnings.length,
+    rewindQueueCount,
+    fastForwardQueueCount,
+    currentTotalLag,
+    projectedTotalLag,
+    totalOffsetDelta: queues.reduce((sum, queue) => sum + queue.offsetDelta, 0),
+    warnings,
+    queues,
+  });
+}
+
+function buildMockResetOffsetQueuePreview(
+  topic: string,
+  progress: QueueProgress,
+): ResetConsumerOffsetQueuePreview {
+  const maxOffset = progress.brokerOffset;
+  const minOffset = 0;
+  const rewindWindow = Math.min(500, Math.max(1, Math.floor(Math.max(progress.diffTotal, 1) / 2)));
+  const targetOffset = Math.max(
+    minOffset,
+    Math.min(maxOffset, progress.consumerOffset - rewindWindow),
+  );
+  const offsetDelta = targetOffset - progress.consumerOffset;
+  const currentLag = Math.max(0, progress.brokerOffset - progress.consumerOffset);
+  const projectedLag = Math.max(0, progress.brokerOffset - targetOffset);
+
+  return {
+    topic: progress.topic || topic,
+    broker: progress.broker,
+    queueId: progress.queueId,
+    minOffset,
+    maxOffset,
+    brokerOffset: progress.brokerOffset,
+    consumerOffset: progress.consumerOffset,
+    targetOffset,
+    currentLag,
+    projectedLag,
+    offsetDelta,
+    riskLevel: offsetDelta === 0 ? 'INFO' : 'WARNING',
+    message:
+      offsetDelta === 0
+        ? 'Offset unchanged'
+        : `Replays ${Math.abs(offsetDelta).toLocaleString()} message(s)`,
+  };
+}
+
+function buildMockResetOffsetWarnings(
+  queues: ResetConsumerOffsetQueuePreview[],
+  rewindQueueCount: number,
+  fastForwardQueueCount: number,
+): string[] {
+  if (queues.length === 0) return ['No consume offset data found for the selected topic'];
+  const warnings: string[] = [];
+  if (fastForwardQueueCount > 0) {
+    warnings.push(`${fastForwardQueueCount} queue(s) will move forward and may skip messages`);
+  }
+  if (rewindQueueCount > 0) {
+    warnings.push(`${rewindQueueCount} queue(s) will replay consumed messages`);
+  }
+  return warnings;
 }
 
 export interface BatchDeleteConsumerGroupsResult {

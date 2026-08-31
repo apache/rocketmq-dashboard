@@ -373,6 +373,48 @@ export interface ResetConsumerOffsetRequest {
   topic: string;
 }
 
+export interface ResetConsumerOffsetQueuePreview {
+  topic: string;
+  broker: string;
+  queueId: number;
+  minOffset: number;
+  maxOffset: number;
+  brokerOffset: number;
+  consumerOffset: number;
+  targetOffset: number;
+  currentLag: number;
+  projectedLag: number;
+  offsetDelta: number;
+  riskLevel: 'INFO' | 'WARNING' | 'ERROR' | string;
+  message: string;
+}
+
+export interface ResetConsumerOffsetPreview {
+  instanceId?: string;
+  groupName: string;
+  topic: string;
+  timestamp: number;
+  complete: boolean;
+  allowReset: boolean;
+  queueCount: number;
+  warningCount: number;
+  rewindQueueCount: number;
+  fastForwardQueueCount: number;
+  currentTotalLag: number;
+  projectedTotalLag: number;
+  totalOffsetDelta: number;
+  warnings: string[];
+  queues: ResetConsumerOffsetQueuePreview[];
+}
+
+export async function previewConsumerOffsetReset(data: ResetConsumerOffsetRequest) {
+  const res = await client.post<{ data: ResetConsumerOffsetPreview }>(
+    '/groups/reset-offset/preview',
+    data,
+  );
+  return res.data.data;
+}
+
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest) {
   await client.post('/groups/reset-offset', data);
 }

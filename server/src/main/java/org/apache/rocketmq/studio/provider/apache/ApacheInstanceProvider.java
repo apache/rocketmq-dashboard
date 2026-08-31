@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
@@ -146,6 +147,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String groupName) {
         return metadataProvider.getGroupSubscriptions(instanceId, groupName);
+    }
+
+    @Override
+    public ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String groupName,
+                                                           long timestamp, String topic) {
+        return adminClient.previewResetOffset(instanceId, groupName, timestamp, topic);
     }
 
     @Override

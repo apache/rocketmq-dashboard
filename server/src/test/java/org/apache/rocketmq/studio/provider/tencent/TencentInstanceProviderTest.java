@@ -51,6 +51,7 @@ import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -588,6 +589,29 @@ class TencentInstanceProviderTest {
         assertThat(subscriptions.get(0).getTopic()).isEqualTo("orders");
         assertThat(subscriptions.get(0).getExpression()).isEqualTo("*");
         assertThat(subscriptions.get(0).getType()).isEqualTo("TAG");
+    }
+
+    @Test
+    void previewResetOffsetShouldAllowLimitedCloudPreviewTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setConsumerLag(42L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        ResetConsumerOffsetPreviewVO preview = provider.previewResetOffset(
+                STUDIO_INSTANCE_ID, "GID_test", 1600000000000L, "orders");
+
+        assertThat(preview.isComplete()).isFalse();
+        assertThat(preview.isAllowReset()).isTrue();
+        assertThat(preview.getQueueCount()).isEqualTo(1);
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(42L);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(-1L);
+        assertThat(preview.getWarnings())
+                .containsExactly("Provider does not expose per-queue target offset preview; confirm with current lag only");
+        assertThat(preview.getQueues().get(0).getTargetOffset()).isEqualTo(-1L);
+        assertThat(preview.getQueues().get(0).getRiskLevel()).isEqualTo("WARNING");
     }
 
     @Test
