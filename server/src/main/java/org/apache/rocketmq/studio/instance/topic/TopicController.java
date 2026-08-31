@@ -29,6 +29,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 @RestController
@@ -57,6 +59,21 @@ public class TopicController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
         return Result.ok(metadataService.listTopicsPage(instanceId, clusterId, type, search, page, pageSize));
+    }
+
+    @GetMapping("/export")
+    public Result<String> exportTopics(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String names) {
+        return Result.ok(metadataService.exportTopics(instanceId, type, search, parseNames(names)));
+    }
+
+    @PostMapping("/import")
+    public Result<ImportTopicsResultVO> importTopics(@Valid @RequestBody ImportTopicsDTO request) {
+        String instanceId = instanceService.normalizeIdentifier(request.getInstanceId());
+        return Result.ok(metadataService.importTopics(instanceId, request.getTopics()));
     }
 
     @PostMapping("/create")
@@ -133,5 +150,16 @@ public class TopicController {
         if (request == null) {
             throw new BusinessException(400, "Topic send message request is required");
         }
+    }
+
+    private List<String> parseNames(String names) {
+        if (names == null || names.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(names.split(","))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .distinct()
+                .toList();
     }
 }

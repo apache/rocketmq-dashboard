@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
+import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
 import org.springframework.util.StringUtils;
@@ -112,6 +113,9 @@ public class MetadataService {
 
     public TopicVO createTopic(TopicVO topic) {
         requireTopic(topic);
+        if (SystemTopicFilter.isSystem(topic.getName())) {
+            throw new BusinessException(400, "System topics cannot be created: " + topic.getName());
+        }
         String instanceId = topic.getInstanceId();
         InstanceProvider provider = resolve(instanceId);
         return executeWithAudit(provider, Operation.CREATE_TOPIC, ResourceType.TOPIC, topic.getName(),
@@ -455,6 +459,80 @@ public class MetadataService {
             return mode.name();
         }
         return value.toString();
+    }
+
+    private static final int MAX_IMPORT_TOPICS = 100;
+
+    public ImportTopicsResultVO importTopics(String instanceId, List<CreateTopicDTO> topics) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(400, "instanceId is required");
+        }
+        if (topics == null || topics.isEmpty()) {
+            throw new BusinessException(400, "topics is required");
+        }
+        if (topics.size() > MAX_IMPORT_TOPICS) {
+            throw new BusinessException(400, "At most 100 topics are allowed per import");
+        }
+
+        String normalizedInstanceId = normalizeInstanceId(instanceId);
+        List<TopicVO> imported = new ArrayList<>();
+        List<ImportTopicsResultVO.Failure> failures = new ArrayList<>();
+        for (int index = 0; index < topics.size(); index++) {
+            CreateTopicDTO request = topics.get(index);
+            String name = request == null ? null : request.getName();
+            try {
+                if (request == null) {
+                    throw new BusinessException(400, "topic request is required");
+                }
+                TopicVO topic = request.toTopicVO();
+                topic.setInstanceId(normalizedInstanceId);
+                imported.add(createTopic(topic));
+            } catch (Exception exception) {
+                failures.add(ImportTopicsResultVO.Failure.builder()
+                        .index(index)
+                        .name(name)
+                        .message(StringUtils.hasText(exception.getMessage())
+                                ? exception.getMessage() : "Failed to create topic")
+                        .build());
+            }
+        }
+
+        return ImportTopicsResultVO.builder()
+                .imported(imported.size())
+                .failed(failures.size())
+                .topics(imported)
+                .failures(failures)
+                .build();
+    }
+
+    public String exportTopics(String instanceId, String type, String search, List<String> names) {
+        instanceId = normalizeInstanceId(instanceId);
+        List<TopicVO> topics = new ArrayList<>(listTopics(instanceId, null, type, search));
+        Set<String> selectedNames = new HashSet<>(names == null ? List.of() : names);
+        if (!selectedNames.isEmpty()) {
+            topics.removeIf(topic -> !selectedNames.contains(topic.getName()));
+        }
+        topics.sort((left, right) -> compareNames(left.getName(), right.getName()));
+        return buildTopicCsv(topics);
+    }
+
+    private int compareNames(String left, String right) {
+        String leftName = left == null ? "" : left;
+        String rightName = right == null ? "" : right;
+        return leftName.compareTo(rightName);
+    }
+
+    private String buildTopicCsv(List<TopicVO> topics) {
+        StringBuilder csv = new StringBuilder();
+        CsvUtil.appendRow(csv, "Name", "Namespace", "Type", "Cluster ID", "Write Queues", "Read Queues",
+                "Permission", "Message Count", "TPS", "Consumer Groups", "Remark", "Created At", "Updated At");
+        for (TopicVO topic : topics) {
+            CsvUtil.appendRow(csv, topic.getName(), topic.getNamespace(), toText(topic.getType()), topic.getClusterId(),
+                    topic.getWriteQueues(), topic.getReadQueues(), toText(topic.getPerm()), topic.getMessageCount(),
+                    topic.getTps(), topic.getConsumerGroupCount(), topic.getRemark(),
+                    topic.getGmtCreate(), topic.getGmtModified());
+        }
+        return csv.toString();
     }
 
     private String requireName(String value, String fieldName) {
