@@ -16,11 +16,13 @@ import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusSettingsRepositoryTest {
@@ -83,6 +85,21 @@ class MybatisPlusSettingsRepositoryTest {
 
         assertThat(loaded.getTheme()).isEqualTo("dark");
         assertThat(loaded.isRequireLogin()).isTrue();
+    }
+
+    @Test
+    void shouldPersistBlankApiKeyForExplicitLlmClearTest() throws Exception {
+        when(settingsMapper.selectOne(any())).thenReturn(null);
+
+        repository.saveGeneralSettings(GeneralSettingsVO.builder()
+                .theme("dark")
+                .apiKey("")
+                .build());
+
+        ArgumentCaptor<RmqSettings> captor = ArgumentCaptor.forClass(RmqSettings.class);
+        verify(settingsMapper).insert(captor.capture());
+        GeneralSettingsVO persisted = new ObjectMapper().readValue(captor.getValue().getJson(), GeneralSettingsVO.class);
+        assertThat(persisted.getApiKey()).isEmpty();
     }
 
     @Test

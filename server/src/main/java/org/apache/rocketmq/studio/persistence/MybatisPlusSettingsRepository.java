@@ -98,11 +98,9 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         try {
             com.fasterxml.jackson.databind.node.ObjectNode node =
                     (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.valueToTree(settings);
-            if (org.springframework.util.StringUtils.hasText(settings.getApiKey())) {
-                // apiKey is WRITE_ONLY (hidden from API responses), so plain serialization
-                // drops it; re-add it here or the configured LLM token is lost on restart.
-                node.put("apiKey", settings.getApiKey());
-            }
+            // apiKey is WRITE_ONLY (hidden from API responses), but it must be serialized even
+            // when blank so the LLM configuration endpoint can explicitly clear a stored key.
+            node.put("apiKey", settings.getApiKey() == null ? "" : settings.getApiKey());
             if (org.springframework.util.StringUtils.hasText(settings.getDingtalkSigningSecret())) {
                 // The signing secret is also WRITE_ONLY and must be retained in persisted settings.
                 node.put("dingtalkSigningSecret", settings.getDingtalkSigningSecret());
