@@ -18,6 +18,9 @@ package org.apache.rocketmq.studio.cluster.nameserver;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -89,6 +92,8 @@ public final class NamesrvAddrParser {
         if (ipv6.isEmpty() || ipv6.chars().filter(ch -> ch == ':').count() < 2) {
             return false;
         }
+        // Character-set pre-filter: only literal characters are accepted, so getByName
+        // below parses the value as an address literal and cannot issue a DNS lookup.
         for (char ch : ipv6.toCharArray()) {
             boolean valid = ch == ':'
                     || Character.isDigit(ch)
@@ -98,6 +103,12 @@ public final class NamesrvAddrParser {
                 return false;
             }
         }
-        return true;
+        // The charset check alone accepts values with too few groups ("1:2:3"); the
+        // literal parse is the full structural validation.
+        try {
+            return InetAddress.getByName(ipv6) instanceof Inet6Address;
+        } catch (UnknownHostException exception) {
+            return false;
+        }
     }
 }
