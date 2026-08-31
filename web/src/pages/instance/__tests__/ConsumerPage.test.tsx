@@ -31,11 +31,13 @@ vi.mock('../../../services/consumerService', () => ({
   batchDeleteConsumerGroups: vi.fn(),
   createConsumerGroup: vi.fn(),
   deleteConsumerGroup: vi.fn(),
+  exportConsumerGroups: vi.fn(),
   getConsumerGroup: vi.fn(),
   getConsumerProgress: vi.fn(),
   getConsumerStack: vi.fn(),
   getConsumerSubscriptions: vi.fn(),
   getConsumerGroupSettings: vi.fn(),
+  importConsumerGroups: vi.fn(),
   listAllConsumerGroups: vi.fn(),
   updateConsumerGroupSettings: vi.fn(),
   listConsumerGroupPage: vi.fn(),
@@ -134,6 +136,7 @@ describe('Consumer page', () => {
     ]);
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
     vi.mocked(consumerService.listAllConsumerGroups).mockResolvedValue([group]);
+    vi.mocked(consumerService.exportConsumerGroups).mockResolvedValue('"Name"\n"remote-cg"');
     vi.mocked(consumerService.refreshConsumerGroup).mockResolvedValue({
       ...group,
       totalLag: 42,
@@ -155,6 +158,26 @@ describe('Consumer page', () => {
           gmtModified: '2026-07-24T00:00:00Z',
         }) as ConsumerGroup,
     );
+    vi.mocked(consumerService.importConsumerGroups).mockResolvedValue({
+      imported: 1,
+      failed: 0,
+      groups: [
+        {
+          ...group,
+          name: 'imported-cg',
+          namespace: 'default',
+          clusterId: 'server-cluster',
+          onlineInstances: 0,
+          totalLag: 0,
+          delaySeconds: 0,
+          instances: [],
+          subscribedTopics: [],
+          gmtCreate: '2026-07-24T00:00:00Z',
+          gmtModified: '2026-07-24T00:00:00Z',
+        },
+      ],
+      failures: [],
+    });
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
       {
         topic: 'remote-topic',
@@ -319,10 +342,13 @@ describe('Consumer page', () => {
         size: params?.pageSize ?? 20,
       });
     });
-    vi.mocked(consumerService.listAllConsumerGroups).mockImplementation(async (params) =>
-      params?.search
-        ? exportGroups.filter((item) => item.name.includes(params.search ?? ''))
-        : exportGroups,
+    vi.mocked(consumerService.exportConsumerGroups).mockResolvedValue(
+      [
+        '"Name","Namespace","Subscribed Topics"',
+        '"orders-cg","remote-ns","orders-topic;payments,topic"',
+        '"orders-cg-archive","\'=archive","orders-topic"',
+        '"orders-cg-formula","\'\r=formula-risk","orders-topic"',
+      ].join('\n'),
     );
     renderWithProviders(<ConsumerPage />);
 
@@ -332,11 +358,13 @@ describe('Consumer page', () => {
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
     await waitFor(() =>
-      expect(consumerService.listAllConsumerGroups).toHaveBeenCalledWith({
+      expect(consumerService.exportConsumerGroups).toHaveBeenCalledWith({
         instanceId: 'instance-1',
         search: 'orders',
+        subscriptionMode: undefined,
       }),
     );
+    expect(consumerService.listAllConsumerGroups).not.toHaveBeenCalled();
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:consumer-group-export');
@@ -757,25 +785,30 @@ describe('Consumer page', () => {
 
   it('keeps per-row state when consumer group CSV import partially fails', async () => {
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([]));
-    vi.mocked(consumerService.createConsumerGroup).mockImplementation(
-      async (data: Partial<ConsumerGroup>) => {
-        if (data.name === 'cg-fail') throw new Error('broker rejected group');
-        return {
+    vi.mocked(consumerService.importConsumerGroups).mockResolvedValue({
+      imported: 1,
+      failed: 1,
+      groups: [
+        {
           ...group,
-          ...data,
-          name: data.name ?? '',
+          name: 'cg-ok',
+          subscriptionMode: 'Push',
+          consumeType: 'CLUSTERING',
+          retryMaxTimes: 16,
+          subscriptionDataType: 'NORMAL',
           namespace: 'default',
           clusterId: 'server-cluster',
           onlineInstances: 0,
           totalLag: 0,
           delaySeconds: 0,
           instances: [],
-          subscribedTopics: data.subscribedTopics ?? [],
+          subscribedTopics: [],
           gmtCreate: '2026-07-24T00:00:00Z',
           gmtModified: '2026-07-24T00:00:00Z',
-        } as ConsumerGroup;
-      },
-    );
+        },
+      ],
+      failures: [{ index: 1, name: 'cg-fail', message: 'broker rejected group' }],
+    });
 
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([
@@ -803,19 +836,32 @@ describe('Consumer page', () => {
       screen.getByTestId('consumer-group-import-file'),
       new File([csv], 'groups.csv'),
     );
-    expect(await screen.findByText('检测到 2 个 Group，将按顺序调用创建接口')).toBeInTheDocument();
+    expect(await screen.findByText('检测到 2 个 Group，将通过后端批量导入')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '开始导入' }));
 
-    await waitFor(() => expect(consumerService.createConsumerGroup).toHaveBeenCalledTimes(2));
-    expect(consumerService.createConsumerGroup).toHaveBeenNthCalledWith(1, {
-      name: 'cg-ok',
-      subscriptionMode: 'Push',
-      consumeType: 'CLUSTERING',
-      retryMaxTimes: 16,
-      subscriptionDataType: 'NORMAL',
-      subscribedTopics: [],
-      instanceId: 'instance-proxy-1',
-    });
+    await waitFor(() => expect(consumerService.importConsumerGroups).toHaveBeenCalledTimes(1));
+    expect(consumerService.importConsumerGroups).toHaveBeenCalledWith('instance-proxy-1', [
+      {
+        name: 'cg-ok',
+        subscriptionMode: 'Push',
+        consumeType: 'CLUSTERING',
+        retryMaxTimes: 16,
+        subscriptionDataType: 'NORMAL',
+        subscribedTopics: [],
+        instanceId: 'instance-proxy-1',
+      },
+      {
+        name: 'cg-fail',
+        subscriptionMode: 'Pop',
+        consumeType: 'BROADCASTING',
+        retryMaxTimes: 4,
+        subscriptionDataType: 'FIFO',
+        deliveryOrderType: 'PARTITON_ORDER',
+        subscribedTopics: [],
+        instanceId: 'instance-proxy-1',
+      },
+    ]);
+    expect(consumerService.createConsumerGroup).not.toHaveBeenCalled();
     expect(await screen.findByText('已导入 1 个 Group，1 个失败')).toBeInTheDocument();
     expect(screen.getByText('broker rejected group')).toBeInTheDocument();
     expect(screen.getAllByText('cg-ok').length).toBeGreaterThan(0);

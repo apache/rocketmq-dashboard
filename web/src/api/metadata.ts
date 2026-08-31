@@ -153,10 +153,27 @@ export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
   pageSize?: number;
 }
 
-export interface ResetConsumerOffsetRequest {
-  name: string;
-  timestamp: number;
-  topic: string;
+export interface ConsumerGroupExportQuery extends ConsumerGroupQuery {
+  names?: string[];
+  subscriptionMode?: string;
+}
+
+export interface ImportConsumerGroupsRequest {
+  instanceId: string;
+  groups: Partial<ConsumerGroup>[];
+}
+
+export interface ImportConsumerGroupsFailure {
+  index: number;
+  name?: string;
+  message: string;
+}
+
+export interface ImportConsumerGroupsResult {
+  imported: number;
+  failed: number;
+  groups: ConsumerGroup[];
+  failures: ImportConsumerGroupsFailure[];
 }
 
 // ─── Topic API ──────────────────────────────────────────────────
@@ -326,13 +343,14 @@ export async function resetConsumerOffset(data: ResetConsumerOffsetRequest) {
   await client.post('/groups/reset-offset', data);
 }
 
-export async function importConsumerGroups(data: string) {
-  await client.post('/groups/import', { data });
+export async function importConsumerGroups(data: ImportConsumerGroupsRequest) {
+  const res = await client.post<{ data: ImportConsumerGroupsResult }>('/groups/import', data);
+  return res.data.data;
 }
 
-export async function exportConsumerGroups(names?: string[]) {
+export async function exportConsumerGroups(params?: ConsumerGroupExportQuery) {
   const res = await client.get<{ data: string }>('/groups/export', {
-    params: { names: names?.join(',') },
+    params: { ...params, names: params?.names?.join(',') },
   });
   return res.data.data;
 }

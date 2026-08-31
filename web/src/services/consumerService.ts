@@ -2,21 +2,40 @@ import { isMockMode } from './dataMode';
 import * as metadataApi from '../api/metadata';
 import type {
   ConsumerGroup,
+  ConsumerGroupExportQuery,
   ConsumerGroupPageQuery,
   ConsumerGroupQuery,
   ConsumerGroupSettings,
   ConsumerGroupDetail,
   ConsumerStackTrace,
+  ImportConsumerGroupsResult,
   PageResult,
   QueueProgress,
   ResetConsumerOffsetRequest,
   SubscriptionEntry,
 } from '../api/metadata';
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
+import { buildCsv, type CsvColumn } from '../utils/download';
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
+const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
+  { header: 'Name', value: (group) => group.name },
+  { header: 'Namespace', value: (group) => group.namespace },
+  { header: 'Cluster ID', value: (group) => group.clusterId },
+  { header: 'Subscription Mode', value: (group) => group.subscriptionMode },
+  { header: 'Consume Type', value: (group) => group.consumeType },
+  { header: 'Online Instances', value: (group) => group.onlineInstances },
+  { header: 'Total Lag', value: (group) => group.totalLag },
+  { header: 'Delay Seconds', value: (group) => group.delaySeconds },
+  { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
+  { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
+  { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },
+  { header: 'Subscribed Topics', value: (group) => (group.subscribedTopics ?? []).join(';') },
+  { header: 'Created At', value: (group) => group.gmtCreate },
+  { header: 'Updated At', value: (group) => group.gmtModified },
+];
 
 function copyConsumerInstance(
   instance: ConsumerGroup['instances'][number],
@@ -58,6 +77,18 @@ function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
     if (kw) result = result.filter((group) => group.name.toLowerCase().includes(kw));
   }
   return result;
+}
+
+function visibleConsumerGroups(groups: ConsumerGroup[], params?: ConsumerGroupExportQuery) {
+  let result = groups;
+  if (params?.names?.length) {
+    const selectedNames = new Set(params.names);
+    result = result.filter((group) => selectedNames.has(group.name));
+  }
+  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
+    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
+  }
+  return [...result].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<ConsumerGroup[]> {
@@ -214,6 +245,41 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
     return copyConsumerGroup(group);
   }
   return metadataApi.createConsumerGroup(data);
+}
+
+export async function importConsumerGroups(
+  instanceId: string,
+  groups: Partial<ConsumerGroup>[],
+): Promise<ImportConsumerGroupsResult> {
+  if (isMockMode()) {
+    const imported: ConsumerGroup[] = [];
+    const failures: ImportConsumerGroupsResult['failures'] = [];
+    for (const [index, group] of groups.entries()) {
+      try {
+        imported.push(await createConsumerGroup({ ...group, instanceId }));
+      } catch (error) {
+        failures.push({
+          index,
+          name: group.name,
+          message: error instanceof Error ? error.message : '创建失败',
+        });
+      }
+    }
+    return { imported: imported.length, failed: failures.length, groups: imported, failures };
+  }
+  const result = await metadataApi.importConsumerGroups({ instanceId, groups });
+  return {
+    ...result,
+    groups: result.groups.map(normalizeConsumerGroup),
+  };
+}
+
+export async function exportConsumerGroups(params: ConsumerGroupExportQuery = {}): Promise<string> {
+  if (isMockMode()) {
+    const groups = await listAllConsumerGroups(params);
+    return buildCsv(GROUP_EXPORT_COLUMNS, visibleConsumerGroups(groups, params));
+  }
+  return metadataApi.exportConsumerGroups(params);
 }
 
 export async function deleteConsumerGroup(name: string, instanceId?: string): Promise<void> {

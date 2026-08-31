@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.audit;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -69,7 +70,7 @@ public class AuditService {
         }
         StringBuilder csv = new StringBuilder("\uFEFF").append(CSV_HEADER);
         for (AuditRecordVO record : page.getItems()) {
-            appendCsvRow(csv,
+            CsvUtil.appendRow(csv,
                     record.getTimestamp(),
                     record.getOperator(),
                     record.getOperationType(),
@@ -140,24 +141,6 @@ public class AuditService {
         }
         return auditRepository.findPage(search, operationType, resourceType, clusterId,
                 start, end, result, page, pageSize);
-    }
-
-    private void appendCsvRow(StringBuilder csv, Object... values) {
-        for (int i = 0; i < values.length; i++) {
-            if (i > 0) {
-                csv.append(',');
-            }
-            csv.append(toCsvCell(values[i]));
-        }
-        csv.append("\r\n");
-    }
-
-    private String toCsvCell(Object value) {
-        String text = value == null ? "" : value.toString();
-        if (!text.isEmpty() && "=+-@\t\r\n".indexOf(text.charAt(0)) >= 0) {
-            text = "'" + text;
-        }
-        return '"' + text.replace("\"", "\"\"") + '"';
     }
 
     private LocalDateTime parseDate(String dateStr, boolean startOfDay, String parameterName) {

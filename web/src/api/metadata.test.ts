@@ -21,10 +21,12 @@ import client from './client';
 import {
   createTopic,
   deleteTopic,
+  exportConsumerGroups,
   getConsumerStack,
   getTopicConsumerPage,
   getTopicConsumers,
   getTopicRoutes,
+  importConsumerGroups,
   listTopics,
   sendTopicMessage,
 } from './metadata';
@@ -140,5 +142,64 @@ describe('topic metadata API', () => {
     await expect(
       sendTopicMessage({ topic: topic.name, instanceId: 'instance-1', body: '{"id":1}' }),
     ).resolves.toMatchObject({ msgId: 'msg-1' });
+  });
+
+  it('passes consumer group import and export contracts through API endpoints', async () => {
+    mock.onGet('/groups/export').reply((config) => {
+      expect(config.params).toEqual({
+        instanceId: 'instance-1',
+        search: 'orders',
+        subscriptionMode: 'Pop',
+        names: 'cg-a,cg-b',
+      });
+      return [200, { code: 200, data: '"Name"\n"cg-a"' }];
+    });
+    mock.onPost('/groups/import').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        instanceId: 'instance-1',
+        groups: [
+          {
+            name: 'cg-a',
+            subscriptionMode: 'Push',
+            consumeType: 'CLUSTERING',
+            retryMaxTimes: 16,
+          },
+        ],
+      });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            imported: 1,
+            failed: 0,
+            groups: [],
+            failures: [],
+          },
+        },
+      ];
+    });
+
+    await expect(
+      exportConsumerGroups({
+        instanceId: 'instance-1',
+        search: 'orders',
+        subscriptionMode: 'Pop',
+        names: ['cg-a', 'cg-b'],
+      }),
+    ).resolves.toBe('"Name"\n"cg-a"');
+    await expect(
+      importConsumerGroups({
+        instanceId: 'instance-1',
+        groups: [
+          {
+            name: 'cg-a',
+            subscriptionMode: 'Push',
+            consumeType: 'CLUSTERING',
+            retryMaxTimes: 16,
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ imported: 1, failed: 0 });
   });
 });
