@@ -242,6 +242,7 @@ public class ClusterService {
         requireMatchingDefaultQueueNums(command);
         ClusterVO cluster = resolveCluster(command.getId(), command.getInstanceId());
 
+        boolean hasStoredConfig = cluster.getConfig() != null;
         ClusterConfigVO config = copyConfig(cluster.getConfig());
         applyConfig(command, config);
 
@@ -279,7 +280,15 @@ public class ClusterService {
 
         ClusterConfigUpdateResultVO.Status status = updateStatus(successfulBrokers, failedBrokers);
         if (failedBrokers.isEmpty()) {
-            clusterRepository.updateConfig(command.getId(), config);
+            if (hasStoredConfig) {
+                // Without a stored base the applied config is padded with zero defaults
+                // (live read failed and nothing was persisted yet); persisting it would
+                // store a fabricated snapshot that later fallback reads would show as
+                // real values such as a 0-message-size limit or permission 0. Persist
+                // before mutating the in-memory cluster so a persistence failure leaves
+                // the previous snapshot untouched.
+                clusterRepository.updateConfig(command.getId(), config);
+            }
             cluster.setConfig(config);
         }
         recordConfigUpdateAudit(command.getId(), status, successfulBrokers, failedBrokers);
