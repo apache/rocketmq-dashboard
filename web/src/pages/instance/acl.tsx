@@ -197,6 +197,9 @@ const AclPageContent = ({
         if (!mounted) return;
         setRules(nextRules.items.map(normalizeRule));
         setRuleTotal(nextRules.total);
+        if (nextRules.items.length === 0 && nextRules.total > 0 && rulePage > 1) {
+          setRulePage(Math.max(1, Math.ceil(nextRules.total / rulePageSize)));
+        }
       })
       .catch(() => {
         if (mounted) message.error(t('common.fetchDataFailed'));
@@ -215,6 +218,9 @@ const AclPageContent = ({
         if (mounted) {
           setUsers(result.items.map(normalizeUser));
           setUserTotal(result.total);
+          if (result.items.length === 0 && result.total > 0 && userPage > 1) {
+            setUserPage(Math.max(1, Math.ceil(result.total / userPageSize)));
+          }
         }
       })
       .catch(() => {

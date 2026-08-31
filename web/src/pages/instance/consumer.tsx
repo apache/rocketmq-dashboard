@@ -331,6 +331,9 @@ const ConsumerPageContent = ({
           if (requestId === groupRequestIdRef.current) {
             setGroups(result.items);
             setTotalGroups(result.total);
+            if (result.items.length === 0 && result.total > 0 && page > 1) {
+              setPage(Math.max(1, Math.ceil(result.total / pageSize)));
+            }
           }
         })
         .catch(() => {
