@@ -58,16 +58,13 @@ import {
   type ProxyHomePageData,
   type ProxyNode,
 } from '../../api/proxy';
+import { readLocalStorage, writeLocalStorage } from '../../utils/browserStorage';
 
 const { Text } = Typography;
 
 const persistProxyAddress = (address?: string) => {
   if (!address) return;
-  try {
-    localStorage.setItem('proxyAddr', address);
-  } catch {
-    // Proxy discovery remains usable when browser storage is unavailable.
-  }
+  writeLocalStorage('proxyAddr', address);
 };
 
 const ProxyPage: React.FC = () => {
@@ -83,7 +80,7 @@ const ProxyPage: React.FC = () => {
   const [addressMutationLoading, setAddressMutationLoading] = useState(false);
   const [removingProxyAddress, setRemovingProxyAddress] = useState<string | null>(null);
   const [clusterId, setClusterId] = useState<string>(
-    localStorage.getItem('clusterId') || 'DefaultCluster',
+    readLocalStorage('clusterId') || 'DefaultCluster',
   );
   const loadRequestId = useRef(0);
 
@@ -187,7 +184,7 @@ const ProxyPage: React.FC = () => {
   const handleClusterIdChange = (value: string) => {
     setClusterId(value);
     if (value) {
-      localStorage.setItem('clusterId', value);
+      writeLocalStorage('clusterId', value);
     }
   };
 

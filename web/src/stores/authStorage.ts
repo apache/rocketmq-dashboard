@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+import { readLocalStorage, removeLocalStorage, writeLocalStorage } from '../utils/browserStorage';
+
 export const USER_STORAGE_KEY = 'rocketmq-studio-user';
 export const USER_ID_STORAGE_KEY = 'rocketmq-studio-user-id';
 export const USER_ADMIN_STORAGE_KEY = 'rocketmq-studio-user-admin';
@@ -34,39 +36,27 @@ function parseUserId(raw: string | null): number | null {
 }
 
 export function readAuthSession(): AuthSession {
-  try {
-    const admin = localStorage.getItem(USER_ADMIN_STORAGE_KEY);
-    return {
-      user: localStorage.getItem(USER_STORAGE_KEY),
-      userId: parseUserId(localStorage.getItem(USER_ID_STORAGE_KEY)),
-      admin: admin != null ? admin === 'true' : null,
-    };
-  } catch {
-    return { user: null, userId: null, admin: null };
-  }
+  const admin = readLocalStorage(USER_ADMIN_STORAGE_KEY);
+  return {
+    user: readLocalStorage(USER_STORAGE_KEY),
+    userId: parseUserId(readLocalStorage(USER_ID_STORAGE_KEY)),
+    admin: admin != null ? admin === 'true' : null,
+  };
 }
 
 export function persistAuthSession(user: string, userId: number | null, admin: boolean): void {
-  try {
-    localStorage.setItem(USER_STORAGE_KEY, user);
-    if (userId != null) {
-      localStorage.setItem(USER_ID_STORAGE_KEY, String(userId));
-    } else {
-      localStorage.removeItem(USER_ID_STORAGE_KEY);
-    }
-    localStorage.setItem(USER_ADMIN_STORAGE_KEY, String(admin));
-  } catch {
-    // The in-memory store remains usable when browser storage is unavailable.
+  writeLocalStorage(USER_STORAGE_KEY, user);
+  if (userId != null) {
+    writeLocalStorage(USER_ID_STORAGE_KEY, String(userId));
+  } else {
+    removeLocalStorage(USER_ID_STORAGE_KEY);
   }
+  writeLocalStorage(USER_ADMIN_STORAGE_KEY, String(admin));
 }
 
 export function clearAuthSession(): void {
-  try {
-    localStorage.removeItem('token');
-    localStorage.removeItem(USER_STORAGE_KEY);
-    localStorage.removeItem(USER_ID_STORAGE_KEY);
-    localStorage.removeItem(USER_ADMIN_STORAGE_KEY);
-  } catch {
-    // The caller still clears the in-memory store.
-  }
+  removeLocalStorage('token');
+  removeLocalStorage(USER_STORAGE_KEY);
+  removeLocalStorage(USER_ID_STORAGE_KEY);
+  removeLocalStorage(USER_ADMIN_STORAGE_KEY);
 }

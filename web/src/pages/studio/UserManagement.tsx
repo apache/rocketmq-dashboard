@@ -89,9 +89,11 @@ const UserManagementPage = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
+  const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
+  const mutatingUserIdsRef = useRef(new Set<number>());
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -163,12 +165,18 @@ const UserManagementPage = () => {
   };
 
   const setEnabled = async (record: StudioUser, enabled: boolean) => {
+    if (mutatingUserIdsRef.current.has(record.id)) return;
+    mutatingUserIdsRef.current.add(record.id);
+    setMutatingUserIds(new Set(mutatingUserIdsRef.current));
     try {
       await setStudioUserEnabled(record.id, enabled);
       message.success(enabled ? '用户已启用' : '用户已禁用，全部会话已注销');
       await loadUsers();
     } catch {
       message.error('更新用户状态失败');
+    } finally {
+      mutatingUserIdsRef.current.delete(record.id);
+      setMutatingUserIds(new Set(mutatingUserIdsRef.current));
     }
   };
 
@@ -237,6 +245,7 @@ const UserManagementPage = () => {
           </Button>
           <Switch
             checked={record.enabled}
+            loading={mutatingUserIds.has(record.id)}
             checkedChildren="启用"
             unCheckedChildren="禁用"
             onChange={(enabled) => void setEnabled(record, enabled)}

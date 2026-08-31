@@ -101,6 +101,19 @@ describe('ProxyPage', () => {
     storageSpy.mockRestore();
   });
 
+  it('uses the default cluster when stored preferences cannot be read', async () => {
+    const storageSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('storage disabled', 'SecurityError');
+    });
+    try {
+      renderPage();
+      await screen.findAllByText('127.0.0.1:8081');
+      expect(screen.getByDisplayValue('DefaultCluster')).toBeInTheDocument();
+    } finally {
+      storageSpy.mockRestore();
+    }
+  });
+
   it('loads Proxy nodes once after the page mounts', async () => {
     renderPage();
 

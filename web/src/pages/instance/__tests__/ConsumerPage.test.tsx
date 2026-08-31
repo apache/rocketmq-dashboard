@@ -99,6 +99,14 @@ const groupPage = (
   ...overrides,
 });
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+};
+
 const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/consumer') =>
   render(
     <App>
@@ -930,5 +938,93 @@ describe('Consumer page', () => {
     await user.click(within(unknownRow).getByRole('button', { name: /详\s*情/ }));
     const dialog = await screen.findByRole('dialog', { name: /unknown-lag-cg/ });
     expect(within(dialog).getByText('不可用')).toBeInTheDocument();
+  });
+
+  it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        { ...group, name: 'unknown-lag-cg', totalLag: -1 },
+        { ...group, name: 'known-lag-cg', totalLag: 15000 },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+    await screen.findByRole('row', { name: /unknown-lag-cg/ });
+
+    const [lagHeader] = screen.getAllByText('总堆积量');
+    await user.click(lagHeader);
+    await waitFor(() => {
+      const rows = Array.from(document.querySelectorAll('tbody tr'));
+      const order = rows
+        .map((row) => row.textContent ?? '')
+        .map((text) =>
+          text.includes('unknown-lag-cg')
+            ? 'unknown'
+            : /\bknown-lag-cg\b/.test(text)
+              ? 'known'
+              : '',
+        )
+        .filter(Boolean);
+      expect(order).toEqual(['known', 'unknown']);
+    });
+  });
+
+  it('ignores settings responses from a previously closed group modal', async () => {
+    const otherGroup = { ...group, name: 'other-cg' };
+    const firstSettings = deferred<{
+      groupName: string;
+      retryQueueNums: number;
+      retryMaxTimes: number;
+    }>();
+    const secondSettings = deferred<{
+      groupName: string;
+      retryQueueNums: number;
+      retryMaxTimes: number;
+    }>();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([group, otherGroup]),
+    );
+    vi.mocked(consumerService.getConsumerGroupSettings)
+      .mockImplementationOnce(() => firstSettings.promise)
+      .mockImplementationOnce(() => secondSettings.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    const firstRow = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(firstRow).getByRole('button', { name: '详情' }));
+    const firstDialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(firstDialog).getByRole('tab', { name: '配置' }));
+    await waitFor(() => {
+      expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-1',
+      );
+    });
+
+    fireEvent.click(firstDialog.querySelector('.ant-modal-close') as HTMLElement);
+
+    const secondRow = screen.getByRole('row', { name: /other-cg/ });
+    await user.click(within(secondRow).getByRole('button', { name: '详情' }));
+    const secondDialog = await screen.findByRole('dialog', { name: /other-cg/ });
+    await user.click(within(secondDialog).getByRole('tab', { name: '配置' }));
+    await waitFor(() => {
+      expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
+        'other-cg',
+        'instance-1',
+      );
+    });
+
+    await act(async () => {
+      secondSettings.resolve({ groupName: 'other-cg', retryQueueNums: 4, retryMaxTimes: 12 });
+    });
+    await waitFor(() => {
+      expect(within(secondDialog).getByLabelText('重试队列数')).toHaveValue('4');
+    });
+
+    await act(async () => {
+      firstSettings.resolve({ groupName: 'remote-cg', retryQueueNums: 1, retryMaxTimes: 16 });
+    });
+    expect(within(secondDialog).getByLabelText('重试队列数')).toHaveValue('4');
+    expect(within(secondDialog).getByLabelText('最大重试次数')).toHaveValue('12');
   });
 });

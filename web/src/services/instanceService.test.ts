@@ -165,4 +165,25 @@ describe('instanceService list request dedupe', () => {
     await listInstances({});
     expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
   });
+
+  it('does not share inflight requests across data modes', async () => {
+    dataModeMock.isMockMode.mockReturnValue(false);
+    let resolveRealList!: (value: Instance[]) => void;
+    instanceApiMock.listInstances.mockImplementationOnce(
+      () =>
+        new Promise<Instance[]>((resolve) => {
+          resolveRealList = resolve;
+        }),
+    );
+
+    const realRequest = listInstances({});
+    dataModeMock.isMockMode.mockReturnValue(true);
+    const mockResult = await listInstances({});
+
+    expect(mockResult.length).toBeGreaterThan(0);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(1);
+
+    resolveRealList([]);
+    await expect(realRequest).resolves.toEqual([]);
+  });
 });
