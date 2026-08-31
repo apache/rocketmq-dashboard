@@ -121,11 +121,18 @@ const formatSize = (bytes: number): string => {
   return `${bytes} B`;
 };
 
-const formatTimeMs = (value: number | string): string => {
+export const formatTimeMs = (value: number | string): string => {
   if (!value) return '-';
   const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
   const pad = (n: number, len = 2) => String(n).padStart(len, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+};
+
+export const storeTimeSortValue = (value: number | string): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
 };
 
 const formatBody = (body: string): string => {
@@ -583,7 +590,7 @@ const MessagePageContent = ({
       dataIndex: 'storeTime',
       key: 'storeTime',
       width: 185,
-      sorter: (a, b) => new Date(a.storeTime).valueOf() - new Date(b.storeTime).valueOf(),
+      sorter: (a, b) => storeTimeSortValue(a.storeTime) - storeTimeSortValue(b.storeTime),
       render: (time: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14, whiteSpace: 'nowrap' }}>
           {formatTimeMs(time)}
