@@ -86,6 +86,20 @@ class ToolCatalogTest {
     }
 
     @Test
+    void rejectsMajorVersionThatOverflowsIntegerRange() {
+        Resource oversized = utf8Resource("""
+                version: 99999999999.0.0
+                minimumClientVersion: 99999999999.0.0
+                tools:
+                %s
+                """.formatted(tool("rmq.cluster.list", false)));
+
+        assertThatThrownBy(() -> ToolCatalog.load(oversized, canonicalSchema()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("major version is out of range");
+    }
+
+    @Test
     void rejectsIncompatibleMinimumClientMajorVersion() {
         Resource incompatible = utf8Resource("""
                 version: 2.0.0

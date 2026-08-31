@@ -147,7 +147,13 @@ public class ToolCatalog {
     }
 
     private static int majorVersion(String version) {
-        return Integer.parseInt(version.substring(0, version.indexOf('.')));
+        String major = version.substring(0, version.indexOf('.'));
+        try {
+            return Integer.parseInt(major);
+        } catch (NumberFormatException error) {
+            throw new IllegalStateException(
+                    "Tool catalog major version is out of range: " + version, error);
+        }
     }
 
     private static String sha256(byte[] bytes) {
