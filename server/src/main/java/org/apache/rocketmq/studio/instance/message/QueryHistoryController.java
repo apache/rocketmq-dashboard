@@ -11,10 +11,13 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.util.StringUtils;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/query-history")
@@ -50,6 +53,11 @@ public class QueryHistoryController {
     @GetMapping("/summary")
     public Result<QueryHistorySummaryVO> summary(@RequestParam(required = false) String clusterId) {
         return Result.ok(queryHistoryService.summarize(normalizeFilter(clusterId)));
+    }
+
+    @GetMapping("/messages/{id}/results")
+    public Result<List<MessageRecordVO>> messageQueryResults(@PathVariable long id) {
+        return Result.ok(queryHistoryService.getMessageQueryResults(id));
     }
 
     private void validatePage(int page, int pageSize) {

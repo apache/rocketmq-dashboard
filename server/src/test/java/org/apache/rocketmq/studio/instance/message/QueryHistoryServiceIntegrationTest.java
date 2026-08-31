@@ -50,7 +50,7 @@ class QueryHistoryServiceIntegrationTest {
         try {
             AuthenticatedUserContext.setUser(longUsername, true);
             queryHistoryService.recordMessageQuery("qh-cluster", "TOPIC", "qh-topic",
-                    null, null, null, null, null, 3);
+                    null, null, null, null, null, 3, null);
             queryHistoryService.recordTraceQuery("qh-cluster", "qh-msg-id", "qh-topic", 2, 1);
 
             PageResult<MessageQueryHistoryVO> messageHistory =

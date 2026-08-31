@@ -57,6 +57,7 @@ import {
   QueueBrowserResults,
 } from '../../components/QueueBrowser';
 import type { MessageQueryHistory, TraceQueryHistory } from '../../api/messageHistory';
+import { getMessageQueryResults } from '../../api/messageHistory';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import {
@@ -365,16 +366,9 @@ const MessagePageContent = ({
     await executeQuery(queryMode, currentQueryParams);
   };
 
-  const replayHistoryRecord = (record: MessageQueryHistory) => {
+  const replayHistoryRecord = async (record: MessageQueryHistory) => {
     const modeMap: Record<string, QueryMode> = { TOPIC: 'topic', KEY: 'key', MSG_ID: 'msgid' };
     const mode = modeMap[record.queryType] || 'topic';
-    const params: MessageQuery = {
-      topic: record.topic,
-      msgId: record.msgId || undefined,
-      key: record.messageKey || undefined,
-      startTime: record.startTime,
-      endTime: record.endTime,
-    };
     setQueryMode(mode);
     setSelectedTopic(record.topic);
     setKeyInput(record.messageKey || '');
@@ -383,7 +377,35 @@ const MessagePageContent = ({
       setDateRange([dayjs(record.startTime), dayjs(record.endTime)]);
     }
     setHistoryDrawerOpen(false);
-    void executeQuery(mode, params);
+    setQueryLoading(true);
+    setQueryError(null);
+    try {
+      const results = await getMessageQueryResults(record.id);
+      const mapped: MessageRecord[] = results.map((r) => ({
+        msgId: r.msgId,
+        topic: r.topic,
+        tag: r.tag || null,
+        key: r.key || null,
+        brokerName: r.brokerName || null,
+        queueId: r.queueId,
+        queueOffset: r.queueOffset,
+        body: '',
+        storeTime: r.storeTime,
+        bornHost: r.bornHost,
+        storeHost: r.storeHost,
+        properties: {},
+        size: r.size,
+      }));
+      setMessages(mapped);
+      setMessageTotal(mapped.length);
+      setMessagePage(1);
+      setResultMayBeTruncated(false);
+      message.success(`已加载历史查询结果，共 ${mapped.length} 条`);
+    } catch (error) {
+      setQueryError(getErrorMessage(error, '加载历史结果失败'));
+    } finally {
+      setQueryLoading(false);
+    }
   };
 
   const replayTraceRecord = (record: TraceQueryHistory) => {

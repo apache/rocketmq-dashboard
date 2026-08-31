@@ -44,8 +44,6 @@ import {
 import type { TableColumnsType } from 'antd';
 import {
   PlusOutlined,
-  UnorderedListOutlined,
-  AppstoreOutlined,
   SendOutlined,
   DeleteOutlined,
   EyeOutlined,
@@ -316,7 +314,6 @@ const TopicPage = () => {
   const [typeFilter, setTypeFilter] = useState('');
   const [tablePage, setTablePage] = useState(1);
   const [tablePageSize, setTablePageSize] = useState(20);
-  const [viewMode, setViewMode] = useState<string>('列表');
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
@@ -787,76 +784,6 @@ const TopicPage = () => {
     );
   };
 
-  // ─── Card view ────────────────────────────────────────────────
-  const renderCardView = () => (
-    <Row gutter={[16, 16]}>
-      {filteredTopics.map((topic) => {
-        const typeInfo = TOPIC_TYPE_MAP[topic.type];
-        const cluster = CLUSTER_NAME_MAP[topic.clusterId];
-        const clusterType = cluster ? CLUSTER_TYPE_MAP[cluster.type] : null;
-
-        return (
-          <Col xs={24} sm={12} lg={8} key={topic.name}>
-            <Card
-              hoverable
-              size="small"
-              onClick={() => void openDetail(topic)}
-              styles={{ body: { padding: '16px 20px' } }}
-              style={{ borderRadius: 8, border: '1px solid #f0f0f0' }}
-            >
-              {/* Header row: name + type badge */}
-              <Flex justify="space-between" align="flex-start" style={{ marginBottom: 12 }}>
-                <Text strong style={{ fontSize: 15 }}>
-                  {topic.name}
-                </Text>
-                <Tag color={typeInfo?.color}>
-                  {typeInfo?.labelKey ? t(typeInfo.labelKey) : topic.type}
-                </Tag>
-              </Flex>
-
-              {/* Cluster tags */}
-              <Space size={4} style={{ marginBottom: 16 }}>
-                {clusterType && (
-                  <Tag color={clusterType.color} style={{ fontSize: 14 }}>
-                    {t(clusterType.labelKey)}
-                  </Tag>
-                )}
-              </Space>
-
-              {/* Key stats */}
-              <Row gutter={16}>
-                <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
-                    今日消息量
-                  </Text>
-                  <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
-                    {formatNumber(topic.messageCount)}
-                  </Text>
-                </Col>
-                <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
-                    TPS
-                  </Text>
-                  <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
-                    {formatNumber(topic.tps)}
-                  </Text>
-                </Col>
-                <Col span={8}>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block' }}>
-                    消费者组
-                  </Text>
-                  <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
-                    {topic.consumerGroupCount}
-                  </Text>
-                </Col>
-              </Row>
-            </Card>
-          </Col>
-        );
-      })}
-    </Row>
-  );
-
   // ─── Create modal submit ──────────────────────────────────────
   const handleCreate = async () => {
     if (createInFlightRef.current) return;
@@ -1112,14 +1039,6 @@ const TopicPage = () => {
             options={TYPE_OPTIONS}
             style={{ width: 140 }}
           />
-          <Segmented
-            value={viewMode}
-            onChange={(v) => setViewMode(v as string)}
-            options={[
-              { label: '列表', value: '列表', icon: <UnorderedListOutlined /> },
-              { label: '卡片', value: '卡片', icon: <AppstoreOutlined /> },
-            ]}
-          />
         </Space>
         <Space>
           {selectedRowKeys.length > 0 && (
@@ -1209,39 +1128,35 @@ const TopicPage = () => {
       </Flex>
 
       {/* ── Content ───────────────────────────────────────────── */}
-      {viewMode === '列表' ? (
-        <Card styles={{ body: { padding: 0 } }} style={{ borderRadius: 8 }}>
-          <Table<Topic>
-            columns={columns}
-            dataSource={filteredTopics}
-            loading={loading}
-            rowKey="name"
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys(keys),
-            }}
-            pagination={{
-              current: currentTablePage,
-              pageSize: tablePageSize,
-              total: totalTopics,
-              showSizeChanger: true,
-              showTotal: (t) => `共 ${t} 条`,
-              onChange: (page, pageSize) => {
-                setTablePage(page);
-                setTablePageSize(pageSize);
-              },
-            }}
-            size="small"
-            scroll={{ x: tableScrollX(columns, { selection: true }) }}
-            onRow={(record) => ({
-              onClick: () => void openDetail(record),
-              style: { cursor: 'pointer' },
-            })}
-          />
-        </Card>
-      ) : (
-        renderCardView()
-      )}
+      <Card styles={{ body: { padding: 0 } }} style={{ borderRadius: 8 }}>
+        <Table<Topic>
+          columns={columns}
+          dataSource={filteredTopics}
+          loading={loading}
+          rowKey="name"
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+          }}
+          pagination={{
+            current: currentTablePage,
+            pageSize: tablePageSize,
+            total: totalTopics,
+            showSizeChanger: true,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (page, pageSize) => {
+              setTablePage(page);
+              setTablePageSize(pageSize);
+            },
+          }}
+          size="small"
+          scroll={{ x: tableScrollX(columns, { selection: true }) }}
+          onRow={(record) => ({
+            onClick: () => void openDetail(record),
+            style: { cursor: 'pointer' },
+          })}
+        />
+      </Card>
 
       {/* ── Detail Modal ──────────────────────────────────────── */}
       <Modal

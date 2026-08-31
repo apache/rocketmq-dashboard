@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.message;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
@@ -47,7 +48,7 @@ class QueryHistoryServiceTest {
     private final QueryHistoryProperties properties = new QueryHistoryProperties();
     private final Clock clock = Clock.fixed(Instant.parse("2026-08-05T12:00:00Z"), ZoneOffset.UTC);
     private final QueryHistoryService service = new QueryHistoryService(
-            messageQueryMapper, traceQueryMapper, properties, clock);
+            messageQueryMapper, traceQueryMapper, properties, clock, new ObjectMapper());
 
     @AfterEach
     void clearUserContext() {
@@ -59,7 +60,7 @@ class QueryHistoryServiceTest {
         AuthenticatedUserContext.setUsername("alice");
 
         service.recordMessageQuery("cluster-a", "TOPIC", "orders", null, "tag-a", "key-a",
-                1L, 2L, 3);
+                1L, 2L, 3, null);
 
         ArgumentCaptor<RmqMessageQuery> captor = ArgumentCaptor.forClass(RmqMessageQuery.class);
         verify(messageQueryMapper).insert(captor.capture());

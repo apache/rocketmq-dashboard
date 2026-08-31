@@ -159,29 +159,11 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
 
 const buildConsumerGroupCsv = (groups: ConsumerGroup[]) => buildCsv(GROUP_EXPORT_COLUMNS, groups);
 
-const visibleConsumerGroups = (
-  groups: ConsumerGroup[],
-  modeFilter: string,
-  sortKey: string,
-): ConsumerGroup[] => {
+const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): ConsumerGroup[] => {
   let data = groups;
 
   if (modeFilter !== 'ALL') {
     data = data.filter((group) => group.subscriptionMode === modeFilter);
-  }
-
-  if (sortKey === 'lag_desc') {
-    // An unknown lag (-1) is not a measurable backlog, so it sorts after
-    // every group with a known backlog instead of first.
-    data = [...data].sort((left, right) => {
-      const leftKnown = isLagAvailable(left.totalLag);
-      const rightKnown = isLagAvailable(right.totalLag);
-      if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
-      if (!leftKnown) return 0;
-      return right.totalLag - left.totalLag;
-    });
-  } else if (sortKey === 'name_asc') {
-    data = [...data].sort((left, right) => left.name.localeCompare(right.name));
   }
 
   return data;
@@ -233,7 +215,6 @@ const ConsumerPageContent = ({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [modeFilter, setModeFilter] = useState<string>('ALL');
-  const [sortKey, setSortKey] = useState<string>('name_asc');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
@@ -395,8 +376,8 @@ const ConsumerPageContent = ({
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
-    return visibleConsumerGroups(groups, modeFilter, sortKey);
-  }, [groups, modeFilter, sortKey]);
+    return visibleConsumerGroups(groups, modeFilter);
+  }, [groups, modeFilter]);
 
   const handleExport = async () => {
     setExporting(true);
@@ -405,7 +386,7 @@ const ConsumerPageContent = ({
         instanceId: selectedInstanceId || undefined,
         search: search.trim() || undefined,
       });
-      const exportGroups = visibleConsumerGroups(allGroups, modeFilter, sortKey);
+      const exportGroups = visibleConsumerGroups(allGroups, modeFilter);
       downloadCsv(
         `rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`,
         buildConsumerGroupCsv(exportGroups),
@@ -1097,15 +1078,6 @@ const ConsumerPageContent = ({
               { value: 'ALL', label: '全部模式' },
               { value: 'Push', label: 'Push' },
               { value: 'Pop', label: 'Pop' },
-            ]}
-          />
-          <Select
-            value={sortKey}
-            onChange={setSortKey}
-            style={{ width: 160 }}
-            options={[
-              { value: 'lag_desc', label: '堆积量降序' },
-              { value: 'name_asc', label: '名称升序' },
             ]}
           />
         </Space>
