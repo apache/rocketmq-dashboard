@@ -22,7 +22,7 @@ import {
   listAlertSilences,
   listSystemAlertsPage,
 } from '../../../services/opsService';
-import SystemAlertsPage from '../systemAlerts';
+import SystemAlertsPage, { isLocalDateTimeValue } from '../systemAlerts';
 
 vi.mock('../../../services/opsService', () => ({
   acknowledgeAlert: vi.fn(),
@@ -485,4 +485,34 @@ describe('SystemAlertsPage', () => {
       );
     });
   });
+
+  it('ignores unparseable time filter values instead of crashing the query', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderPage();
+
+    const startFilter = await screen.findByLabelText('Filter by start time');
+    fireEvent.change(startFilter, { target: { value: '2026-08-10T01:00' } });
+    await waitFor(() => {
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: expect.any(String) }),
+      );
+    });
+
+    fireEvent.change(startFilter, { target: { value: 'not-a-date' } });
+    await waitFor(() => {
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: undefined, to: undefined }),
+      );
+    });
+    expect(screen.getByText('Broker unavailable')).toBeInTheDocument();
+  });
+
+  it('validates local datetime filter values', () => {
+    expect(isLocalDateTimeValue('2026-08-10T01:00')).toBe(true);
+    expect(isLocalDateTimeValue('not-a-date')).toBe(false);
+    expect(isLocalDateTimeValue('')).toBe(false);
+    expect(isLocalDateTimeValue('2026-1-2T03:04')).toBe(false);
+    expect(isLocalDateTimeValue('2026-13-01T10:00')).toBe(false);
+  });
+
 });

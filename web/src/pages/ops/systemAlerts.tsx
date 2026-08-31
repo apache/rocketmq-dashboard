@@ -90,6 +90,9 @@ const parseSilenceLabels = (
   return labels;
 };
 
+export const isLocalDateTimeValue = (value: string): boolean =>
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) &&
+  !Number.isNaN(new Date(`${value}:00`).getTime());
 const localDateTimeToUtc = (value: string) => new Date(`${value}:00`).toISOString();
 const localDateTimeToUtcDatabaseValue = (value: string) =>
   new Date(`${value}:00`).toISOString().replace('Z', '');
@@ -175,8 +178,14 @@ const SystemAlertsPage = () => {
       instanceId: instanceFilter.trim() || undefined,
       labelKey: labelKey && labelValue ? labelKey : undefined,
       labelValue: labelKey && labelValue ? labelValue : undefined,
-      from: fromFilter ? localDateTimeToUtcDatabaseValue(fromFilter) : undefined,
-      to: toFilter ? localDateTimeToUtcDatabaseValue(toFilter) : undefined,
+      from:
+        fromFilter && isLocalDateTimeValue(fromFilter)
+          ? localDateTimeToUtcDatabaseValue(fromFilter)
+          : undefined,
+      to:
+        toFilter && isLocalDateTimeValue(toFilter)
+          ? localDateTimeToUtcDatabaseValue(toFilter)
+          : undefined,
     };
   };
 
