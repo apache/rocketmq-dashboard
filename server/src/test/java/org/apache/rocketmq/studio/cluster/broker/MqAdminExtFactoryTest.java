@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -138,14 +139,16 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
-    void executeShouldNotShareClientsAcrossLegacyHookInstances() throws Exception {
+    void executeShouldRejectHookWithoutStableIdentity() throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         RecordingFactory factory = new RecordingFactory(admin);
 
-        factory.execute("10.0.0.1:9876", mock(RPCHook.class), ignored -> null);
-        factory.execute("10.0.0.1:9876", mock(RPCHook.class), ignored -> null);
+        assertThatThrownBy(() -> factory.execute("10.0.0.1:9876", mock(RPCHook.class), ignored -> null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("identity-qualified");
 
-        assertThat(factory.created.get()).isEqualTo(2);
+        assertThat(factory.created.get()).isZero();
+        verify(admin, never()).start();
     }
 
     @Test
