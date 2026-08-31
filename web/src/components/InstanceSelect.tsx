@@ -32,6 +32,15 @@ interface InstanceSelectProps {
 }
 
 /**
+ * 下拉筛选：大小写不敏感，且对搜索串与 label 两侧做 String() 归一化，
+ * 避免非字符串 label 或缺失的搜索值在 Select 过滤路径中抛错。
+ */
+export const matchesInstanceOption = (
+  input: string | null | undefined,
+  option?: { label?: unknown } | null,
+) => String(option?.label ?? '').toLowerCase().includes(String(input ?? '').toLowerCase());
+
+/**
  * 实例维度页面统一的实例选择器：支持输入并按实例 ID 筛选（showSearch），
  * 选中后由页面通过 onChange 切换路由实例。
  */
@@ -60,11 +69,7 @@ export function InstanceSelect({
       }}
       options={options}
       optionFilterProp="label"
-      filterOption={(input, option) =>
-        String(option?.label ?? '')
-          .toLowerCase()
-          .includes(input.toLowerCase())
-      }
+      filterOption={(input, option) => matchesInstanceOption(input, option)}
       notFoundContent="暂无匹配实例"
       style={style ?? { width: 220 }}
     />
