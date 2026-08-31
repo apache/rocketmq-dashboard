@@ -473,6 +473,7 @@ const AiPage = () => {
   const conversationIdRef = useRef<string | null>(history.activeConversationId);
   const chatInFlightRef = useRef(false);
   const toolLoadRequestRef = useRef(0);
+  const toolExecuteRequestRef = useRef(0);
   const consumedDraftRef = useRef(false);
   const pendingAutoSendRef = useRef<{
     prompt: string;
@@ -745,18 +746,22 @@ const AiPage = () => {
   const selectTool = useCallback(
     (name: string, availableTools: McpTool[] = tools, clusterId: string = selectedClusterId) => {
       const tool = availableTools.find((item) => item.name === name);
+      toolExecuteRequestRef.current += 1;
       setSelectedToolName(name);
       setToolInput(tool ? buildToolInputTemplate(tool, clusterId) : '{}');
       setToolResult(undefined);
+      setToolExecuting(false);
     },
-    [selectedClusterId, setSelectedToolName, setToolInput, setToolResult, tools],
+    [selectedClusterId, setSelectedToolName, setToolInput, setToolResult, setToolExecuting, tools],
   );
 
   const loadTools = useCallback(
     async (clusterId: string) => {
       const requestId = ++toolLoadRequestRef.current;
+      toolExecuteRequestRef.current += 1;
       setSelectedToolName('');
       setToolResult(undefined);
+      setToolExecuting(false);
       setToolsLoading(true);
       try {
         const availableTools = await listTools(clusterId || undefined);
@@ -838,15 +843,19 @@ const AiPage = () => {
       return;
     }
 
+    const executionId = ++toolExecuteRequestRef.current;
     setToolExecuting(true);
     setToolResult(undefined);
     try {
-      setToolResult(await executeTool(selectedToolName, parsedInput));
+      const result = await executeTool(selectedToolName, parsedInput);
+      if (executionId !== toolExecuteRequestRef.current) return;
+      setToolResult(result);
       message.success('工具执行成功');
     } catch (error) {
+      if (executionId !== toolExecuteRequestRef.current) return;
       message.error(error instanceof Error ? error.message : '工具执行失败');
     } finally {
-      setToolExecuting(false);
+      if (executionId === toolExecuteRequestRef.current) setToolExecuting(false);
     }
   }, [selectedToolName, toolExecuting, toolInput]);
 
