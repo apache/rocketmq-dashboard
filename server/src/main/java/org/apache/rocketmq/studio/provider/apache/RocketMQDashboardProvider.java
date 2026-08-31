@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -36,6 +37,8 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
@@ -65,16 +68,117 @@ public class RocketMQDashboardProvider implements DashboardProvider {
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final InstanceRepository instanceRepository;
 
     @Override
     public DashboardDataVO getDashboardData() {
-        String namesrvAddr = properties.getNamesrvAddr();
-        if (!StringUtils.hasText(namesrvAddr)) {
-            log.warn("NameServer address not configured, returning empty dashboard");
-            return unavailableTopologyDashboard();
+        List<InstanceVO> apacheInstances = instanceRepository.findAll().stream()
+                .filter(instance -> instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE)
+                .sorted(Comparator.comparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        if (apacheInstances.isEmpty()) {
+            String namesrvAddr = properties.getNamesrvAddr();
+            if (!StringUtils.hasText(namesrvAddr)) {
+                log.warn("NameServer address not configured, returning empty dashboard");
+                return unavailableTopologyDashboard();
+            }
+            return adminFactory.execute(namesrvAddr, null,
+                    admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER, countEndpoints(namesrvAddr)));
         }
-        return adminFactory.execute(namesrvAddr, null,
-                admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER, countEndpoints(namesrvAddr)));
+        return aggregateInstances(apacheInstances);
+    }
+
+    /**
+     * Aggregates every registered Apache instance into one overview. Instances whose endpoint
+     * cannot be reached contribute a warning row instead of failing the whole dashboard.
+     */
+    private DashboardDataVO aggregateInstances(List<InstanceVO> instances) {
+        int totalClusters = 0;
+        int healthyClusters = 0;
+        int totalBrokers = 0;
+        int totalNameServers = 0;
+        int totalTopics = 0;
+        int totalGroups = 0;
+        long tpsIn = 0;
+        long tpsOut = 0;
+        long messagesToday = 0;
+        List<ClusterOverviewVO> clusters = new ArrayList<>();
+
+        for (InstanceVO instance : instances) {
+            DashboardDataVO part;
+            try {
+                part = getDashboardData(instance.getName());
+            } catch (Exception e) {
+                log.warn("Failed to collect dashboard data for instance {}: {}",
+                        instance.getName(), e.getMessage());
+                clusters.add(unavailableInstanceCluster(instance));
+                totalClusters++;
+                continue;
+            }
+            DashboardStatsVO stats = part.getStats();
+            totalClusters += stats.getTotalClusters();
+            healthyClusters += stats.getHealthyClusters();
+            totalBrokers += stats.getTotalBrokers();
+            totalNameServers += stats.getTotalNameServers() == null ? 0 : stats.getTotalNameServers();
+            totalTopics += stats.getTotalTopics();
+            totalGroups += stats.getTotalConsumerGroups();
+            tpsIn += stats.getTpsIn();
+            tpsOut += stats.getTpsOut();
+            messagesToday += stats.getTotalMessagesToday();
+            for (ClusterOverviewVO cluster : part.getClusters()) {
+                clusters.add(scopeClusterToInstance(instance.getName(), cluster));
+            }
+        }
+
+        DashboardStatsVO stats = DashboardStatsVO.builder()
+                .totalClusters(totalClusters)
+                .healthyClusters(healthyClusters)
+                .totalBrokers(totalBrokers)
+                .totalProxies(null)
+                .totalNameServers(totalNameServers)
+                .totalTopics(totalTopics)
+                .totalConsumerGroups(totalGroups)
+                .totalMessagesToday(messagesToday)
+                .messagesPerSecond(tpsIn + tpsOut)
+                .tpsIn(tpsIn)
+                .tpsOut(tpsOut)
+                .build();
+        return DashboardDataVO.builder().stats(stats).clusters(clusters).build();
+    }
+
+    private ClusterOverviewVO scopeClusterToInstance(String instanceName, ClusterOverviewVO cluster) {
+        return ClusterOverviewVO.builder()
+                .id(instanceName + "/" + cluster.getId())
+                .name(instanceName + " / " + cluster.getName())
+                .type(cluster.getType())
+                .status(cluster.getStatus())
+                .brokers(cluster.getBrokers())
+                .proxies(cluster.getProxies())
+                .topics(cluster.getTopics())
+                .groups(cluster.getGroups())
+                .tpsIn(cluster.getTpsIn())
+                .tpsOut(cluster.getTpsOut())
+                .version(cluster.getVersion())
+                .throughput(cluster.getThroughput())
+                .build();
+    }
+
+    private ClusterOverviewVO unavailableInstanceCluster(InstanceVO instance) {
+        ClusterType clusterType = clusterTypeFor(instance);
+        return ClusterOverviewVO.builder()
+                .id(instance.getName())
+                .name(instance.getName())
+                .type(clusterType)
+                .status(ClusterStatus.warning)
+                .brokers(0)
+                .proxies(clusterType == ClusterType.V4_DIRECT ? 0 : null)
+                .topics(0)
+                .groups(0)
+                .tpsIn(0)
+                .tpsOut(0)
+                .version("unknown")
+                .throughput(List.of())
+                .build();
     }
 
     @Override

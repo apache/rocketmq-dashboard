@@ -23,6 +23,8 @@ public enum SemanticMetric {
     THROUGHPUT_OUT("throughput_out", "Throughput Out", "bytes/s"),
     CONSUMER_LAG_MESSAGES("consumer_lag_messages", "Consumer Lag", "messages"),
     CONSUMER_LAG_LATENCY("consumer_lag_latency", "Consumer Lag Latency", "ms"),
+    TOPIC_NUMBER("topic_number", "Topic Count", ""),
+    CONSUMER_GROUP_NUMBER("consumer_group_number", "Consumer Group Count", ""),
     BROKER_HEALTH("broker_health", "Broker Health", "up");
 
     private final String key;

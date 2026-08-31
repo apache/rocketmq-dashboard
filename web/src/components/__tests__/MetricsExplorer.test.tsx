@@ -208,6 +208,83 @@ describe('MetricsExplorer', () => {
     );
   });
 
+  it('renders one panel per metric in the selected profile', async () => {
+    vi.mocked(listMetricProfiles).mockResolvedValue([
+      {
+        id: 'rocketmq5-native',
+        name: 'RocketMQ 5.x Native',
+        description: 'RocketMQ 5.x native metrics',
+        metrics: [
+          {
+            semanticMetric: 'message_in_tps',
+            name: 'Message In TPS',
+            unit: 'messages/s',
+            prometheusMetric: 'rocketmq_messages_in_total',
+            promql: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+            labels: ['cluster'],
+          },
+          {
+            semanticMetric: 'consumer_lag_messages',
+            name: 'Consumer Lag Messages',
+            unit: 'messages',
+            prometheusMetric: 'rocketmq_consumer_lag_messages',
+            promql: 'sum(rocketmq_consumer_lag_messages) by (cluster)',
+            labels: ['cluster'],
+          },
+        ],
+      },
+    ]);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Message In TPS')).toBeInTheDocument();
+    expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
+    expect(queryMetrics).toHaveBeenCalledWith({
+      metric: 'sum(rocketmq_consumer_lag_messages) by (cluster)',
+      start: 1_799_996_400,
+      end: 1_800_000_000,
+      step: '30s',
+    });
+  });
+
+  it('caps the plotted series and reports the hidden count', async () => {
+    const manySeries = Array.from({ length: 14 }, (_, index) => ({
+      labels: { cluster: 'prod', node_id: `broker-${index}` },
+      values: [
+        { timestamp: 1_799_996_400, value: String(index) },
+        { timestamp: 1_800_000_000, value: String(index + 1) },
+      ],
+      histograms: [],
+    }));
+    vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: manySeries });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText(/另有 4 条序列未显示/)).toBeInTheDocument();
+    const chart = screen.getByRole('img', { name: 'Message In TPS time series' });
+    expect(chart.querySelectorAll('polyline')).toHaveLength(10);
+  });
+
+  it('runs a custom PromQL expression from the query box', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: /查\s*询/ }));
+
+    await waitFor(() =>
+      expect(queryMetrics).toHaveBeenCalledWith({
+        metric: 'sum(rocketmq_topic_number)',
+        start: 1_799_996_400,
+        end: 1_800_000_000,
+        step: '30s',
+      }),
+    );
+    expect(await screen.findAllByText('cluster=prod / node_id=broker-a')).not.toHaveLength(0);
+  });
+
   it('queries the first metric when the version profile changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
@@ -265,7 +342,7 @@ describe('MetricsExplorer', () => {
 
     expect(await screen.findByText('Prometheus 查询失败')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: '指标模板' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '刷新指标' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '刷新全部面板' })).toBeInTheDocument();
   });
 
   it('shows the actionable message returned by the metrics API', async () => {
