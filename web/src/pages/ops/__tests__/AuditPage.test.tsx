@@ -22,7 +22,7 @@ import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as opsService from '../../../services/opsService';
-import AuditPage from '../audit';
+import AuditPage, { auditTimestamp } from '../audit';
 
 vi.mock('../../../services/opsService', () => ({
   cleanupAuditLogs: vi.fn(),
@@ -45,6 +45,17 @@ const deferred = <T,>() => {
   });
   return { promise, resolve };
 };
+
+describe('auditTimestamp', () => {
+  it('maps parseable timestamps to epoch milliseconds', () => {
+    expect(auditTimestamp('2026-07-03 09:45:12')).toBe(new Date('2026-07-03 09:45:12').getTime());
+  });
+
+  it('maps unparseable timestamps to zero so the column sorter stays deterministic', () => {
+    expect(auditTimestamp('not-a-timestamp')).toBe(0);
+    expect(auditTimestamp('')).toBe(0);
+  });
+});
 
 describe('Audit page', () => {
   let createObjectURL: ReturnType<typeof vi.fn>;

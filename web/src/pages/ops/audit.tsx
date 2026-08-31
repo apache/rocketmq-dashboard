@@ -58,6 +58,11 @@ const emptyFilterOptions: AuditFilterOptions = {
 
 const formatFilterLabel = (value: string) => value.trim().replace(/_/g, ' ');
 
+export const auditTimestamp = (value: string): number => {
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
 const resultColor = (result: string) => {
   const normalized = result.toUpperCase();
   if (normalized === 'SUCCESS') return 'green';
@@ -232,7 +237,7 @@ const AuditPage: React.FC = () => {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       width: 180,
-      sorter: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      sorter: (a, b) => auditTimestamp(a.timestamp) - auditTimestamp(b.timestamp),
       defaultSortOrder: 'descend',
       render: (timestamp: string) => formatDateTime(timestamp),
     },

@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
+  cleanupAuditLogs,
   createAlertRule,
   exportAuditLogs,
   getAuditFilterOptions,
@@ -233,4 +234,35 @@ describe('ops service mock data', () => {
         '"prod-cn","removed ""topic"", safely","SUCCESS","\'=denied"',
     );
   });
+
+  it('keeps audit records with unparseable timestamps when cleaning up', async () => {
+    const oldRecord = {
+      id: 90010,
+      timestamp: '2000-01-01 00:00:00',
+      operator: 'admin',
+      operationType: 'CREATE_TOPIC',
+      resourceType: 'TOPIC',
+      target: 'cleanup-old-topic',
+      clusterId: 'prod-cn',
+      detail: 'ancient record',
+      result: 'SUCCESS',
+    } as AuditRecord;
+    const unknownRecord = {
+      ...oldRecord,
+      id: 90011,
+      timestamp: 'not-a-timestamp',
+      target: 'cleanup-unknown-topic',
+    } as AuditRecord;
+    insertedRecords.push(oldRecord, unknownRecord);
+    auditRecords.push(oldRecord, unknownRecord);
+
+    const deleted = await cleanupAuditLogs(7);
+
+    expect(deleted).toBeGreaterThan(0);
+    const after = await listAuditRecords({ page: 1, pageSize: 500 });
+    const ids = after.items.map((item) => item.id);
+    expect(ids).not.toContain(90010);
+    expect(ids).toContain(90011);
+  });
+
 });

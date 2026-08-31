@@ -477,7 +477,10 @@ export async function exportAuditLogs(params: AuditFilter = {}): Promise<string>
 export async function cleanupAuditLogs(beforeDays: number): Promise<number> {
   if (isMockMode()) {
     const cutoff = new Date(Date.now() - beforeDays * 24 * 60 * 60 * 1000);
-    const remaining = auditRecordsState.filter((record) => new Date(record.timestamp) >= cutoff);
+    const remaining = auditRecordsState.filter((record) => {
+      const recordedAt = new Date(record.timestamp);
+      return Number.isNaN(recordedAt.getTime()) || recordedAt >= cutoff;
+    });
     const deleted = auditRecordsState.length - remaining.length;
     auditRecordsState = remaining;
     return deleted;
