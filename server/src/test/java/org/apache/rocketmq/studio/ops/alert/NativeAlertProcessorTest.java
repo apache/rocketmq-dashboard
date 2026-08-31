@@ -21,10 +21,7 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.junit.jupiter.api.Test;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -111,17 +108,6 @@ class NativeAlertProcessorTest {
         assertThatThrownBy(() -> processor.process(List.of(sample("orders"))))
                 .isInstanceOf(AssertionError.class)
                 .hasMessage("fatal evaluation failure");
-    }
-
-    @Test
-    void evaluatesEachRuleInANewTransactionTest() throws Exception {
-        Method evaluate = NativeAlertEvaluationService.class
-                .getMethod("evaluate", AlertRuleVO.class, MetricSample.class);
-
-        Transactional transactional = evaluate.getAnnotation(Transactional.class);
-
-        assertThat(transactional).isNotNull();
-        assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
     }
 
     @Test

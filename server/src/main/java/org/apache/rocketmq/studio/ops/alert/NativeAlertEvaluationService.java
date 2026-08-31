@@ -96,6 +96,7 @@ public class NativeAlertEvaluationService {
         }
     }
 
+    /** Reads the optional snapshot window inside this evaluation's independent transaction. */
     private MetricSample aggregate(AlertRuleVO rule, MetricSample sample) {
         if (sample.availability() != MetricAvailability.AVAILABLE || rule.getWindowSeconds() <= 0) {
             return sample;
