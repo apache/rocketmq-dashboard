@@ -34,4 +34,6 @@ public class PrometheusProperties {
     private String username;
     private String password;
     private String bearerToken;
+    /** Metric profile id listed first by the profile catalog; defaults to the 5.x native profile. */
+    private String profile = "rocketmq5-native";
 }

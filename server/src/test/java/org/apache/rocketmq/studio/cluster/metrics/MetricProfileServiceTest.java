@@ -28,7 +28,25 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class MetricProfileServiceTest {
 
-    private final MetricProfileService service = new MetricProfileService();
+    private final MetricProfileService service = new MetricProfileService(new PrometheusProperties());
+
+    @Test
+    void listProfilesShouldDefaultToRocketmq5NativeFirstTest() {
+        assertThat(service.listProfiles().stream().map(MetricProfileVO::getId).toList())
+                .containsExactly("rocketmq5-native", "rocketmq4-exporter");
+    }
+
+    @Test
+    void listProfilesShouldHonorConfiguredDefaultProfileTest() {
+        PrometheusProperties properties = new PrometheusProperties();
+        properties.setProfile("rocketmq4-exporter");
+
+        List<String> ids = new MetricProfileService(properties).listProfiles().stream()
+                .map(MetricProfileVO::getId)
+                .toList();
+
+        assertThat(ids).containsExactly("rocketmq4-exporter", "rocketmq5-native");
+    }
 
     @Test
     void listProfilesShouldExposeRocketmq4And5Mappings() {
@@ -36,10 +54,37 @@ class MetricProfileServiceTest {
                 .collect(Collectors.toMap(MetricProfileVO::getId, Function.identity()));
 
         assertThat(profiles.keySet()).containsExactlyInAnyOrder("rocketmq4-exporter", "rocketmq5-native");
+        // The standalone 4.x exporter exposes no topic/group counts, so its mapping
+        // set stays at the legacy seven metrics while the 5.x profile covers all nine.
         assertThat(semanticMetrics(profiles.get("rocketmq4-exporter")))
-                .containsExactlyInAnyOrderElementsOf(allSemanticMetricKeys());
+                .containsExactlyInAnyOrderElementsOf(legacySemanticMetricKeys());
         assertThat(semanticMetrics(profiles.get("rocketmq5-native")))
                 .containsExactlyInAnyOrderElementsOf(allSemanticMetricKeys());
+    }
+
+    @Test
+    void rocketmq5ProfileShouldOrderPanelsTrafficLagCountsHealthTest() {
+        MetricProfileVO profile = findProfile("rocketmq5-native");
+
+        assertThat(profile.getMetrics().stream()
+                .map(MetricProfileVO.MetricMappingVO::getSemanticMetric)
+                .toList())
+                .containsExactly(
+                        "message_in_tps", "message_out_tps",
+                        "throughput_in", "throughput_out",
+                        "consumer_lag_messages", "consumer_lag_latency",
+                        "topic_number", "consumer_group_number",
+                        "broker_health");
+    }
+
+    @Test
+    void rocketmq5CountsShouldUseMaxToAvoidDoubleCountingTest() {
+        MetricProfileVO profile = findProfile("rocketmq5-native");
+
+        assertThat(mapping(profile, SemanticMetric.TOPIC_NUMBER).getPromql())
+                .isEqualTo("max(rocketmq_topic_number) by (cluster)");
+        assertThat(mapping(profile, SemanticMetric.CONSUMER_GROUP_NUMBER).getPromql())
+                .isEqualTo("max(rocketmq_consumer_group_number) by (cluster)");
     }
 
     @Test
@@ -54,7 +99,18 @@ class MetricProfileServiceTest {
         assertThat(mapping(profile, SemanticMetric.CONSUMER_LAG_MESSAGES).getPrometheusMetric())
                 .isEqualTo("rocketmq_consumer_lag_messages");
         assertThat(mapping(profile, SemanticMetric.BROKER_HEALTH).getPrometheusMetric())
-                .isEqualTo("rocketmq_processor_watermark");
+                .isEqualTo("up");
+    }
+
+    @Test
+    void rocketmq5LagLatencyShouldUseUnitSuffixedMetricNameTest() {
+        MetricProfileVO profile = findProfile("rocketmq5-native");
+
+        assertThat(mapping(profile, SemanticMetric.CONSUMER_LAG_LATENCY))
+                .extracting(MetricProfileVO.MetricMappingVO::getPrometheusMetric,
+                        MetricProfileVO.MetricMappingVO::getPromql)
+                .containsExactly("rocketmq_consumer_lag_latency_milliseconds",
+                        "max(rocketmq_consumer_lag_latency_milliseconds) by (cluster, topic, consumer_group)");
     }
 
     @Test
@@ -125,6 +181,19 @@ class MetricProfileServiceTest {
 
     private List<String> allSemanticMetricKeys() {
         return List.of(SemanticMetric.values()).stream()
+                .map(SemanticMetric::getKey)
+                .toList();
+    }
+
+    private List<String> legacySemanticMetricKeys() {
+        return List.of(
+                SemanticMetric.MESSAGE_IN_TPS,
+                SemanticMetric.MESSAGE_OUT_TPS,
+                SemanticMetric.THROUGHPUT_IN,
+                SemanticMetric.THROUGHPUT_OUT,
+                SemanticMetric.CONSUMER_LAG_MESSAGES,
+                SemanticMetric.CONSUMER_LAG_LATENCY,
+                SemanticMetric.BROKER_HEALTH).stream()
                 .map(SemanticMetric::getKey)
                 .toList();
     }
