@@ -130,6 +130,25 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void completeShouldAcceptUppercaseSchemeApiBaseRegardlessOfHostLocale() {
+        AtomicReference<String> requestPath = new AtomicReference<>();
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestPath.set(exchange.getRequestURI().getPath());
+            respond(exchange, 200, """
+                    {"choices":[{"message":{"content":"upper scheme ok"}}]}
+                    """, "application/json");
+        });
+        LlmConfigVO config = config("openai", "sk-test");
+        String host = "127.0.0.1:" + server.getAddress().getPort();
+        config.setApiBase("HTTP://" + host + "/v1");
+
+        String result = client.complete(config, "hello", null);
+
+        assertThat(result).isEqualTo("upper scheme ok");
+        assertThat(requestPath.get()).isEqualTo("/v1/chat/completions");
+    }
+
+    @Test
     void streamShouldParseOpenAiCompatibleSseDeltas() {
         AtomicReference<JsonNode> requestBody = new AtomicReference<>();
         server.createContext("/v1/chat/completions", exchange -> {
