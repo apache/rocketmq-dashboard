@@ -178,8 +178,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
 
     private QueryWrapper<RmqSystemAlert> alertQuery(String level) {
         return new QueryWrapper<RmqSystemAlert>()
-                .eq(StringUtils.hasText(level), "level",
-                        level == null ? null : level.toLowerCase(Locale.ROOT))
+                .eq(StringUtils.hasText(level), "level", normalizeLevel(level))
                 .orderByDesc("time", "id");
     }
 
