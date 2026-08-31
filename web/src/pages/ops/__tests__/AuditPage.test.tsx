@@ -69,8 +69,8 @@ describe('Audit page', () => {
 
   beforeEach(() => {
     vi.mocked(opsService.getAuditFilterOptions).mockResolvedValue({
-      operationTypes: ['CREATE_TOPIC', 'RESET_OFFSET'],
-      resourceTypes: ['CONSUMER_GROUP', 'TOPIC'],
+      operationTypes: ['ADD_PROXY_ADDRESS', 'CREATE_TOPIC', 'RESET_OFFSET'],
+      resourceTypes: ['CONSUMER_GROUP', 'PROXY', 'TOPIC'],
       clusterIds: ['prod-cn', 'prod-sh'],
       results: ['FAILED', 'PARTIAL', 'SUCCESS'],
     });
@@ -145,6 +145,36 @@ describe('Audit page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:audit');
   });
 
+  it('renders control-plane audit labels and parsed detail values', async () => {
+    vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
+      items: [
+        {
+          id: 2,
+          timestamp: '2026-08-01 11:00:00',
+          operator: 'ops-chen',
+          operationType: 'RELOAD_PROXY_CONFIG',
+          resourceType: 'PROXY',
+          target: '10.0.30.10:8081',
+          clusterId: 'prod-cn',
+          detail: 'topic=orders, timestamp=1784246400000',
+          result: 'SUCCESS',
+          errorMessage: '',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('重载 Proxy 配置')).toBeInTheDocument();
+    expect(screen.getByText('Proxy')).toBeInTheDocument();
+    expect(screen.getByText('成功')).toBeInTheDocument();
+    expect(screen.getByText('topic: orders')).toBeInTheDocument();
+    expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
+  });
+
   it('loads persisted filter values and forwards their original codes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
@@ -152,12 +182,12 @@ describe('Audit page', () => {
     expect(await screen.findByText('topic-a')).toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: '操作类型' }));
     await user.click(
-      await screen.findByText('CREATE TOPIC', { selector: '.ant-select-item-option-content' }),
+      await screen.findByText('创建 Topic', { selector: '.ant-select-item-option-content' }),
     );
-    expect(screen.getByText('SUCCESS')).toBeInTheDocument();
+    expect(screen.getByText('成功')).toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: '资源类型' }));
     await user.click(
-      await screen.findByText('CONSUMER GROUP', {
+      await screen.findByText('消费组', {
         selector: '.ant-select-item-option-content',
       }),
     );
@@ -209,7 +239,7 @@ describe('Audit page', () => {
 
     await user.click(screen.getByRole('combobox', { name: '操作类型' }));
     await user.click(
-      await screen.findByText('CREATE TOPIC', { selector: '.ant-select-item-option-content' }),
+      await screen.findByText('创建 Topic', { selector: '.ant-select-item-option-content' }),
     );
 
     await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(2));
@@ -218,8 +248,7 @@ describe('Audit page', () => {
 
   it('ignores stale filter-option responses after cleanup refreshes', async () => {
     const user = userEvent.setup();
-    const staleOptions =
-      deferred<Awaited<ReturnType<typeof opsService.getAuditFilterOptions>>>();
+    const staleOptions = deferred<Awaited<ReturnType<typeof opsService.getAuditFilterOptions>>>();
     vi.mocked(opsService.getAuditFilterOptions)
       .mockImplementationOnce(() => new Promise(() => {}))
       .mockImplementationOnce(() => staleOptions.promise);
@@ -231,9 +260,7 @@ describe('Audit page', () => {
     await user.click(screen.getByRole('button', { name: /清理日志/ }));
     await user.click(await screen.findByRole('button', { name: /确认清理/ }));
 
-    await waitFor(() =>
-      expect(opsService.getAuditFilterOptions).toHaveBeenNthCalledWith(2),
-    );
+    await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenNthCalledWith(2));
 
     await act(async () => {
       staleOptions.resolve({
@@ -245,7 +272,7 @@ describe('Audit page', () => {
     });
 
     await user.click(screen.getByRole('combobox', { name: '操作类型' }));
-    expect(await screen.findByText('STALE OPERATION')).toBeInTheDocument();
+    expect(await screen.findByText('Stale Operation')).toBeInTheDocument();
   });
 
   it('still loads audit records when filter options cannot be loaded', async () => {

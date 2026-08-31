@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -37,6 +38,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -58,7 +60,13 @@ class MetadataServiceTest {
     private InstanceProvider apacheProvider;
 
     @Mock
+    private InstanceProvider cloudProvider;
+
+    @Mock
     private org.apache.rocketmq.studio.instance.InstanceRepository instanceRepository;
+
+    @Mock
+    private OperationAuditService operationAuditService;
 
     @InjectMocks
     private MetadataService metadataService;
@@ -67,7 +75,9 @@ class MetadataServiceTest {
     void routeBlankInstanceIdsToApacheProvider() {
         lenient().when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(apacheProvider);
         lenient().when(apacheProvider.vendor()).thenReturn(InstanceVendor.APACHE);
+        lenient().when(cloudProvider.vendor()).thenReturn(InstanceVendor.TENCENT);
         lenient().when(providerRegistry.byInstanceId("instance-a")).thenReturn(java.util.Optional.of(apacheProvider));
+        lenient().when(providerRegistry.byInstanceId("cloud-instance")).thenReturn(java.util.Optional.of(cloudProvider));
         lenient().when(instanceRepository.findByIdentifier(org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(java.util.Optional.empty());
     }
@@ -155,6 +165,80 @@ class MetadataServiceTest {
 
         assertThat(result.getName()).isEqualTo("new-topic");
         verify(apacheProvider).createTopic(null, input);
+        verifyNoInteractions(operationAuditService);
+    }
+
+    @Test
+    void apacheTopicWriteOperationsShouldNotDuplicateProviderAudit() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setInstanceId("instance-a");
+        topic.setWriteQueues(4);
+        topic.setReadQueues(4);
+        when(apacheProvider.updateTopic("instance-a", topic)).thenReturn(topic);
+        SendMessageDTO message = SendMessageDTO.builder()
+                .instanceId("instance-a")
+                .topic("orders")
+                .tag("TagA")
+                .key("order-1")
+                .body("hello")
+                .build();
+        when(adminClient.sendMessage(message)).thenReturn(SendMessageVO.builder().msgId("msg-1").build());
+
+        metadataService.updateTopic(topic);
+        metadataService.deleteTopic("instance-a", " orders ");
+        metadataService.sendMessage(message);
+
+        verifyNoInteractions(operationAuditService);
+    }
+
+    @Test
+    void cloudTopicWriteOperationsShouldRecordServiceBoundaryAudit() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setInstanceId("cloud-instance");
+        topic.setWriteQueues(4);
+        topic.setReadQueues(4);
+        when(cloudProvider.createTopic("cloud-instance", topic)).thenReturn(topic);
+        when(cloudProvider.updateTopic("cloud-instance", topic)).thenReturn(topic);
+
+        metadataService.createTopic(topic);
+        metadataService.updateTopic(topic);
+        metadataService.deleteTopic("cloud-instance", " orders ");
+
+        verify(operationAuditService).record("CREATE_TOPIC", "TOPIC", "orders", "cloud-instance",
+                "type=-, writeQueues=4, readQueues=4, perm=-", "SUCCESS", null);
+        verify(operationAuditService).record("UPDATE_TOPIC", "TOPIC", "orders", "cloud-instance",
+                "type=-, writeQueues=4, readQueues=4, perm=-", "SUCCESS", null);
+        verify(operationAuditService).record("DELETE_TOPIC", "TOPIC", "orders", "cloud-instance",
+                null, "SUCCESS", null);
+    }
+
+    @Test
+    void auditFailureShouldNotAbortCloudMetadataOperation() {
+        doThrow(new RuntimeException("audit unavailable")).when(operationAuditService)
+                .record("DELETE_TOPIC", "TOPIC", "orders", "cloud-instance", null, "SUCCESS", null);
+
+        metadataService.deleteTopic("cloud-instance", "orders");
+
+        verify(cloudProvider).deleteTopic("cloud-instance", "orders");
+    }
+
+    @Test
+    void failedCloudMetadataOperationShouldRecordFailedAuditTest() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setInstanceId("cloud-instance");
+        topic.setWriteQueues(4);
+        topic.setReadQueues(4);
+        when(cloudProvider.createTopic("cloud-instance", topic))
+                .thenThrow(new BusinessException(502, "open api unavailable"));
+
+        assertThatThrownBy(() -> metadataService.createTopic(topic))
+                .isInstanceOf(BusinessException.class);
+
+        verify(operationAuditService).record("CREATE_TOPIC", "TOPIC", "orders", "cloud-instance",
+                "type=-, writeQueues=4, readQueues=4, perm=-", "FAILED", "open api unavailable");
     }
 
     @Test
@@ -247,6 +331,7 @@ class MetadataServiceTest {
         assertThat(result.getMsgId()).isEqualTo("msg-001");
         assertThat(result.getOffsetMsgId()).isEqualTo("offset-001");
         verify(adminClient).sendMessage(request);
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test
@@ -351,6 +436,26 @@ class MetadataServiceTest {
         when(apacheProvider.listConsumerGroups("instance-a", "cg-gone")).thenReturn(List.of());
 
         assertThat(metadataService.refreshConsumerGroup("instance-a", "cg-gone")).isNull();
+    }
+
+    @Test
+    void cloudConsumerGroupWriteOperationsShouldRecordServiceBoundaryAudit() {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-orders");
+        group.setInstanceId("cloud-instance");
+        group.setRetryMaxTimes(16);
+        when(cloudProvider.createConsumerGroup("cloud-instance", group)).thenReturn(group);
+
+        metadataService.createConsumerGroup(group);
+        metadataService.deleteConsumerGroup("cloud-instance", " cg-orders ");
+        metadataService.resetOffset("cloud-instance", " cg-orders ", 1784246400000L, "orders");
+
+        verify(operationAuditService).record("CREATE_GROUP", "GROUP", "cg-orders",
+                "cloud-instance", "consumeType=-, subscriptionMode=-, retryMaxTimes=16", "SUCCESS", null);
+        verify(operationAuditService).record("DELETE_GROUP", "GROUP", "cg-orders",
+                "cloud-instance", null, "SUCCESS", null);
+        verify(operationAuditService).record("RESET_OFFSET", "GROUP", "cg-orders",
+                "cloud-instance", "topic=orders, timestamp=1784246400000", "SUCCESS", null);
     }
 
 }

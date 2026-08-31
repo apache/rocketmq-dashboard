@@ -29,6 +29,8 @@ import {
   InputNumber,
   Typography,
   message,
+  Space,
+  Tooltip,
 } from 'antd';
 import { Trash } from '@phosphor-icons/react';
 import { DownloadOutlined } from '@ant-design/icons';
@@ -48,21 +50,19 @@ import {
 import { downloadBlob } from '../../utils/download';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import {
+  describeAuditRecord,
+  getAuditOperationPresentation,
+  getAuditResourcePresentation,
+  getAuditResultPresentation,
+  parseAuditDetail,
+} from './auditPresentation';
 
 const emptyFilterOptions: AuditFilterOptions = {
   operationTypes: [],
   resourceTypes: [],
   clusterIds: [],
   results: [],
-};
-
-const formatFilterLabel = (value: string) => value.trim().replace(/_/g, ' ');
-
-const resultColor = (result: string) => {
-  const normalized = result.toUpperCase();
-  if (normalized === 'SUCCESS') return 'green';
-  if (normalized === 'PARTIAL') return 'orange';
-  return 'red';
 };
 
 const buildAuditFilter = (
@@ -202,6 +202,60 @@ const AuditPage: React.FC = () => {
 
   const { Text } = Typography;
 
+  const renderOperationType = (type: string) => {
+    const presentation = getAuditOperationPresentation(type);
+    return (
+      <Tooltip title={type}>
+        <Tag color={presentation.color}>
+          {presentation.labelKey ? t(presentation.labelKey) : presentation.label}
+        </Tag>
+      </Tooltip>
+    );
+  };
+
+  const renderResourceType = (type: string) => {
+    const presentation = getAuditResourcePresentation(type);
+    return (
+      <Tooltip title={type}>
+        <Tag color={presentation.color}>
+          {presentation.labelKey ? t(presentation.labelKey) : presentation.label}
+        </Tag>
+      </Tooltip>
+    );
+  };
+
+  const renderResult = (result: string) => {
+    const presentation = getAuditResultPresentation(result);
+    return (
+      <Tooltip title={result}>
+        <Tag color={presentation.color}>
+          {presentation.labelKey ? t(presentation.labelKey) : presentation.label}
+        </Tag>
+      </Tooltip>
+    );
+  };
+
+  const renderDetail = (detail: string | null | undefined) => {
+    const tokens = parseAuditDetail(detail);
+    if (tokens.length === 0) return <Text type="secondary">-</Text>;
+    if (tokens.length === 1 && !tokens[0].label) {
+      return (
+        <Text ellipsis={{ tooltip: tokens[0].value }} style={{ maxWidth: 420 }}>
+          {tokens[0].value}
+        </Text>
+      );
+    }
+    return (
+      <Space size={[4, 4]} wrap>
+        {tokens.map((token) => (
+          <Tag key={`${token.label}:${token.value}`} style={{ marginInlineEnd: 0 }}>
+            {token.label}: {token.value}
+          </Tag>
+        ))}
+      </Space>
+    );
+  };
+
   const handleCleanup = async () => {
     try {
       await cleanupAuditLogs(cleanupDays);
@@ -249,15 +303,16 @@ const AuditPage: React.FC = () => {
       width: 190,
       align: 'center',
       sorter: (a, b) => (a.operationType ?? '').localeCompare(b.operationType ?? ''),
-      render: (type: string) => <Tag>{formatFilterLabel(type)}</Tag>,
+      render: renderOperationType,
     },
     {
       title: t('audit.resourceType'),
       dataIndex: 'resourceType',
-      width: 120,
+      width: 150,
       ellipsis: true,
       align: 'right',
       sorter: (a, b) => (a.resourceType ?? '').localeCompare(b.resourceType ?? ''),
+      render: renderResourceType,
     },
     {
       title: t('audit.cluster'),
@@ -272,11 +327,17 @@ const AuditPage: React.FC = () => {
       width: 200,
       ellipsis: true,
       align: 'center',
+      render: (_: string, record) => (
+        <Tooltip title={describeAuditRecord(record, t)}>
+          <span>{record.target || '-'}</span>
+        </Tooltip>
+      ),
     },
     {
       title: t('audit.detail'),
       dataIndex: 'detail',
       ellipsis: true,
+      render: renderDetail,
     },
     {
       title: t('audit.result'),
@@ -284,9 +345,7 @@ const AuditPage: React.FC = () => {
       width: 80,
       align: 'center',
       sorter: (a, b) => (a.result ?? '').localeCompare(b.result ?? ''),
-      render: (result: string) => (
-        <Tag color={resultColor(result)}>{formatFilterLabel(result)}</Tag>
-      ),
+      render: renderResult,
     },
     {
       title: t('audit.error'),
@@ -323,10 +382,13 @@ const AuditPage: React.FC = () => {
               setPage(1);
               setSelectedType(value);
             }}
-            options={filterOptions.operationTypes.map((value) => ({
-              label: formatFilterLabel(value),
-              value,
-            }))}
+            options={filterOptions.operationTypes.map((value) => {
+              const presentation = getAuditOperationPresentation(value);
+              return {
+                label: presentation.labelKey ? t(presentation.labelKey) : presentation.label,
+                value,
+              };
+            })}
           />
           <Select
             aria-label={t('audit.resourceType')}
@@ -338,10 +400,13 @@ const AuditPage: React.FC = () => {
               setPage(1);
               setSelectedResourceType(value);
             }}
-            options={filterOptions.resourceTypes.map((value) => ({
-              label: formatFilterLabel(value),
-              value,
-            }))}
+            options={filterOptions.resourceTypes.map((value) => {
+              const presentation = getAuditResourcePresentation(value);
+              return {
+                label: presentation.labelKey ? t(presentation.labelKey) : presentation.label,
+                value,
+              };
+            })}
           />
           <Select
             aria-label={t('audit.cluster')}
@@ -372,10 +437,13 @@ const AuditPage: React.FC = () => {
             style={{ width: 120 }}
             options={[
               { label: t('common.all'), value: 'all' },
-              ...filterOptions.results.map((value) => ({
-                label: formatFilterLabel(value),
-                value,
-              })),
+              ...filterOptions.results.map((value) => {
+                const presentation = getAuditResultPresentation(value);
+                return {
+                  label: presentation.labelKey ? t(presentation.labelKey) : presentation.label,
+                  value,
+                };
+              }),
             ]}
           />
         </Flex>

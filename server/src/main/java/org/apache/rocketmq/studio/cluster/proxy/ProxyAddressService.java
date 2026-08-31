@@ -18,6 +18,10 @@
 package org.apache.rocketmq.studio.cluster.proxy;
 
 import org.apache.commons.validator.routines.InetAddressValidator;
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.Operation;
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.ResourceType;
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.Result;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
@@ -82,28 +86,44 @@ public class ProxyAddressService {
     private final ProxyHealthProbe healthProbe;
     private final ExecutorService probeExecutor;
     private final long topologyTotalTimeoutMillis;
+    private final OperationAuditService operationAuditService;
 
     @Autowired
-    public ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe) {
-        this(clusterService, healthProbe, newRestTemplate(), defaultProbeExecutor(), TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
+    public ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe,
+                               OperationAuditService operationAuditService) {
+        this(clusterService, healthProbe, operationAuditService, newRestTemplate(), defaultProbeExecutor(),
+                TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
+    }
+
+    ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe) {
+        this(clusterService, healthProbe, null, newRestTemplate(), defaultProbeExecutor(),
+                TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
     }
 
     ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe, RestTemplate restTemplate) {
-        this(clusterService, healthProbe, restTemplate, defaultProbeExecutor(), TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
+        this(clusterService, healthProbe, null, restTemplate, defaultProbeExecutor(), TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
+    }
+
+    ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe, RestTemplate restTemplate,
+                        OperationAuditService operationAuditService) {
+        this(clusterService, healthProbe, operationAuditService, restTemplate, defaultProbeExecutor(),
+                TOPOLOGY_TOTAL_TIMEOUT_MILLIS);
     }
 
     ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe,
                         ExecutorService probeExecutor, long topologyTotalTimeoutMillis) {
-        this(clusterService, healthProbe, newRestTemplate(), probeExecutor, topologyTotalTimeoutMillis);
+        this(clusterService, healthProbe, null, newRestTemplate(), probeExecutor, topologyTotalTimeoutMillis);
     }
 
-    ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe, RestTemplate restTemplate,
+    ProxyAddressService(ClusterService clusterService, ProxyHealthProbe healthProbe,
+                        OperationAuditService operationAuditService, RestTemplate restTemplate,
                         ExecutorService probeExecutor, long topologyTotalTimeoutMillis) {
         this.clusterService = clusterService;
         this.healthProbe = healthProbe;
         this.restTemplate = restTemplate;
         this.probeExecutor = probeExecutor;
         this.topologyTotalTimeoutMillis = topologyTotalTimeoutMillis;
+        this.operationAuditService = operationAuditService;
     }
 
     private static RestTemplate newRestTemplate() {
@@ -249,9 +269,12 @@ public class ProxyAddressService {
 
     public synchronized void addProxyAddr(String newProxyAddr) {
         String normalized = normalizeProxyAddr(newProxyAddr, "newProxyAddr");
-        proxyAddrs.add(normalized);
+        boolean added = proxyAddrs.add(normalized);
         if (currentProxyAddr == null || currentProxyAddr.isBlank()) {
             currentProxyAddr = normalized;
+        }
+        if (added) {
+            recordAudit(Operation.ADD_PROXY_ADDRESS, ResourceType.PROXY, normalized, null);
         }
         log.info("Added Proxy address {}", normalized);
     }
@@ -259,11 +282,14 @@ public class ProxyAddressService {
     public synchronized void removeProxyAddr(String proxyAddr) {
         String normalized = normalizeProxyAddr(proxyAddr, "proxyAddr");
         if (!proxyAddrs.remove(normalized)) {
+            recordAudit(Operation.REMOVE_PROXY_ADDRESS, ResourceType.PROXY, normalized, null,
+                    Result.FAILED, "Proxy address not found");
             throw new BusinessException(404, "Proxy address not found: " + normalized);
         }
         if (normalized.equals(currentProxyAddr)) {
             currentProxyAddr = proxyAddrs.stream().findFirst().orElse("");
         }
+        recordAudit(Operation.REMOVE_PROXY_ADDRESS, ResourceType.PROXY, normalized, null);
         log.info("Removed Proxy address {}", normalized);
     }
 
@@ -283,16 +309,23 @@ public class ProxyAddressService {
             if (!status.is2xxSuccessful()) {
                 throw new BusinessException(502, "Proxy returned " + status);
             }
+            recordAudit(Operation.RELOAD_PROXY_CONFIG, ResourceType.PROXY, normalized, normalizedClusterId);
             log.info("Proxy {} accepted config reload", normalized);
         } catch (HttpStatusCodeException ex) {
+            recordAudit(Operation.RELOAD_PROXY_CONFIG, ResourceType.PROXY, normalized, normalizedClusterId,
+                    Result.FAILED, "Proxy returned " + ex.getStatusCode());
             throw new BusinessException(502, "Proxy returned " + ex.getStatusCode());
         } catch (ResourceAccessException ex) {
             log.warn("Unable to reach proxy {} for config reload: {}", normalized, ex.getMessage());
+            recordAudit(Operation.RELOAD_PROXY_CONFIG, ResourceType.PROXY, normalized, normalizedClusterId,
+                    Result.FAILED, "Unable to reach proxy");
             throw new BusinessException(502, "Unable to reach proxy: " + ex.getMessage());
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
             log.warn("Proxy config reload via {} failed: {}", url, ex.getMessage());
+            recordAudit(Operation.RELOAD_PROXY_CONFIG, ResourceType.PROXY, normalized, normalizedClusterId,
+                    Result.FAILED, "Config reload failed");
             throw new BusinessException(500, "Config reload failed: " + ex.getMessage());
         }
     }
@@ -323,5 +356,23 @@ public class ProxyAddressService {
             throw new BusinessException(400, fieldName + " port must be between 1 and 65535");
         }
         return normalized;
+    }
+
+    private void recordAudit(String operation, String resourceType, String resourceName, String clusterId) {
+        recordAudit(operation, resourceType, resourceName, clusterId, Result.SUCCESS, null);
+    }
+
+    private void recordAudit(String operation, String resourceType, String resourceName, String clusterId,
+                             String result, String errorMessage) {
+        if (operationAuditService == null) {
+            return;
+        }
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, null,
+                    result, errorMessage);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
     }
 }
