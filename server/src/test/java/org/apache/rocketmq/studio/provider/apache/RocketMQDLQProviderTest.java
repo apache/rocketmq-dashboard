@@ -176,6 +176,33 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void listDLQGroupsShouldReturnEmptyPageForNegativePageSizeTest() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a"));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        lenient().when(adminExt.examineTopicStats(anyString())).thenReturn(new TopicStatsTable());
+
+        PageResult<DLQGroupVO> page = provider.listDLQGroups("instance-a", null, 1, -1);
+
+        assertThat(page.getItems()).isEmpty();
+        assertThat(page.getTotal()).isEqualTo(1);
+    }
+
+    @Test
+    void listDLQGroupsShouldReturnEmptyPageForOversizedPageNumberTest() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a"));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        lenient().when(adminExt.examineTopicStats(anyString())).thenReturn(new TopicStatsTable());
+
+        PageResult<DLQGroupVO> page =
+                provider.listDLQGroups("instance-a", null, Integer.MAX_VALUE, 20);
+
+        assertThat(page.getItems()).isEmpty();
+        assertThat(page.getTotal()).isEqualTo(1);
+    }
+
+    @Test
     void listDLQGroupsShouldFilterCaseInsensitivelyTest() throws Exception {
         TopicList topicList = new TopicList();
         topicList.setTopicList(Set.of(

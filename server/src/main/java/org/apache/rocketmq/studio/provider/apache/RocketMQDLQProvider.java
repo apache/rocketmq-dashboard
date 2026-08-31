@@ -118,7 +118,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         dlqTopics.sort(Comparator.naturalOrder());
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, dlqTopics.size());
-        int to = (int) Math.min(offset + pageSize, dlqTopics.size());
+        int to = from + (int) Math.min(Math.max(pageSize, 0), dlqTopics.size() - from);
         List<DLQGroupVO> groups = dlqTopics.subList(from, to).stream()
                 .map(topic -> buildDLQGroup(adminExt,
                         topic.substring(MixAll.DLQ_GROUP_TOPIC_PREFIX.length()), topic))
@@ -318,7 +318,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .toList();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, all.size());
-        int to = (int) Math.min(offset + pageSize, all.size());
+        int to = from + (int) Math.min(Math.max(pageSize, 0), all.size() - from);
         return PageResult.of(all.subList(from, to), all.size(), page, pageSize);
     }
 
