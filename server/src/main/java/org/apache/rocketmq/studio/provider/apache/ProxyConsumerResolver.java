@@ -35,6 +35,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +64,8 @@ public class ProxyConsumerResolver {
     // Capturing a jstack on the client takes far longer than reading the proxy's own client
     // manager, so the running info query gets its own, more generous budget.
     private static final long PROXY_RUNNING_INFO_TIMEOUT_MILLIS = 10_000L;
-    private static final long PROXY_ADDRESS_CACHE_TTL_MILLIS = 60_000L;
+    static final long PROXY_ADDRESS_CACHE_TTL_MILLIS = 60_000L;
+    static final int MAX_PROXY_ADDRESS_CACHE_ENTRIES = 128;
     private static final String DEFAULT_INSTANCE_KEY = "__default__";
 
     private final MqAdminExtFactory adminFactory;
@@ -73,6 +75,8 @@ public class ProxyConsumerResolver {
     private final Map<String, CachedProxyAddresses> proxyAddressCache = new ConcurrentHashMap<>();
     private final AtomicBoolean clientStarted = new AtomicBoolean(false);
     private volatile NettyRemotingClient remotingClient;
+    private long proxyAddressCacheTtlMillis = PROXY_ADDRESS_CACHE_TTL_MILLIS;
+    private int maxProxyAddressCacheEntries = MAX_PROXY_ADDRESS_CACHE_ENTRIES;
 
     /**
      * Queries the proxies of the given instance for the consumer connection info of the group.
@@ -180,8 +184,34 @@ public class ProxyConsumerResolver {
                 .map(ip -> ip + ":" + PROXY_REMOTING_PORT)
                 .toList();
         proxyAddressCache.put(cacheKey,
-                new CachedProxyAddresses(addresses, System.currentTimeMillis() + PROXY_ADDRESS_CACHE_TTL_MILLIS));
+                new CachedProxyAddresses(addresses, System.currentTimeMillis() + proxyAddressCacheTtlMillis));
+        evictStaleProxyAddresses();
         return addresses;
+    }
+
+    /**
+     * Removes expired cache entries and, when the cache exceeds its bound, the entries with the
+     * earliest expiry. The cache is keyed by the caller-supplied instance id and entries are only
+     * revalidated lazily on read, so without active eviction every instance id ever queried would
+     * leave a permanently stale entry behind.
+     */
+    private void evictStaleProxyAddresses() {
+        long now = System.currentTimeMillis();
+        proxyAddressCache.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
+        while (proxyAddressCache.size() > maxProxyAddressCacheEntries) {
+            proxyAddressCache.entrySet().stream()
+                    .min(Comparator.comparingLong(entry -> entry.getValue().expiresAtMillis()))
+                    .ifPresent(oldest -> proxyAddressCache.remove(oldest.getKey(), oldest.getValue()));
+        }
+    }
+
+    int proxyAddressCacheSize() {
+        return proxyAddressCache.size();
+    }
+
+    void setCacheLimitsForTest(long ttlMillis, int maxEntries) {
+        this.proxyAddressCacheTtlMillis = ttlMillis;
+        this.maxProxyAddressCacheEntries = maxEntries;
     }
 
     private <T> T executeAdmin(String instanceId, MqAdminExtFactory.AdminAction<T> action) {

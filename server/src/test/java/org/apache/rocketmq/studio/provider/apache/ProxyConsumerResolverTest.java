@@ -134,4 +134,44 @@ class ProxyConsumerResolverTest {
         // 192.0.2.1 (TEST-NET) is unreachable, so the remoting query must degrade to null
         assertThat(resolver.resolveConsumerConnection("instance-a", "cg-orders")).isNull();
     }
+    @Test
+    void discoverProxyAddressesShouldEvictExpiredEntriesTest() throws Exception {
+        resolver.setCacheLimitsForTest(50, 128);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(emptySyncer());
+
+        resolver.discoverProxyAddresses("instance-a");
+        resolver.discoverProxyAddresses("instance-b");
+        assertThat(resolver.proxyAddressCacheSize()).isEqualTo(2);
+
+        Thread.sleep(150);
+        resolver.discoverProxyAddresses("instance-c");
+
+        // Entries a and b are expired and must be gone; only the fresh entry survives.
+        assertThat(resolver.proxyAddressCacheSize()).isEqualTo(1);
+    }
+
+    @Test
+    void discoverProxyAddressesShouldBoundCacheSizeTest() throws Exception {
+        resolver.setCacheLimitsForTest(60_000, 2);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(emptySyncer());
+
+        resolver.discoverProxyAddresses("instance-a");
+        resolver.discoverProxyAddresses("instance-b");
+        resolver.discoverProxyAddresses("instance-c");
+
+        // All entries are fresh, so the cache must drop the earliest-expiring entry.
+        assertThat(resolver.proxyAddressCacheSize()).isEqualTo(2);
+        assertThat(resolver.discoverProxyAddresses("instance-c")).containsExactly("10.0.0.1:8080");
+    }
+
+    private ConsumerConnection emptySyncer() {
+        Connection proxy = new Connection();
+        proxy.setClientId("proxy-a");
+        proxy.setClientAddr("10.0.0.1:10911");
+        ConsumerConnection syncer = new ConsumerConnection();
+        syncer.setConnectionSet(new HashSet<>(List.of(proxy)));
+        return syncer;
+    }
 }
