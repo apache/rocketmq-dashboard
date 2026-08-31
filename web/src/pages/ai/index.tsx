@@ -150,11 +150,12 @@ const defaultSchemaValue = (schema: unknown): unknown => {
   }
 };
 
-const buildToolInputTemplate = (tool: McpTool, cluster?: string): string => {
-  const required = Array.isArray(tool.parameters.required)
-    ? tool.parameters.required.filter((field): field is string => typeof field === 'string')
+export const buildToolInputTemplate = (tool: McpTool, cluster?: string): string => {
+  const parameters = isRecord(tool.parameters) ? tool.parameters : {};
+  const required = Array.isArray(parameters.required)
+    ? parameters.required.filter((field): field is string => typeof field === 'string')
     : [];
-  const properties = isRecord(tool.parameters.properties) ? tool.parameters.properties : {};
+  const properties = isRecord(parameters.properties) ? parameters.properties : {};
   const input = Object.fromEntries(
     required.map((field) => [
       field,
