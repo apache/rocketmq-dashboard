@@ -504,6 +504,28 @@ class RocketMQClientProviderTest {
         });
     }
 
+    @Test
+    void consumerScanCapsGroupQueriesAtDefensiveLimit() throws Exception {
+        SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
+        ConcurrentHashMap<String, SubscriptionGroupConfig> groups = new ConcurrentHashMap<>();
+        for (int i = 0; i < 300; i++) {
+            groups.put("group-" + i, new SubscriptionGroupConfig());
+        }
+        wrapper.setSubscriptionGroupTable(groups);
+        ConsumerConnection emptyConsumerConnection = new ConsumerConnection();
+        emptyConsumerConnection.setConnectionSet(new HashSet<>());
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
+        when(adminExt.examineConsumerConnectionInfo(anyString())).thenReturn(emptyConsumerConnection);
+
+        List<ClientConnectionVO> connections =
+                provider.findConnections("instance-a", "cluster-a", "Consumer");
+
+        assertThat(connections).isEmpty();
+        verify(adminExt, times(RocketMQClientProvider.MAX_CONSUMER_GROUPS_SCANNED))
+                .examineConsumerConnectionInfo(anyString());
+    }
+
     private static SubscriptionGroupWrapper subscriptionGroups(String... names) {
         SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
         ConcurrentHashMap<String, SubscriptionGroupConfig> groups = new ConcurrentHashMap<>();

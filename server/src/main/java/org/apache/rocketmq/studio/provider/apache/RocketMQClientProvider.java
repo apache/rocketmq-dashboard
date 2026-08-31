@@ -65,6 +65,14 @@ public class RocketMQClientProvider implements ClientProvider {
 
     private static final long SUBSCRIPTION_GROUP_TIMEOUT_MILLIS = 5000L;
 
+    /**
+     * Defensive cap on the number of consumer groups whose connections are queried per scan.
+     * Each group costs one sequential admin RPC, so an unbounded cluster group table could hold
+     * the request thread for minutes; the cap bounds the worst case at the cost of a partial
+     * listing, which is logged.
+     */
+    static final int MAX_CONSUMER_GROUPS_SCANNED = 200;
+
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final MqAdminExtFactory adminFactory;
 
@@ -308,6 +316,11 @@ public class RocketMQClientProvider implements ClientProvider {
             String group = groupEntry.getKey();
             if (isSystemGroup(group)) {
                 continue;
+            }
+            if (attemptedGroupQueries >= MAX_CONSUMER_GROUPS_SCANNED) {
+                log.warn("Consumer connection scan reached its {}-group cap; remaining groups "
+                        + "were not queried", MAX_CONSUMER_GROUPS_SCANNED);
+                break;
             }
             attemptedGroupQueries++;
             try {
