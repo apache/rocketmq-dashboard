@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -105,7 +106,7 @@ public class MybatisPlusAclRepository implements AclRepository {
 
     @Override
     public PageResult<AclUserVO> findUserPage(String keyword, int page, int pageSize) {
-        String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase() : null;
+        String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase(Locale.ROOT) : null;
         QueryWrapper<RmqAclUser> query = new QueryWrapper<RmqAclUser>()
                 .and(search != null, w -> w
                         .like("username", search)

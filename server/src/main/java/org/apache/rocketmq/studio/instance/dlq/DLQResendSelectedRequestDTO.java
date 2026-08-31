@@ -39,7 +39,7 @@ public class DLQResendSelectedRequestDTO {
 
     @NotEmpty(message = "At least one msgId is required")
     @Size(max = 100, message = "At most 100 msgIds are allowed per resend")
-    private List<String> msgIds;
+    private List<@NotBlank(message = "msgId must not be blank") String> msgIds;
 
     private String targetTopic;
 }

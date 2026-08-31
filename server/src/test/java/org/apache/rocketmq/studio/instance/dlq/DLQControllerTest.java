@@ -427,6 +427,24 @@ class DLQControllerTest {
     }
 
     @Test
+    void resendSelectedMessagesShouldRejectBlankMsgIdsTest() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
+                "groupName", "test-group",
+                "msgIds", List.of("msg-1", " ")
+        );
+
+        mockMvc.perform(post("/api/dlq/resend-selected")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("msgId must not be blank"));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
     void resendSelectedMessagesShouldRejectMoreThanHundredMsgIdsTest() throws Exception {
         List<String> msgIds = new java.util.ArrayList<>();
         for (int i = 0; i < 101; i++) {
