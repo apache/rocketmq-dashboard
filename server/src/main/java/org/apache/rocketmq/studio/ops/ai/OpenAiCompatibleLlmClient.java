@@ -375,7 +375,7 @@ public class OpenAiCompatibleLlmClient {
     private boolean isValidApiBase(String apiBase) {
         try {
             URI uri = new URI(normalizeApiBase(apiBase));
-            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
             return ("http".equals(scheme) || "https".equals(scheme)) && StringUtils.hasText(uri.getHost());
         } catch (IllegalArgumentException | URISyntaxException exception) {
             return false;
