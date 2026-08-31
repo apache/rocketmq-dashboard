@@ -285,6 +285,26 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void createShouldTranslateConcurrentDuplicateAccessKeyToConflict() {
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+        when(userMapper.insert(any(RmqAclUser.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("duplicate accessKey"));
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .secretKey("secret-x")
+                .build();
+
+        assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(config))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Plain access account already exists for accessKey: svc-x")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        // The conflict aborts before any permission rules are touched.
+        verifyNoInteractions(ruleMapper);
+    }
+
+    @Test
     void updateWithBlankSecretShouldKeepStoredSecret() {
         RmqAclUser existing = userEntity(1L, "svc-x",
                 CredentialUtils.encodeBase64("kept-secret-value"));
