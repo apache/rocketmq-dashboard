@@ -846,7 +846,11 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private static long parseLong(String value) {
         try {
-            return Long.parseLong(value.trim());
+            long parsed = Long.parseLong(value.trim());
+            // Negative trace times/costs cannot occur in well-formed broker trace
+            // payloads; treat them as unavailable (0) so the console renders a
+            // placeholder instead of a 1969/1970 timestamp.
+            return parsed < 0 ? 0L : parsed;
         } catch (Exception e) {
             return 0L;
         }

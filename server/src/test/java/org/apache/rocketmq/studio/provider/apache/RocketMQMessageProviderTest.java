@@ -456,6 +456,30 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void getMessageTraceShouldTreatNegativeTimeValuesAsUnavailable() throws Exception {
+        String pub = traceContext("Pub", "-1000", "cn", "prod-group", "TopicA", "msg-123",
+                "tag1", "key1", "broker:10911", "15", "-50", "0", "offset-1", "true");
+        String subAfter = traceContext("SubAfter", "req-1", "msg-123", "-20", "true", "key1",
+                "3", "-3000", "cons-group");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(pub, subAfter).getBytes(StandardCharsets.UTF_8));
+        QueryResult queryResult = new QueryResult(0L, List.of(traceMessage));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(queryResult);
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
+
+        TraceNodeVO produce = record.getNodes().get(0);
+        assertThat(produce.getTimestamp()).isEqualTo(0);
+        assertThat(produce.getCostTime()).isEqualTo(0);
+        TraceNodeVO consume = record.getNodes().get(1);
+        assertThat(consume.getTimestamp()).isEqualTo(0);
+        assertThat(consume.getCostTime()).isEqualTo(0);
+        assertThat(record.getConsumerStatus()).hasSize(1);
+        assertThat(record.getConsumerStatus().get(0).getConsumeTime()).isEqualTo(0);
+    }
+
+    @Test
     void getMessageTraceParsesEndTransactionState() throws Exception {
         String body = traceBody(traceContext("EndTransaction", "2000", "cn", "tx-group", "TopicA",
                 "msg-tx", "tag2", "key2", "broker:10911", "0", "tx-1", "COMMIT_MESSAGE", "false"));
