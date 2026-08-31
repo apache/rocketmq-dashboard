@@ -251,6 +251,15 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
+    void findAlertsShouldTrimLevelFilterWhitespaceTest() {
+        when(alertMapper.selectList(any())).thenReturn(List.of());
+
+        repository.findAlerts(" ERROR ");
+
+        verify(alertMapper).selectList(argThat(MybatisPlusAlertRepositoryTest::hasTrimmedLevelParameter));
+    }
+
+    @Test
     void saveAlertShouldPersistCanonicalScopeLabelsTest() {
         SystemAlertVO alert = SystemAlertVO.builder().level(org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning)
                 .labels(Map.of("topic", "orders", "brokerName", "broker-a")).build();
@@ -305,6 +314,14 @@ class MybatisPlusAlertRepositoryTest {
                 && queryWrapper.getParamNameValuePairs().containsValue("broker-a")
                 && queryWrapper.getParamNameValuePairs().containsValue(LocalDateTime.of(2026, 8, 1, 0, 0))
                 && queryWrapper.getParamNameValuePairs().containsValue(LocalDateTime.of(2026, 8, 2, 0, 0));
+    }
+
+    private static boolean hasTrimmedLevelParameter(Wrapper<RmqSystemAlert> query) {
+        if (!(query instanceof QueryWrapper<?> queryWrapper)) {
+            return false;
+        }
+        queryWrapper.getCustomSqlSegment();
+        return queryWrapper.getParamNameValuePairs().containsValue("error");
     }
 
     private static boolean hasInfoLevelParameter(Wrapper<RmqSystemAlert> query) {
