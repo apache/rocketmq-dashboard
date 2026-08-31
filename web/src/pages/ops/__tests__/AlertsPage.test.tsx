@@ -23,7 +23,11 @@ import type { AlertRule, NativeAlertMetricInfo, PageResult } from '../../../api/
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatDateTime } from '../../../utils/format';
-import AlertsPage, { formatThresholdCondition, supportsUnavailableOperator } from '../alerts';
+import AlertsPage, {
+  formatThresholdCondition,
+  supportsUnavailableOperator,
+  wasTriggeredWithin,
+} from '../alerts';
 import { listInstances } from '../../../services/instanceService';
 import {
   bulkDeleteAlertRules,
@@ -144,6 +148,21 @@ function getSelectOption(label: string) {
   if (!option) throw new Error(`Select option not found: ${label}`);
   return option;
 }
+
+describe('wasTriggeredWithin', () => {
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+  it('counts only parseable timestamps after the cutoff', () => {
+    expect(wasTriggeredWithin(new Date(Date.now() - 60 * 60 * 1000).toISOString(), dayAgo)).toBe(true);
+    expect(wasTriggeredWithin(new Date(0).toISOString(), dayAgo)).toBe(false);
+  });
+
+  it('ignores missing or unparseable lastTriggered values', () => {
+    expect(wasTriggeredWithin('not-a-timestamp', dayAgo)).toBe(false);
+    expect(wasTriggeredWithin(null, dayAgo)).toBe(false);
+    expect(wasTriggeredWithin(undefined, dayAgo)).toBe(false);
+  });
+});
 
 describe('AlertsPage', () => {
   afterEach(cleanup);
