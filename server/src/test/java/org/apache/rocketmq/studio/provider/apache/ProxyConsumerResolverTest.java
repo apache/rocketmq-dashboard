@@ -95,6 +95,24 @@ class ProxyConsumerResolverTest {
     }
 
     @Test
+    void discoverProxyAddressesShouldRetryAfterATransientFailureTest() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        Connection proxy = new Connection();
+        proxy.setClientId("proxy-a");
+        proxy.setClientAddr("10.0.4.66:10911");
+        syncer.setConnectionSet(new HashSet<>(List.of(proxy)));
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenThrow(new IllegalStateException("nameserver unavailable"))
+                .thenReturn(syncer);
+
+        assertThat(resolver.discoverProxyAddresses("instance-a")).isEmpty();
+        assertThat(resolver.discoverProxyAddresses("instance-a")).containsExactly("10.0.4.66:8080");
+
+        org.mockito.Mockito.verify(adminExt, org.mockito.Mockito.times(2))
+                .examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic");
+    }
+
+    @Test
     void resolveConsumerConnectionShouldReturnNullWhenNoProxyDiscoveredTest() throws Exception {
         when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
                 .thenThrow(new IllegalStateException("syncer group missing"));

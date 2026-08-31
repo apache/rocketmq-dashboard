@@ -104,7 +104,10 @@ class ProxyAddressServiceTest {
                 "10.0.0.1:0",
                 "10.0.0.1:65536",
                 "http://10.0.0.1:8081",
-                "10.0.0.1:8081/path"
+                "10.0.0.1:8081/path",
+                "[:::]:8081",
+                "[2001:db8::1::2]:8081",
+                "[127.0.0.1]:8081"
         );
 
         for (String invalidProxyAddr : invalidProxyAddrs) {

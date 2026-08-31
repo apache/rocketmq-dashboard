@@ -60,6 +60,7 @@ public class MybatisPlusMetricSnapshotRepository implements MetricSnapshotReposi
         return mapper.selectList(new QueryWrapper<RmqMetricSnapshot>()
                         .eq("instance_id", scope.instanceId()).eq("metric_key", scope.metricKey())
                         .eq("domain", scope.domain().name()).eq("labels_hash", sha256(labelsJson))
+                        .isNull(scope.clusterId() == null, "cluster_id")
                         .eq(scope.clusterId() != null, "cluster_id", scope.clusterId())
                         .eq("availability", MetricAvailability.AVAILABLE.name())
                         .ge("collected_at", LocalDateTime.ofInstant(since, ZoneOffset.UTC))

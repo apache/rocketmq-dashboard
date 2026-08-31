@@ -173,6 +173,8 @@ public class ProxyConsumerResolver {
         } catch (Exception e) {
             log.debug("Proxy discovery via heartbeat syncer failed for instance {}: {}",
                     instanceId, e.getMessage());
+            // A failed lookup is transient and must not suppress discovery for the full cache TTL.
+            return List.of();
         }
         List<String> addresses = ips.stream()
                 .map(ip -> ip + ":" + PROXY_REMOTING_PORT)
