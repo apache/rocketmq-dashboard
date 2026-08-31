@@ -40,6 +40,7 @@ import {
   Spin,
   message,
   App,
+  Progress,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import {
@@ -52,6 +53,9 @@ import {
   SyncOutlined,
   PlusCircleOutlined,
   MinusCircleOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
@@ -81,6 +85,12 @@ import {
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { parseMessageProperties } from '../../utils/messageProperties';
 import { tableScrollX } from '../../utils/table';
+import {
+  analyzeTopicRoutes,
+  type RouteDiagnosticIssue,
+  type RouteDiagnosticStatus,
+  type RouteDistribution,
+} from '../../utils/topicRouteDiagnostics';
 
 const { Text } = Typography;
 
@@ -287,6 +297,22 @@ const formatDateTime = (iso?: string): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
+
+const ROUTE_STATUS_META: Record<
+  RouteDiagnosticStatus,
+  { color: string; label: string; icon: React.ReactNode }
+> = {
+  healthy: { color: 'success', label: '健康', icon: <CheckCircleOutlined /> },
+  warning: { color: 'warning', label: '关注', icon: <WarningOutlined /> },
+  critical: { color: 'error', label: '异常', icon: <ExclamationCircleOutlined /> },
+};
+
+const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
+  warning: 'warning',
+  critical: 'error',
+};
+
+const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
@@ -686,17 +712,114 @@ const TopicPage = () => {
     },
   ];
 
+  const renderRouteStatusTag = (status: RouteDiagnosticStatus) => {
+    const meta = ROUTE_STATUS_META[status];
+    return (
+      <Tag color={meta.color} icon={meta.icon}>
+        {meta.label}
+      </Tag>
+    );
+  };
+
+  const renderRouteIssueTags = (issues: RouteDiagnosticIssue[]) => {
+    if (issues.length === 0) return <Text type="secondary">无</Text>;
+    return (
+      <Space size={[4, 4]} wrap>
+        {issues.slice(0, 3).map((item) => (
+          <Tag key={item.id} color={ISSUE_SEVERITY_COLOR[item.severity]}>
+            {item.title}
+          </Tag>
+        ))}
+        {issues.length > 3 && <Tag>+{issues.length - 3}</Tag>}
+      </Space>
+    );
+  };
+
   // ─── Route table columns ──────────────────────────────────────
-  const routeColumns: TableColumnsType<BrokerRoute> = [
-    { title: 'Broker 名称', dataIndex: 'brokerName', key: 'brokerName' },
-    { title: 'Broker 地址', dataIndex: 'brokerAddr', key: 'brokerAddr' },
-    { title: '写队列', dataIndex: 'writeQueues', key: 'writeQueues' },
-    { title: '读队列', dataIndex: 'readQueues', key: 'readQueues' },
+  const routeColumns: TableColumnsType<RouteDistribution> = [
+    {
+      title: 'Broker',
+      dataIndex: 'brokerName',
+      key: 'brokerName',
+      width: 170,
+      render: (_: string, record) => (
+        <Space direction="vertical" size={2}>
+          <Text strong>{record.brokerName}</Text>
+          {renderRouteStatusTag(record.status)}
+        </Space>
+      ),
+    },
+    {
+      title: '地址拓扑',
+      key: 'brokerAddr',
+      width: 260,
+      render: (_: unknown, record) => (
+        <Space direction="vertical" size={2} style={{ width: '100%' }}>
+          <Text code copyable style={{ fontSize: 14 }}>
+            {record.brokerAddr}
+          </Text>
+          {record.masterAddr && record.masterAddr !== record.brokerAddr && (
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              Master {record.masterAddr}
+            </Text>
+          )}
+          <Space size={4} wrap>
+            {record.brokerIds.length > 0 ? (
+              record.brokerIds.map((id) => (
+                <Tag key={id} color={id === '0' ? 'blue' : undefined}>
+                  {id === '0' ? 'Master' : `Replica ${id}`}
+                </Tag>
+              ))
+            ) : (
+              <Tag color="warning">地址未知</Tag>
+            )}
+          </Space>
+        </Space>
+      ),
+    },
+    {
+      title: '队列分布',
+      key: 'queues',
+      width: 220,
+      render: (_: unknown, record) => (
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <div>
+            <Flex justify="space-between">
+              <Text>写队列 {record.writeQueues}</Text>
+              <Text type="secondary">{formatPercent(record.writeShare)}</Text>
+            </Flex>
+            <Progress percent={record.writeShare} showInfo={false} size="small" />
+          </div>
+          <div>
+            <Flex justify="space-between">
+              <Text>读队列 {record.readQueues}</Text>
+              <Text type="secondary">{formatPercent(record.readShare)}</Text>
+            </Flex>
+            <Progress percent={record.readShare} showInfo={false} size="small" />
+          </div>
+        </Space>
+      ),
+    },
     {
       title: '权限',
       dataIndex: 'perm',
       key: 'perm',
-      render: (p: string) => <Tag>{PERM_LABEL[p] || p}</Tag>,
+      width: 130,
+      render: (_: string, record) => (
+        <Space direction="vertical" size={4}>
+          <Tag>{PERM_LABEL[record.perm] || record.perm}</Tag>
+          <Space size={4}>
+            <Tag color={record.readable ? 'success' : 'error'}>读</Tag>
+            <Tag color={record.writable ? 'success' : 'error'}>写</Tag>
+          </Space>
+        </Space>
+      ),
+    },
+    {
+      title: '诊断',
+      key: 'diagnostics',
+      width: 220,
+      render: (_: unknown, record) => renderRouteIssueTags(record.issues),
     },
   ];
 
@@ -746,6 +869,158 @@ const TopicPage = () => {
         ),
     },
   ];
+
+  const renderRouteMetric = (label: string, value: React.ReactNode, extra?: React.ReactNode) => (
+    <Col xs={12} md={6}>
+      <div
+        style={{
+          border: '1px solid #f0f0f0',
+          borderRadius: 6,
+          padding: '10px 12px',
+          minHeight: 78,
+          background: '#fafafa',
+        }}
+      >
+        <Text type="secondary" style={{ display: 'block', fontSize: 14 }}>
+          {label}
+        </Text>
+        <Text strong style={{ fontSize: 20, fontVariantNumeric: 'tabular-nums' }}>
+          {value}
+        </Text>
+        {extra && (
+          <div style={{ marginTop: 2 }}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              {extra}
+            </Text>
+          </div>
+        )}
+      </div>
+    </Col>
+  );
+
+  const renderRouteIssues = (issues: RouteDiagnosticIssue[]) => {
+    if (issues.length === 0) return null;
+    return (
+      <div
+        data-testid="topic-route-issues"
+        style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 12 }}
+      >
+        <Text strong style={{ display: 'block', marginBottom: 8 }}>
+          诊断项
+        </Text>
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          {issues.map((item) => (
+            <Flex key={item.id} align="flex-start" gap={8}>
+              <Tag color={ISSUE_SEVERITY_COLOR[item.severity]} style={{ marginTop: 1 }}>
+                {item.severity === 'critical' ? '异常' : '关注'}
+              </Tag>
+              <div>
+                <Text strong>
+                  {item.brokerName ? `${item.brokerName}：${item.title}` : item.title}
+                </Text>
+                <Text type="secondary" style={{ display: 'block' }}>
+                  {item.description}
+                </Text>
+              </div>
+            </Flex>
+          ))}
+        </Space>
+      </div>
+    );
+  };
+
+  const renderRouteRecommendations = (recommendations: string[]) => {
+    if (recommendations.length === 0) return null;
+    return (
+      <InfoBanner
+        title="建议处理"
+        description={
+          <Space direction="vertical" size={2}>
+            {recommendations.map((item) => (
+              <Text key={item} style={{ fontSize: 14 }}>
+                {item}
+              </Text>
+            ))}
+          </Space>
+        }
+      />
+    );
+  };
+
+  const renderRouteSection = (topic: Topic) => {
+    const routes = getRoutes(topic.name);
+    const diagnostics = analyzeTopicRoutes(routes);
+    const summary = diagnostics.summary;
+
+    return (
+      <>
+        <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
+          路由信息
+        </Text>
+        {!detailLoading && (
+          <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 12 }}>
+            <Alert
+              type={diagnostics.statusColor}
+              showIcon
+              message={`路由诊断：${diagnostics.statusText}`}
+              description={
+                diagnostics.status === 'healthy'
+                  ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
+                  : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
+              }
+              action={
+                routes.length === 0 ? (
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={rebuilding}
+                    onClick={() => void rebuildTopic(topic)}
+                  >
+                    在 Broker 上重建
+                  </Button>
+                ) : undefined
+              }
+            />
+            <Row gutter={[12, 12]}>
+              {renderRouteMetric(
+                'Broker 数',
+                summary.brokerCount,
+                `${summary.addressCount} 个地址`,
+              )}
+              {renderRouteMetric(
+                '可写 Broker',
+                summary.writableBrokerCount,
+                `${summary.totalWriteQueues} 个写队列`,
+              )}
+              {renderRouteMetric(
+                '可读 Broker',
+                summary.readableBrokerCount,
+                `${summary.totalReadQueues} 个读队列`,
+              )}
+              {renderRouteMetric(
+                'Replica 数',
+                summary.replicaCount,
+                summary.writeSkew.gap > 0 || summary.readSkew.gap > 0
+                  ? `队列差距 写 ${summary.writeSkew.gap} / 读 ${summary.readSkew.gap}`
+                  : '队列均衡',
+              )}
+            </Row>
+            {renderRouteIssues(diagnostics.issues)}
+            {renderRouteRecommendations(diagnostics.recommendations)}
+          </Space>
+        )}
+        <Table<RouteDistribution>
+          columns={routeColumns}
+          dataSource={detailLoading ? [] : diagnostics.distributions}
+          rowKey="key"
+          pagination={false}
+          size="small"
+          loading={detailLoading}
+          scroll={{ x: tableScrollX(routeColumns) }}
+        />
+      </>
+    );
+  };
 
   // ─── Modal: detail tab ────────────────────────────────────────
   const renderDetailTab = (topic: Topic) => {
@@ -1163,7 +1438,7 @@ const TopicPage = () => {
         title={selectedTopic?.name}
         open={detailModalOpen}
         onCancel={() => setDetailModalOpen(false)}
-        width={800}
+        width={1080}
         destroyOnHidden
         footer={null}
       >
@@ -1180,36 +1455,7 @@ const TopicPage = () => {
                 <Divider style={{ margin: '20px 0 16px' }} />
 
                 {/* Section 2: 路由信息 */}
-                <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-                  路由信息
-                </Text>
-                {!detailLoading && getRoutes(selectedTopic.name).length === 0 && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    style={{ marginBottom: 12 }}
-                    message="Broker 上没有该 Topic 的路由"
-                    description="元数据库中存在这条记录，但 Broker 未返回路由信息，可能尚未在 Broker 上创建或已被删除。可按库中记录的队列数重建。"
-                    action={
-                      <Button
-                        size="small"
-                        type="primary"
-                        loading={rebuilding}
-                        onClick={() => void rebuildTopic(selectedTopic)}
-                      >
-                        在 Broker 上重建
-                      </Button>
-                    }
-                  />
-                )}
-                <Table<BrokerRoute>
-                  columns={routeColumns}
-                  dataSource={getRoutes(selectedTopic.name)}
-                  rowKey="brokerName"
-                  pagination={false}
-                  size="small"
-                  loading={detailLoading}
-                />
+                {renderRouteSection(selectedTopic)}
               </>
             )}
 

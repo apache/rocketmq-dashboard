@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -92,12 +93,33 @@ class TopicControllerTest {
 
     @Test
     void topicRuntimeDiagnosticsShouldPassSelectedInstance() throws Exception {
-        when(metadataService.getTopicRoutes("instance-a", "orders")).thenReturn(List.of());
+        BrokerRouteVO route = BrokerRouteVO.builder()
+                .brokerName("broker-a")
+                .brokerAddr("10.0.0.1:10911")
+                .masterAddr("10.0.0.1:10911")
+                .brokerAddrs(Map.of(0L, "10.0.0.1:10911", 1L, "10.0.0.2:10911"))
+                .brokerIds(List.of(0L, 1L))
+                .replicaCount(1)
+                .writeQueues(8)
+                .readQueues(8)
+                .perm(TopicPerm.RW)
+                .permCode(6)
+                .readable(true)
+                .writable(true)
+                .topicSysFlag(0)
+                .build();
+        when(metadataService.getTopicRoutes("instance-a", "orders")).thenReturn(List.of(route));
         when(metadataService.getTopicConsumers("instance-a", "orders")).thenReturn(List.of());
 
         mockMvc.perform(get("/api/topics/orders/routes").param("instanceId", "instance-a"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].brokerName").value("broker-a"))
+                .andExpect(jsonPath("$.data[0].masterAddr").value("10.0.0.1:10911"))
+                .andExpect(jsonPath("$.data[0].brokerIds[1]").value(1))
+                .andExpect(jsonPath("$.data[0].replicaCount").value(1))
+                .andExpect(jsonPath("$.data[0].readable").value(true))
+                .andExpect(jsonPath("$.data[0].writable").value(true));
         mockMvc.perform(get("/api/topics/orders/consumers").param("instanceId", "instance-a"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));

@@ -46,9 +46,13 @@ describe('topic service mock data', () => {
     expect(first[0].brokerName).toBe('broker-a-0');
 
     first[0].brokerName = 'mutated-broker';
+    if (first[0].brokerAddrs) first[0].brokerAddrs['0'] = '127.0.0.1:10911';
+    if (first[0].brokerIds) first[0].brokerIds.push(99);
 
     const second = await getTopicRoutes('order-create');
     expect(second[0].brokerName).toBe('broker-a-0');
+    expect(second[0].brokerAddrs?.['0']).toBe('10.0.1.10:10911');
+    expect(second[0].brokerIds).toEqual([0, 1]);
     expect(second[0]).not.toBe(first[0]);
   });
 

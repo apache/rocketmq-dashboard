@@ -33,9 +33,17 @@ export interface TopicQuery {
 export interface BrokerRoute {
   brokerName: string;
   brokerAddr: string;
+  masterAddr?: string;
+  brokerAddrs?: Record<string, string>;
+  brokerIds?: number[];
+  replicaCount?: number;
   writeQueues: number;
   readQueues: number;
   perm: string;
+  permCode?: number;
+  readable?: boolean;
+  writable?: boolean;
+  topicSysFlag?: number;
 }
 
 export interface ConsumerGroupInfo {

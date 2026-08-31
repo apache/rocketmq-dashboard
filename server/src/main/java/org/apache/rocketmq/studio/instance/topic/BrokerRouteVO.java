@@ -22,6 +22,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -29,7 +32,15 @@ import lombok.NoArgsConstructor;
 public class BrokerRouteVO {
     private String brokerName;
     private String brokerAddr;
+    private String masterAddr;
+    private Map<Long, String> brokerAddrs;
+    private List<Long> brokerIds;
+    private int replicaCount;
     private int writeQueues;
     private int readQueues;
     private TopicPerm perm;
+    private int permCode;
+    private boolean readable;
+    private boolean writable;
+    private int topicSysFlag;
 }
