@@ -58,16 +58,21 @@ public class MqAdminExtFactory {
      * Runs an action against a started admin client bound to the given NameServer address.
      *
      * @param namesrvAddr NameServer address list, e.g. {@code host1:9876;host2:9876}
-     * @param rpcHook     optional RPC hook for authentication, may be {@code null}
+     * @param rpcHook     RPC hook for authentication; must be {@code null} — a caller holding a
+     *                    hook must use the identity-qualified overload, because a hook instance's
+     *                    identity hash is not a stable credential identity
      * @param action      the admin interaction to execute
      * @param <T>         result type
      * @return the action result
      * @throws BusinessException if the connection cannot be established or the action fails
      */
     public <T> T execute(String namesrvAddr, RPCHook rpcHook, AdminAction<T> action) {
-        String authenticationIdentity = rpcHook == null ? "anonymous"
-                : "custom-hook-" + Integer.toUnsignedString(System.identityHashCode(rpcHook));
-        return execute(namesrvAddr, rpcHook, authenticationIdentity, action);
+        if (rpcHook != null) {
+            throw new BusinessException(400,
+                    "An RPCHook requires the identity-qualified overload: a hook instance is not "
+                            + "a stable credential identity");
+        }
+        return execute(namesrvAddr, null, "anonymous", action);
     }
 
     /**
