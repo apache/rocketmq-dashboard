@@ -105,6 +105,88 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void createShouldTrimKubernetesIdentifiersTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(10L);
+            return 1;
+        });
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(10L);
+        stored.setName("rocketmq4");
+        stored.setNamesrvAddr("rocketmq4-nameserver:9876");
+        stored.setK8sNamespace("prod");
+        stored.setK8sId("ids-42");
+        when(nameserverMapper.selectById(10L)).thenReturn(stored);
+
+        service.create(CreateNameserverRegistryDTO.builder()
+                .name("rocketmq4")
+                .namesrvAddr("rocketmq4-nameserver:9876")
+                .k8sNamespace("  prod  ")
+                .k8sId("  ids-42  ")
+                .build());
+
+        ArgumentCaptor<RmqNameserver> captor = ArgumentCaptor.forClass(RmqNameserver.class);
+        verify(nameserverMapper).insert(captor.capture());
+        assertThat(captor.getValue().getK8sNamespace()).isEqualTo("prod");
+        assertThat(captor.getValue().getK8sId()).isEqualTo("ids-42");
+    }
+
+    @Test
+    void createShouldTreatBlankKubernetesIdentifiersAsUnsetTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(11L);
+            return 1;
+        });
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(11L);
+        stored.setName("rocketmq5");
+        stored.setNamesrvAddr("rocketmq5-nameserver:9876");
+        when(nameserverMapper.selectById(11L)).thenReturn(stored);
+
+        service.create(CreateNameserverRegistryDTO.builder()
+                .name("rocketmq5")
+                .namesrvAddr("rocketmq5-nameserver:9876")
+                .k8sNamespace("   ")
+                .k8sId("")
+                .build());
+
+        ArgumentCaptor<RmqNameserver> captor = ArgumentCaptor.forClass(RmqNameserver.class);
+        verify(nameserverMapper).insert(captor.capture());
+        assertThat(captor.getValue().getK8sNamespace()).isNull();
+        assertThat(captor.getValue().getK8sId()).isNull();
+    }
+
+    @Test
+    void updateShouldNormalizeKubernetesIdentifiersTest() {
+        RmqNameserver entity = new RmqNameserver();
+        entity.setId(20L);
+        entity.setName("rocketmq6");
+        entity.setNamesrvAddr("rocketmq6-nameserver:9876");
+        when(nameserverMapper.selectById(20L)).thenReturn(entity);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+        entity.setK8sNamespace("prod");
+        entity.setK8sId(null);
+
+        service.update(UpdateNameserverRegistryDTO.builder()
+                .id(20L)
+                .name("rocketmq6")
+                .namesrvAddr("rocketmq6-nameserver:9876")
+                .k8sNamespace("  prod  ")
+                .k8sId("   ")
+                .build());
+
+        ArgumentCaptor<RmqNameserver> captor = ArgumentCaptor.forClass(RmqNameserver.class);
+        verify(nameserverMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getK8sNamespace()).isEqualTo("prod");
+        assertThat(captor.getValue().getK8sId()).isNull();
+    }
+
+    @Test
     void createShouldRejectDuplicateNameTest() {
         when(nameserverMapper.selectCount(any())).thenReturn(1L);
 

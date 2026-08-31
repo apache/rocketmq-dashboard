@@ -48,8 +48,8 @@ public class NameserverRegistryService {
         RmqNameserver entity = new RmqNameserver();
         entity.setName(name);
         entity.setNamesrvAddr(NamesrvAddrParser.normalize(command.getNamesrvAddr()));
-        entity.setK8sNamespace(command.getK8sNamespace());
-        entity.setK8sId(command.getK8sId());
+        entity.setK8sNamespace(normalizeOptionalIdentifier(command.getK8sNamespace()));
+        entity.setK8sId(normalizeOptionalIdentifier(command.getK8sId()));
         entity.setDescription(command.getDescription());
         try {
             nameserverMapper.insert(entity);
@@ -78,8 +78,8 @@ public class NameserverRegistryService {
         }
         entity.setName(name);
         entity.setNamesrvAddr(NamesrvAddrParser.normalize(command.getNamesrvAddr()));
-        entity.setK8sNamespace(command.getK8sNamespace());
-        entity.setK8sId(command.getK8sId());
+        entity.setK8sNamespace(normalizeOptionalIdentifier(command.getK8sNamespace()));
+        entity.setK8sId(normalizeOptionalIdentifier(command.getK8sId()));
         entity.setDescription(command.getDescription());
         try {
             int updated = nameserverMapper.updateById(entity);
@@ -108,6 +108,18 @@ public class NameserverRegistryService {
             throw new BusinessException(400, "name must not be blank");
         }
         return name;
+    }
+
+    /**
+     * The k8s identifiers locate cluster resources, so surrounding whitespace must not
+     * create near-miss lookups ("prod" vs "prod ") and a blank value means "unset".
+     */
+    private static String normalizeOptionalIdentifier(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private static BusinessException duplicateName(String name) {
