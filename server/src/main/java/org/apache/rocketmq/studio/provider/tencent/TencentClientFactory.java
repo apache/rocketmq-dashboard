@@ -48,13 +48,20 @@ public class TencentClientFactory {
 
     public TrocketClient client(Long credentialId, String region) {
         String key = cacheKey(credentialId, region);
-        TrocketClient cached = clients.get(key);
-        if (cached != null) {
-            return cached;
-        }
+        // The fast-path read must share the invalidation monitor: outside it, a thread suspended
+        // between the read and the return could hand out a client that a concurrent credential
+        // rotation just evicted, still carrying the replaced secret.
         synchronized (this) {
+            TrocketClient cached = cachedClient(key);
+            if (cached != null) {
+                return cached;
+            }
             return clients.computeIfAbsent(key, ignored -> createClient(credentialId, region));
         }
+    }
+
+    TrocketClient cachedClient(String key) {
+        return clients.get(key);
     }
 
     public synchronized void invalidateCredential(Long credentialId) {
