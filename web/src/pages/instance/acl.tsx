@@ -90,7 +90,9 @@ const normalizeRule = (rule: AclRule): AclRule => ({
   gmtCreate: rule.gmtCreate ?? null,
 });
 
-const normalizeUser = (user: AclUser): AclUser => ({
+type NormalizedAclUser = AclUser & { accessKey: string; secretKey: string };
+
+const normalizeUser = (user: AclUser): NormalizedAclUser => ({
   ...user,
   id: user.id ?? user.username,
   username: user.username ?? '',
@@ -125,7 +127,7 @@ const AclPageContent = ({
 
   /* ─── State ─── */
   const [rules, setRules] = useState<AclRule[]>([]);
-  const [users, setUsers] = useState<AclUser[]>([]);
+  const [users, setUsers] = useState<NormalizedAclUser[]>([]);
   const [rulesLoading, setRulesLoading] = useState(hasSelectedInstance);
   const [usersLoading, setUsersLoading] = useState(hasSelectedInstance);
   const [userPage, setUserPage] = useState(1);
@@ -154,7 +156,7 @@ const AclPageContent = ({
 
   // User modal
   const [userModalOpen, setUserModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<AclUser | null>(null);
+  const [editingUser, setEditingUser] = useState<NormalizedAclUser | null>(null);
   const [userForm] = Form.useForm();
 
   // Secret key reveal
@@ -361,8 +363,8 @@ const AclPageContent = ({
       setCredentialsByUser((prev) => ({
         ...prev,
         [userKey]: {
-          accessKey: credentials.accessKey,
-          secretKey: credentials.secretKey,
+          accessKey: credentials.accessKey ?? '',
+          secretKey: credentials.secretKey ?? '',
         },
       }));
     } catch {
@@ -383,7 +385,7 @@ const AclPageContent = ({
     setUserModalOpen(true);
   };
 
-  const openEditUserModal = (user: AclUser) => {
+  const openEditUserModal = (user: NormalizedAclUser) => {
     setEditingUser(user);
     userForm.setFieldsValue({
       username: user.username,
@@ -696,14 +698,14 @@ const AclPageContent = ({
   /* ═══════════════════════════════════════════
      Users Table
      ═══════════════════════════════════════════ */
-  const userColumns: ColumnsType<AclUser> = [
+  const userColumns: ColumnsType<NormalizedAclUser> = [
     {
       title: t('acl.username'),
       dataIndex: 'username',
       key: 'username',
       width: 200,
       sorter: (a, b) => a.username.localeCompare(b.username),
-      render: (text: string, record: AclUser) => (
+      render: (text: string, record: NormalizedAclUser) => (
         <Space size={6}>
           <User size={14} color="#8c8c8c" weight="fill" />
           <span style={{ fontWeight: 500 }}>{text}</span>
@@ -722,16 +724,17 @@ const AclPageContent = ({
       key: 'accessKey',
       width: 220,
       sorter: (a, b) => a.accessKey.localeCompare(b.accessKey),
-      render: (text: string, record: AclUser) => {
+      render: (text: string, record: NormalizedAclUser) => {
         const revealed = revealedKeys.has(record.id);
         const fullAccessKey = credentialsByUser[String(record.id)]?.accessKey ?? text;
+        const displayedAccessKey = revealed && fullAccessKey ? fullAccessKey : text || '-';
         return (
           <Space size={8}>
             <Typography.Text
-              copyable={{ text: fullAccessKey }}
+              copyable={fullAccessKey ? { text: fullAccessKey } : false}
               style={{ fontFamily: 'monospace', fontSize: 14 }}
             >
-              {revealed ? fullAccessKey : text}
+              {displayedAccessKey}
             </Typography.Text>
           </Space>
         );
@@ -742,7 +745,7 @@ const AclPageContent = ({
       dataIndex: 'secretKey',
       key: 'secretKey',
       width: 240,
-      render: (_: string, record: AclUser) => {
+      render: (_: string, record: NormalizedAclUser) => {
         const revealed = revealedKeys.has(record.id);
         const secret = credentialsByUser[String(record.id)]?.secretKey;
         return (
@@ -809,7 +812,7 @@ const AclPageContent = ({
       title: t('common.actions'),
       key: 'userActions',
       width: 160,
-      render: (_: unknown, record: AclUser) => (
+      render: (_: unknown, record: NormalizedAclUser) => (
         <Flex gap={6}>
           <Button
             size="small"

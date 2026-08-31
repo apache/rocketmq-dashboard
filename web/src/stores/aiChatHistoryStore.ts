@@ -83,6 +83,8 @@ const boundMessageFields = (messages: AiChatMessage[]): AiChatMessage[] =>
     thinking: truncateMessageField(message.thinking),
   }));
 
+const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).byteLength;
+
 const restoreMessages = (messages: unknown): AiChatMessage[] =>
   (Array.isArray(messages) ? messages : [])
     .filter(isRecord)
@@ -110,7 +112,7 @@ const limitHistorySize = (history: AiChatHistory): AiChatHistory => {
   }));
   while (
     conversations.length > 0 &&
-    JSON.stringify({ conversations }).length > MAX_AI_CHAT_HISTORY_BYTES
+    utf8ByteLength(JSON.stringify({ conversations })) > MAX_AI_CHAT_HISTORY_BYTES
   ) {
     const oldestIndex = conversations.length - 1;
     const oldest = conversations[oldestIndex];

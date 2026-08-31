@@ -20,7 +20,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { useQueueBrowser } from '../QueueBrowser';
+import { formatTimeMs, useQueueBrowser } from '../QueueBrowser';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
@@ -88,6 +88,19 @@ function QueueBrowserProbe({ instanceId = 'instance-a' }: { instanceId?: string 
     </div>
   );
 }
+
+describe('formatTimeMs', () => {
+  it('preserves the Unix epoch timestamp', () => {
+    expect(formatTimeMs(0)).not.toBe('-');
+  });
+
+  it.each(['not-a-date', Number.NaN, Number.POSITIVE_INFINITY])(
+    'returns a placeholder for invalid timestamp %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe('-');
+    },
+  );
+});
 
 describe('QueueBrowser request ownership', () => {
   beforeEach(() => {

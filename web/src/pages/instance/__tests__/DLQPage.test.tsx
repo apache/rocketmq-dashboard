@@ -24,7 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { DLQGroup, DLQGroupPage, DLQMessagePage, DLQResendResult } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as messageService from '../../../services/messageService';
-import DLQPage from '../dlq';
+import DLQPage, { formatDateTime } from '../dlq';
 
 vi.mock('../../../services/messageService', () => ({
   listDLQGroups: vi.fn(),
@@ -153,6 +153,12 @@ describe('DLQ page', () => {
   afterEach(() => {
     clickSpy.mockRestore();
     vi.clearAllMocks();
+  });
+
+  it('renders invalid message timestamps as unavailable without throwing', () => {
+    expect(formatDateTime(Number.NaN)).toBe('-');
+    expect(formatDateTime(Number.POSITIVE_INFINITY)).toBe('-');
+    expect(formatDateTime(0)).not.toBe('-');
   });
 
   it('loads DLQ groups through the service layer', async () => {

@@ -35,6 +35,18 @@ describe('grafanaService', () => {
     expect(model.uid).toBe('rocketmq-overview');
   });
 
+  it('does not expose mutable mock dashboard state', async () => {
+    const dashboards = await listGrafanaDashboards();
+    dashboards[0].tags.push('mutated');
+    const model = await getGrafanaDashboard('rocketmq-overview');
+    (model.panels as Array<Record<string, unknown>>)[0].title = 'mutated';
+
+    const freshDashboards = await listGrafanaDashboards();
+    const freshModel = await getGrafanaDashboard('rocketmq-overview');
+    expect(freshDashboards[0].tags).not.toContain('mutated');
+    expect((freshModel.panels as Array<Record<string, unknown>>)[0].title).toBe('Messages In TPS');
+  });
+
   it('throws for an unknown dashboard uid in mock mode', async () => {
     await expect(getGrafanaDashboard('nope')).rejects.toThrow();
   });

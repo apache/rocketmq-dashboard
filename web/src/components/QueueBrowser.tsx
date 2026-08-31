@@ -42,9 +42,9 @@ export interface TopicOption {
   value: string;
 }
 
-const formatTimeMs = (value: number | string) => {
-  const ts = typeof value === 'string' ? new Date(value).getTime() : value;
-  if (!ts || Number.isNaN(ts)) return '-';
+export const formatTimeMs = (value: number | string) => {
+  const ts = typeof value === 'string' ? Date.parse(value) : value;
+  if (!Number.isFinite(ts)) return '-';
   return new Date(ts).toLocaleString('zh-CN', { hour12: false });
 };
 
