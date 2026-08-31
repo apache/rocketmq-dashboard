@@ -1096,7 +1096,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static int toInteger(Long value) {
-        return value == null ? 0 : Math.toIntExact(value);
+        return value == null ? 0 : value > Integer.MAX_VALUE ? Integer.MAX_VALUE : value.intValue();
     }
 
     private static void requireTopicName(String topicName) {
