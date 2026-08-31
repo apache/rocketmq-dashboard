@@ -51,6 +51,7 @@ import org.assertj.core.api.ThrowableAssert;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -426,6 +427,44 @@ class ClusterServiceTest {
     }
 
     @Test
+    void updateConfigShouldSkipSnapshotPersistenceWhenNoStoredConfigExists() {
+        ClusterVO configLessCluster = ClusterVO.builder()
+                .name("test-cluster")
+                .brokers(List.of(BrokerVO.builder()
+                        .name("broker-0")
+                        .addr("10.0.0.1:10911")
+                        .build()))
+                .build();
+        configLessCluster.setId("cluster-1");
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(configLessCluster));
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .fileReservedTime(48)
+                .build();
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command);
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
+        assertThat(result.getCluster().getConfig().getFileReservedTime()).isEqualTo(48);
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
+    }
+
+    @Test
+    void updateConfigShouldPersistSnapshotWhenStoredConfigExists() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .fileReservedTime(48)
+                .build();
+
+        clusterService.updateClusterConfig(command);
+
+        verify(clusterRepository).updateConfig(eq("cluster-1"), any(ClusterConfigVO.class));
+    }
+
+    @Test
     void updateConfigShouldReportPartialFailureAfterOneBrokerSucceeds() {
         sampleCluster.setBrokers(List.of(
                 BrokerVO.builder().name("broker-0").addr("10.0.0.1:10911").build(),
@@ -569,7 +608,7 @@ class ClusterServiceTest {
     }
 
     @Test
-    void updateConfigShouldLeaveNullStoredConfigWhenRepositoryUpdateFails() {
+    void updateConfigShouldSkipPersistenceWhenStoredConfigIsNull() {
         ClusterVO clusterWithNullConfig = ClusterVO.builder()
                 .name("null-config-cluster")
                 .status(ClusterStatus.healthy)
@@ -577,19 +616,21 @@ class ClusterServiceTest {
                 .config(null)
                 .build();
         clusterWithNullConfig.setId("cluster-nc");
-        RuntimeException persistenceFailure = new RuntimeException("persistence failed");
         when(clusterRepository.findById("cluster-nc")).thenReturn(Optional.of(clusterWithNullConfig));
-        doThrow(persistenceFailure).when(clusterRepository)
-                .updateConfig(eq("cluster-nc"), any(ClusterConfigVO.class));
 
         UpdateConfigDTO command = UpdateConfigDTO.builder()
                 .id("cluster-nc")
                 .flushDiskType("ASYNC_FLUSH")
                 .build();
 
-        assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
-                .isSameAs(persistenceFailure);
-        assertThat(clusterWithNullConfig.getConfig()).isNull();
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command);
+
+        // The applied config is padded with zero defaults, so it must not be persisted as
+        // a fabricated snapshot; the in-memory cluster still reflects the applied values.
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
+        assertThat(result.getCluster().getConfig().getFlushDiskType())
+                .isEqualTo(FlushDiskType.ASYNC_FLUSH);
+        verify(clusterRepository, never()).updateConfig(eq("cluster-nc"), any(ClusterConfigVO.class));
     }
 
     @Test
@@ -790,6 +831,8 @@ class ClusterServiceTest {
     @Test
     void updateClusterConfigShouldUseLiveClusterWhenItIsNotPersisted() {
         when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
+        when(brokerConfigService.getBrokerConfig(eq("10.0.0.1:10911"), isNull()))
+                .thenReturn(sampleCluster.getConfig());
         UpdateConfigDTO command = UpdateConfigDTO.builder()
                 .id("cluster-1")
                 .maxMessageSize(8_388_608)
