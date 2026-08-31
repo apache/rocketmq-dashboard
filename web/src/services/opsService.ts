@@ -357,8 +357,10 @@ export async function listSystemAlertsPage(
       return false;
     }
     const alertTime = new Date(alert.time).getTime();
-    if (params.from && alertTime < new Date(params.from).getTime()) return false;
-    if (params.to && alertTime > new Date(params.to).getTime()) return false;
+    const fromTime = params.from ? new Date(params.from).getTime() : undefined;
+    const toTime = params.to ? new Date(params.to).getTime() : undefined;
+    if (fromTime !== undefined && (Number.isNaN(alertTime) || alertTime < fromTime)) return false;
+    if (toTime !== undefined && (Number.isNaN(alertTime) || alertTime > toTime)) return false;
     return true;
   });
   const start = (page - 1) * pageSize;

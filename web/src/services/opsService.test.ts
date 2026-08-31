@@ -16,8 +16,9 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AuditRecord } from '../api/ops';
+import type { AuditRecord, SystemAlert } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
+import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
 import {
   createAlertRule,
   exportAuditLogs,
@@ -37,6 +38,45 @@ vi.mock('../config', () => ({
 }));
 
 describe('ops service mock data', () => {
+  it('excludes mock system alerts with unparseable times from time-range filters', async () => {
+    const validAlert = {
+      id: 91001,
+      level: 'warning',
+      title: 'filter-valid-alert',
+      description: 'parseable time',
+      time: '2026-08-01T10:00',
+      acknowledged: false,
+    } as unknown as SystemAlert;
+    const unknownAlert = {
+      ...validAlert,
+      id: 91002,
+      title: 'filter-unknown-alert',
+      time: 'not-a-timestamp',
+    } as unknown as SystemAlert;
+    mockSystemAlerts.push(validAlert, unknownAlert);
+
+    try {
+      const unfiltered = await listSystemAlertsPage({ page: 1, pageSize: 500 });
+      const unfilteredIds = unfiltered.items.map((alert) => alert.id);
+      expect(unfilteredIds).toContain(91001);
+      expect(unfilteredIds).toContain(91002);
+
+      const filtered = await listSystemAlertsPage({
+        page: 1,
+        pageSize: 500,
+        from: '2026-07-01T00:00:00',
+        to: '2026-09-01T00:00:00',
+      });
+      const filteredIds = filtered.items.map((alert) => alert.id);
+      expect(filteredIds).toContain(91001);
+      expect(filteredIds).not.toContain(91002);
+    } finally {
+      mockSystemAlerts.pop();
+      mockSystemAlerts.pop();
+    }
+  });
+
+
   const auditRecords = mockAuditRecords as unknown as AuditRecord[];
   const insertedRecords: AuditRecord[] = [];
 

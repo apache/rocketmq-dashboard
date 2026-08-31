@@ -75,6 +75,15 @@ const channelColors: Record<string, string> = {
   sms: 'orange',
 };
 
+export const wasTriggeredWithin = (
+  lastTriggered: string | null | undefined,
+  sinceMs: number,
+): boolean => {
+  if (!lastTriggered) return false;
+  const triggeredAt = new Date(lastTriggered).getTime();
+  return !Number.isNaN(triggeredAt) && triggeredAt > sinceMs;
+};
+
 const durationOptions = ['1m', '5m', '15m', '30m'];
 const reminderIntervalOptions = ['5m', '15m', '30m', '1h', '4h'];
 const notificationTemplateVariables = [
@@ -259,9 +268,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  const triggered24h = rules.filter(
-    (r) => r.lastTriggered && new Date(r.lastTriggered).getTime() > dayAgo,
-  ).length;
+  const triggered24h = rules.filter((rule) => wasTriggeredWithin(rule.lastTriggered, dayAgo)).length;
 
   const openCreateModal = () => {
     setEditingRule(null);
