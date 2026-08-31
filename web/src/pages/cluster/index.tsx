@@ -99,7 +99,14 @@ type NameServerConfigDiffNode = NameServerConfigDiffResult['nodes'][number];
 type BrokerConfigDiffBroker = BrokerConfigDiffResult['brokers'][number];
 
 const safeText = (value: string | null | undefined) => value ?? '';
-const searchText = (value: string | null | undefined) => safeText(value).toLowerCase();
+/**
+ * Normalize a search-box input: null-safe, trimmed and lower-cased.
+ * Trimming matters because the broker/nameserver/proxy panels use
+ * `Input.Search onSearch`, where a whitespace-only submission would
+ * otherwise hide every row.
+ */
+export const searchText = (value: string | null | undefined) =>
+  safeText(value).trim().toLowerCase();
 const compareText = (left: string | null | undefined, right: string | null | undefined) =>
   safeText(left).localeCompare(safeText(right));
 
