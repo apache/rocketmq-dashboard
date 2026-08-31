@@ -72,6 +72,21 @@ const PRODUCER_CONNECTION_EXPORT_COLUMNS: CsvColumn<ProducerConnectionExportRow>
 
 const PRODUCER_GROUP_SELECTOR_LIMIT = 20;
 
+/**
+ * Case-insensitive AutoComplete filter for producer-group suggestions.
+ *
+ * Both sides are coerced with String() and null-guaranteed so that a
+ * non-string option value (e.g. a `null` group returned by the API) or a
+ * missing search string cannot throw and blank out the dropdown.
+ */
+export const matchesProducerGroupOption = (
+  inputValue: string | null | undefined,
+  option?: { value?: unknown } | null,
+) =>
+  String(option?.value ?? '')
+    .toLowerCase()
+    .includes(String(inputValue ?? '').toLowerCase());
+
 const ProducerPage = () => {
   const [form] = Form.useForm();
   const [topicList, setTopicList] = useState<string[]>([]);
@@ -350,7 +365,7 @@ const ProducerPage = () => {
                 void loadProducerGroups(value);
               }}
               filterOption={(inputValue, option) =>
-                option?.value.toLowerCase().includes(inputValue.toLowerCase()) ?? false
+                matchesProducerGroupOption(inputValue, option)
               }
             />
           </Form.Item>
