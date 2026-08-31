@@ -54,7 +54,7 @@ public class MessageService {
                 .map(provider -> provider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime))
                 .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
         if (recordHistory) {
-            recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.size());
+            recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result);
         }
         return result;
     }
@@ -151,11 +151,12 @@ public class MessageService {
                 .orElseGet(() -> messageProvider.getMessageTraceByKey(instanceId, key, topic, traceTopic));
     }
     private void recordMessageQuery(String instanceId, String topic, String msgId, String tag,
-                                    String key, Long startTime, Long endTime, int resultCount) {
+                                    String key, Long startTime, Long endTime, List<MessageRecordVO> result) {
         String queryType = StringUtils.hasText(msgId) ? "MSG_ID" : StringUtils.hasText(key) ? "KEY" : "TOPIC";
         try {
+            String snapshot = queryHistoryService.buildResultSnapshot(result);
             queryHistoryService.recordMessageQuery(instanceId, queryType, topic, msgId, tag, key,
-                    startTime, endTime, resultCount);
+                    startTime, endTime, result.size(), snapshot);
         } catch (RuntimeException failure) {
             log.warn("Failed to record message query history: {}", failure.getMessage());
         }

@@ -124,7 +124,7 @@ class MessageServiceTest {
         service.queryMessages("cloud-instance", "orders", null, null, "ORDER-1", null, null);
 
         verify(history).recordMessageQuery("cloud-instance", "KEY", "orders", null, null,
-                "ORDER-1", null, null, 1);
+                "ORDER-1", null, null, 1, null);
         verifyNoInteractions(fallback);
     }
 
@@ -205,7 +205,7 @@ class MessageServiceTest {
         verify(provider, org.mockito.Mockito.times(2))
                 .queryMessages("instance-a", "TopicA", null, null, null, 1000L, 2000L);
         verify(history, org.mockito.Mockito.times(1)).recordMessageQuery(
-                "instance-a", "TOPIC", "TopicA", null, null, null, 1000L, 2000L, 1);
+                "instance-a", "TOPIC", "TopicA", null, null, null, 1000L, 2000L, 1, null);
     }
 
     @Test

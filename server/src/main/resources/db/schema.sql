@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_message (
   start_time BIGINT,
   end_time BIGINT,
   result_count INT DEFAULT 0,
+  result_snapshot MEDIUMTEXT COMMENT '查询结果快照（不含消息体）JSON',
   cluster_id VARCHAR(255),
   queried_by VARCHAR(128),
   PRIMARY KEY (`id`),

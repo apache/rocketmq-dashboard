@@ -78,3 +78,24 @@ export async function getQueryHistorySummary(clusterId?: string) {
   });
   return response.data.data;
 }
+
+export interface MessageResultSnapshot {
+  msgId: string;
+  topic: string;
+  tag: string;
+  key: string;
+  brokerName: string;
+  queueId: number;
+  queueOffset: number;
+  storeTime: number;
+  bornHost: string;
+  storeHost: string;
+  size: number;
+}
+
+export async function getMessageQueryResults(id: number) {
+  const response = await client.get<{ data: MessageResultSnapshot[] }>(
+    `/query-history/messages/${id}/results`,
+  );
+  return response.data.data;
+}

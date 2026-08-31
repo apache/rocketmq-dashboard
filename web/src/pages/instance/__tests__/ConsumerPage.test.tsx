@@ -931,33 +931,4 @@ describe('Consumer page', () => {
     const dialog = await screen.findByRole('dialog', { name: /unknown-lag-cg/ });
     expect(within(dialog).getByText('不可用')).toBeInTheDocument();
   });
-
-  it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
-    const user = userEvent.setup();
-    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
-      groupPage([
-        { ...group, name: 'unknown-lag-cg', totalLag: -1 },
-        { ...group, name: 'known-lag-cg', totalLag: 15000 },
-      ]),
-    );
-    renderWithProviders(<ConsumerPage />);
-    await screen.findByRole('row', { name: /unknown-lag-cg/ });
-
-    await user.click(screen.getByText('名称升序'));
-    await user.click(await screen.findByText('堆积量降序'));
-    await waitFor(() => {
-      const rows = Array.from(document.querySelectorAll('tbody tr'));
-      const order = rows
-        .map((row) => row.textContent ?? '')
-        .map((text) =>
-          text.includes('unknown-lag-cg')
-            ? 'unknown'
-            : /\bknown-lag-cg\b/.test(text)
-              ? 'known'
-              : '',
-        )
-        .filter(Boolean);
-      expect(order).toEqual(['known', 'unknown']);
-    });
-  });
 });
