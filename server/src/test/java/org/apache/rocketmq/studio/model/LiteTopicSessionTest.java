@@ -38,4 +38,14 @@ class LiteTopicSessionTest {
 
         assertThat(session.getConsumptionProgress()).isEqualTo(40.0);
     }
+
+    @Test
+    void consumptionProgressShouldClampCounterDriftIntoTheValidRange() {
+        LiteTopicSession session = new LiteTopicSession();
+        session.setTotalMessages(10L);
+        session.setConsumedMessages(12L);
+        assertThat(session.getConsumptionProgress()).isEqualTo(100.0);
+        session.setConsumedMessages(-2L);
+        assertThat(session.getConsumptionProgress()).isZero();
+    }
 }

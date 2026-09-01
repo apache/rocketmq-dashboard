@@ -41,14 +41,22 @@ public class LiteTopicQuota {
         if (maxTopicCount == null || maxTopicCount <= 0 || currentTopicCount == null) {
             return 0.0;
         }
-        return (double) currentTopicCount / maxTopicCount;
+        return clampUnitInterval((double) currentTopicCount / maxTopicCount);
     }
 
     public double getSessionUsageRate() {
         if (maxSessionCount == null || maxSessionCount <= 0 || currentSessionCount == null) {
             return 0.0;
         }
-        return (double) currentSessionCount / maxSessionCount;
+        return clampUnitInterval((double) currentSessionCount / maxSessionCount);
+    }
+
+    /**
+     * Current counts drift from the configured maximum between quota polls; clamp the reported
+     * rate to the unit interval instead of exposing negative or over-100% gauges.
+     */
+    private static double clampUnitInterval(double rate) {
+        return Math.min(1.0, Math.max(0.0, rate));
     }
 
     public boolean isNearQuotaLimit(double threshold) {
