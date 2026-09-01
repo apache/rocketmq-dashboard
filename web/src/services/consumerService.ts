@@ -112,8 +112,10 @@ export async function listConsumerGroupPage(
   params: ConsumerGroupPageQuery = {},
 ): Promise<PageResult<ConsumerGroup>> {
   if (isMockMode()) {
-    const page = params.page ?? 1;
-    const pageSize = params.pageSize ?? 20;
+    // Clamp like listTopicsPage so a zero or negative page/pageSize cannot make the
+    // one-based offset negative and slice from the end of the list.
+    const page = Math.max(params.page ?? 1, 1);
+    const pageSize = Math.min(Math.max(params.pageSize ?? 20, 1), 100);
     const groups = filterConsumerGroups(params);
     const from = Math.min((page - 1) * pageSize, groups.length);
     return {
