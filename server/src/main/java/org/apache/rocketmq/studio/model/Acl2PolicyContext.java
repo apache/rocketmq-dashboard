@@ -57,7 +57,7 @@ public class Acl2PolicyContext {
     /** Policy name (unique identifier for ACL 2.0 policies) */
     private String policyName;
 
-    /** Binding type: USER / GROUP / SERVICE_ACCOUNT */
+    /** Binding type: TOPIC / GROUP / * / USER / SERVICE_ACCOUNT (case-insensitive) */
     private String boundType;
 
     /** Bound entity ID (e.g., username, group name) */
@@ -163,14 +163,29 @@ public class Acl2PolicyContext {
                 }
             }
         }
-        if (boundType != null && !isValidBoundType(boundType)) {
+        if (boundType == null || boundType.trim().isEmpty() || !isValidBoundType(boundType)) {
             throw new IllegalArgumentException(
-                String.format("boundType must be USER, GROUP, or SERVICE_ACCOUNT, got: %s", boundType));
+                String.format("boundType must be one of TOPIC, GROUP, *, USER, SERVICE_ACCOUNT (got: %s)",
+                    boundType));
         }
     }
 
+    /**
+     * Mirrors the operational binding-type vocabulary of {@code AclService#validateAcl2Policy} so
+     * the model validator and the service agree on the accepted types and on case-insensitive
+     * input.
+     */
     private boolean isValidBoundType(String type) {
-        return "USER".equals(type) || "GROUP".equals(type) || "SERVICE_ACCOUNT".equals(type);
+        switch (type.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "TOPIC":
+            case "GROUP":
+            case "*":
+            case "USER":
+            case "SERVICE_ACCOUNT":
+                return true;
+            default:
+                return false;
+        }
     }
     public boolean isIsAdmin() {
         return isAdmin;
