@@ -89,4 +89,30 @@ describe('studio users API', () => {
       exportRequestParams[1],
     ]);
   });
+
+  it('treats a null page payload as an empty page during the export walk', async () => {
+    mock.onGet('/studio-users').reply(200, { code: 0, data: null });
+
+    const all = await loadStudioUsersForExport();
+
+    expect(all).toEqual([]);
+  });
+
+  it('collects every page and stops at the reported total', async () => {
+    mock.onGet('/studio-users').reply((config) => {
+      const page = Number(config.params?.page ?? 1);
+      const items =
+        page === 1
+          ? [
+              { id: 1, username: 'operator-one', admin: false, enabled: true },
+              { id: 2, username: 'operator-two', admin: true, enabled: true },
+            ]
+          : [{ id: 3, username: 'operator-three', admin: false, enabled: false }];
+      return [200, { code: 0, data: { items, total: 3, page, size: 100 } }];
+    });
+
+    const all = await loadStudioUsersForExport();
+
+    expect(all.map((user) => user.id)).toEqual([1, 2, 3]);
+  });
 });

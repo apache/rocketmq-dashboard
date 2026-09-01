@@ -138,9 +138,15 @@ export async function listAllConsumerGroups(
       page,
       pageSize: EXPORT_PAGE_SIZE,
     });
-    groups.push(...result.items);
-    const total = result.total ?? groups.length;
-    if (result.items.length === 0 || groups.length >= total) {
+    // A success envelope may still carry a null or item-less payload; treat it as an
+    // empty page instead of crashing the whole export walk.
+    const items = Array.isArray(result?.items) ? result.items : [];
+    groups.push(...items);
+    const total =
+      result && typeof result.total === 'number' && Number.isFinite(result.total)
+        ? result.total
+        : groups.length;
+    if (items.length === 0 || groups.length >= total) {
       return groups.map(normalizeConsumerGroup);
     }
     page += 1;

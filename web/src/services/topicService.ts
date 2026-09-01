@@ -95,9 +95,15 @@ export const listAllTopics = async (params: TopicQuery = {}): Promise<Topic[]> =
 
   while (page <= MAX_EXPORT_PAGES) {
     const result = await listTopicsPage({ ...params, page, pageSize: EXPORT_PAGE_SIZE });
-    topics.push(...result.items);
-    const total = result.total ?? topics.length;
-    if (result.items.length === 0 || topics.length >= total) return topics;
+    // A success envelope may still carry a null or item-less payload; treat it as an
+    // empty page instead of crashing the whole export walk.
+    const items = Array.isArray(result?.items) ? result.items : [];
+    topics.push(...items);
+    const total =
+      result && typeof result.total === 'number' && Number.isFinite(result.total)
+        ? result.total
+        : topics.length;
+    if (items.length === 0 || topics.length >= total) return topics;
     page += 1;
   }
 
