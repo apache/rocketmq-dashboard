@@ -119,4 +119,17 @@ describe('topic service mock data', () => {
     const after = await listTopics({ clusterId: existing.clusterId });
     expect(after).toEqual(before);
   });
+
+  it('clamps zero or negative pagination to the first page for topic consumers', () => {
+    const first = getTopicConsumerPage('order-create', undefined, 0, 0);
+    const second = getTopicConsumerPage('order-create', undefined, -3, 500);
+
+    return Promise.all([first, second]).then(([a, b]) => {
+      expect(a.page).toBe(1);
+      expect(a.pageSize).toBe(1);
+      expect(b.page).toBe(1);
+      expect(b.pageSize).toBe(100);
+      expect((b.items[0] as { group: string }).group).toBe((a.items[0] as { group: string }).group);
+    });
+  });
 });

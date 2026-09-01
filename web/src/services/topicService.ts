@@ -221,12 +221,16 @@ export async function getTopicConsumerPage(
     const consumers = cloneConsumers(
       (topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? [],
     );
-    const from = Math.min((page - 1) * pageSize, consumers.length);
+    // Clamp like listTopicsPage so a zero or negative page/pageSize cannot make the
+    // one-based offset negative and slice from the end of the list.
+    const safePage = Math.max(page, 1);
+    const safePageSize = Math.min(Math.max(pageSize, 1), 100);
+    const from = Math.min((safePage - 1) * safePageSize, consumers.length);
     return {
-      items: consumers.slice(from, from + pageSize),
+      items: consumers.slice(from, from + safePageSize),
       total: consumers.length,
-      page,
-      pageSize,
+      page: safePage,
+      pageSize: safePageSize,
     };
   }
   return metadataApi.getTopicConsumerPage(name, instanceId, page, pageSize);

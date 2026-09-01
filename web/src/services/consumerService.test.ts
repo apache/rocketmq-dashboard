@@ -44,7 +44,29 @@ vi.mock('../config', () => ({
 }));
 vi.mock('../api/metadata', () => metadataApi);
 
-describe('consumer service mock data', () => {
+describe('consumer service mock data', () => {  it('clamps zero or negative pagination to the first page in mock mode', () => {
+    const first = listConsumerGroupPage({ page: 0, pageSize: 0 }) as Promise<{
+      page: number;
+      size: number;
+      items: unknown[];
+    }>;
+    const second = listConsumerGroupPage({ page: -3, pageSize: 500 }) as Promise<{
+      page: number;
+      size: number;
+      items: unknown[];
+    }>;
+
+    return Promise.all([first, second]).then(([a, b]) => {
+      expect(a.page).toBe(1);
+      expect(a.size).toBe(1);
+      expect(a.items).toHaveLength(1);
+      expect(b.page).toBe(1);
+      expect(b.size).toBe(100);
+      expect((b.items[0] as { name: string }).name).toBe((a.items[0] as { name: string }).name);
+    });
+  });
+
+
   it('returns copied consumer group rows', async () => {
     const first = await listConsumerGroups({ search: 'cg-order-notify' });
     expect(first[0].name).toBe('cg-order-notify');

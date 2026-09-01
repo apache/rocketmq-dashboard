@@ -126,12 +126,16 @@ export async function listDLQGroups(
     const groups = (mockDLQGroups as unknown as DLQGroup[]).filter(
       (group) => !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
     );
-    const from = Math.min((page - 1) * pageSize, groups.length);
+    // Clamp like listTopicsPage so a zero or negative page/pageSize cannot make the
+    // one-based offset negative and slice from the end of the list.
+    const safePage = Math.max(page, 1);
+    const safePageSize = Math.min(Math.max(pageSize, 1), 100);
+    const from = Math.min((safePage - 1) * safePageSize, groups.length);
     return {
-      items: groups.slice(from, from + pageSize).map(cloneDLQGroup),
+      items: groups.slice(from, from + safePageSize).map(cloneDLQGroup),
       total: groups.length,
-      page,
-      size: pageSize,
+      page: safePage,
+      size: safePageSize,
     };
   }
   return messageApi.listDLQGroups(instanceId, search, page, pageSize);

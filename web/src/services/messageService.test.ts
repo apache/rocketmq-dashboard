@@ -117,4 +117,16 @@ describe('message service mock data', () => {
     expect(all.items).toHaveLength(1);
     expect(all.total).toBeGreaterThanOrEqual(1);
   });
+
+  it('clamps zero or negative pagination to the first page for DLQ groups', () => {
+    const first = listDLQGroups('instance-a', undefined, 0, 0);
+    const second = listDLQGroups('instance-a', undefined, -3, 500);
+
+    return Promise.all([first, second]).then(([a, b]) => {
+      expect(a.page).toBe(1);
+      expect(a.size).toBe(1);
+      expect(b.page).toBe(1);
+      expect(b.size).toBe(100);
+    });
+  });
 });
