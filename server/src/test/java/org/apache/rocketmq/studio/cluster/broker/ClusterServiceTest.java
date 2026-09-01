@@ -38,6 +38,7 @@ import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -46,6 +47,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import org.assertj.core.api.ThrowableAssert;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -522,6 +524,38 @@ class ClusterServiceTest {
                 .hasMessageContaining("Invalid flushDiskType: INVALID_FLUSH")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
         verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any(ClusterConfigVO.class));
+    }
+
+    @Test
+    void updateConfigShouldAcceptCaseAndWhitespaceInsensitiveFlushDiskType() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType(" async_flush ")
+                .build();
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command);
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
+        assertThat(result.getCluster().getConfig().getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
+        ArgumentCaptor<Properties> sent = ArgumentCaptor.forClass(Properties.class);
+        verify(brokerConfigService).updateBrokerConfig(eq("10.0.0.1:10911"), eq("cluster-1"), sent.capture());
+        assertThat(sent.getValue().getProperty("flushDiskType")).isEqualTo("ASYNC_FLUSH");
+    }
+
+    @Test
+    void previewConfigShouldNormalizeFlushDiskTypeForBrokerProperty() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        ClusterConfigPreviewVO preview = clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("sync_flush")
+                .build());
+
+        assertThat(preview.getProposedConfig().getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
+        assertThat(preview.getBrokerProperties()).containsEntry("flushDiskType", "SYNC_FLUSH");
+        assertThat(preview.isChanged()).isTrue();
     }
 
     @Test
