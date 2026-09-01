@@ -24,6 +24,8 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -83,6 +85,7 @@ public class MessageService {
         TraceRecordVO result = providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.getMessageTrace(instanceId, msgId, topic))
                 .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic));
+        result = normalizeTrace(result);
         recordTraceQuery(instanceId, msgId, topic, result);
         return result;
     }
@@ -135,6 +138,7 @@ public class MessageService {
         TraceRecordVO result = providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.getMessageTrace(instanceId, msgId, topic, traceTopic))
                 .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic, traceTopic));
+        result = normalizeTrace(result);
         recordTraceQuery(instanceId, msgId, topic, result);
         return result;
     }
@@ -146,9 +150,36 @@ public class MessageService {
         log.info("Getting message trace by key: key={}, topic={}, traceTopic={}", key, topic, traceTopic);
         // Trace query history is keyed by message id; key-based lookups are intentionally
         // not recorded so the key is not misreported as a message id.
-        return providerRegistry.byInstanceId(instanceId)
+        TraceRecordVO result = providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.getMessageTraceByKey(instanceId, key, topic, traceTopic))
                 .orElseGet(() -> messageProvider.getMessageTraceByKey(instanceId, key, topic, traceTopic));
+        return normalizeTrace(result);
+    }
+
+    /**
+     * Providers emit trace nodes in broker result order, which is not chronological across
+     * trace types and queues, and the UI renders the timeline as-is. Order the nodes here
+     * (stable, so provider order is kept for equal timestamps) and normalize missing lists
+     * to empty so the UI never sees null.
+     */
+    private static TraceRecordVO normalizeTrace(TraceRecordVO result) {
+        if (result == null) {
+            return TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        }
+        List<TraceNodeVO> nodes = result.getNodes();
+        if (nodes == null) {
+            nodes = List.of();
+        } else if (nodes.size() > 1) {
+            nodes = new ArrayList<>(nodes);
+            nodes.sort(Comparator.comparingLong(TraceNodeVO::getTimestamp));
+        }
+        if (nodes == result.getNodes() && result.getConsumerStatus() != null) {
+            return result;
+        }
+        return TraceRecordVO.builder()
+                .nodes(nodes)
+                .consumerStatus(result.getConsumerStatus() == null ? List.of() : result.getConsumerStatus())
+                .build();
     }
     private void recordMessageQuery(String instanceId, String topic, String msgId, String tag,
                                     String key, Long startTime, Long endTime, List<MessageRecordVO> result) {
