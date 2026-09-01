@@ -125,8 +125,14 @@ const quickActions = [
 
 const GLOBAL_TOOL_SCOPE = '__global__';
 
-const newConversationId = (): string =>
-  `conversation-${typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
+const uniqueSuffix = (): string =>
+  typeof crypto?.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`;
+
+const newConversationId = (): string => `conversation-${uniqueSuffix()}`;
+
+export const newMessageId = (prefix: string): string => `${prefix}-${uniqueSuffix()}`;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -619,13 +625,13 @@ const AiPage = () => {
       const requestId = ++streamRequestIdRef.current;
       const createdAt = Date.now();
       const userMsg: Message = {
-        id: `user-${createdAt}`,
+        id: newMessageId('user'),
         role: 'user',
         text,
         createdAt,
       };
 
-      const responseId = `ai-${Date.now()}`;
+      const responseId = newMessageId('ai');
       updateMessages(chatMode, conversationId, (prev) => [
         ...prev,
         userMsg,
