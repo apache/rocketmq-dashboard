@@ -33,10 +33,39 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthInterceptorTest {
+
+    @Test
+    void shouldResolveAuthenticatedUserOnlyOncePerRequest() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthProperties.User configuredUser = new AuthProperties.User();
+        configuredUser.setUsername("reader");
+        configuredUser.setPassword("secret");
+        properties.setUsers(List.of(configuredUser));
+        AuthService authService = spy(authService(properties));
+        LoginDTO login = new LoginDTO();
+        login.setUsername("reader");
+        login.setPassword("secret");
+        String token = authService.login(login).getToken();
+        clearInvocations(authService);
+        AuthInterceptor interceptor = interceptor(properties, authService, settingsRepository());
+        MockHttpServletRequest request = authenticatedRequest("GET", "/api/clusters", token);
+
+        boolean allowed = interceptor.preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+        verify(authService).getAuthenticatedUser("Bearer " + token);
+        verify(authService, never()).isAuthenticated("Bearer " + token);
+    }
 
     @AfterEach
     void clearAuthenticatedUser() {

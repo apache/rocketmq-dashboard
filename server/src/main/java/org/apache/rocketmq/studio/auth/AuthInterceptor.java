@@ -68,20 +68,18 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
         String authorization = AuthCookie.authorization(request, authProperties);
-        if (!authService.isAuthenticated(authorization)) {
+        var authenticatedUser = authService.getAuthenticatedUser(authorization).orElse(null);
+        if (authenticatedUser == null) {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
             return false;
         }
 
-        var authenticatedUser = authService.getAuthenticatedUser(authorization).orElse(null);
-        if (authenticatedUser != null) {
-            AuthenticatedUserContext.setUser(
-                    authenticatedUser.getUserId(),
-                    authenticatedUser.getUsername(),
-                    authenticatedUser.isAdmin());
-        }
+        AuthenticatedUserContext.setUser(
+                authenticatedUser.getUserId(),
+                authenticatedUser.getUsername(),
+                authenticatedUser.isAdmin());
         if (requiresAdmin(request, requestPath(request))
-                && (authenticatedUser == null || !authenticatedUser.isAdmin())) {
+                && !authenticatedUser.isAdmin()) {
             writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
             return false;
         }
