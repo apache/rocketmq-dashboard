@@ -273,6 +273,18 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .toList();
     }
 
+    /**
+     * Escapes LIKE wildcards so a user-supplied search term matches literally instead of being
+     * interpreted as a {@code %}/{@code _} pattern (e.g. searching {@code 100%} should not
+     * match every operator).
+     */
+    private static String escapeLike(String value) {
+        if (!StringUtils.hasText(value)) {
+            return value;
+        }
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
     private static AuditRecordVO toVO(RmqOperationAudit entity) {
         AuditRecordVO vo = new AuditRecordVO();
         vo.setId(entity.getId());
