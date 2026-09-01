@@ -33,10 +33,16 @@ class SystemGroupFilterTest {
         assertThat(SystemGroupFilter.isSystem("rmq_sys_TRACE_DATA")).isTrue();
         assertThat(SystemGroupFilter.isSystem("%RETRY%consumer-a")).isTrue();
         assertThat(SystemGroupFilter.isSystem("%DLQ%consumer-a")).isTrue();
-        assertThat(SystemGroupFilter.isSystem("TOOLS_CONSUMER_monitor")).isTrue();
-        assertThat(SystemGroupFilter.isSystem("FILTERSRV_CONSUMER_filter")).isTrue();
-        assertThat(SystemGroupFilter.isSystem("SELF_TEST_GROUP")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("DEFAULT_CONSUMER")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("TOOLS_CONSUMER")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("SCHEDULE_CONSUMER")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("FILTERSRV_CONSUMER")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("__MONITOR_CONSUMER")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("SELF_TEST_C_GROUP")).isTrue();
 
         assertThat(SystemGroupFilter.isSystem("order-service-consumer")).isFalse();
+        assertThat(SystemGroupFilter.isSystem("TOOLS_CONSUMER_monitor")).isFalse();
+        assertThat(SystemGroupFilter.isSystem("FILTERSRV_CONSUMER_filter")).isFalse();
+        assertThat(SystemGroupFilter.isSystem("SELF_TEST_GROUP")).isFalse();
     }
 }
