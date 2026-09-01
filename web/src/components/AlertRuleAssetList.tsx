@@ -55,6 +55,9 @@ export const AlertRuleAssetList: React.FC = () => {
   const severityOptions = useMemo(
     () =>
       Array.from(new Set(assets.flatMap((asset) => asset.severities || [])))
+        // A malformed wire payload may carry non-string severities; keep only real strings
+        // so the sort and the filter options cannot throw.
+        .filter((severity): severity is string => typeof severity === 'string' && severity.length > 0)
         .sort((a, b) => a.localeCompare(b))
         .map((severity) => ({ label: severity.toUpperCase(), value: severity })),
     [assets],
@@ -66,7 +69,7 @@ export const AlertRuleAssetList: React.FC = () => {
       const matchesSearch =
         !normalizedSearch ||
         [asset.name, asset.group]
-          .filter(Boolean)
+          .filter((value): value is string => typeof value === 'string')
           .some((value) => value.toLowerCase().includes(normalizedSearch));
       const matchesSeverity =
         selectedSeverities.length === 0 ||
@@ -176,11 +179,13 @@ export const AlertRuleAssetList: React.FC = () => {
       width: 180,
       render: (severities: string[]) => (
         <Space size={[0, 4]} wrap>
-          {(severities || []).map((severity) => (
-            <Tag key={severity} color={SEVERITY_COLORS[severity] || 'default'}>
-              {severity.toUpperCase()}
-            </Tag>
-          ))}
+          {(severities || [])
+            .filter((severity): severity is string => typeof severity === 'string')
+            .map((severity) => (
+              <Tag key={severity} color={SEVERITY_COLORS[severity] || 'default'}>
+                {severity.toUpperCase()}
+              </Tag>
+            ))}
         </Space>
       ),
     },
