@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqAlertSilenceMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -69,11 +70,26 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
 
     private AlertSilenceVO toVo(RmqAlertSilence entity) {
         return AlertSilenceVO.builder().id(entity.getId())
-                .domain(entity.getDomain() == null ? null : AlertDomain.valueOf(entity.getDomain()))
+                .domain(parseDomain(entity.getDomain()))
                 .ruleId(entity.getRuleId()).instanceId(entity.getInstanceId())
                 .labels(readLabels(entity.getLabelsJson()))
                 .startsAt(entity.getStartsAt()).endsAt(entity.getEndsAt())
                 .reason(entity.getReason()).createdBy(entity.getCreatedBy()).build();
+    }
+
+    /**
+     * A legacy or manually edited domain must not break silence matching, so unknown values fall
+     * back to the business domain like {@code rmq_alert_rule} rows without a recognized domain.
+     */
+    private static AlertDomain parseDomain(String domain) {
+        if (domain == null || domain.isBlank()) {
+            return null;
+        }
+        try {
+            return AlertDomain.valueOf(domain.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return AlertDomain.BUSINESS;
+        }
     }
 
     private String writeLabels(Map<String, String> labels) {
