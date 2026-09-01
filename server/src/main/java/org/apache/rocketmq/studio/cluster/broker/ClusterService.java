@@ -401,7 +401,8 @@ public class ClusterService {
     private Map<String, String> buildBrokerPropertyMap(UpdateConfigDTO command) {
         Map<String, String> props = new LinkedHashMap<>();
         if (command.getFlushDiskType() != null) {
-            props.put("flushDiskType", command.getFlushDiskType());
+            // Send the canonical enum name so the broker's own FlushDiskType.valueOf accepts it.
+            props.put("flushDiskType", parseFlushDiskType(command.getFlushDiskType()).name());
         }
         if (command.getAutoCreateTopicEnable() != null) {
             props.put("autoCreateTopicEnable", command.getAutoCreateTopicEnable().toString());
@@ -493,11 +494,15 @@ public class ClusterService {
     }
 
     private FlushDiskType parseFlushDiskType(String value) {
-        try {
-            return FlushDiskType.valueOf(value);
-        } catch (IllegalArgumentException ex) {
-            throw new BusinessException(400, "Invalid flushDiskType: " + value);
+        // Tolerate surrounding whitespace and case variants (e.g. " async_flush ") so clients
+        // do not have to reproduce the exact enum spelling to update the cluster config.
+        String normalized = value == null ? "" : value.trim();
+        for (FlushDiskType type : FlushDiskType.values()) {
+            if (type.name().equalsIgnoreCase(normalized)) {
+                return type;
+            }
         }
+        throw new BusinessException(400, "Invalid flushDiskType: " + value);
     }
 
     public boolean restartBroker(String clusterId, String brokerName) {
