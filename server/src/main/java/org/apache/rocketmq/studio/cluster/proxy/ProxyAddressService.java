@@ -175,7 +175,7 @@ public class ProxyAddressService {
                 log.warn("Skipping malformed proxy address in topology: {}", addr);
                 continue;
             }
-            String host = matcher.group(1);
+            String host = stripIpv6Brackets(matcher.group(1));
             int grpcPort = Integer.parseInt(matcher.group(2));
             Integer remotingPort = deriveRemotingPort(grpcPort);
             tasks.add(new ProbeTask(addr, grpcPort, remotingPort,
@@ -247,6 +247,16 @@ public class ProxyAddressService {
         }
         future.cancel(true);
         return ProxyHealthProbe.ProbeResult.unreachable();
+    }
+
+    /**
+     * {@code InetSocketAddress} treats a bracketed IPv6 literal as a hostname, so probing
+     * would always fail with an unknown-host error and report healthy IPv6 proxies as DOWN.
+     */
+    private static String stripIpv6Brackets(String host) {
+        return host.startsWith("[") && host.endsWith("]")
+                ? host.substring(1, host.length() - 1)
+                : host;
     }
 
     /** In-flight probe pair for one registered proxy address. */
