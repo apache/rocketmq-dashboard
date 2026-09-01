@@ -346,4 +346,29 @@ class ProxyAddressServiceTest {
         assertThat(down.isGrpcReachable()).isFalse();
         assertThat(down.isRemotingReachable()).isFalse();
     }
+
+    @Test
+    void buildTopologyShouldStripBracketsWhenProbingBracketedIpv6Host() {
+        // InetSocketAddress treats a bracketed IPv6 literal as a hostname, so the probe must
+        // receive the bare literal or a healthy IPv6 proxy is always reported DOWN.
+        java.util.concurrent.atomic.AtomicReference<String> probedHost =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        ProxyHealthProbe capturingProbe = (host, port, timeoutMillis) -> {
+            probedHost.set(host);
+            return ProxyHealthProbe.ProbeResult.reachable(1L);
+        };
+        java.util.concurrent.ExecutorService executor =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        ProxyAddressService service =
+                new ProxyAddressService(clusterService, capturingProbe, executor, 500L);
+        service.addProxyAddr("[::1]:9001");
+
+        List<ProxyTopologyVO> topology = service.buildTopology();
+        executor.shutdownNow();
+
+        ProxyTopologyVO node = topology.get(1);
+        assertThat(node.getProxyAddr()).isEqualTo("[::1]:9001");
+        assertThat(node.getStatus()).isEqualTo("UP");
+        assertThat(probedHost.get()).isEqualTo("::1");
+    }
 }
