@@ -145,6 +145,25 @@ describe('LiteTopic Page', () => {
     expect(await screen.findByText('active-00*')).toBeInTheDocument();
   });
 
+  it('submits one TTL extension when confirm is clicked twice before rendering', async () => {
+    const extension = createDeferred<void>();
+    apiMocks.extendLiteTopicTTL.mockImplementation(() => extension.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(screen.getByRole('button', { name: '延长 TTL' }));
+    await user.type(screen.getByRole('spinbutton'), '60000');
+    const confirm = screen.getByRole('button', { name: /确\s*认/ });
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+
+    expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledTimes(1);
+    extension.resolve();
+  });
+
   it('displays the session POP progress returned by the API as a percentage', async () => {
     const user = userEvent.setup();
     renderPage();

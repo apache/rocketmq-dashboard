@@ -154,6 +154,7 @@ const LiteTopicPage: React.FC = () => {
   const bootstrapRequestId = useRef(0);
   const displayRequestId = useRef(0);
   const sessionRequestId = useRef(0);
+  const extendTTLInFlight = useRef(false);
 
   useEffect(() => {
     messageRef.current = message;
@@ -307,7 +308,9 @@ const LiteTopicPage: React.FC = () => {
   };
 
   const handleExtendTTL = async () => {
+    if (extendTTLInFlight.current) return;
     if (!extendTTLForm.topicPattern || extendTTLForm.newTTL == null) return;
+    extendTTLInFlight.current = true;
     setExtendTTLLoading(true);
     try {
       await extendLiteTopicTTL(extendTTLForm.topicPattern, extendTTLForm.newTTL);
@@ -317,6 +320,7 @@ const LiteTopicPage: React.FC = () => {
     } catch {
       message.error(t('liteTopic.extendTtlFailed'));
     } finally {
+      extendTTLInFlight.current = false;
       setExtendTTLLoading(false);
     }
   };
