@@ -24,7 +24,10 @@ interface MiniBarProps {
 }
 
 const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: MiniBarProps) => {
-  if (!data.length) {
+  // Non-array data (e.g. a malformed wire payload) renders the empty state, and non-finite
+  // elements (NaN/Infinity) are dropped so they cannot poison the scale or the bar heights.
+  const values = (Array.isArray(data) ? data : []).filter((value) => Number.isFinite(value));
+  if (values.length === 0) {
     return (
       <span aria-label={label || '暂无趋势数据'} style={{ color: '#8c8c8c' }}>
         —
@@ -32,13 +35,16 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
     );
   }
 
-  const max = Math.max(...data, 1);
-  const barWidth = Math.max(2, (width - (data.length - 1) * 2) / data.length);
+  let max = 1;
+  for (const value of values) {
+    if (value > max) max = value;
+  }
+  const barWidth = Math.max(2, (width - (values.length - 1) * 2) / values.length);
 
   return (
     <div
       role="img"
-      aria-label={label || `趋势数据：${data.join('、')}`}
+      aria-label={label || `趋势数据：${values.join('、')}`}
       style={{
         display: 'inline-flex',
         alignItems: 'flex-end',
@@ -47,7 +53,7 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
         width,
       }}
     >
-      {data.map((value, i) => (
+      {values.map((value, i) => (
         <div
           key={i}
           style={{
@@ -55,7 +61,7 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
             height: `${value === 0 ? 0 : Math.max(4, (value / max) * height)}px`,
             backgroundColor: color,
             borderRadius: 2,
-            opacity: 0.3 + (i / data.length) * 0.7,
+            opacity: 0.3 + (i / values.length) * 0.7,
             transition: 'height 0.3s ease',
           }}
         />

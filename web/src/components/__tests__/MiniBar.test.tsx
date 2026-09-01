@@ -34,4 +34,16 @@ describe('MiniBar', () => {
 
     expect(getBarHeights()).toEqual(['0px', '4px', '20px']);
   });
+
+  it('renders the empty state when data is not an array', () => {
+    render(<MiniBar data={null as unknown as number[]} label="Throughput trend" />);
+
+    expect(screen.getByLabelText('Throughput trend')).toHaveTextContent('—');
+  });
+
+  it('ignores non-finite values when scaling bars', () => {
+    render(<MiniBar data={[Number.NaN, 0, 10]} height={20} label="Throughput trend" />);
+
+    expect(getBarHeights()).toEqual(['0px', '20px']);
+  });
 });

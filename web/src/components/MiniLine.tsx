@@ -47,8 +47,15 @@ const MiniLine = ({
   animated = true,
   responsive = false,
 }: MiniLineProps) => {
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
+  // Non-array data (e.g. a malformed wire payload) renders nothing, and non-finite elements
+  // (NaN/Infinity) are dropped so they cannot produce a NaN path.
+  const values = (Array.isArray(data) ? data : []).filter((value) => Number.isFinite(value));
+  let max = 1;
+  let min = 0;
+  for (const value of values) {
+    if (value > max) max = value;
+    if (value < min) min = value;
+  }
   const range = max - min || 1;
 
   const pad = 4;
@@ -58,11 +65,11 @@ const MiniLine = ({
   const gradientId = useMemo(() => `ml-grad-${++_lineId}`, []);
   const glowId = useMemo(() => `ml-glow-${++_lineId}`, []);
 
-  if (data.length < 2) return null;
+  if (values.length < 2) return null;
 
   // Build smooth Catmull-Rom → Bezier control points
-  const points = data.map((v, i) => ({
-    x: pad + (i / (data.length - 1)) * innerW,
+  const points = values.map((v, i) => ({
+    x: pad + (i / (values.length - 1)) * innerW,
     y: pad + innerH - ((v - min) / range) * innerH,
   }));
 
