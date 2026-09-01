@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Collections;
@@ -524,4 +525,56 @@ class K8sCertServiceTest {
         cert.setGmtModified(sampleCert.getGmtModified());
         return cert;
     }
+    private static final String FIXED_PEM =
+                "-----BEGIN CERTIFICATE-----\n" +
+                "MIIC6jCCAdKgAwIBAgICEAAwDQYJKoZIhvcNAQELBQAwDTELMAkGA1UEAwwCY2Ew\n" +
+                "HhcNMjUwMTAxMDAwMDAwWhcNMjYwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAl6b25l\n" +
+                "LXRlc3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDefm2k8W00HEFq\n" +
+                "tSjmSMD+bZ4bz8acwnKPYsNdUgPp/Nl7SlBmtV1ztUtqHtKYGvjT/pzgjXE2iU8X\n" +
+                "yzgZ9aIvUIkxdcoHoK2rDKX8FySMAWtTjLS9FEst+O8+rBvDkPU0tD8RP8Yr8R8d\n" +
+                "sC8L8bMOnLSRQE45wvWmy72QE/HZe4SqNvHMu7ub6CUTDVArHlT+ioLIGlGJWU3U\n" +
+                "/hZUe5f5FzBvoVnLD6qSkzn1X+6MIH6g5V6P8pdllhydSnhjY+0eA2RR0MOGb+g2\n" +
+                "VclMTKR07RgwQ/okIJFLDbrOwb5unduDKPNjNKF9ZvyV5lcTTJUcd+n9U/v3+500\n" +
+                "gCHRuGEzAgMBAAGjTTBLMAkGA1UdEwQCMAAwHQYDVR0OBBYEFB+S1UkHBWBGhEa3\n" +
+                "m4+TrH5IVdcrMB8GA1UdIwQYMBaAFAHvq5UN1IDLM7OMWn929EWM21FKMA0GCSqG\n" +
+                "SIb3DQEBCwUAA4IBAQB1Nf2+zs7DDHMYXxdd8fjRTK9BVjYeDlxt0Ig14OZSTdSp\n" +
+                "hVdsC6jeTGgJbSAdM9Prc9TNvgzLARJ+I2Uxsf/2bKk7xdQO4utQrK0qIMqZQz6d\n" +
+                "t7cVJrca30ZmeaLR18KrwjxLCCOqqxzBh9AGP6yyTZYaAcnSzjcgnzEQPj0VD8pl\n" +
+                "mmIeKDUqx68OBolQS/ls8oUF6LfUbqtb8r64DV9WnsWE+by6P/eEwB7soA/pjUk8\n" +
+                "iXVijklQHUfVAYvNje75NyCR76+LPgWWjfq0uBGtr2lFYB0N2ao5Q+7WQvz/H4o4\n" +
+                "qayioHxN97q6MOUJiqH6tbubc2/NEIUu2mhvvD5D\n" +
+                "-----END CERTIFICATE-----\n" ;
+    @Test
+    void createCertShouldDerivePemValidityInTheClockZone() {
+        // A PEM's validity window is an absolute instant. Converting it in the JVM default
+        // zone while expiry checks use LocalDateTime.now(clock) drifts when the zones differ.
+        ZoneId clockZone = ZoneId.systemDefault().equals(ZoneOffset.UTC)
+                ? ZoneId.of("Pacific/Kiritimati")
+                : ZoneOffset.UTC;
+        Clock zoneClock = Clock.fixed(Instant.parse("2025-07-01T12:00:00Z"), clockZone);
+        K8sCertService zoneService = new K8sCertService(k8sCertRepository, operationAuditService, zoneClock);
+
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId("zone-test")
+                .cluster("test-cluster")
+                .type("TLS")
+                .certPem(FIXED_PEM)
+                .build();
+
+        ArgumentCaptor<K8sCertVO> captor = ArgumentCaptor.forClass(K8sCertVO.class);
+        when(k8sCertRepository.save(captor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        zoneService.createCert(command);
+
+        K8sCertVO saved = captor.getValue();
+        // The embedded certificate is valid 2025-01-01T00:00:00Z .. 2026-01-01T00:00:00Z.
+        assertThat(saved.getNotBefore())
+                .isEqualTo(LocalDateTime.ofInstant(Instant.parse("2025-01-01T00:00:00Z"), clockZone));
+        assertThat(saved.getNotAfter())
+                .isEqualTo(LocalDateTime.ofInstant(Instant.parse("2026-01-01T00:00:00Z"), clockZone));
+        // Proves the conversion used the clock zone, not the JVM default zone.
+        assertThat(saved.getNotAfter())
+                .isNotEqualTo(LocalDateTime.ofInstant(Instant.parse("2026-01-01T00:00:00Z"), ZoneId.systemDefault()));
+    }
+
 }
