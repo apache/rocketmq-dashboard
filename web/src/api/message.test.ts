@@ -21,6 +21,7 @@ import client from './client';
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  listDLQGroups,
   queryMessagePage,
   queryMessages,
 } from './message';
@@ -206,5 +207,46 @@ describe('message API', () => {
     mock.onPost('/messages/direct-consume', request).reply(200, { code: 200, data: result });
 
     await expect(consumeMessageDirectly(request)).resolves.toEqual(result);
+  });
+
+  it('treats a missing message list as an empty result', async () => {
+    mock.onGet('/messages').reply(200, { code: 200, data: null });
+
+    await expect(queryMessages({ topic: 'orders' })).resolves.toEqual([]);
+  });
+
+  it('normalizes a paged message query with a missing item list', async () => {
+    mock.onGet('/messages/page').reply(200, { code: 200, data: null });
+
+    const page = await queryMessagePage({ topic: 'orders', page: 1, pageSize: 50 });
+    expect(page.items).toEqual([]);
+  });
+
+  it('normalizes a paged message query with a null item list', async () => {
+    mock.onGet('/messages/page').reply(200, {
+      code: 200,
+      data: { items: null, total: 3, page: 1, size: 50, resultMayBeTruncated: false },
+    });
+
+    const page = await queryMessagePage({ topic: 'orders', page: 1, pageSize: 50 });
+    expect(page.items).toEqual([]);
+    expect(page.total).toBe(3);
+  });
+
+  it('normalizes a missing trace record into an empty node list', async () => {
+    mock.onGet('/messages/msg-3/trace', { params: { instanceId: 'instance-1' } }).reply(
+      200,
+      { code: 200, data: null },
+    );
+
+    const trace = await getMessageTrace('msg-3', 'instance-1');
+    expect(trace.nodes).toEqual([]);
+  });
+
+  it('treats a missing DLQ group page item list as empty', async () => {
+    mock.onGet('/dlq').reply(200, { code: 200, data: { total: 0, page: 1, size: 20 } });
+
+    const page = await listDLQGroups('instance-1');
+    expect(page.items).toEqual([]);
   });
 });
