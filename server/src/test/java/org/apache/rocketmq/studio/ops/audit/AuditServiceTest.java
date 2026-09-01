@@ -35,7 +35,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -136,6 +138,32 @@ class AuditServiceTest {
                 "2026-08-02", "2026-08-01", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate must not be after endDate");
+    }
+
+    @Test
+    void queryLogsRejectsResultFiltersOutsideTheRecordedVocabulary() {
+        assertThatThrownBy(() -> auditService.queryLogs(1, 10, null, null, null, null,
+                null, null, "success"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("result must be SUCCESS or FAILED");
+        assertThatThrownBy(() -> auditService.queryLogs(1, 10, null, null, null, null,
+                null, null, "PARTIAL"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("result must be SUCCESS or FAILED");
+
+        verifyNoInteractions(auditRepository);
+    }
+
+    @Test
+    void queryLogsAcceptsEveryRecordedResultValue() {
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(),
+                isNull(), isNull(), any(), eq(1), eq(10))).thenReturn(PageResult.empty(1, 10));
+
+        auditService.queryLogs(1, 10, null, null, null, null, null, null, "SUCCESS");
+        auditService.queryLogs(1, 10, null, null, null, null, null, null, "FAILED");
+
+        verify(auditRepository, times(2)).findPage(isNull(), isNull(), isNull(), isNull(),
+                isNull(), isNull(), any(), eq(1), eq(10));
     }
 
     @Test

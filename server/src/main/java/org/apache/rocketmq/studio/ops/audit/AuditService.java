@@ -134,6 +134,7 @@ public class AuditService {
                                                String resourceType, String clusterId,
                                                String startDate, String endDate,
                                                String result, int page, int pageSize) {
+        validateResultFilter(result);
         LocalDateTime start = parseDate(startDate, true, "startDate");
         LocalDateTime end = parseDate(endDate, false, "endDate");
         if (start != null && end != null && start.isAfter(end)) {
@@ -141,6 +142,20 @@ public class AuditService {
         }
         return auditRepository.findPage(search, operationType, resourceType, clusterId,
                 start, end, result, page, pageSize);
+    }
+
+    /**
+     * Every {@code record} call site writes {@code SUCCESS} or {@code FAILED} to the result
+     * column, so a filter outside that vocabulary can never match a row: surface a 400 instead
+     * of a silent empty page.
+     */
+    private static void validateResultFilter(String result) {
+        if (result == null || result.isEmpty()) {
+            return;
+        }
+        if (!"SUCCESS".equals(result) && !"FAILED".equals(result)) {
+            throw new BusinessException(400, "result must be SUCCESS or FAILED");
+        }
     }
 
     private LocalDateTime parseDate(String dateStr, boolean startOfDay, String parameterName) {
