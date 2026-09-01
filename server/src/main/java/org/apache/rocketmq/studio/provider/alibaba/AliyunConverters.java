@@ -192,7 +192,10 @@ final class AliyunConverters {
             }
         }
         GetConsumerGroupLagResponseBody.TotalLag totalLag = data.getTotalLag();
-        if (totalLag != null && totalLag.getReadyCount() != null) {
+        // The aggregate repeats the per-topic counts. Keep it only as a fallback when
+        // the API does not expose the topic breakdown, otherwise callers that sum rows
+        // report the same lag twice.
+        if (rows.isEmpty() && totalLag != null && totalLag.getReadyCount() != null) {
             rows.add(QueueProgressVO.builder()
                     .broker("total")
                     .queueId(0)
