@@ -15,27 +15,30 @@
  * limitations under the License.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function useVisiblePolling(
   enabled: boolean,
   intervalMs: number,
   poll: () => void | Promise<void>,
 ): void {
+  const pollInFlightRef = useRef<Promise<void> | null>(null);
+
   useEffect(() => {
     if (!enabled) return;
 
-    let pollInFlight = false;
     const pollWhenVisible = () => {
-      if (document.visibilityState !== 'visible' || pollInFlight) return;
+      if (document.visibilityState !== 'visible' || pollInFlightRef.current) return;
 
-      pollInFlight = true;
-      void Promise.resolve()
+      const inFlight = Promise.resolve()
         .then(poll)
         .catch(() => undefined)
         .finally(() => {
-          pollInFlight = false;
+          if (pollInFlightRef.current === inFlight) {
+            pollInFlightRef.current = null;
+          }
         });
+      pollInFlightRef.current = inFlight;
     };
     const intervalId = window.setInterval(pollWhenVisible, intervalMs);
     document.addEventListener('visibilitychange', pollWhenVisible);
