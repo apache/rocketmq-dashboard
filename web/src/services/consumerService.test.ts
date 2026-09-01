@@ -18,6 +18,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createConsumerGroup,
+  deleteConsumerGroup,
   getConsumerGroup,
   getConsumerProgress,
   getConsumerStack,
@@ -26,6 +27,7 @@ import {
   listConsumerGroupPage,
   listConsumerGroups,
   previewConsumerOffsetReset,
+  refreshConsumerGroup,
 } from './consumerService';
 
 const { mode, metadataApi } = vi.hoisted(() => ({
@@ -269,6 +271,44 @@ describe('consumer service mock data', () => {
     const detail = await getConsumerGroup('cg-created-copy-test');
     expect(detail.subscribedTopics).toEqual(['created-topic']);
     expect(detail).not.toBe(created);
+  });
+
+  it('isolates mock consumer groups with the same name by instance', async () => {
+    const name = 'cg-shared-instance-scope-test';
+    await createConsumerGroup({ name, instanceId: 'instance-a', namespace: 'namespace-a' });
+    await createConsumerGroup({ name, instanceId: 'instance-b', namespace: 'namespace-b' });
+
+    try {
+      await expect(
+        createConsumerGroup({ name, instanceId: 'instance-a' }),
+      ).rejects.toThrow(`Consumer group already exists: ${name}`);
+
+      const instanceAGroups = await listConsumerGroups({ instanceId: 'instance-a', search: name });
+      const instanceBGroups = await listConsumerGroups({ instanceId: 'instance-b', search: name });
+      expect(instanceAGroups).toHaveLength(1);
+      expect(instanceAGroups[0].namespace).toBe('namespace-a');
+      expect(instanceBGroups).toHaveLength(1);
+      expect(instanceBGroups[0].namespace).toBe('namespace-b');
+      await expect(getConsumerGroup(name, 'instance-a')).resolves.toMatchObject({
+        instanceId: 'instance-a',
+        namespace: 'namespace-a',
+      });
+      await expect(refreshConsumerGroup(name, 'instance-b')).resolves.toMatchObject({
+        instanceId: 'instance-b',
+        namespace: 'namespace-b',
+      });
+
+      await deleteConsumerGroup(name, 'instance-a');
+      await expect(getConsumerGroup(name, 'instance-a')).rejects.toThrow(
+        `Consumer group not found: ${name}`,
+      );
+      await expect(getConsumerGroup(name, 'instance-b')).resolves.toMatchObject({
+        instanceId: 'instance-b',
+      });
+    } finally {
+      await deleteConsumerGroup(name, 'instance-a');
+      await deleteConsumerGroup(name, 'instance-b');
+    }
   });
 
   it('forwards the selected instance when loading consumer group details in API mode', async () => {
