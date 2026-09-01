@@ -179,6 +179,17 @@ class GrafanaDashboardServiceTest {
         }
     }
 
+    @Test
+    void listDashboardsShouldTolerateResourcesWithoutDescriptions() {
+        Resource described = resource("b.json", "file [b.json]", "{\"title\": \"B\"}");
+        Resource undescribed = resource("a.json", null, "{\"title\": \"A\"}");
+        GrafanaDashboardService service = serviceWithResources(described, undescribed);
+
+        List<GrafanaDashboardInfo> dashboards = service.listDashboards();
+
+        assertEquals(List.of("a", "b"), dashboards.stream().map(GrafanaDashboardInfo::uid).toList());
+    }
+
     private static GrafanaDashboardService serviceWithResources(Resource... resources) {
         return new GrafanaDashboardService(new ObjectMapper()) {
             @Override

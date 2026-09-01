@@ -166,7 +166,10 @@ public class GrafanaDashboardService {
         Map<String, Resource> resourcesByUid = new LinkedHashMap<>();
         Arrays.stream(resolveResources())
                 .filter(resource -> uidOf(resource) != null)
-                .sorted(Comparator.comparing(Resource::getDescription))
+                // Resources without a description are ordered last: the description is only a
+                // deterministic tie-breaker for deduplication, not a load-bearing field.
+                .sorted(Comparator.comparing(Resource::getDescription,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
                 .forEach(resource -> resourcesByUid.putIfAbsent(uidOf(resource), resource));
         return new ArrayList<>(resourcesByUid.values());
     }
