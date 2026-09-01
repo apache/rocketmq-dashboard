@@ -346,4 +346,51 @@ class ProxyAddressServiceTest {
         assertThat(down.isGrpcReachable()).isFalse();
         assertThat(down.isRemotingReachable()).isFalse();
     }
+
+    @Test
+    void buildTopologyShouldSkipQueuedProbeAfterBudgetCancelsItsFuture() throws Exception {
+        // Single probe thread: 10.9.0.1's probe runs first and blocks on the gate, so
+        // 10.9.0.2's probe task sits in the queue past the 300 ms budget. When the gate
+        // opens, the queued task must see its cancelled future and skip the socket work
+        // instead of pinning a pool thread with a probe nobody waits for.
+        java.util.concurrent.CountDownLatch gate = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger queuedHostProbes =
+                new java.util.concurrent.atomic.AtomicInteger();
+        ProxyHealthProbe gatedProbe = (host, port, timeoutMillis) -> {
+            if ("10.9.0.1".equals(host)) {
+                try {
+                    gate.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            } else if ("10.9.0.2".equals(host)) {
+                queuedHostProbes.incrementAndGet();
+            }
+            return ProxyHealthProbe.ProbeResult.reachable(1L);
+        };
+        java.util.concurrent.ExecutorService executor =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        ProxyAddressService service =
+                new ProxyAddressService(clusterService, gatedProbe, executor, 300L);
+        service.addProxyAddr("10.9.0.1:9001");
+        service.addProxyAddr("10.9.0.2:9001");
+
+        List<ProxyTopologyVO> topology = service.buildTopology();
+
+        // Budget elapsed with 10.9.0.1 gated and 10.9.0.2 still queued, so both are DOWN.
+        assertThat(topology.get(1).getProxyAddr()).isEqualTo("10.9.0.1:9001");
+        assertThat(topology.get(1).getStatus()).isEqualTo("DOWN");
+        assertThat(topology.get(2).getProxyAddr()).isEqualTo("10.9.0.2:9001");
+        assertThat(topology.get(2).getStatus()).isEqualTo("DOWN");
+
+        // Release the gate: 10.9.0.1's task finishes and the queued 10.9.0.2 task runs.
+        gate.countDown();
+        java.util.concurrent.CountDownLatch drained = new java.util.concurrent.CountDownLatch(1);
+        executor.execute(drained::countDown);
+        assertThat(drained.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        executor.shutdownNow();
+
+        // The queued probe's future was cancelled by the budget, so its socket work was skipped.
+        assertThat(queuedHostProbes).hasValue(0);
+    }
 }

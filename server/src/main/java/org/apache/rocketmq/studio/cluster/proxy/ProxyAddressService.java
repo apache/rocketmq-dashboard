@@ -207,12 +207,25 @@ public class ProxyAddressService {
     }
 
     private CompletableFuture<ProxyHealthProbe.ProbeResult> probeAsync(String host, int port) {
+        CompletableFuture<ProxyHealthProbe.ProbeResult> future = new CompletableFuture<>();
         try {
-            return CompletableFuture.supplyAsync(
-                    () -> healthProbe.probe(host, port, HEALTH_PROBE_TIMEOUT_MILLIS), probeExecutor);
+            probeExecutor.execute(() -> {
+                // The topology budget may have elapsed while this task waited in the queue;
+                // its future was already cancelled, so skip the socket work instead of
+                // pinning a pool thread with a probe the caller no longer waits for.
+                if (future.isDone()) {
+                    return;
+                }
+                try {
+                    future.complete(healthProbe.probe(host, port, HEALTH_PROBE_TIMEOUT_MILLIS));
+                } catch (RuntimeException probeFailure) {
+                    future.complete(ProxyHealthProbe.ProbeResult.unreachable());
+                }
+            });
         } catch (RejectedExecutionException ex) {
-            return CompletableFuture.completedFuture(ProxyHealthProbe.ProbeResult.unreachable());
+            future.complete(ProxyHealthProbe.ProbeResult.unreachable());
         }
+        return future;
     }
 
     private void awaitProbes(List<ProbeTask> tasks) {
