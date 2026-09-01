@@ -217,6 +217,7 @@ const BrokerClusterPage = () => {
       setProxyData(mapped.proxies);
     } catch {
       if (!mountedRef.current || requestId !== loadRequestId.current) return;
+      clearData();
       message.error(t('common.refreshFailed'));
     } finally {
       if (mountedRef.current && requestId === loadRequestId.current) {
