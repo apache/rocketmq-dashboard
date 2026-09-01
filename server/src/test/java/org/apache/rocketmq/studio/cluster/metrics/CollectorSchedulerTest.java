@@ -152,6 +152,18 @@ class CollectorSchedulerTest {
     }
 
     @Test
+    void survivesMalformedSnapshotRetentionTest() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setSnapshotRetention("not-a-duration");
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+
+        new CollectorScheduler(properties, mock(InstanceRepository.class), List.of(), List.of(), snapshots,
+                mock(NativeAlertProcessor.class), mock(AlertCollectionLease.class)).cleanUpSnapshots();
+
+        verify(snapshots).deleteBefore(any(Instant.class));
+    }
+
+    @Test
     void doesNotCollectWhenAnotherReplicaHoldsTheLeaseTest() {
         AlertingProperties properties = new AlertingProperties();
         InstanceRepository instances = mock(InstanceRepository.class);
