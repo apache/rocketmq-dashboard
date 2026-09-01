@@ -159,9 +159,23 @@ export async function importAlertRulesTransfer(
 ): Promise<AlertRule[]> {
   if (!isMockMode()) return opsApi.importAlertRulesTransfer(data, domain);
   const startId = Date.now();
-  const imported = data.rules.map((rule, index) => ({
-    ...copyAlertRule(rule as AlertRule),
+  // The transfer file is user-supplied JSON; tolerate a missing rules array and
+  // rules with missing fields using the same defaults as createAlertRule instead
+  // of crashing the whole import.
+  const rules = Array.isArray(data?.rules) ? data.rules : [];
+  const imported = rules.map((rule, index) => ({
     id: startId + index,
+    name: '',
+    metric: '',
+    operator: '>',
+    threshold: 0,
+    thresholdUnit: '',
+    duration: '',
+    enabled: true,
+    lastTriggered: null,
+    description: '',
+    ...rule,
+    channels: [...(rule.channels ?? [])],
   }));
   alertRulesState.push(...imported);
   return imported.map(copyAlertRule);

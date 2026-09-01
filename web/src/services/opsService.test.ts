@@ -20,6 +20,7 @@ import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
   createAlertRule,
+  importAlertRulesTransfer,
   exportAuditLogs,
   getAuditFilterOptions,
   listAlertRules,
@@ -232,5 +233,28 @@ describe('ops service mock data', () => {
       '"2026-08-01 10:00:00","\'=admin","DELETE","TOPIC","csv-export-target",' +
         '"prod-cn","removed ""topic"", safely","SUCCESS","\'=denied"',
     );
+  });
+
+  it('tolerates a transfer import with missing or malformed rules', async () => {
+    const rules = await importAlertRulesTransfer({
+      version: 1,
+      domain: 'CLUSTER',
+      rules: [
+        { name: 'imported-a', metric: 'metric-a', operator: '>', threshold: 1 },
+        { name: 'imported-b' },
+      ] as never,
+    });
+
+    expect(rules).toHaveLength(2);
+    expect(rules[0].channels).toEqual([]);
+    expect(rules[1].metric).toBe('');
+    expect(rules[1].operator).toBe('>');
+    expect(rules[1].enabled).toBe(true);
+  });
+
+  it('treats a transfer import without a rules array as an empty import', async () => {
+    const rules = await importAlertRulesTransfer({ version: 1, domain: 'CLUSTER' } as never);
+
+    expect(rules).toEqual([]);
   });
 });
