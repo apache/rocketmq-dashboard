@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -95,7 +96,7 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
         LocalDateTime next = entity.getLastNotifiedAt() == null || rule == null ? null
                 : entity.getLastNotifiedAt().plus(AlertRuleDuration.parse(rule.getReminderInterval()));
         return AlertRuleRuntimeVO.builder().ruleId(entity.getRuleId()).fingerprint(entity.getFingerprint())
-                .status(AlertStateStatus.valueOf(entity.getStatus())).consecutiveHits(entity.getConsecutiveHits() == null ? 0 : entity.getConsecutiveHits())
+                .status(parseStatus(entity.getStatus())).consecutiveHits(entity.getConsecutiveHits() == null ? 0 : entity.getConsecutiveHits())
                 .currentValue(entity.getCurrentValue()).lastNotifiedAt(entity.getLastNotifiedAt()).nextReminderAt(next).build();
     }
 
@@ -111,10 +112,25 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
     }
 
     private static AlertRuleState toState(RmqAlertState entity) {
-        return new AlertRuleState(AlertStateStatus.valueOf(entity.getStatus()),
+        return new AlertRuleState(parseStatus(entity.getStatus()),
                 entity.getConsecutiveHits() == null ? 0 : entity.getConsecutiveHits(), entity.getCurrentValue(),
                 toInstant(entity.getFirstPendingAt()), toInstant(entity.getFiredAt()),
                 toInstant(entity.getLastNotifiedAt()), toInstant(entity.getResolvedAt()));
+    }
+
+    /**
+     * A legacy or partially written status must not abort the collection cycle, so unknown values
+     * fall back to the idle state and the next sample re-advances the machine from there.
+     */
+    private static AlertStateStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return AlertStateStatus.OK;
+        }
+        try {
+            return AlertStateStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return AlertStateStatus.OK;
+        }
     }
 
     private static LocalDateTime toLocal(Instant instant) {
