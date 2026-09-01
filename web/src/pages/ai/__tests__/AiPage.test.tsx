@@ -453,4 +453,47 @@ describe('AiPage tool runner', () => {
     expect(await screen.findByText('工具参数必须是有效的 JSON 对象')).toBeInTheDocument();
     expect(executeTool).not.toHaveBeenCalled();
   });
+
+  it('keeps stream chunks out of a previous stopped response created in the same tick', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    vi.mocked(chatStream).mockImplementation((data, onChunk, signal) => {
+      if (data.message === 'first-question') {
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
+        });
+      }
+      return new Promise<void>((resolve) => {
+        onChunk('world');
+        resolve();
+      });
+    });
+    renderPage();
+    const input = await screen.findByPlaceholderText(
+      '输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟...',
+    );
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    fireEvent.change(input, { target: { value: 'first-question' } });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await screen.findByText('first-question');
+    expect(screen.getByText('正在思考…')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /停\s*止/ }));
+    await screen.findByText('回答已停止。');
+
+    fireEvent.change(input, { target: { value: 'second-question' } });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await screen.findByText('second-question');
+
+    expect(screen.getAllByText('回答已停止。')).toHaveLength(1);
+    expect(screen.getAllByText('world')).toHaveLength(1);
+    nowSpy.mockRestore();
+  });
 });
