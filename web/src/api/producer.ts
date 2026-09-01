@@ -152,7 +152,12 @@ export function buildProducerConnectionSummary(
 /** Fetch topic names for a managed instance. */
 export async function fetchTopicList(instanceId: string): Promise<string[]> {
   const res = await client.get<TopicListResponse>('/topics', { params: { instanceId } });
-  const topics = res.data.data?.map((topic) => topic.name) ?? res.data.topicList ?? [];
+  const rawTopics = res.data.data?.map((topic) => topic?.name) ?? res.data.topicList ?? [];
+  // The topic list may arrive as a non-array payload or with non-string entries;
+  // keep only usable names so the sort below cannot throw.
+  const topics = Array.isArray(rawTopics)
+    ? rawTopics.filter((name): name is string => typeof name === 'string' && name.length > 0)
+    : [];
   return topics.sort();
 }
 

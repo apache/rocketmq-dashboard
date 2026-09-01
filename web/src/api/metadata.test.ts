@@ -265,4 +265,50 @@ describe('topic metadata API', () => {
       }),
     ).resolves.toMatchObject({ imported: 1, failed: 0 });
   });
+
+describe('import result normalization', () => {
+  beforeEach(() => {
+    mock.reset();
+  });
+
+  it('normalizes a null topic import result', async () => {
+    mock.onPost('/topics/import').reply(200, { code: 0, data: null });
+
+    const result = await importTopics({ instanceId: 'instance-a', topics: [] });
+
+    expect(result).toEqual({ imported: 0, failed: 0, topics: [], failures: [] });
+  });
+
+  it('normalizes a topic import result without a topics array', async () => {
+    mock.onPost('/topics/import').reply(200, { code: 0, data: { imported: 1, failed: 0 } });
+
+    const result = await importTopics({ instanceId: 'instance-a', topics: [] });
+
+    expect(result).toEqual({ imported: 1, failed: 0, topics: [], failures: [] });
+  });
+
+  it('normalizes a null consumer group import result', async () => {
+    mock.onPost('/groups/import').reply(200, { code: 0, data: null });
+
+    const result = await importConsumerGroups({ instanceId: 'instance-a', groups: [] });
+
+    expect(result).toEqual({ imported: 0, failed: 0, groups: [], failures: [] });
+  });
+
+  it('normalizes a consumer group import result without a groups array', async () => {
+    mock.onPost('/groups/import').reply(200, {
+      code: 0,
+      data: { imported: 2, failed: 1, failures: [{ index: 1, message: 'boom' }] },
+    });
+
+    const result = await importConsumerGroups({ instanceId: 'instance-a', groups: [] });
+
+    expect(result).toEqual({
+      imported: 2,
+      failed: 1,
+      groups: [],
+      failures: [{ index: 1, message: 'boom' }],
+    });
+  });
+});
 });
