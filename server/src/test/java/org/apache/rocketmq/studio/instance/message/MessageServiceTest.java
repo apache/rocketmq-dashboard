@@ -245,4 +245,67 @@ class MessageServiceTest {
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyInt());
     }
+
+    @Test
+    void traceTimelineShouldBeReturnedInChronologicalOrder() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(fallback.getMessageTrace("instance-a", "msg-001", "orders")).thenReturn(TraceRecordVO.builder()
+                .nodes(List.of(
+                        traceNode("consume", 300L),
+                        traceNode("produce", 100L),
+                        traceNode("endTransaction", 200L)))
+                .consumerStatus(List.of())
+                .build());
+
+        TraceRecordVO result = service.getMessageTrace("instance-a", "msg-001", "orders");
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle)
+                .containsExactly("produce", "endTransaction", "consume");
+        verify(history).recordTraceQuery("instance-a", "msg-001", "orders", 3, 0);
+    }
+
+    @Test
+    void traceTimelineShouldKeepProviderOrderForEqualTimestamps() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class));
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(fallback.getMessageTrace("instance-a", "msg-001", "orders")).thenReturn(TraceRecordVO.builder()
+                .nodes(List.of(
+                        traceNode("consume-a", 100L),
+                        traceNode("consume-b", 100L),
+                        traceNode("produce", 50L)))
+                .consumerStatus(List.of())
+                .build());
+
+        TraceRecordVO result = service.getMessageTrace("instance-a", "msg-001", "orders");
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle)
+                .containsExactly("produce", "consume-a", "consume-b");
+    }
+
+    @Test
+    void traceTimelineShouldNormalizeMissingNodeLists() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class));
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(fallback.getMessageTrace("instance-a", "msg-001", "orders"))
+                .thenReturn(TraceRecordVO.builder().build());
+
+        TraceRecordVO result = service.getMessageTrace("instance-a", "msg-001", "orders");
+
+        assertThat(result.getNodes()).isEmpty();
+        assertThat(result.getConsumerStatus()).isEmpty();
+    }
+
+    private static TraceNodeVO traceNode(String title, long timestamp) {
+        return TraceNodeVO.builder().title(title).timestamp(timestamp).build();
+    }
 }
