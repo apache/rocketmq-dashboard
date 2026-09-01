@@ -120,10 +120,9 @@ public class CollectorScheduler {
 
     @Scheduled(fixedDelayString = "${studio.alerting.snapshot-cleanup-interval:PT1H}")
     public void cleanUpSnapshots() {
-        Duration retention = Duration.parse(properties.getSnapshotRetention());
-        if (retention.isNegative() || retention.isZero()) {
-            return;
-        }
+        // A malformed or non-positive retention value must not fail the scheduled cleanup; fall
+        // back to the default retention instead of leaving the snapshot table to grow unbounded.
+        Duration retention = parsePositiveDuration("snapshot retention", properties.getSnapshotRetention(), Duration.ofDays(1));
         snapshotRepository.deleteBefore(Instant.now().minus(retention));
     }
 
@@ -176,11 +175,15 @@ public class CollectorScheduler {
     }
 
     private static Duration parsePositiveDuration(String value, Duration fallback) {
+        return parsePositiveDuration("collection timeout", value, fallback);
+    }
+
+    private static Duration parsePositiveDuration(String settingName, String value, Duration fallback) {
         try {
             Duration duration = Duration.parse(value);
             return duration.isPositive() ? duration : fallback;
         } catch (RuntimeException error) {
-            log.warn("Invalid native metric collection timeout '{}'; using {}", value, fallback);
+            log.warn("Invalid native metric {} '{}'; using {}", settingName, value, fallback);
             return fallback;
         }
     }
