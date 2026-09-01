@@ -159,6 +159,7 @@ public class QueryHistoryService {
 
     public PageResult<MessageQueryHistoryVO> listMessageQueries(String clusterId, String queryType,
                                                                  String search, int page, int pageSize) {
+        validateQueryType(queryType);
         String pattern = escapeLike(search);
         String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
         QueryWrapper<RmqMessageQuery> query = new QueryWrapper<RmqMessageQuery>()
@@ -291,5 +292,20 @@ public class QueryHistoryService {
             return search;
         }
         return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    /**
+     * The query types written by {@code MessageService#recordMessageQuery}. The controller
+     * passes the raw user-supplied filter through, so an unknown value would silently return
+     * an empty page instead of surfacing a 400.
+     */
+    private static void validateQueryType(String queryType) {
+        if (!StringUtils.hasText(queryType)) {
+            return;
+        }
+        if (!"MSG_ID".equals(queryType) && !"KEY".equals(queryType) && !"TOPIC".equals(queryType)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(
+                    400, "queryType must be one of MSG_ID, KEY, TOPIC");
+        }
     }
 }
