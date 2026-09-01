@@ -21,6 +21,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.ops.alert.AlertDomain;
 import org.apache.rocketmq.studio.persistence.entity.RmqMetricSnapshot;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMetricSnapshotMapper;
 import org.springframework.stereotype.Repository;
@@ -33,8 +35,10 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 
+@Slf4j
 @Repository
 @RequiredArgsConstructor
 public class MybatisPlusMetricSnapshotRepository implements MetricSnapshotRepository {
@@ -65,7 +69,7 @@ public class MybatisPlusMetricSnapshotRepository implements MetricSnapshotReposi
                         .eq("availability", MetricAvailability.AVAILABLE.name())
                         .ge("collected_at", LocalDateTime.ofInstant(since, ZoneOffset.UTC))
                         .orderByAsc("collected_at"))
-                .stream().map(this::toSample).toList();
+                .stream().map(this::toSample).filter(Objects::nonNull).toList();
     }
 
     private RmqMetricSnapshot toEntity(MetricSample sample) {
@@ -83,14 +87,21 @@ public class MybatisPlusMetricSnapshotRepository implements MetricSnapshotReposi
         return entity;
     }
 
+    /**
+     * Materializes a persisted snapshot row, returning null (and logging) when the row is
+     * structurally invalid - e.g. a NULL value on an available row, or an enum value left behind
+     * by an older Studio version. Skipping one bad row keeps it from breaking the recent-samples
+     * window that alert aggregation reads until the retention cleanup removes it.
+     */
     private MetricSample toSample(RmqMetricSnapshot entity) {
         try {
-            return new MetricSample(entity.getMetricKey(), org.apache.rocketmq.studio.ops.alert.AlertDomain.valueOf(entity.getDomain()),
+            return new MetricSample(entity.getMetricKey(), AlertDomain.valueOf(entity.getDomain()),
                     entity.getInstanceId(), entity.getClusterId(), objectMapper.readValue(entity.getLabelsJson(), new TypeReference<>() { }),
                     entity.getValue(), MetricAvailability.valueOf(entity.getAvailability()),
                     entity.getCollectedAt().toInstant(ZoneOffset.UTC));
-        } catch (JsonProcessingException error) {
-            throw new IllegalStateException("Unable to read metric labels", error);
+        } catch (JsonProcessingException | IllegalArgumentException | NullPointerException error) {
+            log.warn("Skipping unreadable metric snapshot row id={}: {}", entity.getId(), error.toString());
+            return null;
         }
     }
 

@@ -29,6 +29,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -57,5 +59,37 @@ class MybatisPlusMetricSnapshotRepositoryTest {
         verify(mapper).selectList(queryCaptor.capture());
         QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
         assertThat(query.getSqlSegment()).contains("cluster_id IS NULL");
+    }
+    @Test
+    void skipsUnmaterializableSnapshotRowsTest() {
+        RmqMetricSnapshot good = snapshot(1L, "AVAILABLE", 42.0);
+        RmqMetricSnapshot nullValue = snapshot(2L, "AVAILABLE", null);
+        RmqMetricSnapshot unknownDomain = snapshot(3L, "AVAILABLE", 1.0);
+        unknownDomain.setDomain("LEGACY");
+        when(mapper.selectList(any(Wrapper.class)))
+                .thenReturn(List.of(good, nullValue, unknownDomain));
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+        MetricSample scope = new MetricSample("broker.availability", AlertDomain.CLUSTER,
+                "local", null, Map.of(), 1D, MetricAvailability.AVAILABLE, Instant.now());
+
+        List<MetricSample> recent = repository.findRecent(scope, Instant.EPOCH);
+
+        assertThat(recent).hasSize(1);
+        assertThat(recent.get(0).value()).isEqualTo(42.0);
+    }
+
+    private static RmqMetricSnapshot snapshot(long id, String availability, Double value) {
+        RmqMetricSnapshot entity = new RmqMetricSnapshot();
+        entity.setId(id);
+        entity.setInstanceId("local");
+        entity.setMetricKey("broker.availability");
+        entity.setDomain("CLUSTER");
+        entity.setLabelsHash("hash");
+        entity.setLabelsJson("{}");
+        entity.setValue(value);
+        entity.setAvailability(availability);
+        entity.setCollectedAt(LocalDateTime.now(ZoneOffset.UTC));
+        return entity;
     }
 }
