@@ -84,6 +84,22 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
+    void findPageEscapesLikeWildcardsInSearch() {
+        Page<RmqOperationAudit> mapperPage = new Page<RmqOperationAudit>(1, 10)
+                .setRecords(List.of()).setTotal(0);
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findPage("100%_a\\b", null, null, null, null, null, null, 1, 10);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqOperationAudit> wrapper = (QueryWrapper<RmqOperationAudit>) queryCaptor.getValue();
+        // The % , _ and \ in the user term must be escaped so they match literally.
+        assertThat(wrapper.getParamNameValuePairs().values())
+                .allSatisfy(parameter -> assertThat(parameter.toString()).isEqualTo("100\\%\\_a\\\\b"));
+    }
+
+    @Test
     void findFilterOptionsPreservesPersistedValuesFromOneQuery() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
