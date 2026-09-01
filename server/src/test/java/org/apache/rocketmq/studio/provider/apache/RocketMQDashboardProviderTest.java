@@ -746,4 +746,54 @@ class RocketMQDashboardProviderTest {
         kvTable.setTable(table);
         return kvTable;
     }
+    @Test
+    void dashboardShouldTreatTypelessInstanceAsProxyCluster() throws Exception {
+        // A row persisted before the type column existed has a null type; the dashboard
+        // must not fail the aggregation on a null-enum NPE.
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO legacy = InstanceVO.builder()
+                .name("legacy")
+                .endpoint("10.0.0.9:9876")
+                .build();
+        legacy.setId(9L);
+        when(resolver.resolveInstance("legacy")).thenReturn(legacy);
+        when(resolver.execute(eq(legacy), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver, List.of(legacy)).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getType()).isEqualTo(ClusterType.V5_PROXY_CLUSTER);
+            assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.healthy);
+        });
+    }
+
+    @Test
+    void dashboardShouldKeepAggregationAliveWhenTypelessInstanceFails() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO legacy = InstanceVO.builder()
+                .name("legacy")
+                .endpoint("10.0.0.9:9876")
+                .build();
+        legacy.setId(9L);
+        when(resolver.resolveInstance("legacy")).thenReturn(legacy);
+        when(resolver.execute(eq(legacy), any())).thenThrow(new IllegalStateException("connection refused"));
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver, List.of(legacy)).getDashboardData();
+
+        // Before the fix the null type NPE'd inside the catch path and 500ed the whole page.
+        assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(1);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getType()).isEqualTo(ClusterType.V5_PROXY_CLUSTER);
+            assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.warning);
+        });
+    }
+
 }

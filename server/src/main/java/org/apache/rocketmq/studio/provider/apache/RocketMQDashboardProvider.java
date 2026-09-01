@@ -440,7 +440,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
     }
 
     private ClusterType clusterTypeFor(InstanceVO instance) {
-        return switch (instance.getType()) {
+        // Rows persisted before the type column was introduced may carry a null type;
+        // render them as a generic proxy-backed cluster instead of failing the whole
+        // dashboard on a null-enum NPE in the switch.
+        InstanceType type = instance.getType() == null ? InstanceType.PROXY_CLUSTER : instance.getType();
+        return switch (type) {
             case DIRECT -> ClusterType.V4_DIRECT;
             case PROXY_LOCAL -> ClusterType.V5_PROXY_LOCAL;
             case CLOUD, PROXY_CLUSTER -> ClusterType.V5_PROXY_CLUSTER;
