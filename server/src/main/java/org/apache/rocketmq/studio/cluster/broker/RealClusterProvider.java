@@ -176,9 +176,10 @@ public class RealClusterProvider implements ClusterProvider {
         if (data.getBrokerAddrs() != null) {
             addr = data.getBrokerAddrs().get(MixAll.MASTER_ID);
             if (addr == null) {
-                addr = data.getBrokerAddrs().values().stream()
-                        .filter(Objects::nonNull)
-                        .findFirst()
+                addr = data.getBrokerAddrs().entrySet().stream()
+                        .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+                        .min(Map.Entry.comparingByKey())
+                        .map(Map.Entry::getValue)
                         .orElse(null);
             }
         }

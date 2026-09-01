@@ -110,6 +110,27 @@ class RealClusterProviderTest {
     }
 
     @Test
+    void describeClusterShouldChooseTheLowestAvailableBrokerIdWhenMasterIsMissing() throws Exception {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<Long, String> slaveAddrs = new HashMap<>();
+        slaveAddrs.put(32L, "10.0.0.32:10911");
+        slaveAddrs.put(1L, "10.0.0.1:10911");
+        HashMap<String, BrokerData> brokers = new HashMap<>();
+        brokers.put("broker-a", new BrokerData("DefaultCluster", "broker-a", slaveAddrs));
+        info.setBrokerAddrTable(brokers);
+        HashMap<String, Set<String>> clusters = new HashMap<>();
+        clusters.put("DefaultCluster", Set.of("broker-a"));
+        info.setClusterAddrTable(clusters);
+        stubClusterInfo("10.0.0.1:9876", info);
+
+        ClusterVO cluster = provider.describeCluster("10.0.0.1:9876");
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(BrokerVO::getAddr)
+                .isEqualTo("10.0.0.1:10911");
+    }
+
+    @Test
     void describeClusterShouldDefaultAbsentRuntimeCollectionsToEmpty() throws Exception {
         stubClusterInfo("10.0.0.1:9876", sampleClusterInfo());
 
