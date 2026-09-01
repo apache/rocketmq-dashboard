@@ -129,14 +129,18 @@ export interface DLQMessagePage {
 // ─── Messages ───────────────────────────────────────────────────
 export async function queryMessages(params: MessageQuery) {
   const res = await client.get<{ data: MessageRecord[] }>('/messages', { params });
-  return sortMessagesByStoreTimeDesc(res.data.data);
+  return sortMessagesByStoreTimeDesc(Array.isArray(res.data.data) ? res.data.data : []);
 }
 
 export async function queryMessagePage(
   params: MessageQuery & { page?: number; pageSize?: number },
 ) {
   const res = await client.get<{ data: MessageQueryPage }>('/messages/page', { params });
-  return { ...res.data.data, items: sortMessagesByStoreTimeDesc(res.data.data.items) };
+  const page = res.data.data;
+  return {
+    ...page,
+    items: sortMessagesByStoreTimeDesc(Array.isArray(page?.items) ? page.items : []),
+  };
 }
 
 // The backend reports business statuses ("finish" | "failed") on trace nodes,
@@ -168,7 +172,7 @@ export async function getMessageTrace(
   const trace = res.data.data;
   return {
     ...trace,
-    nodes: (trace.nodes ?? []).map((node) => ({
+    nodes: (trace?.nodes ?? []).map((node) => ({
       ...node,
       status: mapTraceNodeStatus(node.status),
     })),
@@ -202,7 +206,8 @@ export async function listDLQGroups(instanceId: string, search?: string, page = 
   const res = await client.get<{ data: DLQGroupPage }>('/dlq', {
     params: { instanceId, search, page, pageSize },
   });
-  return res.data.data;
+  const dlqPage = res.data.data;
+  return { ...dlqPage, items: Array.isArray(dlqPage?.items) ? dlqPage.items : [] };
 }
 
 export async function resendDLQ(data: {
@@ -251,7 +256,7 @@ export interface QueueOffset {
 
 export async function getQueueOffsets(params: { instanceId: string; topic: string }) {
   const res = await client.get<{ data: QueueOffset[] }>('/messages/queues', { params });
-  return res.data.data;
+  return Array.isArray(res.data.data) ? res.data.data : [];
 }
 
 export async function pullMessageAtOffset(params: {
@@ -279,7 +284,8 @@ export async function listDLQMessages(params: {
     `/dlq/${encodeURIComponent(params.groupName)}/messages`,
     { params },
   );
-  return res.data.data;
+  const dlqPage = res.data.data;
+  return { ...dlqPage, items: Array.isArray(dlqPage?.items) ? dlqPage.items : [] };
 }
 
 export async function resendDLQSelected(data: {
