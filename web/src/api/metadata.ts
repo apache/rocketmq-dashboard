@@ -225,7 +225,15 @@ export async function exportTopics(params?: TopicExportQuery) {
 
 export async function importTopics(data: ImportTopicsRequest) {
   const res = await client.post<{ data: ImportTopicsResult }>('/topics/import', data);
-  return res.data.data;
+  const result = res.data.data;
+  // A success envelope may still carry a null or partial result; normalize it so the
+  // import UI can always iterate the reported groups and failures.
+  return {
+    imported: result?.imported ?? 0,
+    failed: result?.failed ?? 0,
+    topics: result?.topics ?? [],
+    failures: result?.failures ?? [],
+  };
 }
 
 export async function createTopic(data: Partial<Topic>) {
@@ -421,7 +429,15 @@ export async function resetConsumerOffset(data: ResetConsumerOffsetRequest) {
 
 export async function importConsumerGroups(data: ImportConsumerGroupsRequest) {
   const res = await client.post<{ data: ImportConsumerGroupsResult }>('/groups/import', data);
-  return res.data.data;
+  const result = res.data.data;
+  // A success envelope may still carry a null or partial result; normalize it so the
+  // import UI can always iterate the reported groups and failures.
+  return {
+    imported: result?.imported ?? 0,
+    failed: result?.failed ?? 0,
+    groups: result?.groups ?? [],
+    failures: result?.failures ?? [],
+  };
 }
 
 export async function exportConsumerGroups(params?: ConsumerGroupExportQuery) {

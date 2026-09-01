@@ -483,5 +483,5 @@ export async function cleanupAuditLogs(beforeDays: number): Promise<number> {
     return deleted;
   }
   const result = await opsApi.cleanupAuditLogs(beforeDays);
-  return result.deleted;
+  return result?.deleted ?? 0;
 }

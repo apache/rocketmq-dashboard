@@ -232,4 +232,29 @@ describe('Producer API', () => {
     expect(result.duplicateClientIds).toEqual(['producer-a']);
     expect(result.warnings).toContain('DUPLICATE_CLIENT_ID');
   });
+
+describe('producer topic list tolerance', () => {
+  beforeEach(() => {
+    mock.reset();
+  });
+
+  it('treats a non-array topic list payload as empty', async () => {
+    mock.onGet('/topics').reply(200, { code: 0, data: null, topicList: 'a,b' });
+
+    const topics = await fetchTopicList('instance-a');
+
+    expect(topics).toEqual([]);
+  });
+
+  it('drops non-string entries from a topic payload', async () => {
+    mock.onGet('/topics').reply(200, {
+      code: 0,
+      data: [{ name: 'topic-b' }, null, { name: 'topic-a' }],
+    });
+
+    const topics = await fetchTopicList('instance-a');
+
+    expect(topics).toEqual(['topic-a', 'topic-b']);
+  });
+});
 });
