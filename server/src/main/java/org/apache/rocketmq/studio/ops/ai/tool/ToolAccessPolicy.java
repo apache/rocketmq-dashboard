@@ -74,13 +74,26 @@ public class ToolAccessPolicy {
         if (!isToolExecutionPath(requestPath)) {
             return Optional.empty();
         }
-        String encodedName = requestPath.substring(
-                TOOL_EXECUTION_PREFIX.length(),
-                requestPath.length() - TOOL_EXECUTION_SUFFIX.length());
+        int start = TOOL_EXECUTION_PREFIX.length();
+        int end = requestPath.length() - TOOL_EXECUTION_SUFFIX.length();
+        // A path such as "/api/ai/tools/execute" matches the prefix and the suffix at once,
+        // leaving no room for a tool name; that blank name can never match the catalog.
+        if (end <= start) {
+            return Optional.empty();
+        }
+        String encodedName = requestPath.substring(start, end);
         if (encodedName.isBlank()) {
             return Optional.empty();
         }
-        String toolName = URLDecoder.decode(encodedName, StandardCharsets.UTF_8);
+        String toolName;
+        try {
+            toolName = URLDecoder.decode(encodedName, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException malformed) {
+            // Malformed percent-encoding or invalid UTF-8 can never match a catalog tool;
+            // treat it as unknown and fail closed to the admin check instead of surfacing
+            // a raw 500 from the auth interceptor.
+            return Optional.empty();
+        }
         return catalog.find(toolName);
     }
 }
