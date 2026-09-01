@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -51,13 +52,24 @@ public class MessageTraceToolHandler implements ToolHandler {
         return project(msgId, trace);
     }
 
+    /**
+     * Providers may report a missing trace as {@code null} or as a record whose node and
+     * consumer-status lists are absent; the output schema only requires the arrays to be
+     * present, so project empty timelines instead of turning the tool call into an NPE 500.
+     */
     private static Map<String, Object> project(String msgId, TraceRecordVO trace) {
+        List<TraceNodeVO> nodes = trace == null || trace.getNodes() == null
+                ? List.of()
+                : trace.getNodes();
+        List<ConsumerStatusVO> consumerStatus = trace == null || trace.getConsumerStatus() == null
+                ? List.of()
+                : trace.getConsumerStatus();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("msgId", msgId);
-        result.put("nodes", trace.getNodes().stream()
+        result.put("nodes", nodes.stream()
                 .map(MessageTraceToolHandler::projectNode)
                 .toList());
-        result.put("consumerStatus", trace.getConsumerStatus().stream()
+        result.put("consumerStatus", consumerStatus.stream()
                 .map(MessageTraceToolHandler::projectConsumerStatus)
                 .toList());
         return result;

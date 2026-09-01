@@ -83,4 +83,32 @@ class MessageTraceToolHandlerTest {
 
         verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
     }
+
+    @Test
+    void executeShouldProjectEmptyTimelineWhenTraceIsNull() {
+        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-2"), eq("TopicA")))
+                .thenReturn(null);
+
+        Object result = handler.execute(Map.of(
+                "cluster", "instance-a", "msgId", "msg-2", "topic", "TopicA"));
+
+        Map<?, ?> row = (Map<?, ?>) result;
+        assertThat(row.get("msgId")).isEqualTo("msg-2");
+        assertThat((List<?>) row.get("nodes")).isEmpty();
+        assertThat((List<?>) row.get("consumerStatus")).isEmpty();
+    }
+
+    @Test
+    void executeShouldProjectEmptyTimelineWhenTraceListsAreNull() {
+        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-3"), eq("TopicA")))
+                .thenReturn(TraceRecordVO.builder().build());
+
+        Object result = handler.execute(Map.of(
+                "cluster", "instance-a", "msgId", "msg-3", "topic", "TopicA"));
+
+        Map<?, ?> row = (Map<?, ?>) result;
+        assertThat(row.get("msgId")).isEqualTo("msg-3");
+        assertThat((List<?>) row.get("nodes")).isEmpty();
+        assertThat((List<?>) row.get("consumerStatus")).isEmpty();
+    }
 }
