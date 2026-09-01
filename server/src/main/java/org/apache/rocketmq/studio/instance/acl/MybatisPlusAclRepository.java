@@ -443,6 +443,9 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setSecretKey(CredentialUtils.encodeBase64(user.getSecretKey()));
         entity.setAdmin(user.isAdmin());
         entity.setClusters(joinNormalizedCsv(user.getClusters()));
+        // The generic upsert path must carry the whitelist through like toUserVO does; the
+        // plain-access endpoint keeps its explicit clear-when-null semantics on its own path.
+        entity.setWhiteRemoteAddress(user.getWhiteRemoteAddress());
         entity.setGmtCreate(user.getGmtCreate());
         entity.setGmtModified(LocalDateTime.now());
         return entity;
