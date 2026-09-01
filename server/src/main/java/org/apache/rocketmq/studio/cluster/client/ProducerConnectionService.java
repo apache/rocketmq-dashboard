@@ -39,7 +39,9 @@ public class ProducerConnectionService {
         String normalizedInstanceId = requireFilter(instanceId, "instanceId");
         String normalizedTopic = requireFilter(topic, "topic");
         String normalizedProducerGroup = normalizeOptionalFilter(producerGroup);
-        return clientProvider.findProducerConnections(normalizedInstanceId, normalizedTopic, normalizedProducerGroup)
+        List<ClientConnectionVO> connections = clientProvider.findProducerConnections(
+                normalizedInstanceId, normalizedTopic, normalizedProducerGroup);
+        return (connections == null ? List.of() : connections)
                 .stream()
                 .map(this::toProducerConnection)
                 .toList();
@@ -47,11 +49,13 @@ public class ProducerConnectionService {
 
     public List<String> listProducerGroups(String instanceId, String topic, String query, Integer limit) {
         String normalizedInstanceId = requireFilter(instanceId, "instanceId");
-        return clientProvider.findProducerGroups(
+        List<String> groups = clientProvider.findProducerGroups(
                 normalizedInstanceId,
                 normalizeOptionalFilter(topic),
                 normalizeOptionalFilter(query),
                 normalizeSelectorLimit(limit));
+        // Providers may report an unavailable lookup as null; the API contract is a list.
+        return groups == null ? List.of() : groups;
     }
 
     private ProducerConnectionVO toProducerConnection(ClientConnectionVO connection) {

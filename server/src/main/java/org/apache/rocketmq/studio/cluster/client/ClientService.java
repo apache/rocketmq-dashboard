@@ -33,7 +33,8 @@ public class ClientService {
 
     public List<ClientConnectionVO> listConnections(String instanceId, String clusterId, String type) {
         log.info("Listing client connections, instanceId={}, clusterId={}, type={}", instanceId, clusterId, type);
-        return clientProvider.findConnections(requireInstanceId(instanceId), normalizeFilter(clusterId), normalizeFilter(type));
+        return nullToEmpty(clientProvider.findConnections(
+                requireInstanceId(instanceId), normalizeFilter(clusterId), normalizeFilter(type)));
     }
 
     public List<ClientConnectionVO> listConnectionsAt(String namesrvAddr, String clusterId, String type) {
@@ -41,7 +42,13 @@ public class ClientService {
         if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(400, "namesrvAddr is required");
         }
-        return clientProvider.findConnectionsAt(namesrvAddr.trim(), normalizeFilter(clusterId), normalizeFilter(type));
+        return nullToEmpty(clientProvider.findConnectionsAt(
+                namesrvAddr.trim(), normalizeFilter(clusterId), normalizeFilter(type)));
+    }
+
+    /** Providers may report an unavailable lookup as {@code null}; the API contract is a list. */
+    private static List<ClientConnectionVO> nullToEmpty(List<ClientConnectionVO> connections) {
+        return connections == null ? List.of() : connections;
     }
 
     private String requireInstanceId(String instanceId) {

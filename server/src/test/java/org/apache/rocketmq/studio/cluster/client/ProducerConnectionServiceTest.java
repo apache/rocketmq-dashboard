@@ -129,4 +129,26 @@ class ProducerConnectionServiceTest {
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
         verifyNoInteractions(clientProvider);
     }
+
+    @Test
+    void listConnectionsShouldTreatNullProviderResultAsEmpty() {
+        when(clientProvider.findProducerConnections("instance-1", "order-topic", "pg-order"))
+                .thenReturn(null);
+
+        List<ProducerConnectionVO> result = producerConnectionService.listConnections(
+                "instance-1", "order-topic", "pg-order");
+
+        assertThat(result).isEmpty();
+        verify(clientProvider).findProducerConnections("instance-1", "order-topic", "pg-order");
+    }
+
+    @Test
+    void listProducerGroupsShouldTreatNullProviderResultAsEmpty() {
+        when(clientProvider.findProducerGroups("instance-1", null, null, 20)).thenReturn(null);
+
+        List<String> result = producerConnectionService.listProducerGroups("instance-1", null, null, null);
+
+        assertThat(result).isEmpty();
+        verify(clientProvider).findProducerGroups("instance-1", null, null, 20);
+    }
 }

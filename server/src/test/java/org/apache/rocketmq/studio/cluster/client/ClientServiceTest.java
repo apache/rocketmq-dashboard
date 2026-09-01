@@ -93,4 +93,22 @@ class ClientServiceTest {
 
         verifyNoInteractions(clientProvider);
     }
+
+    @Test
+    void listConnectionsShouldTreatNullProviderResultAsEmpty() {
+        when(clientProvider.findConnections("instance-1", "cluster-a", null)).thenReturn(null);
+
+        List<ClientConnectionVO> result = clientService.listConnections("instance-1", "cluster-a", null);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void listConnectionsAtShouldTreatNullProviderResultAsEmpty() {
+        when(clientProvider.findConnectionsAt("10.0.1.31:9876", null, null)).thenReturn(null);
+
+        List<ClientConnectionVO> result = clientService.listConnectionsAt("10.0.1.31:9876", null, null);
+
+        assertThat(result).isEmpty();
+    }
 }
