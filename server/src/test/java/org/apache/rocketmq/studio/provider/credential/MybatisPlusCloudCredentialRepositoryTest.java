@@ -38,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,13 +55,25 @@ class MybatisPlusCloudCredentialRepositoryTest {
         CloudCredentialVO credential = new CloudCredentialVO();
         credential.setId(1L);
         credential.setVendor(InstanceVendor.ALIYUN);
-        when(credentialMapper.selectById(1L)).thenReturn(entity(1L, "cred-1", "ALIYUN"));
         when(credentialMapper.updateById(any(RmqCloudCredential.class))).thenReturn(0);
 
         assertThatThrownBy(() -> repository.save(credential))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Cloud credential update was not applied: 1")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+    }
+
+    @Test
+    void saveShouldNotReinsertACredentialDeletedConcurrently() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(credentialMapper.updateById(any(RmqCloudCredential.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> repository.save(credential))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential update was not applied: 1");
+        verify(credentialMapper, never()).insert(any(RmqCloudCredential.class));
     }
 
     @Test
