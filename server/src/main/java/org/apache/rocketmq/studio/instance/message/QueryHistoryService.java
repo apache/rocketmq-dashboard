@@ -232,7 +232,16 @@ public class QueryHistoryService {
             return;
         }
 
-        LocalDateTime cutoff = LocalDateTime.now(clock).minusDays(retentionDays);
+        LocalDateTime cutoff;
+        try {
+            cutoff = LocalDateTime.now(clock).minusDays(retentionDays);
+        } catch (java.time.DateTimeException e) {
+            // An operator-supplied retention far beyond the date range (e.g. millions of days)
+            // would otherwise throw here and kill both purges on every schedule tick.
+            log.warn("Query history retention of {} days is out of the date range; skipping purge: {}",
+                    retentionDays, e.getMessage());
+            return;
+        }
         deleteExpiredMessageQueries(cutoff);
         deleteExpiredTraceQueries(cutoff);
     }

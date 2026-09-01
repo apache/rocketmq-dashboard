@@ -107,6 +107,22 @@ class QueryHistoryServiceTest {
     }
 
     @Test
+    void skipsPurgeWhenRetentionExceedsTheDateRange() {
+        // The service clock is injectable: a clock near the low end of the date range plus a
+        // multi-millennium retention pushes the cutoff past LocalDateTime.MIN.
+        QueryHistoryService ranged = new QueryHistoryService(
+                messageQueryMapper, traceQueryMapper, properties,
+                Clock.fixed(LocalDateTime.of(-999_990_000, 1, 1, 0, 0).toInstant(ZoneOffset.UTC), ZoneOffset.UTC),
+                new ObjectMapper());
+        properties.setRetentionDays(10_000_000);
+
+        ranged.purgeExpiredQueries();
+
+        verify(messageQueryMapper, never()).delete(any());
+        verify(traceQueryMapper, never()).delete(any());
+    }
+
+    @Test
     void listsMessageHistoryAsNewestFirstPage() {
         AuthenticatedUserContext.setUsername("alice");
         RmqMessageQuery entity = new RmqMessageQuery();
