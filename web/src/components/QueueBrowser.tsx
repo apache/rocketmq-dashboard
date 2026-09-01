@@ -59,9 +59,11 @@ export const useQueueBrowser = (instanceId?: string) => {
   const [queues, setQueues] = useState<QueueOffset[]>([]);
   const [loading, setLoading] = useState(false);
   const [offsets, setOffsets] = useState<Record<string, number>>({});
-  const [pulling, setPulling] = useState<string | null>(null);
+  const [pulling, setPulling] = useState<Set<string>>(() => new Set());
   const [entries, setEntries] = useState<PulledEntry[]>([]);
   const requestSeqRef = useRef(0);
+  const loadingRef = useRef(false);
+  const pullingRef = useRef(new Set<string>());
 
   useEffect(() => {
     const requestId = ++requestSeqRef.current;
@@ -70,13 +72,16 @@ export const useQueueBrowser = (instanceId?: string) => {
       setQueues([]);
       setOffsets({});
       setEntries([]);
+      loadingRef.current = false;
       setLoading(false);
-      setPulling(null);
+      pullingRef.current.clear();
+      setPulling(new Set());
     });
   }, [instanceId, topic]);
 
   const loadQueues = useCallback(async () => {
-    if (!instanceId || !topic) return;
+    if (!instanceId || !topic || loadingRef.current) return;
+    loadingRef.current = true;
     const requestId = ++requestSeqRef.current;
     setLoading(true);
     setQueues([]);
@@ -97,7 +102,10 @@ export const useQueueBrowser = (instanceId?: string) => {
         message.error(err instanceof Error ? err.message : '加载队列信息失败');
       }
     } finally {
-      if (requestId === requestSeqRef.current) setLoading(false);
+      if (requestId === requestSeqRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
   }, [instanceId, topic]);
 
@@ -105,8 +113,10 @@ export const useQueueBrowser = (instanceId?: string) => {
     if (!instanceId || !topic) return;
     const requestId = requestSeqRef.current;
     const key = `${queue.brokerName}-${queue.queueId}`;
+    if (pullingRef.current.has(key)) return;
     const offset = offsets[key] ?? queue.minOffset;
-    setPulling(key);
+    pullingRef.current.add(key);
+    setPulling(new Set(pullingRef.current));
     try {
       const msg = await pullMessageAtOffset({
         instanceId,
@@ -125,7 +135,8 @@ export const useQueueBrowser = (instanceId?: string) => {
         message.error(err instanceof Error ? err.message : '拉取消息失败');
       }
     } finally {
-      if (requestId === requestSeqRef.current) setPulling(null);
+      pullingRef.current.delete(key);
+      if (requestId === requestSeqRef.current) setPulling(new Set(pullingRef.current));
     }
   };
 
@@ -272,7 +283,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                     <Button
                       size="small"
                       type="primary"
-                      loading={state.pulling === key}
+                      loading={state.pulling.has(key)}
                       onClick={() => void state.handlePull(record)}
                     >
                       查看
