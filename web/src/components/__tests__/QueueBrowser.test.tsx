@@ -79,12 +79,20 @@ function QueueBrowserProbe({ instanceId = 'instance-a' }: { instanceId?: string 
       >
         pull
       </button>
+      <button
+        type="button"
+        disabled={state.queues.length < 2}
+        onClick={() => state.queues[1] && void state.handlePull(state.queues[1])}
+      >
+        pull-2
+      </button>
       <output aria-label="topic">{state.topic ?? ''}</output>
       <output aria-label="queues">{state.queues.map((item) => item.brokerName).join(',')}</output>
       <output aria-label="entries">
         {state.entries.map((entry) => entry.message?.msgId ?? 'empty').join(',')}
       </output>
       <output aria-label="loading">{String(state.loading)}</output>
+      <output aria-label="pulling">{Array.from(state.pulling).join(',')}</output>
     </div>
   );
 }
@@ -101,6 +109,40 @@ describe('formatTimeMs', () => {
     },
   );
 });
+
+  it('keeps the second pull indicator while an older pull finishes first', async () => {
+    const first = createDeferred<MessageRecord | null>();
+    const second = createDeferred<MessageRecord | null>();
+    vi.mocked(pullMessageAtOffset)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a'), queue('broker-b')]);
+    const user = userEvent.setup();
+    render(<QueueBrowserProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await waitFor(() => expect(screen.getByLabelText('topic')).toHaveTextContent('topic-a'));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a,broker-b'));
+
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await waitFor(() => expect(screen.getByLabelText('pulling')).toHaveTextContent('broker-a-0'));
+    await user.click(screen.getByRole('button', { name: 'pull-2' }));
+    await waitFor(() => expect(screen.getByLabelText('pulling')).toHaveTextContent('broker-b-0'));
+
+    await act(async () => {
+      first.resolve(messageRecord('msg-1'));
+    });
+
+    // The first pull finished; the second is still in flight and keeps its indicator.
+    expect(screen.getByLabelText('pulling')).not.toHaveTextContent('broker-a-0');
+    expect(screen.getByLabelText('pulling')).toHaveTextContent('broker-b-0');
+
+    await act(async () => {
+      second.resolve(messageRecord('msg-2'));
+    });
+    await waitFor(() => expect(screen.getByLabelText('pulling')).toHaveTextContent(''));
+  });
 
 describe('QueueBrowser request ownership', () => {
   beforeEach(() => {

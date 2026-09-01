@@ -59,7 +59,7 @@ export const useQueueBrowser = (instanceId?: string) => {
   const [queues, setQueues] = useState<QueueOffset[]>([]);
   const [loading, setLoading] = useState(false);
   const [offsets, setOffsets] = useState<Record<string, number>>({});
-  const [pulling, setPulling] = useState<string | null>(null);
+  const [pulling, setPulling] = useState<ReadonlySet<string>>(() => new Set());
   const [entries, setEntries] = useState<PulledEntry[]>([]);
   const requestSeqRef = useRef(0);
 
@@ -71,7 +71,7 @@ export const useQueueBrowser = (instanceId?: string) => {
       setOffsets({});
       setEntries([]);
       setLoading(false);
-      setPulling(null);
+      setPulling(new Set());
     });
   }, [instanceId, topic]);
 
@@ -106,7 +106,9 @@ export const useQueueBrowser = (instanceId?: string) => {
     const requestId = requestSeqRef.current;
     const key = `${queue.brokerName}-${queue.queueId}`;
     const offset = offsets[key] ?? queue.minOffset;
-    setPulling(key);
+    // A Set so concurrent pulls each keep their own indicator; clearing one must not
+    // clear the spinner of another pull that is still in flight.
+    setPulling((current) => new Set(current).add(key));
     try {
       const msg = await pullMessageAtOffset({
         instanceId,
@@ -125,7 +127,14 @@ export const useQueueBrowser = (instanceId?: string) => {
         message.error(err instanceof Error ? err.message : '拉取消息失败');
       }
     } finally {
-      if (requestId === requestSeqRef.current) setPulling(null);
+      if (requestId === requestSeqRef.current) {
+        setPulling((current) => {
+          if (!current.has(key)) return current;
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
     }
   };
 
@@ -272,7 +281,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                     <Button
                       size="small"
                       type="primary"
-                      loading={state.pulling === key}
+                      loading={state.pulling.has(key)}
                       onClick={() => void state.handlePull(record)}
                     >
                       查看
