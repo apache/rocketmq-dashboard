@@ -520,7 +520,7 @@ class MetadataServiceTest {
 
         metadataService.createConsumerGroup(group);
         metadataService.deleteConsumerGroup("cloud-instance", " cg-orders ");
-        metadataService.resetOffset("cloud-instance", " cg-orders ", 1784246400000L, "orders");
+        metadataService.resetOffset("cloud-instance", " cg-orders ", 1784246400000L, " orders ");
 
         verify(operationAuditService).record("CREATE_GROUP", "GROUP", "cg-orders",
                 "cloud-instance", "consumeType=-, subscriptionMode=-, retryMaxTimes=16", "SUCCESS", null);
@@ -528,6 +528,18 @@ class MetadataServiceTest {
                 "cloud-instance", null, "SUCCESS", null);
         verify(operationAuditService).record("RESET_OFFSET", "GROUP", "cg-orders",
                 "cloud-instance", "topic=orders, timestamp=1784246400000", "SUCCESS", null);
+        verify(cloudProvider).resetOffset("cloud-instance", "cg-orders", 1784246400000L, "orders");
+    }
+
+    @Test
+    void resetOffsetShouldRejectBlankTopicBeforeProviderResolution() {
+        assertThatThrownBy(() -> metadataService.resetOffset("instance-a", "cg-orders",
+                1784246400000L, " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic name is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(apacheProvider);
     }
 
     @Test
