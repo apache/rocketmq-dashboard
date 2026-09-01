@@ -75,7 +75,10 @@ public class LiteTopicSession {
         if (totalMessages == null || totalMessages == 0 || consumedMessages == null) {
             return 0.0;
         }
-        return (double) consumedMessages / totalMessages * 100.0;
+        // The provider's total and consumed counters drift independently, so a transient
+        // mismatch must not leak negative or over-100 percentages into the UI.
+        double progress = (double) consumedMessages / totalMessages * 100.0;
+        return Math.min(100.0, Math.max(0.0, progress));
     }
 
     @Data

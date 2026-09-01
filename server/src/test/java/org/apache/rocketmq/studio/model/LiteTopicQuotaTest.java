@@ -65,4 +65,18 @@ class LiteTopicQuotaTest {
         assertThat(quota.getSessionUsageRate()).isZero();
         assertThat(quota.getRemainingQuota()).isEqualTo(10);
     }
+
+    @Test
+    void usageRatesShouldClampCountDriftIntoTheUnitInterval() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxTopicCount(10);
+        quota.setMaxSessionCount(10);
+        quota.setCurrentTopicCount(15);
+        assertThat(quota.getUsageRate()).isEqualTo(1.0);
+        assertThat(quota.isNearQuotaLimit(0.9)).isTrue();
+        quota.setCurrentTopicCount(-1);
+        assertThat(quota.getUsageRate()).isZero();
+        quota.setCurrentSessionCount(-3);
+        assertThat(quota.getSessionUsageRate()).isZero();
+    }
 }
