@@ -92,4 +92,51 @@ describe('LoginPage', () => {
     expect(screen.getByText('login.passwordRequired')).toBeTruthy();
     expect(loginApiMock).not.toHaveBeenCalled();
   });
+
+  it('trims surrounding whitespace from the submitted username', async () => {
+    loginApiMock.mockResolvedValue({
+      user: { username: 'alice', userId: 42, admin: false },
+    });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText('login.usernamePlaceholder'), {
+      target: { value: '  alice  ' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('login.passwordPlaceholder'), {
+      target: { value: 'secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'login.title' }));
+
+    await waitFor(() => expect(loginApiMock).toHaveBeenCalledWith('alice', 'secret'));
+    expect(loginStoreMock).toHaveBeenCalledWith('alice', 42, false);
+  });
+
+  it('rejects a whitespace-only username without calling the API', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText('login.usernamePlaceholder'), {
+      target: { value: '   ' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('login.passwordPlaceholder'), {
+      target: { value: 'secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'login.title' }));
+
+    await waitFor(() => expect(screen.getByText('login.usernameRequired')).toBeTruthy());
+    expect(loginApiMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a friendly error when the login payload has no user', async () => {
+    loginApiMock.mockResolvedValue(null);
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText('login.usernamePlaceholder'), {
+      target: { value: 'alice' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('login.passwordPlaceholder'), {
+      target: { value: 'secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'login.title' }));
+
+    await waitFor(() => expect(screen.getByText('login.failed')).toBeTruthy());
+    expect(loginStoreMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
 });

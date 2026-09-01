@@ -50,8 +50,12 @@ const LoginPage = () => {
   const onFinish = async (values: LoginFormValues) => {
     setLoading(true);
     try {
-      const data = await loginApi(values.username, values.password);
-      authLogin(data.user.username, data.user.userId, data.user.admin);
+      const data = await loginApi(values.username.trim(), values.password);
+      const user = data?.user;
+      if (!user?.username) {
+        throw new Error(t('login.failed'));
+      }
+      authLogin(user.username, user.userId, user.admin);
       message.success(t('login.success'));
       navigate('/', { replace: true });
     } catch (err: unknown) {
@@ -116,7 +120,7 @@ const LoginPage = () => {
             <Form.Item
               label={t('login.username')}
               name="username"
-              rules={[{ required: true, message: t('login.usernameRequired') }]}
+              rules={[{ required: true, whitespace: true, message: t('login.usernameRequired') }]}
             >
               <Input
                 prefix={<UserOutlined />}
