@@ -186,6 +186,16 @@ describe('AlertRuleAssetList', () => {
     });
   });
 
+  it('tolerates assets with malformed severity entries', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue([
+      { name: 'asset-a', group: 'asset-a.rules', ruleCount: 1, severities: ['critical', null] },
+    ]);
+    renderWithProviders(<AlertRuleAssetList />);
+
+    await waitFor(() => expect(screen.getByText('asset-a')).toBeInTheDocument());
+    expect(screen.getByText('CRITICAL')).toBeInTheDocument();
+  });
+
   it('downloads the yaml when Export is clicked', async () => {
     const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:url');
     const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});

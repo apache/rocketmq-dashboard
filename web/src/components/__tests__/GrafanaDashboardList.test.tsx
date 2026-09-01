@@ -292,6 +292,16 @@ describe('GrafanaDashboardList', () => {
     clickSpy.mockRestore();
   });
 
+  it('tolerates dashboards with malformed tag entries', async () => {
+    vi.mocked(listGrafanaDashboards).mockResolvedValue([
+      { uid: 'dash-a', title: 'Dash A', description: '', tags: ['rocketmq', 42, null] },
+    ]);
+    renderDashboardList();
+
+    await waitFor(() => expect(screen.getByText('Dash A')).toBeInTheDocument());
+    expect(screen.getByText('rocketmq')).toBeInTheDocument();
+  });
+
   it('uses the JSON filename returned by mock bulk export', async () => {
     vi.mocked(exportGrafanaDashboards).mockResolvedValue({
       blob: new Blob(['json-content'], { type: 'application/json' }),

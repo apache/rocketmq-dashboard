@@ -51,6 +51,9 @@ export const GrafanaDashboardList: React.FC = () => {
   const tagOptions = useMemo(
     () =>
       Array.from(new Set(dashboards.flatMap((dashboard) => dashboard.tags || [])))
+        // A malformed wire payload may carry non-string tags; keep only real strings so
+        // the sort and the filter options cannot throw.
+        .filter((tag): tag is string => typeof tag === 'string' && tag.length > 0)
         .sort((a, b) => a.localeCompare(b))
         .map((tag) => ({ label: tag, value: tag })),
     [dashboards],
@@ -62,7 +65,7 @@ export const GrafanaDashboardList: React.FC = () => {
       const matchesSearch =
         !normalizedSearch ||
         [dashboard.uid, dashboard.title, dashboard.description, ...(dashboard.tags || [])]
-          .filter(Boolean)
+          .filter((value): value is string => typeof value === 'string')
           .some((value) => value.toLowerCase().includes(normalizedSearch));
       const matchesTags =
         selectedTags.length === 0 ||
@@ -179,11 +182,13 @@ export const GrafanaDashboardList: React.FC = () => {
       width: 140,
       render: (tags: string[]) => (
         <Space size={[0, 4]} wrap>
-          {(tags || []).map((tag) => (
-            <Tag key={tag} color="blue">
-              {tag}
-            </Tag>
-          ))}
+          {(tags || [])
+            .filter((tag): tag is string => typeof tag === 'string')
+            .map((tag) => (
+              <Tag key={tag} color="blue">
+                {tag}
+              </Tag>
+            ))}
         </Space>
       ),
     },
