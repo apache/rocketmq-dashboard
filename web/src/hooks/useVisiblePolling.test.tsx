@@ -110,6 +110,53 @@ describe('useVisiblePolling', () => {
     expect(poll).not.toHaveBeenCalled();
   });
 
+  it('does not schedule polls for a non-finite or non-positive interval', async () => {
+    const poll = vi.fn().mockResolvedValue(undefined);
+
+    const first = renderHook(() => useVisiblePolling(true, Number.NaN, poll));
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+    });
+    expect(poll).not.toHaveBeenCalled();
+    first.unmount();
+
+    renderHook(() => useVisiblePolling(true, 0, poll));
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+    });
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it('keeps polling when the callback identity changes on re-render', async () => {
+    let calls = 0;
+    const { rerender } = renderHook(
+      ({ onPoll }: { onPoll: () => void }) => useVisiblePolling(true, 1_000, onPoll),
+      { initialProps: { onPoll: () => { calls += 1; } } },
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+    });
+
+    // A re-render replaces the inline callback's identity (e.g. a parent re-rendering
+    // while loading data). If the subscription depends on the callback, the interval is
+    // re-created here and the next tick is delayed past t=1000.
+    rerender({ onPoll: () => { calls += 1; } });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+    });
+
+    expect(calls).toBe(1);
+  });
+
   it('waits for a hidden page to become visible', async () => {
     visibilityState = 'hidden';
     const poll = vi.fn().mockResolvedValue(undefined);

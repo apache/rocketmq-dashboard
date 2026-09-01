@@ -15,15 +15,26 @@
  * limitations under the License.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function useVisiblePolling(
   enabled: boolean,
   intervalMs: number,
   poll: () => void | Promise<void>,
 ): void {
+  // Track the latest callback in a ref so a caller passing an inline (non-memoized) callback
+  // does not re-subscribe the interval on every render — re-subscribing resets the timer and
+  // polling can effectively never fire under frequent re-renders.
+  const pollRef = useRef(poll);
+  useEffect(() => {
+    pollRef.current = poll;
+  });
+
   useEffect(() => {
     if (!enabled) return;
+    // A non-finite or non-positive interval would make setInterval fire as fast as the
+    // event loop allows, hammering the poll callback.
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) return;
 
     let pollInFlight = false;
     const pollWhenVisible = () => {
@@ -31,7 +42,7 @@ export function useVisiblePolling(
 
       pollInFlight = true;
       void Promise.resolve()
-        .then(poll)
+        .then(() => pollRef.current())
         .catch(() => undefined)
         .finally(() => {
           pollInFlight = false;
@@ -44,5 +55,5 @@ export function useVisiblePolling(
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', pollWhenVisible);
     };
-  }, [enabled, intervalMs, poll]);
+  }, [enabled, intervalMs]);
 }
