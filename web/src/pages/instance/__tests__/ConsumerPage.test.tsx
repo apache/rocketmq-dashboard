@@ -482,6 +482,73 @@ describe('Consumer page', () => {
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
   });
 
+  it('shows group health diagnostics from subscriptions, progress and clients', async () => {
+    const riskyGroup: ConsumerGroup = {
+      ...group,
+      totalLag: 1_200,
+      delaySeconds: 720,
+      onlineInstances: 2,
+      instances: [
+        {
+          clientId: 'remote-cg-0@10.0.0.1',
+          protocol: 'GRPC',
+          address: '10.0.0.1:49152',
+          subscribedTopics: ['remote-topic'],
+          lastHeartbeat: '2026-07-23T00:00:00Z',
+          topicLag: { 'remote-topic': 10 },
+        },
+        {
+          clientId: 'remote-cg-1@10.0.0.2',
+          protocol: 'REMOTING',
+          address: '10.0.0.2:49152',
+          subscribedTopics: [],
+          lastHeartbeat: '2026-07-23T00:00:00Z',
+          topicLag: {},
+        },
+      ],
+    };
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([riskyGroup]));
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: 'tagA',
+        type: 'NORMAL',
+        filterMode: 'Tag 过滤',
+        consistency: '不一致',
+      },
+    ]);
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        broker: 'broker-a',
+        queueId: 0,
+        brokerOffset: 100,
+        consumerOffset: 90,
+        diffTotal: 10,
+      },
+      {
+        topic: 'remote-topic',
+        broker: 'broker-b',
+        queueId: 1,
+        brokerOffset: 1_200,
+        consumerOffset: 100,
+        diffTotal: 1_100,
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+
+    await waitFor(() => expect(within(panel).getAllByText('消费风险').length).toBeGreaterThan(0));
+    expect(within(panel).getByText('订阅表达式不一致')).toBeInTheDocument();
+    expect(within(panel).getByText('Queue 堆积分布严重倾斜')).toBeInTheDocument();
+    expect(within(panel).getAllByText('客户端心跳过期').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('处理建议')).toBeInTheDocument();
+  });
+
   it('filters queue progress to the topic of the clicked distribution button', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {

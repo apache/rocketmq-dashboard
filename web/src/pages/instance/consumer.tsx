@@ -41,6 +41,7 @@ import {
   DatePicker,
   Tooltip,
   Spin,
+  Progress,
   message,
 } from 'antd';
 import {
@@ -103,6 +104,11 @@ import {
 import { downloadCsv } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
 import { tableScrollX } from '../../utils/table';
+import {
+  analyzeConsumerGroupHealth,
+  type ConsumerGroupHealthIssue,
+  type ConsumerGroupHealthStatus,
+} from '../../utils/consumerGroupDiagnostics';
 
 const { Text } = Typography;
 
@@ -186,6 +192,24 @@ const resetPreviewRiskLabel = (riskLevel: string) => {
   if (riskLevel === 'ERROR') return '失败';
   if (riskLevel === 'WARNING') return '需确认';
   return '正常';
+};
+
+const healthStatusTagColor = (status: ConsumerGroupHealthStatus) => {
+  if (status === 'critical') return 'red';
+  if (status === 'warning') return 'orange';
+  return 'green';
+};
+
+const issueSeverityTagColor = (severity: ConsumerGroupHealthIssue['severity']) => {
+  if (severity === 'critical') return 'red';
+  if (severity === 'warning') return 'orange';
+  return 'blue';
+};
+
+const issueSeverityLabel = (severity: ConsumerGroupHealthIssue['severity']) => {
+  if (severity === 'critical') return '风险';
+  if (severity === 'warning') return '关注';
+  return '提示';
 };
 
 const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
@@ -477,6 +501,10 @@ const ConsumerPageContent = ({
     if (key === 'settings' && selectedGroup && settingsGroup?.name !== selectedGroup.name) {
       void loadGroupSettings(selectedGroup);
     }
+    if (key === 'health' && selectedGroup) {
+      void loadSubscriptions(selectedGroup.name);
+      void loadProgress(selectedGroup.name);
+    }
   };
 
   const saveSettings = async () => {
@@ -533,9 +561,10 @@ const ConsumerPageContent = ({
     }
     return Array.from(topics).map((topic) => ({ label: topic, value: topic }));
   }, [resetDiagnosticKey, resetGroup, subscriptionsByGroup]);
-  const selectedSubscriptions = selectedGroup
-    ? (subscriptionsByGroup[selectedDiagnosticKey] ?? [])
-    : [];
+  const selectedSubscriptions = useMemo(
+    () => (selectedGroupName ? (subscriptionsByGroup[selectedDiagnosticKey] ?? []) : []),
+    [selectedDiagnosticKey, selectedGroupName, subscriptionsByGroup],
+  );
   const inconsistentSubscriptions = selectedSubscriptions.filter(isInconsistentSubscription);
   const unknownSubscriptions = selectedSubscriptions.filter(
     (subscription) =>
@@ -569,6 +598,13 @@ const ConsumerPageContent = ({
   const visibleProgressLag = visibleProgress.reduce(
     (sum, q) => sum + (isLagAvailable(q.diffTotal) ? q.diffTotal : 0),
     0,
+  );
+  const selectedGroupHealth = useMemo(
+    () =>
+      selectedGroup
+        ? analyzeConsumerGroupHealth(selectedGroup, selectedSubscriptions, selectedProgress)
+        : null,
+    [selectedGroup, selectedProgress, selectedSubscriptions],
   );
 
   const handlePreviewResetOffset = async () => {
@@ -1095,6 +1131,36 @@ const ConsumerPageContent = ({
     },
   ];
 
+  const healthIssueColumns: ColumnsType<ConsumerGroupHealthIssue> = [
+    {
+      title: '级别',
+      dataIndex: 'severity',
+      key: 'severity',
+      width: 84,
+      render: (severity: ConsumerGroupHealthIssue['severity']) => (
+        <Tag color={issueSeverityTagColor(severity)}>{issueSeverityLabel(severity)}</Tag>
+      ),
+    },
+    {
+      title: '诊断项',
+      dataIndex: 'title',
+      key: 'title',
+      width: 180,
+      render: (title: string, record) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{title}</Text>
+          {record.subject && <Text type="secondary">{record.subject}</Text>}
+        </Space>
+      ),
+    },
+    {
+      title: '说明',
+      dataIndex: 'description',
+      key: 'description',
+      render: (description: string) => <Text>{description}</Text>,
+    },
+  ];
+
   /* ═══════════════════════════════════════════
      Modal: Queue Progress Tab
      ═══════════════════════════════════════════ */
@@ -1487,7 +1553,7 @@ const ConsumerPageContent = ({
           setSettingsLoading(false);
           settingsForm.resetFields();
         }}
-        width={detailTab === 'progress' ? 1080 : 800}
+        width={detailTab === 'progress' || detailTab === 'health' ? 1080 : 800}
         destroyOnHidden
         footer={null}
       >
@@ -1711,6 +1777,155 @@ const ConsumerPageContent = ({
                       />
                     </div>
                   </div>
+                ),
+              },
+              /* ─── 健康诊断 Tab ─── */
+              {
+                key: 'health',
+                label: (
+                  <Space size={4}>
+                    <Info size={14} />
+                    <span>健康诊断</span>
+                  </Space>
+                ),
+                children: selectedGroupHealth && (
+                  <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                    <Flex justify="space-between" align="center" gap={12} wrap>
+                      <Space direction="vertical" size={2}>
+                        <Space>
+                          <Tag color={healthStatusTagColor(selectedGroupHealth.status)}>
+                            {selectedGroupHealth.statusText}
+                          </Tag>
+                          <Text type="secondary">
+                            汇总订阅、队列进度和在线客户端，定位消费风险。
+                          </Text>
+                        </Space>
+                        <Text type="secondary">诊断结果随详情弹窗每 2 秒自动刷新。</Text>
+                      </Space>
+                      <Button
+                        size="small"
+                        icon={<ArrowsClockwise size={14} />}
+                        loading={subscriptionLoadingByGroup[selectedDiagnosticKey]}
+                        onClick={() => {
+                          void loadSubscriptions(selectedGroup.name, true);
+                          void loadProgress(selectedGroup.name, true);
+                        }}
+                      >
+                        重新诊断
+                      </Button>
+                    </Flex>
+
+                    {subscriptionErrorByGroup[selectedDiagnosticKey] && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message="订阅一致性检查失败，诊断仍使用当前可用的进度和客户端数据。"
+                      />
+                    )}
+
+                    <Row gutter={16}>
+                      <Col span={6}>
+                        <Card size="small" style={{ borderRadius: 8 }}>
+                          <Statistic
+                            title="健康分"
+                            value={selectedGroupHealth.summary.healthScore}
+                            suffix="/ 100"
+                            valueStyle={{
+                              color:
+                                selectedGroupHealth.status === 'critical'
+                                  ? '#ff4d4f'
+                                  : selectedGroupHealth.status === 'warning'
+                                    ? '#faad14'
+                                    : '#52c41a',
+                            }}
+                          />
+                          <Progress
+                            percent={selectedGroupHealth.summary.healthScore}
+                            showInfo={false}
+                            status={
+                              selectedGroupHealth.status === 'critical'
+                                ? 'exception'
+                                : selectedGroupHealth.status === 'warning'
+                                  ? 'active'
+                                  : 'success'
+                            }
+                          />
+                        </Card>
+                      </Col>
+                      <Col span={6}>
+                        <Card size="small" style={{ borderRadius: 8 }}>
+                          <Statistic
+                            title="已知堆积"
+                            value={selectedGroupHealth.summary.totalKnownLag}
+                            valueStyle={{
+                              color: lagColor(selectedGroupHealth.summary.totalKnownLag),
+                            }}
+                          />
+                          <Text type="secondary">
+                            报告堆积：
+                            {selectedGroupHealth.summary.reportedLag === null
+                              ? UNAVAILABLE_LAG_LABEL
+                              : selectedGroupHealth.summary.reportedLag.toLocaleString()}
+                          </Text>
+                        </Card>
+                      </Col>
+                      <Col span={6}>
+                        <Card size="small" style={{ borderRadius: 8 }}>
+                          <Statistic
+                            title="Queue 覆盖"
+                            value={selectedGroupHealth.summary.queueCount}
+                            suffix={`/${selectedGroupHealth.summary.subscribedTopicCount} Topic`}
+                          />
+                          <Text type="secondary">
+                            {selectedGroupHealth.summary.unknownQueueCount > 0
+                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个 Queue 堆积不可用`
+                              : 'Queue 堆积均可计算'}
+                          </Text>
+                        </Card>
+                      </Col>
+                      <Col span={6}>
+                        <Card size="small" style={{ borderRadius: 8 }}>
+                          <Statistic
+                            title="客户端"
+                            value={selectedGroupHealth.summary.onlineInstances}
+                          />
+                          <Text type="secondary">
+                            {selectedGroupHealth.summary.staleClientCount > 0
+                              ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
+                              : '心跳状态正常'}
+                          </Text>
+                        </Card>
+                      </Col>
+                    </Row>
+
+                    {selectedGroupHealth.issues.length > 0 ? (
+                      <Table
+                        columns={healthIssueColumns}
+                        dataSource={selectedGroupHealth.issues}
+                        rowKey="id"
+                        pagination={false}
+                        size="small"
+                        scroll={{ x: tableScrollX(healthIssueColumns) }}
+                      />
+                    ) : (
+                      <Alert type="success" showIcon message="未发现消费组健康风险" />
+                    )}
+
+                    {selectedGroupHealth.recommendations.length > 0 && (
+                      <Alert
+                        type="info"
+                        showIcon
+                        message="处理建议"
+                        description={
+                          <Space direction="vertical" size={4}>
+                            {selectedGroupHealth.recommendations.map((recommendation) => (
+                              <Text key={recommendation}>{recommendation}</Text>
+                            ))}
+                          </Space>
+                        }
+                      />
+                    )}
+                  </Space>
                 ),
               },
               /* ─── 消费进度 Tab ─── */
