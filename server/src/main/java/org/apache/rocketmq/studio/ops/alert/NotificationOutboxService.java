@@ -156,7 +156,7 @@ public class NotificationOutboxService {
         return mapper.selectList(new QueryWrapper<RmqAlertNotificationOutbox>().eq("alert_id", alertId)
                         .orderByAsc("id"))
                 .stream().map(row -> NotificationDeliveryVO.builder().id(row.getId()).channel(row.getChannel())
-                        .status(NotificationOutboxStatus.valueOf(row.getStatus()))
+                        .status(parseStoredStatus(row.getStatus()))
                         .attemptCount(row.getAttemptCount() == null ? 0 : row.getAttemptCount())
                         .nextAttemptAt(row.getNextAttemptAt()).lastError(row.getLastError())
                         .deliveredAt(row.getDeliveredAt()).build()).toList();
@@ -224,6 +224,21 @@ public class NotificationOutboxService {
 
     private static String normalizeTrim(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    /**
+     * Maps a stored status to the known outbox lifecycle. Legacy or partially written rows must
+     * not break the delivery listing, so unknown values surface as FAILED for manual attention.
+     */
+    private static NotificationOutboxStatus parseStoredStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return NotificationOutboxStatus.FAILED;
+        }
+        try {
+            return NotificationOutboxStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return NotificationOutboxStatus.FAILED;
+        }
     }
 
     private static String normalizeStatus(String status) {
