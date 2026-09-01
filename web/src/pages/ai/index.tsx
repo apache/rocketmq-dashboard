@@ -759,8 +759,9 @@ const AiPage = () => {
       setToolResult(undefined);
       setToolsLoading(true);
       try {
-        const availableTools = await listTools(clusterId || undefined);
+        const catalog = await listTools(clusterId || undefined);
         if (requestId !== toolLoadRequestRef.current) return;
+        const availableTools = Array.isArray(catalog) ? catalog : [];
         setTools(availableTools);
         const firstTool = availableTools.find((tool) => !tool.deprecated);
         if (firstTool) selectTool(firstTool.name, availableTools, clusterId);

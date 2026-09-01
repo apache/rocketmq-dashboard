@@ -21,7 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { LangProvider } from '../../../i18n/LangContext';
-import { chatStream, executeTool, listTools } from '../../../api/ai';
+import { chatStream, executeTool, listTools, type McpTool } from '../../../api/ai';
 import { listClusters, type ClusterInfo } from '../../../api/cluster';
 import { getLlmConfig, getLlmModels } from '../../../api/llm';
 import { useAiChatHistoryStore } from '../../../stores/aiChatHistoryStore';
@@ -452,5 +452,18 @@ describe('AiPage tool runner', () => {
 
     expect(await screen.findByText('工具参数必须是有效的 JSON 对象')).toBeInTheDocument();
     expect(executeTool).not.toHaveBeenCalled();
+  });
+
+  it('treats a non-array tool catalog payload as an empty catalog', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listTools).mockResolvedValue(null as unknown as McpTool[]);
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+
+    expect(dialog).toBeInTheDocument();
+    expect(screen.queryByText('AI 工具目录加载失败')).not.toBeInTheDocument();
   });
 });
