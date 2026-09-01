@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createConsumerGroup,
   getConsumerGroup,
@@ -44,7 +44,48 @@ vi.mock('../config', () => ({
 }));
 vi.mock('../api/metadata', () => metadataApi);
 
+describe('consumer group export pagination tolerance', () => {
+  beforeEach(() => {
+    metadataApi.listConsumerGroupPage.mockReset();
+  });
+  afterEach(() => {
+    mode.mock = true;
+    vi.clearAllMocks();
+  });
+
+  it('treats a null or item-less page payload as an empty page', async () => {
+    mode.mock = false;
+    vi.mocked(metadataApi.listConsumerGroupPage)
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValueOnce({ total: 2, page: 2, size: 100 } as never);
+
+    const groups = await listAllConsumerGroups();
+
+    expect(groups).toEqual([]);
+  });
+
+  it('collects every page and stops at the reported total', async () => {
+    mode.mock = false;
+    const group = (name: string) =>
+      ({ name, subscribedTopics: [], instances: [] } as never);
+    vi.mocked(metadataApi.listConsumerGroupPage)
+      .mockResolvedValueOnce({
+        items: [group('cg-a'), group('cg-b')],
+        total: 3,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({ items: [group('cg-c')], total: 3, page: 2, size: 100 });
+
+    const groups = await listAllConsumerGroups();
+
+    expect(groups.map((item) => item.name)).toEqual(['cg-a', 'cg-b', 'cg-c']);
+  });
+
+});
+
 describe('consumer service mock data', () => {
+
   it('returns copied consumer group rows', async () => {
     const first = await listConsumerGroups({ search: 'cg-order-notify' });
     expect(first[0].name).toBe('cg-order-notify');

@@ -129,9 +129,15 @@ export async function listAllDataSources(params: { search?: string; type?: strin
       page,
       pageSize: DATA_SOURCE_EXPORT_PAGE_SIZE,
     });
-    allDataSources.push(...result.items);
-    const total = result.total ?? allDataSources.length;
-    if (result.items.length === 0 || allDataSources.length >= total) {
+    // A success envelope may still carry a null or item-less payload; treat it as an
+    // empty page instead of crashing the whole export walk.
+    const items = Array.isArray(result?.items) ? result.items : [];
+    allDataSources.push(...items);
+    const total =
+      result && typeof result.total === 'number' && Number.isFinite(result.total)
+        ? result.total
+        : allDataSources.length;
+    if (items.length === 0 || allDataSources.length >= total) {
       return allDataSources;
     }
     page += 1;

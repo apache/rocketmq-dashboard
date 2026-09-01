@@ -63,9 +63,15 @@ export const listAllStudioUsers = async (
       page,
       pageSize: STUDIO_USER_EXPORT_PAGE_SIZE,
     });
-    allUsers.push(...result.items);
-    const total = result.total ?? allUsers.length;
-    if (result.items.length === 0 || allUsers.length >= total) return allUsers;
+    // A success envelope may still carry a null or item-less payload; treat it as an
+    // empty page instead of crashing the whole export walk.
+    const items = Array.isArray(result?.items) ? result.items : [];
+    allUsers.push(...items);
+    const total =
+      result && typeof result.total === 'number' && Number.isFinite(result.total)
+        ? result.total
+        : allUsers.length;
+    if (items.length === 0 || allUsers.length >= total) return allUsers;
     page += 1;
   }
   throw new Error(`Studio user export exceeded ${STUDIO_USER_MAX_EXPORT_PAGES} pages`);

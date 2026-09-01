@@ -112,4 +112,23 @@ describe('data sources API', () => {
       testDataSource({ type: source.type, url: source.url, auth: source.auth }),
     ).resolves.toEqual({ success: true, message: 'Connection successful' });
   });
+
+  it('treats a null page payload as an empty page during the export walk', async () => {
+    mock.onGet('/settings/datasources/page').reply(200, { code: 0, data: null });
+
+    const all = await listAllDataSources();
+
+    expect(all).toEqual([]);
+  });
+
+  it('treats a page payload without items as an empty page during the export walk', async () => {
+    mock.onGet('/settings/datasources/page').reply(200, {
+      code: 0,
+      data: { total: 2, page: 1, size: 100 },
+    });
+
+    const all = await listAllDataSources();
+
+    expect(all).toEqual([]);
+  });
 });
