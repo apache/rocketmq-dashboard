@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
@@ -35,6 +36,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -138,6 +140,38 @@ class QueryHistoryServiceTest {
         ArgumentCaptor<Wrapper<RmqMessageQuery>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(messageQueryMapper).selectPage(any(Page.class), queryCaptor.capture());
         assertThat(queryCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
+    }
+
+    @Test
+    void rejectsUnknownMessageHistoryQueryTypeBeforeQuerying() {
+        assertThatThrownBy(() -> service.listMessageQueries("cluster-a", "msg_id", null, 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("queryType must be one of MSG_ID, KEY, TOPIC");
+        assertThatThrownBy(() -> service.listMessageQueries("cluster-a", "GARBAGE", null, 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("queryType must be one of MSG_ID, KEY, TOPIC");
+        assertThatThrownBy(() -> service.listMessageQueries("cluster-a", " TOPIC ", null, 1, 20))
+                .isInstanceOf(BusinessException.class);
+
+        verify(messageQueryMapper, never()).selectPage(any(Page.class), any(Wrapper.class));
+    }
+
+    @Test
+    void acceptsEveryRecordedMessageHistoryQueryType() {
+        when(messageQueryMapper.selectPage(any(Page.class), any(Wrapper.class)))
+                .thenAnswer(invocation -> {
+                    Page<RmqMessageQuery> result = invocation.getArgument(0);
+                    result.setRecords(java.util.List.of());
+                    result.setTotal(0);
+                    return result;
+                });
+
+        service.listMessageQueries("cluster-a", "MSG_ID", null, 1, 20);
+        service.listMessageQueries("cluster-a", "KEY", null, 1, 20);
+        service.listMessageQueries("cluster-a", "TOPIC", null, 1, 20);
+        service.listMessageQueries("cluster-a", null, null, 1, 20);
+
+        verify(messageQueryMapper, org.mockito.Mockito.times(4)).selectPage(any(Page.class), any(Wrapper.class));
     }
 
     @Test
