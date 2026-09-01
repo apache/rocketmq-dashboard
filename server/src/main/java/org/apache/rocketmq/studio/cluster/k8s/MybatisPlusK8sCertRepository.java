@@ -66,7 +66,13 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     @Transactional
     public K8sCertVO save(K8sCertVO cert) {
         RmqK8sCertificate entity = toEntity(cert);
-        if (entity.getId() != null && certMapper.selectById(entity.getId()) != null) {
+        if (entity.getId() != null) {
+            // An id that no longer resolves to a row was removed between the service's read
+            // and this save; re-inserting it would resurrect the deleted certificate.
+            if (certMapper.selectById(entity.getId()) == null) {
+                throw new BusinessException(404,
+                        "Certificate not found, removed concurrently: " + entity.getId());
+            }
             if (certMapper.updateById(entity) == 0) {
                 throw new BusinessException(409,
                         "Certificate update was not applied: " + entity.getId());
