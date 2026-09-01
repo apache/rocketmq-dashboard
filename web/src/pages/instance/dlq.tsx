@@ -143,6 +143,7 @@ const DLQPage = () => {
   const detailRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
   const groupRequestIdRef = useRef(0);
+  const resendInFlightRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -245,7 +246,9 @@ const DLQPage = () => {
       return;
     }
     if (!retryGroup || !selectedInstanceId) return;
+    if (resendInFlightRef.current) return;
 
+    resendInFlightRef.current = true;
     const requestId = retryRequestIdRef.current + 1;
     retryRequestIdRef.current = requestId;
     const groupName = retryGroup.groupName;
@@ -279,6 +282,7 @@ const DLQPage = () => {
         setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
       }
     } finally {
+      resendInFlightRef.current = false;
       if (retryRequestIdRef.current === requestId) {
         setRetrySubmitting(false);
       }
@@ -353,6 +357,8 @@ const DLQPage = () => {
 
   const resendSelectedMessages = async (msgIds: string[]) => {
     if (!selectedInstanceId || !detailGroup || msgIds.length === 0) return;
+    if (resendInFlightRef.current) return;
+    resendInFlightRef.current = true;
     setDetailResending(true);
     setDetailError(null);
     try {
@@ -373,6 +379,7 @@ const DLQPage = () => {
     } catch (error) {
       setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
     } finally {
+      resendInFlightRef.current = false;
       setDetailResending(false);
     }
   };
