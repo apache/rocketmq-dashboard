@@ -459,6 +459,34 @@ class MybatisPlusAclRepositoryTest {
         assertThat(captor.getValue().getClusters()).isEqualTo("cluster-a,cluster-b");
     }
 
+    @Test
+    void saveUserShouldPersistTheWhiteRemoteAddress() {
+        when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
+        AclUserVO user = AclUserVO.builder().username("svc-a").accessKey("svc-a")
+                .secretKey("secret").whiteRemoteAddress("10.0.0.0/8").build();
+
+        repository.saveUser(user);
+
+        ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
+        verify(userMapper).insert(captor.capture());
+        assertThat(captor.getValue().getWhiteRemoteAddress()).isEqualTo("10.0.0.0/8");
+    }
+
+    @Test
+    void replaceUserShouldCarryTheWhiteRemoteAddressIntoTheUpdate() {
+        RmqAclUser existing = userEntity(3L, "svc-a", "c2VjcmV0");
+        when(userMapper.selectById(3L)).thenReturn(existing);
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+        AclUserVO replacement = AclUserVO.builder().id(3L).username("svc-a").accessKey("svc-a")
+                .secretKey("secret").whiteRemoteAddress("192.168.0.0/16").build();
+
+        repository.replaceUser(replacement);
+
+        ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
+        verify(userMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getWhiteRemoteAddress()).isEqualTo("192.168.0.0/16");
+    }
+
     private static RmqAclUser userEntity(Long id, String accessKey, String encodedSecret) {
         RmqAclUser entity = new RmqAclUser();
         entity.setId(id);
