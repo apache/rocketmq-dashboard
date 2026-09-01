@@ -360,6 +360,29 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void mapsUnknownStoredOutboxStatusesToFailedWhenListingTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        RmqAlertNotificationOutbox unknown = new RmqAlertNotificationOutbox();
+        unknown.setId(8L);
+        unknown.setAlertId(9L);
+        unknown.setChannel("dingtalk");
+        unknown.setStatus("BOUNCED");
+        RmqAlertNotificationOutbox lowerCase = new RmqAlertNotificationOutbox();
+        lowerCase.setId(9L);
+        lowerCase.setAlertId(9L);
+        lowerCase.setChannel("email");
+        lowerCase.setStatus(" pending ");
+        when(mapper.selectList(any())).thenReturn(List.of(unknown, lowerCase));
+
+        List<NotificationDeliveryVO> result = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).listDeliveries(9L);
+
+        assertThat(result).extracting(NotificationDeliveryVO::getStatus)
+                .containsExactly(NotificationOutboxStatus.FAILED, NotificationOutboxStatus.PENDING);
+    }
+
+    @Test
     void retriesOnlyFailedDeliveryAndResetsItsDispatchStateTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         OperationAuditService audit = mock(OperationAuditService.class);
