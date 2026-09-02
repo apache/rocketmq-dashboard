@@ -90,16 +90,16 @@ type ApiErrorLike = {
 };
 
 const QUERY_OPTIONS = [
-  { value: 'topic' as const, label: '按 Topic 查询' },
-  { value: 'key' as const, label: '按 Message Key' },
-  { value: 'msgid' as const, label: '按 Message ID' },
-  { value: 'queue' as const, label: '按队列浏览' },
+  { value: 'topic' as const, labelKey: 'message.queryByTopic' },
+  { value: 'key' as const, labelKey: 'message.queryByKey' },
+  { value: 'msgid' as const, labelKey: 'message.queryByMsgId' },
+  { value: 'queue' as const, labelKey: 'message.queryByQueue' },
 ];
 
 const DELIVERY_STATUS_MAP: Record<string, { label: string; color: string }> = {
-  success: { label: '成功', color: 'green' },
-  failed: { label: '失败', color: 'red' },
-  pending: { label: '等待中', color: 'gold' },
+  success: { labelKey: 'message.deliverySuccess', color: 'green' },
+  failed: { labelKey: 'message.deliveryFailed', color: 'red' },
+  pending: { labelKey: 'message.deliveryPending', color: 'gold' },
 };
 
 const TOPIC_TAG_COLORS: Record<string, string> = {
@@ -659,10 +659,10 @@ const MessagePageContent = ({
       key: 'deliveryStatus',
       render: (status: string) => {
         const s = DELIVERY_STATUS_MAP[(status ?? '').toLowerCase()] || {
-          label: status,
+          labelKey: status,
           color: 'default',
         };
-        return <Tag color={s.color}>{s.label}</Tag>;
+        return <Tag color={s.color}>{t(s.labelKey)}</Tag>;
       },
     },
     {
@@ -846,7 +846,7 @@ const MessagePageContent = ({
               style={{ width: 220 }}
             />
             <Segmented
-              options={QUERY_OPTIONS}
+              options={QUERY_OPTIONS.map((option) => ({ ...option, label: t(option.labelKey) }))}
               value={queryMode}
               onChange={(v) => setQueryMode(v as QueryMode)}
             />
