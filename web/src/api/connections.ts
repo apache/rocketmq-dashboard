@@ -2,11 +2,11 @@ import client from './client';
 
 // Matches mock/clients.ts
 export interface ClientConnection {
-  clientId: string;
+  clientId?: string | null;
   type: string;
   groupOrTopic: string;
   protocol: string;
-  address: string;
+  address?: string | null;
   language: string;
   version: string;
   connectedAt?: string | null;

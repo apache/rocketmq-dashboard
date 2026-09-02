@@ -111,12 +111,12 @@ const normalizeText = (value?: string | null, fallback = 'unknown'): string => {
   return trimmed || fallback;
 };
 
-const uniqueSorted = (values: string[]): string[] =>
+const uniqueSorted = (values: Array<string | null | undefined>): string[] =>
   [...new Set(values.map((value) => normalizeText(value)).filter(Boolean))].sort((a, b) =>
     a.localeCompare(b),
   );
 
-const countBy = (values: string[]): Map<string, number> => {
+const countBy = (values: Array<string | null | undefined>): Map<string, number> => {
   const counts = new Map<string, number>();
   values.forEach((value) => {
     const normalized = normalizeText(value);
