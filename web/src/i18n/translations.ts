@@ -1719,6 +1719,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.deleteContent': { zh: '确定要删除 Topic「{name}」吗？此操作不可撤销。', en: 'Are you sure to delete topic "{name}"? This cannot be undone.' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
