@@ -130,6 +130,23 @@ class InstanceProviderRegistryTest {
         assertThat(registry.catalogFor(InstanceVendor.ALIYUN)).isSameAs(catalog);
     }
 
+    @Test
+    void forVendorShouldReportNullVendorAsMissingTest() {
+        // EnumMap.get(null) NPEs; a null vendor must surface as 501 like an unknown vendor.
+        assertThatThrownBy(() -> registry.forVendor(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("No instance provider registered for vendor null")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+    }
+
+    @Test
+    void catalogForShouldReportNullVendorAsMissingTest() {
+        assertThatThrownBy(() -> registry.catalogFor(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("No cloud catalog provider registered for vendor null")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+    }
+
     private InstanceProvider stubProvider(InstanceVendor vendor) {
         InstanceProvider provider = mock(InstanceProvider.class);
         when(provider.vendor()).thenReturn(vendor);
