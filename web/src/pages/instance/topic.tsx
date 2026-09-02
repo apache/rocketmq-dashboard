@@ -386,7 +386,7 @@ const TopicPage = () => {
         })
         .catch(() => {
           if (requestId === topicRequestIdRef.current)
-            message.error('Topic 列表加载失败，请稍后重试');
+            message.error(t('topic.loadFailed'));
         })
         .finally(() => {
           if (requestId === topicRequestIdRef.current) setLoading(false);
@@ -446,7 +446,7 @@ const TopicPage = () => {
         }
       } catch {
         if (requestId === detailRequestIdRef.current)
-          message.error('Topic 详情加载失败，请稍后重试');
+          message.error(t('topic.detailLoadFailed'));
       } finally {
         if (requestId === detailRequestIdRef.current) setDetailLoading(false);
       }
@@ -468,9 +468,9 @@ const TopicPage = () => {
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
-      message.success(`Topic「${topic.name}」已在 Broker 上重建`);
+      message.success(t('topic.rebuilt', { name: topic.name }));
     } catch {
-      message.error('重建 Topic 失败，请检查 Broker 状态后重试');
+      message.error(t('topic.rebuildFailed'));
     } finally {
       setRebuilding(false);
     }
@@ -500,7 +500,7 @@ const TopicPage = () => {
       );
       const checked = results.filter((r) => r.routes !== null);
       if (checked.length < results.length) {
-        message.error('部分 Topic 路由校验失败，请稍后重试');
+        message.error(t('topic.routeCheckFailed'));
       }
       setRoutesByTopic((previous) => {
         const next = { ...previous };
@@ -531,9 +531,9 @@ const TopicPage = () => {
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
       setSyncedTopics((previous) => new Set(previous).add(topic.name));
-      message.success(`Topic「${topic.name}」已同步到 Broker`);
+      message.success(t('topic.synced', { name: topic.name }));
     } catch {
-      message.error(`同步 Topic「${topic.name}」失败，请检查 Broker 状态后重试`);
+      message.error(t('topic.syncFailed', { name: topic.name }));
     } finally {
       setSyncingKeys((previous) => {
         const next = new Set(previous);
@@ -564,9 +564,9 @@ const TopicPage = () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
             setTopics((previous) => previous.filter((item) => item.name !== topic.name));
-            message.success(`Topic「${topic.name}」已删除`);
+            message.success(t('topic.deleted', { name: topic.name }));
           } catch {
-            message.error('删除 Topic 失败，请稍后重试');
+            message.error(t('topic.deleteFailed'));
           }
         },
       });
@@ -583,10 +583,10 @@ const TopicPage = () => {
     })
       .then((csv) => {
         downloadCsv(`rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-        message.success('Topic 导出完成');
+        message.success(t('topic.exportDone'));
       })
       .catch(() => {
-        message.error('导出 Topic 失败，请稍后重试');
+        message.error(t('topic.exportFailed'));
       })
       .finally(() => setExporting(false));
   };
@@ -1042,7 +1042,7 @@ const TopicPage = () => {
   const handleCreate = async () => {
     if (createInFlightRef.current) return;
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     createInFlightRef.current = true;
@@ -1054,12 +1054,12 @@ const TopicPage = () => {
         instanceId: selectedInstanceId,
       });
       setTopics((previous) => [created, ...previous]);
-      message.success(`Topic「${created.name}」创建成功`);
+      message.success(t('topic.created', { name: created.name }));
       setModalOpen(false);
       form.resetFields();
     } catch (error) {
       if (!(error && typeof error === 'object' && 'errorFields' in error)) {
-        message.error('创建 Topic 失败，请稍后重试');
+        message.error(t('topic.createFailed'));
       }
     } finally {
       createInFlightRef.current = false;
@@ -1069,7 +1069,7 @@ const TopicPage = () => {
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     setImportFilename(file.name);
@@ -1090,7 +1090,7 @@ const TopicPage = () => {
 
   const handleImportTopics = async () => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     const targetIndexes = importRows
@@ -1143,14 +1143,14 @@ const TopicPage = () => {
     const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
     if (failedCount === 0) {
       if (invalidCount > 0) {
-        message.warning(`已导入 ${createdTopics.length} 个 Topic，${invalidCount} 行无效已跳过`);
+        message.warning(t('topic.importPartialInvalid', { created: createdTopics.length, invalid: invalidCount }));
       } else {
-        message.success(`已导入 ${createdTopics.length} 个 Topic`);
+        message.success(t('topic.importDone', { created: createdTopics.length }));
       }
     } else if (createdTopics.length > 0) {
-      message.warning(`已导入 ${createdTopics.length} 个 Topic，${failedCount} 个失败`);
+      message.warning(t('topic.importPartialFailed', { created: createdTopics.length, failed: failedCount }));
     } else {
-      message.error(`${failedCount} 个 Topic 导入失败`);
+      message.error(t('topic.importFailed', { failed: failedCount }));
     }
   };
 
@@ -1193,7 +1193,7 @@ const TopicPage = () => {
       if (propsMode === 'text') {
         const parsed = parseMessageProperties(values.propsText || '');
         if (parsed.errors.length > 0) {
-          message.error(`消息属性格式错误：${parsed.errors.join('；')}`);
+          message.error(t('topic.messagePropsInvalid', { details: parsed.errors.join('；') }));
           return;
         }
         props = parsed.properties;
@@ -1211,9 +1211,9 @@ const TopicPage = () => {
         properties: props,
       });
       // Keep the modal open for consecutive sends
-      message.success(`消息发送成功！MsgId: ${result.msgId}`);
+      message.success(t('topic.messageSent', { msgId: result.msgId }));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '消息发送失败，请稍后重试');
+      message.error(error instanceof Error ? error.message : t('topic.sendFailed'));
     } finally {
       setSending(false);
     }
@@ -1336,16 +1336,16 @@ const TopicPage = () => {
                       setSelectedRowKeys(failed);
 
                       if (failed.length === 0) {
-                        message.success(`已删除 ${deleted.length} 个 Topic`);
+                        message.success(t('topic.batchDeleted', { count: deleted.length }));
                       } else if (deleted.length > 0) {
                         message.warning(
                           `已删除 ${deleted.length} 个 Topic，${failed.length} 个删除失败`,
                         );
                       } else {
-                        message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
+                        message.error(t('topic.batchDeleteFailed', { failed: failed.length }));
                       }
                     } catch {
-                      message.error('批量删除 Topic 失败，请稍后重试');
+                      message.error(t('topic.batchDeleteError'));
                     }
                   },
                 });
