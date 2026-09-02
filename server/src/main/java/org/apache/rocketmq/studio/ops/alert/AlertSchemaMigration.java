@@ -163,6 +163,10 @@ public class AlertSchemaMigration implements ApplicationRunner {
 
     private static void ensureColumn(DatabaseMetaData metadata, String catalog, Statement statement, Column column)
             throws Exception {
+        if (!hasTable(metadata, catalog, column.table())) {
+            log.debug("Skipping native alerting column {}.{} because table is missing", column.table(), column.name());
+            return;
+        }
         if (hasColumn(metadata, catalog, column.table(), column.name())) {
             return;
         }
