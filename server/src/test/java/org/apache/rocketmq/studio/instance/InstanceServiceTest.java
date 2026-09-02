@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -1256,6 +1257,181 @@ class InstanceServiceTest {
     }
 
     @Test
+    void importCloudInstancesShouldContinueAfterUnexpectedRegionFailureTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        CloudRegionVO broken = new CloudRegionVO("cn-broken", "Broken");
+        CloudRegionVO working = new CloudRegionVO("  cn-working  ", "Working");
+        when(catalog.listRegions(1L)).thenReturn(List.of(broken, working));
+        when(catalog.listCloudInstances(1L, "cn-broken", null))
+                .thenThrow(new IllegalStateException("regional outage"));
+
+        CloudInstanceOptionVO option = new CloudInstanceOptionVO();
+        option.setInstanceId("  rmq-working  ");
+        when(catalog.listCloudInstances(1L, "cn-working", null)).thenReturn(List.of(option));
+        when(catalog.getCloudInstance(1L, "cn-working", "rmq-working"))
+                .thenReturn(cloudDetail("rmq-working", "vpc-working:8080"));
+        when(instanceRepository.findByName("rmq-working")).thenReturn(Optional.empty());
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isEqualTo(1);
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getSkipped()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.isFailureDetailsTruncated()).isFalse();
+        assertThat(result.getFailed()).containsExactly("cn-broken: regional outage");
+        verify(catalog).listCloudInstances(1L, "cn-working", null);
+        verify(catalog).getCloudInstance(1L, "cn-working", "rmq-working");
+        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
+                argThat(detail -> detail.contains("imported=1") && detail.contains("failed=1")),
+                eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void importCloudInstancesShouldContinueAfterUnexpectedInstanceFailuresTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        CloudRegionVO region = new CloudRegionVO("cn-hangzhou", "Hangzhou");
+        when(catalog.listRegions(1L)).thenReturn(List.of(region));
+
+        CloudInstanceOptionVO detailFailure = cloudOption("rmq-detail-failure");
+        CloudInstanceOptionVO saveFailure = cloudOption("rmq-save-failure");
+        CloudInstanceOptionVO successful = cloudOption("rmq-success");
+        when(catalog.listCloudInstances(1L, "cn-hangzhou", null))
+                .thenReturn(List.of(detailFailure, saveFailure, successful));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-detail-failure"))
+                .thenThrow(new IllegalStateException("detail lookup failed"));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-save-failure"))
+                .thenReturn(cloudDetail("rmq-save-failure", "vpc-save:8080"));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-success"))
+                .thenReturn(cloudDetail("rmq-success", "vpc-success:8080"));
+        when(instanceRepository.findByName(anyString())).thenReturn(Optional.empty());
+        String longFailure = "persistence failure ".repeat(60);
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> {
+            InstanceVO instance = invocation.getArgument(0);
+            if ("rmq-save-failure".equals(instance.getName())) {
+                throw new IllegalStateException(longFailure);
+            }
+            return instance;
+        });
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isEqualTo(3);
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getSkipped()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(2);
+        assertThat(result.getFailed()).hasSize(2)
+                .contains("rmq-detail-failure: detail lookup failed")
+                .anySatisfy(failure -> assertThat(failure)
+                        .startsWith("rmq-save-failure: ")
+                        .endsWith("…")
+                        .hasSizeLessThan(550));
+        verify(catalog).getCloudInstance(1L, "cn-hangzhou", "rmq-detail-failure");
+        verify(catalog).getCloudInstance(1L, "cn-hangzhou", "rmq-save-failure");
+        verify(catalog).getCloudInstance(1L, "cn-hangzhou", "rmq-success");
+        verify(instanceRepository, times(2)).save(any(InstanceVO.class));
+    }
+
+    @Test
+    void importCloudInstancesShouldHandleNullCatalogResponsesTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L)).thenReturn(List.of(new CloudRegionVO("cn-empty", "Empty")));
+        when(catalog.listCloudInstances(1L, "cn-empty", null)).thenReturn(null);
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("cn-empty: catalog returned a null instance list");
+        assertThat(result.isFailureDetailsTruncated()).isFalse();
+        verify(catalog).listCloudInstances(1L, "cn-empty", null);
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldBoundMalformedCatalogFailuresTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        CloudRegionVO blank = new CloudRegionVO("  ", "Blank");
+        List<CloudRegionVO> regions = new ArrayList<>();
+        regions.add(null);
+        regions.add(blank);
+        regions.add(new CloudRegionVO("cn-malformed", "Malformed"));
+        when(catalog.listRegions(1L)).thenReturn(regions);
+
+        List<CloudInstanceOptionVO> options = new ArrayList<>();
+        for (int i = 0; i < 105; i++) {
+            options.add(cloudOption(" "));
+        }
+        when(catalog.listCloudInstances(1L, "cn-malformed", null)).thenReturn(options);
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getSkipped()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(107);
+        assertThat(result.getFailed()).hasSize(InstanceService.MAX_CLOUD_IMPORT_FAILURE_DETAILS);
+        assertThat(result.isFailureDetailsTruncated()).isTrue();
+        assertThat(result.getFailed()).first().isEqualTo("region: catalog returned an invalid region entry");
+        verify(catalog).listCloudInstances(1L, "cn-malformed", null);
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldReturnPartialResultWhenRegionDiscoveryFailsTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L)).thenThrow(new IllegalStateException("region discovery unavailable"));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("regions: region discovery unavailable");
+        verify(catalog, never()).listCloudInstances(any(Long.class), anyString(), any());
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldReportMissingCatalogProviderTest() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(null);
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("catalog: provider returned no cloud catalog");
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldDeduplicateCatalogRowsTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L)).thenReturn(List.of(new CloudRegionVO("cn-hangzhou", "Hangzhou")));
+        when(catalog.listCloudInstances(1L, "cn-hangzhou", null)).thenReturn(
+                List.of(cloudOption(" rmq-duplicate "), cloudOption("rmq-duplicate")));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-duplicate"))
+                .thenReturn(cloudDetail("rmq-duplicate", "vpc-duplicate:8080"));
+        when(instanceRepository.findByName("rmq-duplicate")).thenReturn(Optional.empty());
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isEqualTo(1);
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getFailedCount()).isZero();
+        verify(catalog, times(1)).getCloudInstance(1L, "cn-hangzhou", "rmq-duplicate");
+        verify(instanceRepository, times(1)).save(any(InstanceVO.class));
+    }
+
+    @Test
     void createInstanceShouldSkipNullCloudEndpointEntries() {
         InstanceVO instance = InstanceVO.builder()
                 .vendor(InstanceVendor.ALIYUN)
@@ -1367,5 +1543,29 @@ class InstanceServiceTest {
         assertThat(updated.getEndpoint()).isEqualTo("vpc:8080");
         assertThat(updated.getRemark()).isEqualTo("updated");
         assertThat(updated.getCloudInstanceId()).isEqualTo("rmq-cn-xxx");
+    }
+
+    private CloudCatalogProvider prepareAliyunCatalog() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        return catalog;
+    }
+
+    private CloudInstanceOptionVO cloudOption(String instanceId) {
+        CloudInstanceOptionVO option = new CloudInstanceOptionVO();
+        option.setInstanceId(instanceId);
+        return option;
+    }
+
+    private CloudInstanceDetailVO cloudDetail(String instanceId, String endpoint) {
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId(instanceId);
+        detail.setInstanceName(instanceId + "-name");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", endpoint)));
+        return detail;
     }
 }

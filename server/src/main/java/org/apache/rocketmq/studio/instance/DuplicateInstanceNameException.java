@@ -14,39 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.instance;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 
-import java.util.List;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class CloudImportResultVO {
-
-    private int discovered;
-
-    private int imported;
-
-    private int skipped;
-
-    /**
-     * Total number of failures encountered during discovery or import. The {@link #failed}
-     * list is intentionally bounded for API and UI safety, so callers must use this value for
-     * the complete failure count.
-     */
-    private int failedCount;
-
-    /**
-     * Whether the {@link #failed} list contains only the first bounded portion of failures.
-     */
-    private boolean failureDetailsTruncated;
-
-    private List<String> failed;
+/** Raised when an instance name conflicts with an existing instance. */
+public class DuplicateInstanceNameException extends BusinessException {
+    public DuplicateInstanceNameException(String name) {
+        super(400, "Instance name already exists: " + name);
+    }
 }

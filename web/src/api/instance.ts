@@ -118,6 +118,10 @@ export interface CloudImportResult {
   imported: number;
   skipped: number;
   failed: string[];
+  /** Total failures; older servers may omit this field. */
+  failedCount?: number;
+  /** Whether the server returned only a bounded subset of failure details. */
+  failureDetailsTruncated?: boolean;
 }
 
 export async function deleteInstance(instanceId: string) {
