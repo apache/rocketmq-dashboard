@@ -1564,6 +1564,13 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.copyNameTooltip': { zh: '点击复制名称', en: 'Click to copy the name' },
+  'consumer.importFailed': { zh: '失败', en: 'Failed' },
+  'consumer.importInvalid': { zh: '无效', en: 'Invalid' },
+  'consumer.importLine': { zh: '行号', en: 'Line' },
+  'consumer.importNote': { zh: '说明', en: 'Notes' },
+  'consumer.importPending': { zh: '待导入', en: 'Pending' },
+  'consumer.importSuccess': { zh: '成功', en: 'Success' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
