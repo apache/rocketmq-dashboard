@@ -1564,6 +1564,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.address': { zh: '地址', en: 'Address' },
+  'consumer.diagnostics': { zh: '诊断', en: 'Diagnostics' },
+  'consumer.lastHeartbeat': { zh: '最后心跳', en: 'Last Heartbeat' },
+  'consumer.protocol': { zh: '协议', en: 'Protocol' },
+  'consumer.subConsistency': { zh: '订阅一致性', en: 'Subscription Consistency' },
+  'consumer.subExpression': { zh: '订阅表达式', en: 'Subscription Expression' },
+  'consumer.threadStack': { zh: '线程栈', en: 'Thread Stack' },
+  'consumer.topicSubject': { zh: 'Topic 主题', en: 'Topic' },
+  'consumer.viewDist': { zh: '查看分布', en: 'View Distribution' },
+  'consumer.viewQueueDistTooltip': { zh: '查看该 Topic 的队列分布', en: 'View the queue distribution of this topic' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
