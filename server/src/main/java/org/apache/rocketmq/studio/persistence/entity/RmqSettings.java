@@ -31,6 +31,8 @@ public class RmqSettings {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private String settingsKey;
+
     @ToString.Exclude
     private String json;
 

@@ -30,6 +30,7 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +42,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @Repository
 public class MybatisPlusSettingsRepository implements SettingsRepository {
+
+    private static final String GENERAL_SETTINGS_KEY = "general";
 
     private final RmqSettingsMapper settingsMapper;
     private final RmqDataSourceMapper dataSourceMapper;
@@ -54,12 +57,9 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * The settings table holds a single row; load it regardless of its auto-increment id.
-     */
     private RmqSettings findSingletonSettings() {
         return settingsMapper.selectOne(new QueryWrapper<RmqSettings>()
-                .orderByAsc("id")
+                .eq("settings_key", GENERAL_SETTINGS_KEY)
                 .last("LIMIT 1"));
     }
 
@@ -98,11 +98,9 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         try {
             com.fasterxml.jackson.databind.node.ObjectNode node =
                     (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.valueToTree(settings);
-            if (org.springframework.util.StringUtils.hasText(settings.getApiKey())) {
-                // apiKey is WRITE_ONLY (hidden from API responses), so plain serialization
-                // drops it; re-add it here or the configured LLM token is lost on restart.
-                node.put("apiKey", settings.getApiKey());
-            }
+            // apiKey is WRITE_ONLY (hidden from API responses), but it must be serialized even
+            // when blank so the LLM configuration endpoint can explicitly clear a stored key.
+            node.put("apiKey", settings.getApiKey() == null ? "" : settings.getApiKey());
             if (org.springframework.util.StringUtils.hasText(settings.getDingtalkSigningSecret())) {
                 // The signing secret is also WRITE_ONLY and must be retained in persisted settings.
                 node.put("dingtalkSigningSecret", settings.getDingtalkSigningSecret());
@@ -111,10 +109,21 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
             RmqSettings entity = findSingletonSettings();
             if (entity == null) {
                 entity = new RmqSettings();
+                entity.setSettingsKey(GENERAL_SETTINGS_KEY);
                 entity.setJson(json);
                 entity.setGmtCreate(LocalDateTime.now());
                 entity.setGmtModified(LocalDateTime.now());
-                settingsMapper.insert(entity);
+                try {
+                    settingsMapper.insert(entity);
+                } catch (DuplicateKeyException duplicateKey) {
+                    RmqSettings concurrent = findSingletonSettings();
+                    if (concurrent == null) {
+                        throw duplicateKey;
+                    }
+                    concurrent.setJson(json);
+                    concurrent.setGmtModified(LocalDateTime.now());
+                    settingsMapper.updateById(concurrent);
+                }
             } else {
                 entity.setJson(json);
                 entity.setGmtModified(LocalDateTime.now());

@@ -32,6 +32,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DemoDataSqlCompatibilityTest {
 
@@ -82,6 +83,23 @@ class DemoDataSqlCompatibilityTest {
             assertThat(hasColumn(connection, "rmq_alert_rule", "gmt_modified")).isTrue();
             assertThat(hasColumn(connection, "rmq_alert_rule", "created_at")).isFalse();
             assertThat(hasColumn(connection, "rmq_system_alert", "updated_at")).isFalse();
+        }
+    }
+
+    @Test
+    void schemaShouldEnforceSingletonSettingsKeyTest() throws Exception {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:h2:mem:settings-schema-sql;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", "sa", "")) {
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/schema.sql"));
+
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate("INSERT INTO rmq_settings (json) VALUES ('{}')");
+
+                assertThatThrownBy(() -> statement.executeUpdate("INSERT INTO rmq_settings (json) VALUES ('{}')"))
+                        .isInstanceOf(SQLException.class);
+            }
+
+            assertThat(hasColumn(connection, "rmq_settings", "settings_key")).isTrue();
         }
     }
 
