@@ -1284,7 +1284,7 @@ const ConsumerPageContent = ({
       {/* ─── Header ─── */}
       <PageHeader
         title={t('group.title')}
-        subtitle={`管理消费者组订阅关系与消费进度，共 ${totalGroups} 个 Group`}
+        subtitle={t('consumer.manageSubtitle', { count: totalGroups })}
       />
 
       {/* ─── Filter Bar ─── */}
@@ -1297,7 +1297,7 @@ const ConsumerPageContent = ({
             style={{ width: 220 }}
           />
           <Input.Search
-            placeholder="搜索 Group 名称或 Topic"
+            placeholder={t('consumer.searchPlaceholder')}
             allowClear
             value={search}
             onChange={(e) => {
@@ -1316,8 +1316,8 @@ const ConsumerPageContent = ({
             onChange={setModeFilter}
             style={{ width: 140 }}
             options={[
-              { value: 'ALL', label: '全部模式' },
-              { value: 'Push', label: 'Push' },
+              { value: 'ALL', label: t('consumer.allModes') },
+              { value: 'Push', label: t('consumer.push') },
               { value: 'Pop', label: 'Pop' },
             ]}
           />
@@ -1329,11 +1329,11 @@ const ConsumerPageContent = ({
               icon={<DeleteOutlined />}
               onClick={() => {
                 Modal.confirm({
-                  title: '确认批量删除',
-                  content: `确定要删除选中的 ${selectedRowKeys.length} 个 Group 吗？`,
-                  okText: '删除',
+                  title: t('consumer.confirmBatchDelete'),
+                  content: t('consumer.batchDeleteContent', { count: selectedRowKeys.length }),
+                  okText: t('consumer.deleteOp'),
                   okButtonProps: { danger: true },
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
                     const { deleted, failed } = await batchDeleteConsumerGroups(
@@ -1356,7 +1356,7 @@ const ConsumerPageContent = ({
                 });
               }}
             >
-              删除 ({selectedRowKeys.length})
+              {t('consumer.deleteSelected', { count: selectedRowKeys.length })}
             </Button>
           )}
           <input
