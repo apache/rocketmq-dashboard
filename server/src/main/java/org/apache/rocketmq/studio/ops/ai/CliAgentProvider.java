@@ -61,18 +61,29 @@ public abstract class CliAgentProvider implements AgentProvider {
 
     @Override
     public boolean available() {
+        Process process = null;
         try {
             ProcessBuilder builder = new ProcessBuilder("sh", "-c", "command -v " + binaryName());
             processEnvironment.apply(builder, Map.of());
-            Process process = builder.redirectErrorStream(true).start();
+            process = startAvailabilityProcess(builder.redirectErrorStream(true));
             boolean finished = process.waitFor(5, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+            }
             return finished && process.exitValue() == 0;
         } catch (IOException | InterruptedException exception) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
             if (exception instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             return false;
         }
+    }
+
+    protected Process startAvailabilityProcess(ProcessBuilder builder) throws IOException {
+        return builder.start();
     }
 
     @Override
