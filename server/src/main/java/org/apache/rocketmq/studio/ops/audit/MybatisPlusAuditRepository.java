@@ -43,11 +43,12 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                                               String resourceType, String clusterId,
                                               LocalDateTime startDate, LocalDateTime endDate,
                                               String result, int page, int pageSize) {
+        String pattern = escapeLike(search);
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
                 .and(StringUtils.hasText(search), w -> w
-                        .like("operator", search)
-                        .or().like("resource_name", search)
-                        .or().like("detail", search))
+                        .like("operator", pattern)
+                        .or().like("resource_name", pattern)
+                        .or().like("detail", pattern))
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
@@ -109,6 +110,18 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .distinct()
                 .sorted()
                 .toList();
+    }
+
+    /**
+     * Escapes LIKE wildcards so a user-supplied search term matches literally instead of being
+     * interpreted as a {@code %}/{@code _} pattern (e.g. searching {@code 100%} should not
+     * match every operator).
+     */
+    private static String escapeLike(String value) {
+        if (!StringUtils.hasText(value)) {
+            return value;
+        }
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private static AuditRecordVO toVO(RmqOperationAudit entity) {
