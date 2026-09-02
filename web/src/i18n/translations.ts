@@ -1564,6 +1564,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.csvImportFailed': { zh: 'CSV 无法导入', en: 'CSV could not be imported' },
+  'consumer.importFieldsOnly': { zh: '仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。', en: 'Only importable fields are imported; the Namespace, Cluster ID and running-status columns in the CSV are ignored.' },
+  'consumer.importGroupInvalidSkip': { zh: '检测到 {count} 行无效，将跳过这些行', en: '{count} invalid row(s) detected; these rows will be skipped' },
+  'consumer.importGroupRetry': { zh: '重试失败项', en: 'Retry Failed Rows' },
+  'consumer.importGroupStart': { zh: '开始导入', en: 'Start Import' },
+  'consumer.importGroupWillImport': { zh: '检测到 {count} 个 Group，将通过后端批量导入', en: '{count} group(s) detected; they will be imported in batch through the backend' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
