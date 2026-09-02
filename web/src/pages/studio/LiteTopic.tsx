@@ -851,7 +851,7 @@ const LiteTopicPage: React.FC = () => {
               setCurrentPage(page);
               setPageSize(nextPageSize);
             },
-            showTotal: (total) => t('liteTopic.total').replace('{total}', String(total)),
+            showTotal: (total) => t('liteTopic.total', { total }),
             showSizeChanger: true,
           }}
           size="middle"

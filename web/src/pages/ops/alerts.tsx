@@ -855,7 +855,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             pageSize={pageSize}
             total={totalRules}
             showSizeChanger
-            showTotal={(total) => t('alerts.totalRules', { count: total })}
+            showTotal={(total) => t('common.totalRules', { count: total })}
             pageSizeOptions={[10, 20, 50, 100]}
             onChange={(nextPage, nextPageSize) => {
               setPage(nextPage);

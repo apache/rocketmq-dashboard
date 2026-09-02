@@ -27,6 +27,7 @@ import {
   type StudioUser,
 } from '../../../api/studioUsers';
 import { downloadCsv } from '../../../utils/download';
+import { LangProvider } from '../../../i18n/LangContext';
 import UserManagementPage from '../UserManagement';
 
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
@@ -72,7 +73,9 @@ const renderPage = () =>
   render(
     <MemoryRouter>
       <App>
-        <UserManagementPage />
+        <LangProvider>
+          <UserManagementPage />
+        </LangProvider>
       </App>
     </MemoryRouter>,
   );

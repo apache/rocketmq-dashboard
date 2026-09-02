@@ -311,7 +311,8 @@ describe('AlertsPage', () => {
         search: 'disk',
       }),
     );
-    expect(screen.getAllByText('规则总数').length).toBeGreaterThan(0);
+    expect(screen.getByText('规则总数')).toBeInTheDocument();
+    expect(screen.getByText('共 21 条规则')).toBeInTheDocument();
     expect(screen.getByText('21')).toBeInTheDocument();
   });
 

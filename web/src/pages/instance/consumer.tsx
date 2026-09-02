@@ -1422,7 +1422,7 @@ const ConsumerPageContent = ({
             pageSize,
             total: totalGroups,
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 个 Group`,
+            showTotal: (total) => t('common.totalGroups', { count: total }),
             pageSizeOptions: [10, 20, 50, 100],
             onChange: (nextPage, nextPageSize) => {
               setPage(nextPage);

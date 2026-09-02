@@ -657,7 +657,7 @@ const DLQPage = () => {
             total,
             showSizeChanger: true,
             pageSizeOptions: [20, 50, 100],
-            showTotal: (totalCount) => `共 ${totalCount} 个 Group`,
+            showTotal: (totalCount) => t('common.totalGroups', { count: totalCount }),
             onChange: (nextPage, nextPageSize) => {
               setPage(nextPage);
               setPageSize(nextPageSize);
@@ -861,7 +861,7 @@ const DLQPage = () => {
                 total: detailTotal,
                 showSizeChanger: true,
                 pageSizeOptions: [10, 20, 50],
-                showTotal: (totalCount) => `共 ${totalCount} 条消息`,
+                showTotal: (totalCount) => t('common.totalMessages', { count: totalCount }),
                 onChange: (nextPage, nextPageSize) => {
                   setDetailPage(nextPage);
                   setDetailPageSize(nextPageSize);
