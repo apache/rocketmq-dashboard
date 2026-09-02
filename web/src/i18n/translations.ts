@@ -1119,6 +1119,9 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },
+  'ai.toolExecFailed': { zh: '工具执行失败', en: 'Tool execution failed' },
+  'ai.toolExecuted': { zh: '工具执行成功', en: 'Tool executed successfully' },
+  'ai.toolJsonRequired': { zh: '工具参数必须是有效的 JSON 对象', en: 'Tool arguments must be a valid JSON object' },
 
   // ─── Theme Constants ───
   'theme.clusterV4': { zh: 'V4 直连', en: 'V4 Direct' },
