@@ -329,11 +329,12 @@ public class MetadataService {
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
         instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
+        String topicName = requireName(topic, "topic name");
         InstanceProvider provider = resolve(instanceId);
         String normalizedInstanceId = instanceId;
         executeWithAudit(provider, Operation.RESET_OFFSET, ResourceType.GROUP, groupName, instanceId,
-                "topic=" + optionalDetail(topic) + ", timestamp=" + timestamp,
-                () -> provider.resetOffset(normalizedInstanceId, groupName, timestamp, topic));
+                "topic=" + topicName + ", timestamp=" + timestamp,
+                () -> provider.resetOffset(normalizedInstanceId, groupName, timestamp, topicName));
     }
 
 
