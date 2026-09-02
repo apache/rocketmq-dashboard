@@ -1807,6 +1807,17 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.batchResend': { zh: '批量重发', en: 'Batch Resend' },
   'message.batchExport': { zh: '批量导出', en: 'Batch Export' },
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
+  'message.consumeTime': { zh: '消费时间', en: 'Consume Time' },
+  'message.consumerGroup': { zh: '消费者组', en: 'Consumer Group' },
+  'message.deliveryStatus': { zh: '投递状态', en: 'Delivery Status' },
+  'message.download': { zh: '下载', en: 'Download' },
+  'message.messageBody': { zh: '消息体', en: 'Message Body' },
+  'message.messageContent': { zh: '消息内容', en: 'Message Content' },
+  'message.retryCount': { zh: '重试次数', en: 'Retry Count' },
+  'message.size': { zh: '大小', en: 'Size' },
+  'message.storeTime': { zh: '存储时间', en: 'Store Time' },
+  'message.trace': { zh: '轨迹', en: 'Trace' },
+  'message.verify': { zh: '验证', en: 'Verify' },
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {
