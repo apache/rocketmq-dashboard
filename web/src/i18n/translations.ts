@@ -1719,6 +1719,19 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.csvImportFailed': { zh: 'CSV 无法导入', en: 'CSV could not be imported' },
+  'topic.importFieldsOnly': { zh: '仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。', en: 'Only importable fields are imported; the Namespace, Cluster ID and running-status columns in the CSV are ignored.' },
+  'topic.importInvalidSkip': { zh: '检测到 {count} 行无效，将跳过这些行', en: '{count} invalid row(s) detected; these rows will be skipped' },
+  'topic.importRetry': { zh: '重试失败项', en: 'Retry Failed Rows' },
+  'topic.importStart': { zh: '开始导入', en: 'Start Import' },
+  'topic.importWillImport': { zh: '检测到 {count} 个 Topic，将通过后端批量导入', en: '{count} topic(s) detected; they will be imported in batch through the backend' },
+  'topic.missingRouteTag': { zh: '缺失路由', en: 'Missing Route' },
+  'topic.syncAllGood': { zh: '所有 Topic 在 Broker 上均有路由，无需同步。', en: 'All topics already have routes on brokers; nothing to sync.' },
+  'topic.syncData': { zh: '同步数据', en: 'Sync Data' },
+  'topic.syncMissingDesc': { zh: '以下 {count} 个 Topic 在 Broker 上找不到路由，可同步写入对应集群的 Broker（按元数据记录的队列数重建）。', en: 'The following {count} topic(s) have no route on any broker; they can be synced into the brokers of their cluster (rebuilt with the queue counts recorded in metadata).' },
+  'topic.syncVerifying': { zh: '正在校验 Topic 路由…', en: 'Verifying topic routes…' },
+  'topic.syncedTag': { zh: '已同步', en: 'Synced' },
+  'topic.writeReadQueues': { zh: '写/读队列数', en: 'Write/Read Queues' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
