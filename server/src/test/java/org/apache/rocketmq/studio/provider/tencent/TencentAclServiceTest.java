@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.tencent;
 
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeRoleListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeRoleListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyRoleRequest;
 import com.tencentcloudapi.trocket.v20230308.models.RoleItem;
@@ -34,6 +35,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,6 +43,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -108,6 +111,66 @@ class TencentAclServiceTest {
                 .containsExactly("reader-role");
         assertThat(service.getUserCredentials(INSTANCE_ID, "  reader-role  ").getUsername())
                 .isEqualTo("reader-role");
+    }
+
+    @Test
+    void listUsersShouldFetchExactlyTenThousandTencentRolesTest() throws Exception {
+        when(client.DescribeRoleList(any())).thenAnswer(invocation -> {
+            DescribeRoleListRequest request = invocation.getArgument(0);
+            DescribeRoleListResponse response = new DescribeRoleListResponse();
+            response.setTotalCount(10000L);
+            response.setData(rolePage(request.getOffset(), request.getLimit(), 10000));
+            return response;
+        });
+
+        assertThat(service.listUsers(INSTANCE_ID)).hasSize(10000);
+        verify(client, times(100)).DescribeRoleList(any());
+    }
+
+    @Test
+    void listRulesShouldFetchPastLegacyTenThousandTencentRoleCapTest() throws Exception {
+        when(client.DescribeRoleList(any())).thenAnswer(invocation -> {
+            DescribeRoleListRequest request = invocation.getArgument(0);
+            DescribeRoleListResponse response = new DescribeRoleListResponse();
+            response.setTotalCount(10001L);
+            response.setData(rolePage(request.getOffset(), request.getLimit(), 10001));
+            return response;
+        });
+
+        assertThat(service.listRules(INSTANCE_ID, null)).hasSize(10001);
+        verify(client, times(101)).DescribeRoleList(any());
+    }
+
+    @Test
+    void updateUserShouldFindRolePastLegacyTenThousandTencentRoleCapTest() throws Exception {
+        when(client.DescribeRoleList(any())).thenAnswer(invocation -> {
+            DescribeRoleListRequest request = invocation.getArgument(0);
+            DescribeRoleListResponse response = new DescribeRoleListResponse();
+            response.setTotalCount(10001L);
+            response.setData(rolePage(request.getOffset(), request.getLimit(), 10001));
+            return response;
+        });
+
+        AclUserVO updated = service.updateUser(INSTANCE_ID, AclUserVO.builder()
+                .username("role-10000")
+                .build());
+
+        assertThat(updated.getUsername()).isEqualTo("role-10000");
+        verify(client, times(101)).DescribeRoleList(any());
+        verify(client).ModifyRole(any());
+    }
+
+    @Test
+    void listUsersShouldStopOnShortPageWhenTencentTotalCountIsMissingTest() throws Exception {
+        when(client.DescribeRoleList(any())).thenAnswer(invocation -> {
+            DescribeRoleListRequest request = invocation.getArgument(0);
+            DescribeRoleListResponse response = new DescribeRoleListResponse();
+            response.setData(rolePage(request.getOffset(), request.getLimit(), 150));
+            return response;
+        });
+
+        assertThat(service.listUsers(INSTANCE_ID)).hasSize(150);
+        verify(client, times(2)).DescribeRoleList(any());
     }
 
     @Test
@@ -210,5 +273,22 @@ class TencentAclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Tencent Cloud roles only support ALLOW ACL rules")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    private static RoleItem[] rolePage(Long offset, Long limit, int total) {
+        int start = offset == null ? 0 : offset.intValue();
+        int size = Math.min(limit == null ? TencentAclService.PAGE_SIZE : limit.intValue(),
+                Math.max(total - start, 0));
+        return IntStream.range(0, size)
+                .mapToObj(index -> role("role-" + (start + index)))
+                .toArray(RoleItem[]::new);
+    }
+
+    private static RoleItem role(String name) {
+        RoleItem role = new RoleItem();
+        role.setRoleName(name);
+        role.setPermRead(true);
+        role.setPermWrite(false);
+        return role;
     }
 }

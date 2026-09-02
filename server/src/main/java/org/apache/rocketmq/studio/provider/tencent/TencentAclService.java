@@ -53,7 +53,6 @@ import java.util.List;
 public class TencentAclService {
 
     static final int PAGE_SIZE = 100;
-    static final int MAX_PAGES = 100;
     static final String ACL_VERSION = "1.0";
     static final String RESOURCE_TYPE = "Cluster";
     static final String RESOURCE = "*";
@@ -67,23 +66,20 @@ public class TencentAclService {
     public List<AclUserVO> listUsers(String instanceId) {
         Context context = resolve(instanceId);
         List<AclUserVO> users = new ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
-            DescribeRoleListRequest request = new DescribeRoleListRequest();
-            request.setInstanceId(context.cloudInstanceId());
-            request.setOffset((long) page * PAGE_SIZE);
-            request.setLimit((long) PAGE_SIZE);
-            DescribeRoleListResponse response = clientFactory.call(context.credentialId(),
-                    context.regionId(), client -> client.DescribeRoleList(request));
+        long fetched = 0L;
+        for (long offset = 0L; ; offset += PAGE_SIZE) {
+            DescribeRoleListResponse response = describeRoles(context, offset);
             RoleItem[] data = response == null ? null : response.getData();
             if (data == null || data.length == 0) {
                 break;
             }
+            fetched += data.length;
             for (RoleItem role : data) {
                 if (role != null && StringUtils.hasText(role.getRoleName())) {
                     users.add(toUser(role, context.cloudInstanceId()));
                 }
             }
-            if (data.length < PAGE_SIZE) {
+            if (isLastRolePage(data.length, fetched, response.getTotalCount())) {
                 break;
             }
         }
@@ -94,17 +90,14 @@ public class TencentAclService {
         Context context = resolve(instanceId);
         String requestedPrincipal = StringUtils.hasText(principal) ? principal.trim() : null;
         List<AclRuleVO> rules = new ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
-            DescribeRoleListRequest request = new DescribeRoleListRequest();
-            request.setInstanceId(context.cloudInstanceId());
-            request.setOffset((long) page * PAGE_SIZE);
-            request.setLimit((long) PAGE_SIZE);
-            DescribeRoleListResponse response = clientFactory.call(context.credentialId(),
-                    context.regionId(), client -> client.DescribeRoleList(request));
+        long fetched = 0L;
+        for (long offset = 0L; ; offset += PAGE_SIZE) {
+            DescribeRoleListResponse response = describeRoles(context, offset);
             RoleItem[] data = response == null ? null : response.getData();
             if (data == null || data.length == 0) {
                 break;
             }
+            fetched += data.length;
             for (RoleItem role : data) {
                 if (role == null || !StringUtils.hasText(role.getRoleName())) {
                     continue;
@@ -115,7 +108,7 @@ public class TencentAclService {
                 }
                 rules.add(toRule(role));
             }
-            if (data.length < PAGE_SIZE) {
+            if (isLastRolePage(data.length, fetched, response.getTotalCount())) {
                 break;
             }
         }
@@ -178,27 +171,37 @@ public class TencentAclService {
     }
 
     private RoleItem findRole(Context context, String roleName) {
-        for (int page = 0; page < MAX_PAGES; page++) {
-            DescribeRoleListRequest request = new DescribeRoleListRequest();
-            request.setInstanceId(context.cloudInstanceId());
-            request.setOffset((long) page * PAGE_SIZE);
-            request.setLimit((long) PAGE_SIZE);
-            DescribeRoleListResponse response = clientFactory.call(context.credentialId(),
-                    context.regionId(), client -> client.DescribeRoleList(request));
+        long fetched = 0L;
+        for (long offset = 0L; ; offset += PAGE_SIZE) {
+            DescribeRoleListResponse response = describeRoles(context, offset);
             RoleItem[] data = response == null ? null : response.getData();
             if (data == null || data.length == 0) {
                 break;
             }
+            fetched += data.length;
             for (RoleItem role : data) {
                 if (role != null && roleName.equals(role.getRoleName())) {
                     return role;
                 }
             }
-            if (data.length < PAGE_SIZE) {
+            if (isLastRolePage(data.length, fetched, response.getTotalCount())) {
                 break;
             }
         }
         throw new BusinessException(404, "ACL user not found: " + roleName);
+    }
+
+    private DescribeRoleListResponse describeRoles(Context context, long offset) {
+        DescribeRoleListRequest request = new DescribeRoleListRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setOffset(offset);
+        request.setLimit((long) PAGE_SIZE);
+        return clientFactory.call(context.credentialId(),
+                context.regionId(), client -> client.DescribeRoleList(request));
+    }
+
+    private static boolean isLastRolePage(int returned, long fetched, Long totalCount) {
+        return returned < PAGE_SIZE || totalCount != null && totalCount >= 0L && fetched >= totalCount;
     }
 
     public void deleteUser(String instanceId, String username) {
