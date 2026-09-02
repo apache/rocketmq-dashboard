@@ -36,6 +36,8 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -49,7 +51,7 @@ class MybatisPlusAuditRepositoryTest {
     private MybatisPlusAuditRepository repository;
 
     @Test
-    void findPageUsesMapperPaginationAndPreservesAuditContext() {
+    void findPageUsesMapperPaginationAndPreservesAuditContextTest() {
         RmqOperationAudit entity = new RmqOperationAudit();
         entity.setId(42L);
         entity.setOperation("DELETE_TOPIC");
@@ -80,11 +82,11 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(record.getClusterId()).isEqualTo("prod-cn");
         assertThat(record.getErrorMessage()).isEqualTo("denied");
         assertThat(queryCaptor.getValue().getSqlSegment())
-                .contains("operation", "resource_type", "cluster_id", "result");
+                .contains("operation", "resource_type", "cluster_id", "result", "gmt_create", "id");
     }
 
     @Test
-    void findFilterOptionsPreservesPersistedValuesFromOneQuery() {
+    void findFilterOptionsPreservesPersistedValuesAndCachesTheResultTest() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
                         "cluster_id", "prod-cn", "result", "SUCCESS"),
@@ -94,11 +96,13 @@ class MybatisPlusAuditRepositoryTest {
                         "cluster_id", "", "result", "PARTIAL")));
 
         AuditFilterOptionsVO options = repository.findFilterOptions();
+        AuditFilterOptionsVO cachedOptions = repository.findFilterOptions();
 
         assertThat(options.getOperationTypes()).containsExactly(" CREATE_TOPIC ", "DELETE_TOPIC");
         assertThat(options.getResourceTypes()).containsExactly("GROUP", "TOPIC");
         assertThat(options.getClusterIds()).containsExactly("prod-cn", "prod-sh");
         assertThat(options.getResults()).containsExactly("FAILED", "PARTIAL", "SUCCESS");
+        assertThat(cachedOptions).isSameAs(options);
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(auditMapper).selectMaps(queryCaptor.capture());
         assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue()).getSqlSelect())
@@ -107,4 +111,60 @@ class MybatisPlusAuditRepositoryTest {
                 .contains("GROUP BY operation,resource_type,cluster_id,result");
     }
 
+    @Test
+    void deleteBeforeShouldUseBoundedIdBatchesTest() {
+        RmqOperationAudit audit1 = auditRecord(1L);
+        RmqOperationAudit audit2 = auditRecord(2L);
+        RmqOperationAudit audit3 = auditRecord(3L);
+        when(auditMapper.selectList(any()))
+                .thenReturn(List.of(audit1, audit2), List.of(audit3));
+        when(auditMapper.deleteByIds(List.of(1L, 2L))).thenReturn(2);
+        when(auditMapper.deleteByIds(List.of(3L))).thenReturn(1);
+
+        int deleted = repository.deleteBefore(LocalDateTime.of(2026, 8, 1, 0, 0), 2, 5);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper, times(2)).selectList(queryCaptor.capture());
+        assertThat(queryCaptor.getAllValues().get(0).getSqlSegment())
+                .contains("gmt_create", "ORDER BY gmt_create ASC,id ASC", "LIMIT 2");
+        verify(auditMapper).deleteByIds(List.of(1L, 2L));
+        verify(auditMapper).deleteByIds(List.of(3L));
+        verify(auditMapper, never()).delete(any());
+        assertThat(deleted).isEqualTo(3);
+    }
+
+    @Test
+    void deleteBeforeShouldStopAfterConfiguredMaxBatchesTest() {
+        when(auditMapper.selectList(any()))
+                .thenReturn(List.of(auditRecord(1L), auditRecord(2L)))
+                .thenReturn(List.of(auditRecord(3L), auditRecord(4L)))
+                .thenReturn(List.of(auditRecord(5L), auditRecord(6L)));
+        when(auditMapper.deleteByIds(List.of(1L, 2L))).thenReturn(2);
+        when(auditMapper.deleteByIds(List.of(3L, 4L))).thenReturn(2);
+
+        int deleted = repository.deleteBefore(LocalDateTime.of(2026, 8, 1, 0, 0), 2, 2);
+
+        verify(auditMapper, times(2)).selectList(any());
+        verify(auditMapper).deleteByIds(List.of(1L, 2L));
+        verify(auditMapper).deleteByIds(List.of(3L, 4L));
+        assertThat(deleted).isEqualTo(4);
+    }
+
+    @Test
+    void saveInvalidatesCachedFilterOptionsTest() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+
+        repository.findFilterOptions();
+        repository.save(AuditRecordVO.builder().operationType("CREATE_TOPIC").build());
+        repository.findFilterOptions();
+
+        verify(auditMapper, org.mockito.Mockito.times(2)).selectMaps(any(Wrapper.class));
+        verify(auditMapper).insert(any(RmqOperationAudit.class));
+    }
+
+    private static RmqOperationAudit auditRecord(Long id) {
+        RmqOperationAudit audit = new RmqOperationAudit();
+        audit.setId(id);
+        return audit;
+    }
 }

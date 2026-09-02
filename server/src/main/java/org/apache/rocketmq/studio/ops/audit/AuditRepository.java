@@ -29,5 +29,5 @@ public interface AuditRepository {
 
     void save(AuditRecordVO record);
 
-    int deleteBefore(LocalDateTime cutoff);
+    int deleteBefore(LocalDateTime cutoff, int batchSize, int maxBatches);
 }

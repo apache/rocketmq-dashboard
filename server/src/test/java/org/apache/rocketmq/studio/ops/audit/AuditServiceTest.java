@@ -201,4 +201,14 @@ class AuditServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("beforeDays must not exceed 365");
     }
+
+    @Test
+    void cleanupLogsUsesBoundedRepositoryBatchesTest() {
+        when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20))).thenReturn(500);
+
+        int deleted = auditService.cleanupLogs(90);
+
+        assertThat(deleted).isEqualTo(500);
+        verify(auditRepository).deleteBefore(any(LocalDateTime.class), eq(500), eq(20));
+    }
 }
