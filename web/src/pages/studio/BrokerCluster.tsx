@@ -518,10 +518,10 @@ const BrokerClusterPage = () => {
         </h2>
         <Space size="middle">
           <Select
-            aria-label="选择实例"
+            aria-label={t('common.selectInstance')}
             value={selectedInstanceId}
             onChange={setSelectedInstanceId}
-            placeholder="选择实例"
+            placeholder={t('common.selectInstance')}
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
           />
