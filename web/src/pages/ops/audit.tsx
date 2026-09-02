@@ -154,7 +154,7 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
-          message.error('审计日志加载失败，请稍后重试');
+          message.error(t('audit.loadFailed'));
         }
       })
       .finally(() => {
@@ -264,7 +264,7 @@ const AuditPage: React.FC = () => {
       message.success(t('audit.cleanupSuccess', { n: cleanupDays }));
       setCleanupModalOpen(false);
     } catch {
-      message.error('清理审计日志失败，请稍后重试');
+      message.error(t('audit.cleanupFailed'));
     }
   };
 
@@ -275,7 +275,7 @@ const AuditPage: React.FC = () => {
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
     } catch {
-      message.error('导出审计日志失败，请稍后重试');
+      message.error(t('audit.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -508,7 +508,7 @@ const AuditPage: React.FC = () => {
               value={cleanupDays}
               onChange={(v) => setCleanupDays(v ?? 30)}
             />
-            <span>天之前的日志</span>
+            <span>{t('audit.daysOld')}</span>
           </Flex>
         </Flex>
       </Modal>
