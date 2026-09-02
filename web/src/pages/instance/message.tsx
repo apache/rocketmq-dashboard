@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Card,
@@ -33,6 +33,8 @@ import {
   Input,
   Space,
   Flex,
+  Progress,
+  Statistic,
   message,
 } from 'antd';
 import {
@@ -70,6 +72,11 @@ import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
 import { tableScrollX } from '../../utils/table';
+import {
+  analyzeMessageTrace,
+  type MessageTraceDiagnostics,
+  type TraceDiagnosticStatus,
+} from '../../utils/messageTraceDiagnostics';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -136,6 +143,13 @@ const formatBody = (body: string): string => {
   }
 };
 
+const formatDurationMs = (value: number | null): string => {
+  if (value == null) return '-';
+  if (value >= 60000) return `${(value / 60000).toFixed(1)} min`;
+  if (value >= 1000) return `${(value / 1000).toFixed(2)} s`;
+  return `${value} ms`;
+};
+
 const getQueryValidationError = (mode: QueryMode, params: MessageQuery): string | null => {
   if (!params.topic?.trim()) return '请选择 Topic';
   if (mode === 'key' && !params.key?.trim()) return '请输入 Message Key';
@@ -180,6 +194,119 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
     return apiError.message;
   }
   return fallback;
+};
+
+const diagnosticTagColor: Record<TraceDiagnosticStatus, string> = {
+  healthy: 'success',
+  warning: 'warning',
+  critical: 'error',
+};
+
+const diagnosticStatusText: Record<TraceDiagnosticStatus, string> = {
+  healthy: '健康',
+  warning: '关注',
+  critical: '异常',
+};
+
+const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagnostics }) => {
+  const issueData = diagnostics.issues.slice(0, 8);
+
+  return (
+    <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 16 }}>
+      <Alert
+        showIcon
+        type={diagnostics.statusColor}
+        message={
+          <Flex gap={8} align="center" wrap>
+            <span>轨迹诊断</span>
+            <Tag color={diagnosticTagColor[diagnostics.status]}>{diagnostics.statusText}</Tag>
+            {issueData.map((issue) => (
+              <Tag key={issue.id} color={diagnosticTagColor[issue.severity]}>
+                {issue.title}
+              </Tag>
+            ))}
+          </Flex>
+        }
+      />
+      <Flex gap={16} wrap>
+        <div style={{ minWidth: 160 }}>
+          <div style={{ color: '#8c8c8c', marginBottom: 6 }}>健康分</div>
+          <Progress
+            percent={diagnostics.score}
+            status={diagnostics.status === 'critical' ? 'exception' : 'normal'}
+            strokeColor={diagnostics.status === 'healthy' ? '#52c41a' : undefined}
+          />
+        </div>
+        <Statistic title="轨迹阶段" value={diagnostics.summary.nodeCount} />
+        <Statistic
+          title="端到端耗时"
+          value={formatDurationMs(diagnostics.summary.endToEndLatencyMs)}
+        />
+        <Statistic
+          title="阶段耗时合计"
+          value={formatDurationMs(diagnostics.summary.totalNodeCostMs)}
+        />
+        <Statistic
+          title="消费成功率"
+          value={
+            diagnostics.summary.successfulConsumerRate == null
+              ? '-'
+              : `${diagnostics.summary.successfulConsumerRate}%`
+          }
+        />
+      </Flex>
+      {diagnostics.summary.slowestNode && (
+        <Typography.Text type="secondary">
+          最慢阶段：{diagnostics.summary.slowestNode.title}，
+          {formatDurationMs(diagnostics.summary.slowestNode.valueMs)}
+          {diagnostics.summary.slowestGap
+            ? `；最大阶段间隔：${diagnostics.summary.slowestGap.title}，${formatDurationMs(
+                diagnostics.summary.slowestGap.valueMs,
+              )}`
+            : ''}
+        </Typography.Text>
+      )}
+      {issueData.length > 0 && (
+        <Table
+          columns={[
+            {
+              title: '级别',
+              dataIndex: 'severity',
+              key: 'severity',
+              width: 90,
+              render: (severity: TraceDiagnosticStatus) => (
+                <Tag color={diagnosticTagColor[severity]}>{diagnosticStatusText[severity]}</Tag>
+              ),
+            },
+            {
+              title: '风险',
+              dataIndex: 'title',
+              key: 'title',
+              width: 150,
+            },
+            {
+              title: '说明',
+              dataIndex: 'description',
+              key: 'description',
+            },
+          ]}
+          dataSource={issueData}
+          rowKey="id"
+          pagination={false}
+          size="small"
+        />
+      )}
+      {diagnostics.recommendations.length > 0 && (
+        <Space direction="vertical" size={4}>
+          {diagnostics.recommendations.slice(0, 4).map((recommendation) => (
+            <Typography.Text key={recommendation} type="secondary">
+              {recommendation}
+            </Typography.Text>
+          ))}
+        </Space>
+      )}
+    </Space>
+  );
 };
 
 /* ═══════════════════════════════════════════
@@ -279,6 +406,7 @@ const MessagePageContent = ({
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
   const traceCacheRef = useRef(new Map<string, Promise<TraceRecord | null>>());
+  const traceDiagnostics = useMemo(() => analyzeMessageTrace(traceData), [traceData]);
 
   useEffect(
     () => () => {
@@ -834,23 +962,26 @@ const MessagePageContent = ({
           ) : traceError ? (
             <Alert showIcon type="warning" message={traceError} />
           ) : traceData?.nodes?.length ? (
-            <Steps
-              direction="vertical"
-              size="small"
-              items={traceData.nodes.map((node) => ({
-                title: node.title,
-                description: (
-                  <div style={{ fontSize: 14 }}>
-                    <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
-                      {formatTimeMs(node.timestamp)}
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              <TraceDiagnosticsPanel diagnostics={traceDiagnostics} />
+              <Steps
+                direction="vertical"
+                size="small"
+                items={traceData.nodes.map((node) => ({
+                  title: node.title,
+                  description: (
+                    <div style={{ fontSize: 14 }}>
+                      <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
+                        {formatTimeMs(node.timestamp)}
+                      </div>
+                      <div style={{ marginTop: 2 }}>{node.description}</div>
+                      <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
                     </div>
-                    <div style={{ marginTop: 2 }}>{node.description}</div>
-                    <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
-                  </div>
-                ),
-                status: node.status,
-              }))}
-            />
+                  ),
+                  status: node.status,
+                }))}
+              />
+            </Space>
           ) : (
             <Typography.Text type="secondary">暂无轨迹数据</Typography.Text>
           )}

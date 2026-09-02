@@ -380,6 +380,65 @@ describe('MessagePage async request ownership', () => {
     expect(await within(dialog).findByText('key-trace description')).toBeInTheDocument();
   });
 
+  it('shows trace diagnostics for slow and failed delivery paths', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 5,
+          status: 'finish',
+          description: 'producer sent the message',
+        },
+        {
+          title: 'Broker 存储',
+          timestamp: '2026-07-31T00:00:01.600Z',
+          costTime: 720,
+          status: 'finish',
+          description: 'broker persisted the message',
+        },
+        {
+          title: 'Consumer 消费',
+          timestamp: '2026-07-31T00:00:02.100Z',
+          costTime: 6200,
+          status: 'error',
+          description: 'consumer returned failure',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-billing',
+          deliveryStatus: 'failed',
+          consumeTime: '2026-07-31T00:00:05.000Z',
+          retryCount: 2,
+        },
+        {
+          group: 'cg-notification',
+          deliveryStatus: 'pending',
+          consumeTime: '-',
+          retryCount: 0,
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(await within(dialog).findByText('轨迹诊断')).toBeInTheDocument();
+    expect(within(dialog).getByText('投递异常')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('轨迹阶段失败')).not.toHaveLength(0);
+    expect(within(dialog).getAllByText('阶段耗时偏高')).not.toHaveLength(0);
+    expect(within(dialog).getAllByText('消费投递失败')).not.toHaveLength(0);
+    expect(within(dialog).getAllByText(/cg-billing/)).not.toHaveLength(0);
+    expect(within(dialog).getByText(/cg-notification/)).toBeInTheDocument();
+  });
+
   it('keeps the latest query loading and ignores an earlier query result', async () => {
     const firstQuery = createDeferred<MessageRecord[]>();
     const secondQuery = createDeferred<MessageRecord[]>();
@@ -485,7 +544,7 @@ describe('MessagePage async request ownership', () => {
       secondTrace.resolve(createTrace('message-b trace'));
     });
 
-    expect(await screen.findByText('message-b trace')).toBeInTheDocument();
+    expect(await screen.findAllByText('message-b trace')).not.toHaveLength(0);
     expect(screen.queryByText('正在加载轨迹数据…')).not.toBeInTheDocument();
   });
 
@@ -515,13 +574,13 @@ describe('MessagePage async request ownership', () => {
     await act(async () => {
       secondTrace.resolve(createTrace('message-b trace'));
     });
-    expect(await screen.findByText('message-b trace')).toBeInTheDocument();
+    expect(await screen.findAllByText('message-b trace')).not.toHaveLength(0);
 
     await act(async () => {
       firstTrace.resolve(createTrace('message-a stale trace'));
     });
 
-    expect(screen.getByText('message-b trace')).toBeInTheDocument();
+    expect(screen.getAllByText('message-b trace')).not.toHaveLength(0);
     expect(screen.queryByText('message-a stale trace')).not.toBeInTheDocument();
   });
 });
