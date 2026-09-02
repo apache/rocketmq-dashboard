@@ -22,11 +22,17 @@ import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
+import { LangProvider } from '../../../i18n/LangContext';
 
 vi.mock('../../../services/clusterService', () => ({
   listK8sCerts: vi.fn(),
   createK8sCert: vi.fn(),
   deleteK8sCert: vi.fn(),
+}));
+
+vi.mock('../../../i18n/languagePreference', () => ({
+  getInitialLanguage: () => 'en' as const,
+  persistLanguage: vi.fn(),
 }));
 
 const certs: K8sCertInfo[] = [
@@ -191,5 +197,29 @@ describe('K8sCertsPage', () => {
 
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
+  });
+});
+
+describe('K8sCertsPage English localization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listK8sCerts).mockResolvedValue(certs);
+  });
+
+  it('renders English labels inside the language provider', async () => {
+    render(
+      <LangProvider>
+        <K8sCertsPage />
+      </LangProvider>,
+    );
+
+    await screen.findByText('rocketmq-prod-tls');
+    expect(
+      screen.getByRole('heading', { name: 'K8s Certificate Management' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Certificate/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Expiry Time' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Days Remaining' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
   });
 });
