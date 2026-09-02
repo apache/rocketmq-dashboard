@@ -17,7 +17,10 @@
 package org.apache.rocketmq.studio.provider;
 
 import java.util.Arrays;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
+import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.junit.jupiter.api.Test;
 
@@ -44,4 +47,41 @@ public class InstanceProviderTest {
         assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
         assertThat(result.getPageSize()).isEqualTo(100);
     }
+    @Test
+    public void listTopicsPageShouldTolerateNullTopicListTest() {
+        InstanceProvider provider = mock(InstanceProvider.class);
+        when(provider.listTopics("instance-a", "all", null)).thenReturn(null);
+        when(provider.listTopicsPage("instance-a", "all", null, 1, 10)).thenCallRealMethod();
+
+        PageResult<TopicVO> result = provider.listTopicsPage("instance-a", "all", null, 1, 10);
+
+        assertThat(result.getTotal()).isZero();
+        assertThat(result.getItems()).isEmpty();
+    }
+
+    @Test
+    public void listConsumerGroupsPageShouldTolerateNullGroupListTest() {
+        InstanceProvider provider = mock(InstanceProvider.class);
+        when(provider.listConsumerGroups("instance-a", null)).thenReturn(null);
+        when(provider.listConsumerGroupsPage("instance-a", null, 1, 10)).thenCallRealMethod();
+
+        PageResult<ConsumerGroupVO> result = provider.listConsumerGroupsPage("instance-a", null, 1, 10);
+
+        assertThat(result.getTotal()).isZero();
+        assertThat(result.getItems()).isEmpty();
+    }
+
+    @Test
+    public void getTopicConsumersPageShouldTolerateNonPositivePageSizeTest() {
+        InstanceProvider provider = mock(InstanceProvider.class);
+        when(provider.getTopicConsumers("instance-a", "orders")).thenReturn(Arrays.asList(
+                TopicConsumerVO.builder().group("group-a").build()));
+        when(provider.getTopicConsumersPage("instance-a", "orders", 1, -5)).thenCallRealMethod();
+
+        TopicConsumerPageVO result = provider.getTopicConsumersPage("instance-a", "orders", 1, -5);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(1);
+    }
+
 }

@@ -59,10 +59,13 @@ public interface InstanceProvider {
     default PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search,
             int page, int pageSize) {
         List<TopicVO> topics = listTopics(instanceId, type, search);
+        if (topics == null) {
+            topics = List.of();
+        }
         int total = topics.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
+        int to = from + (int) Math.min(Math.max(pageSize, 0), total - from);
         return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 
@@ -76,10 +79,13 @@ public interface InstanceProvider {
 
     default TopicConsumerPageVO getTopicConsumersPage(String instanceId, String topicName, int page, int pageSize) {
         List<TopicConsumerVO> consumers = getTopicConsumers(instanceId, topicName);
+        if (consumers == null) {
+            consumers = List.of();
+        }
         int total = consumers.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
+        int to = from + (int) Math.min(Math.max(pageSize, 0), total - from);
         return TopicConsumerPageVO.builder()
                 .items(consumers.subList(from, to))
                 .total(total)
@@ -93,10 +99,13 @@ public interface InstanceProvider {
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
             int page, int pageSize) {
         List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, search);
+        if (groups == null) {
+            groups = List.of();
+        }
         int total = groups.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
+        int to = from + (int) Math.min(Math.max(pageSize, 0), total - from);
         return PageResult.of(groups.subList(from, to), total, page, pageSize);
     }
 
