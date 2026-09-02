@@ -457,7 +457,7 @@ const InstancePage = () => {
 
   const columns: ColumnsType<Instance> = [
     {
-      title: '地域',
+      title: t('instance.region'),
       dataIndex: 'regionId',
       key: 'regionId',
       width: 130,
@@ -467,13 +467,13 @@ const InstancePage = () => {
       render: (regionId: string | undefined, record: Instance) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {!record.vendor || record.vendor === 'APACHE'
-            ? '开源版'
+            ? t('instance.openSource')
             : record.regionName || regionId || '-'}
         </Text>
       ),
     },
     {
-      title: '实例 ID',
+      title: t('instance.instanceName'),
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
@@ -490,7 +490,7 @@ const InstancePage = () => {
       ),
     },
     {
-      title: '备注',
+      title: t('instance.remark'),
       dataIndex: 'remark',
       key: 'remark',
       ellipsis: { showTitle: false },
@@ -510,7 +510,7 @@ const InstancePage = () => {
         ),
     },
     {
-      title: '厂商',
+      title: t('instance.vendor'),
       dataIndex: 'vendor',
       key: 'vendor',
       width: 100,
@@ -529,7 +529,7 @@ const InstancePage = () => {
       },
     },
     {
-      title: '类型',
+      title: t('instance.type'),
       dataIndex: 'type',
       key: 'type',
       width: 110,
@@ -548,7 +548,7 @@ const InstancePage = () => {
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'topicCount', sortOrder),
       render: (count: number, record: Instance) =>
-        record.resourceCountsAvailable === false ? '不可用' : count,
+        record.resourceCountsAvailable === false ? t('instance.unavailable') : count,
     },
     {
       title: 'Group',
@@ -558,10 +558,10 @@ const InstancePage = () => {
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
-        record.resourceCountsAvailable === false ? '不可用' : count,
+        record.resourceCountsAvailable === false ? t('instance.unavailable') : count,
     },
     {
-      title: '创建时间',
+      title: t('instance.createdAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 150,
@@ -573,7 +573,7 @@ const InstancePage = () => {
       ),
     },
     {
-      title: '修改时间',
+      title: t('instance.updatedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 150,
@@ -585,7 +585,7 @@ const InstancePage = () => {
       ),
     },
     {
-      title: '操作',
+      title: t('instance.action'),
       key: 'actions',
       width: 150,
       render: (_: unknown, record: Instance) => (
@@ -605,7 +605,7 @@ const InstancePage = () => {
               setEditModalOpen(true);
             }}
           >
-            编辑
+            {t('instance.edit')}
           </Button>
           <Button
             size="small"
@@ -614,17 +614,17 @@ const InstancePage = () => {
             onClick={() => {
               const isCloudInstance = record.vendor === 'ALIYUN' || record.vendor === 'TENCENT';
               Modal.confirm({
-                title: `确认删除 "${record.name}"？`,
+                title: t('instance.confirmDelete', { name: record.name }),
                 content: isCloudInstance
-                  ? '仅从 Studio 移除该实例记录，不会释放云上的 RocketMQ 实例。'
-                  : '此操作不可恢复。',
-                okText: '删除',
+                  ? t('instance.deleteCloudWarning')
+                  : t('instance.deleteWarning'),
+                okText: t('instance.delete'),
                 okButtonProps: { danger: true },
                 onOk: () => handleDelete(record),
               });
             }}
           >
-            删除
+            {t('instance.delete')}
           </Button>
         </Flex>
       ),
@@ -678,7 +678,7 @@ const InstancePage = () => {
             disabled={selectedRowKeys.length === 0}
             onClick={handleBatchDelete}
           >
-            删除
+            {t('instance.delete')}
           </Button>
           <Button
             type="primary"
