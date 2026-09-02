@@ -28,7 +28,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(properties = "studio.auth.login-required=false")
+@SpringBootTest(properties = {
+    "studio.auth.login-required=false",
+    "studio.alerting.notification-retention=P36500D"
+})
 class NotificationOutboxMapperIntegrationTest {
     private static final long ALERT_ID_BASE = 2748000L;
 
