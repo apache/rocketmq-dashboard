@@ -47,7 +47,7 @@ import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
-const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
+// Localized fallback injected by the caller via getLoadErrorMessage(error, t('cluster.clientsLoadFailed')).
 
 /* ─── Helpers ─── */
 
@@ -106,7 +106,7 @@ type ApiErrorLike = {
   };
 };
 
-function getLoadErrorMessage(error: unknown): string {
+function getLoadErrorMessage(error: unknown, fallback: string): string {
   const apiError = error as ApiErrorLike;
   const responseMessage = apiError.response?.data?.message;
   if (typeof responseMessage === 'string' && responseMessage.trim()) {
@@ -115,7 +115,7 @@ function getLoadErrorMessage(error: unknown): string {
   if (typeof apiError.message === 'string' && apiError.message.trim()) {
     return apiError.message;
   }
-  return DEFAULT_LOAD_ERROR;
+  return fallback;
 }
 
 /* ═══════════════════════════════════════════
@@ -182,7 +182,7 @@ const ClientsPage = () => {
         setRegistryClusters([]);
         setSelectedEndpoint(undefined);
         setConnections([]);
-        setLoadError(getLoadErrorMessage(error));
+        setLoadError(getLoadErrorMessage(error, t('cluster.clientsLoadFailed')));
       })
       .finally(() => {
         if (registryRequestRef.current === requestId) setLoading(false);
@@ -210,7 +210,7 @@ const ClientsPage = () => {
           setConnections([]);
           setClusterFilter('ALL');
           setSelectedConnection(null);
-          setLoadError(getLoadErrorMessage(error));
+          setLoadError(getLoadErrorMessage(error, t('cluster.clientsLoadFailed')));
         }
       })
       .finally(() => {

@@ -123,6 +123,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.diskUsage': { zh: '磁盘使用', en: 'Disk Usage' },
   'cluster.proxyAddr': { zh: 'Proxy 地址', en: 'Proxy Address' },
   'cluster.connections': { zh: '连接数', en: 'Connections' },
+  'cluster.clientsLoadFailed': { zh: '客户端连接加载失败，请稍后重试', en: 'Failed to load client connections, please retry later' },
   'cluster.grpcPort': { zh: 'gRPC 端口', en: 'gRPC Port' },
   'cluster.remotingPort': { zh: 'Remoting 端口', en: 'Remoting Port' },
   'cluster.config': { zh: '配置', en: 'Config' },
