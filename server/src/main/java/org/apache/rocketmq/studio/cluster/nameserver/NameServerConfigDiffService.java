@@ -34,6 +34,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Stream;
@@ -192,12 +193,26 @@ public class NameServerConfigDiffService {
                         .filter(node -> node != null)
                         .map(NameServerVO::getAddr);
         Stream<String> endpointAddresses = splitEndpoint(cluster.getEndpoint()).stream();
-        return Stream.concat(declared, endpointAddresses)
+        Map<String, String> uniqueAddresses = new LinkedHashMap<>();
+        Stream.concat(declared, endpointAddresses)
                 .filter(address -> address != null && !address.isBlank())
                 .map(String::trim)
-                .distinct()
+                .forEach(address -> uniqueAddresses.putIfAbsent(canonicalAddressKey(address), address));
+        return uniqueAddresses.values().stream()
                 .sorted()
                 .toList();
+    }
+
+    private String canonicalAddressKey(String address) {
+        int separator = address.lastIndexOf(':');
+        if (separator <= 0 || address.indexOf(':') != separator) {
+            return address;
+        }
+        String host = address.substring(0, separator);
+        if (host.indexOf('%') >= 0) {
+            return address;
+        }
+        return host.toLowerCase(Locale.ROOT) + address.substring(separator);
     }
 
     private String connectionEndpoint(ClusterVO cluster, List<String> addresses) {

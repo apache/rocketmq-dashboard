@@ -56,51 +56,65 @@ public class DLQService {
     public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              String targetTopic) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
-        log.info("Resending DLQ messages: group={}, targetTopic={}", groupName, targetTopic);
-        return dlqProvider.resendMessages(instanceId, groupName, startTime, endTime, targetTopic);
+        String normalizedGroupName = requireGroupName(groupName);
+        validateTimeRange(startTime, endTime);
+        String normalizedTargetTopic = normalizeOptional(targetTopic);
+        log.info("Resending DLQ messages: group={}, targetTopic={}",
+                normalizedGroupName, normalizedTargetTopic);
+        return dlqProvider.resendMessages(
+                instanceId, normalizedGroupName, startTime, endTime, normalizedTargetTopic);
     }
 
     public DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                             Integer maxCount) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
-        log.info("Exporting DLQ messages: group={}, maxCount={}", groupName, maxCount);
-        return dlqProvider.exportMessages(instanceId, groupName, startTime, endTime, maxCount);
+        String normalizedGroupName = requireGroupName(groupName);
+        validateTimeRange(startTime, endTime);
+        log.info("Exporting DLQ messages: group={}, maxCount={}", normalizedGroupName, maxCount);
+        return dlqProvider.exportMessages(instanceId, normalizedGroupName, startTime, endTime, maxCount);
     }
 
     public PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                                  int page, int pageSize) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
-        log.info("Listing DLQ messages: group={}, page={}, pageSize={}", groupName, page, pageSize);
-        return dlqProvider.listMessages(instanceId, groupName, startTime, endTime, page, pageSize);
+        String normalizedGroupName = requireGroupName(groupName);
+        validateTimeRange(startTime, endTime);
+        log.info("Listing DLQ messages: group={}, page={}, pageSize={}", normalizedGroupName, page, pageSize);
+        return dlqProvider.listMessages(
+                instanceId, normalizedGroupName, startTime, endTime, page, pageSize);
     }
 
     public DLQResendResultVO resendSelectedMessages(String instanceId, String groupName, List<String> msgIds,
                                                     String targetTopic) {
         requireApacheInstance(instanceId);
+        String normalizedGroupName = requireGroupName(groupName);
         if (msgIds == null || msgIds.isEmpty()) {
             throw new BusinessException(400, "At least one msgId is required");
         }
         if (msgIds.size() > MAX_SELECTED_MESSAGES) {
             throw new BusinessException(400, "At most 100 msgIds are allowed per resend");
         }
+        List<String> normalizedMsgIds = normalizeMsgIds(msgIds);
+        String normalizedTargetTopic = normalizeOptional(targetTopic);
         log.info("Resending selected DLQ messages: group={}, count={}, targetTopic={}",
-                groupName, msgIds.size(), targetTopic);
-        return dlqProvider.resendMessages(instanceId, groupName, msgIds, targetTopic);
+                normalizedGroupName, normalizedMsgIds.size(), normalizedTargetTopic);
+        return dlqProvider.resendMessages(
+                instanceId, normalizedGroupName, normalizedMsgIds, normalizedTargetTopic);
     }
 
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
                                               List<String> msgIds) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
+        String normalizedGroupName = requireGroupName(groupName);
+        validateTimeRange(startTime, endTime);
         if (msgIds != null && msgIds.size() > MAX_SELECTED_MESSAGES) {
             throw new BusinessException(400, "At most 100 msgIds are allowed per export");
         }
-        log.info("Exporting DLQ messages as Excel: group={}, selected={}", groupName,
-                msgIds == null ? 0 : msgIds.size());
-        return dlqProvider.exportExcel(instanceId, groupName, startTime, endTime, msgIds);
+        List<String> normalizedMsgIds = msgIds == null ? null : normalizeMsgIds(msgIds);
+        log.info("Exporting DLQ messages as Excel: group={}, selected={}", normalizedGroupName,
+                normalizedMsgIds == null ? 0 : normalizedMsgIds.size());
+        return dlqProvider.exportExcel(
+                instanceId, normalizedGroupName, startTime, endTime, normalizedMsgIds);
     }
 
     private void requireApacheInstance(String instanceId) {
@@ -111,10 +125,29 @@ public class DLQService {
         });
     }
 
-    private void validateResendRequest(String groupName, Long startTime, Long endTime) {
+    private String requireGroupName(String groupName) {
         if (!StringUtils.hasText(groupName)) {
             throw new BusinessException(400, "groupName is required");
         }
+        return groupName.trim();
+    }
+
+    private String normalizeOptional(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private List<String> normalizeMsgIds(List<String> msgIds) {
+        return msgIds.stream()
+                .map(msgId -> {
+                    if (!StringUtils.hasText(msgId)) {
+                        throw new BusinessException(400, "msgId must not be blank");
+                    }
+                    return msgId.trim();
+                })
+                .toList();
+    }
+
+    private void validateTimeRange(Long startTime, Long endTime) {
         if ((startTime == null) != (endTime == null)) {
             throw new BusinessException(400, "startTime and endTime must be provided together");
         }

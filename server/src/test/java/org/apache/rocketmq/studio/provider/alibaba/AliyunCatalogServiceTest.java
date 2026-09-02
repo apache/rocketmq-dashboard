@@ -167,6 +167,19 @@ class AliyunCatalogServiceTest {
     }
 
     @Test
+    void listCloudInstancesShouldNormalizeRegionAndSearchTest() {
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
+                .thenReturn(instancesResponse(List.of(instanceRow("rmq-prod-001", "Production"))));
+
+        List<CloudInstanceOptionVO> result = service.listCloudInstances(
+                CREDENTIAL_ID, "  cn-hangzhou  ", "  production  ");
+
+        assertThat(result).extracting(CloudInstanceOptionVO::getInstanceName)
+                .containsExactly("Production");
+        verify(clientFactory).call(eq(CREDENTIAL_ID), eq(REGION), any());
+    }
+
+    @Test
     void listCloudInstancesShouldRequireRegionTest() {
         assertThatThrownBy(() -> service.listCloudInstances(CREDENTIAL_ID, " ", null))
                 .isInstanceOf(BusinessException.class)
@@ -210,6 +223,17 @@ class AliyunCatalogServiceTest {
         assertThat(detail.getEndpoints().get(0).getEndpointType()).isEqualTo("TCP_INTERNET");
         assertThat(detail.getEndpoints().get(1).getEndpointUrl())
                 .isEqualTo("rmq-cn-001-vpc.rmq.aliyuncs.com:8080");
+    }
+
+    @Test
+    void getCloudInstanceShouldNormalizeLookupIdentifiersTest() {
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.getCloudInstance(
+                CREDENTIAL_ID, "  cn-hangzhou  ", "  rmq-missing  "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Aliyun instance not found: rmq-missing");
+        verify(clientFactory).call(eq(CREDENTIAL_ID), eq(REGION), any());
     }
 
     private static List<ListInstancesResponseBody.List> instanceRows(int count, int idOffset) {

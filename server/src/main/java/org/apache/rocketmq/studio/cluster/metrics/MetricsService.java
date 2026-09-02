@@ -138,13 +138,16 @@ public class MetricsService {
     }
 
     private void validateQueryWindow(MetricQueryDTO query) {
-        long rangeSeconds = query.getEnd() - query.getStart();
-        if (rangeSeconds <= 0) {
+        long start = query.getStart();
+        long end = query.getEnd();
+        if (end <= start) {
             throw badRequest("Metric query end must be later than start");
         }
-        if (rangeSeconds > MAX_RANGE_SECONDS) {
+        if (start <= Long.MAX_VALUE - MAX_RANGE_SECONDS
+                && end > start + MAX_RANGE_SECONDS) {
             throw badRequest("Metric query range must not exceed 31 days");
         }
+        long rangeSeconds = end - start;
         BigDecimal stepMillis = parseStepMillis(query.getStep());
         if (stepMillis.signum() <= 0) {
             throw badRequest("Metric query step must be positive");
