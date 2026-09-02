@@ -874,11 +874,11 @@ const AiPage = () => {
     try {
       parsedInput = JSON.parse(toolInput || '{}');
     } catch {
-      message.error('工具参数必须是有效的 JSON 对象');
+      message.error(t('ai.toolJsonRequired'));
       return;
     }
     if (!isRecord(parsedInput)) {
-      message.error('工具参数必须是有效的 JSON 对象');
+      message.error(t('ai.toolJsonRequired'));
       return;
     }
 
@@ -888,7 +888,7 @@ const AiPage = () => {
       setToolResult(await executeTool(selectedToolName, parsedInput, selectedClusterId));
       message.success('工具执行成功');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '工具执行失败');
+      message.error(error instanceof Error ? error.message : t('ai.toolExecFailed'));
     } finally {
       setToolExecuting(false);
     }
