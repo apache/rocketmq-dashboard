@@ -25,7 +25,9 @@ import type { MessageRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 
 const messageServiceMocks = vi.hoisted(() => ({
+  consumeMessageDirectly: vi.fn(),
   getMessageTrace: vi.fn(),
+  getMessageTraceByKey: vi.fn(),
   queryMessages: vi.fn(),
 }));
 const topicServiceMocks = vi.hoisted(() => ({
@@ -101,7 +103,9 @@ const lastElement = <T,>(elements: T[]): T => elements[elements.length - 1]!;
 describe('Message page query history', () => {
   beforeEach(() => {
     localStorage.clear();
+    messageServiceMocks.consumeMessageDirectly.mockReset();
     messageServiceMocks.getMessageTrace.mockReset().mockResolvedValue(null);
+    messageServiceMocks.getMessageTraceByKey.mockReset().mockResolvedValue(null);
     messageServiceMocks.queryMessages.mockReset().mockResolvedValue([]);
     topicServiceMocks.listTopics
       .mockReset()
