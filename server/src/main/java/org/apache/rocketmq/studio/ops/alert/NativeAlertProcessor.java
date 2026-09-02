@@ -17,42 +17,39 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import lombok.RequiredArgsConstructor;
-import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
-import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
+import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.EnumMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.EnumMap;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /** Applies native samples to persisted rule state and emits only lifecycle transitions. */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class NativeAlertProcessor {
     private final AlertService alertService;
-    private final AlertRuleEvaluator evaluator;
+    private final NativeAlertEvaluationService evaluationService;
     private final AlertStateMachine stateMachine;
     private final AlertStateRepository stateRepository;
-    private final MetricSnapshotRepository snapshotRepository;
     private final AlertRepository alertRepository;
     private final NotificationOutboxService notificationOutboxService;
     private final AlertNotificationSuppressionService notificationSuppressionService;
 
-    @Transactional
     public void process(List<MetricSample> samples) {
         processSamples(samples);
     }
@@ -76,36 +73,23 @@ public class NativeAlertProcessor {
 
     private void processSamples(List<MetricSample> samples) {
         Map<AlertDomain, List<AlertRuleVO>> rulesByDomain = new EnumMap<>(AlertDomain.class);
+        int failedEvaluations = 0;
         for (MetricSample sample : samples) {
             for (AlertRuleVO rule : rulesByDomain.computeIfAbsent(sample.domain(), alertService::listRules)) {
-                if (rule.getId() == null) {
+                if (!eligible(rule, sample)) {
                     continue;
                 }
-                if (!rule.isEnabled()) {
-                    continue;
-                }
-                if (!NativeAlertRuleScopeMatcher.matches(rule, sample)) {
-                    continue;
-                }
-                MetricSample evaluatedSample = aggregate(rule, sample);
-                AlertEvaluationResult evaluation = evaluator.evaluate(rule, evaluatedSample);
-                if (!evaluation.matches()) {
-                    continue;
-                }
-                AlertStateKey key = new AlertStateKey(rule.getId(),
-                        AlertFingerprint.of(rule.getId(), sample.instanceId(), sample.labels()));
-                AlertStateUpdate update = stateMachine.advance(stateRepository.find(key).orElse(null), evaluation,
-                        Math.max(1, rule.getConsecutiveSamples()), AlertRuleDuration.parse(rule.getDuration()),
-                        AlertRuleDuration.parse(rule.getReminderInterval()), sample.collectedAt());
-                if (!stateRepository.save(key, update.state())) {
-                    continue;
-                }
-                if (update.transition() == AlertStateTransition.FIRING || update.transition() == AlertStateTransition.REMINDER
-                        || update.transition() == AlertStateTransition.RESOLVED) {
-                    emitLifecycleEvent(rule, key, update, sample.domain(), sample.instanceId(), sample.metricKey(),
-                            sample.labels(), sample.collectedAt());
+                try {
+                    evaluationService.evaluate(rule, sample);
+                } catch (RuntimeException error) {
+                    failedEvaluations++;
+                    log.warn("Native alert evaluation failed: ruleId={}, instanceId={}, metric={}, cause={}",
+                            rule.getId(), sample.instanceId(), sample.metricKey(), error.getClass().getSimpleName());
                 }
             }
+        }
+        if (failedEvaluations > 0) {
+            log.warn("Native alert batch completed with {} failed rule evaluation(s)", failedEvaluations);
         }
     }
 
@@ -188,26 +172,6 @@ public class NativeAlertProcessor {
                 && (transition == AlertStateTransition.FIRING || transition == AlertStateTransition.REMINDER);
     }
 
-    private MetricSample aggregate(AlertRuleVO rule, MetricSample sample) {
-        if (sample.availability() != MetricAvailability.AVAILABLE || rule.getWindowSeconds() <= 0) {
-            return sample;
-        }
-        List<MetricSample> window = snapshotRepository.findRecent(sample,
-                sample.collectedAt().minus(Duration.ofSeconds(rule.getWindowSeconds())));
-        if (window.isEmpty()) {
-            return sample;
-        }
-        double value = switch (rule.getAggregation() == null ? "LAST" : rule.getAggregation().toUpperCase(Locale.ROOT)) {
-            case "MAX" -> window.stream().mapToDouble(item -> item.value()).max().orElse(sample.value());
-            case "MIN" -> window.stream().mapToDouble(item -> item.value()).min().orElse(sample.value());
-            case "AVG" -> window.stream().mapToDouble(item -> item.value()).average().orElse(sample.value());
-            case "SUM" -> window.stream().mapToDouble(item -> item.value()).sum();
-            default -> window.get(window.size() - 1).value();
-        };
-        return new MetricSample(sample.metricKey(), sample.domain(), sample.instanceId(), sample.clusterId(), sample.labels(),
-                value, MetricAvailability.AVAILABLE, sample.collectedAt());
-    }
-
     private static AlertLevel level(String severity) {
         if ("critical".equalsIgnoreCase(severity)) {
             return AlertLevel.error;
@@ -218,4 +182,7 @@ public class NativeAlertProcessor {
         return AlertLevel.info;
     }
 
+    private static boolean eligible(AlertRuleVO rule, MetricSample sample) {
+        return rule.getId() != null && rule.isEnabled() && NativeAlertRuleScopeMatcher.matches(rule, sample);
+    }
 }
