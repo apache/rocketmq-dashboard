@@ -29,6 +29,10 @@ const LangConsumer = () => {
       <span data-testid="translated">{t('nav.home')}</span>
       <span data-testid="missing">{t('nonexistent.key')}</span>
       <span data-testid="param">{t('common.total', { count: 42 })}</span>
+      <span data-testid="total-users">{t('common.totalUsers', { count: 21 })}</span>
+      <span data-testid="total-groups">{t('common.totalGroups', { count: 3 })}</span>
+      <span data-testid="total-messages">{t('common.totalMessages', { count: 456 })}</span>
+      <span data-testid="total-rules">{t('common.totalRules', { count: 7 })}</span>
       <button onClick={() => setLang('en')}>switch-en</button>
       <button onClick={() => setLang('zh')}>switch-zh</button>
     </div>
@@ -118,5 +122,28 @@ describe('LangContext', () => {
       </LangProvider>,
     );
     expect(screen.getByTestId('alias-lang')).toHaveTextContent('zh');
+  });
+
+  it('interpolates the pagination total keys in both languages without leftover placeholders', async () => {
+    const user = userEvent.setup();
+    render(
+      <LangProvider>
+        <LangConsumer />
+      </LangProvider>,
+    );
+    expect(screen.getByTestId('total-users')).toHaveTextContent('共 21 个用户');
+    expect(screen.getByTestId('total-groups')).toHaveTextContent('共 3 个 Group');
+    expect(screen.getByTestId('total-messages')).toHaveTextContent('共 456 条消息');
+    expect(screen.getByTestId('total-rules')).toHaveTextContent('共 7 条规则');
+
+    await user.click(screen.getByText('switch-en'));
+    expect(screen.getByTestId('total-users')).toHaveTextContent('Total 21 users');
+    expect(screen.getByTestId('total-groups')).toHaveTextContent('Total 3 groups');
+    expect(screen.getByTestId('total-messages')).toHaveTextContent('Total 456 messages');
+    expect(screen.getByTestId('total-rules')).toHaveTextContent('Total 7 rules');
+
+    for (const testId of ['total-users', 'total-groups', 'total-messages', 'total-rules']) {
+      expect(screen.getByTestId(testId).textContent).not.toContain('{');
+    }
   });
 });
