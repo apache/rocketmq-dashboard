@@ -61,6 +61,7 @@ import {
   testAlertRule,
   updateAlertRule,
 } from '../../services/opsService';
+import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
 import { formatDateTime } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
@@ -340,7 +341,11 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   const openEditModal = (rule: AlertRule) => {
     setEditingRule(rule);
-    form.setFieldsValue(rule);
+    form.setFieldsValue({
+      ...rule,
+      metric: normalizeMetric(rule.metric),
+      duration: normalizeDuration(rule.duration),
+    });
     setSelectedInstanceId(rule.instanceId);
     if (rule.instanceId?.trim()) {
       void loadMetricCapabilities(rule.instanceId, false);
@@ -355,7 +360,12 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     setTestResult(null);
     setSelectedInstanceId(rule.instanceId);
     const { id: _id, lastTriggered: _lastTriggered, ...copy } = rule;
-    form.setFieldsValue({ ...copy, name: t('alerts.duplicateName', { name: rule.name }) });
+    form.setFieldsValue({
+      ...copy,
+      name: t('alerts.duplicateName', { name: rule.name }),
+      metric: normalizeMetric(copy.metric),
+      duration: normalizeDuration(copy.duration),
+    });
     if (rule.instanceId?.trim()) {
       void loadMetricCapabilities(rule.instanceId, false);
     } else {
@@ -615,8 +625,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     try {
       const values = await form.validateFields();
       const payload = {
-        ...values,
-        ...(nativeRatioMetrics.has(values.metric) ? { thresholdUnit: '%' } : {}),
+        ...attachThresholdUnit(values),
+        ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
       } as Partial<AlertRule>;
       setSubmitting(true);
       if (editingRule) {
@@ -649,8 +659,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     try {
       const values = await form.validateFields();
       const payload = {
-        ...values,
-        ...(nativeRatioMetrics.has(values.metric) ? { thresholdUnit: '%' } : {}),
+        ...attachThresholdUnit(values),
+        ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
       } as Partial<AlertRule>;
       setTesting(true);
       const result = await (domain === 'CLUSTER'
