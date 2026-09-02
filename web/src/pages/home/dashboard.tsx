@@ -126,11 +126,11 @@ const DashboardPage = () => {
         <Alert
           type="error"
           showIcon
-          message="仪表盘加载失败"
-          description="无法获取集群概览，请检查网络连接后重试。"
+          message={t('home.dashboardLoadFailed')}
+          description={t('home.dashboardLoadDesc')}
           action={
             <Button size="small" onClick={() => void loadDashboard()} loading={loading}>
-              重试
+              {t('common.retry')}
             </Button>
           }
         />
