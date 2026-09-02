@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusSettingsRepositoryTest {
@@ -150,4 +151,23 @@ class MybatisPlusSettingsRepositoryTest {
         assertThat(stored.getJson()).contains("sk-roundtrip-token");
         assertThat(repository.loadGeneralSettings().getApiKey()).isEqualTo("sk-roundtrip-token");
     }
+    @Test
+    void shouldEscapeLikeWildcardsInDataSourceInventoryQueries() {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<RmqDataSource> page =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10);
+        page.setRecords(java.util.List.of());
+        page.setTotal(0);
+        when(dataSourceMapper.selectPage(any(), any())).thenReturn(page);
+
+        repository.findDataSources("a_b 100%", "pro_%", 1, 10);
+
+        org.mockito.ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<RmqDataSource>> wrapperCaptor =
+                org.mockito.ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(), wrapperCaptor.capture());
+        String sql = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(sql).contains("ESCAPE");
+        assertThat(wrapperCaptor.getValue().getParamNameValuePairs().values())
+                .contains("a\\_b 100\\%", "pro\\_\\%");
+    }
+
 }

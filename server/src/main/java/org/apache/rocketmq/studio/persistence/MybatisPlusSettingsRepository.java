@@ -138,13 +138,23 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
         String normalizedType = type == null || type.isBlank() ? null : type.trim();
         QueryWrapper<RmqDataSource> query = new QueryWrapper<RmqDataSource>()
-                .like(normalizedSearch != null, "json", normalizedSearch)
+                .apply(normalizedSearch != null,
+                        "json LIKE CONCAT('%', {0}, '%') ESCAPE '\\'", escapeLikeWildcards(normalizedSearch))
                 .apply(normalizedType != null,
-                        "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%')", normalizedType)
+                        "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%') ESCAPE '\\'",
+                        escapeLikeWildcards(normalizedType))
                 .orderByDesc("gmt_modified", "id");
         Page<RmqDataSource> result = dataSourceMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords().stream().map(this::toDataSourceVO).toList(),
                 result.getTotal(), page, pageSize);
+    }
+
+    /**
+     * Escapes LIKE wildcards in user input so a search for "a_b" does not match "axb".
+     * The backslash is MySQL's default escape character and is declared explicitly.
+     */
+    private String escapeLikeWildcards(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override
