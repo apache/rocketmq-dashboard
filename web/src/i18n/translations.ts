@@ -877,6 +877,8 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台',
     en: 'RocketMQ Studio — unified control plane across clusters, architectures and clouds',
   },
+  'home.dashboardLoadDesc': { zh: '无法获取集群概览，请检查网络连接后重试。', en: 'Unable to fetch the cluster overview. Please check the network and retry.' },
+  'home.dashboardLoadFailed': { zh: '仪表盘加载失败', en: 'Dashboard failed to load' },
   'home.greeting.night': { zh: '夜深了', en: 'Late night' },
   'home.greeting.morning': { zh: '上午好', en: 'Good morning' },
   'home.greeting.noon': { zh: '中午好', en: 'Good afternoon' },
