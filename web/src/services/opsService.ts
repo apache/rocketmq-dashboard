@@ -1,5 +1,9 @@
-import { exportAuditLogs as exportAuditLogsApi, fetchAuditFilterOptions } from '../api/audit';
-import type { AuditFilter, AuditFilterOptions } from '../api/audit';
+import {
+  exportAuditLogs as exportAuditLogsApi,
+  fetchAuditFilterOptions,
+  fetchAuditSummary,
+} from '../api/audit';
+import type { AuditFilter, AuditFilterOptions, AuditSummary } from '../api/audit';
 import { isMockMode } from './dataMode';
 import * as opsApi from '../api/ops';
 import type {
@@ -491,6 +495,35 @@ export async function getAuditFilterOptions(): Promise<AuditFilterOptions> {
 export async function exportAuditLogs(params: AuditFilter = {}): Promise<string> {
   if (!isMockMode()) return exportAuditLogsApi(params);
   return formatAuditCsv(filterAuditRecords(params));
+}
+
+export async function getAuditSummary(params: AuditFilter = {}): Promise<AuditSummary> {
+  if (!isMockMode()) return fetchAuditSummary(params);
+  const records = filterAuditRecords(params);
+  const countBy = (field: 'operationType' | 'resourceType') =>
+    Array.from(
+      records.reduce((counts, record) => {
+        const name = record[field] || 'UNKNOWN';
+        counts.set(name, (counts.get(name) || 0) + 1);
+        return counts;
+      }, new Map<string, number>()),
+      ([name, count]) => ({ name, count }),
+    )
+      .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+      .slice(0, 8);
+  const resultCount = (name: string) =>
+    records.filter((record) => record.result.toUpperCase() === name).length;
+  const timestamps = records.map((record) => record.timestamp).sort();
+  return {
+    total: records.length,
+    successful: resultCount('SUCCESS'),
+    failed: resultCount('FAILED'),
+    partial: resultCount('PARTIAL'),
+    uniqueOperators: new Set(records.map((record) => record.operator).filter(Boolean)).size,
+    latestAt: timestamps[timestamps.length - 1] || null,
+    byOperation: countBy('operationType'),
+    byResourceType: countBy('resourceType'),
+  };
 }
 
 export async function cleanupAuditLogs(beforeDays: number): Promise<number> {

@@ -189,6 +189,24 @@ class AuditServiceTest {
     }
 
     @Test
+    void summarizeParsesAndForwardsTheSharedFilterRangeTest() {
+        AuditSummaryVO summary = AuditSummaryVO.builder().total(12).successful(10).failed(2).build();
+        when(auditRepository.summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+                any(LocalDateTime.class), any(LocalDateTime.class), eq("FAILED"))).thenReturn(summary);
+
+        AuditSummaryVO actual = auditService.summarize("topic", "DELETE_TOPIC", "TOPIC", "prod-cn",
+                "2026-08-01", "2026-08-02", "FAILED");
+
+        assertThat(actual).isSameAs(summary);
+        ArgumentCaptor<LocalDateTime> start = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> end = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(auditRepository).summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+                start.capture(), end.capture(), eq("FAILED"));
+        assertThat(start.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
+        assertThat(end.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 2, 23, 59, 59, 999_999_999));
+    }
+
+    @Test
     void cleanupLogsRejectsNonPositiveRetention() {
         assertThatThrownBy(() -> auditService.cleanupLogs(0))
                 .isInstanceOf(BusinessException.class)

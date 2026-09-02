@@ -17,7 +17,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
-import { exportAuditLogs, fetchAuditFilterOptions } from './audit';
+import { exportAuditLogs, fetchAuditFilterOptions, fetchAuditSummary } from './audit';
 import client from './client';
 import { cleanupAuditLogs, listAuditRecords } from './ops';
 
@@ -71,5 +71,26 @@ describe('audit log API', () => {
     });
 
     await expect(exportAuditLogs({ search: 'topic', result: 'SUCCESS' })).resolves.toBe(csv);
+  });
+
+  it('loads summary metrics with the supplied filters', async () => {
+    const summary = {
+      total: 10,
+      successful: 8,
+      failed: 1,
+      partial: 1,
+      uniqueOperators: 3,
+      latestAt: '2026-08-12T10:00:00',
+      byOperation: [{ name: 'CREATE_TOPIC', count: 6 }],
+      byResourceType: [{ name: 'TOPIC', count: 9 }],
+    };
+    mock.onGet('/audit-logs/summary').reply((config) => {
+      expect(config.params).toEqual({ clusterId: 'prod-cn', startDate: '2026-08-01' });
+      return [200, { code: 200, data: summary }];
+    });
+
+    await expect(
+      fetchAuditSummary({ clusterId: 'prod-cn', startDate: '2026-08-01' }),
+    ).resolves.toEqual(summary);
   });
 });

@@ -61,6 +61,13 @@ public class AuditService {
         return auditRepository.findFilterOptions();
     }
 
+    public AuditSummaryVO summarize(String search, String operationType, String resourceType,
+                                    String clusterId, String startDate, String endDate, String result) {
+        DateRange range = parseDateRange(startDate, endDate);
+        return auditRepository.summarize(search, operationType, resourceType, clusterId,
+                range.start(), range.end(), result);
+    }
+
     public String exportLogs(String search, String operationType, String resourceType,
                              String clusterId, String startDate, String endDate, String result) {
         PageResult<AuditRecordVO> page = findPage(
@@ -136,13 +143,18 @@ public class AuditService {
                                                String resourceType, String clusterId,
                                                String startDate, String endDate,
                                                String result, int page, int pageSize) {
+        DateRange range = parseDateRange(startDate, endDate);
+        return auditRepository.findPage(search, operationType, resourceType, clusterId,
+                range.start(), range.end(), result, page, pageSize);
+    }
+
+    private DateRange parseDateRange(String startDate, String endDate) {
         LocalDateTime start = parseDate(startDate, true, "startDate");
         LocalDateTime end = parseDate(endDate, false, "endDate");
         if (start != null && end != null && start.isAfter(end)) {
             throw new BusinessException(400, "startDate must not be after endDate");
         }
-        return auditRepository.findPage(search, operationType, resourceType, clusterId,
-                start, end, result, page, pageSize);
+        return new DateRange(start, end);
     }
 
     private LocalDateTime parseDate(String dateStr, boolean startOfDay, String parameterName) {
@@ -155,5 +167,8 @@ public class AuditService {
         } catch (DateTimeParseException e) {
             throw new BusinessException(400, parameterName + " must use YYYY-MM-DD");
         }
+    }
+
+    private record DateRange(LocalDateTime start, LocalDateTime end) {
     }
 }

@@ -39,12 +39,13 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import type { AuditFilter, AuditFilterOptions } from '../../api/audit';
+import type { AuditFilter, AuditFilterOptions, AuditSummary } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
 import {
   cleanupAuditLogs,
   exportAuditLogs,
   getAuditFilterOptions,
+  getAuditSummary,
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
@@ -57,6 +58,7 @@ import {
   getAuditResultPresentation,
   parseAuditDetail,
 } from './auditPresentation';
+import AuditSummaryCards from './AuditSummaryCards';
 
 const emptyFilterOptions: AuditFilterOptions = {
   operationTypes: [],
@@ -101,6 +103,8 @@ const AuditPage: React.FC = () => {
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
   const [exporting, setExporting] = useState(false);
+  const [summary, setSummary] = useState<AuditSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
 
@@ -199,6 +203,29 @@ const AuditPage: React.FC = () => {
       resultFilter,
     ],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    // Reset the loading flag whenever the filters change so a stale summary is
+    // not shown while the refreshed aggregate is still in flight. The microtask
+    // mirrors the record-list effect so the flag update is not applied synchronously.
+    void Promise.resolve().then(() => {
+      if (!cancelled) setSummaryLoading(true);
+    });
+    void getAuditSummary(activeFilter)
+      .then((value) => {
+        if (!cancelled) setSummary(value);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('审计概览加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilter, refreshKey]);
 
   const { Text } = Typography;
 
@@ -460,6 +487,8 @@ const AuditPage: React.FC = () => {
           </Button>
         </Flex>
       </Flex>
+
+      <AuditSummaryCards summary={summary} loading={summaryLoading} />
 
       {/* ─── Table ─── */}
       <Card styles={{ body: { padding: 0 } }}>
