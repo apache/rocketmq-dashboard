@@ -405,7 +405,7 @@ const DLQPage = () => {
   /* ─── Table Columns ─── */
   const columns: ColumnsType<DLQGroup> = [
     {
-      title: 'Group 名称',
+      title: t('dlq.groupName'),
       dataIndex: 'groupName',
       key: 'groupName',
       width: 200,
@@ -426,7 +426,7 @@ const DLQPage = () => {
       ),
     },
     {
-      title: '死信数量',
+      title: t('dlq.deadCount'),
       dataIndex: 'messageCount',
       key: 'messageCount',
       width: 100,
@@ -447,12 +447,12 @@ const DLQPage = () => {
                     : undefined,
           }}
         >
-          {record.statsAvailable === false ? '不可用' : count.toLocaleString()}
+          {record.statsAvailable === false ? t('dlq.unavailable') : count.toLocaleString()}
         </Text>
       ),
     },
     {
-      title: '最近入队时间',
+      title: t('dlq.lastEnqueueTime'),
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
       width: 180,
@@ -464,7 +464,7 @@ const DLQPage = () => {
       ),
     },
     {
-      title: '操作',
+      title: t('dlq.action'),
       key: 'actions',
       width: 280,
       render: (_: unknown, record: DLQGroup) => (
@@ -475,7 +475,7 @@ const DLQPage = () => {
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => openDetailDrawer(record)}
           >
-            消息明细
+            {t('dlq.viewMessages')}
           </Button>
           <Button
             size="small"
@@ -484,7 +484,7 @@ const DLQPage = () => {
             onClick={() => openRetryModal(record)}
             disabled={record.statsAvailable === false || record.messageCount === 0}
           >
-            重投消息
+            {t('dlq.resendMessages')}
           </Button>
           <Button
             size="small"
@@ -493,7 +493,7 @@ const DLQPage = () => {
             onClick={() => handleExport(record)}
             disabled={record.statsAvailable === false || record.messageCount === 0}
           >
-            导出
+            {t('dlq.export')}
           </Button>
         </Flex>
       ),
@@ -529,7 +529,7 @@ const DLQPage = () => {
       render: (offset: number) => <Text style={{ fontFamily: 'monospace' }}>{offset}</Text>,
     },
     {
-      title: '入队时间',
+      title: t('dlq.enqueueTime'),
       dataIndex: 'storeTime',
       key: 'storeTime',
       width: 160,
@@ -558,7 +558,7 @@ const DLQPage = () => {
       ),
     },
     {
-      title: '操作',
+      title: t('dlq.action'),
       key: 'actions',
       width: 100,
       render: (_: unknown, record: DLQMessage) => (
@@ -568,7 +568,7 @@ const DLQPage = () => {
           loading={detailResending}
           onClick={() => void resendSelectedMessages([record.msgId])}
         >
-          重发
+          {t('dlq.resend')}
         </Button>
       ),
     },
@@ -579,7 +579,7 @@ const DLQPage = () => {
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('dlq.title')} subtitle="管理消费失败进入死信队列的消息" />
+      <PageHeader title={t('dlq.title')} subtitle={t('dlq.subtitle')} />
 
       {/* ── Filter Bar ── */}
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
@@ -591,7 +591,7 @@ const DLQPage = () => {
             style={{ width: 220 }}
           />
           <Input.Search
-            placeholder="搜索 Group 名称或 DLQ Topic"
+            placeholder={t('dlq.searchPlaceholder')}
             allowClear
             value={search}
             onChange={(e) => {
