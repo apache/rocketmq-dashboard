@@ -138,6 +138,9 @@ public class SettingsService {
             settings.setDingtalkSigningSecret(currentSettings.getDingtalkSigningSecret());
         }
         if (currentSettings != null) {
+            if (!StringUtils.hasText(settings.getLlmEngine())) {
+                settings.setLlmEngine(currentSettings.getLlmEngine());
+            }
             if (!StringUtils.hasText(settings.getDeploymentName())) {
                 settings.setDeploymentName(currentSettings.getDeploymentName());
             }
@@ -146,6 +149,12 @@ public class SettingsService {
             }
             if (!StringUtils.hasText(settings.getAwsRegion())) {
                 settings.setAwsRegion(currentSettings.getAwsRegion());
+            }
+            if (settings.getMaxTokens() == null) {
+                settings.setMaxTokens(currentSettings.getMaxTokens());
+            }
+            if (settings.getTemperature() == null) {
+                settings.setTemperature(currentSettings.getTemperature());
             }
         }
         settings.setClearApiKey(false);

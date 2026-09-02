@@ -193,8 +193,10 @@ CREATE TABLE IF NOT EXISTS rmq_settings (
   `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  settings_key VARCHAR(32) NOT NULL DEFAULT 'general' COMMENT '设置单例业务键',
   json TEXT NOT NULL COMMENT 'GeneralSettingsVO JSON',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_settings_key (settings_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 10. 数据源配置
