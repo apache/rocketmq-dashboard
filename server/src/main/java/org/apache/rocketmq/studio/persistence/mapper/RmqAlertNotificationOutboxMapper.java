@@ -45,6 +45,11 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             @Param("staleBefore") LocalDateTime staleBefore, @Param("claimedAt") LocalDateTime claimedAt,
             @Param("claimToken") String claimToken);
 
+    @Update("UPDATE rmq_alert_notification_outbox SET sending_started_at = #{renewedAt} "
+            + "WHERE id = #{id} AND status = 'SENDING' AND claim_token = #{claimToken}")
+    int renewClaim(@Param("id") Long id, @Param("claimToken") String claimToken,
+            @Param("renewedAt") LocalDateTime renewedAt);
+
     @Select("<script>"
             + "SELECT o.id, o.alert_id AS alertId, o.channel, o.status, o.attempt_count AS attemptCount, "
             + "o.next_attempt_at AS nextAttemptAt, o.last_error AS lastError, o.delivered_at AS deliveredAt, "

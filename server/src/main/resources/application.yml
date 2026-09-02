@@ -92,6 +92,9 @@ studio:
     notification-cleanup-interval: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_INTERVAL:PT1H}
     notification-cleanup-batch-size: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_BATCH_SIZE:500}
     notification-cleanup-max-batches: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_MAX_BATCHES:10}
+    notification-claim-timeout: ${STUDIO_ALERTING_NOTIFICATION_CLAIM_TIMEOUT:PT1M}
+    notification-claim-renewal-interval: ${STUDIO_ALERTING_NOTIFICATION_CLAIM_RENEWAL_INTERVAL:PT20S}
+    notification-heartbeat-threads: ${STUDIO_ALERTING_NOTIFICATION_HEARTBEAT_THREADS:2}
   llm:
     token: ${RMQ_LLM_TOKEN:}
     anthropic-base-url: ${RMQ_ANTHROPIC_BASE_URL:}
