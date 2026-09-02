@@ -241,7 +241,7 @@ const DLQPage = () => {
 
   const handleRetry = async () => {
     if (!retryTargetTopic) {
-      message.warning('请输入目标 Topic');
+      message.warning(t('dlq.inputTargetTopic'));
       return;
     }
     if (!retryGroup || !selectedInstanceId) return;
@@ -267,9 +267,9 @@ const DLQPage = () => {
           `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
         );
       } else if (result.failed > 0) {
-        message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+        message.warning(t('dlq.resendPartial', { resent: result.resent, failed: result.failed }));
       } else {
-        message.success(`重投完成：${groupName} → ${targetTopic}（${result.resent} 条）`);
+        message.success(t('dlq.resendDone', { group: groupName, topic: targetTopic, count: result.resent }));
       }
       setRetryModalOpen(false);
       setRetryGroup(null);
@@ -299,10 +299,10 @@ const DLQPage = () => {
           `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
         );
       } else {
-        message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
+        message.success(t('dlq.exportDone', { name: group.groupName, bytes: blob.size }));
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+      message.error(getErrorMessage(error, t('dlq.exportFailed')));
     }
   };
 
@@ -362,11 +362,11 @@ const DLQPage = () => {
         msgIds,
       });
       if (result.outcome === 'FAILED' && result.failed > 0) {
-        message.error(`重发失败：成功 ${result.resent}，失败 ${result.failed}`);
+        message.error(t('dlq.redeliverFailed', { resent: result.resent, failed: result.failed }));
       } else if (result.resent > 0 && result.failed > 0) {
-        message.warning(`重发部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+        message.warning(t('dlq.redeliverPartial', { resent: result.resent, failed: result.failed }));
       } else {
-        message.success(`重发完成：成功 ${result.resent} 条`);
+        message.success(t('dlq.redeliverDone', { resent: result.resent }));
       }
       setDetailSelectedMsgIds([]);
       await loadDetailMessages(detailGroup, detailPage, detailPageSize);
@@ -398,7 +398,7 @@ const DLQPage = () => {
         );
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+      message.error(getErrorMessage(error, t('dlq.exportFailed')));
     }
   };
 

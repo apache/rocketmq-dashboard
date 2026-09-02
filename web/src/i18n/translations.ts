@@ -1815,6 +1815,14 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'dlq.message': { zh: '死信消息', en: 'DLQ Message' },
   'dlq.consumerGroup': { zh: '消费者组', en: 'Consumer Group' },
+  'dlq.exportDone': { zh: '已导出 {name} 的死信消息（{bytes} 字节）', en: 'Exported DLQ messages for {name} ({bytes} bytes)' },
+  'dlq.exportFailed': { zh: '导出死信消息失败，请稍后重试', en: 'Failed to export DLQ messages, please retry later' },
+  'dlq.inputTargetTopic': { zh: '请输入目标 Topic', en: 'Enter the target topic first' },
+  'dlq.redeliverDone': { zh: '重发完成：成功 {resent} 条', en: 'Redelivery complete: {resent} resent' },
+  'dlq.redeliverFailed': { zh: '重发失败：成功 {resent}，失败 {failed}', en: 'Redelivery failed: {resent} resent, {failed} failed' },
+  'dlq.redeliverPartial': { zh: '重发部分完成：成功 {resent}，失败 {failed}', en: 'Redelivery partially complete: {resent} resent, {failed} failed' },
+  'dlq.resendDone': { zh: '重投完成：{group} → {topic}（{count} 条）', en: 'Resend complete: {group} → {topic} ({count} messages)' },
+  'dlq.resendPartial': { zh: '重投部分完成：成功 {resent}，失败 {failed}', en: 'Resend partially complete: {resent} succeeded, {failed} failed' },
 
   // ─── Message Trace ───
   'trace.title': { zh: '消息轨迹', en: 'Message Trace' },
