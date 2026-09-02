@@ -25,7 +25,10 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -137,7 +140,7 @@ public class MqClientPool {
     }
 
     private DefaultMQPullConsumer createPullConsumer(String namesrvAddr, RPCHook rpcHook) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(PULL_CONSUMER_GROUP, rpcHook);
+        DefaultMQPullConsumer consumer = newPullConsumer(rpcHook);
         consumer.setNamesrvAddr(namesrvAddr);
         consumer.setInstanceName(buildInstanceName(namesrvAddr));
         try {
@@ -152,7 +155,7 @@ public class MqClientPool {
     }
 
     private DefaultMQProducer createProducer(String namesrvAddr, RPCHook rpcHook) {
-        DefaultMQProducer producer = new DefaultMQProducer(PRODUCER_GROUP, rpcHook);
+        DefaultMQProducer producer = newProducer(rpcHook);
         producer.setNamesrvAddr(namesrvAddr);
         producer.setInstanceName(buildInstanceName(namesrvAddr));
         producer.setSendMsgTimeout((int) PRODUCER_SEND_TIMEOUT_MILLIS);
@@ -174,6 +177,16 @@ public class MqClientPool {
     private String buildInstanceName(String namesrvAddr) {
         return "rmq-studio-pool-" + Integer.toHexString(namesrvAddr.hashCode())
                 + "-" + instanceCounter.incrementAndGet();
+    }
+
+    /** Creates a new (not-yet-started) pull consumer; extractable so tests can inject a stub. */
+    protected DefaultMQPullConsumer newPullConsumer(RPCHook rpcHook) {
+        return new DefaultMQPullConsumer(PULL_CONSUMER_GROUP, rpcHook);
+    }
+
+    /** Creates a new (not-yet-started) producer; extractable so tests can inject a stub. */
+    protected DefaultMQProducer newProducer(RPCHook rpcHook) {
+        return new DefaultMQProducer(PRODUCER_GROUP, rpcHook);
     }
 
     private static String normalize(String namesrvAddr) {
@@ -202,7 +215,10 @@ public class MqClientPool {
 
     private String rootMessage(Throwable ex) {
         Throwable cause = ex;
-        while (cause.getCause() != null && cause.getCause() != cause) {
+        // An identity set bounds the walk: a direct self-cycle is the only case the old
+        // cause.getCause() != cause check caught, a two-exception cycle still loops forever.
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (seen.add(cause) && cause.getCause() != null) {
             cause = cause.getCause();
         }
         String message = cause.getMessage();

@@ -27,12 +27,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
@@ -164,6 +166,26 @@ class ClusterServiceRegistryTest {
             assertThat(runner.poolSize()).isLessThanOrEqualTo(1);
         } finally {
             block.countDown();
+        }
+    }
+
+    @Test
+    void probeAllShouldSurviveCyclicCauseChainWithoutHangingTest() {
+        // first <-> second form a two-exception cause cycle: walking getCause() from either
+        // one loops forever unless the traversal is bounded.
+        RuntimeException first = new RuntimeException("first");
+        RuntimeException second = new RuntimeException("second", first);
+        first.initCause(second);
+
+        try (RegistryProbeRunner runner = new RegistryProbeRunner(2, 8, 500)) {
+            List<ClusterVO> result = assertTimeoutPreemptively(Duration.ofSeconds(10),
+                    () -> runner.probeAll(List.of(NameserverRegistryVO.builder()
+                                    .id(1L).name("ns-1").namesrvAddr("ns-1:9876").build()),
+                            entry -> {
+                                throw second;
+                            }));
+
+            assertThat(result).isEmpty();
         }
     }
 }
