@@ -610,7 +610,7 @@ const MessagePageContent = ({
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => void openDetail(record, 'content')}
           >
-            详情
+            {t('message.detail')}
           </Button>
           <Button
             size="small"
@@ -618,7 +618,7 @@ const MessagePageContent = ({
             style={{ borderColor: '#722ed1', color: '#722ed1' }}
             onClick={() => void openDetail(record, 'trace')}
           >
-            轨迹
+            {t('message.trace')}
           </Button>
           <Button
             size="small"
@@ -626,7 +626,7 @@ const MessagePageContent = ({
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
             onClick={handleVerifyConsume}
           >
-            验证
+            {t('message.verify')}
           </Button>
           <Button
             size="small"
@@ -634,7 +634,7 @@ const MessagePageContent = ({
             style={{ borderColor: '#fa8c16', color: '#fa8c16' }}
             onClick={() => handleDownload(record)}
           >
-            下载
+            {t('message.download')}
           </Button>
         </Flex>
       ),
@@ -648,13 +648,13 @@ const MessagePageContent = ({
     retryCount: number;
   }> = [
     {
-      title: '消费者组',
+      title: t('message.consumerGroup'),
       dataIndex: 'group',
       key: 'group',
       render: (g: string) => <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{g}</span>,
     },
     {
-      title: '投递状态',
+      title: t('message.deliveryStatus'),
       dataIndex: 'deliveryStatus',
       key: 'deliveryStatus',
       render: (status: string) => {
@@ -666,7 +666,7 @@ const MessagePageContent = ({
       },
     },
     {
-      title: '消费时间',
+      title: t('message.consumeTime'),
       dataIndex: 'consumeTime',
       key: 'consumeTime',
       render: (time: string) =>
@@ -677,7 +677,7 @@ const MessagePageContent = ({
         ),
     },
     {
-      title: '重试次数',
+      title: t('message.retryCount'),
       dataIndex: 'retryCount',
       key: 'retryCount',
       align: 'center',
@@ -691,7 +691,7 @@ const MessagePageContent = ({
   const modalTabs = [
     {
       key: 'content',
-      label: '消息内容',
+      label: t('message.messageContent'),
       children: selectedMsg && (
         <>
           <Descriptions column={2} size="small" style={{ marginBottom: 24 }}>
@@ -711,19 +711,19 @@ const MessagePageContent = ({
             <Descriptions.Item label="Key">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
-            <Descriptions.Item label="大小">{formatSize(selectedMsg.size)}</Descriptions.Item>
+            <Descriptions.Item label={t('message.size')}>{formatSize(selectedMsg.size)}</Descriptions.Item>
             <Descriptions.Item label="Born Host">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.bornHost}</span>
             </Descriptions.Item>
             <Descriptions.Item label="Store Host">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.storeHost}</span>
             </Descriptions.Item>
-            <Descriptions.Item label="存储时间" span={2}>
+            <Descriptions.Item label={t('message.storeTime')} span={2}>
               <span style={{ fontFamily: 'monospace' }}>{formatTimeMs(selectedMsg.storeTime)}</span>
             </Descriptions.Item>
           </Descriptions>
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
-            消息体
+            {t('message.messageBody')}
           </Typography.Title>
           <Paragraph
             copyable
