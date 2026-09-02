@@ -102,7 +102,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 if (routeData == null || routeData.getQueueDatas() == null || routeData.getQueueDatas().isEmpty()) {
                     throw new BusinessException(404, "Topic not found: " + name);
                 }
-                var qd = routeData.getQueueDatas().get(0);
+                var qd = routeData.getQueueDatas().stream()
+                        .filter(queueData -> queueData != null)
+                        .findFirst()
+                        .orElseThrow(() -> new BusinessException(404, "Topic not found: " + name));
                 TopicVO vo = new TopicVO();
                 vo.setName(name);
                 vo.setWriteQueues(qd.getWriteQueueNums());
