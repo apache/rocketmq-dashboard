@@ -186,6 +186,24 @@ describe('AlertRuleAssetList', () => {
     });
   });
 
+  it('deduplicates an asset export before loading state renders', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    let resolveExport!: (value: Blob) => void;
+    vi.mocked(alertRuleAssetService.exportAlertRuleAsset).mockImplementation(
+      () => new Promise((resolve) => (resolveExport = resolve)),
+    );
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const exportButtons = await screen.findAllByRole('button', { name: /导出|Export/ });
+    act(() => {
+      exportButtons[0].click();
+      exportButtons[0].click();
+    });
+
+    expect(alertRuleAssetService.exportAlertRuleAsset).toHaveBeenCalledTimes(1);
+    await act(async () => resolveExport(new Blob(['rules'])));
+  });
+
   it('downloads the yaml when Export is clicked', async () => {
     const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:url');
     const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});

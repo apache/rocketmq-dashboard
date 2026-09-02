@@ -45,6 +45,8 @@ export const GrafanaDashboardList: React.FC = () => {
   const mountedRef = useRef(true);
   const listRequestId = useRef(0);
   const viewRequestId = useRef(0);
+  const exportingUidsRef = useRef<Set<string>>(new Set());
+  const exportingAllRef = useRef(false);
   const [exportingUids, setExportingUids] = useState<Set<string>>(() => new Set());
   const [exportingAll, setExportingAll] = useState(false);
 
@@ -131,7 +133,9 @@ export const GrafanaDashboardList: React.FC = () => {
   };
 
   const handleExport = async (info: GrafanaDashboardInfo) => {
-    setExportingUids((current) => new Set(current).add(info.uid));
+    if (exportingUidsRef.current.has(info.uid)) return;
+    exportingUidsRef.current.add(info.uid);
+    setExportingUids(new Set(exportingUidsRef.current));
     try {
       const blob = await exportGrafanaDashboard(info.uid);
       downloadBlob(blob, `${info.uid}.json`);
@@ -139,15 +143,14 @@ export const GrafanaDashboardList: React.FC = () => {
     } catch {
       message.error(t('grafana.exportFailed'));
     } finally {
-      setExportingUids((current) => {
-        const next = new Set(current);
-        next.delete(info.uid);
-        return next;
-      });
+      exportingUidsRef.current.delete(info.uid);
+      if (mountedRef.current) setExportingUids(new Set(exportingUidsRef.current));
     }
   };
 
   const handleExportAll = async () => {
+    if (exportingAllRef.current) return;
+    exportingAllRef.current = true;
     setExportingAll(true);
     try {
       const download = await exportGrafanaDashboards();
@@ -156,7 +159,8 @@ export const GrafanaDashboardList: React.FC = () => {
     } catch {
       message.error(t('grafana.exportAllFailed'));
     } finally {
-      setExportingAll(false);
+      exportingAllRef.current = false;
+      if (mountedRef.current) setExportingAll(false);
     }
   };
 
