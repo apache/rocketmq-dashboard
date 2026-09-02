@@ -1564,6 +1564,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.batchDeleteContent': { zh: '确定要删除选中的 {count} 个 Group 吗？', en: 'Delete the {count} selected consumer groups?' },
+  'consumer.confirmBatchDelete': { zh: '确认批量删除', en: 'Confirm Batch Delete' },
+  'consumer.deleteOp': { zh: '删除', en: 'Delete' },
+  'consumer.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
+  'consumer.manageSubtitle': { zh: '管理消费者组订阅关系与消费进度，共 {count} 个 Group', en: 'Manage consumer group subscriptions and consumption progress — {count} groups' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
