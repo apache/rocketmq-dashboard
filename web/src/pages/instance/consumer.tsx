@@ -936,7 +936,7 @@ const ConsumerPageContent = ({
                 content: '删除后该消费组的所有配置和消费进度将被清除，此操作不可恢复。',
                 okText: '删除',
                 okButtonProps: { danger: true },
-                cancelText: '取消',
+                cancelText: t('common.cancel'),
                 onOk: async () => {
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
                   setGroups((prev) => prev.filter((group) => group.name !== record.name));
@@ -1333,7 +1333,7 @@ const ConsumerPageContent = ({
                   content: `确定要删除选中的 ${selectedRowKeys.length} 个 Group 吗？`,
                   okText: '删除',
                   okButtonProps: { danger: true },
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
                     const { deleted, failed } = await batchDeleteConsumerGroups(
@@ -1945,7 +1945,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <Plus size={18} weight="bold" color="#1677ff" />
-            <span>创建 Group</span>
+            <span>{t('consumer.createGroup')}</span>
           </Space>
         }
         open={createModalOpen}
@@ -1963,10 +1963,10 @@ const ConsumerPageContent = ({
                 return;
               }
               Modal.confirm({
-                title: '确认创建',
-                content: `将创建消费组 "${values.name}"`,
-                okText: '确认创建',
-                cancelText: '取消',
+                title: t('consumer.confirmCreate'),
+                content: t('consumer.createGroupContent', { name: values.name }),
+                okText: t('consumer.confirmCreate'),
+                cancelText: t('common.cancel'),
                 onOk: async () => {
                   setSubmitting(true);
                   try {
@@ -2000,8 +2000,8 @@ const ConsumerPageContent = ({
             .catch(() => {});
         }}
         confirmLoading={submitting}
-        okText="创建"
-        cancelText="取消"
+        okText={t('consumer.createBtn')}
+        cancelText={t('common.cancel')}
         width={560}
         destroyOnHidden
       >
@@ -2016,25 +2016,25 @@ const ConsumerPageContent = ({
           }}
         >
           <Form.Item
-            label="Group 名称"
+            label={t('consumer.name')}
             name="name"
             rules={[
-              { required: true, message: '请输入 Group 名称' },
+              { required: true, message: t('consumer.groupNameRequired') },
               {
                 pattern: RESOURCE_NAME_PATTERN,
-                message: '仅支持字母、数字、下划线、短横线、% 和 |',
+                message: t('consumer.namePatternMsg'),
               },
               {
                 max: RESOURCE_NAME_MAX_LENGTH.group,
-                message: `名称不能超过 ${RESOURCE_NAME_MAX_LENGTH.group} 个字符`,
+                message: t('consumer.nameTooLong', { max: RESOURCE_NAME_MAX_LENGTH.group }),
               },
             ]}
           >
-            <Input placeholder="例：cg-order-notify" />
+            <Input placeholder={t('consumer.groupNameExample')} />
           </Form.Item>
 
           {!isCloudInstance && (
-            <Form.Item label="订阅模式" name="subscriptionMode">
+            <Form.Item label={t('consumer.subMode')} name="subscriptionMode">
               <Radio.Group>
                 <Radio.Button value="Push">Push</Radio.Button>
                 <Radio.Button value="Pop">Pop</Radio.Button>
@@ -2043,42 +2043,42 @@ const ConsumerPageContent = ({
           )}
 
           {!isCloudInstance && (
-            <Form.Item label="消费类型" name="consumeType">
+            <Form.Item label={t('consumer.consumeType')} name="consumeType">
               <Radio.Group>
-                <Radio.Button value="CLUSTERING">集群消费</Radio.Button>
-                <Radio.Button value="BROADCASTING">广播消费</Radio.Button>
+                <Radio.Button value="CLUSTERING">{t('consumer.clustering')}</Radio.Button>
+                <Radio.Button value="BROADCASTING">{t('consumer.broadcasting')}</Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}
 
-          <Form.Item label="最大重试次数" name="retryMaxTimes">
+          <Form.Item label={t('consumer.maxRetry')} name="retryMaxTimes">
             <InputNumber min={0} max={128} style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="订阅组类型" name="dataType">
+          <Form.Item label={t('consumer.subGroupType')} name="dataType">
             <Select
-              placeholder="选择消息类型"
+              placeholder={t('consumer.selectMsgType')}
               options={[
-                { value: 'NORMAL', label: '普通消息' },
-                { value: 'FIFO', label: '顺序消息' },
-                { value: 'DELAY', label: '延迟消息' },
-                { value: 'TRANSACTION', label: '事务消息' },
+                { value: 'NORMAL', label: t('consumer.msgTypeNormal') },
+                { value: 'FIFO', label: t('consumer.msgTypeFifo') },
+                { value: 'DELAY', label: t('consumer.msgTypeDelay') },
+                { value: 'TRANSACTION', label: t('consumer.msgTypeTransaction') },
               ]}
               onChange={(val) => setDataTypeValue(val)}
             />
           </Form.Item>
 
           {dataTypeValue === 'FIFO' && (
-            <Form.Item label="顺序类型" name="deliveryOrderType" initialValue="PARTITON_ORDER">
+            <Form.Item label={t('consumer.orderType')} name="deliveryOrderType" initialValue="PARTITON_ORDER">
               <Select
                 options={[
                   {
                     value: 'PARTITON_ORDER',
-                    label: '分区顺序',
+                    label: t('consumer.partitionOrder'),
                   },
                   {
                     value: 'MESSAGES_ORDER',
-                    label: '全局顺序',
+                    label: t('consumer.globalOrder'),
                   },
                 ]}
               />
@@ -2170,7 +2170,7 @@ const ConsumerPageContent = ({
             Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
         }}
         okText="确认重置"
-        cancelText="取消"
+        cancelText={t('common.cancel')}
         width={1200}
         destroyOnHidden
       >
