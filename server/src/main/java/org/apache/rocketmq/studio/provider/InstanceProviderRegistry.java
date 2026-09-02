@@ -55,7 +55,8 @@ public class InstanceProviderRegistry {
     }
 
     public InstanceProvider forVendor(InstanceVendor vendor) {
-        InstanceProvider provider = providers.get(vendor);
+        // EnumMap.get(null) NPEs; report an absent vendor with the same 501 as an unknown one.
+        InstanceProvider provider = vendor == null ? null : providers.get(vendor);
         if (provider == null) {
             throw new BusinessException(501, "No instance provider registered for vendor " + vendor);
         }
@@ -77,7 +78,8 @@ public class InstanceProviderRegistry {
     }
 
     public CloudCatalogProvider catalogFor(InstanceVendor vendor) {
-        CloudCatalogProvider catalog = catalogs.get(vendor);
+        // EnumMap.get(null) NPEs; report an absent vendor with the same 501 as an unknown one.
+        CloudCatalogProvider catalog = vendor == null ? null : catalogs.get(vendor);
         if (catalog == null) {
             throw new BusinessException(501, "No cloud catalog provider registered for vendor " + vendor);
         }
