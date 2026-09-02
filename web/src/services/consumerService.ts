@@ -81,6 +81,9 @@ const normalizeConsumerGroup = <T extends ConsumerGroup>(group: T): T => ({
 
 function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
   let result = [...consumerGroupsState];
+  if (params?.instanceId) {
+    result = result.filter((group) => group.instanceId === params.instanceId);
+  }
   if (params?.clusterId) result = result.filter((group) => group.clusterId === params.clusterId);
   if (params?.search) {
     const kw = params.search.trim().toLowerCase();
@@ -164,7 +167,9 @@ export async function getConsumerGroup(
   instanceId?: string,
 ): Promise<ConsumerGroupDetail> {
   if (isMockMode()) {
-    const group = mockConsumerGroups.find((item) => item.name === name);
+    const group = mockConsumerGroups.find(
+      (item) => item.name === name && (!instanceId || item.instanceId === instanceId),
+    );
     if (!group) throw new Error(`Consumer group not found: ${name}`);
     return copyConsumerGroup(group as unknown as ConsumerGroupDetail) as ConsumerGroupDetail;
   }
@@ -196,7 +201,9 @@ export async function refreshConsumerGroup(
   instanceId?: string,
 ): Promise<ConsumerGroup | null> {
   if (isMockMode()) {
-    const group = mockConsumerGroups.find((item) => item.name === name);
+    const group = mockConsumerGroups.find(
+      (item) => item.name === name && (!instanceId || item.instanceId === instanceId),
+    );
     return group ? copyConsumerGroup(group) : null;
   }
   const data = await metadataApi.refreshConsumerGroup(name, instanceId);
@@ -234,9 +241,16 @@ export async function getConsumerStack(
 
 export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise<ConsumerGroup> {
   if (isMockMode()) {
+    const instanceId = data.instanceId ?? '';
+    const duplicate = consumerGroupsState.some(
+      (group) => group.name === data.name && group.instanceId === instanceId,
+    );
+    if (duplicate) throw new Error(`Consumer group already exists: ${data.name}`);
+
     const now = new Date().toISOString();
     const group = {
       name: data.name ?? '',
+      instanceId,
       namespace: data.namespace ?? 'default',
       clusterId: data.clusterId ?? '',
       subscriptionMode: data.subscriptionMode ?? 'Push',
@@ -294,7 +308,9 @@ export async function exportConsumerGroups(params: ConsumerGroupExportQuery = {}
 
 export async function deleteConsumerGroup(name: string, instanceId?: string): Promise<void> {
   if (isMockMode()) {
-    const idx = consumerGroupsState.findIndex((group) => group.name === name);
+    const idx = consumerGroupsState.findIndex(
+      (group) => group.name === name && (!instanceId || group.instanceId === instanceId),
+    );
     if (idx >= 0) consumerGroupsState.splice(idx, 1);
     return;
   }
