@@ -20,13 +20,20 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
-import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
+import {
+  listK8sCerts,
+  createK8sCert,
+  deleteK8sCert,
+  renewK8sCert,
+} from '../../../services/clusterService';
+import { LangProvider } from '../../../i18n/LangContext';
 import K8sCertsPage from '../certs';
 
 vi.mock('../../../services/clusterService', () => ({
   listK8sCerts: vi.fn(),
   createK8sCert: vi.fn(),
   deleteK8sCert: vi.fn(),
+  renewK8sCert: vi.fn(),
 }));
 
 const certs: K8sCertInfo[] = [
@@ -93,9 +100,11 @@ describe('K8sCertsPage', () => {
 
   const renderPage = () =>
     render(
-      <App>
-        <K8sCertsPage />
-      </App>,
+      <LangProvider>
+        <App>
+          <K8sCertsPage />
+        </App>
+      </LangProvider>,
     );
 
   it('displays certificate metadata without SAN or namespace columns', async () => {
@@ -164,7 +173,8 @@ describe('K8sCertsPage', () => {
       screen.getByPlaceholderText('例如：kubernetes（120.26.99.191:6443）'),
       'kubernetes',
     );
-    await user.click(screen.getByRole('button', { name: /添\s*加/ }));
+    const createButtons = screen.getAllByRole('button', { name: /新\s*增/ });
+    await user.click(createButtons[createButtons.length - 1]);
 
     await waitFor(() =>
       expect(createK8sCert).toHaveBeenCalledWith(
@@ -191,5 +201,35 @@ describe('K8sCertsPage', () => {
 
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
+  });
+
+  it('renews a certificate with replacement PEM material without echoing secrets', async () => {
+    vi.mocked(renewK8sCert).mockResolvedValue({
+      ...certs[0],
+      issuer: 'O=RocketMQ Studio,CN=renewed.example.com',
+      daysRemaining: 730,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    await user.click(screen.getAllByRole('button', { name: /续\s*期/ })[0]);
+
+    expect(screen.getByText('续期证书 — rocketmq-prod-tls')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue(/PRIVATE KEY/)).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('新证书内容（PEM）'), '-----BEGIN CERTIFICATE-----...');
+    await user.type(screen.getByLabelText('新私钥内容（PEM）'), '-----BEGIN PRIVATE KEY-----...');
+    const renewButtons = screen.getAllByRole('button', { name: /续\s*期/ });
+    await user.click(renewButtons[renewButtons.length - 1]);
+
+    await waitFor(() =>
+      expect(renewK8sCert).toHaveBeenCalledWith({
+        id: 1,
+        certPem: '-----BEGIN CERTIFICATE-----...',
+        keyPem: '-----BEGIN PRIVATE KEY-----...',
+      }),
+    );
+    expect(await screen.findByText('O=RocketMQ Studio,CN=renewed.example.com')).toBeInTheDocument();
   });
 });

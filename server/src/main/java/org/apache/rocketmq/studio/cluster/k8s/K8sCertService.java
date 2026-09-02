@@ -25,12 +25,19 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -43,6 +50,16 @@ import java.util.stream.Collectors;
 public class K8sCertService {
 
     private static final int EXPIRING_THRESHOLD_DAYS = 30;
+    private static final byte[] KEY_MATCH_CHALLENGE = "rocketmq-studio-k8s-cert".getBytes();
+    private static final byte[] DER_INTEGER_ZERO = new byte[] {0x02, 0x01, 0x00};
+    private static final byte[] RSA_ALGORITHM_IDENTIFIER = new byte[] {
+        0x30, 0x0d,
+        0x06, 0x09, 0x2a, (byte) 0x86, 0x48, (byte) 0x86, (byte) 0xf7, 0x0d, 0x01, 0x01, 0x01,
+        0x05, 0x00
+    };
+    private static final byte[] EC_PUBLIC_KEY_OID = new byte[] {
+        0x06, 0x07, 0x2a, (byte) 0x86, 0x48, (byte) 0xce, 0x3d, 0x02, 0x01
+    };
 
     private final K8sCertRepository k8sCertRepository;
     private final OperationAuditService operationAuditService;
@@ -80,12 +97,16 @@ public class K8sCertService {
         LocalDateTime notAfter = now.plusYears(1);
         String issuer = command.getIssuer();
         List<String> san = command.getSan();
-        if (command.getCertPem() != null && !command.getCertPem().isBlank()) {
-            X509Certificate parsed = parseCertificate(command.getCertPem());
-            notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneId.systemDefault());
-            notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneId.systemDefault());
-            issuer = parsed.getIssuerX500Principal().getName();
-            san = extractSubjectAlternativeNames(parsed);
+        String certPem = normalizeOptionalPem(command.getCertPem());
+        String keyPem = normalizeOptionalPem(command.getKeyPem());
+        ParsedCertificate parsed = null;
+        if (certPem != null) {
+            parsed = parseCertificate(certPem, now);
+            notBefore = parsed.notBefore();
+            notAfter = parsed.notAfter();
+            issuer = parsed.issuer();
+            san = parsed.san();
+            validateMtlsKeyIfNeeded(type, parsed.certificate(), keyPem, true);
         }
 
         K8sCertVO cert = K8sCertVO.builder()
@@ -97,8 +118,8 @@ public class K8sCertService {
                 .notAfter(notAfter)
                 .status(CertStatus.valid)
                 .san(san)
-                .certPem(command.getCertPem())
-                .keyPem(command.getKeyPem())
+                .certPem(certPem)
+                .keyPem(keyPem)
                 .build();
         cert.setGmtCreate(now);
         cert.setGmtModified(now);
@@ -136,6 +157,21 @@ public class K8sCertService {
             updated.setSan(command.getSan());
         }
         LocalDateTime now = LocalDateTime.now(clock);
+        String certPem = normalizeOptionalPem(command.getCertPem());
+        String keyPem = normalizeOptionalPem(command.getKeyPem());
+        ParsedCertificate parsed = null;
+        if (certPem != null) {
+            parsed = parseCertificate(certPem, now);
+            applyParsedCertificate(updated, parsed, certPem);
+        }
+        if (keyPem != null) {
+            updated.setKeyPem(keyPem);
+        }
+        if (updated.getType() == CertType.mTLS && (parsed != null || keyPem != null)) {
+            X509Certificate certificate = parsed == null ? parseCertificate(updated.getCertPem(), now).certificate()
+                    : parsed.certificate();
+            validateMtlsKeyIfNeeded(updated.getType(), certificate, updated.getKeyPem(), true);
+        }
         updated.setGmtModified(now);
 
         K8sCertVO saved = k8sCertRepository.save(refreshExpirationState(updated, now));
@@ -151,18 +187,24 @@ public class K8sCertService {
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
 
         LocalDateTime now = LocalDateTime.now(clock);
-        LocalDateTime notAfter = now.plusYears(1);
+        String certPem = requirePem(command.getCertPem(), "certPem");
+        String keyPem = normalizeOptionalPem(command.getKeyPem());
+        ParsedCertificate parsed = parseCertificate(certPem, now);
+        if (existing.getType() == CertType.mTLS) {
+            validateMtlsKeyIfNeeded(existing.getType(), parsed.certificate(), keyPem, true);
+        }
 
         K8sCertVO renewed = copyOf(existing);
-        renewed.setNotBefore(now);
-        renewed.setNotAfter(notAfter);
-        renewed.setStatus(CertStatus.valid);
-        renewed.setDaysRemaining((int) ChronoUnit.DAYS.between(now, notAfter));
+        applyParsedCertificate(renewed, parsed, certPem);
+        if (keyPem != null) {
+            renewed.setKeyPem(keyPem);
+        }
         renewed.setGmtModified(now);
 
-        K8sCertVO saved = k8sCertRepository.save(renewed);
+        K8sCertVO saved = k8sCertRepository.save(refreshExpirationState(renewed, now));
         auditCertificate("RENEW_K8S_CERTIFICATE", saved);
-        log.info("K8s certificate renewed: {} (id={}), new expiry: {}", saved.getK8sId(), saved.getId(), notAfter);
+        log.info("K8s certificate renewed: {} (id={}), new expiry: {}", saved.getK8sId(), saved.getId(),
+                saved.getNotAfter());
         return saved;
     }
 
@@ -201,6 +243,22 @@ public class K8sCertService {
         String normalized = value.trim();
         if (normalized.isEmpty()) {
             throw new BusinessException(400, "Certificate " + field + " cannot be blank");
+        }
+        return normalized;
+    }
+
+    private String normalizeOptionalPem(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String requirePem(String value, String field) {
+        String normalized = normalizeOptionalPem(value);
+        if (normalized == null) {
+            throw new BusinessException(400, field + " is required");
         }
         return normalized;
     }
@@ -249,17 +307,229 @@ public class K8sCertService {
                 "k8sId=" + certificate.getK8sId() + ", cluster=" + certificate.getCluster());
     }
 
-    private X509Certificate parseCertificate(String certPem) {
-        String base64 = certPem
-                .replace("-----BEGIN CERTIFICATE-----", "")
-                .replace("-----END CERTIFICATE-----", "")
-                .replaceAll("\\s", "");
+    private ParsedCertificate parseCertificate(String certPem, LocalDateTime now) {
         try {
             CertificateFactory factory = CertificateFactory.getInstance("X.509");
-            return (X509Certificate) factory.generateCertificate(
-                    new ByteArrayInputStream(Base64.getDecoder().decode(base64)));
+            Collection<? extends Certificate> certificates = factory.generateCertificates(
+                    new ByteArrayInputStream(certPem.getBytes(StandardCharsets.US_ASCII)));
+            X509Certificate certificate = certificates.stream()
+                    .filter(X509Certificate.class::isInstance)
+                    .map(X509Certificate.class::cast)
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException(400,
+                            "Invalid certificate content, expected a PEM encoded X.509 certificate"));
+            LocalDateTime notBefore = LocalDateTime.ofInstant(certificate.getNotBefore().toInstant(),
+                    clock.getZone());
+            LocalDateTime notAfter = LocalDateTime.ofInstant(certificate.getNotAfter().toInstant(),
+                    clock.getZone());
+            if (!notAfter.isAfter(now)) {
+                throw new BusinessException(400, "Certificate is expired");
+            }
+            return new ParsedCertificate(certificate, certificate.getIssuerX500Principal().getName(), notBefore,
+                    notAfter, extractSubjectAlternativeNames(certificate));
+        } catch (BusinessException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new BusinessException(400, "Invalid certificate content, expected a PEM encoded X.509 certificate");
+        }
+    }
+
+    private void applyParsedCertificate(K8sCertVO target, ParsedCertificate parsed, String certPem) {
+        target.setCertPem(certPem);
+        target.setIssuer(parsed.issuer());
+        target.setNotBefore(parsed.notBefore());
+        target.setNotAfter(parsed.notAfter());
+        target.setSan(parsed.san());
+    }
+
+    private void validateMtlsKeyIfNeeded(CertType type, X509Certificate certificate, String keyPem,
+                                         boolean requireKey) {
+        if (type != CertType.mTLS) {
+            return;
+        }
+        if (keyPem == null || keyPem.isBlank()) {
+            if (requireKey) {
+                throw new BusinessException(400, "keyPem is required for mTLS certificates");
+            }
+            return;
+        }
+        PrivateKey privateKey = parsePrivateKey(keyPem);
+        if (!matchesCertificatePublicKey(certificate, privateKey)) {
+            throw new BusinessException(400, "Private key does not match certificate public key");
+        }
+    }
+
+    private PrivateKey parsePrivateKey(String keyPem) {
+        String type = privateKeyType(keyPem);
+        byte[] keyDer = decodePemBlock(keyPem, type);
+        byte[] pkcs8Der = switch (type) {
+            case "PRIVATE KEY" -> keyDer;
+            case "RSA PRIVATE KEY" -> wrapPkcs1RsaPrivateKey(keyDer);
+            case "EC PRIVATE KEY" -> wrapSec1EcPrivateKey(keyDer);
+            default -> throw new BusinessException(400,
+                    "Invalid private key content, expected a PEM encoded private key");
+        };
+        PKCS8EncodedKeySpec keySpec;
+        try {
+            keySpec = new PKCS8EncodedKeySpec(pkcs8Der);
+        } catch (Exception exception) {
+            throw new BusinessException(400, "Invalid private key content, expected a PEM encoded private key");
+        }
+        for (String algorithm : List.of("RSA", "EC", "DSA")) {
+            try {
+                return KeyFactory.getInstance(algorithm).generatePrivate(keySpec);
+            } catch (GeneralSecurityException ignored) {
+                // Try the next common Kubernetes client key algorithm.
+            }
+        }
+        throw new BusinessException(400, "Invalid private key content, expected a PEM encoded private key");
+    }
+
+    private String privateKeyType(String keyPem) {
+        if (keyPem.contains("-----BEGIN PRIVATE KEY-----")) {
+            return "PRIVATE KEY";
+        }
+        if (keyPem.contains("-----BEGIN RSA PRIVATE KEY-----")) {
+            return "RSA PRIVATE KEY";
+        }
+        if (keyPem.contains("-----BEGIN EC PRIVATE KEY-----")) {
+            return "EC PRIVATE KEY";
+        }
+        throw new BusinessException(400, "Invalid private key content, expected a PEM encoded private key");
+    }
+
+    private byte[] decodePemBlock(String pem, String type) {
+        String base64 = pem
+                .replace("-----BEGIN " + type + "-----", "")
+                .replace("-----END " + type + "-----", "")
+                .replaceAll("\\s", "");
+        try {
+            return Base64.getDecoder().decode(base64);
+        } catch (Exception exception) {
+            throw new BusinessException(400, "Invalid private key content, expected a PEM encoded private key");
+        }
+    }
+
+    private byte[] wrapPkcs1RsaPrivateKey(byte[] pkcs1Key) {
+        return derSequence(DER_INTEGER_ZERO, RSA_ALGORITHM_IDENTIFIER, derOctetString(pkcs1Key));
+    }
+
+    private byte[] wrapSec1EcPrivateKey(byte[] sec1Key) {
+        byte[] namedCurveParameters = extractSec1EcParameters(sec1Key);
+        byte[] algorithmIdentifier = derSequence(EC_PUBLIC_KEY_OID, namedCurveParameters);
+        return derSequence(DER_INTEGER_ZERO, algorithmIdentifier, derOctetString(sec1Key));
+    }
+
+    private byte[] extractSec1EcParameters(byte[] sec1Key) {
+        DerValue sequence = readDerValue(sec1Key, 0);
+        if (sequence.tag() != 0x30 || sequence.nextOffset() != sec1Key.length) {
+            throw new BusinessException(400, "Invalid EC private key content");
+        }
+        int offset = sequence.contentOffset();
+        while (offset < sequence.nextOffset()) {
+            DerValue value = readDerValue(sec1Key, offset);
+            if (value.tag() == 0xa0) {
+                byte[] parameters = value.content();
+                if (parameters.length > 0 && parameters[0] == 0x06) {
+                    return parameters;
+                }
+                throw new BusinessException(400, "Invalid EC private key parameters");
+            }
+            offset = value.nextOffset();
+        }
+        throw new BusinessException(400, "EC private key must include named curve parameters");
+    }
+
+    private DerValue readDerValue(byte[] data, int offset) {
+        if (offset < 0 || offset + 2 > data.length) {
+            throw new BusinessException(400, "Invalid DER content");
+        }
+        int cursor = offset + 1;
+        int lengthByte = data[cursor++] & 0xff;
+        int length;
+        if ((lengthByte & 0x80) == 0) {
+            length = lengthByte;
+        } else {
+            int lengthBytes = lengthByte & 0x7f;
+            if (lengthBytes == 0 || lengthBytes > 4 || cursor + lengthBytes > data.length) {
+                throw new BusinessException(400, "Invalid DER length");
+            }
+            length = 0;
+            for (int i = 0; i < lengthBytes; i++) {
+                length = (length << 8) | (data[cursor++] & 0xff);
+            }
+        }
+        int valueOffset = cursor;
+        int nextOffset = valueOffset + length;
+        if (length < 0 || nextOffset > data.length) {
+            throw new BusinessException(400, "Invalid DER length");
+        }
+        return new DerValue(data[offset] & 0xff, valueOffset, nextOffset, data);
+    }
+
+    private byte[] derSequence(byte[]... values) {
+        return derTagged(0x30, concatenate(values));
+    }
+
+    private byte[] derOctetString(byte[] value) {
+        return derTagged(0x04, value);
+    }
+
+    private byte[] derTagged(int tag, byte[] value) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        output.write(tag);
+        output.writeBytes(derLength(value.length));
+        output.writeBytes(value);
+        return output.toByteArray();
+    }
+
+    private byte[] derLength(int length) {
+        if (length < 0x80) {
+            return new byte[] {(byte) length};
+        }
+        int lengthBytes = 0;
+        int value = length;
+        while (value > 0) {
+            lengthBytes++;
+            value >>= 8;
+        }
+        byte[] encoded = new byte[lengthBytes + 1];
+        encoded[0] = (byte) (0x80 | lengthBytes);
+        for (int i = lengthBytes; i > 0; i--) {
+            encoded[i] = (byte) (length & 0xff);
+            length >>= 8;
+        }
+        return encoded;
+    }
+
+    private byte[] concatenate(byte[]... values) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        for (byte[] value : values) {
+            output.writeBytes(value);
+        }
+        return output.toByteArray();
+    }
+
+    private boolean matchesCertificatePublicKey(X509Certificate certificate, PrivateKey privateKey) {
+        String publicKeyAlgorithm = certificate.getPublicKey().getAlgorithm();
+        String signatureAlgorithm = switch (publicKeyAlgorithm) {
+            case "RSA" -> "SHA256withRSA";
+            case "EC" -> "SHA256withECDSA";
+            case "DSA" -> "SHA256withDSA";
+            default -> throw new BusinessException(400,
+                    "Unsupported certificate public key algorithm: " + publicKeyAlgorithm);
+        };
+        try {
+            Signature signature = Signature.getInstance(signatureAlgorithm);
+            signature.initSign(privateKey);
+            signature.update(KEY_MATCH_CHALLENGE);
+            byte[] signed = signature.sign();
+
+            signature.initVerify(certificate.getPublicKey());
+            signature.update(KEY_MATCH_CHALLENGE);
+            return signature.verify(signed);
+        } catch (GeneralSecurityException exception) {
+            return false;
         }
     }
 
@@ -287,6 +557,19 @@ public class K8sCertService {
         } catch (Exception auditFailure) {
             log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
                     auditFailure.getMessage());
+        }
+    }
+
+    private record ParsedCertificate(X509Certificate certificate, String issuer, LocalDateTime notBefore,
+                                     LocalDateTime notAfter, List<String> san) {
+    }
+
+    private record DerValue(int tag, int contentOffset, int nextOffset, byte[] source) {
+
+        private byte[] content() {
+            byte[] value = new byte[nextOffset - contentOffset];
+            System.arraycopy(source, contentOffset, value, 0, value.length);
+            return value;
         }
     }
 

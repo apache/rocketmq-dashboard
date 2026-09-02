@@ -38,4 +38,6 @@ public class UpdateCertDTO {
     private String type;
     private String issuer;
     private List<String> san;
+    private String certPem;
+    private String keyPem;
 }

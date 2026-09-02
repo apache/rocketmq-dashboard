@@ -29,4 +29,6 @@ import lombok.NoArgsConstructor;
 public class RenewCertDTO {
     @NotNull(message = "id is required")
     private Long id;
+    private String certPem;
+    private String keyPem;
 }

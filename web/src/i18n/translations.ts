@@ -1349,8 +1349,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.deepseekOfficial': { zh: 'DeepSeek 官方', en: 'DeepSeek official' },
 
   // ─── Certs ───
+  'cert.title': { zh: 'K8s 证书管理', en: 'K8s Certificate Management' },
   'cert.clusterName': { zh: 'K8s 集群名称', en: 'K8s Cluster Name' },
+  'cert.k8sId': { zh: 'k8s ID', en: 'k8s ID' },
   'cert.certName': { zh: '证书名称', en: 'Certificate Name' },
+  'cert.certType': { zh: '证书类型', en: 'Certificate Type' },
   'cert.issuer': { zh: '签发者', en: 'Issuer' },
   'cert.expiryTime': { zh: '到期时间', en: 'Expiry Time' },
   'cert.daysRemaining': { zh: '剩余天数', en: 'Days Remaining' },
@@ -1364,14 +1367,59 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'cert.deleted': { zh: '证书已删除: {name}', en: 'Certificate deleted: {name}' },
   'cert.addCert': { zh: '添加证书', en: 'Add Certificate' },
+  'cert.createCert': { zh: '新增证书', en: 'Create Certificate' },
+  'cert.added': { zh: '证书「{name}」已添加', en: 'Certificate "{name}" added' },
   'cert.searchPlaceholder': { zh: '搜索证书名称或集群', en: 'Search cert name or cluster' },
+  'cert.searchK8sPlaceholder': { zh: '搜索 k8s ID 或集群', en: 'Search k8s ID or cluster' },
   'cert.editCert': { zh: '编辑证书 — {name}', en: 'Edit Certificate — {name}' },
+  'cert.renewCert': { zh: '续期证书 — {name}', en: 'Renew Certificate — {name}' },
+  'cert.renew': { zh: '续期', en: 'Renew' },
   'cert.certUpdated': { zh: '证书「{name}」已更新', en: 'Certificate "{name}" updated' },
+  'cert.renewed': { zh: '证书「{name}」已续期', en: 'Certificate "{name}" renewed' },
   'cert.namespace': { zh: '命名空间', en: 'Namespace' },
   'cert.issuerPlaceholder': { zh: '例：kubernetes-ca', en: 'e.g. kubernetes-ca' },
   'cert.namespacePlaceholder': { zh: '例：kube-system', en: 'e.g. kube-system' },
   'cert.featureWip': { zh: '添加证书功能开发中', en: 'Add certificate feature is in development' },
   'cert.totalCount': { zh: '共 {count} 个证书', en: '{count} certificates total' },
+  'cert.localMetadataTitle': {
+    zh: '当前证书记录仅保存为 Studio 本地元数据',
+    en: 'Certificate records are stored as Studio-local metadata',
+  },
+  'cert.localMetadataDescription': {
+    zh: '创建、续期和删除操作会更新 Studio 保存的证书材料与有效期元数据；Kubernetes Provider 接入前，仍需在集群侧单独应用实际证书。',
+    en: 'Create, renew, and delete update certificate material and validity metadata stored in Studio. Apply the actual certificate in Kubernetes separately until the Kubernetes provider is connected.',
+  },
+  'cert.k8sIdRequired': { zh: '请输入 k8s ID', en: 'Please enter k8s ID' },
+  'cert.clusterRequired': { zh: '请输入集群名称', en: 'Please enter cluster name' },
+  'cert.k8sIdPlaceholder': { zh: '例如：kubernetes-daily', en: 'e.g. kubernetes-daily' },
+  'cert.clusterPlaceholder': {
+    zh: '例如：kubernetes（120.26.99.191:6443）',
+    en: 'e.g. kubernetes (120.26.99.191:6443)',
+  },
+  'cert.certPemLabel': { zh: '证书内容（PEM）', en: 'Certificate PEM' },
+  'cert.keyPemLabel': { zh: '私钥内容（PEM）', en: 'Private Key PEM' },
+  'cert.certPemCreateExtra': {
+    zh: '粘贴 PEM 格式证书，签发者、有效期与 SAN 将自动解析；留空时有效期按一年占位',
+    en: 'Paste a PEM certificate to parse issuer, validity, and SAN automatically. If empty, Studio uses a one-year placeholder validity.',
+  },
+  'cert.keyPemExtra': {
+    zh: '仅保存，不会在页面展示或返回',
+    en: 'Stored write-only; never displayed or returned by the page.',
+  },
+  'cert.renewCertPemLabel': { zh: '新证书内容（PEM）', en: 'New Certificate PEM' },
+  'cert.renewKeyPemLabel': { zh: '新私钥内容（PEM）', en: 'New Private Key PEM' },
+  'cert.renewCertPemRequired': {
+    zh: '请粘贴新的 PEM 证书内容',
+    en: 'Please paste the new PEM certificate.',
+  },
+  'cert.renewCertPemExtra': {
+    zh: '服务端会解析真实证书的签发者、有效期与 SAN；过期或无效证书会被拒绝。',
+    en: 'The server parses issuer, validity, and SAN from the real certificate. Expired or invalid certificates are rejected.',
+  },
+  'cert.renewKeyPemExtra': {
+    zh: 'mTLS 证书必须提供匹配私钥；私钥仅写入保存，不会在页面展示或返回。',
+    en: 'mTLS certificates require a matching private key. The key is write-only and is never displayed or returned.',
+  },
 
   // ─── Cluster ───
   'cluster.brokerCount': { zh: 'Broker 数', en: 'Broker Count' },

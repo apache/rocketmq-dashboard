@@ -24,8 +24,10 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusK8sCertRepositoryTest {
@@ -60,6 +62,21 @@ class MybatisPlusK8sCertRepositoryTest {
                 .hasMessage("Certificate update was not applied: 1")
                 .satisfies(error -> org.assertj.core.api.Assertions.assertThat(
                         ((BusinessException) error).getCode()).isEqualTo(409));
+    }
+
+    @Test
+    void saveShouldReportConcurrentRemovalInsteadOfResurrecting() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        when(mapper.selectById(1L)).thenReturn(null);
+        K8sCertVO cert = K8sCertVO.builder().k8sId("broker").build();
+        cert.setId(1L);
+
+        assertThatThrownBy(() -> repository(mapper).save(cert))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Certificate not found, removed concurrently: 1")
+                .satisfies(error -> org.assertj.core.api.Assertions.assertThat(
+                        ((BusinessException) error).getCode()).isEqualTo(404));
+        verify(mapper, never()).insert(any(RmqK8sCertificate.class));
     }
 
     @Test
