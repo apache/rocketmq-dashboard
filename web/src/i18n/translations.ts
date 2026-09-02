@@ -1719,6 +1719,21 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.filterAll': { zh: '全部', en: 'All' },
+  'topic.filterDelay': { zh: '延迟', en: 'Delay' },
+  'topic.filterFifo': { zh: '顺序', en: 'FIFO' },
+  'topic.filterLite': { zh: 'LiteTopic', en: 'LiteTopic' },
+  'topic.filterNormal': { zh: '普通', en: 'Normal' },
+  'topic.filterTransaction': { zh: '事务', en: 'Transaction' },
+  'topic.typeDelay': { zh: '延迟消息', en: 'Delayed Message' },
+  'topic.typeDelayDesc': { zh: '消息在指定的延迟时间或定时后才投递给消费者。', en: 'Messages are delivered after the configured delay or at a scheduled time.' },
+  'topic.typeFifo': { zh: '顺序消息', en: 'FIFO Message' },
+  'topic.typeFifoDesc': { zh: '严格按照消息发送顺序消费，适用于顺序敏感的业务。', en: 'Consumed strictly in send order; for ordering-sensitive workloads.' },
+  'topic.typeLiteDesc': { zh: '轻量级主题，资源开销更低，适用于大规模轻量消息场景。', en: 'A lightweight topic with lower resource overhead for large-scale light messages.' },
+  'topic.typeNormal': { zh: '普通消息', en: 'Normal Message' },
+  'topic.typeNormalDesc': { zh: '适用于无特殊顺序要求的常规消息收发场景。', en: 'For routine message send/receive without special ordering requirements.' },
+  'topic.typeTransaction': { zh: '事务消息', en: 'Transactional Message' },
+  'topic.typeTransactionDesc': { zh: '支持分布式事务，保证本地事务与消息发送的最终一致性。', en: 'Supports distributed transactions, keeping the local transaction and message send eventually consistent.' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
