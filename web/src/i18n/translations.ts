@@ -1807,6 +1807,13 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.batchResend': { zh: '批量重发', en: 'Batch Resend' },
   'message.batchExport': { zh: '批量导出', en: 'Batch Export' },
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
+  'message.brokerResponse': { zh: 'Broker 返回 {detail}，耗时 {time} ms', en: 'Broker returned {detail} in {time} ms' },
+  'message.consumptionVerifyUnavailable': { zh: '消费验证接口尚未接入，无法确认该消息的真实消费状态', en: 'The consumption verification API is not wired in yet; actual consumption status cannot be confirmed' },
+  'message.directConsumeFailed': { zh: '直接消费请求失败，请检查消费组和客户端是否在线', en: 'Direct consume failed; check the consumer group and client connectivity' },
+  'message.directConsumeRequired': { zh: '请填写目标消费组和在线客户端 ID', en: 'Enter the target consumer group and an online client ID' },
+  'message.downloadDone': { zh: '消息下载成功', en: 'Message downloaded' },
+  'message.historyLoaded': { zh: '已加载历史查询结果，共 {count} 条', en: 'Loaded {count} historical query result(s)' },
+  'message.searchDone': { zh: '查询完成，共 {total} 条', en: 'Query complete: {total} result(s)' },
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {
