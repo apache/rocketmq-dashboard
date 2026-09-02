@@ -1116,6 +1116,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.docs': { zh: '文档中心', en: 'Documentation' },
   'home.community': { zh: 'RocketMQ 社区', en: 'RocketMQ Community' },
   'home.brand': { zh: 'RocketMQ Studio 出品', en: 'Powered by RocketMQ Studio' },
+  'home.chatPlaceholder': { zh: '向 RocketMQ Bot 提问，全程加密、安全、可信', en: 'Ask RocketMQ Bot anything — end-to-end encrypted, secure and trusted' },
+  'home.currentVersion': { zh: '当前版本 {time} build({commit})', en: 'Version {time} build({commit})' },
+  'home.promptEnhance': { zh: 'Prompt 增强', en: 'Prompt Enhance' },
+  'home.tools': { zh: '工具', en: 'Tools' },
 
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },

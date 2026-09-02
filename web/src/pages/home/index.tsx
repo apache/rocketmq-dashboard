@@ -491,7 +491,7 @@ const HomePage = () => {
                   <textarea
                     ref={textareaRef}
                     className="chat-input"
-                    placeholder="向 RocketMQ Bot 提问，全程加密、安全、可信"
+                    placeholder={t('home.chatPlaceholder')}
                     value={inputValue}
                     onChange={(event) => setInputValue(event.target.value)}
                     onKeyDown={handleKeyDown}
@@ -515,7 +515,7 @@ const HomePage = () => {
                         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide max-w-full py-2">
                           <button className="tool-btn">
                             <SlidersHorizontal size={17} />
-                            <span>工具</span>
+                            <span>{t('home.tools')}</span>
                           </button>
                           <button
                             className="tool-btn"
@@ -536,7 +536,7 @@ const HomePage = () => {
                             }
                           >
                             <Sparkle size={17} weight={promoteOn ? 'fill' : 'regular'} />
-                            <span>Prompt 增强</span>
+                            <span>{t('home.promptEnhance')}</span>
                           </button>
                           <button
                             className="tool-btn"
@@ -601,7 +601,7 @@ const HomePage = () => {
             <span>{t('home.brand')}</span>
             <span style={{ margin: '0 4px' }}>｜</span>
             <span>
-              当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})
+              {t('home.currentVersion', { time: __BUILD_TIME__, commit: __BUILD_COMMIT__ })}
             </span>
           </span>
         </footer>
