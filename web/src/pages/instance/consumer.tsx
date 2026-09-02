@@ -327,6 +327,40 @@ const ConsumerPageContent = ({
   }, []);
   const selectedGroupName = selectedGroup?.name;
 
+  const loadConsumerGroupPage = useCallback(
+    async (pageToLoad: number, pageSizeToLoad: number, silent = false) => {
+      if (!selectedInstanceId) return undefined;
+      const requestId = ++groupRequestIdRef.current;
+      if (!silent) setLoading(true);
+      try {
+        const result = await listConsumerGroupPage({
+          instanceId: selectedInstanceId,
+          search: search.trim() || undefined,
+          page: pageToLoad,
+          pageSize: pageSizeToLoad,
+        });
+        if (requestId === groupRequestIdRef.current) {
+          setGroups(result.items);
+          setTotalGroups(result.total);
+          if (result.items.length === 0 && result.total > 0 && pageToLoad > 1) {
+            setPage(Math.max(1, Math.ceil(result.total / pageSizeToLoad)));
+          }
+        }
+        return requestId === groupRequestIdRef.current ? result : undefined;
+      } catch {
+        if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
+        return undefined;
+      } finally {
+        if (requestId === groupRequestIdRef.current) setLoading(false);
+      }
+    },
+    [t, selectedInstanceId, search],
+  );
+
+  const reloadConsumerGroupPageAfterDelete = useCallback(async () => {
+    await loadConsumerGroupPage(page, pageSize);
+  }, [loadConsumerGroupPage, page, pageSize]);
+
   useEffect(() => {
     if (!selectedInstanceId) {
       groupRequestIdRef.current += 1;
@@ -342,35 +376,13 @@ const ConsumerPageContent = ({
     }
     const silent = silentRefreshRef.current;
     silentRefreshRef.current = false;
-    const requestId = ++groupRequestIdRef.current;
     const timer = window.setTimeout(() => {
-      if (!silent) setLoading(true);
-      void listConsumerGroupPage({
-        instanceId: selectedInstanceId,
-        search: search.trim() || undefined,
-        page,
-        pageSize,
-      })
-        .then((result) => {
-          if (requestId === groupRequestIdRef.current) {
-            setGroups(result.items);
-            setTotalGroups(result.total);
-            if (result.items.length === 0 && result.total > 0 && page > 1) {
-              setPage(Math.max(1, Math.ceil(result.total / pageSize)));
-            }
-          }
-        })
-        .catch(() => {
-          if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
-        })
-        .finally(() => {
-          if (requestId === groupRequestIdRef.current) setLoading(false);
-        });
+      void loadConsumerGroupPage(page, pageSize, silent);
     }, 0);
     return () => {
       window.clearTimeout(timer);
     };
-  }, [t, selectedInstanceId, search, page, pageSize, instancesLoading, refreshKey]);
+  }, [selectedInstanceId, page, pageSize, instancesLoading, refreshKey, loadConsumerGroupPage]);
 
   useEffect(() => {
     if (!autoRefresh || !selectedInstanceId) {
@@ -978,7 +990,7 @@ const ConsumerPageContent = ({
                 cancelText: '取消',
                 onOk: async () => {
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
-                  setGroups((prev) => prev.filter((group) => group.name !== record.name));
+                  await reloadConsumerGroupPageAfterDelete();
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
                   message.success(`消费组 ${record.name} 已删除`);
                 },
@@ -1409,14 +1421,12 @@ const ConsumerPageContent = ({
                       names,
                       selectedInstanceId || undefined,
                     );
-                    setGroups((prev) => prev.filter((g) => !deleted.includes(g.name)));
+                    if (deleted.length > 0) await reloadConsumerGroupPageAfterDelete();
                     if (failed.length > 0) {
                       message.warning(
                         `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
                       );
-                      setSelectedRowKeys((prev) =>
-                        prev.filter((key) => !deleted.includes(String(key))),
-                      );
+                      setSelectedRowKeys(failed);
                     } else {
                       message.success(`已删除 ${deleted.length} 个 Group`);
                       setSelectedRowKeys([]);
