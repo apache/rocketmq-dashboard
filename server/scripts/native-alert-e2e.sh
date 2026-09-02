@@ -19,6 +19,7 @@
 #   E2E_DB_USERNAME=root E2E_DB_PASSWORD=studio123 E2E_MYSQL_HOST=127.0.0.1
 #   E2E_MYSQL_PORT=3306 E2E_SMTP_PORT=1025 E2E_PORT=18083 E2E_SILENCE_SECONDS=10
 #   E2E_STUDIO_JAR=.../server/target/rocketmq-studio-1.0.0.jar
+#   E2E_KEEP_ARTIFACTS=true keeps the cookie file and Studio log for debugging
 #
 # The script retains its e2e-native-alert-* records as database evidence. It does not
 # use an operator's development database and it stops the temporary Studio process.
@@ -30,10 +31,6 @@ required=(E2E_DB_JDBC_URL E2E_MYSQL_DATABASE E2E_ADMIN_USERNAME E2E_ADMIN_PASSWO
 for name in "${required[@]}"; do
   [[ -n "${!name:-}" ]] || { echo "Missing required environment variable: $name" >&2; exit 2; }
 done
-for command in curl jq mysql; do
-  command -v "$command" >/dev/null || { echo "Required command is unavailable: $command" >&2; exit 2; }
-done
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SERVER_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}java"
@@ -45,24 +42,52 @@ MYSQL_HOST=${E2E_MYSQL_HOST:-127.0.0.1}
 MYSQL_PORT=${E2E_MYSQL_PORT:-3306}
 DB_USERNAME=${E2E_DB_USERNAME:-root}
 DB_PASSWORD=${E2E_DB_PASSWORD:-studio123}
+KEEP_ARTIFACTS=${E2E_KEEP_ARTIFACTS:-false}
 RUN_ID="e2e-native-alert-$(date -u +%Y%m%d%H%M%S)-$$"
 INSTANCE_ID="$RUN_ID-instance"
 RULE_NAME="$RUN_ID-rule"
+COOKIE=
+RUN_DIR=
+APP_LOG=
+APP_PID=
+
+require_port() {
+  local name=$1
+  local value=$2
+  [[ "$value" =~ ^[0-9]+$ && "$value" -ge 1 && "$value" -le 65535 ]] \
+    || { echo "$name must be an integer between 1 and 65535" >&2; exit 2; }
+}
+
+for command in curl jq mysql; do
+  command -v "$command" >/dev/null || { echo "Required command is unavailable: $command" >&2; exit 2; }
+done
+command -v "$JAVA_BIN" >/dev/null || { echo "Required Java command is unavailable: $JAVA_BIN" >&2; exit 2; }
+require_port E2E_PORT "$PORT"
+require_port E2E_SMTP_PORT "$SMTP_PORT"
+require_port E2E_MYSQL_PORT "$MYSQL_PORT"
+[[ "$SILENCE_SECONDS" =~ ^[0-9]+$ && "$SILENCE_SECONDS" -ge 5 ]] \
+  || { echo 'E2E_SILENCE_SECONDS must be an integer of at least 5' >&2; exit 2; }
+[[ "$KEEP_ARTIFACTS" == true || "$KEEP_ARTIFACTS" == false ]] \
+  || { echo 'E2E_KEEP_ARTIFACTS must be true or false' >&2; exit 2; }
+
 COOKIE=$(mktemp "${TMPDIR:-/tmp}/rocketmq-studio-e2e.cookie.XXXXXX")
 RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rocketmq-studio-e2e.XXXXXX")
 APP_LOG="$RUN_DIR/studio.log"
-APP_PID=
-
-[[ "$SILENCE_SECONDS" =~ ^[0-9]+$ && "$SILENCE_SECONDS" -ge 5 ]] \
-  || { echo 'E2E_SILENCE_SECONDS must be an integer of at least 5' >&2; exit 2; }
 
 cleanup() {
   if [[ -n "$APP_PID" ]]; then
     kill "$APP_PID" 2>/dev/null || true
     wait "$APP_PID" 2>/dev/null || true
   fi
+  if [[ "$KEEP_ARTIFACTS" != true ]]; then
+    [[ -z "$COOKIE" || ! -e "$COOKIE" ]] || unlink "$COOKIE"
+    [[ -z "$APP_LOG" || ! -e "$APP_LOG" ]] || unlink "$APP_LOG"
+    [[ -z "$RUN_DIR" || ! -d "$RUN_DIR" ]] || rmdir "$RUN_DIR" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 [[ -f "$STUDIO_JAR" ]] || { echo "Studio jar not found: $STUDIO_JAR" >&2; exit 2; }
 
@@ -182,4 +207,8 @@ grep -q 'FIRING' <<<"$WEBHOOK_PAYLOADS" || { echo 'Webhook capture has no FIRING
 grep -q 'RESOLVED' <<<"$WEBHOOK_PAYLOADS" || { echo 'Webhook capture has no RESOLVED payload' >&2; exit 1; }
 
 echo "PASS: silence suppression, FIRING/RESOLVED state transitions, SMTP handoff, and webhook delivery verified."
-echo "Evidence is retained in $E2E_MYSQL_DATABASE for instance $INSTANCE_ID; Studio log: $APP_LOG"
+if [[ "$KEEP_ARTIFACTS" == true ]]; then
+  echo "Evidence is retained in $E2E_MYSQL_DATABASE for instance $INSTANCE_ID; Studio log: $APP_LOG"
+else
+  echo "Database evidence is retained in $E2E_MYSQL_DATABASE for instance $INSTANCE_ID."
+fi
