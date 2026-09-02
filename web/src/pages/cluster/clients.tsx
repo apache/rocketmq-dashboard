@@ -97,6 +97,31 @@ const countBy = (values: string[]) =>
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
+/**
+ * Connection fields matched by the client search box. Typed as nullable to
+ * mirror what the backend may actually return for legacy payloads.
+ */
+export type ClientSearchFields = {
+  clientId?: string | null;
+  address?: string | null;
+};
+
+/**
+ * Case- and whitespace-insensitive client search match that tolerates
+ * missing clientId/address fields and whitespace-only search input.
+ */
+export const matchesClientSearch = (
+  connection: ClientSearchFields,
+  rawSearch: string | null | undefined,
+) => {
+  const normalizedSearch = (rawSearch ?? '').trim().toLowerCase();
+  if (!normalizedSearch) return true;
+  return (
+    (connection.clientId ?? '').toLowerCase().includes(normalizedSearch) ||
+    (connection.address ?? '').toLowerCase().includes(normalizedSearch)
+  );
+};
+
 type ApiErrorLike = {
   message?: unknown;
   response?: {
@@ -266,14 +291,10 @@ const ClientsPage = () => {
   }, [clusterConnections]);
 
   /* ─── Filtered data (search + cluster only, table handles column filters) ─── */
-  const filtered = useMemo(() => {
-    const normalizedSearch = search.toLowerCase();
-    return clusterConnections.filter(
-      (connection) =>
-        connection.clientId.toLowerCase().includes(normalizedSearch) ||
-        connection.address?.toLowerCase().includes(normalizedSearch),
-    );
-  }, [clusterConnections, search]);
+  const filtered = useMemo(
+    () => clusterConnections.filter((connection) => matchesClientSearch(connection, search)),
+    [clusterConnections, search],
+  );
 
   const exportConnections = useMemo(() => {
     const matches = (key: string, value: string) => {
