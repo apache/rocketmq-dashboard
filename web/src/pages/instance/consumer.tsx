@@ -109,7 +109,6 @@ const { Text } = Typography;
 /* ─── Helpers ─── */
 
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
-const UNAVAILABLE_LAG_LABEL = '不可用';
 
 const lagColor = (lag: number): string => {
   // The backend reports -1 when the lag cannot be determined; do not color it
@@ -427,9 +426,9 @@ const ConsumerPageContent = ({
         subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
       });
       downloadCsv(`rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-      message.success('Group 导出完成');
+      message.success(t('consumer.exportGroupsDone'));
     } catch {
-      message.error('导出 Group 失败，请稍后重试');
+      message.error(t('consumer.exportGroupsFailed'));
     } finally {
       setExporting(false);
     }
@@ -460,7 +459,7 @@ const ConsumerPageContent = ({
       }
     } catch {
       if (requestId === settingsRequestIdRef.current) {
-        message.error('加载消费组配置失败，请稍后重试');
+        message.error(t('consumer.loadConfigFailed'));
       }
     } finally {
       if (requestId === settingsRequestIdRef.current) {
@@ -498,9 +497,9 @@ const ConsumerPageContent = ({
           ? { ...current, retryMaxTimes: saved.retryMaxTimes }
           : current,
       );
-      message.success('消费组配置已保存');
+      message.success(t('consumer.configSaved'));
     } catch {
-      message.error('保存消费组配置失败，请稍后重试');
+      message.error(t('consumer.saveConfigFailed'));
     } finally {
       setSettingsSubmitting(false);
     }
@@ -570,7 +569,7 @@ const ConsumerPageContent = ({
 
   const handlePreviewResetOffset = async () => {
     if (!resetGroup || !resetTopic) {
-      message.warning('请先选择要重置的 Topic');
+      message.warning(t('consumer.selectResetTopicFirst'));
       return;
     }
     const previewKey = currentResetPreviewKey;
@@ -586,9 +585,9 @@ const ConsumerPageContent = ({
       setResetPreview(preview);
       setResetPreviewKey(previewKey);
       if (preview.complete && preview.queueCount > 0) {
-        message.success(`已预览 ${preview.queueCount} 个 Queue`);
+        message.success(t('consumer.previewedQueues', { count: preview.queueCount }));
       } else {
-        message.warning('预览未覆盖可重置队列，请检查 Group/Topic 状态');
+        message.warning(t('consumer.previewNotCovering'));
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : '预览重置影响失败';
@@ -604,7 +603,7 @@ const ConsumerPageContent = ({
   const handleResetOffset = async () => {
     if (!resetGroup || !resetTopic) return;
     if (!resetPreviewCanApply) {
-      message.warning('请先预览并确认位点影响');
+      message.warning(t('consumer.previewAndConfirmFirst'));
       return;
     }
     setResetSubmitting(true);
@@ -664,7 +663,7 @@ const ConsumerPageContent = ({
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('consumer.selectInstanceFirst'));
       return;
     }
     setImportFilename(file.name);
@@ -685,7 +684,7 @@ const ConsumerPageContent = ({
 
   const handleImportConsumerGroups = async () => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('consumer.selectInstanceFirst'));
       return;
     }
     const targetIndexes = importRows
@@ -738,14 +737,14 @@ const ConsumerPageContent = ({
     const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
     if (failedCount === 0) {
       if (invalidCount > 0) {
-        message.warning(`已导入 ${createdGroups.length} 个 Group，${invalidCount} 行无效已跳过`);
+        message.warning(t('consumer.importGroupsPartialInvalid', { created: createdGroups.length, invalid: invalidCount }));
       } else {
-        message.success(`已导入 ${createdGroups.length} 个 Group`);
+        message.success(t('consumer.importGroupsDone', { created: createdGroups.length }));
       }
     } else if (createdGroups.length > 0) {
-      message.warning(`已导入 ${createdGroups.length} 个 Group，${failedCount} 个失败`);
+      message.warning(t('consumer.importGroupsPartialFailed', { created: createdGroups.length, failed: failedCount }));
     } else {
-      message.error(`${failedCount} 个 Group 导入失败`);
+      message.error(t('consumer.importGroupsFailed', { failed: failedCount }));
     }
   };
 
@@ -788,8 +787,8 @@ const ConsumerPageContent = ({
             strong
             style={{ fontSize: 14, cursor: 'pointer' }}
             onClick={() => {
-              const done = () => message.success(`已复制：${name}`);
-              const failed = () => message.error('复制失败，请手动复制');
+              const done = () => message.success(t('consumer.copied', { name }));
+              const failed = () => message.error(t('consumer.copyFailed'));
               if (navigator.clipboard?.writeText) {
                 navigator.clipboard.writeText(name).then(done, failed);
               } else {
@@ -856,7 +855,7 @@ const ConsumerPageContent = ({
         isLagAvailable(lag) ? (
           lag.toLocaleString()
         ) : (
-          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+          <Text type="secondary">{t('consumer.unavailable')}</Text>
         ),
     },
     {
@@ -941,7 +940,7 @@ const ConsumerPageContent = ({
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
                   setGroups((prev) => prev.filter((group) => group.name !== record.name));
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
-                  message.success(`消费组 ${record.name} 已删除`);
+                  message.success(t('consumer.deleted', { name: record.name }));
                 },
               });
             }}
@@ -1157,7 +1156,7 @@ const ConsumerPageContent = ({
         if (!isLagAvailable(diff)) {
           return (
             <Text type="secondary" style={{ fontWeight: 600 }}>
-              {UNAVAILABLE_LAG_LABEL}
+              {t('consumer.unavailable')}
             </Text>
           );
         }
@@ -1349,7 +1348,7 @@ const ConsumerPageContent = ({
                         prev.filter((key) => !deleted.includes(String(key))),
                       );
                     } else {
-                      message.success(`已删除 ${deleted.length} 个 Group`);
+                      message.success(t('consumer.deletedGroups', { count: deleted.length }));
                       setSelectedRowKeys([]);
                     }
                   },
@@ -1533,7 +1532,7 @@ const ConsumerPageContent = ({
                           <Statistic
                             title="总堆积"
                             value={selectedGroup.totalLag}
-                            formatter={(value) => formatLag(Number(value), UNAVAILABLE_LAG_LABEL)}
+                            formatter={(value) => formatLag(Number(value), t('consumer.unavailable'))}
                             prefix={
                               <ArrowsClockwise size={18} color={lagColor(selectedGroup.totalLag)} />
                             }
@@ -1764,7 +1763,7 @@ const ConsumerPageContent = ({
                           <Text type="secondary">总堆积:</Text>
                           {hasUnknownProgressLag ? (
                             <Text strong style={{ color: UNKNOWN_LAG_COLOR }}>
-                              {UNAVAILABLE_LAG_LABEL}
+                              {t('consumer.unavailable')}
                             </Text>
                           ) : (
                             <Text
@@ -1959,7 +1958,7 @@ const ConsumerPageContent = ({
             .validateFields()
             .then((values) => {
               if (!selectedInstanceId) {
-                message.error('请先选择实例');
+                message.error(t('consumer.selectInstanceFirst'));
                 return;
               }
               Modal.confirm({
@@ -1984,7 +1983,7 @@ const ConsumerPageContent = ({
                       created,
                       ...prev.filter((group) => group.name !== created.name),
                     ]);
-                    message.success(`消费组 ${values.name} 创建成功`);
+                    message.success(t('consumer.groupCreated', { name: values.name }));
                     setCreateModalOpen(false);
                     form.resetFields();
                     setDataTypeValue(undefined);
