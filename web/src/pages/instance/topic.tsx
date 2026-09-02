@@ -558,11 +558,11 @@ const TopicPage = () => {
       setSendModalOpen(true);
     } else if (key === 'delete') {
       modal.confirm({
-        title: '确认删除',
-        content: `确定要删除 Topic「${topic.name}」吗？此操作不可撤销。`,
-        okText: '删除',
+        title: t('topic.confirmDelete'),
+        content: t('topic.deleteContent', { name: topic.name }),
+        okText: t('topic.delete'),
         okType: 'danger',
-        cancelText: '取消',
+        cancelText: t('common.cancel'),
         onOk: async () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
@@ -597,7 +597,7 @@ const TopicPage = () => {
   // ─── Table columns ────────────────────────────────────────────
   const columns: TableColumnsType<Topic> = [
     {
-      title: 'Topic 名称',
+      title: t('topic.name'),
       dataIndex: 'name',
       key: 'name',
       width: 220,
@@ -609,7 +609,7 @@ const TopicPage = () => {
       ),
     },
     {
-      title: '备注',
+      title: t('topic.remark'),
       dataIndex: 'remark',
       key: 'remark',
       width: 200,
@@ -625,7 +625,7 @@ const TopicPage = () => {
       ),
     },
     {
-      title: '类型',
+      title: t('topic.type'),
       dataIndex: 'type',
       key: 'type',
       width: 100,
@@ -636,13 +636,13 @@ const TopicPage = () => {
       },
     },
     {
-      title: '状态',
+      title: t('topic.status'),
       key: 'status',
       width: 90,
-      render: () => <Tag color="green">服务中</Tag>,
+      render: () => <Tag color="green">{t('topic.serving')}</Tag>,
     },
     {
-      title: '创建时间',
+      title: t('topic.createdAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 170,
@@ -650,7 +650,7 @@ const TopicPage = () => {
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
-      title: '修改时间',
+      title: t('topic.updatedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 170,
@@ -658,7 +658,7 @@ const TopicPage = () => {
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
-      title: '操作',
+      title: t('topic.action'),
       key: 'action',
       width: 200,
       render: (_: unknown, record: Topic) => (
@@ -669,7 +669,7 @@ const TopicPage = () => {
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => handleAction('detail', record)}
           >
-            详情
+            {t('topic.detail')}
           </Button>
           {!isCloudInstance && (
             <Button
@@ -678,7 +678,7 @@ const TopicPage = () => {
               style={{ borderColor: '#52c41a', color: '#52c41a' }}
               onClick={() => handleAction('send', record)}
             >
-              发送
+              {t('topic.send')}
             </Button>
           )}
           <Button
@@ -1161,7 +1161,7 @@ const TopicPage = () => {
     { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
     { title: 'Topic 名称', dataIndex: 'name', key: 'name' },
     {
-      title: '状态',
+      title: t('topic.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
@@ -1320,9 +1320,9 @@ const TopicPage = () => {
                 Modal.confirm({
                   title: '确认批量删除',
                   content: `确定要删除选中的 ${selectedRowKeys.length} 个 Topic 吗？此操作不可撤销。`,
-                  okText: '删除',
+                  okText: t('topic.delete'),
                   okType: 'danger',
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     try {
                       const names = selectedRowKeys.map(String);
@@ -1809,7 +1809,7 @@ const TopicPage = () => {
                     `${topic.writeQueues ?? '-'} / ${topic.readQueues ?? '-'}`,
                 },
                 {
-                  title: '状态',
+                  title: t('topic.status'),
                   key: 'status',
                   width: 100,
                   render: (_: unknown, topic: Topic) =>
@@ -1820,7 +1820,7 @@ const TopicPage = () => {
                     ),
                 },
                 {
-                  title: '操作',
+                  title: t('topic.action'),
                   key: 'action',
                   width: 90,
                   render: (_: unknown, topic: Topic) => (
