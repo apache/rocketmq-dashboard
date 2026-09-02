@@ -1807,8 +1807,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.batchResend': { zh: '批量重发', en: 'Batch Resend' },
   'message.batchExport': { zh: '批量导出', en: 'Batch Export' },
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
-<<<<<<< Updated upstream
-=======
   'message.consumeTime': { zh: '消费时间', en: 'Consume Time' },
   'message.consumerGroup': { zh: '消费者组', en: 'Consumer Group' },
   'message.deliveryStatus': { zh: '投递状态', en: 'Delivery Status' },
@@ -1827,7 +1825,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.queryByMsgId': { zh: '按 Message ID', en: 'Query by Message ID' },
   'message.queryByQueue': { zh: '按队列浏览', en: 'Browse by Queue' },
   'message.queryByTopic': { zh: '按 Topic 查询', en: 'Query by Topic' },
->>>>>>> Stashed changes
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {
