@@ -43,7 +43,7 @@ interface ParsedCsvRow {
   cells: string[];
 }
 
-const FORMULA_SAFE_PREFIX_PATTERN = /^'(?=[=+\-@\t\r\n])/;
+const FORMULA_SAFE_PREFIX_PATTERN = /^'(?='*[=+\-@\t\r\n])/;
 
 // Aligned with RocketMQ's TopicValidator/GroupValidator: a shared character set (letters,
 // digits, underscore, hyphen, % and |) with per-kind length caps. Topics cap at 127 and
@@ -79,8 +79,7 @@ const restoreFormulaSafeCell = (value: string): string =>
 
 const normalizeHeader = (header: string): string => restoreFormulaSafeCell(header).trim();
 
-const normalizeValue = (value: string | undefined): string =>
-  restoreFormulaSafeCell(value ?? '').trim();
+const normalizeValue = (value: string | undefined): string => (value ?? '').trim();
 
 const normalizeDeliveryOrderType = (value: string): string =>
   value === 'MESSAGES ORDER' ? 'MESSAGES_ORDER' : value;
@@ -122,7 +121,7 @@ const readCsvRows = (content: string): ParsedCsvRow[] => {
     if (nextCells.some((value) => value.trim() !== '')) {
       rows.push({
         lineNumber: rowStartLine,
-        cells: nextCells.map(restoreFormulaSafeCell),
+        cells: nextCells,
       });
     }
     cells = [];
@@ -216,7 +215,7 @@ export const parseCsvTable = (content: string): CsvRecord[] => {
     return {
       lineNumber: row.lineNumber,
       values: headers.reduce<Record<string, string>>((acc, header, index) => {
-        acc[header] = normalizeValue(row.cells[index]);
+        acc[header] = restoreFormulaSafeCell(row.cells[index] ?? '').trim();
         return acc;
       }, {}),
     };
