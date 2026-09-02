@@ -153,7 +153,7 @@ const InstancePage = () => {
       }
     } catch {
       if (requestId === requestIdRef.current) {
-        message.error('实例列表加载失败，请稍后重试');
+        message.error(t('instance.loadFailed'));
       }
     } finally {
       if (requestId === requestIdRef.current) {
@@ -193,7 +193,7 @@ const InstancePage = () => {
         })
         .catch(() => {
           if (active) {
-            message.error('云凭据列表加载失败');
+            message.error(t('instance.credentialListFailed'));
           }
         })
         .finally(() => {
@@ -237,7 +237,7 @@ const InstancePage = () => {
         })
         .catch((error) => {
           if (active) {
-            message.error(describeApiError(error, '云地域列表加载失败'));
+            message.error(describeApiError(error, t('instance.regionListFailed')));
           }
         })
         .finally(() => {
@@ -272,7 +272,7 @@ const InstancePage = () => {
         })
         .catch((error) => {
           if (active) {
-            message.error(describeApiError(error, '云实例列表加载失败'));
+            message.error(describeApiError(error, t('instance.cloudInstanceListFailed')));
           }
         })
         .finally(() => {
@@ -331,7 +331,7 @@ const InstancePage = () => {
         : values;
       const created = await createInstance(payload);
       await loadInstances();
-      message.success(`实例「${created.name}」添加成功`);
+      message.success(t('instance.added', { name: created.name }));
       setAddModalOpen(false);
       addForm.resetFields();
       setVendor(DEFAULT_VENDOR);
@@ -339,7 +339,7 @@ const InstancePage = () => {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
-      message.error('添加实例失败，请稍后重试');
+      message.error(t('instance.addFailed'));
     } finally {
       mutationInFlightRef.current = false;
       setSubmitting(false);
@@ -350,7 +350,7 @@ const InstancePage = () => {
     if (importing || vendor === 'APACHE') return;
     const credentialId = addForm.getFieldValue('credentialId') as number | undefined;
     if (!credentialId) {
-      message.warning('请先选择云凭据');
+      message.warning(t('instance.selectCredentialFirst'));
       return;
     }
     setImporting(true);
@@ -362,7 +362,7 @@ const InstancePage = () => {
           ? `导入完成：共同步 ${result.imported + result.skipped} 个实例（新导入 ${result.imported}，已存在跳过 ${result.skipped}）`
           : `云上实例均已在 Studio 中（共 ${result.skipped} 个），无需重复导入`;
       if (result.failed.length > 0) {
-        message.warning(`${summary}，失败 ${result.failed.length} 个：${result.failed.join('；')}`);
+        message.warning(t('instance.importPartial', { summary, failed: result.failed.length, details: result.failed.join('；') }));
       } else {
         message.success(summary);
       }
@@ -372,7 +372,7 @@ const InstancePage = () => {
       setRegions([]);
       setCloudInstances([]);
     } catch (error) {
-      message.error(describeApiError(error, '一键导入失败，请稍后重试'));
+      message.error(describeApiError(error, t('instance.importFailed')));
     } finally {
       setImporting(false);
     }
@@ -392,14 +392,14 @@ const InstancePage = () => {
         adminCredentialRef: values.adminCredentialRef,
       });
       await loadInstances();
-      message.success(`实例「${updated.name}」已更新`);
+      message.success(t('instance.updated', { name: updated.name }));
       setEditModalOpen(false);
       editForm.resetFields();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
-      message.error('更新实例失败，请稍后重试');
+      message.error(t('instance.updateFailed'));
     } finally {
       mutationInFlightRef.current = false;
       setSubmitting(false);
@@ -410,9 +410,9 @@ const InstancePage = () => {
     try {
       await deleteInstance(instance.name);
       await loadInstances();
-      message.success('已删除');
+      message.success(t('instance.deleted'));
     } catch (error) {
-      message.error(describeApiError(error, '删除实例失败，请稍后重试'));
+      message.error(describeApiError(error, t('instance.deleteFailed')));
     }
   };
 
@@ -449,7 +449,7 @@ const InstancePage = () => {
             message.success(summary);
           }
         } catch (error) {
-          message.error(describeApiError(error, '批量删除失败，请稍后重试'));
+          message.error(describeApiError(error, t('instance.batchDeleteFailed')));
         }
       },
     });
