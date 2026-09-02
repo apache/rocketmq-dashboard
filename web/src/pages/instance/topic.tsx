@@ -1489,7 +1489,7 @@ const TopicPage = () => {
         onOk={handleCreate}
         confirmLoading={creating}
         okText="创建"
-        cancelText="取消"
+        cancelText={t('common.cancel')}
         width={560}
         destroyOnHidden
       >
@@ -1636,7 +1636,7 @@ const TopicPage = () => {
         title={
           <Space>
             <SendOutlined />
-            <span>发送消息到 {sendTopic?.name}</span>
+            <span>{t('topic.sendMsg', { name: sendTopic?.name })}</span>
           </Space>
         }
         open={sendModalOpen}
@@ -1645,8 +1645,8 @@ const TopicPage = () => {
           sendForm.resetFields();
         }}
         onOk={handleSend}
-        okText="发送"
-        cancelText="取消"
+        okText={t('topic.send')}
+        cancelText={t('common.cancel')}
         confirmLoading={sending}
         width={640}
         destroyOnHidden
@@ -1664,30 +1664,30 @@ const TopicPage = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="Tag" name="tag">
-                <Input placeholder="可选，消息标签" />
+                <Input placeholder={t('topic.tagPlaceholder')} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item label="Key" name="key">
-                <Input placeholder="可选，消息 Key（用于查询）" />
+                <Input placeholder={t('topic.keyPlaceholder')} />
               </Form.Item>
             </Col>
           </Row>
 
           <Form.Item
-            label="消息体 Body"
+            label={t('topic.bodyLabel')}
             name="body"
-            rules={[{ required: true, message: '请输入消息体' }]}
+            rules={[{ required: true, message: t('topic.bodyRequired') }]}
           >
             <Input.TextArea
               rows={8}
-              placeholder="JSON 格式消息体"
+              placeholder={t('topic.bodyPlaceholder')}
               style={{ fontFamily: 'monospace', fontSize: 14 }}
             />
           </Form.Item>
           <Flex gap={12} style={{ marginTop: -8, marginBottom: 16 }}>
             <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
-              快速填入:
+              {t('topic.quickFill')}
             </Text>
             <Space size={4} wrap>
               {RANDOM_BODY_GENERATORS.map((gen) => (
@@ -1705,7 +1705,7 @@ const TopicPage = () => {
           </Flex>
 
           <Divider style={{ margin: '8px 0 16px' }} orientation="left" plain>
-            自定义属性（可选）
+            {t('topic.customPropsLabel')}
           </Divider>
 
           <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
@@ -1714,13 +1714,13 @@ const TopicPage = () => {
               value={propsMode}
               onChange={(value) => setPropsMode(value as 'form' | 'text')}
               options={[
-                { label: '逐条录入', value: 'form' },
-                { label: '批量粘贴', value: 'text' },
+                { label: t('topic.entryForm'), value: 'form' },
+                { label: t('topic.entryText'), value: 'text' },
               ]}
             />
             {propsMode === 'text' && (
               <Text type="secondary" style={{ fontSize: 14 }}>
-                支持 key=value，多个属性用换行或逗号分隔
+                {t('topic.propsHelp')}
               </Text>
             )}
           </Flex>
@@ -1741,12 +1741,12 @@ const TopicPage = () => {
                     <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
                       <Col span={10}>
                         <Form.Item {...rest} name={[name, 'key']} style={{ marginBottom: 0 }}>
-                          <Input placeholder="属性名" />
+                          <Input placeholder={t('topic.propNamePlaceholder')} />
                         </Form.Item>
                       </Col>
                       <Col span={10}>
                         <Form.Item {...rest} name={[name, 'value']} style={{ marginBottom: 0 }}>
-                          <Input placeholder="属性值" />
+                          <Input placeholder={t('topic.propValuePlaceholder')} />
                         </Form.Item>
                       </Col>
                       <Col span={4}>
@@ -1758,7 +1758,7 @@ const TopicPage = () => {
                     </Row>
                   ))}
                   <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
-                    添加属性
+                    {t('topic.addProperty')}
                   </Button>
                 </>
               )}

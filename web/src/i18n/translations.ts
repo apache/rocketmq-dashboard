@@ -1719,6 +1719,19 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.addProperty': { zh: '添加属性', en: 'Add Property' },
+  'topic.bodyLabel': { zh: '消息体 Body', en: 'Message Body' },
+  'topic.bodyPlaceholder': { zh: 'JSON 格式消息体', en: 'Message body in JSON format' },
+  'topic.bodyRequired': { zh: '请输入消息体', en: 'Enter the message body' },
+  'topic.customPropsLabel': { zh: '自定义属性（可选）', en: 'Custom Properties (optional)' },
+  'topic.entryForm': { zh: '逐条录入', en: 'Enter One by One' },
+  'topic.entryText': { zh: '批量粘贴', en: 'Paste in Bulk' },
+  'topic.keyPlaceholder': { zh: '可选，消息 Key（用于查询）', en: 'Optional message key (used for lookup)' },
+  'topic.propNamePlaceholder': { zh: '属性名', en: 'Property name' },
+  'topic.propsHelp': { zh: '支持 key=value，多个属性用换行或逗号分隔', en: 'Supports key=value; separate multiple properties with newlines or commas' },
+  'topic.propValuePlaceholder': { zh: '属性值', en: 'Property value' },
+  'topic.quickFill': { zh: '快速填入:', en: 'Quick fill:' },
+  'topic.tagPlaceholder': { zh: '可选，消息标签', en: 'Optional message tag' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
