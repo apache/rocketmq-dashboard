@@ -17,32 +17,35 @@
 
 import { Descriptions, Divider, Space, Typography } from 'antd';
 import { BookOutlined, GithubOutlined, GlobalOutlined } from '@ant-design/icons';
+import { useLanguage } from '../../i18n/LangContext';
 
 const { Title, Text, Link: TypoLink } = Typography;
 
-export const AboutTab = () => (
+export const AboutTab = () => {
+  const { t } = useLanguage();
+  return (
   <div style={{ maxWidth: 800 }}>
     <Descriptions column={1} bordered size="small">
-      <Descriptions.Item label="版本">0.1.0</Descriptions.Item>
-      <Descriptions.Item label="构建时间">2024-01-15 14:30:00</Descriptions.Item>
-      <Descriptions.Item label="RocketMQ 支持版本">4.x / 5.x</Descriptions.Item>
-      <Descriptions.Item label="前端框架">React 18 + Ant Design 5</Descriptions.Item>
-      <Descriptions.Item label="后端框架">Spring Boot 3 + RocketMQ MCP Server</Descriptions.Item>
+      <Descriptions.Item label={t('settings.about.version')}>0.1.0</Descriptions.Item>
+      <Descriptions.Item label={t('settings.about.buildTime')}>2024-01-15 14:30:00</Descriptions.Item>
+      <Descriptions.Item label={t('settings.about.supportedVersions')}>4.x / 5.x</Descriptions.Item>
+      <Descriptions.Item label={t('settings.about.frontend')}>React 18 + Ant Design 5</Descriptions.Item>
+      <Descriptions.Item label={t('settings.about.backend')}>Spring Boot 3 + RocketMQ MCP Server</Descriptions.Item>
       <Descriptions.Item label="License">Apache 2.0</Descriptions.Item>
     </Descriptions>
 
     <Divider />
 
-    <Title level={5}>相关链接</Title>
+    <Title level={5}>{t('settings.about.relatedLinks')}</Title>
     <Space size="middle" style={{ marginBottom: 24 }}>
       <TypoLink href="https://github.com/apache/rocketmq" target="_blank" rel="noopener noreferrer">
         <GithubOutlined /> GitHub
       </TypoLink>
       <TypoLink href="https://rocketmq.apache.org/docs/" target="_blank" rel="noopener noreferrer">
-        <BookOutlined /> 文档中心
+        <BookOutlined /> {t('settings.about.docs')}
       </TypoLink>
       <TypoLink href="https://rocketmq.apache.org/" target="_blank" rel="noopener noreferrer">
-        <GlobalOutlined /> RocketMQ 社区
+        <GlobalOutlined /> {t('settings.about.community')}
       </TypoLink>
     </Space>
 
@@ -52,6 +55,7 @@ export const AboutTab = () => (
       Copyright © 2024 Apache Software Foundation. Licensed under the Apache License, Version 2.0.
     </Text>
   </div>
-);
+  );
+};
 
 export default AboutTab;
