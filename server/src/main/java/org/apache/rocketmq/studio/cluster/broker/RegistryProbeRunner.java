@@ -19,7 +19,10 @@ package org.apache.rocketmq.studio.cluster.broker;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -128,7 +131,10 @@ class RegistryProbeRunner implements AutoCloseable {
 
     private static String rootMessage(Throwable error) {
         Throwable current = error;
-        while (current.getCause() != null) {
+        // Walk the cause chain with an identity set so a cyclic cause chain (exception A caused
+        // by B and B caused by A) cannot loop forever and pin the probe's caller thread.
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (seen.add(current) && current.getCause() != null) {
             current = current.getCause();
         }
         String message = current.getMessage();
