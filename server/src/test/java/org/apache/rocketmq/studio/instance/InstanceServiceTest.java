@@ -783,6 +783,50 @@ class InstanceServiceTest {
     }
 
     @Test
+    void deleteInstancesShouldContinueAfterProviderRuntimeFailureTest() {
+        InstanceVO failedInstance = InstanceVO.builder().name("inst-a").build();
+        failedInstance.setId(1L);
+        InstanceVO deletedInstance = InstanceVO.builder().name("inst-b").build();
+        deletedInstance.setId(2L);
+        when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(failedInstance));
+        when(instanceRepository.findByIdentifier("inst-b")).thenReturn(Optional.of(deletedInstance));
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(failedInstance));
+        when(instanceRepository.findById(2L)).thenReturn(Optional.of(deletedInstance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException("broker unavailable"));
+        when(instanceProvider.countTopics("2")).thenReturn(0);
+        when(instanceProvider.countGroups("2")).thenReturn(0);
+        when(instanceRepository.deleteById(2L)).thenReturn(true);
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "inst-b"));
+
+        assertThat(result.getDeleted()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("inst-a: broker unavailable");
+        verify(instanceProvider).countTopics("1");
+        verify(instanceRepository).findByIdentifier("inst-b");
+        verify(instanceProvider).countTopics("2");
+        verify(instanceProvider).countGroups("2");
+        verify(instanceRepository).deleteById(2L);
+    }
+
+    @Test
+    void deleteInstancesShouldBoundUnexpectedFailureMessagesTest() {
+        InstanceVO existing = InstanceVO.builder().name("inst-a").build();
+        existing.setId(1L);
+        String oversizedMessage = "x".repeat(600);
+        when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException(oversizedMessage));
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a"));
+
+        assertThat(result.getDeleted()).isZero();
+        assertThat(result.getFailed()).singleElement()
+                .isEqualTo("inst-a: " + "x".repeat(500));
+    }
+
+    @Test
     void deleteInstancesShouldRejectEmptySelectionTest() {
         assertThatThrownBy(() -> instanceService.deleteInstances(List.of()))
                 .isInstanceOf(BusinessException.class)

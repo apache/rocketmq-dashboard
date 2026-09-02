@@ -71,6 +71,7 @@ public class InstanceService {
 
     static final int COUNT_PARALLELISM = 8;
     static final long COUNT_TIMEOUT_SECONDS = 3;
+    private static final int MAX_BATCH_FAILURE_MESSAGE_LENGTH = 500;
 
     private final ExecutorService countExecutor = Executors.newFixedThreadPool(COUNT_PARALLELISM, runnable -> {
         Thread thread = new Thread(runnable, "instance-resource-counts");
@@ -509,9 +510,23 @@ public class InstanceService {
                 deleted++;
             } catch (BusinessException ex) {
                 failed.add(instanceId + ": " + ex.getMessage());
+            } catch (RuntimeException ex) {
+                String message = batchFailureMessage(ex);
+                log.warn("Failed to delete instance {} during batch operation: {}", instanceId, message);
+                failed.add(instanceId + ": " + message);
             }
         }
         return BatchDeleteResultVO.builder().deleted(deleted).failed(failed).build();
+    }
+
+    private static String batchFailureMessage(RuntimeException failure) {
+        String message = failure.getMessage();
+        if (!StringUtils.hasText(message)) {
+            message = failure.getClass().getSimpleName();
+        }
+        message = message.trim();
+        return message.length() > MAX_BATCH_FAILURE_MESSAGE_LENGTH
+                ? message.substring(0, MAX_BATCH_FAILURE_MESSAGE_LENGTH) : message;
     }
 
     private void removeDataSourceBindings(String instanceId) {
