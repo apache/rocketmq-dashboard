@@ -830,7 +830,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '订阅模式',
+      title: t('consumer.subMode'),
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
@@ -958,7 +958,7 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   const subscriptionSubColumns = (groupName: string): ColumnsType<SubscriptionEntry> => [
     {
-      title: 'Topic 主题',
+      title: t('consumer.topicSubject'),
       dataIndex: 'topic',
       key: 'topic',
       width: 200,
@@ -969,7 +969,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '订阅一致性',
+      title: t('consumer.subConsistency'),
       dataIndex: 'consistency',
       key: 'consistency',
       width: 110,
@@ -984,7 +984,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '订阅模式',
+      title: t('consumer.subMode'),
       dataIndex: 'filterMode',
       key: 'filterMode',
       width: 120,
@@ -998,7 +998,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '订阅表达式',
+      title: t('consumer.subExpression'),
       dataIndex: 'expression',
       key: 'expression',
       width: 260,
@@ -1016,14 +1016,14 @@ const ConsumerPageContent = ({
         <Button
           size="small"
           icon={<Eye size={14} />}
-          title="查看该 Topic 的队列分布"
+          title={t('consumer.viewQueueDistTooltip')}
           style={{ borderColor: '#1677ff', color: '#1677ff' }}
           onClick={() => {
             const group = groups.find((g) => g.name === groupName) ?? selectedGroup;
             if (group) openModal(group, 'progress', record.topic);
           }}
         >
-          查看分布
+          {t('consumer.viewDist')}
         </Button>
       ),
     },
@@ -1045,7 +1045,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '协议',
+      title: t('consumer.protocol'),
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
@@ -1055,7 +1055,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '地址',
+      title: t('consumer.address'),
       dataIndex: 'address',
       key: 'address',
       width: 150,
@@ -1066,7 +1066,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '最后心跳',
+      title: t('consumer.lastHeartbeat'),
       dataIndex: 'lastHeartbeat',
       key: 'lastHeartbeat',
       width: 150,
@@ -1077,7 +1077,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '诊断',
+      title: t('consumer.diagnostics'),
       key: 'diagnostics',
       width: 90,
       render: (_: unknown, record: ConsumerInstance) => (
@@ -1086,7 +1086,7 @@ const ConsumerPageContent = ({
           icon={<ListBullets size={14} />}
           onClick={() => void openStackModal(record)}
         >
-          线程栈
+          {t('consumer.threadStack')}
         </Button>
       ),
     },
@@ -1097,7 +1097,7 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   const queueColumns: ColumnsType<QueueProgress> = [
     {
-      title: 'Topic 主题',
+      title: t('consumer.topicSubject'),
       dataIndex: 'topic',
       key: 'topic',
       width: 280,
