@@ -1564,6 +1564,13 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.lag': { zh: '堆积量', en: 'Backlog' },
+  'consumer.lagAfterReset': { zh: '重置后堆积', en: 'Backlog After Reset' },
+  'consumer.lagCurrent': { zh: '当前堆积', en: 'Current Backlog' },
+  'consumer.offsetCurrent': { zh: '当前位点', en: 'Current Offset' },
+  'consumer.offsetDelta': { zh: '变化', en: 'Delta' },
+  'consumer.offsetTarget': { zh: '目标位点', en: 'Target Offset' },
+  'consumer.risk': { zh: '风险', en: 'Risk' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
