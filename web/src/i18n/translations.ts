@@ -1815,6 +1815,17 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'dlq.message': { zh: '死信消息', en: 'DLQ Message' },
   'dlq.consumerGroup': { zh: '消费者组', en: 'Consumer Group' },
+  'dlq.action': { zh: '操作', en: 'Actions' },
+  'dlq.deadCount': { zh: '死信数量', en: 'DLQ Count' },
+  'dlq.enqueueTime': { zh: '入队时间', en: 'Enqueued At' },
+  'dlq.export': { zh: '导出', en: 'Export' },
+  'dlq.groupName': { zh: 'Group 名称', en: 'Group Name' },
+  'dlq.lastEnqueueTime': { zh: '最近入队时间', en: 'Last Enqueued At' },
+  'dlq.resend': { zh: '重发', en: 'Resend' },
+  'dlq.resendMessages': { zh: '重投消息', en: 'Resend Messages' },
+  'dlq.searchPlaceholder': { zh: '搜索 Group 名称或 DLQ Topic', en: 'Search group name or DLQ topic' },
+  'dlq.unavailable': { zh: '不可用', en: 'Unavailable' },
+  'dlq.viewMessages': { zh: '消息明细', en: 'Message Details' },
 
   // ─── Message Trace ───
   'trace.title': { zh: '消息轨迹', en: 'Message Trace' },
