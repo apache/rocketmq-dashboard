@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.alert;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
 
@@ -31,11 +32,18 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class AlertSilenceService {
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final AlertSilenceRepository repository;
     private final OperationAuditService operationAuditService;
 
     public List<AlertSilenceVO> list() {
         return repository.findAll();
+    }
+
+    public PageResult<AlertSilenceVO> listPage(int page, int pageSize) {
+        validatePagination(page, pageSize);
+        return repository.findPage(page, pageSize);
     }
 
     public AlertSilenceVO create(CreateAlertSilenceDTO request) {
@@ -87,10 +95,19 @@ public class AlertSilenceService {
     public LocalDateTime activeUntil(AlertRuleVO rule, String instanceId, Map<String, String> labels,
             LocalDateTime now) {
         AlertDomain domain = rule.getDomain() == null ? AlertDomain.BUSINESS : rule.getDomain();
-        return repository.findAll().stream()
+        return repository.findActiveCandidates(domain, rule.getId(), instanceId, now).stream()
                 .filter(silence -> matches(silence, rule.getId(), domain, instanceId,
                         labels == null ? Map.of() : labels, now))
                 .map(AlertSilenceVO::getEndsAt).max(LocalDateTime::compareTo).orElse(null);
+    }
+
+    private static void validatePagination(int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be positive");
+        }
+        if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(400, "pageSize must be between 1 and " + MAX_PAGE_SIZE);
+        }
     }
 
     private static boolean matches(AlertSilenceVO silence, Long ruleId, AlertDomain domain, String instanceId,

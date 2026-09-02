@@ -98,16 +98,32 @@ public class AlertSchemaMigration implements ApplicationRunner {
             new Column("rmq_system_alert", "suppression_cause_alert_id", "BIGINT"),
             new Column("rmq_system_alert", "suppression_reason", "VARCHAR(512)"),
             new Column("rmq_system_alert", "labels_json", "TEXT"),
+            new Column("rmq_alert_notification_outbox", "gmt_create",
+                    "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            new Column("rmq_alert_notification_outbox", "gmt_modified",
+                    "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+            new Column("rmq_alert_notification_outbox", "attempt_count", "INT NOT NULL DEFAULT 0"),
+            new Column("rmq_alert_notification_outbox", "last_error", "VARCHAR(1000)"),
+            new Column("rmq_alert_notification_outbox", "delivered_at", "DATETIME"),
             new Column("rmq_alert_notification_outbox", "sending_started_at", "DATETIME"),
             new Column("rmq_alert_notification_outbox", "claim_token", "VARCHAR(64)"),
             new Column("rmq_alert_notification_outbox", "message_content", "TEXT"),
             new Column("rmq_instance_message", "result_snapshot", "MEDIUMTEXT"));
     private static final List<Index> INDEXES = List.of(
             new Index("rmq_metric_snapshot", "idx_metric_snapshot_lookup", "instance_id, metric_key, collected_at"),
+            new Index("rmq_metric_snapshot", "idx_metric_snapshot_scope_cluster",
+                    "instance_id, metric_key, domain, labels_hash, cluster_id, availability, collected_at"),
+            new Index("rmq_metric_snapshot", "idx_metric_snapshot_scope_global",
+                    "instance_id, metric_key, domain, labels_hash, availability, collected_at"),
             new Index("rmq_metric_snapshot", "idx_metric_snapshot_retention", "collected_at"),
             new Index("rmq_alert_silence", "idx_alert_silence_active", "starts_at, ends_at"),
+            new Index("rmq_alert_silence", "idx_alert_silence_expiry", "ends_at, starts_at"),
             new Index("rmq_alert_silence", "idx_alert_silence_scope", "domain, rule_id, instance_id"),
             new Index("rmq_alert_notification_outbox", "idx_alert_notification_ready", "status, next_attempt_at"),
+            new Index("rmq_alert_notification_outbox", "idx_alert_notification_delivered_retention",
+                    "status, delivered_at"),
+            new Index("rmq_alert_notification_outbox", "idx_alert_notification_modified_retention",
+                    "status, gmt_modified"),
             new Index("rmq_alert_rule", "uk_alert_rule_semantic_fingerprint", "semantic_fingerprint", true),
             new Index("rmq_system_alert", "idx_system_alert_domain_time", "domain, time"),
             new Index("rmq_system_alert", "idx_system_alert_feed", "domain, instance_id, transition, time"));
@@ -147,6 +163,10 @@ public class AlertSchemaMigration implements ApplicationRunner {
 
     private static void ensureColumn(DatabaseMetaData metadata, String catalog, Statement statement, Column column)
             throws Exception {
+        if (!hasTable(metadata, catalog, column.table())) {
+            log.debug("Skipping native alerting column {}.{} because table is missing", column.table(), column.name());
+            return;
+        }
         if (hasColumn(metadata, catalog, column.table(), column.name())) {
             return;
         }

@@ -264,6 +264,8 @@ PENDING -> SENDING -> DELIVERED
 
 Retries use bounded exponential backoff. Channel configuration is encrypted at rest and only write-only secrets are returned by APIs. A test-send action uses the same sender implementation but does not create an alert event.
 
+Terminal delivery rows are retained for `studio.alerting.notification-retention` (`P30D` by default). The scheduled cleanup only removes `DELIVERED` and `FAILED` rows older than the retention cutoff, and it runs with bounded batches using `studio.alerting.notification-cleanup-batch-size` and `studio.alerting.notification-cleanup-max-batches`.
+
 Silences match `domain`, rule ID, instance ID, and optional resource labels. They suppress delivery but do not hide active state from the Alert Events page.
 
 ## APIs

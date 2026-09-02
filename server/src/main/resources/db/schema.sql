@@ -291,6 +291,8 @@ CREATE TABLE IF NOT EXISTS rmq_metric_snapshot (
   `collected_at` DATETIME NOT NULL,
   PRIMARY KEY (`id`),
   INDEX idx_metric_snapshot_lookup (`instance_id`, `metric_key`, `collected_at`),
+  INDEX idx_metric_snapshot_scope_cluster (`instance_id`, `metric_key`, `domain`, `labels_hash`, `cluster_id`, `availability`, `collected_at`),
+  INDEX idx_metric_snapshot_scope_global (`instance_id`, `metric_key`, `domain`, `labels_hash`, `availability`, `collected_at`),
   INDEX idx_metric_snapshot_retention (`collected_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -337,6 +339,7 @@ CREATE TABLE IF NOT EXISTS rmq_alert_silence (
   `created_by` VARCHAR(128) NOT NULL,
   PRIMARY KEY (`id`),
   INDEX idx_alert_silence_active (`starts_at`, `ends_at`),
+  INDEX idx_alert_silence_expiry (`ends_at`, `starts_at`),
   INDEX idx_alert_silence_scope (`domain`, `rule_id`, `instance_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -356,7 +359,9 @@ CREATE TABLE IF NOT EXISTS rmq_alert_notification_outbox (
   `delivered_at` DATETIME NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY uk_alert_notification_outbox (`alert_id`, `channel`),
-  INDEX idx_alert_notification_ready (`status`, `next_attempt_at`)
+  INDEX idx_alert_notification_ready (`status`, `next_attempt_at`),
+  INDEX idx_alert_notification_delivered_retention (`status`, `delivered_at`),
+  INDEX idx_alert_notification_modified_retention (`status`, `gmt_modified`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 15. 系统告警事件
