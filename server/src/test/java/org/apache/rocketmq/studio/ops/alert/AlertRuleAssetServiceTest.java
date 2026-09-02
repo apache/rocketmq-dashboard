@@ -24,6 +24,8 @@ import org.springframework.core.io.support.ResourcePatternResolver;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -101,6 +103,28 @@ class AlertRuleAssetServiceTest {
         assertTrue(hasCritical, "expected at least one critical rule");
         assertTrue(hasBroker, "expected at least one broker rule");
     }
+
+    @Test
+    void clientConnectionDropRuleShouldUseSignedGaugeDeltaTest() {
+        PrometheusAlertRule rule = service.loadDefaultRules().stream()
+                .filter(r -> "RocketMQClientConnectionDrop".equals(r.alert()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("expected bundled client connection drop rule"));
+
+        assertEquals("delta(rocketmq_producer_count[5m]) < -5", rule.expr());
+        assertFalse(rule.expr().contains("changes(rocketmq_producer_count[5m]) < -5"),
+                "changes() counts value transitions and cannot produce a negative drop");
+    }
+
+    @Test
+    void generatorShouldUseSameTriggerableClientConnectionDropExpressionTest() throws IOException {
+        String generator = Files.readString(Path.of("scripts", "gen_alert_rule_yaml.py"));
+
+        assertTrue(generator.contains("'delta(rocketmq_producer_count[5m]) < -5'"));
+        assertFalse(generator.contains("'changes(rocketmq_producer_count[5m]) < -5'"),
+                "generator must not recreate a non-triggerable changes() drop rule");
+    }
+
     @Test
     void assetLoadingShouldSkipEmptyAndNonObjectYaml() {
         AlertRuleAssetService service = serviceWithResources(
