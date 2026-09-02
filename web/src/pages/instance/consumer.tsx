@@ -1148,7 +1148,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '堆积量',
+      title: t('consumer.lag'),
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       width: 120,
@@ -1193,7 +1193,7 @@ const ConsumerPageContent = ({
       render: (id: number) => <Tag color="blue">Queue {id}</Tag>,
     },
     {
-      title: '当前位点',
+      title: t('consumer.offsetCurrent'),
       dataIndex: 'consumerOffset',
       key: 'consumerOffset',
       width: 120,
@@ -1203,7 +1203,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '目标位点',
+      title: t('consumer.offsetTarget'),
       dataIndex: 'targetOffset',
       key: 'targetOffset',
       width: 120,
@@ -1215,7 +1215,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '变化',
+      title: t('consumer.offsetDelta'),
       dataIndex: 'offsetDelta',
       key: 'offsetDelta',
       width: 100,
@@ -1233,7 +1233,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '当前堆积',
+      title: t('consumer.lagCurrent'),
       dataIndex: 'currentLag',
       key: 'currentLag',
       width: 110,
@@ -1243,7 +1243,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '重置后堆积',
+      title: t('consumer.lagAfterReset'),
       dataIndex: 'projectedLag',
       key: 'projectedLag',
       width: 124,
@@ -1255,7 +1255,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '风险',
+      title: t('consumer.risk'),
       dataIndex: 'riskLevel',
       key: 'riskLevel',
       width: 86,
