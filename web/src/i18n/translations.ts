@@ -828,6 +828,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'audit.cleanupFailed': { zh: '清理审计日志失败，请稍后重试', en: 'Failed to clean up audit logs, please retry later' },
+  'audit.daysOld': { zh: '天之前的日志', en: 'days old' },
+  'audit.exportFailed': { zh: '导出审计日志失败，请稍后重试', en: 'Failed to export audit logs, please retry later' },
+  'audit.loadFailed': { zh: '审计日志加载失败，请稍后重试', en: 'Failed to load audit logs, please retry later' },
 
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
