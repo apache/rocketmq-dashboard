@@ -169,6 +169,8 @@ const ClusterPage = () => {
   const nsRegistryRequestRef = useRef(0);
   const registryClustersRequestRef = useRef(0);
   const k8sCertsRequestRef = useRef(0);
+  const nsConfigDiffRequestRef = useRef(0);
+  const connectionTestRequestRef = useRef(0);
 
   const loadRegistryClusters = useCallback(async () => {
     const requestId = ++registryClustersRequestRef.current;
@@ -227,6 +229,8 @@ const ClusterPage = () => {
       nsRegistryRequestRef.current += 1;
       registryClustersRequestRef.current += 1;
       k8sCertsRequestRef.current += 1;
+      nsConfigDiffRequestRef.current += 1;
+      connectionTestRequestRef.current += 1;
     },
     [],
   );
@@ -328,6 +332,7 @@ const ClusterPage = () => {
 
   const openNameServerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
+      const requestId = ++nsConfigDiffRequestRef.current;
       setNsConfigDiffState({
         open: true,
         loading: true,
@@ -336,6 +341,7 @@ const ClusterPage = () => {
       });
       try {
         const result = await getNameServerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        if (requestId !== nsConfigDiffRequestRef.current) return;
         setNsConfigDiffState({
           open: true,
           loading: false,
@@ -343,6 +349,7 @@ const ClusterPage = () => {
           result,
         });
       } catch {
+        if (requestId !== nsConfigDiffRequestRef.current) return;
         setNsConfigDiffState((current) => ({ ...current, loading: false }));
         message.error(t('cluster.nsConfigDiffFailed'));
       }
@@ -373,6 +380,10 @@ const ClusterPage = () => {
     },
     [t],
   );
+  const closeNameServerConfigDiff = useCallback(() => {
+    nsConfigDiffRequestRef.current += 1;
+    setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null });
+  }, []);
 
   // ─── Connection test ──────────────────────────────────────────────────────
   const [connectModalOpen, setConnectModalOpen] = useState(false);
@@ -381,11 +392,14 @@ const ClusterPage = () => {
   const [connectForm] = Form.useForm();
 
   const openConnectModal = useCallback(() => {
+    connectionTestRequestRef.current += 1;
     setProbeResult(null);
+    setConnectTesting(false);
     setConnectModalOpen(true);
   }, []);
 
   const closeConnectModal = useCallback(() => {
+    connectionTestRequestRef.current += 1;
     setConnectModalOpen(false);
     setConnectTesting(false);
     setProbeResult(null);
@@ -393,22 +407,26 @@ const ClusterPage = () => {
   }, [connectForm]);
 
   const handleTestConnection = useCallback(async () => {
+    const requestId = ++connectionTestRequestRef.current;
     let namesrvAddr: string;
     try {
       ({ namesrvAddr } = await connectForm.validateFields());
     } catch {
       return;
     }
+    if (requestId !== connectionTestRequestRef.current) return;
     setConnectTesting(true);
     setProbeResult(null);
     try {
       const result = await testClusterConnection(namesrvAddr);
+      if (requestId !== connectionTestRequestRef.current) return;
       setProbeResult(result);
       message.success(t('cluster.testConnectionSuccess'));
     } catch {
+      if (requestId !== connectionTestRequestRef.current) return;
       message.error(t('cluster.testConnectionFailed'));
     } finally {
-      setConnectTesting(false);
+      if (requestId === connectionTestRequestRef.current) setConnectTesting(false);
     }
   }, [connectForm, t]);
 
@@ -838,18 +856,8 @@ const ClusterPage = () => {
       <Modal
         title={t('cluster.nsConfigDiffTitle', { name: titleName })}
         open={open}
-        onCancel={() =>
-          setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null })
-        }
-        footer={
-          <Button
-            onClick={() =>
-              setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null })
-            }
-          >
-            {t('common.close')}
-          </Button>
-        }
+        onCancel={closeNameServerConfigDiff}
+        footer={<Button onClick={closeNameServerConfigDiff}>{t('common.close')}</Button>}
         width={920}
         destroyOnHidden
       >

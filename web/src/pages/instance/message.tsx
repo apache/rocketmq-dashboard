@@ -278,6 +278,7 @@ const MessagePageContent = ({
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
+  const traceCacheRef = useRef(new Map<string, Promise<TraceRecord | null>>());
 
   useEffect(
     () => () => {
@@ -303,15 +304,29 @@ const MessagePageContent = ({
         : queryValidationError;
 
   /* ─── Handlers ─── */
+  const clearQueryResults = () => {
+    setMessages([]);
+    setMessageTotal(0);
+    setMessagePage(1);
+    setResultMayBeTruncated(false);
+    setQueryError(null);
+    setQueryLoading(false);
+  };
+
   const handleReset = () => {
     queryGenerationRef.current += 1;
     setSelectedTopic(undefined);
     setKeyInput('');
     setMsgIdInput('');
     setDateRange(getDefaultRange());
-    setMessages([]);
-    setQueryError(null);
-    setQueryLoading(false);
+    clearQueryResults();
+  };
+
+  const handleQueryModeChange = (mode: QueryMode) => {
+    if (mode === queryMode) return;
+    queryGenerationRef.current += 1;
+    setQueryMode(mode);
+    clearQueryResults();
   };
 
   const executeQuery = async (
@@ -369,7 +384,7 @@ const MessagePageContent = ({
   const replayHistoryRecord = async (record: MessageQueryHistory) => {
     const modeMap: Record<string, QueryMode> = { TOPIC: 'topic', KEY: 'key', MSG_ID: 'msgid' };
     const mode = modeMap[record.queryType] || 'topic';
-    setQueryMode(mode);
+    handleQueryModeChange(mode);
     setSelectedTopic(record.topic);
     setKeyInput(record.messageKey || '');
     setMsgIdInput(record.msgId || '');
@@ -377,10 +392,13 @@ const MessagePageContent = ({
       setDateRange([dayjs(record.startTime), dayjs(record.endTime)]);
     }
     setHistoryDrawerOpen(false);
+    const requestGeneration = queryGenerationRef.current + 1;
+    queryGenerationRef.current = requestGeneration;
     setQueryLoading(true);
     setQueryError(null);
     try {
       const results = await getMessageQueryResults(record.id);
+      if (queryGenerationRef.current !== requestGeneration) return;
       const mapped: MessageRecord[] = results.map((r) => ({
         msgId: r.msgId,
         topic: r.topic,
@@ -402,14 +420,18 @@ const MessagePageContent = ({
       setResultMayBeTruncated(false);
       message.success(`已加载历史查询结果，共 ${mapped.length} 条`);
     } catch (error) {
-      setQueryError(getErrorMessage(error, '加载历史结果失败'));
+      if (queryGenerationRef.current === requestGeneration) {
+        setQueryError(getErrorMessage(error, '加载历史结果失败'));
+      }
     } finally {
-      setQueryLoading(false);
+      if (queryGenerationRef.current === requestGeneration) {
+        setQueryLoading(false);
+      }
     }
   };
 
   const replayTraceRecord = (record: TraceQueryHistory) => {
-    setQueryMode('msgid');
+    handleQueryModeChange('msgid');
     setSelectedTopic(record.topic);
     setMsgIdInput(record.msgId);
     setHistoryDrawerOpen(false);
@@ -419,21 +441,27 @@ const MessagePageContent = ({
   const handleVerifyConsume = () => {
     message.warning('消费验证接口尚未接入，无法确认该消息的真实消费状态');
   };
-  const openDetail = async (record: MessageRecord, tab = 'content') => {
+  const loadMessageTrace = async (record: MessageRecord) => {
     const requestGeneration = traceGenerationRef.current + 1;
     traceGenerationRef.current = requestGeneration;
-    setSelectedMsg(record);
-    setModalTab(tab);
-    setModalOpen(true);
     setTraceData(null);
     setTraceLoading(true);
     setTraceError(null);
-    if (tab === 'trace') {
-      setTraceQueryMode('msgid');
-      setTraceQueryValue(record.msgId);
+    setTraceQueryMode('msgid');
+    setTraceQueryValue(record.msgId);
+    const cacheKey = JSON.stringify([selectedInstanceId, record.topic, record.msgId]);
+    let traceRequest = traceCacheRef.current.get(cacheKey);
+    if (!traceRequest) {
+      traceRequest = getMessageTrace(record.msgId, selectedInstanceId, record.topic).catch(
+        (error) => {
+          traceCacheRef.current.delete(cacheKey);
+          throw error;
+        },
+      );
+      traceCacheRef.current.set(cacheKey, traceRequest);
     }
     try {
-      const result = await getMessageTrace(record.msgId, selectedInstanceId, record.topic);
+      const result = await traceRequest;
       if (traceGenerationRef.current !== requestGeneration) return;
       setTraceData(result);
       setTraceError(null);
@@ -446,6 +474,22 @@ const MessagePageContent = ({
         setTraceLoading(false);
       }
     }
+  };
+
+  const openDetail = (record: MessageRecord, tab = 'content') => {
+    traceGenerationRef.current += 1;
+    setSelectedMsg(record);
+    setModalTab(tab);
+    setModalOpen(true);
+    setTraceData(null);
+    setTraceLoading(false);
+    setTraceError(null);
+    if (tab === 'trace') void loadMessageTrace(record);
+  };
+
+  const handleModalTabChange = (tab: string) => {
+    setModalTab(tab);
+    if (tab === 'trace' && selectedMsg) void loadMessageTrace(selectedMsg);
   };
 
   const runTraceQuery = async () => {
@@ -848,7 +892,7 @@ const MessagePageContent = ({
             <Segmented
               options={QUERY_OPTIONS}
               value={queryMode}
-              onChange={(v) => setQueryMode(v as QueryMode)}
+              onChange={(v) => handleQueryModeChange(v as QueryMode)}
             />
           </Space>
 
@@ -1044,7 +1088,7 @@ const MessagePageContent = ({
           </Flex>
         }
       >
-        <Tabs activeKey={modalTab} onChange={setModalTab} items={modalTabs} />
+        <Tabs activeKey={modalTab} onChange={handleModalTabChange} items={modalTabs} />
       </Modal>
 
       <Modal

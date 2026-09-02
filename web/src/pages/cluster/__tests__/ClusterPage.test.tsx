@@ -21,7 +21,11 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ClusterInfo } from '../../../api/cluster';
+import type {
+  ClusterInfo,
+  ClusterProbeResult,
+  NameServerConfigDiffResult,
+} from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
 
 const clusterServiceMocks = vi.hoisted(() => ({
@@ -627,6 +631,105 @@ describe('Cluster page', () => {
       name: /Broker 配置差异 - ns-prod/,
     });
     expect(within(dialog).getByText('正在检测 Broker 配置差异')).toBeInTheDocument();
+  });
+
+  it('does not reopen a closed NameServer config diff when its request finishes', async () => {
+    const pendingDiff = deferred<NameServerConfigDiffResult>();
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        name: 'rocketmq1',
+        nsClusterName: 'rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        nameServers: [{ addr: 'rocketmq1-nameserver:9876', status: 'healthy' }],
+      },
+    ]);
+    clusterServiceMocks.getNameServerConfigDiff.mockReturnValue(pendingDiff.promise);
+    renderWithProviders(<ClusterPage />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const row = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    fireEvent.click(within(row).getByRole('button', { name: /配置差异/ }));
+    const dialog = await screen.findByRole('dialog', { name: /NameServer 配置差异/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+    await waitFor(() => expect(dialog).toHaveClass('ant-zoom-leave'));
+
+    await act(async () => {
+      pendingDiff.resolve({
+        cluster: 'rocketmq1',
+        complete: true,
+        driftDetected: false,
+        nodeCount: 1,
+        reachableNodeCount: 1,
+        comparedKeys: ['serverWorkerThreads'],
+        nodes: [{ address: 'rocketmq1-nameserver:9876', reachable: true }],
+        differences: [],
+      });
+      await pendingDiff.promise;
+    });
+
+    expect(dialog).toHaveClass('ant-zoom-leave');
+  });
+
+  it('keeps the latest connection result after closing and reopening the modal', async () => {
+    const staleProbe = deferred<ClusterProbeResult>();
+    const latestProbe = deferred<ClusterProbeResult>();
+    clusterServiceMocks.testClusterConnection
+      .mockReturnValueOnce(staleProbe.promise)
+      .mockReturnValueOnce(latestProbe.promise);
+    renderWithProviders(<ClusterPage />);
+
+    const openModal = async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /新建集群/ }));
+      return screen.findByRole('dialog', { name: /测试集群连接/ });
+    };
+    let dialog = await openModal();
+    fireEvent.change(within(dialog).getByLabelText(/NameServer 地址/), {
+      target: { value: 'stale-nameserver:9876' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /测试连接/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.testClusterConnection).toHaveBeenCalledWith(
+        'stale-nameserver:9876',
+      ),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+
+    dialog = await openModal();
+    fireEvent.change(within(dialog).getByLabelText(/NameServer 地址/), {
+      target: { value: 'latest-nameserver:9876' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /测试连接/ }));
+    await waitFor(() => expect(clusterServiceMocks.testClusterConnection).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      latestProbe.resolve({
+        connected: true,
+        namesrvAddr: 'latest-nameserver:9876',
+        clusterName: 'latest-cluster',
+        brokerCount: 1,
+        brokerNames: ['latest-broker'],
+        elapsedMillis: 10,
+        message: 'ok',
+      });
+      await latestProbe.promise;
+    });
+    expect(within(dialog).getByText('latest-cluster')).toBeInTheDocument();
+
+    await act(async () => {
+      staleProbe.resolve({
+        connected: true,
+        namesrvAddr: 'stale-nameserver:9876',
+        clusterName: 'stale-cluster',
+        brokerCount: 1,
+        brokerNames: ['stale-broker'],
+        elapsedMillis: 20,
+        message: 'ok',
+      });
+      await staleProbe.promise;
+    });
+    expect(within(dialog).getByText('latest-cluster')).toBeInTheDocument();
+    expect(within(dialog).queryByText('stale-cluster')).not.toBeInTheDocument();
   });
 
   it('polls the API after two seconds and renders only returned metrics', async () => {

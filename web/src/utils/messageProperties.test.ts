@@ -19,6 +19,28 @@ import { describe, expect, it } from 'vitest';
 import { parseMessageProperties } from './messageProperties';
 
 describe('parseMessageProperties', () => {
+  it('preserves commas and additional equals signs in property values', () => {
+    const result = parseMessageProperties(
+      'location=Beijing,China\nsignature=part-a=part-b\ntags=blue,green',
+    );
+
+    expect(result).toEqual({
+      properties: {
+        location: 'Beijing,China',
+        signature: 'part-a=part-b',
+        tags: 'blue,green',
+      },
+      errors: [],
+    });
+  });
+
+  it('supports Windows line endings and reports duplicate keys', () => {
+    const result = parseMessageProperties('traceId=first\r\ntenant=demo\r\ntraceId=second');
+
+    expect(result.properties).toEqual({ traceId: 'first', tenant: 'demo' });
+    expect(result.errors).toEqual(['属性名“traceId”重复']);
+  });
+
   it('preserves JavaScript object prototype property names', () => {
     const result = parseMessageProperties(
       '__proto__=trace-prototype\nconstructor=trace-constructor\ntoString=trace-string',
