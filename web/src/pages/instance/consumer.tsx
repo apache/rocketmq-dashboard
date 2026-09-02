@@ -844,22 +844,22 @@ const ConsumerPageContent = ({
   };
 
   const consumerGroupImportColumns: ColumnsType<ResourceImportRow<Partial<ConsumerGroup>>> = [
-    { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
-    { title: 'Group 名称', dataIndex: 'name', key: 'name' },
+    { title: t('consumer.importLine'), dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
+    { title: t('consumer.name'), dataIndex: 'name', key: 'name' },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (status: ResourceImportRow<Partial<ConsumerGroup>>['status']) => {
-        if (status === 'success') return <Tag color="success">成功</Tag>;
-        if (status === 'failed') return <Tag color="error">失败</Tag>;
-        if (status === 'invalid') return <Tag color="warning">无效</Tag>;
-        return <Tag>待导入</Tag>;
+        if (status === 'success') return <Tag color="success">{t('consumer.importSuccess')}</Tag>;
+        if (status === 'failed') return <Tag color="error">{t('consumer.importFailed')}</Tag>;
+        if (status === 'invalid') return <Tag color="warning">{t('consumer.importInvalid')}</Tag>;
+        return <Tag>{t('consumer.importPending')}</Tag>;
       },
     },
     {
-      title: '说明',
+      title: t('consumer.importNote'),
       dataIndex: 'message',
       key: 'message',
       render: (text?: string) => text || '-',
@@ -871,7 +871,7 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   const columns: ColumnsType<ConsumerGroup> = [
     {
-      title: 'Group 名称',
+      title: t('consumer.name'),
       dataIndex: 'name',
       key: 'name',
       // `minWidth` rather than `width`: this is the one column allowed to grow, so a window
@@ -882,7 +882,7 @@ const ConsumerPageContent = ({
       ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Tooltip title={`${name}（点击复制）`}>
+        <Tooltip title={t('consumer.copyNameTooltip')}>
           <Text
             strong
             style={{ fontSize: 14, cursor: 'pointer' }}
@@ -918,7 +918,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '订阅组类型',
+      title: t('consumer.subType'),
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 100,
@@ -929,7 +929,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '订阅模式',
+      title: t('consumer.subMode'),
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
@@ -937,7 +937,7 @@ const ConsumerPageContent = ({
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
     {
-      title: '在线客户端',
+      title: t('consumer.onlineClients'),
       dataIndex: 'onlineInstances',
       key: 'onlineInstances',
       width: 100,
@@ -945,7 +945,7 @@ const ConsumerPageContent = ({
       sorter: (a, b) => (a.onlineInstances ?? 0) - (b.onlineInstances ?? 0),
     },
     {
-      title: '总堆积量',
+      title: t('consumer.totalLag'),
       dataIndex: 'totalLag',
       key: 'totalLag',
       width: 96,
@@ -959,7 +959,7 @@ const ConsumerPageContent = ({
         ),
     },
     {
-      title: '消费延迟',
+      title: t('consumer.delay'),
       dataIndex: 'delaySeconds',
       key: 'delaySeconds',
       width: 100,
@@ -968,7 +968,7 @@ const ConsumerPageContent = ({
       render: (seconds: number) => formatDelay(seconds ?? 0),
     },
     {
-      title: '创建时间',
+      title: t('consumer.createdAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       // 156 = the 140px `YYYY-MM-DD HH:mm:ss` label at 14px plus the small-table cell padding;
@@ -982,7 +982,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '修改时间',
+      title: t('consumer.updatedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 156,
@@ -994,7 +994,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '操作',
+      title: t('consumer.action'),
       key: 'actions',
       width: 248,
       render: (_: unknown, record: ConsumerGroup) => (
@@ -1008,7 +1008,7 @@ const ConsumerPageContent = ({
               openModal(record);
             }}
           >
-            详情
+            {t('consumer.detail')}
           </Button>
           <Button
             size="small"
@@ -1024,7 +1024,7 @@ const ConsumerPageContent = ({
               void loadSubscriptions(record.name);
             }}
           >
-            重置位点
+            {t('consumer.resetOffset')}
           </Button>
           <Button
             size="small"
@@ -1085,7 +1085,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '订阅模式',
+      title: t('consumer.subMode'),
       dataIndex: 'filterMode',
       key: 'filterMode',
       width: 120,
