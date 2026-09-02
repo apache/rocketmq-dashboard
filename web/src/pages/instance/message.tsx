@@ -509,7 +509,7 @@ const MessagePageContent = ({
       setMessagePageSize(result.size);
       setResultMayBeTruncated(result.resultMayBeTruncated);
       setQueryError(null);
-      message.success(`查询完成，共 ${result.total} 条`);
+      message.success(t('message.searchDone', { total: result.total }));
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
         setQueryError(getErrorMessage(error, DEFAULT_QUERY_ERROR));
@@ -563,7 +563,7 @@ const MessagePageContent = ({
   };
 
   const handleVerifyConsume = () => {
-    message.warning('消费验证接口尚未接入，无法确认该消息的真实消费状态');
+    message.warning(t('message.consumptionVerifyUnavailable'));
   };
   const loadMessageTrace = async (record: MessageRecord) => {
     const requestGeneration = traceGenerationRef.current + 1;
@@ -684,7 +684,7 @@ const MessagePageContent = ({
       !directConsumeGroup.trim() ||
       !directConsumeClientId.trim()
     ) {
-      message.warning('请填写目标消费组和在线客户端 ID');
+      message.warning(t('message.directConsumeRequired'));
       return;
     }
     setDirectConsumeSubmitting(true);
@@ -697,10 +697,10 @@ const MessagePageContent = ({
         clientId: directConsumeClientId.trim(),
       });
       const detail = [result.consumeResult, result.remark].filter(Boolean).join('：');
-      message.info(`Broker 返回 ${detail || 'UNKNOWN'}，耗时 ${result.spentTimeMillis} ms`);
+      message.info(t('message.brokerResponse', { detail: detail || 'UNKNOWN', time: result.spentTimeMillis }));
       setDirectConsumeOpen(false);
     } catch (error) {
-      message.error(getErrorMessage(error, '直接消费请求失败，请检查消费组和客户端是否在线'));
+      message.error(getErrorMessage(error, t('message.directConsumeFailed')));
     } finally {
       setDirectConsumeSubmitting(false);
     }
@@ -709,7 +709,7 @@ const MessagePageContent = ({
   const handleDownload = (record: MessageRecord) => {
     const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
     downloadBlob(blob, `${record.msgId}.json`);
-    message.success('消息下载成功');
+    message.success(t('message.downloadDone'));
   };
 
   /* ─── Table Columns ─── */
