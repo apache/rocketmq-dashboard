@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclUser;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclRuleMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclUserMapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -237,7 +238,15 @@ public class MybatisPlusAclRepository implements AclRepository {
                         .set("white_remote_address", null));
             }
         } else {
-            userMapper.insert(entity);
+            try {
+                userMapper.insert(entity);
+            } catch (DuplicateKeyException exception) {
+                // A concurrent create of the same accessKey can win the check-then-insert
+                // race and hit the unique key instead; surface it as a conflict like the
+                // other duplicate-key paths (e.g. CloudCredentialService).
+                throw new BusinessException(409,
+                        "Plain access account already exists for accessKey: " + config.getAccessKey());
+            }
         }
 
         upsertPlainAccessRules(config);
