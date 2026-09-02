@@ -61,3 +61,8 @@ export function getChatDraft(state: unknown): ChatDraft | null {
     ...(conversationId ? { conversationId } : {}),
   };
 }
+
+export function shouldOpenChatHistory(state: unknown): boolean {
+  if (typeof state !== 'object' || state === null) return false;
+  return (state as Record<string, unknown>).historyIntent === 'open';
+}

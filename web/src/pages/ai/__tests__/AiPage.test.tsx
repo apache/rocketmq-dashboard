@@ -301,6 +301,56 @@ describe('AiPage tool runner', () => {
     expect(chatStream).not.toHaveBeenCalled();
   });
 
+  it('opens the history drawer once when the route carries history intent', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'previous',
+              messages: [{ id: 'previous-message', role: 'user', text: 'Previous conversation' }],
+              updatedAt: Date.now() - 60_000,
+            },
+          ],
+          activeConversationId: null,
+        },
+      },
+    });
+
+    renderPage({ historyIntent: 'open' });
+
+    const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
+    expect(
+      within(historyDrawer).getByRole('button', { name: /^Previous conversation/ }),
+    ).toBeInTheDocument();
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
+  it('does not reopen history when the route has no history intent', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'previous',
+              messages: [{ id: 'previous-message', role: 'user', text: 'Previous conversation' }],
+              updatedAt: Date.now() - 60_000,
+            },
+          ],
+          activeConversationId: null,
+        },
+      },
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog', { name: 'AI 对话历史' })).not.toBeInTheDocument();
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
   it('stops an in-flight response before switching conversations', async () => {
     useAiChatHistoryStore.setState({
       histories: {
