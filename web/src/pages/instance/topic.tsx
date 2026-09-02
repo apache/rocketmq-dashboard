@@ -382,6 +382,9 @@ const TopicPage = () => {
           if (requestId === topicRequestIdRef.current) {
             setTopics(result.items);
             setTotalTopics(result.total);
+            if (result.items.length === 0 && result.total > 0 && tablePage > 1) {
+              setTablePage(Math.max(1, Math.ceil(result.total / tablePageSize)));
+            }
           }
         })
         .catch(() => {

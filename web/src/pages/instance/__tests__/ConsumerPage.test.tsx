@@ -91,6 +91,12 @@ const group: ConsumerGroup = {
   instances: [],
 };
 
+const buildGroups = (count: number): ConsumerGroup[] =>
+  Array.from({ length: count }, (_, index) => ({
+    ...group,
+    name: `remote-cg-${String(index + 1).padStart(2, '0')}`,
+  }));
+
 const groupPage = (
   items: ConsumerGroup[],
   overrides: Partial<{ total: number; page: number; size: number }> = {},
@@ -292,6 +298,36 @@ describe('Consumer page', () => {
     cleanup();
     Modal.destroyAll();
     message.destroy();
+  });
+
+  it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
+    const user = userEvent.setup();
+    let call = 0;
+    vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) => {
+      call += 1;
+      if (params?.page === 2) {
+        // Page 2 went out of range (its rows were deleted server-side).
+        return groupPage([], { total: 15, page: 2 });
+      }
+      // First load reports 45 rows (3 pages); the clamp re-fetch reports the shrunk 15.
+      return call === 1
+        ? groupPage(buildGroups(20), { total: 45, size: 20 })
+        : groupPage(buildGroups(15), { total: 15, size: 20 });
+    });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg-01')).toBeInTheDocument();
+
+    const secondPage = document.querySelector('.ant-pagination-item-2');
+    expect(secondPage).not.toBeNull();
+    await user.click(secondPage as HTMLElement);
+
+    // The empty out-of-range page is corrected: the list reloads page 1.
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
   });
 
   it('submits the canonical global delivery order type', async () => {

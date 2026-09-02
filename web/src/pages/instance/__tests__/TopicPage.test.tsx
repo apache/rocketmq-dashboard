@@ -324,6 +324,63 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
   });
 
+  it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
+    const user = userEvent.setup();
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 6,
+        name: 'instance-a',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        remark: '',
+        topicCount: 45,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    const requestedPages: number[] = [];
+    topicServiceMocks.listTopicsPage.mockImplementation(async (params) => {
+      requestedPages.push(params?.page ?? 0);
+      if (params?.page === 2) {
+        // Page 2 went out of range (its rows were deleted server-side):
+        // report no items and the shrunk total.
+        return { items: [], total: 15, page: 2, size: 20 };
+      }
+      // The first load reports 45 rows (3 pages); the clamp re-fetch
+      // reports the shrunk 15 rows that fit on a single page.
+      return requestedPages.length === 1
+        ? {
+            items: buildTopics(20).map((t) => ({ ...t, instanceId: 'instance-a' })),
+            total: 45,
+            page: 1,
+            size: 20,
+          }
+        : {
+            items: buildTopics(15).map((t) => ({ ...t, instanceId: 'instance-a' })),
+            total: 15,
+            page: 1,
+            size: 20,
+          };
+    });
+    renderWithProviders('/instance/instance-a/topic');
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+
+    const secondPage = document.querySelector('.ant-pagination-item-2');
+    expect(secondPage).not.toBeNull();
+    await user.click(secondPage as HTMLElement);
+
+    // The empty out-of-range page is corrected: the table reloads the last valid page.
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
+    expect(requestedPages).toEqual([1, 2, 1]);
+    expect(within(getTableBody()).getByText('topic-15')).toBeInTheDocument();
+  });
+
   it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
     const user = userEvent.setup();
     const topic = { ...buildTopics(1)[0], instanceId: 'instance-a' };
