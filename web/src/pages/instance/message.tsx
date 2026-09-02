@@ -1013,7 +1013,7 @@ const MessagePageContent = ({
               pageSize: messagePageSize,
               total: messageTotal,
               showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 条消息`,
+              showTotal: (total) => t('common.totalMessages', { count: total }),
               onChange: (page, pageSize) =>
                 void executeQuery(queryMode, currentQueryParams, page, pageSize),
             }}

@@ -34,6 +34,7 @@ import { DownloadSimple, Key, Plus } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
+import { useLang } from '../../i18n/LangContext';
 import { changePassword } from '../../api/auth';
 import {
   createStudioUser,
@@ -73,6 +74,7 @@ const STUDIO_USER_EXPORT_COLUMNS: CsvColumn<StudioUser>[] = [
   { header: 'Modified At', value: (user) => dateTime(user.gmtModified) },
 ];
 const UserManagementPage = () => {
+  const { t } = useLang();
   const navigate = useNavigate();
   const admin = useAuthStore((state) => state.admin);
   const userId = useAuthStore((state) => state.userId);
@@ -358,7 +360,7 @@ const UserManagementPage = () => {
               total,
               showSizeChanger: true,
               pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
-              showTotal: (count) => `共 ${count} 个用户`,
+              showTotal: (count) => t('common.totalUsers', { count }),
               onChange: (nextPage, nextPageSize) => {
                 if (nextPageSize !== pageSize) {
                   setPage(1);

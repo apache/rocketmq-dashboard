@@ -1411,7 +1411,7 @@ const TopicPage = () => {
             pageSize: tablePageSize,
             total: totalTopics,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (count) => t('settings.totalRecords', { total: count }),
             onChange: (page, pageSize) => {
               setTablePage(page);
               setTablePageSize(pageSize);
