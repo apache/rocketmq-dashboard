@@ -78,6 +78,32 @@ describe('HomePage LLM models', () => {
     expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
   });
 
+  it('selects the model saved in the LLM configuration', async () => {
+    llmApiMocks.getLlmConfig.mockResolvedValue({
+      provider: 'deepseek',
+      apiBase: 'https://api.deepseek.com/v1',
+      model: 'deepseek-v4-flash',
+      maxTokens: 4096,
+      temperature: 0.7,
+      enabled: true,
+      ready: true,
+    });
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('deepseek-v4-flash');
+
+    await user.type(
+      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
+      '查看集群状态{enter}',
+    );
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/ai', {
+        state: expect.objectContaining({ model: 'deepseek-v4-flash' }),
+      });
+    });
+  });
+
   it('does not fetch LLM config in Mock mode', async () => {
     const { useDataModeStore } = await import('../../../stores/dataModeStore');
     useDataModeStore.getState().toggle();

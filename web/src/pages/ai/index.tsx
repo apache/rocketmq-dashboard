@@ -47,6 +47,7 @@ import {
   ClockCounterClockwise,
   SlidersHorizontal,
   Sparkle,
+  Stop,
 } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
@@ -55,7 +56,7 @@ import { listClusters } from '../../api/cluster';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { formatRelativeTime, formatTimeOfDay } from '../../utils/format';
 import { useDataModeStore } from '../../stores/dataModeStore';
-import { useEngineStore } from '../../stores/engineStore';
+import { useEngineStore, type AgentEngine } from '../../stores/engineStore';
 import InfoBanner from '../../components/InfoBanner';
 import useAuthStore from '../../stores/authStore';
 import {
@@ -124,6 +125,17 @@ const quickActions = [
 ];
 
 const GLOBAL_TOOL_SCOPE = '__global__';
+const ENGINE_OPTIONS = [
+  { value: 'claude-code', label: 'Claude Code' },
+  { value: 'qoder', label: 'Qoder' },
+  { value: 'http', label: 'HTTP' },
+];
+
+const normalizeAiMarkdown = (content: string): string =>
+  content
+    .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
+    .replace(/^([-+*])(?=\S)/gm, '$1 ')
+    .replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/gim, '```$1\n');
 
 const newConversationId = (): string =>
   `conversation-${typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
@@ -395,7 +407,9 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
         {/* Summary text */}
         {msg.summary && (
           <div className="ai-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.summary}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {normalizeAiMarkdown(msg.summary)}
+            </ReactMarkdown>
           </div>
         )}
 
@@ -434,6 +448,8 @@ const AiPage = () => {
   const useMock = useDataModeStore((state) => state.useMock);
   const userId = useAuthStore((state) => state.userId);
   const admin = useAuthStore((state) => state.admin);
+  const engine = useEngineStore((state) => state.engine);
+  const setEngine = useEngineStore((state) => state.setEngine);
   const chatMode: AiChatDataMode = useMock ? 'mock' : 'real';
   const { token } = theme.useToken();
   const history = useAiChatHistoryStore((state) => state.histories[chatMode]);
@@ -474,6 +490,7 @@ const AiPage = () => {
   const chatInFlightRef = useRef(false);
   const toolLoadRequestRef = useRef(0);
   const consumedDraftRef = useRef(false);
+  const draftEngineRef = useRef<AgentEngine | null>(null);
   const pendingAutoSendRef = useRef<{
     prompt: string;
     model?: string;
@@ -514,6 +531,12 @@ const AiPage = () => {
     try {
       const config = await getLlmConfig();
       setLlmConfig(config);
+      if (
+        draftEngineRef.current === null &&
+        (config.engine === 'http' || config.engine === 'claude-code' || config.engine === 'qoder')
+      ) {
+        setEngine(config.engine);
+      }
       if (config?.model) {
         setSelectedModel((current) => current || config.model);
       }
@@ -534,7 +557,7 @@ const AiPage = () => {
     } finally {
       setModelsLoading(false);
     }
-  }, [canInspectLlmRuntime, t, useMock]);
+  }, [canInspectLlmRuntime, setEngine, t, useMock]);
 
   useEffect(() => {
     void Promise.resolve().then(loadLlmRuntime);
@@ -555,6 +578,11 @@ const AiPage = () => {
         conversationIdRef.current = draft.conversationId;
       }
       if (draft.prompt) setInputValue(draft.prompt);
+      if (draft.enhance !== undefined) setEnhance(draft.enhance);
+      if (draft.engine) {
+        draftEngineRef.current = draft.engine;
+        setEngine(draft.engine);
+      }
       const draftModel = draft.model;
       if (draftModel) {
         setSelectedModel(draftModel);
@@ -574,7 +602,7 @@ const AiPage = () => {
       }
       navigate('/ai', { replace: true, state: null });
     });
-  }, [chatMode, location.state, navigate, selectConversation, startConversation]);
+  }, [chatMode, location.state, navigate, selectConversation, setEngine, startConversation]);
 
   /* ─── Auto-resize textarea ─── */
   useEffect(() => {
@@ -645,7 +673,7 @@ const AiPage = () => {
             message: text,
             mode: modeOverride,
             model,
-            engine: useEngineStore.getState().engine,
+            engine,
             enhance,
             conversationId,
           },
@@ -699,7 +727,17 @@ const AiPage = () => {
         if (streamRequestIdRef.current === requestId) setLoading(false);
       }
     },
-    [chatMode, inputValue, llmReady, loading, selectedModel, startConversation, t, updateMessages],
+    [
+      chatMode,
+      engine,
+      inputValue,
+      llmReady,
+      loading,
+      selectedModel,
+      startConversation,
+      t,
+      updateMessages,
+    ],
   );
 
   /* ─── Auto-send the draft from the home page as soon as runtime is ready ─── */
@@ -997,6 +1035,17 @@ const AiPage = () => {
                 className="model-selector"
                 style={{ fontSize: '0.893rem' }}
               />
+              <Select
+                size="small"
+                value={engine}
+                onChange={(value) => setEngine(value as AgentEngine)}
+                options={ENGINE_OPTIONS}
+                variant="borderless"
+                popupMatchSelectWidth={false}
+                suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
+                title="执行引擎"
+                style={{ fontSize: '0.893rem', minWidth: 110 }}
+              />
               {llmConfig && (
                 <Tag color={llmReady ? 'green' : 'default'} style={{ borderRadius: 6 }}>
                   {llmConfig.provider || 'openai'}
@@ -1074,8 +1123,21 @@ const AiPage = () => {
                     <ArrowUp size={19} weight="bold" />
                   </button>
                   {loading && (
-                    <Button size="small" onClick={handleStop}>
-                      停止
+                    <Button
+                      danger
+                      type="primary"
+                      size="middle"
+                      icon={<Stop size={16} weight="fill" />}
+                      onClick={handleStop}
+                      title="停止生成"
+                      style={{
+                        height: 36,
+                        borderRadius: 8,
+                        fontWeight: 600,
+                        boxShadow: '0 2px 8px rgba(255, 77, 79, 0.24)',
+                      }}
+                    >
+                      停止生成
                     </Button>
                   )}
                 </div>
