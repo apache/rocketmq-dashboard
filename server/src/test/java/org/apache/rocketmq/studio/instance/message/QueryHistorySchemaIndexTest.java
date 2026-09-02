@@ -72,6 +72,13 @@ class QueryHistorySchemaIndexTest {
                     .containsExactly("queried_by", "cluster_id", "query_type", "gmt_create", "id");
             assertThat(indexColumns(connection, "rmq_instance_trace", "idx_trace_query_owner_lookup"))
                     .containsExactly("queried_by", "cluster_id", "gmt_create", "id");
+            assertThat(hasColumn(connection, "rmq_instance_message", "result_snapshot")).isTrue();
+        }
+    }
+
+    private static boolean hasColumn(Connection connection, String tableName, String columnName) throws Exception {
+        try (ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, columnName)) {
+            return columns.next();
         }
     }
 

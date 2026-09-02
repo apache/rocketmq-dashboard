@@ -25,6 +25,8 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class QueryHistorySchemaMigration implements ApplicationRunner {
+    private static final List<Column> COLUMNS = List.of(
+            new Column("rmq_instance_message", "result_snapshot", "MEDIUMTEXT"));
     private static final List<Index> INDEXES = List.of(
             new Index("rmq_instance_message", "idx_message_query_owner_lookup",
                     "queried_by, cluster_id, gmt_create, id"),
@@ -40,8 +42,28 @@ public class QueryHistorySchemaMigration implements ApplicationRunner {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             DatabaseMetaData metadata = connection.getMetaData();
             String catalog = connection.getCatalog();
+            for (Column column : COLUMNS) {
+                ensureColumn(metadata, catalog, statement, column);
+            }
             for (Index index : INDEXES) {
                 ensureIndex(metadata, catalog, statement, index);
+            }
+        }
+    }
+
+    private static void ensureColumn(DatabaseMetaData metadata, String catalog, Statement statement, Column column)
+            throws Exception {
+        if (!hasTable(metadata, catalog, column.table())
+                || hasColumn(metadata, catalog, column.table(), column.name())) {
+            return;
+        }
+        try {
+            log.info("Adding query history column {}.{}", column.table(), column.name());
+            statement.executeUpdate("ALTER TABLE " + column.table() + " ADD COLUMN " + column.name()
+                    + " " + column.definition());
+        } catch (SQLException failure) {
+            if (!hasColumn(metadata, catalog, column.table(), column.name())) {
+                throw failure;
             }
         }
     }
@@ -78,6 +100,16 @@ public class QueryHistorySchemaMigration implements ApplicationRunner {
             }
             return false;
         }
+    }
+
+    private static boolean hasColumn(DatabaseMetaData metadata, String catalog, String table, String column)
+            throws Exception {
+        try (ResultSet columns = metadata.getColumns(catalog, null, table, column)) {
+            return columns.next();
+        }
+    }
+
+    private record Column(String table, String name, String definition) {
     }
 
     private record Index(String table, String name, String columns) {
