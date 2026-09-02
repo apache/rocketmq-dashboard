@@ -1564,6 +1564,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.noSubTopic': { zh: '该 Group 暂无订阅 Topic', en: 'This group has no subscribed topics' },
+  'consumer.resetConfirm': { zh: '确认重置', en: 'Confirm Reset' },
+  'consumer.resetImpactDesc': { zh: '请先预览每个 Queue 的目标位点和堆积变化，确认预览结果后再执行重置。预览为时点快照、属页面操作引导（非服务端控制），预览期间消息持续写入，实际效果以执行时 Broker 状态为准。', en: 'Preview each queue\'s target offset and backlog change first, then confirm before resetting. The preview is a point-in-time snapshot and a UI-side guide (not server-controlled); messages keep flowing during the preview, so the actual result follows the broker state at execution time.' },
+  'consumer.resetImpactWarning': { zh: '此操作将影响消息消费进度', en: 'This operation affects message consumption progress' },
+  'consumer.resetModalTitle': { zh: '重置消费位点', en: 'Reset Consumption Offset' },
+  'consumer.resetTopicPlaceholder': { zh: '选择要重置消费位点的 Topic', en: 'Select the topic to reset' },
+  'consumer.subTopicLoadFailed': { zh: '订阅 Topic 加载失败', en: 'Failed to load subscribed topics' },
+  'consumer.targetGroup': { zh: '目标 Group', en: 'Target Group' },
+  'consumer.targetTopic': { zh: '目标 Topic', en: 'Target Topic' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
