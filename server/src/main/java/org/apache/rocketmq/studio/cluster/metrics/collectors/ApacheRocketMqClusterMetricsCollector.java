@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Native Apache RocketMQ health collection through Studio's managed admin client. */
 @Slf4j
@@ -55,6 +56,12 @@ public class ApacheRocketMqClusterMetricsCollector implements ClusterMetricsColl
     public boolean supports(InstanceVO instance) {
         return instance != null && (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE)
                 && StringUtils.hasText(instance.getName()) && StringUtils.hasText(instance.getEndpoint());
+    }
+
+    @Override
+    public Set<String> metricKeys() {
+        return Set.of(NAMESERVER_AVAILABILITY, BROKER_AVAILABILITY, BROKER_DISK_USAGE_RATIO,
+                BROKER_JVM_HEAP_USAGE_RATIO, BROKER_SEND_QUEUE_USAGE_RATIO);
     }
 
     @Override

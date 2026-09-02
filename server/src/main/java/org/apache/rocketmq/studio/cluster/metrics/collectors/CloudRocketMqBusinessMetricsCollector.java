@@ -34,6 +34,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Collects cloud consumer lag using the provider's existing consumer progress API. */
 @Slf4j
@@ -50,6 +51,11 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
     public boolean supports(InstanceVO instance) {
         return instance != null && (instance.getVendor() == InstanceVendor.ALIYUN
                 || instance.getVendor() == InstanceVendor.TENCENT) && instance.getName() != null;
+    }
+
+    @Override
+    public Set<String> metricKeys() {
+        return Set.of(CONSUMER_LAG_TOTAL, CONSUMER_LAG_MAX_QUEUE, TOPIC_BACKLOG_TOTAL);
     }
 
     @Override
