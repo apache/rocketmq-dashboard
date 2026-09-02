@@ -1719,6 +1719,20 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.accessCloud': { zh: '云服务', en: 'Cloud' },
+  'topic.accessDirect': { zh: 'Direct', en: 'Direct' },
+  'topic.accessMode': { zh: '接入模式', en: 'Access Mode' },
+  'topic.accessPoint': { zh: '接入点', en: 'Access Point' },
+  'topic.accessProxyCluster': { zh: 'Proxy Cluster', en: 'Proxy Cluster' },
+  'topic.accessProxyLocal': { zh: 'Proxy Local', en: 'Proxy Local' },
+  'topic.accessVendor': { zh: '厂商', en: 'Vendor' },
+  'topic.aliyun': { zh: '阿里云', en: 'Alibaba Cloud' },
+  'topic.currentInstance': { zh: '当前实例', en: 'Current Instance' },
+  'topic.descCloud': { zh: '接入点为云厂商托管实例的接入地址，由云实例目录解析得出。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。', en: 'The access point is the endpoint of the cloud-managed instance, resolved from the cloud instance catalog. If the client cannot resolve it, configure DNS or map it in the client hosts file.' },
+  'topic.descDirect': { zh: '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。', en: 'The access point is the NameServer SLB address (typically the NameServer Service address in K8s); Direct-mode clients discover brokers through it. If the client cannot resolve it, configure DNS or map it in the client hosts file.' },
+  'topic.descProxyCluster': { zh: '接入点为独立 Proxy 集群的 SLB 内网地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。', en: 'The access point is the SLB intranet address of a standalone Proxy cluster. If the client cannot resolve it, configure DNS or map it in the client hosts file.' },
+  'topic.descProxyLocal': { zh: '接入点为与 Broker 同进程部署的 Proxy 地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。', en: 'The access point is the address of a Proxy co-deployed in the same process as the broker. If the client cannot resolve it, configure DNS or map it in the client hosts file.' },
+  'topic.tencent': { zh: '腾讯云', en: 'Tencent Cloud' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
