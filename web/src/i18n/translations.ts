@@ -2261,6 +2261,13 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.addProperty': { zh: '添加属性', en: 'Add Property' },
+  'topic.customPropsLabel': { zh: '自定义属性（可选）', en: 'Custom Properties (optional)' },
+  'topic.entryForm': { zh: '逐条录入', en: 'Enter One by One' },
+  'topic.entryText': { zh: '批量粘贴', en: 'Paste in Bulk' },
+  'topic.propNamePlaceholder': { zh: '属性名', en: 'Property name' },
+  'topic.propsHelp': { zh: '支持 key=value，多个属性用换行或逗号分隔', en: 'Supports key=value; separate multiple properties with newlines or commas' },
+  'topic.propValuePlaceholder': { zh: '属性值', en: 'Property value' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
