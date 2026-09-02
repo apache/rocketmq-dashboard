@@ -21,11 +21,13 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -205,5 +207,25 @@ class MqAdminExtFactoryTest {
                 .hasMessageContaining("shutting down");
         // No fresh admin connection may be established while the factory is shut down.
         assertThat(factory.created.get()).isZero();
+    }
+
+    @Test
+    void executeShouldSurviveCyclicCauseChainWithoutHanging() {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        // first <-> second form a two-exception cause cycle: the old
+        // cause.getCause() != cause guard only caught a direct self-cycle.
+        RuntimeException first = new RuntimeException("first");
+        RuntimeException second = new RuntimeException("second", first);
+        first.initCause(second);
+
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertThatThrownBy(
+                        () -> factory.execute("10.0.0.1:9876", null, a -> {
+                            throw second;
+                        }))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("admin call failed: second")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502)));
     }
 }
