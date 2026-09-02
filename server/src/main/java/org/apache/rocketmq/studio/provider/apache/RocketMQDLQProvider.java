@@ -58,6 +58,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
@@ -241,7 +242,7 @@ public class RocketMQDLQProvider implements DLQProvider {
             throw new BusinessException(400, "At least one msgId is required for selected DLQ resend");
         }
         groupName = groupName.trim();
-        Set<String> selected = new java.util.HashSet<>();
+        Set<String> selected = new LinkedHashSet<>();
         for (String msgId : msgIds) {
             if (StringUtils.hasText(msgId)) {
                 selected.add(msgId.trim());
@@ -253,14 +254,21 @@ public class RocketMQDLQProvider implements DLQProvider {
 
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
-        // Scan a wide window so the selected messages are found regardless of their store time.
-        long end = System.currentTimeMillis();
-        long begin = end - 7 * 24 * ONE_HOUR_MILLIS;
-        DeadLetterScanResult scanResult =
-                collectDeadLetters(instanceId, dlqTopic, begin, end, RESEND_HARD_CAP);
-        List<MessageExt> deadLetters = scanResult.messages().stream()
-                .filter(message -> selected.contains(message.getMsgId()))
-                .toList();
+        List<MessageExt> deadLetters = runtimeAdminClientResolver.execute(instanceId, admin -> {
+            List<MessageExt> resolved = new ArrayList<>(selected.size());
+            for (String msgId : selected) {
+                try {
+                    MessageExt deadLetter = admin.viewMessage(dlqTopic, msgId);
+                    if (deadLetter != null) {
+                        resolved.add(deadLetter);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to resolve selected dead letter {} from {}: {}",
+                            msgId, dlqTopic, e.getMessage());
+                }
+            }
+            return resolved;
+        });
         int[] counts = {0, 0};
         if (!deadLetters.isEmpty()) {
             try {
@@ -293,6 +301,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .resent(resent)
                 .failed(failed)
                 .outcome(outcome)
+                .scanIncomplete(!foundAll)
                 .build();
     }
 
