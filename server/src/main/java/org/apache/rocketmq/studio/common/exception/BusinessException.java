@@ -24,6 +24,9 @@ public class BusinessException extends RuntimeException {
 
     public BusinessException(int code, String message) {
         super(message);
-        this.code = code;
+        // The global exception handler maps the code directly onto the HTTP status line, so it
+        // must stay in the 4xx/5xx band: a 2xx/3xx code would answer the error with a success
+        // or redirect status, and a code outside the band makes HttpStatus.valueOf throw.
+        this.code = code >= 400 && code <= 599 ? code : 400;
     }
 }
