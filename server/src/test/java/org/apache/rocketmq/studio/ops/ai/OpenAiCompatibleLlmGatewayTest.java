@@ -65,6 +65,24 @@ class OpenAiCompatibleLlmGatewayTest {
     }
 
     @Test
+    void httpChatAllowsSlowProvidersToStartStreamingTest() throws Exception {
+        ExecutorService executor = singleChatExecutor();
+        List<RecordingSseEmitter> emitters = new CopyOnWriteArrayList<>();
+        OpenAiCompatibleLlmGateway testedGateway = gateway(executor, emitters);
+        LlmConfigVO config = config("openai", "sk-test");
+        when(configService.getConfig()).thenReturn(config);
+        when(llmClient.supports(config)).thenReturn(true);
+        try {
+            testedGateway.chat(ChatDTO.builder().message("hello").build());
+
+            assertThat(emitters).hasSize(1);
+            assertThat(emitters.get(0).timeoutMillis).isEqualTo(TimeUnit.SECONDS.toMillis(125));
+        } finally {
+            testedGateway.destroy();
+        }
+    }
+
+    @Test
     void executeShouldRejectIncompleteConfig() {
         when(configService.getConfig()).thenReturn(config("openai", ""));
 
@@ -279,6 +297,7 @@ class OpenAiCompatibleLlmGatewayTest {
     }
 
     private static final class RecordingSseEmitter extends SseEmitter {
+        private final long timeoutMillis;
         private final List<Set<ResponseBodyEmitter.DataWithMediaType>> sentEvents = new CopyOnWriteArrayList<>();
         private final CountDownLatch completedLatch = new CountDownLatch(1);
         private Runnable completionCallback;
@@ -288,6 +307,7 @@ class OpenAiCompatibleLlmGatewayTest {
 
         RecordingSseEmitter(long timeout) {
             super(timeout);
+            timeoutMillis = timeout;
         }
 
         @Override

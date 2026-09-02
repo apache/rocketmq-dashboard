@@ -26,6 +26,7 @@ import { listClusters, type ClusterInfo } from '../../../api/cluster';
 import { getLlmConfig, getLlmModels } from '../../../api/llm';
 import { useAiChatHistoryStore } from '../../../stores/aiChatHistoryStore';
 import useAuthStore from '../../../stores/authStore';
+import { useEngineStore } from '../../../stores/engineStore';
 import AiPage from '../index';
 
 const dataModeMocks = vi.hoisted(() => ({ useMock: false }));
@@ -166,6 +167,37 @@ describe('AiPage tool runner', () => {
     });
   });
 
+  it('keeps the engine selected on the home page and exposes it in the AI toolbar', async () => {
+    vi.mocked(chatStream).mockResolvedValue(undefined);
+    renderPage({ prompt: '检查集群状态', engine: 'qoder' });
+
+    await waitFor(() => {
+      expect(chatStream).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '检查集群状态', engine: 'qoder' }),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        expect.any(Function),
+      );
+    });
+    expect(screen.getAllByTitle('执行引擎')[0]).toHaveTextContent('Qoder');
+    expect(useEngineStore.getState().engine).toBe('qoder');
+  });
+
+  it('keeps prompt enhancement enabled after a home-page draft is opened', async () => {
+    vi.mocked(chatStream).mockResolvedValue(undefined);
+    renderPage({ prompt: '检查集群状态', enhance: true });
+
+    await waitFor(() => {
+      expect(chatStream).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '检查集群状态', enhance: true }),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        expect.any(Function),
+      );
+    });
+    expect(screen.getByTitle('发送前增强 Prompt')).toHaveStyle({ borderColor: '#1677ff' });
+  });
+
   it('starts a new conversation when the home-page draft requests it', async () => {
     useAiChatHistoryStore.setState({
       histories: {
@@ -269,6 +301,56 @@ describe('AiPage tool runner', () => {
     expect(chatStream).not.toHaveBeenCalled();
   });
 
+  it('opens the history drawer once when the route carries history intent', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'previous',
+              messages: [{ id: 'previous-message', role: 'user', text: 'Previous conversation' }],
+              updatedAt: Date.now() - 60_000,
+            },
+          ],
+          activeConversationId: null,
+        },
+      },
+    });
+
+    renderPage({ historyIntent: 'open' });
+
+    const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
+    expect(
+      within(historyDrawer).getByRole('button', { name: /^Previous conversation/ }),
+    ).toBeInTheDocument();
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
+  it('does not reopen history when the route has no history intent', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'previous',
+              messages: [{ id: 'previous-message', role: 'user', text: 'Previous conversation' }],
+              updatedAt: Date.now() - 60_000,
+            },
+          ],
+          activeConversationId: null,
+        },
+      },
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog', { name: 'AI 对话历史' })).not.toBeInTheDocument();
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
   it('stops an in-flight response before switching conversations', async () => {
     useAiChatHistoryStore.setState({
       histories: {
@@ -301,6 +383,7 @@ describe('AiPage tool runner', () => {
     renderPage({ prompt: 'Start streaming', newConversation: true });
 
     await waitFor(() => expect(requestSignal).toBeDefined());
+    expect(screen.getByRole('button', { name: '停止生成' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'AI 对话历史' }));
     const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
     await user.click(within(historyDrawer).getByRole('button', { name: /^Previous conversation/ }));
@@ -308,7 +391,7 @@ describe('AiPage tool runner', () => {
     expect(requestSignal?.aborted).toBe(true);
     expect(useAiChatHistoryStore.getState().histories.real.activeConversationId).toBe('previous');
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('button', { name: '停止生成' })).not.toBeInTheDocument(),
     );
   });
 

@@ -15,13 +15,17 @@
  * limitations under the License.
  */
 
+import type { AgentEngine } from '../../stores/engineStore';
+
 export type ChatMode = 'chat' | 'diagnose' | 'manage' | 'query';
 
 const CHAT_MODES = new Set<ChatMode>(['chat', 'diagnose', 'manage', 'query']);
+const AGENT_ENGINES = new Set<AgentEngine>(['claude-code', 'qoder', 'http']);
 
 export interface ChatDraft {
   prompt: string;
   model?: string;
+  engine?: AgentEngine;
   mode?: ChatMode;
   enhance?: boolean;
   newConversation?: boolean;
@@ -42,13 +46,23 @@ export function getChatDraft(state: unknown): ChatDraft | null {
     typeof candidate.mode === 'string' && CHAT_MODES.has(candidate.mode as ChatMode)
       ? (candidate.mode as ChatMode)
       : undefined;
+  const engine =
+    typeof candidate.engine === 'string' && AGENT_ENGINES.has(candidate.engine as AgentEngine)
+      ? (candidate.engine as AgentEngine)
+      : undefined;
 
   return {
     prompt,
     ...(model ? { model } : {}),
+    ...(engine ? { engine } : {}),
     ...(mode ? { mode } : {}),
     ...(candidate.enhance === true ? { enhance: true } : {}),
     ...(candidate.newConversation === true ? { newConversation: true } : {}),
     ...(conversationId ? { conversationId } : {}),
   };
+}
+
+export function shouldOpenChatHistory(state: unknown): boolean {
+  if (typeof state !== 'object' || state === null) return false;
+  return (state as Record<string, unknown>).historyIntent === 'open';
 }

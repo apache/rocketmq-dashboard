@@ -78,6 +78,32 @@ describe('HomePage LLM models', () => {
     expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
   });
 
+  it('selects the model saved in the LLM configuration', async () => {
+    llmApiMocks.getLlmConfig.mockResolvedValue({
+      provider: 'deepseek',
+      apiBase: 'https://api.deepseek.com/v1',
+      model: 'deepseek-v4-flash',
+      maxTokens: 4096,
+      temperature: 0.7,
+      enabled: true,
+      ready: true,
+    });
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('deepseek-v4-flash');
+
+    await user.type(
+      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
+      '查看集群状态{enter}',
+    );
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/ai', {
+        state: expect.objectContaining({ model: 'deepseek-v4-flash' }),
+      });
+    });
+  });
+
   it('does not fetch LLM config in Mock mode', async () => {
     const { useDataModeStore } = await import('../../../stores/dataModeStore');
     useDataModeStore.getState().toggle();
@@ -121,6 +147,35 @@ describe('HomePage LLM models', () => {
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
 
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the AI page with history intent from the accessible history action', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+
+    const historyButton = screen.getByRole('button', { name: 'AI 对话历史' });
+    expect(historyButton).toHaveAttribute('type', 'button');
+    expect(historyButton).toHaveAttribute('title', 'AI 对话历史');
+
+    await user.click(historyButton);
+
+    expect(navigateMock).toHaveBeenCalledWith('/ai', {
+      state: { historyIntent: 'open' },
+    });
+  });
+
+  it('supports keyboard activation for the history action', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+
+    screen.getByRole('button', { name: 'AI 对话历史' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(navigateMock).toHaveBeenCalledWith('/ai', {
+      state: { historyIntent: 'open' },
+    });
   });
 });
 
