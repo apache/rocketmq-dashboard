@@ -1564,6 +1564,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.collectTime': { zh: '采集时间', en: 'Collected At' },
+  'consumer.configTab': { zh: '配置', en: 'Configuration' },
+  'consumer.maxRetryRequired': { zh: '请输入最大重试次数', en: 'Enter the max retry count' },
+  'consumer.retryQueueCount': { zh: '重试队列数', en: 'Retry Queue Count' },
+  'consumer.retryQueueRequired': { zh: '请输入重试队列数', en: 'Enter the retry queue count' },
+  'consumer.threadCol': { zh: '线程', en: 'Thread' },
+  'consumer.threadCount': { zh: '线程数', en: 'Threads' },
+  'consumer.threadStackModal': { zh: '消费者线程栈', en: 'Consumer Thread Stacks' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
