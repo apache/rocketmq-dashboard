@@ -42,6 +42,15 @@ class AlertRuleRequestDTOTest {
     }
 
     @Test
+    void durationShouldAcceptCompositePrometheusDurationTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setDuration("1h30m");
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
     void toAlertRuleVOShouldTrimAndDeduplicateChannelsInInputOrderTest() {
         AlertRuleRequestDTO request = new AlertRuleRequestDTO();
         request.setName("High Lag");

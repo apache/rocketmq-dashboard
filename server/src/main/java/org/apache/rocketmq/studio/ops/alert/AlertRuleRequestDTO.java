@@ -26,6 +26,8 @@ import java.util.List;
 
 @Data
 public class AlertRuleRequestDTO {
+    static final String PROMETHEUS_DURATION_REGEXP = "(?:[0-9]+(?:ms|s|m|h|d|w|y))+";
+
     private Long id;
     @NotBlank(message = "name is required")
     private String name;
@@ -34,7 +36,7 @@ public class AlertRuleRequestDTO {
     private String operator;
     private double threshold;
     private String thresholdUnit;
-    @Pattern(regexp = "(?:[0-9]+(?:ms|s|m|h|d|w|y))+", message = "duration is invalid")
+    @Pattern(regexp = PROMETHEUS_DURATION_REGEXP, message = "duration is invalid")
     private String duration;
     @Pattern(regexp = "LAST|MAX|MIN|AVG|SUM", flags = Pattern.Flag.CASE_INSENSITIVE,
             message = "aggregation is invalid")
