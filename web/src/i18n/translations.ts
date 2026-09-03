@@ -1119,6 +1119,23 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },
+  'ai.chatPlaceholder': { zh: '输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟...', en: 'Ask a question or give an instruction, e.g. check cluster status, create a topic, diagnose consumption lag…' },
+  'ai.closeBtn': { zh: '关闭', en: 'Close' },
+  'ai.execute': { zh: '执行', en: 'Execute' },
+  'ai.goConfigure': { zh: '去配置', en: 'Go to Settings' },
+  'ai.loadingModels': { zh: '加载模型中...', en: 'Loading models…' },
+  'ai.notEnabledTitle': { zh: 'AI 助手未启用', en: 'AI Assistant is not enabled' },
+  'ai.notReady': { zh: ' 未就绪', en: ' Not ready' },
+  'ai.promptEnhance': { zh: 'Prompt 增强', en: 'Prompt Enhance' },
+  'ai.promptEnhanceTooltip': { zh: '发送前增强 Prompt', en: 'Enhance the prompt before sending' },
+  'ai.ready': { zh: ' 已就绪', en: ' Ready' },
+  'ai.selectModel': { zh: '选择模型', en: 'Select model' },
+  'ai.settingsLink': { zh: '设置 → AI 助手', en: 'Settings → AI Assistant' },
+  'ai.setupHint1': { zh: '模型服务与执行引擎可在', en: 'Model service and agent engine can be configured in' },
+  'ai.setupHint2': { zh: '中配置', en: '' },
+  'ai.stop': { zh: '停止', en: 'Stop' },
+  'ai.tools': { zh: '工具', en: 'Tools' },
+  'ai.toolsTitle': { zh: 'AI 工具', en: 'AI Tools' },
 
   // ─── Theme Constants ───
   'theme.clusterV4': { zh: 'V4 直连', en: 'V4 Direct' },

@@ -937,7 +937,7 @@ const AiPage = () => {
 
         {llmConfig && !llmReady && (
           <InfoBanner
-            title="AI 助手未启用"
+            title={t('ai.notEnabledTitle')}
             description={t('ai.providerNotReadyDescription')}
             style={{ marginBottom: 12 }}
             data-testid="ai-not-ready-banner"
@@ -948,7 +948,7 @@ const AiPage = () => {
               style={{ paddingLeft: 0, marginTop: 4 }}
               onClick={() => navigate('/settings?tab=ai')}
             >
-              去配置
+              {t('ai.goConfigure')}
             </Button>
           </InfoBanner>
         )}
@@ -962,8 +962,8 @@ const AiPage = () => {
             style={{ marginBottom: 12, borderRadius: 8 }}
             message={
               <span>
-                模型服务与执行引擎可在 <a onClick={() => navigate('/settings')}>设置 → AI 助手</a>{' '}
-                中配置
+                {t('ai.setupHint1')} <a onClick={() => navigate('/settings')}>{t('ai.settingsLink')}</a>{' '}
+                {t('ai.setupHint2')}
               </span>
             }
           />
@@ -991,7 +991,7 @@ const AiPage = () => {
                 loading={modelsLoading}
                 disabled={!canInspectLlmRuntime}
                 variant="borderless"
-                placeholder={modelsLoading ? '加载模型中...' : '选择模型'}
+                placeholder={modelsLoading ? t('ai.loadingModels') : t('ai.selectModel')}
                 popupMatchSelectWidth={false}
                 suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
                 className="model-selector"
@@ -1000,7 +1000,7 @@ const AiPage = () => {
               {llmConfig && (
                 <Tag color={llmReady ? 'green' : 'default'} style={{ borderRadius: 6 }}>
                   {llmConfig.provider || 'openai'}
-                  {llmReady ? ' 已就绪' : ' 未就绪'}
+                  {llmReady ? t('ai.ready') : t('ai.notReady')}
                 </Tag>
               )}
             </div>
@@ -1023,7 +1023,7 @@ const AiPage = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟..."
+              placeholder={t('ai.chatPlaceholder')}
             />
             <Sparkle
               className="text-gray-400"
@@ -1044,7 +1044,7 @@ const AiPage = () => {
                   <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide max-w-full py-2">
                     <button className="tool-btn" onClick={() => void handleOpenTools()}>
                       <SlidersHorizontal size={17} />
-                      <span>工具</span>
+                      <span>{t('ai.tools')}</span>
                     </button>
                     <button
                       className="tool-btn"
@@ -1053,10 +1053,10 @@ const AiPage = () => {
                         borderColor: enhance ? '#1677ff' : undefined,
                         color: enhance ? '#1677ff' : undefined,
                       }}
-                      title="发送前增强 Prompt"
+                      title={t('ai.promptEnhanceTooltip')}
                     >
                       <Sparkle size={17} />
-                      <span>Prompt 增强</span>
+                      <span>{t('ai.promptEnhance')}</span>
                     </button>
                   </div>
                 </div>
@@ -1075,7 +1075,7 @@ const AiPage = () => {
                   </button>
                   {loading && (
                     <Button size="small" onClick={handleStop}>
-                      停止
+                      {t('ai.stop')}
                     </Button>
                   )}
                 </div>
@@ -1138,7 +1138,7 @@ const AiPage = () => {
       </Drawer>
 
       <Modal
-        title="AI 工具"
+        title={t('ai.toolsTitle')}
         open={toolModalOpen}
         onCancel={() => {
           toolLoadRequestRef.current += 1;
@@ -1146,8 +1146,8 @@ const AiPage = () => {
           setToolModalOpen(false);
         }}
         onOk={() => void handleExecuteTool()}
-        okText="执行"
-        cancelText="关闭"
+        okText={t('ai.execute')}
+        cancelText={t('ai.closeBtn')}
         width={720}
         styles={{ body: { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' } }}
         okButtonProps={{
