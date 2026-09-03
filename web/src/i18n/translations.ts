@@ -1807,6 +1807,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.batchResend': { zh: '批量重发', en: 'Batch Resend' },
   'message.batchExport': { zh: '批量导出', en: 'Batch Export' },
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
+  'message.disabledLoadingTopics': { zh: '正在加载 Topic 列表', en: 'Loading topic list…' },
+  'message.disabledNoInstance': { zh: '请先选择实例', en: 'Select an instance first' },
+  'message.disabledTopicLoadFailed': { zh: 'Topic 列表加载失败，请先重试', en: 'Topic list failed to load; retry first' },
+  'message.historyLoadFailed': { zh: '加载历史结果失败', en: 'Failed to load the history result' },
+  'message.querySelectInstance': { zh: '请先选择实例后再查询消息', en: 'Select an instance before querying messages' },
+  'message.topicListLoadFailed': { zh: '加载 Topic 列表失败', en: 'Failed to load the topic list' },
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {

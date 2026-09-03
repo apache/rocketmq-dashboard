@@ -237,7 +237,7 @@ const MessagePageContent = ({
       setTopicOptions(nextTopics.map((topic) => topic.name));
     } catch (error: unknown) {
       if (requestId !== topicRequestId.current) return;
-      setTopicError(error instanceof Error ? error.message : '加载 Topic 列表失败');
+      setTopicError(error instanceof Error ? error.message : t('message.topicListLoadFailed'));
     } finally {
       if (requestId === topicRequestId.current) setTopicLoading(false);
     }
@@ -295,11 +295,11 @@ const MessagePageContent = ({
         : { topic: selectedTopic, msgId: msgIdInput || undefined };
   const queryValidationError = getQueryValidationError(queryMode, currentQueryParams);
   const queryDisabledReason = !selectedInstanceId
-    ? '请先选择实例'
+    ? t('message.disabledNoInstance')
     : topicLoading
-      ? '正在加载 Topic 列表'
+      ? t('message.disabledLoadingTopics')
       : topicError
-        ? 'Topic 列表加载失败，请先重试'
+        ? t('message.disabledTopicLoadFailed')
         : queryValidationError;
 
   /* ─── Handlers ─── */
@@ -323,7 +323,7 @@ const MessagePageContent = ({
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
     if (!selectedInstanceId) {
-      setQueryError('请先选择实例后再查询消息');
+      setQueryError(t('message.querySelectInstance'));
       setQueryLoading(false);
       return;
     }
@@ -402,7 +402,7 @@ const MessagePageContent = ({
       setResultMayBeTruncated(false);
       message.success(`已加载历史查询结果，共 ${mapped.length} 条`);
     } catch (error) {
-      setQueryError(getErrorMessage(error, '加载历史结果失败'));
+      setQueryError(getErrorMessage(error, t('message.historyLoadFailed')));
     } finally {
       setQueryLoading(false);
     }
