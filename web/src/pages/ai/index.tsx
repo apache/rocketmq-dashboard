@@ -123,6 +123,15 @@ const quickActions = [
   '扩缩容评估',
 ];
 
+const AI_QUICK_ACTION_KEYS: Record<string, string> = {
+  '查看集群状态': 'ai.qaCheckStatus',
+  'Topic 堆积 Top10': 'ai.qaTop10Lag',
+  '诊断消费延迟': 'ai.qaDiagnoseLag',
+  '创建 Topic': 'ai.qaCreateTopic',
+  '消息轨迹查询': 'ai.qaTraceQuery',
+  '扩缩容评估': 'ai.qaScaleEval',
+};
+
 const GLOBAL_TOOL_SCOPE = '__global__';
 
 const newConversationId = (): string =>
@@ -333,7 +342,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
                 userSelect: 'none',
               }}
             >
-              思维链：Prompt 增强改写
+              {t('ai.thinkingChainLabel')}
             </summary>
             <div
               style={{
@@ -930,7 +939,7 @@ const AiPage = () => {
               color="blue"
               onClick={() => handleQuickAction(action)}
             >
-              {action}
+              {t(AI_QUICK_ACTION_KEYS[action] ?? action)}
             </Tag>
           ))}
         </Flex>
