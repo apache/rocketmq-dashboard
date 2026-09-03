@@ -711,7 +711,7 @@ const InstancePage = () => {
 
       {/* Add Instance Modal */}
       <Modal
-        title="添加实例"
+        title={t('instance.addInstance')}
         open={addModalOpen}
         onCancel={() => {
           setAddModalOpen(false);
@@ -724,13 +724,13 @@ const InstancePage = () => {
         footer={
           <Flex justify="flex-end" gap={8}>
             {cloudVendor && (
-              <Tooltip title="遍历该凭据下全部地域，将所有云上实例导入（幂等，已存在的自动跳过），备注自动取自云上实例">
+              <Tooltip title={t('instance.importAllTooltip')}>
                 <Button
                   loading={importing}
                   disabled={!addCredentialId}
                   onClick={() => void handleImportAll()}
                 >
-                  一键导入
+                  {t('instance.importAll')}
                 </Button>
               </Tooltip>
             )}
@@ -743,10 +743,10 @@ const InstancePage = () => {
                 setCloudInstances([]);
               }}
             >
-              取消
+              {t('instance.cancel')}
             </Button>
             <Button type="primary" loading={submitting} onClick={() => void handleCreate()}>
-              连接
+              {t('instance.connect')}
             </Button>
           </Flex>
         }
@@ -773,26 +773,26 @@ const InstancePage = () => {
           <>
             <Form form={addForm} layout="vertical">
               <Form.Item
-                label="云凭据"
+                label={t('instance.credentialLabel')}
                 name="credentialId"
-                rules={[{ required: true, message: '请选择云凭据' }]}
+                rules={[{ required: true, message: t('instance.credentialRequired') }]}
                 extra={
                   <span>
-                    凭据为{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，
+                    凭据为{vendor === 'ALIYUN' ? t('instance.aliyun') : t('instance.tencent')}账号的 AK/SK，
                     <Link to="/settings?tab=credential">前往「设置 - 云凭据管理」添加</Link>
                   </span>
                 }
               >
                 <Select
-                  placeholder="选择已录入的 AK/SK 凭据"
+                  placeholder={t('instance.credentialPlaceholder')}
                   loading={credentialsLoading}
                   onChange={handleCredentialChange}
                   notFoundContent={
                     credentialsLoading ? (
-                      '加载中…'
+                      t('instance.loading')
                     ) : (
                       <span>
-                        暂无{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}凭据，
+                        暂无{vendor === 'ALIYUN' ? t('instance.aliyun') : t('instance.tencent')}凭据，
                         <Link to="/settings?tab=credential">去设置中添加</Link>
                       </span>
                     )
@@ -804,12 +804,12 @@ const InstancePage = () => {
                 />
               </Form.Item>
               <Form.Item
-                label="地域"
+                label={t('instance.regionLabel')}
                 name="regionId"
-                rules={[{ required: true, message: '请选择地域' }]}
+                rules={[{ required: true, message: t('instance.regionRequired') }]}
               >
                 <Select
-                  placeholder={addCredentialId ? '选择地域' : '请先选择云凭据'}
+                  placeholder={addCredentialId ? t('instance.regionSelectPlaceholder') : t('instance.regionCredFirstPlaceholder')}
                   disabled={!addCredentialId}
                   loading={regionsLoading}
                   onChange={handleRegionChange}
@@ -820,15 +820,15 @@ const InstancePage = () => {
                 />
               </Form.Item>
               <Form.Item
-                label="云上实例"
+                label={t('instance.cloudInstanceLabel')}
                 name="cloudInstanceId"
-                rules={[{ required: true, message: '请选择云上实例' }]}
-                extra="商业版实例来自云端目录，无法手工创建"
+                rules={[{ required: true, message: t('instance.cloudInstanceRequired') }]}
+                extra={t('instance.cloudInstanceExtra')}
               >
                 <Select
                   showSearch
                   optionFilterProp="label"
-                  placeholder={addRegionId ? '选择云上实例' : '请先选择地域'}
+                  placeholder={addRegionId ? t('instance.cloudInstanceSelectPlaceholder') : t('instance.regionFirstPlaceholder')}
                   disabled={!addRegionId}
                   loading={cloudInstancesLoading}
                   options={cloudInstances.map((item) => ({
@@ -851,7 +851,7 @@ const InstancePage = () => {
                   { max: 64, message: '实例 ID 不能超过 64 个字符' },
                 ]}
               >
-                <Input placeholder="默认取云上实例 ID" />
+                <Input placeholder={t('instance.idDefaultFromCloud')} />
               </Form.Item>
               <Form.Item label="备注" name="remark">
                 <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
