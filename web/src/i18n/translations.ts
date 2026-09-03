@@ -1815,6 +1815,12 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'dlq.message': { zh: '死信消息', en: 'DLQ Message' },
   'dlq.consumerGroup': { zh: '消费者组', en: 'Consumer Group' },
+  'dlq.detailLoadFailed': { zh: '死信消息明细加载失败，请稍后重试', en: 'Failed to load DLQ message details, please retry later' },
+  'dlq.exportIncomplete': { zh: '导出可能不完整：{failed} 个队列无法扫描，导出上限 {limit} 条', en: 'Export may be incomplete: {failed} queue(s) could not be scanned; export limit is {limit}' },
+  'dlq.loadFailed': { zh: '死信队列加载失败，请稍后重试', en: 'Failed to load the DLQ list, please retry later' },
+  'dlq.rescanIncomplete': { zh: '重投扫描不完整：{failed} 个队列无法扫描，已重投 {resent} 条', en: 'Resend scan incomplete: {failed} queue(s) could not be scanned; {resent} message(s) resent' },
+  'dlq.resendMsgFailed': { zh: '重发死信消息失败，请稍后重试', en: 'Failed to resend DLQ messages, please retry later' },
+  'dlq.retryFailed': { zh: '提交重投任务失败，请稍后重试', en: 'Failed to submit the resend task, please retry later' },
 
   // ─── Message Trace ───
   'trace.title': { zh: '消息轨迹', en: 'Message Trace' },
