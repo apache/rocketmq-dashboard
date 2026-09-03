@@ -48,6 +48,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -298,6 +300,25 @@ class InstanceServiceTest {
     }
 
     @Test
+    void listInstancesShouldClearPreviouslyLoadedCountsWhenRefreshFailsTest() {
+        InstanceVO instance = InstanceVO.builder().name("stale-counts").build();
+        instance.setId(6L);
+        instance.setTopicCount(12);
+        instance.setConsumerGroupCount(8);
+        instance.setResourceCountsAvailable(true);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("6"))
+                .thenThrow(new IllegalStateException("provider unavailable"));
+
+        InstanceVO result = instanceService.listInstances(null, null).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isFalse();
+        assertThat(result.getTopicCount()).isZero();
+        assertThat(result.getConsumerGroupCount()).isZero();
+    }
+
+    @Test
     void listInstancesShouldApplyASingleDeadlineToSlowCountsTest() throws InterruptedException {
         // Three hung providers: waiting per future would cost 3s each (9s total); a shared
         // deadline must bound the whole batch to roughly one timeout.
@@ -322,6 +343,62 @@ class InstanceServiceTest {
                 .as("batch must not wait one timeout per instance")
                 .isLessThan(2L * InstanceService.COUNT_TIMEOUT_SECONDS * 1000);
         assertThat(result).allSatisfy(vo -> assertThat(vo.isResourceCountsAvailable()).isFalse());
+    }
+
+    @Test
+    void timedOutCountTaskShouldNotMutateReturnedInstanceAfterRequestCompletesTest() throws Exception {
+        InstanceVO slow = InstanceVO.builder().name("slow").build();
+        slow.setId(24L);
+        when(instanceRepository.findAll()).thenReturn(List.of(slow));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        CountDownLatch topicCountStarted = new CountDownLatch(1);
+        CountDownLatch releaseProvider = new CountDownLatch(1);
+        CountDownLatch providerFinished = new CountDownLatch(1);
+        when(instanceProvider.countTopics("24")).thenAnswer(invocation -> {
+            topicCountStarted.countDown();
+            boolean interrupted = false;
+            while (true) {
+                try {
+                    releaseProvider.await();
+                    break;
+                } catch (InterruptedException exception) {
+                    // Simulate a vendor SDK that does not abort an in-flight HTTP request
+                    // when Future.cancel(true) interrupts the worker.
+                    interrupted = true;
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return 7;
+        });
+        when(instanceProvider.countGroups("24")).thenAnswer(invocation -> {
+            providerFinished.countDown();
+            return 5;
+        });
+
+        try {
+            List<InstanceVO> result = instanceService.listInstances(null, null);
+
+            assertThat(topicCountStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(result).singleElement().satisfies(instance -> {
+                assertThat(instance.isResourceCountsAvailable()).isFalse();
+                assertThat(instance.getTopicCount()).isZero();
+                assertThat(instance.getConsumerGroupCount()).isZero();
+            });
+
+            releaseProvider.countDown();
+            assertThat(providerFinished.await(1, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(result).singleElement().satisfies(instance -> {
+                assertThat(instance.isResourceCountsAvailable()).isFalse();
+                assertThat(instance.getTopicCount()).isZero();
+                assertThat(instance.getConsumerGroupCount()).isZero();
+            });
+        } finally {
+            releaseProvider.countDown();
+        }
     }
 
     @Test
