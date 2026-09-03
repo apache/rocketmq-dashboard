@@ -210,6 +210,21 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listTopicsShouldClampOversizedQueueCountsTest() throws Exception {
+        TopicItem oversized = topicItem("orders-oversized", "NORMAL", (long) Integer.MAX_VALUE + 1L);
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setData(new TopicItem[]{oversized});
+        when(client.DescribeTopicList(any())).thenReturn(response);
+        when(client.DescribeTopic(any())).thenReturn(new DescribeTopicResponse());
+
+        List<TopicVO> topics = provider.listTopics(STUDIO_INSTANCE_ID, null, null);
+
+        assertThat(topics).hasSize(1);
+        assertThat(topics.get(0).getWriteQueues()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(topics.get(0).getReadQueues()).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    @Test
     void listTopicsPageShouldUseTencentNativePaginationAndFiltersTest() throws Exception {
         TopicItem item = topicItem("orders-fifo-10000", "FIFO", 8L);
         DescribeTopicListResponse response = new DescribeTopicListResponse();
