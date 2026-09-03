@@ -780,7 +780,7 @@ const TopicPage = () => {
       ),
     },
     {
-      title: '权限',
+      title: t('topic.permission'),
       dataIndex: 'perm',
       key: 'perm',
       width: 130,
@@ -788,14 +788,14 @@ const TopicPage = () => {
         <Space direction="vertical" size={4}>
           <Tag>{PERM_LABEL[record.perm] || record.perm}</Tag>
           <Space size={4}>
-            <Tag color={record.readable ? 'success' : 'error'}>读</Tag>
-            <Tag color={record.writable ? 'success' : 'error'}>写</Tag>
+            <Tag color={record.readable ? 'success' : 'error'}>{t('topic.permRead')}</Tag>
+            <Tag color={record.writable ? 'success' : 'error'}>{t('topic.permWrite')}</Tag>
           </Space>
         </Space>
       ),
     },
     {
-      title: '诊断',
+      title: t('topic.colDiagnostics'),
       key: 'diagnostics',
       width: 220,
       render: (_: unknown, record) => renderRouteIssueTags(record.issues),
@@ -805,7 +805,7 @@ const TopicPage = () => {
   // ─── Consumer table columns ───────────────────────────────────
   const consumerColumns: TableColumnsType<ConsumerGroupInfo> = [
     {
-      title: '消费者组',
+      title: t('topic.consumerGroupCol'),
       dataIndex: 'group',
       key: 'group',
       render: (group: string) =>
@@ -824,25 +824,25 @@ const TopicPage = () => {
         ),
     },
     {
-      title: '消费模式',
+      title: t('topic.consumeModeCol'),
       dataIndex: 'messageModel',
       key: 'messageModel',
       render: (m: string) => <Tag color={m === '广播消费' ? 'orange' : 'blue'}>{m}</Tag>,
     },
     {
-      title: '消费 TPS',
+      title: t('topic.consumeTpsCol'),
       dataIndex: 'consumeTps',
       key: 'consumeTps',
       render: (n: number, record) =>
-        record.metricsAvailable === false ? <Text type="secondary">不可用</Text> : formatNumber(n),
+        record.metricsAvailable === false ? <Text type="secondary">{t('topic.metricsUnavailable')}</Text> : formatNumber(n),
     },
     {
-      title: '堆积量',
+      title: t('topic.lagAmount'),
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       render: (n: number, record) =>
         record.metricsAvailable === false ? (
-          <Text type="secondary">不可用</Text>
+          <Text type="secondary">{t('topic.metricsUnavailable')}</Text>
         ) : (
           <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>
         ),
@@ -1009,28 +1009,28 @@ const TopicPage = () => {
 
     return (
       <Descriptions bordered column={2} size="small" styles={{ label: { fontWeight: 500 } }}>
-        <Descriptions.Item label="Topic 名称" span={2}>
+        <Descriptions.Item label={t('topic.name')} span={2}>
           {topic.name}
         </Descriptions.Item>
-        <Descriptions.Item label="类型">
+        <Descriptions.Item label={t('topic.type')}>
           <Tag color={typeInfo?.color}>
             {typeInfo?.labelKey ? t(typeInfo.labelKey) : topic.type}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="集群" span={2}>
+        <Descriptions.Item label={t('topic.cluster')} span={2}>
           <Space>
             <Text>{topic.clusterId}</Text>
             {clusterType && <Tag color={clusterType.color}>{t(clusterType.labelKey)}</Tag>}
           </Space>
         </Descriptions.Item>
-        <Descriptions.Item label="写队列数">{topic.writeQueues}</Descriptions.Item>
-        <Descriptions.Item label="读队列数">{topic.readQueues}</Descriptions.Item>
-        <Descriptions.Item label="权限">
+        <Descriptions.Item label={t('topic.writeQueues')}>{topic.writeQueues}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.readQueues')}>{topic.readQueues}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.permission')}>
           <Tag>{PERM_LABEL[topic.perm]}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="今日消息量">{formatNumber(topic.messageCount)}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.todayMessagesStat')}>{formatNumber(topic.messageCount)}</Descriptions.Item>
         <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
-        <Descriptions.Item label="消费者组数">{topic.consumerGroupCount}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.consumerGroupCountStat')}>{topic.consumerGroupCount}</Descriptions.Item>
         <Descriptions.Item label="创建时间" span={2}>
           {formatDateTime(topic.gmtCreate)}
         </Descriptions.Item>
