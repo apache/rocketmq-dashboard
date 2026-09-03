@@ -182,32 +182,35 @@ const resetPreviewRiskColor = (riskLevel: string) => {
   return 'green';
 };
 
-const resetPreviewRiskLabel = (riskLevel: string) => {
-  if (riskLevel === 'ERROR') return '失败';
-  if (riskLevel === 'WARNING') return '需确认';
-  return '正常';
+const resetPreviewRiskLabel = (riskLevel: string): string => {
+  if (riskLevel === 'ERROR') return 'consumer.riskFailed';
+  if (riskLevel === 'WARNING') return 'consumer.riskConfirm';
+  return 'consumer.riskOK';
 };
 
-const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
+const resetPreviewQueueMessage = (
+  queue: ResetConsumerOffsetQueuePreview,
+  t: (key: string, params?: Record<string, string | number>) => string,
+) => {
   const messages: string[] = [];
   if (queue.riskLevel === 'ERROR') {
-    return queue.message || '预览失败';
+    return queue.message || t('consumer.previewFailed');
   }
   if (queue.targetOffset < 0 || queue.consumerOffset < 0) {
-    return queue.message || '目标位点不可用';
+    return queue.message || t('consumer.offsetUnavailable');
   }
   if (queue.offsetDelta < 0) {
-    messages.push(`将回放 ${Math.abs(queue.offsetDelta).toLocaleString()} 条消息`);
+    messages.push(t('consumer.replayMsgs', { count: Math.abs(queue.offsetDelta).toLocaleString() }));
   } else if (queue.offsetDelta > 0) {
-    messages.push(`将跳过 ${queue.offsetDelta.toLocaleString()} 条未消费消息`);
+    messages.push(t('consumer.skipMsgs', { count: queue.offsetDelta.toLocaleString() }));
   } else {
-    messages.push('位点不变');
+    messages.push(t('consumer.offsetUnchanged'));
   }
   if (queue.minOffset >= 0 && queue.targetOffset === queue.minOffset) {
-    messages.push('目标为最小保留位点');
+    messages.push(t('consumer.atMinOffset'));
   }
   if (queue.maxOffset >= 0 && queue.targetOffset === queue.maxOffset) {
-    messages.push('目标为最新位点');
+    messages.push(t('consumer.atMaxOffset'));
   }
   return messages.join('；');
 };
@@ -1260,7 +1263,7 @@ const ConsumerPageContent = ({
       key: 'riskLevel',
       width: 86,
       render: (riskLevel: string) => (
-        <Tag color={resetPreviewRiskColor(riskLevel)}>{resetPreviewRiskLabel(riskLevel)}</Tag>
+        <Tag color={resetPreviewRiskColor(riskLevel)}>{t(resetPreviewRiskLabel(riskLevel))}</Tag>
       ),
     },
     {
@@ -1269,8 +1272,8 @@ const ConsumerPageContent = ({
       width: 240,
       ellipsis: true,
       render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => (
-        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record)}>
-          {resetPreviewQueueMessage(record)}
+        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record, t)}>
+          {resetPreviewQueueMessage(record, t)}
         </Text>
       ),
     },

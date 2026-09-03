@@ -1564,6 +1564,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.atMaxOffset': { zh: '目标为最新位点', en: 'Target is the latest offset' },
+  'consumer.atMinOffset': { zh: '目标为最小保留位点', en: 'Target is the minimum retained offset' },
+  'consumer.offsetUnavailable': { zh: '目标位点不可用', en: 'Target offset unavailable' },
+  'consumer.offsetUnchanged': { zh: '位点不变', en: 'Offset unchanged' },
+  'consumer.previewFailed': { zh: '预览失败', en: 'Preview failed' },
+  'consumer.replayMsgs': { zh: '将回放 {count} 条消息', en: 'Will replay {count} message(s)' },
+  'consumer.riskConfirm': { zh: '需确认', en: 'Needs Confirmation' },
+  'consumer.riskFailed': { zh: '失败', en: 'Failed' },
+  'consumer.riskOK': { zh: '正常', en: 'Normal' },
+  'consumer.skipMsgs': { zh: '将跳过 {count} 条未消费消息', en: 'Will skip {count} unconsumed message(s)' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
