@@ -79,6 +79,30 @@ class NativeAlertRuleTestServiceTest {
     }
 
     @Test
+    void normalizesTheMetricKeyBeforePolicyAndSampleFilteringTest() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        BusinessMetricsCollector collector = mock(BusinessMetricsCollector.class);
+        InstanceVO instance = InstanceVO.builder().name("local").build();
+        when(instances.findByIdentifier("local")).thenReturn(Optional.of(instance));
+        when(collector.supports(instance)).thenReturn(true);
+        when(collector.collect(instance)).thenReturn(List.of(sample("orders", 20)));
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.BUSINESS)
+                .metric("  consumer.lag.total  ")
+                .instanceId(" local ")
+                .operator(" > ")
+                .threshold(10)
+                .build();
+
+        AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(), List.of(collector),
+                new AlertRuleEvaluator()).test(rule);
+
+        assertThat(result.samples()).singleElement().satisfies(sample -> {
+            assertThat(sample.currentValue()).isEqualTo(20);
+            assertThat(sample.conditionMet()).isTrue();
+        });
+    }
+
+    @Test
     void keepsResultsFromHealthyCollectorsWhenAnotherCollectorFailsTest() {
         InstanceRepository instances = mock(InstanceRepository.class);
         BusinessMetricsCollector failing = mock(BusinessMetricsCollector.class);

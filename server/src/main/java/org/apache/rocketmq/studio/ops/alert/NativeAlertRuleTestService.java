@@ -40,6 +40,7 @@ public class NativeAlertRuleTestService {
     private final AlertRuleEvaluator evaluator;
 
     public AlertRuleTestResultVO test(AlertRuleVO rule) {
+        normalizeRule(rule);
         NativeAlertRulePolicy.validate(rule);
         InstanceVO instance = instanceRepository.findByIdentifier(rule.getInstanceId())
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + rule.getInstanceId()));
@@ -77,6 +78,25 @@ public class NativeAlertRuleTestService {
                             .conditionMet(evaluation.conditionMet())
                             .unavailableReason(sample.unavailableReason()).build();
                 }).toList()).build();
+    }
+
+    /**
+     * Normalizes the fields used for exact native metric matching before policy validation and
+     * sample filtering. Existing callers may pass stored rules copied from older deployments.
+     */
+    private static void normalizeRule(AlertRuleVO rule) {
+        if (rule == null) {
+            return;
+        }
+        if (rule.getMetric() != null) {
+            rule.setMetric(rule.getMetric().trim());
+        }
+        if (rule.getInstanceId() != null) {
+            rule.setInstanceId(rule.getInstanceId().trim());
+        }
+        if (rule.getOperator() != null) {
+            rule.setOperator(rule.getOperator().trim());
+        }
     }
 
 }
