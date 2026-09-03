@@ -1719,6 +1719,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.permRead': { zh: '读', en: 'Read' },
+  'topic.permRO': { zh: '只读', en: 'Read-Only' },
+  'topic.permRW': { zh: '读写', en: 'Read-Write' },
+  'topic.permWO': { zh: '只写', en: 'Write-Only' },
+  'topic.permWrite': { zh: '写', en: 'Write' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
