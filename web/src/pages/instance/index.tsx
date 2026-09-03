@@ -853,7 +853,7 @@ const InstancePage = () => {
               >
                 <Input placeholder="默认取云上实例 ID" />
               </Form.Item>
-              <Form.Item label="备注" name="remark">
+              <Form.Item label={t('instance.remark')} name="remark">
                 <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
               </Form.Item>
             </Form>
@@ -871,9 +871,9 @@ const InstancePage = () => {
               <Input placeholder="例：rocketmq-production" />
             </Form.Item>
             <Form.Item
-              label="接入方式"
+              label={t('instance.accessType')}
               name="type"
-              rules={[{ required: true, message: '请选择接入方式' }]}
+              rules={[{ required: true, message: t('instance.accessTypeRequired') }]}
             >
               <Select
                 placeholder="选择接入方式"
@@ -894,15 +894,15 @@ const InstancePage = () => {
                 </span>
               }
               name="endpoint"
-              rules={[{ required: true, message: '请输入接入地址' }]}
+              rules={[{ required: true, message: t('instance.endpointRequired') }]}
               extra={
                 addInstanceType === 'DIRECT'
-                  ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
+                  ? t('instance.endpointExtraDirect')
                   : addInstanceType === 'PROXY_LOCAL'
                     ? 'Proxy Local 模式请填写与 Broker 同进程部署的 Proxy 接入地址（如 broker-proxy.mq.svc:8080）'
                     : addInstanceType === 'PROXY_CLUSTER'
                       ? 'Proxy Cluster 模式请填写独立 Proxy 集群的 SLB 内网地址（如 proxy.mq.svc:8080）'
-                      : '请先选择接入方式'
+                      : t('instance.endpointExtraSelectFirst')
               }
             >
               <Input
@@ -914,13 +914,13 @@ const InstancePage = () => {
               />
             </Form.Item>
             <Form.Item
-              label="管理凭据引用"
+              label={t('instance.credentialRefLabel')}
               name="adminCredentialRef"
               extra="可选。仅保存服务端配置中的凭据引用，不会保存或传输 AK/SK。"
             >
-              <Input placeholder="例：production-admin" />
+              <Input placeholder={t('instance.credentialRefExample')} />
             </Form.Item>
-            <Form.Item label="备注" name="remark">
+            <Form.Item label={t('instance.remark')} name="remark">
               <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
             </Form.Item>
           </Form>
@@ -929,7 +929,7 @@ const InstancePage = () => {
 
       {/* Edit Instance Modal */}
       <Modal
-        title={`编辑实例 — ${editingInstance?.name || ''}`}
+        title={t('instance.editInstanceTitle', { name: editingInstance?.name || '' })}
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false);
@@ -937,18 +937,18 @@ const InstancePage = () => {
         }}
         onOk={() => void handleUpdate()}
         confirmLoading={submitting}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
         width={520}
       >
         <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="实例 ID">
+          <Form.Item label={t('instance.instanceName')}>
             <Input value={editingInstance?.name} disabled />
           </Form.Item>
           <Form.Item
-            label="接入方式"
+            label={t('instance.accessType')}
             name="type"
-            rules={[{ required: true, message: '请选择接入方式' }]}
+            rules={[{ required: true, message: t('instance.accessTypeRequired') }]}
           >
             <Select
               options={
@@ -972,34 +972,34 @@ const InstancePage = () => {
               </span>
             }
             name="endpoint"
-            rules={[{ required: true, message: '请输入接入地址' }]}
+            rules={[{ required: true, message: t('instance.endpointRequired') }]}
             extra={
               editInstanceType === 'DIRECT'
-                ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
+                ? t('instance.endpointExtraDirect')
                 : editInstanceType === 'CLOUD'
-                  ? '云服务实例接入地址由云厂商目录解析，不支持手动修改'
-                  : '请先选择接入方式'
+                  ? t('instance.cloudEndpointNotEditable')
+                  : t('instance.endpointExtraSelectFirst')
             }
           >
             <Input
               placeholder={
                 editInstanceType === 'DIRECT'
-                  ? '例：namesrv.mq.svc.cluster.local:9876'
-                  : '例：proxy.mq.svc.cluster.local:8080'
+                  ? t('instance.endpointExampleDirect')
+                  : t('instance.endpointExampleProxy')
               }
             />
           </Form.Item>
           {editingInstance?.vendor === 'APACHE' && (
             <Form.Item
-              label="管理凭据引用"
+              label={t('instance.credentialRefLabel')}
               name="adminCredentialRef"
-              extra="仅保存服务端配置中的引用，不会保存或传输 AK/SK。"
+              extra={t('instance.editCredentialRefHelp')}
             >
-              <Input placeholder="例：production-admin" />
+              <Input placeholder={t('instance.credentialRefExample')} />
             </Form.Item>
           )}
-          <Form.Item label="备注" name="remark">
-            <Input.TextArea rows={3} placeholder="描述实例用途" />
+          <Form.Item label={t('instance.remark')} name="remark">
+            <Input.TextArea rows={3} placeholder={t('instance.editRemarkPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>
