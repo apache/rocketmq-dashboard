@@ -844,39 +844,39 @@ const InstancePage = () => {
                 />
               </Form.Item>
               <Form.Item
-                label="实例 ID"
+                label={t('instance.instanceName')}
                 name="name"
                 rules={[
-                  { required: true, message: '请输入实例 ID' },
-                  { max: 64, message: '实例 ID 不能超过 64 个字符' },
+                  { required: true, message: t('instance.instanceIdRequired') },
+                  { max: 64, message: t('instance.instanceIdTooLong') },
                 ]}
               >
                 <Input placeholder="默认取云上实例 ID" />
               </Form.Item>
-              <Form.Item label="备注" name="remark">
-                <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
+              <Form.Item label={t('instance.remark')} name="remark">
+                <Input.TextArea rows={2} placeholder={t('instance.remarkPlaceholder')} />
               </Form.Item>
             </Form>
           </>
         ) : (
           <Form form={addForm} layout="vertical">
             <Form.Item
-              label="实例 ID"
+              label={t('instance.instanceName')}
               name="name"
               rules={[
-                { required: true, message: '请输入实例 ID' },
-                { max: 64, message: '实例 ID 不能超过 64 个字符' },
+                { required: true, message: t('instance.instanceIdRequired') },
+                { max: 64, message: t('instance.instanceIdTooLong') },
               ]}
             >
-              <Input placeholder="例：rocketmq-production" />
+              <Input placeholder={t('instance.namePlaceholder')} />
             </Form.Item>
             <Form.Item
-              label="接入方式"
+              label={t('instance.accessType')}
               name="type"
-              rules={[{ required: true, message: '请选择接入方式' }]}
+              rules={[{ required: true, message: t('instance.accessTypeRequired') }]}
             >
               <Select
-                placeholder="选择接入方式"
+                placeholder={t('instance.selectAccessType')}
                 options={[
                   { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
                   { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
@@ -887,41 +887,41 @@ const InstancePage = () => {
             <Form.Item
               label={
                 <span>
-                  接入地址{' '}
-                  <Tooltip title="接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。">
+                  {t('instance.endpoint')}{' '}
+                  <Tooltip title={t('instance.endpointTooltip')}>
                     <QuestionCircleOutlined style={{ color: '#9CA3AF', cursor: 'help' }} />
                   </Tooltip>
                 </span>
               }
               name="endpoint"
-              rules={[{ required: true, message: '请输入接入地址' }]}
+              rules={[{ required: true, message: t('instance.endpointRequired') }]}
               extra={
                 addInstanceType === 'DIRECT'
-                  ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
+                  ? t('instance.endpointExtraDirect')
                   : addInstanceType === 'PROXY_LOCAL'
-                    ? 'Proxy Local 模式请填写与 Broker 同进程部署的 Proxy 接入地址（如 broker-proxy.mq.svc:8080）'
+                    ? t('instance.endpointExtraProxyLocal')
                     : addInstanceType === 'PROXY_CLUSTER'
-                      ? 'Proxy Cluster 模式请填写独立 Proxy 集群的 SLB 内网地址（如 proxy.mq.svc:8080）'
-                      : '请先选择接入方式'
+                      ? t('instance.endpointExtraProxyCluster')
+                      : t('instance.endpointExtraSelectFirst')
               }
             >
               <Input
                 placeholder={
                   addInstanceType === 'DIRECT'
-                    ? '例：namesrv.mq.svc.cluster.local:9876'
-                    : '例：proxy.mq.svc.cluster.local:8080'
+                    ? t('instance.endpointExampleDirect')
+                    : t('instance.endpointExampleProxy')
                 }
               />
             </Form.Item>
             <Form.Item
-              label="管理凭据引用"
+              label={t('instance.credentialRefLabel')}
               name="adminCredentialRef"
-              extra="可选。仅保存服务端配置中的凭据引用，不会保存或传输 AK/SK。"
+              extra={t('instance.credentialRefHelp')}
             >
-              <Input placeholder="例：production-admin" />
+              <Input placeholder={t('instance.credentialRefExample')} />
             </Form.Item>
-            <Form.Item label="备注" name="remark">
-              <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
+            <Form.Item label={t('instance.remark')} name="remark">
+              <Input.TextArea rows={2} placeholder={t('instance.remarkPlaceholder')} />
             </Form.Item>
           </Form>
         )}
@@ -965,8 +965,8 @@ const InstancePage = () => {
           <Form.Item
             label={
               <span>
-                接入地址{' '}
-                <Tooltip title="接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。">
+                {t('instance.endpoint')}{' '}
+                <Tooltip title={t('instance.endpointTooltip')}>
                   <QuestionCircleOutlined style={{ color: '#9CA3AF', cursor: 'help' }} />
                 </Tooltip>
               </span>
@@ -991,14 +991,14 @@ const InstancePage = () => {
           </Form.Item>
           {editingInstance?.vendor === 'APACHE' && (
             <Form.Item
-              label="管理凭据引用"
+              label={t('instance.credentialRefLabel')}
               name="adminCredentialRef"
               extra="仅保存服务端配置中的引用，不会保存或传输 AK/SK。"
             >
-              <Input placeholder="例：production-admin" />
+              <Input placeholder={t('instance.credentialRefExample')} />
             </Form.Item>
           )}
-          <Form.Item label="备注" name="remark">
+          <Form.Item label={t('instance.remark')} name="remark">
             <Input.TextArea rows={3} placeholder="描述实例用途" />
           </Form.Item>
         </Form>
