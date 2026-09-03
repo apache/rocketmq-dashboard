@@ -111,6 +111,63 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.consumerGroups': { zh: '{n} 消费组', en: '{n} Groups' },
   'dashboard.healthy': { zh: '健康', en: 'Healthy' },
   'dashboard.last12h': { zh: '近 12 小时', en: 'Last 12 hours' },
+  'dashboardTraffic.title': { zh: '流量洞察', en: 'Traffic Insights' },
+  'dashboardTraffic.activeClusters': { zh: '活跃集群', en: 'Active Clusters' },
+  'dashboardTraffic.topClusterShare': { zh: '最高流量占比', en: 'Top Traffic Share' },
+  'dashboardTraffic.balanceScore': { zh: '均衡评分', en: 'Balance Score' },
+  'dashboardTraffic.unhealthyTraffic': { zh: '异常流量', en: 'Unhealthy Traffic' },
+  'dashboardTraffic.findings': { zh: '需要关注的流量信号', en: 'Traffic signals to review' },
+  'dashboardTraffic.noCluster': { zh: '暂无集群流量数据', en: 'No cluster traffic data' },
+  'dashboardTraffic.allClusters': { zh: '全部集群', en: 'all clusters' },
+  'dashboardTraffic.totalTps': { zh: '总 TPS', en: 'Total TPS' },
+  'dashboardTraffic.share': { zh: '占比', en: 'Share' },
+  'dashboardTraffic.perBroker': { zh: '单 Broker TPS', en: 'TPS per Broker' },
+  'dashboardTraffic.inOutRatio': { zh: '出入比', en: 'Out/In Ratio' },
+  'dashboardTraffic.trendRising': { zh: '上升', en: 'Rising' },
+  'dashboardTraffic.trendFalling': { zh: '下降', en: 'Falling' },
+  'dashboardTraffic.trendStable': { zh: '平稳', en: 'Stable' },
+  'dashboardTraffic.trendUnknown': { zh: '未知', en: 'Unknown' },
+  'dashboardTraffic.level.healthy': { zh: '健康', en: 'Healthy' },
+  'dashboardTraffic.level.notice': { zh: '提示', en: 'Notice' },
+  'dashboardTraffic.level.warning': { zh: '告警', en: 'Warning' },
+  'dashboardTraffic.level.critical': { zh: '严重', en: 'Critical' },
+  'dashboardTraffic.issueNoActiveTraffic': {
+    zh: '未检测到活跃流量',
+    en: 'No active traffic detected',
+  },
+  'dashboardTraffic.issueTrafficConcentration': {
+    zh: '{cluster} 承载 {value} 流量',
+    en: '{cluster} carries {value} of traffic',
+  },
+  'dashboardTraffic.issueUnhealthyTraffic': {
+    zh: '非健康集群承载 {value} 流量',
+    en: 'Unhealthy clusters carry {value} of traffic',
+  },
+  'dashboardTraffic.issueUnhealthyClusterTraffic': {
+    zh: '{cluster} 在非健康状态下承载流量',
+    en: '{cluster} carries traffic while unhealthy',
+  },
+  'dashboardTraffic.issueBrokerLoadSkew': {
+    zh: '{cluster} 单 Broker 流量偏高',
+    en: '{cluster} has high per-broker traffic',
+  },
+  'dashboardTraffic.issueRecentDrop': {
+    zh: '近期总流量下降 {value}',
+    en: 'Recent total traffic dropped by {value}',
+  },
+  'dashboardTraffic.issueRecentSpike': {
+    zh: '近期总流量上升 {value}',
+    en: 'Recent total traffic increased by {value}',
+  },
+  'dashboardTraffic.issueTopologyUnavailable': {
+    zh: '{cluster} 拓扑数量不可用',
+    en: '{cluster} has unavailable topology counts',
+  },
+  'dashboardTraffic.issueIdleCluster': {
+    zh: '{cluster} 当前无流量',
+    en: '{cluster} is currently idle',
+  },
+  'dashboardTraffic.issueUnknown': { zh: '未知流量信号', en: 'Unknown traffic signal' },
 
   // ─── Cluster Page ───
   'cluster.title': { zh: 'RocketMQ 集群', en: 'RocketMQ Cluster' },

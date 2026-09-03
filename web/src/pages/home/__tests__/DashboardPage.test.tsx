@@ -136,10 +136,14 @@ describe('DashboardPage', () => {
     vi.mocked(dashboardService.getDashboard).mockResolvedValue(unavailableTopologyDashboard());
     renderWithProviders(<DashboardPage />);
 
-    await screen.findByText('proxy-cluster');
+    await screen.findAllByText('proxy-cluster');
     expect(await screen.findByText(/1 Brokers · N\/A Proxy/u)).toBeInTheDocument();
     expect(screen.queryByText('0 Proxy')).not.toBeInTheDocument();
-    const row = screen.getByText('proxy-cluster').closest('tr');
+    const clusterHealthCard = screen.getByText('集群健康概览').closest('.ant-card');
+    expect(clusterHealthCard).not.toBeNull();
+    const row = within(clusterHealthCard as HTMLElement)
+      .getByText('proxy-cluster')
+      .closest('tr');
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getAllByText('N/A').length).toBeGreaterThanOrEqual(1);
   });
@@ -152,7 +156,7 @@ describe('DashboardPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<DashboardPage />);
 
-    await screen.findByText('initial-cluster');
+    await screen.findAllByText('initial-cluster');
     const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
     await user.click(selector);
     await user.click(
@@ -162,7 +166,7 @@ describe('DashboardPage', () => {
 
     expect(screen.queryByText('initial-cluster')).not.toBeInTheDocument();
     instanceA.resolve(dashboard('instance-a-cluster'));
-    await screen.findByText('instance-a-cluster');
+    await screen.findAllByText('instance-a-cluster');
   });
 
   it('does not let a stale instance response overwrite the latest selection', async () => {
@@ -175,7 +179,7 @@ describe('DashboardPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<DashboardPage />);
 
-    await screen.findByText('initial-cluster');
+    await screen.findAllByText('initial-cluster');
     const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
     await user.click(selector);
     await user.click(
@@ -187,13 +191,13 @@ describe('DashboardPage', () => {
     );
 
     instanceB.resolve(dashboard('instance-b-cluster'));
-    expect(await screen.findByText('instance-b-cluster')).toBeInTheDocument();
+    expect(await screen.findAllByText('instance-b-cluster')).not.toHaveLength(0);
 
     instanceA.resolve(dashboard('instance-a-cluster'));
     await waitFor(() => {
       expect(screen.queryByText('instance-a-cluster')).not.toBeInTheDocument();
     });
-    expect(screen.getByText('instance-b-cluster')).toBeInTheDocument();
+    expect(screen.getAllByText('instance-b-cluster')).not.toHaveLength(0);
   });
 
   it('preserves the selected instance when navigating to the cluster page', async () => {
@@ -206,7 +210,7 @@ describe('DashboardPage', () => {
       </>,
     );
 
-    await screen.findByText('instance-a-cluster');
+    await screen.findAllByText('instance-a-cluster');
     const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
     await user.click(selector);
     await user.click(
@@ -248,7 +252,7 @@ describe('DashboardPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<DashboardPage />);
 
-    await screen.findByText('apache-cluster');
+    await screen.findAllByText('apache-cluster');
     await user.click(screen.getByRole('combobox', { name: 'Dashboard instance' }));
 
     expect(

@@ -26,6 +26,7 @@ import type { DashboardData } from '../../api/metrics';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useLang } from '../../i18n/LangContext';
+import DashboardTrafficInsights from './DashboardTrafficInsights';
 
 const { Text } = Typography;
 
@@ -296,6 +297,8 @@ const DashboardPage = () => {
           </Col>
         ))}
       </Row>
+
+      <DashboardTrafficInsights dashboard={visibleDashboard} />
 
       <Card
         title={t('dashboard.clusterHealth')}
