@@ -1719,6 +1719,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.addressTopology': { zh: '地址拓扑', en: 'Address Topology' },
+  'topic.addrUnknown': { zh: '地址未知', en: 'Address Unknown' },
+  'topic.noIssues': { zh: '无', en: 'None' },
+  'topic.queueDistribution': { zh: '队列分布', en: 'Queue Distribution' },
+  'topic.readQueuesShort': { zh: '读队列 {n}', en: 'Read queues {n}' },
+  'topic.routeCritical': { zh: '异常', en: 'Critical' },
+  'topic.routeHealthy': { zh: '健康', en: 'Healthy' },
+  'topic.routeWarning': { zh: '关注', en: 'Warning' },
+  'topic.writeQueuesShort': { zh: '写队列 {n}', en: 'Write queues {n}' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
