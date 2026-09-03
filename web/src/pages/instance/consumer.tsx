@@ -121,12 +121,16 @@ const lagColor = (lag: number): string => {
 };
 
 /**
- * Format delay seconds into human-readable Chinese time.
+ * Format delay seconds into a human-readable duration.
  * Shows at most 3 units: days → hours → minutes → seconds.
- * e.g. 82500 → "22小时55分钟", 3725 → "1小时2分钟5秒"
+ * e.g. 82500 → "22小时55分钟" (zh) / "22 hours 55 minutes" (en)
  */
-const formatDelay = (totalSeconds: number): string => {
-  if (totalSeconds <= 0) return '0秒';
+const formatDelay = (
+  totalSeconds: number,
+  t: (key: string, params?: Record<string, string | number>) => string,
+  lang?: string,
+): string => {
+  if (totalSeconds <= 0) return t('consumer.delayZero');
 
   const days = Math.floor(totalSeconds / 86400);
   let remaining = totalSeconds % 86400;
@@ -135,13 +139,18 @@ const formatDelay = (totalSeconds: number): string => {
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
 
-  const parts: string[] = [];
-  if (days > 0) parts.push(`${days}天`);
-  if (hours > 0) parts.push(`${hours}小时`);
-  if (minutes > 0) parts.push(`${minutes}分钟`);
-  if (seconds > 0 && parts.length < 3) parts.push(`${seconds}秒`);
+  const unitKey = (count: number, singular: string, plural: string): string =>
+    t(count === 1 ? singular : plural, { n: count });
 
-  return parts.length > 0 ? parts.join('') : '0秒';
+  const parts: string[] = [];
+  if (days > 0) parts.push(unitKey(days, 'consumer.delayDays', 'consumer.delayDaysPlural'));
+  if (hours > 0) parts.push(unitKey(hours, 'consumer.delayHours', 'consumer.delayHoursPlural'));
+  if (minutes > 0)
+    parts.push(unitKey(minutes, 'consumer.delayMinutes', 'consumer.delayMinutesPlural'));
+  if (seconds > 0 && parts.length < 3)
+    parts.push(unitKey(seconds, 'consumer.delaySeconds', 'consumer.delaySecondsPlural'));
+
+  return parts.length > 0 ? parts.join(lang === 'zh' ? '' : ' ') : t('consumer.delayZero');
 };
 
 const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): ConsumerGroup[] => {
@@ -229,7 +238,7 @@ const ConsumerPageContent = ({
   instanceOptions,
   instancesLoading,
 }: ConsumerPageContentProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -866,7 +875,7 @@ const ConsumerPageContent = ({
       width: 100,
       align: 'right',
       sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
-      render: (seconds: number) => formatDelay(seconds ?? 0),
+      render: (seconds: number) => formatDelay(seconds ?? 0, t, lang),
     },
     {
       title: '创建时间',
@@ -1598,7 +1607,7 @@ const ConsumerPageContent = ({
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="消费延迟">
-                        <Text strong>{formatDelay(selectedGroup.delaySeconds)}</Text>
+                        <Text strong>{formatDelay(selectedGroup.delaySeconds, t, lang)}</Text>
                       </Descriptions.Item>
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
