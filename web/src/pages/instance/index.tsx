@@ -761,13 +761,13 @@ const InstancePage = () => {
             label: (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <img src={option.logo} alt={option.label} style={{ height: 18, maxWidth: 80 }} />
-                {option.label}
+                {t(option.labelKey ?? option.label)}
               </span>
             ),
           }))}
         />
         <Text type="secondary" style={{ display: 'block', fontSize: 14, marginBottom: 12 }}>
-          {VENDOR_OPTIONS.find((option) => option.key === vendor)?.description}
+          {VENDOR_OPTIONS.find((option) => option.key === vendor)?.descKey ? t(VENDOR_OPTIONS.find((option) => option.key === vendor).descKey) : null}
         </Text>
         {cloudVendor ? (
           <>
