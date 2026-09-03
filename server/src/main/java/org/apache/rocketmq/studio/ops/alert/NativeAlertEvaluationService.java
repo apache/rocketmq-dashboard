@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
@@ -35,10 +36,12 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * Evaluates one rule against one native sample in an independent transaction. A failure rolls
- * back this evaluation's state, event, and outbox changes without invalidating other evaluations
- * from the same collection batch.
+ * Evaluates one rule against one native sample in an independent transaction. State transitions and
+ * alert events are persisted first; notification enqueuing runs in a separate transaction so that an
+ * outbox failure does not roll back the state transition or event, preventing alert silencing loss
+ * and ensuring notifications are retried on the next evaluation once the outbox recovers.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NativeAlertEvaluationService {
@@ -92,7 +95,13 @@ public class NativeAlertEvaluationService {
             alertRepository.markRuleTriggered(rule.getId(), eventTime.toString());
         }
         if (!event.isNotificationSuppressed()) {
-            notificationOutboxService.enqueue(event, rule, sample.labels());
+            try {
+                notificationOutboxService.enqueueSafely(event, rule, sample.labels());
+            } catch (Exception enqueueError) {
+                log.warn("Failed to enqueue notification for alert {} (rule={}, transition={}); "
+                        + "state transition and event were persisted and will not be rolled back",
+                        event.getId(), rule.getId(), update.transition(), enqueueError);
+            }
         }
     }
 

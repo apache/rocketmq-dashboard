@@ -150,6 +150,18 @@ public class NotificationOutboxService {
         enqueue(alert, rule, Map.of());
     }
 
+    /**
+     * Enqueues notification work in an independent transaction so that an outbox failure (e.g. table
+     * unavailable) does not roll back the caller's alert state transition and event persistence.
+     * Returns {@code true} on success, {@code false} if enqueuing failed; the caller retains its
+     * committed state and event either way.
+     */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public boolean enqueueSafely(SystemAlertVO alert, AlertRuleVO rule, Map<String, String> labels) {
+        enqueue(alert, rule, labels);
+        return true;
+    }
+
     public void sendTestMessage(String channel) {
         if (!"dingtalk".equals(channel) && !"email".equals(channel) && !"sms".equals(channel)) {
             throw new IllegalArgumentException("Unsupported notification channel: " + channel);
