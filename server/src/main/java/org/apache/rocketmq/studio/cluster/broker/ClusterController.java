@@ -55,6 +55,18 @@ public class ClusterController {
         return Result.ok(clusterService.listRegistryClusters());
     }
 
+    @GetMapping("/topology-summary")
+    public Result<ClusterTopologySummaryVO> getTopologySummary(
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(clusterService.getTopologySummary(instanceId));
+    }
+
+    @GetMapping("/topology-snapshot")
+    public Result<ClusterTopologySnapshotVO> getTopologySnapshot(
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(clusterService.getTopologySnapshot(instanceId));
+    }
+
     @PostMapping("/test-connection")
     public Result<ClusterProbeResult> testConnection(@Valid @RequestBody TestConnectionDTO command) {
         return Result.ok(clusterConnectionService.testConnection(command));

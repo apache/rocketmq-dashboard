@@ -32,6 +32,8 @@ import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 
+import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -58,6 +60,8 @@ public class ClusterService {
     private static final long REGISTRY_PROBE_TIMEOUT_SECONDS = 15;
     private static final int REGISTRY_PROBE_MAX_CONCURRENCY = 8;
     private static final int REGISTRY_PROBE_QUEUE_CAPACITY = 32;
+    private static final double WARNING_DISK_USAGE = 70.0D;
+    private static final double CRITICAL_DISK_USAGE = 85.0D;
 
     private final ClusterRepository clusterRepository;
     private final ClusterProvider clusterProvider;
@@ -81,12 +85,7 @@ public class ClusterService {
 
     public List<ClusterVO> listClusters() {
         log.info("Listing all clusters");
-        List<ClusterVO> discovered = clusterProvider.discoverClusters();
-        if (discovered != null && !discovered.isEmpty()) {
-            enrichDiscoveredClusters(discovered, null);
-            return discovered;
-        }
-        return List.of();
+        return discoverClusters(null);
     }
 
     /**
@@ -122,7 +121,24 @@ public class ClusterService {
 
     public List<ClusterVO> listClusters(String instanceId) {
         log.info("Listing clusters for instance: {}", instanceId);
-        List<ClusterVO> discovered = clusterProvider.discoverClusters(instanceId);
+        return discoverClusters(instanceId);
+    }
+
+    public ClusterTopologySnapshotVO getTopologySnapshot(String instanceId) {
+        List<ClusterVO> clusters = discoverClusters(instanceId);
+        return ClusterTopologySnapshotVO.builder()
+                .clusters(clusters)
+                .summary(summarizeTopology(clusters))
+                .build();
+    }
+
+    public ClusterTopologySummaryVO getTopologySummary(String instanceId) {
+        return summarizeTopology(discoverClusters(instanceId));
+    }
+
+    private List<ClusterVO> discoverClusters(String instanceId) {
+        List<ClusterVO> discovered = instanceId == null || instanceId.isBlank()
+                ? clusterProvider.discoverClusters() : clusterProvider.discoverClusters(instanceId);
         if (discovered != null && !discovered.isEmpty()) {
             enrichDiscoveredClusters(discovered, instanceId);
             return discovered;
@@ -290,6 +306,257 @@ public class ClusterService {
                 .successfulBrokers(List.copyOf(successfulBrokers))
                 .failedBrokers(List.copyOf(failedBrokers))
                 .build();
+    }
+
+    private ClusterTopologySummaryVO summarizeTopology(List<ClusterVO> clusters) {
+        TopologySummaryBuilder summary = new TopologySummaryBuilder();
+        for (ClusterVO cluster : clusters == null ? List.<ClusterVO>of() : clusters) {
+            if (cluster == null) {
+                continue;
+            }
+            summary.recordCluster(cluster);
+        }
+        return summary.build();
+    }
+
+    private static class TopologySummaryBuilder {
+        private int totalClusters;
+        private int healthyClusters;
+        private int warningClusters;
+        private int errorClusters;
+        private int offlineClusters;
+        private int totalBrokers;
+        private int runningBrokers;
+        private int readonlyBrokers;
+        private int maintenanceBrokers;
+        private int totalNameServers;
+        private int healthyNameServers;
+        private int unhealthyNameServers;
+        private int totalProxies;
+        private int healthyProxies;
+        private int unhealthyProxies;
+        private long totalTpsIn;
+        private long totalTpsOut;
+        private double maxDiskUsage;
+        private String maxDiskBroker;
+        private int versionDriftClusters;
+        private int criticalIssueCount;
+        private int warningIssueCount;
+        private final List<ClusterTopologyIssueVO> issues = new ArrayList<>();
+
+        void recordCluster(ClusterVO cluster) {
+            totalClusters++;
+            countClusterStatus(cluster);
+            List<BrokerVO> brokers = cluster.getBrokers() == null ? List.of() : cluster.getBrokers();
+            List<NameServerVO> nameServers = cluster.getNameServers() == null
+                    ? List.of() : cluster.getNameServers();
+            List<ProxyVO> proxies = cluster.getProxies() == null ? List.of() : cluster.getProxies();
+            recordMissingRequiredTopology(cluster, brokers, nameServers);
+            recordBrokers(cluster, brokers);
+            recordNameServers(cluster, nameServers);
+            recordProxies(cluster, proxies);
+        }
+
+        private void countClusterStatus(ClusterVO cluster) {
+            ClusterStatus status = cluster.getStatus();
+            if (status == ClusterStatus.healthy) {
+                healthyClusters++;
+            } else if (status == ClusterStatus.warning) {
+                warningClusters++;
+                addIssue("WARNING", "CLUSTER", cluster, safeClusterName(cluster),
+                        "Cluster status is warning");
+            } else if (status == ClusterStatus.error) {
+                errorClusters++;
+                addIssue("CRITICAL", "CLUSTER", cluster, safeClusterName(cluster),
+                        "Cluster status is error");
+            } else if (status == ClusterStatus.offline) {
+                offlineClusters++;
+                addIssue("CRITICAL", "CLUSTER", cluster, safeClusterName(cluster),
+                        "Cluster status is offline");
+            } else {
+                warningClusters++;
+                addIssue("WARNING", "CLUSTER", cluster, safeClusterName(cluster),
+                        "Cluster status is unknown");
+            }
+        }
+
+        private void recordMissingRequiredTopology(
+                ClusterVO cluster,
+                List<BrokerVO> brokers,
+                List<NameServerVO> nameServers) {
+            if (brokers.isEmpty()) {
+                addIssue("CRITICAL", "BROKER", cluster, safeClusterName(cluster),
+                        "No broker is reported by the cluster topology");
+            }
+            if (nameServers.isEmpty()) {
+                addIssue("WARNING", "NAMESERVER", cluster, safeClusterName(cluster),
+                        "No NameServer is reported by the cluster topology");
+            }
+        }
+
+        private void recordBrokers(ClusterVO cluster, List<BrokerVO> brokers) {
+            Set<String> versions = new LinkedHashSet<>();
+            for (BrokerVO broker : brokers) {
+                if (broker == null) {
+                    continue;
+                }
+                totalBrokers++;
+                totalTpsIn += Math.max(0, broker.getTpsIn());
+                totalTpsOut += Math.max(0, broker.getTpsOut());
+                recordBrokerStatus(cluster, broker);
+                recordBrokerDisk(cluster, broker);
+                if (broker.getVersion() != null && !broker.getVersion().isBlank()) {
+                    versions.add(broker.getVersion());
+                }
+                if (!broker.isRuntimeStatsAvailable()) {
+                    addIssue("WARNING", "BROKER", cluster, brokerLabel(broker),
+                            "Broker runtime stats are unavailable");
+                }
+            }
+            if (versions.size() > 1) {
+                versionDriftClusters++;
+                addIssue("WARNING", "BROKER", cluster, safeClusterName(cluster),
+                        "Broker versions differ: " + versions);
+            }
+        }
+
+        private void recordBrokerStatus(ClusterVO cluster, BrokerVO broker) {
+            BrokerStatus status = broker.getStatus();
+            if (status == BrokerStatus.running) {
+                runningBrokers++;
+            } else if (status == BrokerStatus.readonly) {
+                readonlyBrokers++;
+                addIssue("WARNING", "BROKER", cluster, brokerLabel(broker),
+                        "Broker is read-only");
+            } else if (status == BrokerStatus.maintenance) {
+                maintenanceBrokers++;
+                addIssue("CRITICAL", "BROKER", cluster, brokerLabel(broker),
+                        "Broker is in maintenance");
+            } else {
+                addIssue("WARNING", "BROKER", cluster, brokerLabel(broker),
+                        "Broker status is unknown");
+            }
+        }
+
+        private void recordBrokerDisk(ClusterVO cluster, BrokerVO broker) {
+            double diskUsage = broker.getDiskUsage();
+            if (diskUsage > maxDiskUsage) {
+                maxDiskUsage = diskUsage;
+                maxDiskBroker = brokerLabel(broker);
+            }
+            if (diskUsage >= CRITICAL_DISK_USAGE) {
+                addIssue("CRITICAL", "BROKER", cluster, brokerLabel(broker),
+                        "Broker disk usage is " + diskUsage + "%");
+            } else if (diskUsage >= WARNING_DISK_USAGE) {
+                addIssue("WARNING", "BROKER", cluster, brokerLabel(broker),
+                        "Broker disk usage is " + diskUsage + "%");
+            }
+        }
+
+        private void recordNameServers(ClusterVO cluster, List<NameServerVO> nameServers) {
+            for (NameServerVO nameServer : nameServers) {
+                if (nameServer == null) {
+                    continue;
+                }
+                totalNameServers++;
+                if (nameServer.getStatus() == ClusterStatus.healthy) {
+                    healthyNameServers++;
+                } else {
+                    unhealthyNameServers++;
+                    addIssue(isCriticalComponentStatus(nameServer.getStatus()) ? "CRITICAL" : "WARNING",
+                            "NAMESERVER", cluster, nameServer.getAddr(),
+                            "NameServer status is " + safeStatus(nameServer.getStatus()));
+                }
+            }
+        }
+
+        private void recordProxies(ClusterVO cluster, List<ProxyVO> proxies) {
+            for (ProxyVO proxy : proxies) {
+                if (proxy == null) {
+                    continue;
+                }
+                totalProxies++;
+                if (proxy.getStatus() == ClusterStatus.healthy) {
+                    healthyProxies++;
+                } else {
+                    unhealthyProxies++;
+                    addIssue(isCriticalComponentStatus(proxy.getStatus()) ? "CRITICAL" : "WARNING",
+                            "PROXY", cluster, proxy.getAddr(),
+                            "Proxy status is " + safeStatus(proxy.getStatus()));
+                }
+            }
+        }
+
+        private void addIssue(
+                String severity,
+                String componentType,
+                ClusterVO cluster,
+                String node,
+                String message) {
+            if ("CRITICAL".equals(severity)) {
+                criticalIssueCount++;
+            } else {
+                warningIssueCount++;
+            }
+            issues.add(ClusterTopologyIssueVO.builder()
+                    .severity(severity)
+                    .componentType(componentType)
+                    .clusterId(cluster.getId())
+                    .clusterName(safeClusterName(cluster))
+                    .node(node)
+                    .message(message)
+                    .build());
+        }
+
+        private ClusterTopologySummaryVO build() {
+            return ClusterTopologySummaryVO.builder()
+                    .totalClusters(totalClusters)
+                    .healthyClusters(healthyClusters)
+                    .warningClusters(warningClusters)
+                    .errorClusters(errorClusters)
+                    .offlineClusters(offlineClusters)
+                    .totalBrokers(totalBrokers)
+                    .runningBrokers(runningBrokers)
+                    .readonlyBrokers(readonlyBrokers)
+                    .maintenanceBrokers(maintenanceBrokers)
+                    .totalNameServers(totalNameServers)
+                    .healthyNameServers(healthyNameServers)
+                    .unhealthyNameServers(unhealthyNameServers)
+                    .totalProxies(totalProxies)
+                    .healthyProxies(healthyProxies)
+                    .unhealthyProxies(unhealthyProxies)
+                    .totalTpsIn(totalTpsIn)
+                    .totalTpsOut(totalTpsOut)
+                    .maxDiskUsage(maxDiskUsage)
+                    .maxDiskBroker(maxDiskBroker)
+                    .versionDriftClusters(versionDriftClusters)
+                    .criticalIssueCount(criticalIssueCount)
+                    .warningIssueCount(warningIssueCount)
+                    .issues(List.copyOf(issues))
+                    .build();
+        }
+
+        private static String safeClusterName(ClusterVO cluster) {
+            if (cluster.getNsClusterName() != null && !cluster.getNsClusterName().isBlank()) {
+                return cluster.getNsClusterName();
+            }
+            return cluster.getName() == null ? "" : cluster.getName();
+        }
+
+        private static String brokerLabel(BrokerVO broker) {
+            if (broker.getName() != null && !broker.getName().isBlank()) {
+                return broker.getName();
+            }
+            return broker.getAddr() == null ? "" : broker.getAddr();
+        }
+
+        private static String safeStatus(ClusterStatus status) {
+            return status == null ? "unknown" : status.name();
+        }
+
+        private static boolean isCriticalComponentStatus(ClusterStatus status) {
+            return status == ClusterStatus.error || status == ClusterStatus.offline;
+        }
     }
 
     private void applyConfig(UpdateConfigDTO command, ClusterConfigVO config) {

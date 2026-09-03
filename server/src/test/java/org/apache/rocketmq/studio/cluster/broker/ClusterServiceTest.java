@@ -29,6 +29,7 @@ import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 
+import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
@@ -143,6 +144,89 @@ class ClusterServiceTest {
         assertThat(result).containsExactly(sampleCluster);
         verify(clusterProvider).discoverClusters("instance-1");
         verify(clusterProvider, never()).discoverClusters();
+    }
+
+    @Test
+    void topologySummaryShouldAggregateSelectedInstanceHealthSignals() {
+        ClusterVO cluster = ClusterVO.builder()
+                .id("cluster-prod")
+                .name("prod")
+                .nsClusterName("DefaultCluster")
+                .status(ClusterStatus.warning)
+                .brokers(List.of(
+                        BrokerVO.builder()
+                                .name("broker-a")
+                                .addr("10.0.0.1:10911")
+                                .status(BrokerStatus.running)
+                                .version("5.3.0")
+                                .diskUsage(91.5D)
+                                .tpsIn(100)
+                                .tpsOut(200)
+                                .build(),
+                        BrokerVO.builder()
+                                .name("broker-b")
+                                .addr("10.0.0.2:10911")
+                                .status(BrokerStatus.readonly)
+                                .version("5.2.0")
+                                .diskUsage(72.0D)
+                                .tpsIn(10)
+                                .tpsOut(20)
+                                .runtimeStatsAvailable(false)
+                                .build()))
+                .nameServers(List.of(
+                        NameServerVO.builder().addr("10.0.0.3:9876").status(ClusterStatus.healthy).build()))
+                .proxies(List.of(
+                        ProxyVO.builder().addr("10.0.0.4:8081").status(ClusterStatus.offline).build()))
+                .build();
+        when(clusterProvider.discoverClusters("instance-1")).thenReturn(List.of(cluster));
+
+        ClusterTopologySummaryVO summary = clusterService.getTopologySummary("instance-1");
+
+        assertThat(summary.getTotalClusters()).isEqualTo(1);
+        assertThat(summary.getWarningClusters()).isEqualTo(1);
+        assertThat(summary.getTotalBrokers()).isEqualTo(2);
+        assertThat(summary.getRunningBrokers()).isEqualTo(1);
+        assertThat(summary.getReadonlyBrokers()).isEqualTo(1);
+        assertThat(summary.getHealthyNameServers()).isEqualTo(1);
+        assertThat(summary.getUnhealthyProxies()).isEqualTo(1);
+        assertThat(summary.getTotalTpsIn()).isEqualTo(110);
+        assertThat(summary.getTotalTpsOut()).isEqualTo(220);
+        assertThat(summary.getMaxDiskUsage()).isEqualTo(91.5D);
+        assertThat(summary.getMaxDiskBroker()).isEqualTo("broker-a");
+        assertThat(summary.getVersionDriftClusters()).isEqualTo(1);
+        assertThat(summary.getCriticalIssueCount()).isGreaterThanOrEqualTo(2);
+        assertThat(summary.getWarningIssueCount()).isGreaterThanOrEqualTo(4);
+        assertThat(summary.getIssues())
+                .extracting(ClusterTopologyIssueVO::getMessage)
+                .contains("Cluster status is warning",
+                        "Broker is read-only",
+                        "Broker runtime stats are unavailable",
+                        "Proxy status is offline");
+        verify(clusterProvider).discoverClusters("instance-1");
+    }
+
+    @Test
+    void topologySummaryShouldReportMissingRequiredTopology() {
+        ClusterVO cluster = ClusterVO.builder()
+                .id("cluster-empty")
+                .name("empty")
+                .status(ClusterStatus.healthy)
+                .brokers(List.of())
+                .nameServers(List.of())
+                .proxies(List.of())
+                .build();
+        when(clusterProvider.discoverClusters()).thenReturn(List.of(cluster));
+
+        ClusterTopologySummaryVO summary = clusterService.getTopologySummary(null);
+
+        assertThat(summary.getHealthyClusters()).isEqualTo(1);
+        assertThat(summary.getCriticalIssueCount()).isEqualTo(1);
+        assertThat(summary.getWarningIssueCount()).isEqualTo(1);
+        assertThat(summary.getIssues())
+                .extracting(ClusterTopologyIssueVO::getMessage)
+                .containsExactly("No broker is reported by the cluster topology",
+                        "No NameServer is reported by the cluster topology");
+        verify(clusterProvider).discoverClusters();
     }
 
     @Test

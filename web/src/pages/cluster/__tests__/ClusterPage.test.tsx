@@ -24,6 +24,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type {
   ClusterInfo,
   ClusterProbeResult,
+  ClusterTopologySnapshot,
+  ClusterTopologySummary,
   NameServerConfigDiffResult,
 } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -32,6 +34,7 @@ const clusterServiceMocks = vi.hoisted(() => ({
   createNameserverRegistry: vi.fn(),
   deleteNameserverRegistry: vi.fn(),
   getBrokerConfigDiff: vi.fn(),
+  getClusterTopologySnapshot: vi.fn(),
   getNameServerConfigDiff: vi.fn(),
   listClusters: vi.fn(),
   listK8sCerts: vi.fn(),
@@ -150,6 +153,51 @@ const buildCluster = ({
   tpsHistory: [tpsIn],
 });
 
+const buildTopologySummary = (sourceClusters: ClusterInfo[]): ClusterTopologySummary => {
+  const brokers = sourceClusters.flatMap((cluster) => cluster.brokers);
+  const nameServers = sourceClusters.flatMap((cluster) => cluster.nameServers);
+  const proxies = sourceClusters.flatMap((cluster) => cluster.proxies);
+  const maxDiskBroker = brokers.reduce<ClusterInfo['brokers'][number] | null>(
+    (current, broker) => (!current || broker.diskUsage > current.diskUsage ? broker : current),
+    null,
+  );
+
+  return {
+    totalClusters: sourceClusters.length,
+    healthyClusters: sourceClusters.filter((cluster) => cluster.status === 'healthy').length,
+    warningClusters: sourceClusters.filter((cluster) => cluster.status === 'warning').length,
+    errorClusters: sourceClusters.filter((cluster) => cluster.status === 'error').length,
+    offlineClusters: sourceClusters.filter((cluster) => cluster.status === 'offline').length,
+    totalBrokers: brokers.length,
+    runningBrokers: brokers.filter((broker) => broker.status === 'running').length,
+    readonlyBrokers: brokers.filter((broker) => broker.status === 'readonly').length,
+    maintenanceBrokers: brokers.filter((broker) => broker.status === 'maintenance').length,
+    totalNameServers: nameServers.length,
+    healthyNameServers: nameServers.filter((nameServer) => nameServer.status === 'healthy').length,
+    unhealthyNameServers: nameServers.filter((nameServer) => nameServer.status !== 'healthy')
+      .length,
+    totalProxies: proxies.length,
+    healthyProxies: proxies.filter((proxy) => proxy.status === 'healthy').length,
+    unhealthyProxies: proxies.filter((proxy) => proxy.status !== 'healthy').length,
+    totalTpsIn: brokers.reduce((total, broker) => total + Math.max(0, broker.tpsIn), 0),
+    totalTpsOut: brokers.reduce((total, broker) => total + Math.max(0, broker.tpsOut), 0),
+    maxDiskUsage: maxDiskBroker?.diskUsage ?? 0,
+    maxDiskBroker: maxDiskBroker?.name ?? maxDiskBroker?.addr ?? null,
+    versionDriftClusters: sourceClusters.filter(
+      (cluster) =>
+        new Set(cluster.brokers.map((broker) => broker.version).filter(Boolean)).size > 1,
+    ).length,
+    criticalIssueCount: 0,
+    warningIssueCount: 0,
+    issues: [],
+  };
+};
+
+const buildTopologySnapshot = (sourceClusters: ClusterInfo[]): ClusterTopologySnapshot => ({
+  clusters: sourceClusters,
+  summary: buildTopologySummary(sourceClusters),
+});
+
 const deferred = <T,>() => {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -218,6 +266,11 @@ describe('Cluster page', () => {
       },
     ]);
     clusterServiceMocks.listClusters.mockReset().mockResolvedValue([buildCluster()]);
+    clusterServiceMocks.getClusterTopologySnapshot
+      .mockReset()
+      .mockImplementation(async (instanceId?: string) =>
+        buildTopologySnapshot(await clusterServiceMocks.listClusters(instanceId)),
+      );
     clusterServiceMocks.listRegistryClusters.mockReset().mockResolvedValue([buildCluster()]);
     clusterServiceMocks.listK8sCerts.mockReset().mockResolvedValue([
       {
@@ -364,6 +417,34 @@ describe('Cluster page', () => {
     );
   }, 10000);
 
+  it('renders topology health summary issues from the snapshot response', async () => {
+    const cluster = buildCluster();
+    clusterServiceMocks.getClusterTopologySnapshot.mockResolvedValueOnce({
+      clusters: [cluster],
+      summary: {
+        ...buildTopologySummary([cluster]),
+        criticalIssueCount: 1,
+        warningIssueCount: 0,
+        issues: [
+          {
+            severity: 'CRITICAL',
+            componentType: 'BROKER',
+            clusterId: cluster.id,
+            clusterName: cluster.nsClusterName,
+            node: 'rocketmq-prod-0',
+            message: 'Broker disk usage is 91.5%',
+          },
+        ],
+      },
+    });
+
+    renderWithProviders(<ClusterPage />);
+
+    expect(await screen.findByText('拓扑健康汇总')).toBeInTheDocument();
+    expect(screen.getByText('发现 1 个严重拓扑健康问题')).toBeInTheDocument();
+    expect(screen.getByText('Broker disk usage is 91.5%')).toBeInTheDocument();
+  });
+
   it('opens proxy detail dialog from the proxy table', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ClusterPage />);
@@ -428,10 +509,11 @@ describe('Cluster page', () => {
     clusterServiceMocks.listClusters.mockResolvedValue([cluster]);
 
     renderWithProviders(<ClusterPage />);
-    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
+    const brokerTabPanel = screen.getByRole('tabpanel', { name: /Broker 管理/ });
+    expect(await within(brokerTabPanel).findByText('rocketmq-prod-0')).toBeInTheDocument();
 
     await submitSearch('搜索集群名称、Broker 名称或地址', 'not-found');
-    expect(screen.queryByText('rocketmq-prod-0')).not.toBeInTheDocument();
+    expect(within(brokerTabPanel).queryByText('rocketmq-prod-0')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
     expect(await screen.findByText('rocketmq1-nameserver:9876')).toBeInTheDocument();

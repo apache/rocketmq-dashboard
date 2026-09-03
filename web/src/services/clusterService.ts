@@ -7,11 +7,17 @@ import type {
   ClusterConfigUpdateResult,
   ClusterInfo,
   ClusterProbeResult,
+  ClusterTopologyIssue,
+  ClusterTopologySnapshot,
+  ClusterTopologySummary,
   K8sCertInfo,
   NameServerConfigDiffResult,
   NameserverRegistryEntry,
 } from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
+
+const WARNING_DISK_USAGE = 70;
+const CRITICAL_DISK_USAGE = 85;
 
 const mockCertStore: K8sCertInfo[] = mockK8sCerts.map((cert) => ({
   ...cert,
@@ -49,6 +55,213 @@ export async function listRegistryClusters(): Promise<ClusterInfo[]> {
     return clusters.map(copyCluster);
   }
   return clusterApi.listRegistryClusters();
+}
+
+export async function getClusterTopologySummary(
+  instanceId?: string,
+): Promise<ClusterTopologySummary> {
+  if (!isMockMode()) return clusterApi.getClusterTopologySummary(instanceId);
+  return buildTopologySummary(clusters.map(copyCluster));
+}
+
+export async function getClusterTopologySnapshot(
+  instanceId?: string,
+): Promise<ClusterTopologySnapshot> {
+  if (!isMockMode()) return clusterApi.getClusterTopologySnapshot(instanceId);
+  const copiedClusters = clusters.map(copyCluster);
+  return {
+    clusters: copiedClusters,
+    summary: buildTopologySummary(copiedClusters),
+  };
+}
+
+function buildTopologySummary(sourceClusters: ClusterInfo[]): ClusterTopologySummary {
+  const issues: ClusterTopologyIssue[] = [];
+  let healthyClusters = 0;
+  let warningClusters = 0;
+  let errorClusters = 0;
+  let offlineClusters = 0;
+  let totalBrokers = 0;
+  let runningBrokers = 0;
+  let readonlyBrokers = 0;
+  let maintenanceBrokers = 0;
+  let totalNameServers = 0;
+  let healthyNameServers = 0;
+  let unhealthyNameServers = 0;
+  let totalProxies = 0;
+  let healthyProxies = 0;
+  let unhealthyProxies = 0;
+  let totalTpsIn = 0;
+  let totalTpsOut = 0;
+  let maxDiskUsage = 0;
+  let maxDiskBroker: string | null = null;
+  let versionDriftClusters = 0;
+
+  const addIssue = (
+    severity: ClusterTopologyIssue['severity'],
+    componentType: ClusterTopologyIssue['componentType'],
+    cluster: ClusterInfo,
+    node: string,
+    message: string,
+  ) => {
+    issues.push({
+      severity,
+      componentType,
+      clusterId: cluster.id,
+      clusterName: cluster.nsClusterName || cluster.name,
+      node,
+      message,
+    });
+  };
+
+  sourceClusters.forEach((cluster) => {
+    if (cluster.status === 'healthy') {
+      healthyClusters += 1;
+    } else if (cluster.status === 'warning') {
+      warningClusters += 1;
+      addIssue('WARNING', 'CLUSTER', cluster, cluster.nsClusterName || cluster.name, 'warning');
+    } else if (cluster.status === 'error') {
+      errorClusters += 1;
+      addIssue('CRITICAL', 'CLUSTER', cluster, cluster.nsClusterName || cluster.name, 'error');
+    } else {
+      offlineClusters += 1;
+      addIssue('CRITICAL', 'CLUSTER', cluster, cluster.nsClusterName || cluster.name, 'offline');
+    }
+
+    if (cluster.brokers.length === 0) {
+      addIssue('CRITICAL', 'BROKER', cluster, cluster.nsClusterName || cluster.name, 'No brokers');
+    }
+    if (cluster.nameServers.length === 0) {
+      addIssue(
+        'WARNING',
+        'NAMESERVER',
+        cluster,
+        cluster.nsClusterName || cluster.name,
+        'No NameServers',
+      );
+    }
+
+    const versions = new Set<string>();
+    cluster.brokers.forEach((broker) => {
+      totalBrokers += 1;
+      totalTpsIn += Math.max(0, broker.tpsIn);
+      totalTpsOut += Math.max(0, broker.tpsOut);
+      if (broker.status === 'running') {
+        runningBrokers += 1;
+      } else if (broker.status === 'readonly') {
+        readonlyBrokers += 1;
+        addIssue('WARNING', 'BROKER', cluster, broker.name || broker.addr, 'read-only');
+      } else if (broker.status === 'maintenance') {
+        maintenanceBrokers += 1;
+        addIssue('CRITICAL', 'BROKER', cluster, broker.name || broker.addr, 'maintenance');
+      } else {
+        addIssue('WARNING', 'BROKER', cluster, broker.name || broker.addr, String(broker.status));
+      }
+      if (broker.diskUsage > maxDiskUsage) {
+        maxDiskUsage = broker.diskUsage;
+        maxDiskBroker = broker.name || broker.addr;
+      }
+      if (broker.diskUsage >= CRITICAL_DISK_USAGE) {
+        addIssue(
+          'CRITICAL',
+          'BROKER',
+          cluster,
+          broker.name || broker.addr,
+          `${broker.diskUsage}% disk`,
+        );
+      } else if (broker.diskUsage >= WARNING_DISK_USAGE) {
+        addIssue(
+          'WARNING',
+          'BROKER',
+          cluster,
+          broker.name || broker.addr,
+          `${broker.diskUsage}% disk`,
+        );
+      }
+      if (broker.runtimeStatsAvailable === false) {
+        addIssue(
+          'WARNING',
+          'BROKER',
+          cluster,
+          broker.name || broker.addr,
+          'runtime stats unavailable',
+        );
+      }
+      if (broker.version) versions.add(broker.version);
+    });
+    if (versions.size > 1) {
+      versionDriftClusters += 1;
+      addIssue(
+        'WARNING',
+        'BROKER',
+        cluster,
+        cluster.nsClusterName || cluster.name,
+        `Version drift: ${[...versions].join(', ')}`,
+      );
+    }
+
+    cluster.nameServers.forEach((nameServer) => {
+      totalNameServers += 1;
+      if (nameServer.status === 'healthy') {
+        healthyNameServers += 1;
+      } else {
+        unhealthyNameServers += 1;
+        addIssue(
+          isCriticalTopologyStatus(nameServer.status) ? 'CRITICAL' : 'WARNING',
+          'NAMESERVER',
+          cluster,
+          nameServer.addr,
+          String(nameServer.status),
+        );
+      }
+    });
+
+    cluster.proxies.forEach((proxy) => {
+      totalProxies += 1;
+      if (proxy.status === 'healthy') {
+        healthyProxies += 1;
+      } else {
+        unhealthyProxies += 1;
+        addIssue(
+          isCriticalTopologyStatus(proxy.status) ? 'CRITICAL' : 'WARNING',
+          'PROXY',
+          cluster,
+          proxy.addr,
+          String(proxy.status),
+        );
+      }
+    });
+  });
+
+  return {
+    totalClusters: sourceClusters.length,
+    healthyClusters,
+    warningClusters,
+    errorClusters,
+    offlineClusters,
+    totalBrokers,
+    runningBrokers,
+    readonlyBrokers,
+    maintenanceBrokers,
+    totalNameServers,
+    healthyNameServers,
+    unhealthyNameServers,
+    totalProxies,
+    healthyProxies,
+    unhealthyProxies,
+    totalTpsIn,
+    totalTpsOut,
+    maxDiskUsage,
+    maxDiskBroker,
+    versionDriftClusters,
+    criticalIssueCount: issues.filter((issue) => issue.severity === 'CRITICAL').length,
+    warningIssueCount: issues.filter((issue) => issue.severity === 'WARNING').length,
+    issues,
+  };
+}
+
+function isCriticalTopologyStatus(status: ClusterInfo['status']): boolean {
+  return status === 'error' || status === 'offline';
 }
 
 export async function listNameserverRegistry(): Promise<NameserverRegistryEntry[]> {

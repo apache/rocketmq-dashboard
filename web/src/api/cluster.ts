@@ -200,6 +200,48 @@ export interface NameServerConfigDiffResult {
   differences: NameServerConfigDifference[];
 }
 
+export type ClusterTopologyIssueSeverity = 'CRITICAL' | 'WARNING';
+
+export interface ClusterTopologyIssue {
+  severity: ClusterTopologyIssueSeverity;
+  componentType: 'CLUSTER' | 'BROKER' | 'NAMESERVER' | 'PROXY';
+  clusterId: string;
+  clusterName: string;
+  node: string;
+  message: string;
+}
+
+export interface ClusterTopologySummary {
+  totalClusters: number;
+  healthyClusters: number;
+  warningClusters: number;
+  errorClusters: number;
+  offlineClusters: number;
+  totalBrokers: number;
+  runningBrokers: number;
+  readonlyBrokers: number;
+  maintenanceBrokers: number;
+  totalNameServers: number;
+  healthyNameServers: number;
+  unhealthyNameServers: number;
+  totalProxies: number;
+  healthyProxies: number;
+  unhealthyProxies: number;
+  totalTpsIn: number;
+  totalTpsOut: number;
+  maxDiskUsage: number;
+  maxDiskBroker: string | null;
+  versionDriftClusters: number;
+  criticalIssueCount: number;
+  warningIssueCount: number;
+  issues: ClusterTopologyIssue[];
+}
+
+export interface ClusterTopologySnapshot {
+  clusters: ClusterInfo[];
+  summary: ClusterTopologySummary;
+}
+
 // ─── Cluster ────────────────────────────────────────────────────
 export async function listClusters(instanceId?: string) {
   const res = await client.get<{ data: ClusterInfo[] }>('/clusters', {
@@ -211,6 +253,20 @@ export async function listClusters(instanceId?: string) {
 export async function listRegistryClusters() {
   const res = await client.get<{ data: ClusterInfo[] }>('/clusters/registry');
   return res.data.data ?? [];
+}
+
+export async function getClusterTopologySummary(instanceId?: string) {
+  const res = await client.get<{ data: ClusterTopologySummary }>('/clusters/topology-summary', {
+    params: instanceId ? { instanceId } : undefined,
+  });
+  return res.data.data;
+}
+
+export async function getClusterTopologySnapshot(instanceId?: string) {
+  const res = await client.get<{ data: ClusterTopologySnapshot }>('/clusters/topology-snapshot', {
+    params: instanceId ? { instanceId } : undefined,
+  });
+  return res.data.data;
 }
 
 export async function testClusterConnection(namesrvAddr: string) {

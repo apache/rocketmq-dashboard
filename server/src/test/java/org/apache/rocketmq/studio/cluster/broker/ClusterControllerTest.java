@@ -40,6 +40,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.stream.Stream;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -90,6 +91,75 @@ class ClusterControllerTest {
                 .andExpect(jsonPath("$.data[0].endpoint").value("rocketmq1-nameserver:9876"));
 
         verify(clusterService).listRegistryClusters();
+    }
+
+    @Test
+    void topologySummaryShouldReturnAggregatedHealthSignals() throws Exception {
+        ClusterTopologySummaryVO summary = ClusterTopologySummaryVO.builder()
+                .totalClusters(2)
+                .healthyClusters(1)
+                .warningClusters(1)
+                .totalBrokers(4)
+                .runningBrokers(3)
+                .readonlyBrokers(1)
+                .totalNameServers(2)
+                .healthyNameServers(1)
+                .unhealthyNameServers(1)
+                .totalProxies(2)
+                .healthyProxies(2)
+                .totalTpsIn(1000)
+                .totalTpsOut(2000)
+                .maxDiskUsage(86.2D)
+                .maxDiskBroker("broker-a")
+                .versionDriftClusters(1)
+                .criticalIssueCount(1)
+                .warningIssueCount(2)
+                .issues(List.of(ClusterTopologyIssueVO.builder()
+                        .severity("CRITICAL")
+                        .componentType("BROKER")
+                        .clusterId("cluster-prod")
+                        .clusterName("DefaultCluster")
+                        .node("broker-a")
+                        .message("Broker disk usage is 86.2%")
+                        .build()))
+                .build();
+        when(clusterService.getTopologySummary("instance-1")).thenReturn(summary);
+
+        mockMvc.perform(get("/api/clusters/topology-summary").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.totalClusters").value(2))
+                .andExpect(jsonPath("$.data.readonlyBrokers").value(1))
+                .andExpect(jsonPath("$.data.maxDiskBroker").value("broker-a"))
+                .andExpect(jsonPath("$.data.versionDriftClusters").value(1))
+                .andExpect(jsonPath("$.data.issues[0].severity").value("CRITICAL"))
+                .andExpect(jsonPath("$.data.issues[0].node").value("broker-a"));
+
+        verify(clusterService).getTopologySummary("instance-1");
+    }
+
+    @Test
+    void topologySnapshotShouldReturnClustersAndSummaryTogether() throws Exception {
+        ClusterVO cluster = buildCluster("cluster-prod", "production-cluster", ClusterStatus.healthy);
+        ClusterTopologySummaryVO summary = ClusterTopologySummaryVO.builder()
+                .totalClusters(1)
+                .healthyClusters(1)
+                .totalBrokers(0)
+                .issues(List.of())
+                .build();
+        when(clusterService.getTopologySnapshot("instance-1")).thenReturn(
+                ClusterTopologySnapshotVO.builder()
+                        .clusters(List.of(cluster))
+                        .summary(summary)
+                        .build());
+
+        mockMvc.perform(get("/api/clusters/topology-snapshot").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.clusters[0].id").value("cluster-prod"))
+                .andExpect(jsonPath("$.data.summary.totalClusters").value(1))
+                .andExpect(jsonPath("$.data.summary.healthyClusters").value(1));
+
+        verify(clusterService).getTopologySnapshot("instance-1");
     }
 
     @Test

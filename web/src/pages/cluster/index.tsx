@@ -37,6 +37,7 @@ import {
   Card,
   Alert,
   Spin,
+  Statistic,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -63,6 +64,8 @@ import type {
   ClusterConfigPreviewResult,
   ClusterInfo,
   ClusterProbeResult,
+  ClusterTopologyIssue,
+  ClusterTopologySummary,
   NameServerConfigDiffResult,
   NameServerConfigDifference,
 } from '../../api/cluster';
@@ -70,8 +73,8 @@ import {
   createNameserverRegistry,
   deleteNameserverRegistry,
   getBrokerConfigDiff,
+  getClusterTopologySnapshot,
   getNameServerConfigDiff,
-  listClusters,
   listK8sCerts,
   listNameserverRegistry,
   listRegistryClusters,
@@ -124,6 +127,7 @@ const ClusterPage = () => {
   const requestedInstanceIdParam = searchParams.get('instanceId');
   const requestedInstanceId = requestedInstanceIdParam ?? undefined;
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
+  const [topologySummary, setTopologySummary] = useState<ClusterTopologySummary | null>(null);
   const [instanceLoadError, setInstanceLoadError] = useState<string | null>(null);
   const [instanceLoadKey, setInstanceLoadKey] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -466,6 +470,7 @@ const ClusterPage = () => {
         if (cancelled) return;
         selectedInstanceIdRef.current = undefined;
         setClusters([]);
+        setTopologySummary(null);
         setSelectedProxy(null);
         setLoading(false);
         if (instanceLoadRetryRef.current < 3) {
@@ -496,6 +501,7 @@ const ClusterPage = () => {
 
       if (!selectedInstanceIdRef.current && !isMockMode()) {
         setClusters([]);
+        setTopologySummary(null);
         setLoading(false);
         return Promise.resolve();
       }
@@ -516,9 +522,10 @@ const ClusterPage = () => {
 
         while (currentSource && mountedRef.current) {
           try {
-            const nextClusters = await listClusters(selectedInstanceIdRef.current);
+            const snapshot = await getClusterTopologySnapshot(selectedInstanceIdRef.current);
             if (!mountedRef.current) return;
-            setClusters(nextClusters);
+            setClusters(snapshot.clusters);
+            setTopologySummary(snapshot.summary);
             setRefreshFailed(false);
           } catch {
             if (!mountedRef.current) return;
@@ -765,6 +772,160 @@ const ClusterPage = () => {
           locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
           style={{ marginTop: 12 }}
         />
+      </Card>
+    );
+  };
+
+  const renderTopologySummary = () => {
+    const issueColumns: ColumnsType<ClusterTopologyIssue> = [
+      {
+        title: t('cluster.topologyIssueSeverity'),
+        dataIndex: 'severity',
+        key: 'severity',
+        width: 120,
+        render: (severity: ClusterTopologyIssue['severity']) => (
+          <Tag color={severity === 'CRITICAL' ? 'red' : 'gold'}>
+            {severity === 'CRITICAL'
+              ? t('cluster.topologyIssueCritical')
+              : t('cluster.topologyIssueWarning')}
+          </Tag>
+        ),
+      },
+      {
+        title: t('cluster.topologyIssueComponent'),
+        dataIndex: 'componentType',
+        key: 'componentType',
+        width: 140,
+        render: (component: ClusterTopologyIssue['componentType']) => {
+          const labels: Record<ClusterTopologyIssue['componentType'], string> = {
+            CLUSTER: t('cluster.title'),
+            BROKER: t('cluster.broker'),
+            NAMESERVER: t('cluster.nameserver'),
+            PROXY: t('cluster.proxy'),
+          };
+          return labels[component];
+        },
+      },
+      {
+        title: t('cluster.brokerClusterName'),
+        dataIndex: 'clusterName',
+        key: 'clusterName',
+        width: 180,
+        render: (name: string) => <Text strong>{name}</Text>,
+      },
+      {
+        title: t('cluster.topologyIssueNode'),
+        dataIndex: 'node',
+        key: 'node',
+        width: 220,
+        render: (node: string) =>
+          node ? <Text copyable>{node}</Text> : <Text type="secondary">-</Text>,
+      },
+      {
+        title: t('common.message'),
+        dataIndex: 'message',
+        key: 'message',
+        ellipsis: true,
+      },
+    ];
+
+    const summaryStatus = topologySummary?.criticalIssueCount
+      ? {
+          type: 'error' as const,
+          message: t('cluster.topologySummaryCritical', {
+            n: topologySummary.criticalIssueCount,
+          }),
+        }
+      : topologySummary?.warningIssueCount
+        ? {
+            type: 'warning' as const,
+            message: t('cluster.topologySummaryWarning', {
+              n: topologySummary.warningIssueCount,
+            }),
+          }
+        : {
+            type: 'success' as const,
+            message: t('cluster.topologySummaryHealthy'),
+          };
+
+    return (
+      <Card
+        title={t('cluster.topologySummary')}
+        loading={loading && !topologySummary}
+        style={{ marginBottom: 16 }}
+      >
+        {topologySummary ? (
+          <>
+            <Flex wrap gap={12} style={{ marginBottom: 16 }}>
+              <Card size="small" style={{ minWidth: 150, flex: '1 0 150px' }}>
+                <Statistic
+                  title={t('cluster.topologyHealthyClusters')}
+                  value={`${topologySummary.healthyClusters}/${topologySummary.totalClusters}`}
+                />
+              </Card>
+              <Card size="small" style={{ minWidth: 150, flex: '1 0 150px' }}>
+                <Statistic
+                  title={t('cluster.topologyBrokerHealth')}
+                  value={`${topologySummary.runningBrokers}/${topologySummary.totalBrokers}`}
+                />
+              </Card>
+              <Card size="small" style={{ minWidth: 150, flex: '1 0 150px' }}>
+                <Statistic
+                  title={t('cluster.topologyNameServerHealth')}
+                  value={`${topologySummary.healthyNameServers}/${topologySummary.totalNameServers}`}
+                />
+              </Card>
+              <Card size="small" style={{ minWidth: 150, flex: '1 0 150px' }}>
+                <Statistic
+                  title={t('cluster.topologyProxyHealth')}
+                  value={`${topologySummary.healthyProxies}/${topologySummary.totalProxies}`}
+                />
+              </Card>
+              <Card size="small" style={{ minWidth: 150, flex: '1 0 150px' }}>
+                <Statistic
+                  title="TPS In / Out"
+                  value={`${topologySummary.totalTpsIn.toLocaleString()} / ${topologySummary.totalTpsOut.toLocaleString()}`}
+                />
+              </Card>
+              <Card size="small" style={{ minWidth: 150, flex: '1 0 150px' }}>
+                <Statistic
+                  title={t('cluster.topologyMaxDisk')}
+                  value={topologySummary.maxDiskUsage}
+                  precision={1}
+                  suffix="%"
+                />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {topologySummary.maxDiskBroker || '-'}
+                </Text>
+              </Card>
+              <Card size="small" style={{ minWidth: 150, flex: '1 0 150px' }}>
+                <Statistic
+                  title={t('cluster.topologyVersionDrift')}
+                  value={topologySummary.versionDriftClusters}
+                />
+              </Card>
+            </Flex>
+            <Alert
+              showIcon
+              type={summaryStatus.type}
+              message={summaryStatus.message}
+              style={{ marginBottom: 12 }}
+            />
+            <Table<ClusterTopologyIssue>
+              columns={issueColumns}
+              dataSource={topologySummary.issues}
+              rowKey={(issue) =>
+                `${issue.severity}-${issue.componentType}-${issue.clusterId}-${issue.node}-${issue.message}`
+              }
+              pagination={{ pageSize: 5, hideOnSinglePage: true }}
+              size="small"
+              scroll={{ x: tableScrollX(issueColumns) }}
+              locale={{ emptyText: t('cluster.topologyNoIssues') }}
+            />
+          </>
+        ) : (
+          <Alert showIcon type="info" message={t('cluster.topologySummaryUnavailable')} />
+        )}
       </Card>
     );
   };
@@ -1712,6 +1873,7 @@ const ClusterPage = () => {
           50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(82, 196, 26, 0); }
         }
       `}</style>
+      {renderTopologySummary()}
       {/* ─── NameServer 注册表新建/编辑弹窗 ─── */}
       <Modal
         title={

@@ -25,6 +25,8 @@ import {
   deleteNameServer,
   getBrokerConfigDiff,
   getNameServerConfigDiff,
+  getClusterTopologySnapshot,
+  getClusterTopologySummary,
   getCluster,
   listK8sCerts,
   previewClusterConfig,
@@ -121,6 +123,47 @@ describe('K8s certificate API', () => {
     });
 
     await expect(getCluster(cluster.id)).resolves.toEqual(cluster);
+  });
+
+  it('loads cluster topology summary and snapshot for the selected instance', async () => {
+    const summary = {
+      totalClusters: 1,
+      healthyClusters: 1,
+      warningClusters: 0,
+      errorClusters: 0,
+      offlineClusters: 0,
+      totalBrokers: 2,
+      runningBrokers: 2,
+      readonlyBrokers: 0,
+      maintenanceBrokers: 0,
+      totalNameServers: 1,
+      healthyNameServers: 1,
+      unhealthyNameServers: 0,
+      totalProxies: 1,
+      healthyProxies: 1,
+      unhealthyProxies: 0,
+      totalTpsIn: 100,
+      totalTpsOut: 200,
+      maxDiskUsage: 62,
+      maxDiskBroker: 'broker-a',
+      versionDriftClusters: 0,
+      criticalIssueCount: 0,
+      warningIssueCount: 0,
+      issues: [],
+    };
+    const snapshot = {
+      clusters: [{ id: 'cluster-1', name: 'prod' }],
+      summary,
+    };
+    mock
+      .onGet('/clusters/topology-summary', { params: { instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: summary });
+    mock
+      .onGet('/clusters/topology-snapshot', { params: { instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: snapshot });
+
+    await expect(getClusterTopologySummary('instance-1')).resolves.toEqual(summary);
+    await expect(getClusterTopologySnapshot('instance-1')).resolves.toEqual(snapshot);
   });
 
   it('encodes broker restart path parameters', async () => {

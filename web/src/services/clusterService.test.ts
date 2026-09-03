@@ -26,6 +26,8 @@ import {
   createK8sCert,
   deleteK8sCert,
   getCluster,
+  getClusterTopologySnapshot,
+  getClusterTopologySummary,
   getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
@@ -71,6 +73,28 @@ describe('clusterService mock clusters', () => {
     expect(detail.nameServers).not.toBe(listed.nameServers);
     expect(detail.config).not.toBe(listed.config);
     expect(detail.tpsHistory).not.toBe(listed.tpsHistory);
+  });
+
+  it('builds mock topology health summary and snapshot from copied clusters', async () => {
+    const snapshot = await getClusterTopologySnapshot();
+    const summary = await getClusterTopologySummary();
+
+    expect(snapshot.clusters.length).toBeGreaterThan(0);
+    expect(snapshot.summary.totalClusters).toBe(snapshot.clusters.length);
+    expect(summary.totalBrokers).toBe(snapshot.summary.totalBrokers);
+    expect(snapshot.summary.maxDiskBroker).toBe('rocketmq-prod-7');
+    expect(snapshot.summary.versionDriftClusters).toBeGreaterThan(0);
+    expect(snapshot.summary.criticalIssueCount).toBeGreaterThan(0);
+    expect(snapshot.summary.warningIssueCount).toBeGreaterThan(0);
+    expect(snapshot.summary.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: 'CRITICAL',
+          componentType: 'BROKER',
+          node: 'rocketmq-prod-7',
+        }),
+      ]),
+    );
   });
 
   it('returns a complete mock NameServer drift result for the selected cluster', async () => {
