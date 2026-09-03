@@ -1469,6 +1469,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Broker 重启已提交: {name}',
     en: 'Broker restart submitted: {name}',
   },
+  'cluster.clientsRetry': { zh: '重试', en: 'Retry' },
 
   // ─── Topic ───
   'topic.type': { zh: '类型', en: 'Type' },

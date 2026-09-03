@@ -461,7 +461,7 @@ const ClientsPage = () => {
                 setConnectionLoadKey((key) => key + 1);
               }}
             >
-              重试
+              {t('cluster.clientsRetry')}
             </Button>
           }
         />
