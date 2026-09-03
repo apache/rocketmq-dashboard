@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.tool;
 
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -42,9 +43,11 @@ public class TopicListToolHandler implements ToolHandler {
         String clusterId = (String) input.get("cluster");
         String type = (String) input.get("type");
         String search = (String) input.get("search");
-        return metadataService.listTopics(clusterId, type, search).stream()
+        PageResult<TopicVO> page = metadataService.listTopicsPage(
+                clusterId, null, type, search, ToolListPagination.page(input), ToolListPagination.pageSize(input));
+        return ToolListPagination.pagedResult(page, page.getItems().stream()
                 .map(TopicListToolHandler::safeProjection)
-                .toList();
+                .toList());
     }
 
     private static Map<String, Object> safeProjection(TopicVO topic) {
