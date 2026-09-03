@@ -67,11 +67,11 @@ const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
 };
 
 /* ─── Helpers ─── */
-const typeLabel: Record<string, { text: string; color: string }> = {
-  CLOUD: { text: '云服务', color: 'blue' },
-  PROXY_LOCAL: { text: 'Proxy Local', color: 'cyan' },
-  PROXY_CLUSTER: { text: 'Proxy Cluster', color: 'blue' },
-  DIRECT: { text: 'Direct', color: 'orange' },
+const typeLabel: Record<string, { textKey: string; color: string }> = {
+  CLOUD: { textKey: 'instance.typeCloud', color: 'blue' },
+  PROXY_LOCAL: { textKey: 'instance.typeProxyLocal', color: 'cyan' },
+  PROXY_CLUSTER: { textKey: 'instance.typeProxyCluster', color: 'blue' },
+  DIRECT: { textKey: 'instance.typeDirect', color: 'orange' },
 };
 
 function describeApiError(error: unknown, fallback: string): string {
@@ -536,8 +536,8 @@ const InstancePage = () => {
       align: 'center' as const,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
-        const t = typeLabel[type] || { text: type, color: 'default' };
-        return <Tag color={t.color}>{t.text}</Tag>;
+        const cfg = typeLabel[type] || { textKey: type, color: 'default' };
+        return <Tag color={cfg.color}>{t(cfg.textKey)}</Tag>;
       },
     },
     {
