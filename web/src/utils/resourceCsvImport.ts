@@ -17,6 +17,8 @@
 
 import type { ConsumerGroup, Topic } from '../api/metadata';
 
+export type CsvLang = 'zh' | 'en';
+
 export const RESOURCE_IMPORT_ROW_LIMIT = 100;
 
 export interface CsvRecord {
@@ -53,16 +55,24 @@ export const RESOURCE_NAME_MAX_LENGTH = { topic: 127, group: 120 } as const;
 
 export type ResourceNameKind = keyof typeof RESOURCE_NAME_MAX_LENGTH;
 
-export const validateResourceName = (name: string, kind: ResourceNameKind): string | null => {
+export const validateResourceName = (
+  name: string,
+  kind: ResourceNameKind,
+  lang: CsvLang = 'zh',
+): string | null => {
   if (!name) {
-    return 'Name 不能为空';
+    return lang === 'zh' ? 'Name 不能为空' : 'Name is required';
   }
   const maxLength = RESOURCE_NAME_MAX_LENGTH[kind];
   if (name.length > maxLength) {
-    return `Name 长度不能超过 ${maxLength} 个字符`;
+    return lang === 'zh'
+      ? `Name 长度不能超过 ${maxLength} 个字符`
+      : `Name must be at most ${maxLength} characters`;
   }
   if (!RESOURCE_NAME_PATTERN.test(name)) {
-    return 'Name 仅支持字母、数字、下划线、短横线、% 和 |';
+    return lang === 'zh'
+      ? 'Name 仅支持字母、数字、下划线、短横线、% 和 |'
+      : 'Name supports only letters, digits, underscore, hyphen, % and |';
   }
   return null;
 };
@@ -92,22 +102,29 @@ const parseInteger = (
   max: number,
   fallback: number,
   errors: string[],
+  lang: CsvLang = 'zh',
 ): number => {
   if (!value) return fallback;
   if (!/^-?\d+$/.test(value)) {
-    errors.push(`${fieldName} 必须是整数`);
+    errors.push(
+      lang === 'zh' ? `${fieldName} 必须是整数` : `${fieldName} must be an integer`,
+    );
     return fallback;
   }
 
   const parsed = Number(value);
   if (parsed < min || parsed > max) {
-    errors.push(`${fieldName} 必须在 ${min}..${max} 之间`);
+    errors.push(
+      lang === 'zh'
+        ? `${fieldName} 必须在 ${min}..${max} 之间`
+        : `${fieldName} must be between ${min} and ${max}`,
+    );
     return fallback;
   }
   return parsed;
 };
 
-const readCsvRows = (content: string): ParsedCsvRow[] => {
+const readCsvRows = (content: string, lang: CsvLang = 'zh'): ParsedCsvRow[] => {
   const rows: ParsedCsvRow[] = [];
   const text = content.startsWith('\uFEFF') ? content.slice(1) : content;
   let cells: string[] = [];
@@ -152,12 +169,20 @@ const readCsvRows = (content: string): ParsedCsvRow[] => {
     }
 
     if (quoteJustClosed && char !== ',' && char !== '\r' && char !== '\n') {
-      throw new Error(`第 ${lineNumber} 行 CSV 引号格式错误`);
+      throw new Error(
+        lang === 'zh'
+          ? `第 ${lineNumber} 行 CSV 引号格式错误`
+          : `CSV quote format error on line ${lineNumber}`,
+      );
     }
 
     if (char === '"') {
       if (cell.length > 0) {
-        throw new Error(`第 ${lineNumber} 行 CSV 引号格式错误`);
+        throw new Error(
+          lang === 'zh'
+            ? `第 ${lineNumber} 行 CSV 引号格式错误`
+            : `CSV quote format error on line ${lineNumber}`,
+        );
       }
       inQuotes = true;
       quoteJustClosed = false;
@@ -184,17 +209,21 @@ const readCsvRows = (content: string): ParsedCsvRow[] => {
   }
 
   if (inQuotes) {
-    throw new Error(`第 ${rowStartLine} 行 CSV 引号未闭合`);
+    throw new Error(
+      lang === 'zh'
+        ? `第 ${rowStartLine} 行 CSV 引号未闭合`
+        : `Unclosed CSV quote on line ${rowStartLine}`,
+    );
   }
 
   pushRow();
   return rows;
 };
 
-export const parseCsvTable = (content: string): CsvRecord[] => {
-  const rows = readCsvRows(content);
+export const parseCsvTable = (content: string, lang: CsvLang = 'zh'): CsvRecord[] => {
+  const rows = readCsvRows(content, lang);
   if (rows.length === 0) {
-    throw new Error('CSV 文件为空');
+    throw new Error(lang === 'zh' ? 'CSV 文件为空' : 'CSV file is empty');
   }
 
   const headers = rows[0].cells.map(normalizeHeader);
@@ -202,15 +231,23 @@ export const parseCsvTable = (content: string): CsvRecord[] => {
     (header, index) => header && headers.indexOf(header) !== index,
   );
   if (headers.some((header) => !header)) {
-    throw new Error('CSV 表头不能为空');
+    throw new Error(lang === 'zh' ? 'CSV 表头不能为空' : 'CSV header cannot be empty');
   }
   if (duplicateHeaders.length > 0) {
-    throw new Error(`CSV 表头重复：${Array.from(new Set(duplicateHeaders)).join(', ')}`);
+    throw new Error(
+      lang === 'zh'
+        ? `CSV 表头重复：${Array.from(new Set(duplicateHeaders)).join(', ')}`
+        : `Duplicate CSV headers: ${Array.from(new Set(duplicateHeaders)).join(', ')}`,
+    );
   }
 
   const records = rows.slice(1).map((row) => {
     if (row.cells.length > headers.length) {
-      throw new Error(`第 ${row.lineNumber} 行字段数超过表头字段数`);
+      throw new Error(
+        lang === 'zh'
+          ? `第 ${row.lineNumber} 行字段数超过表头字段数`
+          : `Row ${row.lineNumber} has more fields than the header`,
+      );
     }
 
     return {
@@ -223,16 +260,20 @@ export const parseCsvTable = (content: string): CsvRecord[] => {
   });
 
   if (records.length === 0) {
-    throw new Error('CSV 没有可导入的数据行');
+    throw new Error(lang === 'zh' ? 'CSV 没有可导入的数据行' : 'CSV has no importable data rows');
   }
   if (records.length > RESOURCE_IMPORT_ROW_LIMIT) {
-    throw new Error(`一次最多导入 ${RESOURCE_IMPORT_ROW_LIMIT} 行`);
+    throw new Error(
+      lang === 'zh'
+        ? `一次最多导入 ${RESOURCE_IMPORT_ROW_LIMIT} 行`
+        : `At most ${RESOURCE_IMPORT_ROW_LIMIT} rows can be imported at once`,
+    );
   }
 
   return records;
 };
 
-const buildDuplicateNameMessages = (records: CsvRecord[]): Map<number, string> => {
+const buildDuplicateNameMessages = (records: CsvRecord[], lang: CsvLang = 'zh'): Map<number, string> => {
   const firstLineByName = new Map<string, number>();
   const messagesByLine = new Map<number, string>();
 
@@ -242,7 +283,12 @@ const buildDuplicateNameMessages = (records: CsvRecord[]): Map<number, string> =
 
     const firstLine = firstLineByName.get(name);
     if (firstLine != null) {
-      messagesByLine.set(record.lineNumber, `Name 与第 ${firstLine} 行重复：${name}`);
+      messagesByLine.set(
+        record.lineNumber,
+        lang === 'zh'
+          ? `Name 与第 ${firstLine} 行重复：${name}`
+          : `Name duplicates row ${firstLine}: ${name}`,
+      );
     } else {
       firstLineByName.set(name, record.lineNumber);
     }
@@ -254,8 +300,9 @@ const buildDuplicateNameMessages = (records: CsvRecord[]): Map<number, string> =
 export const validateTopicCsvImport = (
   records: CsvRecord[],
   selectedInstanceId?: string,
+  lang: CsvLang = 'zh',
 ): ResourceImportValidation<Partial<Topic>> => {
-  const duplicateMessages = buildDuplicateNameMessages(records);
+  const duplicateMessages = buildDuplicateNameMessages(records, lang);
   const rows: ResourceImportRow<Partial<Topic>>[] = [];
 
   records.forEach((record, index) => {
@@ -269,6 +316,7 @@ export const validateTopicCsvImport = (
       256,
       8,
       rowErrors,
+      lang,
     );
     const readQueues = parseInteger(
       normalizeValue(record.values['Read Queues']),
@@ -277,21 +325,24 @@ export const validateTopicCsvImport = (
       256,
       8,
       rowErrors,
+      lang,
     );
     const perm = normalizeValue(record.values.Permission) || 'RW';
     const remark = normalizeValue(record.values.Remark);
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 
-    const nameError = validateResourceName(name, 'topic');
+    const nameError = validateResourceName(name, 'topic', lang);
     if (nameError) {
       rowErrors.push(nameError);
     }
     if (!TOPIC_TYPES.has(type)) {
-      rowErrors.push(`Type 不支持：${type}`);
+      rowErrors.push(lang === 'zh' ? `Type 不支持：${type}` : `Unsupported Type: ${type}`);
     }
     if (!TOPIC_PERMISSIONS.has(perm)) {
-      rowErrors.push(`Permission 不支持：${perm}`);
+      rowErrors.push(
+        lang === 'zh' ? `Permission 不支持：${perm}` : `Unsupported Permission: ${perm}`,
+      );
     }
 
     rows.push({
@@ -308,7 +359,7 @@ export const validateTopicCsvImport = (
         ...(selectedInstanceId ? { instanceId: selectedInstanceId } : {}),
       },
       status: rowErrors.length > 0 ? 'invalid' : 'pending',
-      message: rowErrors.join('；') || undefined,
+      message: rowErrors.join(lang === 'zh' ? '；' : '; ') || undefined,
     });
   });
 
@@ -318,8 +369,9 @@ export const validateTopicCsvImport = (
 export const validateConsumerGroupCsvImport = (
   records: CsvRecord[],
   selectedInstanceId?: string,
+  lang: CsvLang = 'zh',
 ): ResourceImportValidation<Partial<ConsumerGroup>> => {
-  const duplicateMessages = buildDuplicateNameMessages(records);
+  const duplicateMessages = buildDuplicateNameMessages(records, lang);
   const rows: ResourceImportRow<Partial<ConsumerGroup>>[] = [];
 
   records.forEach((record, index) => {
@@ -334,6 +386,7 @@ export const validateConsumerGroupCsvImport = (
       128,
       16,
       rowErrors,
+      lang,
     );
     const subscriptionDataType =
       normalizeValue(record.values['Subscription Data Type']) || 'NORMAL';
@@ -343,25 +396,39 @@ export const validateConsumerGroupCsvImport = (
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 
-    const nameError = validateResourceName(name, 'group');
+    const nameError = validateResourceName(name, 'group', lang);
     if (nameError) {
       rowErrors.push(nameError);
     }
     if (!GROUP_SUBSCRIPTION_MODES.has(subscriptionMode)) {
-      rowErrors.push(`Subscription Mode 不支持：${subscriptionMode}`);
+      rowErrors.push(
+        lang === 'zh'
+          ? `Subscription Mode 不支持：${subscriptionMode}`
+          : `Unsupported Subscription Mode: ${subscriptionMode}`,
+      );
     }
     if (!GROUP_CONSUME_TYPES.has(consumeType)) {
-      rowErrors.push(`Consume Type 不支持：${consumeType}`);
+      rowErrors.push(
+        lang === 'zh' ? `Consume Type 不支持：${consumeType}` : `Unsupported Consume Type: ${consumeType}`,
+      );
     }
     if (!GROUP_SUBSCRIPTION_DATA_TYPES.has(subscriptionDataType)) {
-      rowErrors.push(`Subscription Data Type 不支持：${subscriptionDataType}`);
+      rowErrors.push(
+        lang === 'zh'
+          ? `Subscription Data Type 不支持：${subscriptionDataType}`
+          : `Unsupported Subscription Data Type: ${subscriptionDataType}`,
+      );
     }
     if (
       deliveryOrderType &&
       subscriptionDataType === 'FIFO' &&
       !GROUP_DELIVERY_ORDER_TYPES.has(deliveryOrderType)
     ) {
-      rowErrors.push(`Delivery Order Type 不支持：${deliveryOrderType}`);
+      rowErrors.push(
+        lang === 'zh'
+          ? `Delivery Order Type 不支持：${deliveryOrderType}`
+          : `Unsupported Delivery Order Type: ${deliveryOrderType}`,
+      );
     }
 
     rows.push({
@@ -379,7 +446,7 @@ export const validateConsumerGroupCsvImport = (
         ...(selectedInstanceId ? { instanceId: selectedInstanceId } : {}),
       },
       status: rowErrors.length > 0 ? 'invalid' : 'pending',
-      message: rowErrors.join('；') || undefined,
+      message: rowErrors.join(lang === 'zh' ? '；' : '; ') || undefined,
     });
   });
 

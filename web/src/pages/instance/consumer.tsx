@@ -229,7 +229,7 @@ const ConsumerPageContent = ({
   instanceOptions,
   instancesLoading,
 }: ConsumerPageContentProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -671,13 +671,15 @@ const ConsumerPageContent = ({
     setImporting(false);
     setImportModalOpen(true);
     try {
-      const records = parseCsvTable(await file.text());
-      const validation = validateConsumerGroupCsvImport(records, selectedInstanceId || undefined);
+      const records = parseCsvTable(await file.text(), lang);
+      const validation = validateConsumerGroupCsvImport(records, selectedInstanceId || undefined, lang);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
       setImportRows([]);
-      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+      setImportErrors([
+        error instanceof Error ? error.message : lang === 'zh' ? 'CSV 解析失败' : 'Failed to parse CSV',
+      ]);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
