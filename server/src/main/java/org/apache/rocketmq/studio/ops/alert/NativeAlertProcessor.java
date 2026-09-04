@@ -22,8 +22,12 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -49,6 +53,9 @@ public class NativeAlertProcessor {
     private final AlertRepository alertRepository;
     private final NotificationOutboxService notificationOutboxService;
     private final AlertNotificationSuppressionService notificationSuppressionService;
+
+    @Autowired(required = false)
+    private PlatformTransactionManager transactionManager;
 
     public void process(List<MetricSample> samples) {
         processSamples(samples);
@@ -114,6 +121,8 @@ public class NativeAlertProcessor {
         Instant resolvedAt = samples.stream().filter(scope::contains).map(MetricSample::collectedAt).max(Instant::compareTo)
                 .orElseGet(Instant::now);
         AlertEvaluationResult clear = new AlertEvaluationResult(true, false, null, MetricAvailability.AVAILABLE);
+        TransactionTemplate isolatedEmitTx = newIsolatedTransactionTemplate();
+        int failedLifecycleEmits = 0;
         for (ActiveAlertState active : stateRepository.findActive(scope, rules)) {
             if (presentKeys.contains(active.key())) {
                 continue;
@@ -131,9 +140,38 @@ public class NativeAlertProcessor {
             if (!stateRepository.save(active.key(), update.state())) {
                 continue;
             }
-            emitLifecycleEvent(rule, active.key(), update, scope.domain(), active.instanceId(), rule.getMetric(),
-                    active.labels(), resolvedAt);
+            try {
+                emitLifecycleEventIsolated(isolatedEmitTx, rule, active.key(), update, scope.domain(),
+                        active.instanceId(), rule.getMetric(), active.labels(), resolvedAt);
+            } catch (RuntimeException error) {
+                failedLifecycleEmits++;
+                log.warn("Native alert reconcile lifecycle emit failed: ruleId={}, fingerprint={}, cause={}",
+                        rule.getId(), active.key().fingerprint(), error.getClass().getSimpleName());
+            }
         }
+        if (failedLifecycleEmits > 0) {
+            log.warn("Native alert reconcile completed with {} failed lifecycle emit(s)", failedLifecycleEmits);
+        }
+    }
+
+    private TransactionTemplate newIsolatedTransactionTemplate() {
+        if (transactionManager == null) {
+            return null;
+        }
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(Propagation.REQUIRES_NEW.value());
+        return template;
+    }
+
+    private void emitLifecycleEventIsolated(TransactionTemplate isolatedTx, AlertRuleVO rule, AlertStateKey key,
+            AlertStateUpdate update, AlertDomain domain, String instanceId, String metricKey,
+            Map<String, String> labels, Instant collectedAt) {
+        if (isolatedTx == null) {
+            emitLifecycleEvent(rule, key, update, domain, instanceId, metricKey, labels, collectedAt);
+            return;
+        }
+        isolatedTx.executeWithoutResult(status -> emitLifecycleEvent(rule, key, update, domain, instanceId, metricKey,
+                labels, collectedAt));
     }
 
     private void emitLifecycleEvent(AlertRuleVO rule, AlertStateKey key, AlertStateUpdate update, AlertDomain domain,
