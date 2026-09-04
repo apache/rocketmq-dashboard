@@ -57,8 +57,9 @@ public class DLQService {
                                              String targetTopic) {
         requireApacheInstance(instanceId);
         validateResendRequest(groupName, startTime, endTime);
-        log.info("Resending DLQ messages: group={}, targetTopic={}", groupName, targetTopic);
-        return dlqProvider.resendMessages(instanceId, groupName, startTime, endTime, targetTopic);
+        String normalizedTarget = normalizeOptional(targetTopic);
+        log.info("Resending DLQ messages: group={}, targetTopic={}", groupName, normalizedTarget);
+        return dlqProvider.resendMessages(instanceId, groupName, startTime, endTime, normalizedTarget);
     }
 
     public DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
@@ -86,9 +87,10 @@ public class DLQService {
         if (msgIds.size() > MAX_SELECTED_MESSAGES) {
             throw new BusinessException(400, "At most 100 msgIds are allowed per resend");
         }
+        String normalizedTarget = normalizeOptional(targetTopic);
         log.info("Resending selected DLQ messages: group={}, count={}, targetTopic={}",
-                groupName, msgIds.size(), targetTopic);
-        return dlqProvider.resendMessages(instanceId, groupName, msgIds, targetTopic);
+                groupName, msgIds.size(), normalizedTarget);
+        return dlqProvider.resendMessages(instanceId, groupName, msgIds, normalizedTarget);
     }
 
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
@@ -109,6 +111,10 @@ public class DLQService {
                 throw new BusinessException(501, "DLQ operations are not supported for cloud instances");
             }
         });
+    }
+
+    private static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
     }
 
     private void validateResendRequest(String groupName, Long startTime, Long endTime) {

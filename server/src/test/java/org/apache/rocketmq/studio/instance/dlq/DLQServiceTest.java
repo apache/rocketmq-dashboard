@@ -187,4 +187,11 @@ class DLQServiceTest {
 
         verifyNoInteractions(dlqProvider);
     }
+
+    @Test
+    void trimsTargetTopicBeforeDelegatingToProvider() {
+        dlqService.resendMessages("instance-1", "group-1", null, null, "  dlq-resend ");
+
+        verify(dlqProvider).resendMessages("instance-1", "group-1", null, null, "dlq-resend");
+    }
 }
