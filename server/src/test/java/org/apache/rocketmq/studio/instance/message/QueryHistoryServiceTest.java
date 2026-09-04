@@ -165,4 +165,13 @@ class QueryHistoryServiceTest {
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
+
+    @Test
+    void normalizesClusterAndQueryTypeFilters() {
+        assertThat(QueryHistoryService.normalizeOptional(null)).isNull();
+        assertThat(QueryHistoryService.normalizeOptional("cluster-a ")).isEqualTo("cluster-a");
+        assertThat(QueryHistoryService.normalizeOptional("  KEY")).isEqualTo("KEY");
+        assertThat(QueryHistoryService.normalizeSearch(" orders ")).isEqualTo("orders");
+        assertThat(QueryHistoryService.normalizeSearch(null)).isNull();
+    }
 }
