@@ -839,7 +839,9 @@ const DLQPage = () => {
             </Flex>
 
             <InfoBanner
-              description={`明细按「导出时间范围」查询（${exportRange[0].format('YYYY-MM-DD HH:mm:ss')} ~ ${exportRange[1].format('YYYY-MM-DD HH:mm:ss')}）。勾选后可单条或批量重发、导出 Excel。`}
+              description={t('dlq.exportDetailHint', {
+                range: `${exportRange[0].format('YYYY-MM-DD HH:mm:ss')} ~ ${exportRange[1].format('YYYY-MM-DD HH:mm:ss')}`,
+              })}
             />
 
             {detailError && (
