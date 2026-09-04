@@ -78,9 +78,17 @@ class AlertSchemaMigrationTest {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
                 ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM information_schema.indexes "
                         + "WHERE table_name = 'rmq_alert_silence' "
-                        + "AND index_name = 'idx_alert_silence_expiry'")) {
+                        + "AND index_name IN ('idx_alert_silence_expiry', 'idx_alert_silence_recurrence')")) {
             result.next();
-            assertThat(result.getInt(1)).isGreaterThan(0);
+            assertThat(result.getInt(1)).isEqualTo(2);
+        }
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM information_schema.columns "
+                        + "WHERE table_name = 'rmq_alert_silence' AND column_name IN "
+                        + "('recurrence', 'time_zone', 'recurrence_days_json', 'recurrence_until')")) {
+            result.next();
+            assertThat(result.getInt(1)).isEqualTo(4);
         }
     }
 
@@ -126,6 +134,8 @@ class AlertSchemaMigrationTest {
                             "collected_at");
             assertThat(indexColumns(connection, "rmq_metric_snapshot", "idx_metric_snapshot_retention"))
                     .containsExactly("collected_at");
+            assertThat(indexColumns(connection, "rmq_alert_silence", "idx_alert_silence_recurrence"))
+                    .containsExactly("recurrence", "recurrence_until", "starts_at");
         }
     }
 

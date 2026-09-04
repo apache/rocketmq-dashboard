@@ -158,6 +158,10 @@ export interface AlertSilence {
   labels?: Record<string, string>;
   startsAt: string;
   endsAt: string;
+  recurrence?: 'ONCE' | 'DAILY' | 'WEEKLY';
+  timeZone?: string | null;
+  recurrenceDays?: number[];
+  recurrenceUntil?: string | null;
   reason?: string | null;
   createdBy: string;
 }

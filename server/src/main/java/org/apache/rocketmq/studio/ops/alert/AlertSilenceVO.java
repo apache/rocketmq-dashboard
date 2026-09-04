@@ -23,6 +23,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Set;
 
 @Data
 @Builder
@@ -36,6 +37,10 @@ public class AlertSilenceVO {
     private Map<String, String> labels;
     private LocalDateTime startsAt;
     private LocalDateTime endsAt;
+    private AlertSilenceRecurrence recurrence;
+    private String timeZone;
+    private Set<Integer> recurrenceDays;
+    private LocalDateTime recurrenceUntil;
     private String reason;
     private String createdBy;
 }
