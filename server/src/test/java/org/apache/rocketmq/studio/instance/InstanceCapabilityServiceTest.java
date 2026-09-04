@@ -28,8 +28,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -40,9 +40,10 @@ class InstanceCapabilityServiceTest {
 
     @Mock
     private InstanceRepository instanceRepository;
-
     @Mock
     private InstanceProviderRegistry providerRegistry;
+    @Mock
+    private InstanceProvider instanceProvider;
 
     private InstanceCapabilityService service;
 
@@ -52,37 +53,52 @@ class InstanceCapabilityServiceTest {
     }
 
     @Test
-    void rejectsUnknownInstances() {
-        when(instanceRepository.findById(42L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.getCapabilities(42L))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Instance not found");
-    }
-
-    @Test
-    void resolvesVendorCapabilitiesSortedByOrdinal() {
+    void getCapabilitiesShouldReturnProviderCapabilitiesInStableOrderTest() {
         InstanceVO instance = InstanceVO.builder()
-                .name("inst-a")
-                .vendor(InstanceVendor.TENCENT)
+                .name("cloud-1")
+                .vendor(InstanceVendor.ALIYUN)
                 .type(InstanceType.CLOUD)
                 .build();
-        when(instanceRepository.findById(7L)).thenReturn(Optional.of(instance));
+        instance.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(instanceProvider.capabilities()).thenReturn(Set.of(
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.TOPIC_MANAGEMENT));
 
-        InstanceProvider provider = org.mockito.Mockito.mock(InstanceProvider.class);
-        LinkedHashSet<InstanceCapability> unordered = new LinkedHashSet<>();
-        unordered.add(InstanceCapability.CONSUMER_GROUP_MANAGEMENT);
-        unordered.add(InstanceCapability.TOPIC_MANAGEMENT);
-        when(provider.capabilities()).thenReturn(unordered);
-        when(providerRegistry.forVendor(InstanceVendor.TENCENT)).thenReturn(provider);
+        InstanceCapabilitiesVO result = service.getCapabilities(1L);
 
-        InstanceCapabilitiesVO result = service.getCapabilities(7L);
-
-        assertThat(result.instanceId()).isEqualTo("inst-a");
-        assertThat(result.vendor()).isEqualTo(InstanceVendor.TENCENT);
+        assertThat(result.instanceId()).isEqualTo("cloud-1");
+        assertThat(result.vendor()).isEqualTo(InstanceVendor.ALIYUN);
         assertThat(result.accessType()).isEqualTo(InstanceType.CLOUD);
         assertThat(result.capabilities()).containsExactly(
                 InstanceCapability.TOPIC_MANAGEMENT,
-                InstanceCapability.CONSUMER_GROUP_MANAGEMENT);
+                InstanceCapability.MESSAGE_QUERY);
+    }
+
+    @Test
+    void getCapabilitiesShouldDefaultLegacyNullVendorToApacheTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("direct-1")
+                .type(InstanceType.DIRECT)
+                .build();
+        instance.setId(2L);
+        when(instanceRepository.findById(2L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.capabilities()).thenReturn(Set.of(InstanceCapability.DLQ_MANAGEMENT));
+
+        InstanceCapabilitiesVO result = service.getCapabilities(2L);
+
+        assertThat(result.instanceId()).isEqualTo("direct-1");
+        assertThat(result.vendor()).isEqualTo(InstanceVendor.APACHE);
+    }
+
+    @Test
+    void getCapabilitiesShouldRejectUnknownInstanceTest() {
+        when(instanceRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getCapabilities(999L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
     }
 }
