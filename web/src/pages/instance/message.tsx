@@ -80,9 +80,6 @@ import {
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
-const DEFAULT_QUERY_ERROR = '消息查询失败，请稍后重试';
-const DEFAULT_TRACE_ERROR = '消息轨迹加载失败，请稍后重试';
-
 /* ─── Constants ─── */
 
 type QueryMode = 'topic' | 'key' | 'msgid' | 'queue';
@@ -496,7 +493,7 @@ const MessagePageContent = ({
       message.success(`查询完成，共 ${result.total} 条`);
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
-        setQueryError(getErrorMessage(error, DEFAULT_QUERY_ERROR));
+        setQueryError(getErrorMessage(error, t('message.queryErrorFallback')));
       }
     } finally {
       if (queryGenerationRef.current === requestGeneration) {
@@ -595,7 +592,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, DEFAULT_TRACE_ERROR));
+        setTraceError(getErrorMessage(error, t('message.traceErrorFallback')));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -646,7 +643,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, DEFAULT_TRACE_ERROR));
+        setTraceError(getErrorMessage(error, t('message.traceErrorFallback')));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -771,7 +768,7 @@ const MessagePageContent = ({
       render: (size: number) => formatSize(size),
     },
     {
-      title: '操作',
+      title: t('message.actions'),
       key: 'actions',
       width: 260,
       render: (_: unknown, record: MessageRecord) => (
@@ -918,7 +915,7 @@ const MessagePageContent = ({
     },
     {
       key: 'trace',
-      label: '消息轨迹',
+      label: t('message.traceTab'),
       children: (
         <>
           <Space wrap size={8} style={{ marginBottom: 16 }}>
@@ -954,11 +951,11 @@ const MessagePageContent = ({
               icon={<SearchOutlined />}
               onClick={() => void runTraceQuery()}
             >
-              查询轨迹
+              {t('message.runTrace')}
             </Button>
           </Space>
           {traceLoading ? (
-            <Typography.Text type="secondary">正在加载轨迹数据…</Typography.Text>
+            <Typography.Text type="secondary">{t('message.traceLoading')}</Typography.Text>
           ) : traceError ? (
             <Alert showIcon type="warning" message={traceError} />
           ) : traceData?.nodes?.length ? (
@@ -983,7 +980,7 @@ const MessagePageContent = ({
               />
             </Space>
           ) : (
-            <Typography.Text type="secondary">暂无轨迹数据</Typography.Text>
+            <Typography.Text type="secondary">{t('message.traceEmpty')}</Typography.Text>
           )}
         </>
       ),
@@ -1008,7 +1005,7 @@ const MessagePageContent = ({
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('message.title')} subtitle="按 Topic、Key 或 Message ID 检索消息" />
+      <PageHeader title={t('message.title')} subtitle={t('message.searchSubtitle')} />
 
       {/* ── Query Form ── */}
       <Card style={{ marginBottom: 16 }}>
@@ -1120,10 +1117,10 @@ const MessagePageContent = ({
                 查询
               </Button>
               <Button icon={<ReloadOutlined />} onClick={handleReset}>
-                重置
+                {t('message.reset')}
               </Button>
               <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
-                服务端历史
+                {t('message.serverHistory')}
               </Button>
             </Space>
           )}
@@ -1170,7 +1167,7 @@ const MessagePageContent = ({
         <Alert
           showIcon
           type="warning"
-          message="查询结果达到服务端扫描上限，当前总数可能不完整。"
+          message={t('message.scanLimitWarning')}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -1200,21 +1197,21 @@ const MessagePageContent = ({
 
       {/* ── Message Detail Modal ── */}
       <Modal
-        title="消息详情"
+        title={t('message.detailTitle')}
         width={800}
         open={modalOpen}
         onCancel={closeDetail}
         destroyOnHidden
         footer={
           <Flex justify="flex-end" gap={8}>
-            <Button onClick={closeDetail}>关闭</Button>
+            <Button onClick={closeDetail}>{t('common.close')}</Button>
             <Button
               type="primary"
               icon={<SendOutlined />}
               disabled={!selectedInstanceId || !selectedMsg}
               onClick={openDirectConsume}
             >
-              直接消费
+              {t('message.directConsumeButton')}
             </Button>
           </Flex>
         }
@@ -1223,19 +1220,19 @@ const MessagePageContent = ({
       </Modal>
 
       <Modal
-        title="直接消费消息"
+        title={t('message.directConsumeTitle')}
         open={directConsumeOpen}
         onCancel={() => setDirectConsumeOpen(false)}
         onOk={() => void handleDirectConsume()}
         confirmLoading={directConsumeSubmitting}
-        okText="执行"
+        okText={t('message.consumeRun')}
         destroyOnHidden
       >
         <Alert
           showIcon
           type="warning"
-          message="Broker 会请求指定在线客户端立即消费该消息。"
-          description="这不是向 Topic 重新发送消息；Broker 返回的消费结果会原样显示。"
+          message={t('message.consumeNotice')}
+          description={t('message.consumeNoticeDesc')}
           style={{ marginBottom: 16 }}
         />
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -1244,7 +1241,7 @@ const MessagePageContent = ({
           <Input
             value={directConsumeGroup}
             onChange={(event) => setDirectConsumeGroup(event.target.value)}
-            placeholder="目标消费者组"
+            placeholder={t('message.consumeGroupPlaceholder')}
             addonBefore="Consumer group"
           />
           <Input
