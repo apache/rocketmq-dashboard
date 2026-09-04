@@ -576,7 +576,7 @@ describe('TopicPage', () => {
   it('rejects malformed or duplicate batch message properties without sending', () => {
     expect(parseMessageProperties('traceId=abc\ntenant\ntraceId=duplicate')).toEqual({
       properties: { traceId: 'abc' },
-      errors: ['“tenant”应使用 key=value 格式', '属性名“traceId”重复'],
+      errors: [{ kind: 'invalidFormat', value: 'tenant' }, { kind: 'duplicate', key: 'traceId' }],
     });
   });
 
