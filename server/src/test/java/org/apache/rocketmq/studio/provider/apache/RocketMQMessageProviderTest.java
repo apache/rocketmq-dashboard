@@ -767,4 +767,12 @@ class RocketMQMessageProviderTest {
                 .toList();
         return new PullResult(PullStatus.FOUND, batchEnd, 0L, endOffsetExclusive, messages);
     }
+
+    @Test
+    void normalizesTopicInputBeforeLookup() {
+        assertThat(RocketMQMessageProvider.normalizeTopic(null)).isNull();
+        assertThat(RocketMQMessageProvider.normalizeTopic("   ")).isNull();
+        assertThat(RocketMQMessageProvider.normalizeTopic(" topic-a ")).isEqualTo("topic-a");
+        assertThat(RocketMQMessageProvider.normalizeTopic("topic-a")).isEqualTo("topic-a");
+    }
 }

@@ -115,6 +115,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                                                  String topic, String msgId, String tag, String key,
                                                  Long startTime, Long endTime) {
 
+        topic = normalizeTopic(topic);
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
         if (begin >= end) {
@@ -137,6 +138,10 @@ public class RocketMQMessageProvider implements MessageProvider {
         }
 
         return result;
+    }
+
+    static String normalizeTopic(String topic) {
+        return StringUtils.hasText(topic) ? topic.trim() : null;
     }
 
     private List<MessageRecordVO> queryByMsgId(DefaultMQAdminExt adminExt, String topic, String msgId) {
