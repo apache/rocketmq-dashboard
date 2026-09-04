@@ -105,21 +105,17 @@ import {
 const { Text } = Typography;
 
 const INSTANCE_ACCESS_LABEL: Record<Instance['type'], string> = {
-  CLOUD: '云服务',
-  PROXY_LOCAL: 'Proxy Local',
-  PROXY_CLUSTER: 'Proxy Cluster',
-  DIRECT: 'Direct',
+  CLOUD: 'topic.accessCloud',
+  PROXY_LOCAL: 'topic.accessProxyLocal',
+  PROXY_CLUSTER: 'topic.accessProxyCluster',
+  DIRECT: 'topic.accessDirect',
 };
 
 const INSTANCE_ACCESS_DESCRIPTION: Record<Instance['type'], string> = {
-  CLOUD:
-    '接入点为云厂商托管实例的接入地址，由云实例目录解析得出。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  PROXY_LOCAL:
-    '接入点为与 Broker 同进程部署的 Proxy 地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  PROXY_CLUSTER:
-    '接入点为独立 Proxy 集群的 SLB 内网地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  DIRECT:
-    '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  CLOUD: 'topic.descCloud',
+  PROXY_LOCAL: 'topic.descProxyLocal',
+  PROXY_CLUSTER: 'topic.descProxyCluster',
+  DIRECT: 'topic.descDirect',
 };
 
 // ─── Cluster name lookup ───────────────────────────────────────────
@@ -1400,41 +1396,41 @@ const TopicPage = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <PageHeader title={t('topic.title')} subtitle={`共 ${totalTopics} 个 Topic`} />
+      <PageHeader title={t('topic.title')} subtitle={t('topic.totalCount', { count: totalTopics })} />
 
       {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (
         <InfoBanner>
           <Flex align="center" wrap="wrap" gap="8px 28px" style={{ fontSize: 14 }}>
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>当前实例</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.currentInstance')}</span>
               <span>{selectedInstance.name}</span>
             </span>
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入模式</span>
-              <span>{INSTANCE_ACCESS_LABEL[selectedInstance.type]}</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.accessMode')}</span>
+              <span>{t(INSTANCE_ACCESS_LABEL[selectedInstance.type])}</span>
             </span>
             {selectedInstance.vendor === 'ALIYUN' && (
               <span>
-                <span style={{ color: '#8c8c8c', marginRight: 6 }}>厂商</span>
-                <span>阿里云</span>
+                <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.accessVendor')}</span>
+                <span>{t('topic.aliyun')}</span>
               </span>
             )}
             {selectedInstance.vendor === 'TENCENT' && (
               <span>
-                <span style={{ color: '#8c8c8c', marginRight: 6 }}>厂商</span>
-                <span>腾讯云</span>
+                <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.accessVendor')}</span>
+                <span>{t('topic.tencent')}</span>
               </span>
             )}
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入点</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.accessPoint')}</span>
               <Text code copyable style={{ fontSize: 16 }}>
                 {selectedInstance.endpoint}
               </Text>
             </span>
           </Flex>
           <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.6, color: '#8c8c8c' }}>
-            {INSTANCE_ACCESS_DESCRIPTION[selectedInstance.type]}
+            {t(INSTANCE_ACCESS_DESCRIPTION[selectedInstance.type])}
           </div>
         </InfoBanner>
       )}
