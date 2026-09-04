@@ -201,4 +201,12 @@ class AuditServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("beforeDays must not exceed 365");
     }
+
+    @Test
+    void queryLogsTrimsFilterParametersBeforeDelegating() {
+        auditService.queryLogs(1, 20, " orders ", "KEY", null, " cluster-a ", null, null, "SUCCESS");
+
+        verify(auditRepository).findPage(eq("orders"), eq("KEY"), isNull(), eq("cluster-a"),
+                isNull(), isNull(), eq("SUCCESS"), eq(1), eq(20));
+    }
 }

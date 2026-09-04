@@ -134,6 +134,11 @@ public class AuditService {
                                                String resourceType, String clusterId,
                                                String startDate, String endDate,
                                                String result, int page, int pageSize) {
+        search = normalizeOptional(search);
+        operationType = normalizeOptional(operationType);
+        resourceType = normalizeOptional(resourceType);
+        clusterId = normalizeOptional(clusterId);
+        result = normalizeOptional(result);
         LocalDateTime start = parseDate(startDate, true, "startDate");
         LocalDateTime end = parseDate(endDate, false, "endDate");
         if (start != null && end != null && start.isAfter(end)) {
@@ -141,6 +146,10 @@ public class AuditService {
         }
         return auditRepository.findPage(search, operationType, resourceType, clusterId,
                 start, end, result, page, pageSize);
+    }
+
+    private static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
     }
 
     private LocalDateTime parseDate(String dateStr, boolean startOfDay, String parameterName) {
