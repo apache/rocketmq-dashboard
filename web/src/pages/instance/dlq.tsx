@@ -112,6 +112,7 @@ const DLQPage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [retryGroup, setRetryGroup] = useState<DLQGroup | null>(null);
   const [retryRange, setRetryRange] = useState<[Dayjs, Dayjs]>([
@@ -144,6 +145,36 @@ const DLQPage = () => {
   const retryRequestIdRef = useRef(0);
   const groupRequestIdRef = useRef(0);
   const resendInFlightRef = useRef(false);
+  const searchDebounceRef = useRef<number>();
+
+  useEffect(
+    () => () => {
+      if (searchDebounceRef.current !== undefined) {
+        window.clearTimeout(searchDebounceRef.current);
+      }
+    },
+    [],
+  );
+
+  const queueSearch = (value: string) => {
+    setSearchInput(value);
+    if (searchDebounceRef.current !== undefined) {
+      window.clearTimeout(searchDebounceRef.current);
+    }
+    searchDebounceRef.current = window.setTimeout(() => {
+      setSearch(value);
+      setPage(1);
+    }, 300);
+  };
+
+  const submitSearch = (value: string) => {
+    if (searchDebounceRef.current !== undefined) {
+      window.clearTimeout(searchDebounceRef.current);
+    }
+    setSearchInput(value);
+    setSearch(value);
+    setPage(1);
+  };
 
   useEffect(
     () => () => {
@@ -600,14 +631,12 @@ const DLQPage = () => {
           <Input.Search
             placeholder="搜索 Group 名称或 DLQ Topic"
             allowClear
-            value={search}
+            value={searchInput}
             onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
+              queueSearch(e.target.value);
             }}
             onSearch={(value) => {
-              setSearch(value);
-              setPage(1);
+              submitSearch(value);
             }}
             style={{ width: 320 }}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
