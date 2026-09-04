@@ -271,6 +271,58 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Supports ${ruleName}, ${title}, ${description}, ${transition}, ${metric}, ${instanceId}, ${value}, ${threshold}, ${thresholdUnit}, ${level}, ${time}, and ${labels}',
   },
   'alerts.notificationTemplateVariables': { zh: '可用变量', en: 'Available variables' },
+  'alerts.notificationTemplateApplyDefault': { zh: '填入默认模板', en: 'Use default template' },
+  'alerts.notificationTemplatePreview': { zh: '通知预览', en: 'Notification preview' },
+  'alerts.notificationTemplateReady': { zh: '可发送', en: 'Ready' },
+  'alerts.notificationTemplateAttention': { zh: '需关注', en: 'Needs attention' },
+  'alerts.notificationTemplateEmptyPreview': {
+    zh: '未配置自定义通知模板',
+    en: 'No custom notification template configured',
+  },
+  'alerts.notificationTemplateLength': { zh: '长度 {length}/{max}', en: 'Length {length}/{max}' },
+  'alerts.notificationTemplateUsedVariables': {
+    zh: '已使用变量：{variables}',
+    en: 'Used variables: {variables}',
+  },
+  'alerts.notificationTemplateIssues': { zh: '模板提示', en: 'Template notices' },
+  'alerts.notificationTemplateNoIssue': { zh: '未发现模板问题', en: 'No template issues found' },
+  'alerts.notificationTemplateEmpty': {
+    zh: '未配置自定义模板，将使用服务端默认通知内容。',
+    en: 'No custom template is configured. The server default notification content will be used.',
+  },
+  'alerts.notificationTemplateNoDynamic': {
+    zh: '模板没有使用动态变量，触发时每条通知内容都会相同。',
+    en: 'The template does not use dynamic variables, so every notification will have the same content.',
+  },
+  'alerts.notificationTemplateUnknownVariables': {
+    zh: '未知变量不会被替换：{variables}',
+    en: 'Unknown variables will not be replaced: {variables}',
+  },
+  'alerts.notificationTemplateMissingVariables': {
+    zh: '样例值为空：{variables}',
+    en: 'Sample values are empty: {variables}',
+  },
+  'alerts.notificationTemplateLengthLimit': {
+    zh: '模板长度 {length} 超过上限 {max}。',
+    en: 'Template length {length} exceeds the limit {max}.',
+  },
+  'alerts.notificationTemplateSampleMetric': { zh: 'Broker 磁盘使用率', en: 'Broker disk usage' },
+  'alerts.notificationTemplateSampleRule': {
+    zh: 'Broker 磁盘使用率过高',
+    en: 'Broker disk usage high',
+  },
+  'alerts.notificationTemplateSampleFiringTitle': {
+    zh: '{metric} 告警触发',
+    en: '{metric} alert is firing',
+  },
+  'alerts.notificationTemplateSampleUnavailableTitle': {
+    zh: '{metric} 不可用',
+    en: '{metric} is unavailable',
+  },
+  'alerts.notificationTemplateSampleDescription': {
+    zh: '当前采样值已达到告警条件，请检查相关 RocketMQ 资源。',
+    en: 'The current sample reached the alert condition. Check the related RocketMQ resources.',
+  },
   'alerts.metrics.legacyDiskUsageRatio': { zh: '磁盘使用率', en: 'Disk usage ratio' },
   'alerts.exportSuccess': { zh: '告警规则已导出', en: 'Alert rules exported' },
   'alerts.exportFailed': { zh: '导出告警规则失败', en: 'Failed to export alert rules' },
