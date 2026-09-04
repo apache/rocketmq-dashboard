@@ -356,12 +356,17 @@ CREATE TABLE IF NOT EXISTS rmq_alert_silence (
   `labels_json` TEXT NULL,
   `starts_at` DATETIME NOT NULL,
   `ends_at` DATETIME NOT NULL,
+  `recurrence` VARCHAR(16) NOT NULL DEFAULT 'ONCE',
+  `time_zone` VARCHAR(64) NULL,
+  `recurrence_days_json` VARCHAR(64) NULL,
+  `recurrence_until` DATETIME NULL,
   `reason` VARCHAR(512) NULL,
   `created_by` VARCHAR(128) NOT NULL,
   PRIMARY KEY (`id`),
   INDEX idx_alert_silence_active (`starts_at`, `ends_at`),
   INDEX idx_alert_silence_expiry (`ends_at`, `starts_at`),
-  INDEX idx_alert_silence_scope (`domain`, `rule_id`, `instance_id`)
+  INDEX idx_alert_silence_scope (`domain`, `rule_id`, `instance_id`),
+  INDEX idx_alert_silence_recurrence (`recurrence`, `recurrence_until`, `starts_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS rmq_alert_notification_outbox (

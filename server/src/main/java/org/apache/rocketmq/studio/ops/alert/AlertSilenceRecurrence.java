@@ -16,27 +16,8 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
-
-import java.time.OffsetDateTime;
-import java.util.Map;
-import java.util.Set;
-
-@Data
-public class CreateAlertSilenceDTO {
-    private AlertDomain domain;
-    private Long ruleId;
-    private String instanceId;
-    /** Optional exact-match labels, such as brokerName, topic, or consumerGroup. */
-    private Map<String, String> labels;
-    @NotNull(message = "startsAt is required")
-    private OffsetDateTime startsAt;
-    @NotNull(message = "endsAt is required")
-    private OffsetDateTime endsAt;
-    private AlertSilenceRecurrence recurrence;
-    private String timeZone;
-    private Set<Integer> recurrenceDays;
-    private OffsetDateTime recurrenceUntil;
-    private String reason;
+public enum AlertSilenceRecurrence {
+    ONCE,
+    DAILY,
+    WEEKLY
 }
