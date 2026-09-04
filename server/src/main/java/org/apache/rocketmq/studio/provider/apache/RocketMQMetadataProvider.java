@@ -401,6 +401,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     private List<BrokerRouteVO> getTopicRoutes(MQAdminExt admin, String name) {
+        if (!StringUtils.hasText(name)) {
+            return Collections.emptyList();
+        }
+        name = name.trim();
         try {
             TopicRouteData routeData = admin.examineTopicRouteInfo(name);
             if (routeData == null) {
