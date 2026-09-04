@@ -428,10 +428,14 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     @Override
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        String group = normalizeOptional(request.getConsumerGroup());
+        String clientId = normalizeOptional(request.getClientId());
+        String topic = normalizeOptional(request.getTopic());
+        String msgId = normalizeOptional(request.getMsgId());
         return runtimeAdminClientResolver.execute(request.getInstanceId(), admin -> {
             org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult result =
-                    ((DefaultMQAdminExt) admin).consumeMessageDirectly(request.getConsumerGroup(), request.getClientId(),
-                            request.getTopic(), request.getMsgId());
+                    ((DefaultMQAdminExt) admin).consumeMessageDirectly(group, clientId,
+                            topic, msgId);
             return DirectConsumeMessageResultVO.builder()
                     .consumeResult(result.getConsumeResult() == null ? "UNKNOWN" : result.getConsumeResult().name())
                     .remark(result.getRemark()).spentTimeMillis(result.getSpentTimeMills())
@@ -824,6 +828,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     private record DisplayBody(String value, String encoding, boolean truncated) {
+    }
+
+    static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
     }
 
     private boolean matchesTag(MessageExt messageExt, String tag) {
