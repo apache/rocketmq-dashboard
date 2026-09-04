@@ -76,6 +76,7 @@ public class BrokerConfigDiffService {
                         .name(broker.name())
                         .address(broker.address())
                         .reachable(false)
+                        .message(exception.getMessage())
                         .build());
             }
         }
