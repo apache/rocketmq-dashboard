@@ -77,6 +77,7 @@ import {
 } from '../../utils/alertTemplatePreview';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { describeApiError } from '../../utils/apiError';
+import AlertRulePortfolioDrawer from '../../components/AlertRulePortfolioDrawer';
 const { TextArea } = Input;
 
 const channelColors: Record<string, string> = {
@@ -207,6 +208,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [metricLoading, setMetricLoading] = useState(false);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [transferringRules, setTransferringRules] = useState(false);
+  const [portfolioOpen, setPortfolioOpen] = useState(false);
   const metricRequestVersion = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
   const notificationTemplateRef = useRef<TextAreaRef>(null);
@@ -902,6 +904,9 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
                 {triggered24h}
               </span>
             </Flex>
+            <Button onClick={() => setPortfolioOpen(true)} disabled={isActionRunning}>
+              {t('alertPortfolio.open')}
+            </Button>
             <Button
               icon={<DownloadSimple />}
               disabled={isActionRunning}
@@ -935,6 +940,15 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           </Flex>
         }
       />
+
+      {portfolioOpen && (
+        <AlertRulePortfolioDrawer
+          open
+          domain={domain}
+          instances={instances}
+          onClose={() => setPortfolioOpen(false)}
+        />
+      )}
 
       {/* ─── Table ─── */}
       <Card styles={{ body: { padding: 0 } }}>
