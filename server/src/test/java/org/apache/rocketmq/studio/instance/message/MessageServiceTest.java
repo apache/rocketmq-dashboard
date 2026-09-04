@@ -21,6 +21,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
@@ -94,6 +96,50 @@ class MessageServiceTest {
                 .hasMessage("startTime must be before endTime");
 
         verifyNoInteractions(provider);
+    }
+
+    @Test
+    void rejectsReversedMessageKeyQueryWindowBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "order-1", 200L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void rejectsMessageKeyQueryWindowLongerThanSevenDaysBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+
+        assertThatThrownBy(() -> service.queryMessages(
+                "instance-a", "TopicA", null, null, "order-1", 0L, 8L * 24 * 60 * 60 * 1000))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic query time range must not exceed 7 days");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void acceptsMessageKeyQueryWithoutAnExplicitTimeWindow() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        assertThatCode(() -> service.queryMessages(
+                "instance-a", "TopicA", null, null, "order-1", null, null))
+                .doesNotThrowAnyException();
+
+        verify(provider).queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, "order-1", null, null);
     }
 
     @Test

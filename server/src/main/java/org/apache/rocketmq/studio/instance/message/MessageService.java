@@ -205,7 +205,24 @@ public class MessageService {
         if (!hasTopic && !hasMessageId) {
             throw new BusinessException(400, "topic or msgId is required");
         }
-        if (hasMessageId || hasKey) {
+        if (hasMessageId) {
+            return;
+        }
+        if (hasKey) {
+            if (startTime == null || endTime == null) {
+                return;
+            }
+            long keyStart = startTime;
+            long keyEnd = endTime;
+            if (keyStart < 0 || keyEnd < 0) {
+                throw new BusinessException(400, "message query timestamps must not be negative");
+            }
+            if (keyStart >= keyEnd) {
+                throw new BusinessException(400, "startTime must be before endTime");
+            }
+            if (keyStart < keyEnd - MAX_TOPIC_QUERY_WINDOW_MILLIS) {
+                throw new BusinessException(400, "topic query time range must not exceed 7 days");
+            }
             return;
         }
         long end = endTime == null ? System.currentTimeMillis() : endTime;
