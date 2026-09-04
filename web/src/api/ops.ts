@@ -379,6 +379,11 @@ export async function createAlertSilence(data: CreateAlertSilence) {
   return res.data.data;
 }
 
+export async function updateAlertSilence(id: number, data: CreateAlertSilence) {
+  const res = await client.put<{ data: AlertSilence }>(`/alert-silences/${id}`, data);
+  return res.data.data;
+}
+
 export async function deleteAlertSilence(id: number) {
   await client.delete(`/alert-silences/${id}`);
 }

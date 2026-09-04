@@ -44,6 +44,7 @@ import {
   retryAlertDelivery,
   listSystemAlertsPage,
   createAlertSilence,
+  updateAlertSilence,
   deleteAlertSilence,
   listAlertSilencesPage,
 } from '../../services/opsService';
@@ -104,6 +105,12 @@ const parseSilenceLabels = (
 const localDateTimeToUtc = (value: string) => new Date(`${value}:00`).toISOString();
 const localDateTimeToUtcDatabaseValue = (value: string) =>
   new Date(`${value}:00`).toISOString().replace('Z', '');
+const utcToLocalDateTimeValue = (value: string | null | undefined) =>
+  value ? value.replace('Z', '').slice(0, 16) : '';
+const formatSilenceLabels = (labels: AlertSilence['labels']) =>
+  Object.entries(labels ?? {})
+    .map(([key, labelValue]) => `${key}=${labelValue}`)
+    .join(', ');
 
 const ALERT_EXPORT_COLUMNS: CsvColumn<SystemAlert>[] = [
   { header: 'ID', value: (alert) => alert.id },
@@ -172,6 +179,7 @@ const SystemAlertsPage = () => {
   const [silencePage, setSilencePage] = useState(1);
   const [silenceTotal, setSilenceTotal] = useState(0);
   const [savingSilence, setSavingSilence] = useState(false);
+  const [editingSilenceId, setEditingSilenceId] = useState<number | null>(null);
   const [deletingSilenceId, setDeletingSilenceId] = useState<number | null>(null);
   const silencePageSize = 10;
   const [silenceForm] = Form.useForm();
@@ -379,7 +387,7 @@ const SystemAlertsPage = () => {
     void loadSilences(1);
   };
 
-  const createSilence = async () => {
+  const saveSilence = async () => {
     let values: {
       domain?: 'BUSINESS' | 'CLUSTER';
       ruleId?: string;
@@ -421,16 +429,49 @@ const SystemAlertsPage = () => {
             ? convertTime(values.recurrenceUntil)
             : undefined,
       };
-      await createAlertSilence(request);
+      if (editingSilenceId == null) {
+        await createAlertSilence(request);
+      } else {
+        await updateAlertSilence(editingSilenceId, request);
+      }
       silenceForm.resetFields();
+      setEditingSilenceId(null);
       setSilencePage(1);
       await loadSilences(1);
-      message.success(t('sysAlerts.silenceCreated'));
+      message.success(
+        editingSilenceId == null ? t('sysAlerts.silenceCreated') : t('sysAlerts.silenceUpdated'),
+      );
     } catch {
-      message.error(t('sysAlerts.silenceCreateFailed'));
+      message.error(
+        editingSilenceId == null
+          ? t('sysAlerts.silenceCreateFailed')
+          : t('sysAlerts.silenceUpdateFailed'),
+      );
     } finally {
       setSavingSilence(false);
     }
+  };
+
+  const startEditSilence = (silence: AlertSilence) => {
+    setEditingSilenceId(silence.id);
+    silenceForm.setFieldsValue({
+      domain: silence.domain ?? undefined,
+      ruleId: silence.ruleId != null ? String(silence.ruleId) : undefined,
+      instanceId: silence.instanceId ?? undefined,
+      labelsText: formatSilenceLabels(silence.labels) || undefined,
+      startsAt: utcToLocalDateTimeValue(silence.startsAt),
+      endsAt: utcToLocalDateTimeValue(silence.endsAt),
+      recurrence: silence.recurrence ?? 'ONCE',
+      timeZone: silence.timeZone ?? DEFAULT_TIME_ZONE,
+      recurrenceDays: silence.recurrenceDays,
+      recurrenceUntil: utcToLocalDateTimeValue(silence.recurrenceUntil),
+      reason: silence.reason ?? undefined,
+    });
+  };
+
+  const resetSilenceForm = () => {
+    setEditingSilenceId(null);
+    silenceForm.resetFields();
   };
 
   const deleteSilence = async (id: number) => {
@@ -824,9 +865,12 @@ const SystemAlertsPage = () => {
       <Modal
         title={t('sysAlerts.maintenanceWindows')}
         open={silencesVisible}
-        onCancel={() => setSilencesVisible(false)}
-        onOk={() => void createSilence()}
-        okText={t('sysAlerts.create')}
+        onCancel={() => {
+          setSilencesVisible(false);
+          resetSilenceForm();
+        }}
+        onOk={() => void saveSilence()}
+        okText={editingSilenceId == null ? t('sysAlerts.create') : t('common.save')}
         okButtonProps={{ style: { display: canManageSilences ? undefined : 'none' } }}
         confirmLoading={savingSilence}
         width={680}
@@ -836,6 +880,7 @@ const SystemAlertsPage = () => {
             form={silenceForm}
             layout="vertical"
             initialValues={{ domain: 'BUSINESS', recurrence: 'ONCE', timeZone: DEFAULT_TIME_ZONE }}
+            key={editingSilenceId == null ? 'create' : `edit-${editingSilenceId}`}
           >
             <Flex gap={8}>
               <Form.Item name="domain" label={t('sysAlerts.domain')} style={{ flex: 1 }}>
@@ -969,14 +1014,19 @@ const SystemAlertsPage = () => {
                     : ''}
                 </Text>
                 {canManageSilences && (
-                  <Button
-                    size="small"
-                    danger
-                    loading={deletingSilenceId === silence.id}
-                    onClick={() => void deleteSilence(silence.id)}
-                  >
-                    {t('sysAlerts.end')}
-                  </Button>
+                  <Flex gap={4}>
+                    <Button size="small" onClick={() => startEditSilence(silence)}>
+                      {t('common.edit')}
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      loading={deletingSilenceId === silence.id}
+                      onClick={() => void deleteSilence(silence.id)}
+                    >
+                      {t('sysAlerts.end')}
+                    </Button>
+                  </Flex>
                 )}
               </Flex>
             ))}
