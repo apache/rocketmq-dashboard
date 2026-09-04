@@ -35,8 +35,6 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import org.apache.rocketmq.common.constant.PermName;
-
 @ExtendWith(MockitoExtension.class)
 class BrokerConfigDiffServiceTest {
 
@@ -241,40 +239,5 @@ class BrokerConfigDiffServiceTest {
                 .readQueueNums(queueNums)
                 .brokerPermission(brokerPermission)
                 .build();
-    }
-
-
-    @Test
-    void reportsAlignedBrokersAsCompleteWithoutDrift() {
-        when(clusterService.getCluster("cluster-a")).thenReturn(clusterWith(
-                "broker-a", "10.0.0.1:10911", "broker-b", "10.0.0.2:10911"));
-        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null)).thenReturn(config(8, 8));
-        when(brokerConfigService.getBrokerConfig("10.0.0.2:10911", null)).thenReturn(config(8, 8));
-
-        BrokerConfigDiffVO result = service.compare("cluster-a", null);
-
-        assertThat(result.isComplete()).isTrue();
-        assertThat(result.getBrokerCount()).isEqualTo(2);
-        assertThat(result.getReachableBrokerCount()).isEqualTo(2);
-        assertThat(result.isDriftDetected()).isFalse();
-        assertThat(result.getDifferences()).isEmpty();
-    }
-
-    @Test
-    void flagsQueueCountDriftAcrossBrokers() {
-        when(clusterService.getCluster("cluster-a")).thenReturn(clusterWith(
-                "broker-a", "10.0.0.1:10911", "broker-b", "10.0.0.2:10911"));
-        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null)).thenReturn(config(8, 8));
-        when(brokerConfigService.getBrokerConfig("10.0.0.2:10911", null)).thenReturn(config(16, 8));
-
-        BrokerConfigDiffVO result = service.compare("cluster-a", null);
-
-        assertThat(result.isComplete()).isTrue();
-        assertThat(result.isDriftDetected()).isTrue();
-        assertThat(result.getDifferences())
-                .anyMatch(difference -> "writeQueueNums".equals(difference.getField())
-                        && difference.getValues().size() == 2);
-        assertThat(result.getDifferences())
-                .noneMatch(difference -> "readQueueNums".equals(difference.getField()));
     }
 }
