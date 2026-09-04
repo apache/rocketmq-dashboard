@@ -759,4 +759,19 @@ class RocketMQMetadataProviderTest {
         offset.setConsumerOffset(consumerOffset);
         return offset;
     }
+
+    @Test
+    void getTopicRoutesTrimsAndGuardsTheName() throws Exception {
+        MQAdminExt admin = mock(MQAdminExt.class);
+        RocketMQMetadataProvider provider = newProvider();
+        lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
+                invocation.<org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        when(admin.examineTopicRouteInfo("topic-a")).thenReturn(null);
+
+        assertThat(provider.getTopicRoutes("instance-a", " topic-a ")).isEmpty();
+        verify(admin).examineTopicRouteInfo("topic-a");
+
+        assertThat(provider.getTopicRoutes("instance-a", "   ")).isEmpty();
+        verify(admin, times(1)).examineTopicRouteInfo(anyString());
+    }
 }
