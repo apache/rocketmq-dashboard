@@ -290,11 +290,11 @@ const RANDOM_BODY_GENERATORS = [
 
 const ROUTE_STATUS_META: Record<
   RouteDiagnosticStatus,
-  { color: string; label: string; icon: React.ReactNode }
+  { color: string; labelKey: string; icon: React.ReactNode }
 > = {
-  healthy: { color: 'success', label: '健康', icon: <CheckCircleOutlined /> },
-  warning: { color: 'warning', label: '关注', icon: <WarningOutlined /> },
-  critical: { color: 'error', label: '异常', icon: <ExclamationCircleOutlined /> },
+  healthy: { color: 'success', labelKey: 'topic.routeHealthy', icon: <CheckCircleOutlined /> },
+  warning: { color: 'warning', labelKey: 'topic.routeWarning', icon: <WarningOutlined /> },
+  critical: { color: 'error', labelKey: 'topic.routeCritical', icon: <ExclamationCircleOutlined /> },
 };
 
 const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
@@ -776,13 +776,13 @@ const TopicPage = () => {
     const meta = ROUTE_STATUS_META[status];
     return (
       <Tag color={meta.color} icon={meta.icon}>
-        {meta.label}
+        {t(meta.labelKey)}
       </Tag>
     );
   };
 
   const renderRouteIssueTags = (issues: RouteDiagnosticIssue[]) => {
-    if (issues.length === 0) return <Text type="secondary">无</Text>;
+    if (issues.length === 0) return <Text type="secondary">{t('topic.noIssues')}</Text>;
     return (
       <Space size={[4, 4]} wrap>
         {issues.slice(0, 3).map((item) => (
@@ -810,7 +810,7 @@ const TopicPage = () => {
       ),
     },
     {
-      title: '地址拓扑',
+      title: t('topic.addressTopology'),
       key: 'brokerAddr',
       width: 260,
       render: (_: unknown, record) => (
@@ -831,28 +831,28 @@ const TopicPage = () => {
                 </Tag>
               ))
             ) : (
-              <Tag color="warning">地址未知</Tag>
+              <Tag color="warning">{t('topic.addrUnknown')}</Tag>
             )}
           </Space>
         </Space>
       ),
     },
     {
-      title: '队列分布',
+      title: t('topic.queueDistribution'),
       key: 'queues',
       width: 220,
       render: (_: unknown, record) => (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <div>
             <Flex justify="space-between">
-              <Text>写队列 {record.writeQueues}</Text>
+              <Text>{t('topic.writeQueuesShort', { n: record.writeQueues })}</Text>
               <Text type="secondary">{formatPercent(record.writeShare)}</Text>
             </Flex>
             <Progress percent={record.writeShare} showInfo={false} size="small" />
           </div>
           <div>
             <Flex justify="space-between">
-              <Text>读队列 {record.readQueues}</Text>
+              <Text>{t('topic.readQueuesShort', { n: record.readQueues })}</Text>
               <Text type="secondary">{formatPercent(record.readShare)}</Text>
             </Flex>
             <Progress percent={record.readShare} showInfo={false} size="small" />
