@@ -759,4 +759,12 @@ class RocketMQMetadataProviderTest {
         offset.setConsumerOffset(consumerOffset);
         return offset;
     }
+
+    @Test
+    void normalizesFilterInputsForListQueries() {
+        assertThat(RocketMQMetadataProvider.normalizeOptional(null)).isNull();
+        assertThat(RocketMQMetadataProvider.normalizeOptional(" cluster-a ")).isEqualTo("cluster-a");
+        assertThat(RocketMQMetadataProvider.normalizeSearch(" order ")).isEqualTo("order");
+        assertThat(RocketMQMetadataProvider.normalizeSearch(null)).isNull();
+    }
 }

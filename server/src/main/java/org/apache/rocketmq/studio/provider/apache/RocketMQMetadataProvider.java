@@ -139,6 +139,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
+        clusterId = normalizeOptional(clusterId);
+        type = normalizeOptional(type);
+        search = normalizeSearch(search);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
@@ -159,6 +162,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
             String search, int page, int pageSize) {
+        clusterId = normalizeOptional(clusterId);
+        type = normalizeOptional(type);
+        search = normalizeSearch(search);
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
@@ -220,6 +226,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
+        clusterId = normalizeOptional(clusterId);
+        search = normalizeSearch(search);
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
@@ -237,6 +245,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
+        clusterId = normalizeOptional(clusterId);
+        search = normalizeSearch(search);
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
@@ -368,6 +378,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private String normalizeMetadataScope(String instanceId) {
         return StringUtils.hasText(instanceId) ? instanceId.trim() : "";
+    }
+
+    static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    static String normalizeSearch(String value) {
+        return value == null ? null : value.trim();
     }
 
     private ConsumeType parseConsumeType(String messageModel) {
