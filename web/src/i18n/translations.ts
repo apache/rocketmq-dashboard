@@ -2368,6 +2368,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'acl.secretLoading': { zh: '加载中…', en: 'Loading…' },
   // ─── BrokerCluster ───
 };
 
