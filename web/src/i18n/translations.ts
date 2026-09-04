@@ -937,6 +937,70 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
+  'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
+  'auditInsights.level.notice': { zh: '提示', en: 'Notice' },
+  'auditInsights.level.warning': { zh: '告警', en: 'Warning' },
+  'auditInsights.level.critical': { zh: '严重', en: 'Critical' },
+  'auditInsights.failureRate': { zh: '失败率', en: 'Failure Rate' },
+  'auditInsights.partialRate': { zh: '部分成功率', en: 'Partial Rate' },
+  'auditInsights.controlPlaneFailures': {
+    zh: '控制面异常',
+    en: 'Control-plane Failures',
+  },
+  'auditInsights.topOperator': { zh: '最高频操作人', en: 'Top Operator' },
+  'auditInsights.filteredTotal': {
+    zh: '当前筛选共 {count} 条',
+    en: '{count} filtered records',
+  },
+  'auditInsights.partialCount': { zh: '{count} 条部分成功', en: '{count} partial records' },
+  'auditInsights.currentPageRecords': {
+    zh: '当前页 {count} 条记录',
+    en: '{count} records on this page',
+  },
+  'auditInsights.operatorShare': { zh: '当前页占比 {value}', en: '{value} of this page' },
+  'auditInsights.findings': { zh: '需要关注的审计信号', en: 'Audit signals to review' },
+  'auditInsights.hotTargets': { zh: '重复异常对象', en: 'Repeated Failed Targets' },
+  'auditInsights.riskyRecords': { zh: '高风险记录', en: 'Risky Records' },
+  'auditInsights.noHotTargets': {
+    zh: '当前页没有重复失败或部分成功的对象',
+    en: 'No repeated failed or partial targets on this page',
+  },
+  'auditInsights.noRiskyRecords': {
+    zh: '当前页没有异常或高风险审计记录',
+    en: 'No failed or high-risk audit records on this page',
+  },
+  'auditInsights.target': { zh: '对象', en: 'Target' },
+  'auditInsights.failPartial': { zh: '失败 / 部分成功', en: 'Failed / Partial' },
+  'auditInsights.issue.noMatchingRecords': {
+    zh: '当前筛选没有匹配的审计记录',
+    en: 'No audit records match the current filters',
+  },
+  'auditInsights.issue.highFailureRate': {
+    zh: '当前筛选失败率 {value}，高于 {threshold} 阈值',
+    en: 'Filtered failure rate is {value}, above the {threshold} threshold',
+  },
+  'auditInsights.issue.partialOutcomes': {
+    zh: '当前筛选有 {count} 条部分成功记录',
+    en: '{count} filtered audit records are partially successful',
+  },
+  'auditInsights.issue.controlPlaneFailures': {
+    zh: '当前页有 {count} 条控制面操作失败或部分成功',
+    en: '{count} control-plane operations failed or partially succeeded on this page',
+  },
+  'auditInsights.issue.highRiskFailures': {
+    zh: '当前页有 {count} 条高风险操作失败',
+    en: '{count} high-risk operations failed on this page',
+  },
+  'auditInsights.issue.repeatedTargetFailures': {
+    zh: '{target} 在当前页出现 {count} 次失败或部分成功',
+    en: '{target} has {count} failed or partial audit events on this page',
+  },
+  'auditInsights.issue.operatorConcentration': {
+    zh: '{operator} 占当前页 {value} 操作',
+    en: '{operator} owns {value} of operations on this page',
+  },
+  'auditInsights.issue.unknown': { zh: '未知审计风险信号', en: 'Unknown audit risk signal' },
 
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
