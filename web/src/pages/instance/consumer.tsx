@@ -2229,7 +2229,7 @@ const ConsumerPageContent = ({
         }}
         confirmLoading={submitting}
         okText="创建"
-        cancelText="取消"
+        cancelText={t('common.cancel')}
         width={560}
         destroyOnHidden
       >
@@ -2379,7 +2379,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <ArrowsCounterClockwise size={18} color="#fa8c16" />
-            <span>重置消费位点</span>
+            <span>{t('consumer.resetModalTitle')}</span>
           </Space>
         }
         open={resetModalOpen}
@@ -2397,8 +2397,8 @@ const ConsumerPageContent = ({
             resetPreviewLoading ||
             Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
         }}
-        okText="确认重置"
-        cancelText="取消"
+        okText={t('consumer.resetConfirm')}
+        cancelText={t('common.cancel')}
         width={1200}
         destroyOnHidden
       >
@@ -2407,12 +2407,12 @@ const ConsumerPageContent = ({
             <Alert
               showIcon
               type="warning"
-              message="此操作将影响消息消费进度"
-              description="请先预览每个 Queue 的目标位点和堆积变化，确认预览结果后再执行重置。预览为时点快照、属页面操作引导（非服务端控制），预览期间消息持续写入，实际效果以执行时 Broker 状态为准。"
+              message={t('consumer.resetImpactWarning')}
+              description={t('consumer.resetImpactDesc')}
             />
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                目标 Group
+                {t('consumer.targetGroup')}
               </Text>
               <Text strong style={{ fontSize: 14 }}>
                 {resetGroup.name}
@@ -2420,25 +2420,25 @@ const ConsumerPageContent = ({
             </div>
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                目标 Topic
+                {t('consumer.targetTopic')}
               </Text>
               <Select
-                aria-label="目标 Topic"
+                aria-label={t('consumer.targetTopic')}
                 showSearch
                 optionFilterProp="label"
                 style={{ width: '100%' }}
                 value={resetTopic}
                 options={resetTopicOptions}
                 loading={subscriptionLoadingByGroup[resetDiagnosticKey]}
-                placeholder="选择要重置消费位点的 Topic"
+                placeholder={t('consumer.resetTopicPlaceholder')}
                 onChange={(value) => {
                   setResetTopic(value);
                   clearResetPreview();
                 }}
                 notFoundContent={
                   subscriptionErrorByGroup[resetDiagnosticKey]
-                    ? '订阅 Topic 加载失败'
-                    : '该 Group 暂无订阅 Topic'
+                    ? t('consumer.subTopicLoadFailed')
+                    : t('consumer.noSubTopic')
                 }
               />
             </div>
