@@ -279,9 +279,9 @@ describe('consumer service mock data', () => {
     await createConsumerGroup({ name, instanceId: 'instance-b', namespace: 'namespace-b' });
 
     try {
-      await expect(
-        createConsumerGroup({ name, instanceId: 'instance-a' }),
-      ).rejects.toThrow(`Consumer group already exists: ${name}`);
+      await expect(createConsumerGroup({ name, instanceId: 'instance-a' })).rejects.toThrow(
+        `Consumer group already exists: ${name}`,
+      );
 
       const instanceAGroups = await listConsumerGroups({ instanceId: 'instance-a', search: name });
       const instanceBGroups = await listConsumerGroups({ instanceId: 'instance-b', search: name });

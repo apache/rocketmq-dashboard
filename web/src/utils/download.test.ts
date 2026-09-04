@@ -36,7 +36,7 @@ describe('buildCsv', () => {
         '"Name","Remark"',
         '"\'=SUM(A1:A2)","hello, ""mq"""',
         '"\'\nline-feed",""',
-        '"\'\'=literal","\'\'\'+two-apostrophes"',
+        "\"''=literal\",\"'''+two-apostrophes\"",
       ].join('\n'),
     );
   });
