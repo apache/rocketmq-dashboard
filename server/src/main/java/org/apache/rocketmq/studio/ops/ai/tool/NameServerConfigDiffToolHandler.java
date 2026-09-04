@@ -38,6 +38,10 @@ public class NameServerConfigDiffToolHandler implements ToolHandler {
 
     @Override
     public Object execute(Map<String, Object> input) {
+        if (input == null) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(
+                    400, "tool input is required");
+        }
         return configDiffService.compare((String) input.get("cluster"));
     }
 }
