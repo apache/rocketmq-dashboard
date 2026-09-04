@@ -5,6 +5,8 @@ import {
   Button,
   Card,
   Col,
+  Flex,
+  Progress,
   Row,
   Select,
   Skeleton,
@@ -14,6 +16,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { ClusterOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { ListDashes, ArrowDown } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
@@ -27,11 +30,44 @@ import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useLang } from '../../i18n/LangContext';
 import DashboardTrafficInsights from './DashboardTrafficInsights';
+import {
+  buildDashboardTrafficInsights,
+  type TrafficTrendDirection,
+} from '../../utils/dashboardTrafficInsights';
+import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 
+type ClusterRow = DashboardData['clusters'][number];
+
+const trafficTrendColor: Record<TrafficTrendDirection, string> = {
+  rising: 'green',
+  falling: 'volcano',
+  stable: 'blue',
+  unknown: 'default',
+};
+
+const trafficTrendLabelKey: Record<TrafficTrendDirection, string> = {
+  rising: 'dashboardTraffic.trendRising',
+  falling: 'dashboardTraffic.trendFalling',
+  stable: 'dashboardTraffic.trendStable',
+  unknown: 'dashboardTraffic.trendUnknown',
+};
+
 const renderTopologyCount = (value: number | null) =>
   value === null ? 'N/A' : value.toLocaleString();
+
+const formatTrafficTps = (value: number) =>
+  value.toLocaleString(undefined, { maximumFractionDigits: value >= 100 ? 0 : 1 });
+
+const formatTrafficPercent = (value: number) =>
+  `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+
+const formatTrafficTrendDelta = (value: number | null) => {
+  if (value == null) return '';
+  const sign = value > 0 ? '+' : '';
+  return ` ${sign}${formatTrafficPercent(value)}`;
+};
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -140,6 +176,8 @@ const DashboardPage = () => {
   }
 
   const { stats, clusters } = visibleDashboard;
+  const trafficInsights = buildDashboardTrafficInsights(visibleDashboard);
+  const trafficInsightByClusterId = new Map(trafficInsights.rows.map((row) => [row.id, row]));
 
   const statCards = [
     {
@@ -178,7 +216,7 @@ const DashboardPage = () => {
     },
   ];
 
-  const clusterColumns = [
+  const clusterColumns: ColumnsType<ClusterRow> = [
     {
       title: t('dashboard.clusterName'),
       dataIndex: 'name',
@@ -254,24 +292,79 @@ const DashboardPage = () => {
       render: (v: number) => v.toLocaleString(),
     },
     {
+      title: t('dashboardTraffic.totalTps'),
+      key: 'trafficTotalTps',
+      width: 120,
+      align: 'right' as const,
+      render: (_, record) => {
+        const insight = trafficInsightByClusterId.get(record.id);
+        return insight ? `${formatTrafficTps(insight.totalTps)}/s` : '-';
+      },
+    },
+    {
+      title: t('dashboardTraffic.share'),
+      key: 'trafficShare',
+      width: 150,
+      render: (_, record) => {
+        const insight = trafficInsightByClusterId.get(record.id);
+        if (!insight) return '-';
+        return (
+          <Flex vertical gap={4}>
+            <Text>{formatTrafficPercent(insight.sharePercent)}</Text>
+            <Progress percent={Math.min(100, insight.sharePercent)} showInfo={false} size="small" />
+          </Flex>
+        );
+      },
+    },
+    {
+      title: t('dashboardTraffic.perBroker'),
+      key: 'trafficPerBroker',
+      width: 130,
+      align: 'right' as const,
+      render: (_, record) => {
+        const insight = trafficInsightByClusterId.get(record.id);
+        return insight ? `${formatTrafficTps(insight.perBrokerTps)}/s` : '-';
+      },
+    },
+    {
+      title: t('dashboardTraffic.inOutRatio'),
+      key: 'trafficInOutRatio',
+      width: 110,
+      align: 'right' as const,
+      render: (_, record) => {
+        const insight = trafficInsightByClusterId.get(record.id);
+        return insight?.inOutRatio == null ? 'N/A' : `${insight.inOutRatio}:1`;
+      },
+    },
+    {
       title: t('dashboard.trend'),
       dataIndex: 'throughput',
       key: 'throughput',
-      width: 110,
-      render: (data: number[], record: DashboardData['clusters'][0]) => (
-        <MiniBar
-          data={data}
-          color={
-            record.status === 'healthy'
-              ? '#52c41a'
-              : record.status === 'warning'
-                ? '#faad14'
-                : '#d9d9d9'
-          }
-          height={26}
-          width={100}
-        />
-      ),
+      width: 150,
+      render: (data: number[], record) => {
+        const insight = trafficInsightByClusterId.get(record.id);
+        const trendDirection = insight?.trendDirection ?? 'unknown';
+        return (
+          <Space direction="vertical" size={2}>
+            <MiniBar
+              data={data}
+              color={
+                record.status === 'healthy'
+                  ? '#52c41a'
+                  : record.status === 'warning'
+                    ? '#faad14'
+                    : '#d9d9d9'
+              }
+              height={26}
+              width={100}
+            />
+            <Tag color={trafficTrendColor[trendDirection]}>
+              {t(trafficTrendLabelKey[trendDirection])}
+              {formatTrafficTrendDelta(insight?.trendDeltaPercent ?? null)}
+            </Tag>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -311,6 +404,7 @@ const DashboardPage = () => {
           rowKey="id"
           size="small"
           pagination={false}
+          scroll={{ x: tableScrollX(clusterColumns) }}
           onRow={() => ({
             style: { cursor: 'pointer' },
             onClick: () => navigate(clusterPagePath),

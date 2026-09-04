@@ -15,30 +15,13 @@
  * limitations under the License.
  */
 
-import {
-  Alert,
-  Card,
-  Col,
-  Empty,
-  Flex,
-  Progress,
-  Row,
-  Statistic,
-  Table,
-  Tag,
-  Typography,
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Alert, Card, Col, Empty, Flex, Row, Statistic, Tag, Typography } from 'antd';
 import type { DashboardData } from '../../api/metrics';
-import MiniLine from '../../components/MiniLine';
-import StatusBadge from '../../components/StatusBadge';
 import { useLang } from '../../i18n/LangContext';
 import {
   buildDashboardTrafficInsights,
-  type DashboardTrafficClusterInsight,
   type DashboardTrafficIssue,
   type TrafficHealthLevel,
-  type TrafficTrendDirection,
 } from '../../utils/dashboardTrafficInsights';
 
 const { Text } = Typography;
@@ -54,31 +37,11 @@ const levelColor: Record<TrafficHealthLevel, string> = {
   critical: 'error',
 };
 
-const trendColor: Record<TrafficTrendDirection, string> = {
-  rising: 'green',
-  falling: 'volcano',
-  stable: 'blue',
-  unknown: 'default',
-};
-
-const trendLabelKey: Record<TrafficTrendDirection, string> = {
-  rising: 'dashboardTraffic.trendRising',
-  falling: 'dashboardTraffic.trendFalling',
-  stable: 'dashboardTraffic.trendStable',
-  unknown: 'dashboardTraffic.trendUnknown',
-};
-
 const formatTps = (value: number) =>
   value.toLocaleString(undefined, { maximumFractionDigits: value >= 100 ? 0 : 1 });
 
 const formatPercent = (value: number) =>
   `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
-
-const formatTrendDelta = (value: number | null) => {
-  if (value == null) return '';
-  const sign = value > 0 ? '+' : '';
-  return ` ${sign}${formatPercent(value)}`;
-};
 
 const issueTextKey = (issue: DashboardTrafficIssue) => {
   switch (issue.code) {
@@ -124,87 +87,6 @@ const DashboardTrafficInsights = ({ dashboard }: Props) => {
       })}
     </Tag>
   );
-
-  const columns: ColumnsType<DashboardTrafficClusterInsight> = [
-    {
-      title: t('dashboard.clusterName'),
-      dataIndex: 'name',
-      key: 'name',
-      render: (name: string, row) => (
-        <Flex vertical gap={2}>
-          <Text strong>{name}</Text>
-          <Text type="secondary">
-            {row.brokers} Broker · {row.proxies == null ? 'N/A' : row.proxies} Proxy
-          </Text>
-        </Flex>
-      ),
-    },
-    {
-      title: t('common.status'),
-      dataIndex: 'status',
-      key: 'status',
-      width: 110,
-      render: (status: string) => <StatusBadge status={status} />,
-    },
-    {
-      title: t('dashboardTraffic.totalTps'),
-      dataIndex: 'totalTps',
-      key: 'totalTps',
-      width: 130,
-      align: 'right',
-      render: (value: number, row) => (
-        <Flex vertical align="flex-end" gap={2}>
-          <Text strong>{formatTps(value)}/s</Text>
-          <Text type="secondary">
-            {formatTps(row.tpsIn)} in · {formatTps(row.tpsOut)} out
-          </Text>
-        </Flex>
-      ),
-    },
-    {
-      title: t('dashboardTraffic.share'),
-      dataIndex: 'sharePercent',
-      key: 'sharePercent',
-      width: 160,
-      render: (value: number) => (
-        <Flex vertical gap={4}>
-          <Text>{formatPercent(value)}</Text>
-          <Progress percent={Math.min(100, value)} showInfo={false} size="small" />
-        </Flex>
-      ),
-    },
-    {
-      title: t('dashboardTraffic.perBroker'),
-      dataIndex: 'perBrokerTps',
-      key: 'perBrokerTps',
-      width: 130,
-      align: 'right',
-      render: (value: number) => `${formatTps(value)}/s`,
-    },
-    {
-      title: t('dashboardTraffic.inOutRatio'),
-      dataIndex: 'inOutRatio',
-      key: 'inOutRatio',
-      width: 110,
-      align: 'right',
-      render: (value: number | null) => (value == null ? 'N/A' : `${value}:1`),
-    },
-    {
-      title: t('dashboard.trend'),
-      dataIndex: 'trendDirection',
-      key: 'trendDirection',
-      width: 170,
-      render: (_, row) => (
-        <Flex align="center" gap={8}>
-          <MiniLine data={row.throughput} width={64} height={24} animated={false} />
-          <Tag color={trendColor[row.trendDirection]}>
-            {t(trendLabelKey[row.trendDirection])}
-            {formatTrendDelta(row.trendDeltaPercent)}
-          </Tag>
-        </Flex>
-      ),
-    },
-  ];
 
   return (
     <Card
@@ -280,16 +162,7 @@ const DashboardTrafficInsights = ({ dashboard }: Props) => {
 
       {insights.rows.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('dashboardTraffic.noCluster')} />
-      ) : (
-        <Table
-          size="small"
-          rowKey="id"
-          dataSource={insights.rows}
-          columns={columns}
-          pagination={false}
-          scroll={{ x: 980 }}
-        />
-      )}
+      ) : null}
     </Card>
   );
 };

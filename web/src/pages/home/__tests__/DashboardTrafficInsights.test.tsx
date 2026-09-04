@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { DashboardData } from '../../../api/metrics';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -108,7 +108,7 @@ beforeAll(() => {
 });
 
 describe('DashboardTrafficInsights', () => {
-  it('renders traffic findings, summary cards, and sorted cluster rows', () => {
+  it('renders traffic findings and summary cards without duplicating cluster rows', () => {
     renderPanel();
 
     expect(screen.getByText('流量洞察')).toBeInTheDocument();
@@ -124,10 +124,7 @@ describe('DashboardTrafficInsights', () => {
       0,
     );
 
-    const rows = screen.getAllByRole('row');
-    expect(within(rows[1]).getByText('prod')).toBeInTheDocument();
-    expect(within(rows[2]).getByText('canary')).toBeInTheDocument();
-    expect(within(rows[3]).getByText('idle')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText(/prod 承载 88.6% 流量/u)).toBeInTheDocument();
     expect(screen.getByText(/canary 在非健康状态下承载流量/u)).toBeInTheDocument();
   });

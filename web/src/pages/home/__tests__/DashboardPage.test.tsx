@@ -65,6 +65,35 @@ const unavailableTopologyDashboard = (): DashboardData => ({
   })),
 });
 
+const trafficDashboard = (): DashboardData => ({
+  ...dashboard('traffic-a'),
+  stats: {
+    ...dashboard('traffic-a').stats,
+    totalClusters: 2,
+    totalBrokers: 3,
+    totalProxies: 1,
+    tpsIn: 125,
+    tpsOut: 75,
+    messagesPerSecond: 200,
+  },
+  clusters: [
+    {
+      ...dashboard('traffic-a').clusters[0],
+      brokers: 2,
+      tpsIn: 100,
+      tpsOut: 50,
+      throughput: [10, 20, 30, 80],
+    },
+    {
+      ...dashboard('traffic-b').clusters[0],
+      brokers: 1,
+      tpsIn: 25,
+      tpsOut: 25,
+      throughput: [25, 25, 25, 25],
+    },
+  ],
+});
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((promiseResolve) => {
@@ -146,6 +175,29 @@ describe('DashboardPage', () => {
       .closest('tr');
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getAllByText('N/A').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('merges traffic insight metrics into the existing cluster health table', async () => {
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(trafficDashboard());
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findAllByText('traffic-a');
+    const clusterHealthCard = screen.getByText('集群健康概览').closest('.ant-card');
+    expect(clusterHealthCard).not.toBeNull();
+    const clusterHealth = within(clusterHealthCard as HTMLElement);
+    expect(clusterHealth.getAllByText('总 TPS')).not.toHaveLength(0);
+    expect(clusterHealth.getAllByText('占比')).not.toHaveLength(0);
+    expect(clusterHealth.getAllByText('单 Broker TPS')).not.toHaveLength(0);
+    expect(clusterHealth.getAllByText('出入比')).not.toHaveLength(0);
+
+    const row = clusterHealth.getByText('traffic-a').closest('tr');
+    expect(row).not.toBeNull();
+    const clusterRow = within(row as HTMLElement);
+    expect(clusterRow.getByText('150/s')).toBeInTheDocument();
+    expect(clusterRow.getByText('75%')).toBeInTheDocument();
+    expect(clusterRow.getByText('75/s')).toBeInTheDocument();
+    expect(clusterRow.getByText('0.5:1')).toBeInTheDocument();
+    expect(clusterRow.getByText(/上升/u)).toBeInTheDocument();
   });
 
   it('does not show dashboard data from the previous instance while loading a new selection', async () => {
