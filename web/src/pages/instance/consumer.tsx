@@ -591,7 +591,7 @@ const ConsumerPageContent = ({
         message.warning('预览未覆盖可重置队列，请检查 Group/Topic 状态');
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : '预览重置影响失败';
+      const reason = error instanceof Error ? error.message : t('consumer.previewFailFallback');
       setResetPreview(null);
       setResetPreviewKey('');
       setResetPreviewError(reason);
@@ -616,7 +616,11 @@ const ConsumerPageContent = ({
         timestamp: resetTimestamp,
       });
       message.success(
-        `${resetGroup.name} 在 ${resetTopic} 的消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
+        t('consumer.resetOffsetSuccess', {
+          group: resetGroup.name,
+          topic: resetTopic,
+          time: resetTime.format('YYYY-MM-DD HH:mm:ss'),
+        }),
       );
       setProgressByGroup((prev) => {
         const next = { ...prev };
@@ -677,7 +681,7 @@ const ConsumerPageContent = ({
       setImportErrors(validation.errors);
     } catch (error) {
       setImportRows([]);
-      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+      setImportErrors([error instanceof Error ? error.message : t('consumer.csvParseFailed')]);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
@@ -710,16 +714,16 @@ const ConsumerPageContent = ({
           ? {
               ...nextRows[index],
               status: 'failed',
-              message: failure.message || '创建失败',
+              message: failure.message || t('consumer.importRowFailed'),
             }
-          : { ...nextRows[index], status: 'success', message: '已创建' };
+          : { ...nextRows[index], status: 'success', message: t('consumer.importRowCreated') };
       });
     } catch (error) {
       for (const { index } of targetIndexes) {
         nextRows[index] = {
           ...nextRows[index],
           status: 'failed',
-          message: error instanceof Error ? error.message : '创建失败',
+          message: error instanceof Error ? error.message : t('consumer.importRowFailed'),
         };
       }
     } finally {
@@ -2346,7 +2350,7 @@ const ConsumerPageContent = ({
                   <Alert
                     showIcon
                     type={resetPreview.complete ? 'warning' : 'error'}
-                    message="请确认以下影响"
+                    message={t('consumer.confirmResetImpact')}
                     description={resetPreviewWarnings.join('；')}
                   />
                 )}
@@ -2357,7 +2361,7 @@ const ConsumerPageContent = ({
                   pagination={false}
                   size="small"
                   scroll={{ x: tableScrollX(resetPreviewColumns), y: 260 }}
-                  locale={{ emptyText: '未找到可预览的 Queue 位点' }}
+                  locale={{ emptyText: t('consumer.noPreviewableQueues') }}
                 />
               </Space>
             )}
