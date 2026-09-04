@@ -31,6 +31,7 @@ import { LangProvider } from '../../../i18n/LangContext';
 const clusterServiceMocks = vi.hoisted(() => ({
   createNameserverRegistry: vi.fn(),
   deleteNameserverRegistry: vi.fn(),
+  discoverKubernetesNameServers: vi.fn(),
   getBrokerConfigDiff: vi.fn(),
   getNameServerConfigDiff: vi.fn(),
   listClusters: vi.fn(),
@@ -256,6 +257,20 @@ describe('Cluster page', () => {
       gmtModified: '',
     });
     clusterServiceMocks.deleteNameserverRegistry.mockReset().mockResolvedValue(undefined);
+    clusterServiceMocks.discoverKubernetesNameServers.mockReset().mockResolvedValue({
+      namespace: 'mq',
+      observedAt: '2026-09-04T12:00:00Z',
+      candidates: [
+        {
+          namespace: 'mq',
+          resourceName: 'rocketmq-nameserver',
+          namesrvAddr: 'rocketmq-nameserver.mq.svc.cluster.local:9876',
+          source: 'SERVICE_PORT',
+          confidence: 'HIGH',
+          stable: true,
+        },
+      ],
+    });
     clusterServiceMocks.getNameServerConfigDiff.mockReset().mockResolvedValue({
       cluster: 'rocketmq1',
       complete: true,
@@ -493,6 +508,91 @@ describe('Cluster page', () => {
       expect(clusterServiceMocks.deleteNameserverRegistry).toHaveBeenCalledWith(1),
     );
     confirmSpy.mockRestore();
+  });
+
+  it('discovers a Kubernetes NameServer and requires confirmation before saving', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+
+    await user.click(screen.getByRole('button', { name: /从 K8s 发现/ }));
+    const discoveryDialog = await screen.findByRole('dialog', {
+      name: /发现 Kubernetes NameServer/,
+    });
+    await user.type(within(discoveryDialog).getByLabelText('K8s Namespace'), 'mq');
+    await user.click(within(discoveryDialog).getByRole('button', { name: /从 K8s 发现/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.discoverKubernetesNameServers).toHaveBeenCalledWith('mq'),
+    );
+    expect(
+      await within(discoveryDialog).findByText('rocketmq-nameserver.mq.svc.cluster.local:9876'),
+    ).toBeInTheDocument();
+    expect(clusterServiceMocks.createNameserverRegistry).not.toHaveBeenCalled();
+
+    await user.click(within(discoveryDialog).getByRole('button', { name: /使\s*用/ }));
+    const createDialog = (await screen.findAllByRole('dialog')).find((dialog) =>
+      within(dialog).queryByRole('textbox', { name: '名称' }),
+    );
+    expect(createDialog).toBeDefined();
+    expect(within(createDialog!).getByRole('textbox', { name: '名称' })).toHaveValue(
+      'rocketmq-nameserver',
+    );
+    expect(within(createDialog!).getByRole('textbox', { name: 'NameServer 地址' })).toHaveValue(
+      'rocketmq-nameserver.mq.svc.cluster.local:9876',
+    );
+    expect(within(createDialog!).getByRole('textbox', { name: 'K8s Namespace' })).toHaveValue('mq');
+    expect(clusterServiceMocks.createNameserverRegistry).not.toHaveBeenCalled();
+  });
+
+  it('ignores a Kubernetes discovery response after the modal is closed and reopened', async () => {
+    const firstRequest = deferred<{
+      namespace: string;
+      observedAt: string;
+      candidates: Array<{
+        namespace: string;
+        resourceName: string;
+        namesrvAddr: string;
+        source: 'SERVICE_PORT';
+        confidence: 'HIGH';
+        stable: boolean;
+      }>;
+    }>();
+    clusterServiceMocks.discoverKubernetesNameServers
+      .mockReset()
+      .mockReturnValueOnce(firstRequest.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    await user.click(screen.getByRole('button', { name: /从 K8s 发现/ }));
+    const dialog = await screen.findByRole('dialog', { name: /发现 Kubernetes NameServer/ });
+    const namespaceInput = within(dialog).getByLabelText('K8s Namespace');
+
+    await user.type(namespaceInput, 'old-ns');
+    await user.click(within(dialog).getByRole('button', { name: /从 K8s 发现/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getAllByRole('button', { name: /从 K8s 发现/ })[0]);
+
+    await act(async () =>
+      firstRequest.resolve({
+        namespace: 'old-ns',
+        observedAt: '2026-09-04T12:00:00Z',
+        candidates: [
+          {
+            namespace: 'old-ns',
+            resourceName: 'old-nameserver',
+            namesrvAddr: 'old-nameserver.old-ns.svc.cluster.local:9876',
+            source: 'SERVICE_PORT',
+            confidence: 'HIGH',
+            stable: true,
+          },
+        ],
+      }),
+    );
+
+    expect(
+      screen.queryByText('old-nameserver.old-ns.svc.cluster.local:9876'),
+    ).toBeNull();
   });
 
   it('opens NameServer config drift details from a registry row', async () => {

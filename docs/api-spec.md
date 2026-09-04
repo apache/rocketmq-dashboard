@@ -124,6 +124,7 @@
 | 81 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 82 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 83 | GET | `/api/topics/page` | Topic 分页列表 |
+| 84 | POST | `/api/nameservers/kubernetes/discover` | 在指定 K8s Namespace 中发现 NameServer 候选 |
 
 ## 通用响应格式
 
@@ -622,7 +623,41 @@ POST /api/proxies/restart
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.12 获取 K8s 证书列表
+### 4.12 从 Kubernetes 发现 NameServer
+
+```
+POST /api/nameservers/kubernetes/discover
+```
+
+该接口只读取指定 Namespace 中的 Service、EndpointSlice 和 Pod，不会修改 Kubernetes 资源，也不会自动写入 NameServer 注册表。调用者需要在页面选择候选并确认现有注册表表单后才能保存。
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namespace` | `string` | 是 | Kubernetes Namespace；不支持跨 Namespace 扫描 |
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `namespace` | `string` | 实际查询的 Namespace |
+| `observedAt` | `string` | 服务端观察时间 |
+| `candidates` | `KubernetesNameServerCandidate[]` | 按发现策略返回的候选列表 |
+
+`KubernetesNameServerCandidate`：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `resourceName` | `string` | Service、EndpointSlice 所属 Service 或 Pod 名称 |
+| `namesrvAddr` | `string` | 可填入注册表的 NameServer 地址；多个地址用 `;` 分隔 |
+| `source` | `string` | `SERVICE_PORT` / `SERVICE_HINT` / `ENDPOINT_SLICE` / `POD_LABEL` / `POD_IMAGE` |
+| `confidence` | `string` | `HIGH` / `MEDIUM` / `LOW` |
+| `stable` | `boolean` | Service DNS 为稳定地址；EndpointSlice 和 Pod IP 为临时地址 |
+
+未发现候选时返回空数组。功能未启用、Kubernetes API 不可用时返回 `503`；RBAC 拒绝时返回 `403`。
+
+### 4.13 获取 K8s 证书列表
 
 ```
 GET /api/k8s-certs
@@ -644,7 +679,7 @@ GET /api/k8s-certs
 | `daysRemaining` | `number` | 剩余天数 |
 | `san` | `string[]` | Subject Alternative Name 列表 |
 
-### 4.13 添加 K8s 证书
+### 4.14 添加 K8s 证书
 
 ```
 POST /api/k8s-certs/create
@@ -662,7 +697,7 @@ POST /api/k8s-certs/create
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.14 更新 K8s 证书
+### 4.15 更新 K8s 证书
 
 ```
 POST /api/k8s-certs/update
@@ -681,7 +716,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 续期 K8s 证书
+### 4.16 续期 K8s 证书
 
 ```
 POST /api/k8s-certs/renew
@@ -695,7 +730,7 @@ POST /api/k8s-certs/renew
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.16 删除 K8s 证书
+### 4.17 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete

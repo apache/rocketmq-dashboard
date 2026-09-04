@@ -82,6 +82,12 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 且用户表为空，后端会拒绝登录以避免误签发会话。
 `studio.auth.login-required=false` 仅用于本地开发场景跳过 `/api/**` 拦截。
 
+## Kubernetes NameServer 发现
+
+后端可按 Namespace 只读发现 RocketMQ NameServer Service。该功能默认关闭，启用方式、Fabric8
+凭据来源、最小 RBAC 和地址可达性限制见
+[`docs/kubernetes-nameserver-discovery.md`](../docs/kubernetes-nameserver-discovery.md)。
+
 ## 前置条件
 
 - 本地安装 Docker
