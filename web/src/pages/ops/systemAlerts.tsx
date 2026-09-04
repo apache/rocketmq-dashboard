@@ -132,7 +132,11 @@ const ALERT_EXPORT_COLUMNS: CsvColumn<SystemAlert>[] = [
 ];
 
 const SystemAlertsPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const displayTitle = (alert: SystemAlert): string =>
+    lang === 'en' ? (alert.enTitle ?? alert.title) : alert.title;
+  const displayDescription = (alert: SystemAlert): string =>
+    lang === 'en' ? (alert.enDescription ?? alert.description) : alert.description;
   const userId = useAuthStore((state) => state.userId);
   const admin = useAuthStore((state) => state.admin);
   const canManageSilences = !userId || admin === true;
@@ -617,7 +621,7 @@ const SystemAlertsPage = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Flex align="center" gap={8}>
                     <Text strong style={{ fontSize: 14 }}>
-                      {alert.title}
+                      {displayTitle(alert)}
                     </Text>
                     <Tag
                       color={
@@ -654,7 +658,7 @@ const SystemAlertsPage = () => {
                     )}
                   </Flex>
                   <Text type="secondary" style={{ fontSize: 14 }}>
-                    {alert.description}
+                    {displayDescription(alert)}
                   </Text>
                   {alert.instanceId && (
                     <Text type="secondary" style={{ display: 'block' }}>
@@ -698,7 +702,7 @@ const SystemAlertsPage = () => {
                               ? t('sysAlerts.domainCluster')
                               : t('sysAlerts.domainBusiness')}
                           </Tag>
-                          <Text>{related.title}</Text>
+                          <Text>{displayTitle(related)}</Text>
                           {related.transition && (
                             <Tag>
                               {formatAlertTransition(
