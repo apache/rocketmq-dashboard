@@ -52,8 +52,6 @@ import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
-const DEFAULT_LOAD_ERROR = '死信队列加载失败，请稍后重试';
-const DEFAULT_RETRY_ERROR = '提交重投任务失败，请稍后重试';
 
 /* ─── Helpers ─── */
 
@@ -207,7 +205,7 @@ const DLQPage = () => {
       })
       .catch((error) => {
         if (groupRequestIdRef.current === requestId) {
-          setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
+          setLoadError(getErrorMessage(error, t('dlq.loadFailed')));
           setLoading(false);
         }
       });
@@ -267,7 +265,7 @@ const DLQPage = () => {
       setRefreshKey((key) => key + 1);
       if (result.scanIncomplete) {
         message.warning(
-          `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
+          t('dlq.rescanIncomplete', { failed: result.failedQueueCount ?? 0, resent: result.resent }),
         );
       } else if (result.failed > 0) {
         message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
@@ -279,7 +277,7 @@ const DLQPage = () => {
       setRetryError(null);
     } catch (error) {
       if (retryRequestIdRef.current === requestId) {
-        setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
+        setRetryError(getErrorMessage(error, t('dlq.retryFailed')));
       }
     } finally {
       resendInFlightRef.current = false;
@@ -300,7 +298,7 @@ const DLQPage = () => {
       downloadBlob(blob, `${group.groupName}-dlq-messages.xlsx`);
       if (meta.truncated || meta.failedQueueCount > 0) {
         message.warning(
-          `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
+          t('dlq.exportIncomplete', { failed: meta.failedQueueCount, limit: meta.limit }),
         );
       } else {
         message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
@@ -346,7 +344,7 @@ const DLQPage = () => {
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
-        setDetailError(getErrorMessage(error, '死信消息明细加载失败，请稍后重试'));
+        setDetailError(getErrorMessage(error, t('dlq.detailLoadFailed')));
       }
     } finally {
       if (detailRequestIdRef.current === requestId) {
@@ -377,7 +375,7 @@ const DLQPage = () => {
       setDetailSelectedMsgIds([]);
       await loadDetailMessages(detailGroup, detailPage, detailPageSize);
     } catch (error) {
-      setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
+      setDetailError(getErrorMessage(error, t('dlq.resendMsgFailed')));
     } finally {
       resendInFlightRef.current = false;
       setDetailResending(false);
@@ -397,7 +395,7 @@ const DLQPage = () => {
       downloadBlob(blob, `${detailGroup.groupName}-dlq-messages.xlsx`);
       if (meta.truncated || meta.failedQueueCount > 0) {
         message.warning(
-          `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
+          t('dlq.exportIncomplete', { failed: meta.failedQueueCount, limit: meta.limit }),
         );
       } else {
         message.success(
