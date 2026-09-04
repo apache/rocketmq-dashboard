@@ -2368,6 +2368,8 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'api.requestFailed': { zh: '请求失败', en: 'Request failed' },
+  'api.corsRejection': { zh: '请求被服务端 CORS 策略拒绝（Invalid CORS request）：当前访问地址不在后端白名单，请检查部署的 STUDIO_CORS_ALLOWED_ORIGINS 配置', en: 'The request was rejected by the server CORS policy (Invalid CORS request): the current origin is not in the backend allowlist; check the deployed STUDIO_CORS_ALLOWED_ORIGINS configuration' },
   // ─── BrokerCluster ───
 };
 
