@@ -75,6 +75,9 @@ export interface SystemAlert {
   level: string;
   title: string;
   description: string;
+  /** Optional English display copy for demo (mock-mode) alerts. */
+  enTitle?: string | null;
+  enDescription?: string | null;
   time: string;
   acknowledged: boolean;
   acknowledgedBy?: string | null;
