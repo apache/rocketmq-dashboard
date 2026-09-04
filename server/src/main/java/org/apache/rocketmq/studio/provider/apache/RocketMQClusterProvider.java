@@ -95,8 +95,9 @@ public class RocketMQClusterProvider implements ClusterProvider {
         if (!StringUtils.hasText(namesrvAddr)) {
             return Collections.emptyList();
         }
+        String trimmedAddr = namesrvAddr.trim();
         try {
-            return executeAdmin(instanceId, namesrvAddr, admin -> {
+            return executeAdmin(instanceId, trimmedAddr, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return Collections.<ClusterVO>emptyList();
@@ -113,7 +114,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     Set<String> brokerNames = entry.getValue();
 
                     List<BrokerVO> brokers = buildBrokerList(admin, brokerNames, brokerAddrTable);
-                    List<NameServerVO> nameServers = buildNameServerList(namesrvAddr);
+                    List<NameServerVO> nameServers = buildNameServerList(trimmedAddr);
 
                     ClusterVO cluster = buildClusterVO(clusterName, brokers, nameServers);
                     cluster.setProxies(proxies);
