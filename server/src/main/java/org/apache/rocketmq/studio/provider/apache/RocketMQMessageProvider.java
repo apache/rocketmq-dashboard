@@ -441,14 +441,22 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic, String traceTopic) {
+        String normalizedMsgId = normalizeOptional(msgId);
+        String normalizedTopic = normalizeOptional(topic);
+        String normalizedTraceTopic = normalizeOptional(traceTopic);
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId, topic, traceTopic));
+                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt,
+                        normalizedMsgId, normalizedTopic, normalizedTraceTopic));
     }
 
     @Override
     public TraceRecordVO getMessageTraceByKey(String instanceId, String key, String topic, String traceTopic) {
+        String normalizedKey = normalizeOptional(key);
+        String normalizedTopic = normalizeOptional(topic);
+        String normalizedTraceTopic = normalizeOptional(traceTopic);
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> getMessageTraceByKey(instanceId, (DefaultMQAdminExt) adminExt, key, topic, traceTopic));
+                adminExt -> getMessageTraceByKey(instanceId, (DefaultMQAdminExt) adminExt,
+                        normalizedKey, normalizedTopic, normalizedTraceTopic));
     }
 
     private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId, String topic,
@@ -824,6 +832,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     private record DisplayBody(String value, String encoding, boolean truncated) {
+    }
+
+    static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
     }
 
     private boolean matchesTag(MessageExt messageExt, String tag) {
