@@ -2444,7 +2444,7 @@ const ConsumerPageContent = ({
             </div>
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                重置到以下时间点
+                {t('consumer.resetToTime')}
               </Text>
               <DatePicker
                 showTime
@@ -2457,12 +2457,12 @@ const ConsumerPageContent = ({
                   }
                 }}
                 format="YYYY-MM-DD HH:mm:ss"
-                placeholder="选择重置时间点"
+                placeholder={t('consumer.resetTimePlaceholder')}
               />
             </div>
             <div>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                快捷选择
+                {t('consumer.quickSelect')}
               </Text>
               <Space wrap>
                 <Button
@@ -2472,7 +2472,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  1 小时前
+                  {t('consumer.time1hAgo')}
                 </Button>
                 <Button
                   size="small"
@@ -2481,7 +2481,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  3 小时前
+                  {t('consumer.time3hAgo')}
                 </Button>
                 <Button
                   size="small"
@@ -2490,7 +2490,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  6 小时前
+                  {t('consumer.time6hAgo')}
                 </Button>
                 <Button
                   size="small"
@@ -2499,7 +2499,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  12 小时前
+                  {t('consumer.time12hAgo')}
                 </Button>
                 <Button
                   size="small"
@@ -2508,7 +2508,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  1 天前
+                  {t('consumer.time1dAgo')}
                 </Button>
                 <Button
                   size="small"
@@ -2517,13 +2517,13 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  3 天前
+                  {t('consumer.time3dAgo')}
                 </Button>
               </Space>
             </div>
             <Flex justify="space-between" align="center" gap={12}>
               <Text type="secondary" style={{ fontSize: 14 }}>
-                预览不会修改 broker 位点，仅计算目标时间对应的 Queue offset。
+                {t('consumer.previewHint')}
               </Text>
               <Button
                 icon={<Eye size={14} />}
@@ -2535,38 +2535,38 @@ const ConsumerPageContent = ({
                 }
                 onClick={() => void handlePreviewResetOffset()}
               >
-                预览影响
+                {t('consumer.previewImpactBtn')}
               </Button>
             </Flex>
             {resetPreviewError && (
-              <Alert showIcon type="error" message="位点预览失败" description={resetPreviewError} />
+              <Alert showIcon type="error" message={t('consumer.previewFailed')} description={resetPreviewError} />
             )}
             {hasCurrentResetPreview && resetPreview && (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Descriptions bordered size="small" column={4}>
-                  <Descriptions.Item label="Queue 数">{resetPreview.queueCount}</Descriptions.Item>
-                  <Descriptions.Item label="当前总堆积">
+                  <Descriptions.Item label={t('consumer.queueCount')}>{resetPreview.queueCount}</Descriptions.Item>
+                  <Descriptions.Item label={t('consumer.currentTotalLag')}>
                     {formatOffsetValue(resetPreview.currentTotalLag)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="重置后总堆积">
+                  <Descriptions.Item label={t('consumer.projectedTotalLag')}>
                     {formatOffsetValue(resetPreview.projectedTotalLag)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="位点净变化">
+                  <Descriptions.Item label={t('consumer.netOffsetDelta')}>
                     {formatOffsetDelta(resetPreview.totalOffsetDelta)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="回放 Queue">
+                  <Descriptions.Item label={t('consumer.rewindQueueCount')}>
                     {resetPreview.rewindQueueCount}
                   </Descriptions.Item>
-                  <Descriptions.Item label="跳过 Queue">
+                  <Descriptions.Item label={t('consumer.skipQueueCount')}>
                     {resetPreview.fastForwardQueueCount}
                   </Descriptions.Item>
-                  <Descriptions.Item label="预览状态" span={2}>
+                  <Descriptions.Item label={t('consumer.resetStatus')} span={2}>
                     <Tag
                       color={
                         resetPreview.complete ? 'green' : resetPreview.allowReset ? 'orange' : 'red'
                       }
                     >
-                      {resetPreview.complete ? '完整' : resetPreview.allowReset ? '有限' : '不完整'}
+                      {resetPreview.complete ? t('consumer.previewComplete') : resetPreview.allowReset ? t('consumer.previewLimited') : t('consumer.previewIncomplete')}
                     </Tag>
                   </Descriptions.Item>
                 </Descriptions>
