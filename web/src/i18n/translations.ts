@@ -1599,6 +1599,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Broker 配置差异检测失败',
     en: 'Failed to check broker config drift',
   },
+  'cluster.registryTargetUnresolved': {
+    zh: '无法唯一确定该注册集群所属的实例，已拒绝执行配置操作',
+    en: 'Cannot uniquely resolve the instance that owns this registry cluster; config action rejected',
+  },
   'cluster.brokerConfigDiffDriftDetected': {
     zh: '检测到 Broker 配置不一致',
     en: 'Broker config drift detected',

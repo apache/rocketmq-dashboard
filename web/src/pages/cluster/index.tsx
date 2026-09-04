@@ -82,7 +82,7 @@ import {
   updateNameserverRegistry,
 } from '../../services/clusterService';
 import { listInstances } from '../../services/instanceService';
-import { supportsApacheRuntime } from '../../api/instance';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { isMockMode } from '../../services/dataMode';
 import { tableScrollX } from '../../utils/table';
 
@@ -102,6 +102,13 @@ const safeText = (value: string | null | undefined) => value ?? '';
 const searchText = (value: string | null | undefined) => safeText(value).toLowerCase();
 const compareText = (left: string | null | undefined, right: string | null | undefined) =>
   safeText(left).localeCompare(safeText(right));
+
+/** RocketMQ NameServer endpoints accept comma- or semicolon-separated address lists. */
+const endpointTokens = (endpoint: string | null | undefined) =>
+  safeText(endpoint)
+    .split(/[,;\s]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
 
 const CONFIG_FIELD_LABEL_KEYS: Record<string, string> = {
   flushDiskType: 'cluster.flushDiskType',
@@ -133,6 +140,9 @@ const ClusterPage = () => {
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
+  const [configTargetInstanceId, setConfigTargetInstanceId] = useState<string | undefined>(
+    undefined,
+  );
   const [configPreview, setConfigPreview] = useState<ClusterConfigPreviewResult | null>(null);
   const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
   const [configSubmitting, setConfigSubmitting] = useState(false);
@@ -171,6 +181,21 @@ const ClusterPage = () => {
   const k8sCertsRequestRef = useRef(0);
   const nsConfigDiffRequestRef = useRef(0);
   const connectionTestRequestRef = useRef(0);
+
+  // Registry rows are probed from the global NameServer registry, so their source
+  // instance is the one whose endpoint owns the probed address — not the route instance.
+  const apacheInstancesRef = useRef<Instance[]>([]);
+  const resolveRegistryTargetInstanceId = useCallback(
+    (cluster: ClusterInfo): string | undefined => {
+      const tokens = endpointTokens(cluster.endpoint);
+      if (tokens.length === 0) return undefined;
+      const owners = apacheInstancesRef.current.filter((instance) =>
+        endpointTokens(instance.endpoint).some((token) => tokens.includes(token)),
+      );
+      return owners.length === 1 ? owners[0].name : undefined;
+    },
+    [],
+  );
 
   const loadRegistryClusters = useCallback(async () => {
     const requestId = ++registryClustersRequestRef.current;
@@ -332,6 +357,11 @@ const ClusterPage = () => {
 
   const openNameServerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
+      const targetInstanceId = resolveRegistryTargetInstanceId(cluster);
+      if (!targetInstanceId) {
+        message.error(t('cluster.registryTargetUnresolved'));
+        return;
+      }
       const requestId = ++nsConfigDiffRequestRef.current;
       setNsConfigDiffState({
         open: true,
@@ -340,7 +370,7 @@ const ClusterPage = () => {
         result: null,
       });
       try {
-        const result = await getNameServerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        const result = await getNameServerConfigDiff(cluster.id, targetInstanceId);
         if (requestId !== nsConfigDiffRequestRef.current) return;
         setNsConfigDiffState({
           open: true,
@@ -354,11 +384,16 @@ const ClusterPage = () => {
         message.error(t('cluster.nsConfigDiffFailed'));
       }
     },
-    [t],
+    [resolveRegistryTargetInstanceId, t],
   );
 
   const openBrokerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
+      const targetInstanceId = resolveRegistryTargetInstanceId(cluster);
+      if (!targetInstanceId) {
+        message.error(t('cluster.registryTargetUnresolved'));
+        return;
+      }
       setBrokerConfigDiffState({
         open: true,
         loading: true,
@@ -366,7 +401,7 @@ const ClusterPage = () => {
         result: null,
       });
       try {
-        const result = await getBrokerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        const result = await getBrokerConfigDiff(cluster.id, targetInstanceId);
         setBrokerConfigDiffState({
           open: true,
           loading: false,
@@ -378,7 +413,7 @@ const ClusterPage = () => {
         message.error(t('cluster.brokerConfigDiffFailed'));
       }
     },
-    [t],
+    [resolveRegistryTargetInstanceId, t],
   );
   const closeNameServerConfigDiff = useCallback(() => {
     nsConfigDiffRequestRef.current += 1;
@@ -452,6 +487,7 @@ const ClusterPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        apacheInstancesRef.current = apacheInstances;
         const initialInstanceId = apacheInstances.some(
           (instance) => instance.name === requestedInstanceId,
         )
@@ -464,6 +500,7 @@ const ClusterPage = () => {
       })
       .catch(() => {
         if (cancelled) return;
+        apacheInstancesRef.current = [];
         selectedInstanceIdRef.current = undefined;
         setClusters([]);
         setSelectedProxy(null);
@@ -606,8 +643,14 @@ const ClusterPage = () => {
 
   // Broker config handler
   const handleConfigOpen = (cluster: ClusterInfo) => {
+    const targetInstanceId = resolveRegistryTargetInstanceId(cluster);
+    if (!targetInstanceId) {
+      message.error(t('cluster.registryTargetUnresolved'));
+      return;
+    }
     const cfg: ClusterConfig = cluster.config ?? ({} as ClusterConfig);
     setSelectedCluster(cluster);
+    setConfigTargetInstanceId(targetInstanceId);
     setConfigPreview(null);
     setConfigPreviewLoading(false);
     setConfigSubmitting(false);
@@ -631,7 +674,7 @@ const ClusterPage = () => {
     const { maxMessageSizeMB, ...configValues } = values;
     return {
       id: selectedCluster.id,
-      instanceId: selectedInstanceIdRef.current,
+      instanceId: configTargetInstanceId,
       ...(selectedCluster.config ?? {}),
       ...configValues,
       maxMessageSize: maxMessageSizeMB * 1048576,
@@ -678,6 +721,7 @@ const ClusterPage = () => {
         await requestRefresh('operation');
         message.success(t('cluster.configUpdated'));
         setConfigModalOpen(false);
+        setConfigTargetInstanceId(undefined);
         setConfigPreview(null);
         return;
       }
@@ -1256,6 +1300,7 @@ const ClusterPage = () => {
             open={configModalOpen}
             onCancel={() => {
               setConfigModalOpen(false);
+              setConfigTargetInstanceId(undefined);
               setConfigPreview(null);
             }}
             onOk={() => void handleConfigSubmit()}
