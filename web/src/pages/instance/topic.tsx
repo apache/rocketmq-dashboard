@@ -283,11 +283,11 @@ const formatDateTime = (iso?: string): string => {
 
 const ROUTE_STATUS_META: Record<
   RouteDiagnosticStatus,
-  { color: string; label: string; icon: React.ReactNode }
+  { color: string; icon: React.ReactNode }
 > = {
-  healthy: { color: 'success', label: '健康', icon: <CheckCircleOutlined /> },
-  warning: { color: 'warning', label: '关注', icon: <WarningOutlined /> },
-  critical: { color: 'error', label: '异常', icon: <ExclamationCircleOutlined /> },
+  healthy: { color: 'success', icon: <CheckCircleOutlined /> },
+  warning: { color: 'warning', icon: <WarningOutlined /> },
+  critical: { color: 'error', icon: <ExclamationCircleOutlined /> },
 };
 
 const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
@@ -299,7 +299,7 @@ const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -695,18 +695,18 @@ const TopicPage = () => {
     const meta = ROUTE_STATUS_META[status];
     return (
       <Tag color={meta.color} icon={meta.icon}>
-        {meta.label}
+        {t(`topicRoute.status.${status}`)}
       </Tag>
     );
   };
 
   const renderRouteIssueTags = (issues: RouteDiagnosticIssue[]) => {
-    if (issues.length === 0) return <Text type="secondary">无</Text>;
+    if (issues.length === 0) return <Text type="secondary">{t('topicRoute.noIssues')}</Text>;
     return (
       <Space size={[4, 4]} wrap>
         {issues.slice(0, 3).map((item) => (
           <Tag key={item.id} color={ISSUE_SEVERITY_COLOR[item.severity]}>
-            {item.title}
+            {t(`topicRoute.issue.${item.code}`)}
           </Tag>
         ))}
         {issues.length > 3 && <Tag>+{issues.length - 3}</Tag>}
@@ -895,10 +895,12 @@ const TopicPage = () => {
               </Tag>
               <div>
                 <Text strong>
-                  {item.brokerName ? `${item.brokerName}：${item.title}` : item.title}
+                  {item.brokerName
+                    ? `${item.brokerName}${lang === 'zh' ? '：' : ': '}${t(`topicRoute.issue.${item.code}`)}`
+                    : t(`topicRoute.issue.${item.code}`)}
                 </Text>
                 <Text type="secondary" style={{ display: 'block' }}>
-                  {item.description}
+                  {t(`topicRoute.issueDesc.${item.code}`)}
                 </Text>
               </div>
             </Flex>
@@ -917,7 +919,7 @@ const TopicPage = () => {
           <Space direction="vertical" size={2}>
             {recommendations.map((item) => (
               <Text key={item} style={{ fontSize: 14 }}>
-                {item}
+                {t(item)}
               </Text>
             ))}
           </Space>
@@ -941,7 +943,7 @@ const TopicPage = () => {
             <Alert
               type={diagnostics.statusColor}
               showIcon
-              message={t('topic.diagTitle', { status: diagnostics.statusText })}
+              message={t('topic.diagTitle', { status: t(`topicRoute.status.${diagnostics.status}`) })}
               description={
                 diagnostics.status === 'healthy'
                   ? t('topic.diagSummaryGood', { brokers: summary.brokerCount, write: summary.totalWriteQueues, read: summary.totalReadQueues })

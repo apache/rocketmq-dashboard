@@ -39,8 +39,6 @@ export interface RouteDiagnosticIssue {
   id: string;
   code: RouteIssueCode;
   severity: Exclude<RouteDiagnosticStatus, 'healthy'>;
-  title: string;
-  description: string;
   brokerName?: string;
 }
 
@@ -82,7 +80,6 @@ export interface RouteDiagnosticsSummary {
 
 export interface TopicRouteDiagnostics {
   status: RouteDiagnosticStatus;
-  statusText: string;
   statusColor: 'success' | 'warning' | 'error';
   summary: RouteDiagnosticsSummary;
   distributions: RouteDistribution[];
@@ -96,12 +93,6 @@ const STATUS_ORDER: Record<RouteDiagnosticStatus, number> = {
   critical: 2,
 };
 
-const STATUS_TEXT: Record<RouteDiagnosticStatus, string> = {
-  healthy: '路由健康',
-  warning: '需要关注',
-  critical: '不可用',
-};
-
 const STATUS_COLOR: Record<RouteDiagnosticStatus, 'success' | 'warning' | 'error'> = {
   healthy: 'success',
   warning: 'warning',
@@ -113,15 +104,11 @@ const EMPTY_SKEW: RouteQueueSkew = { gap: 0, ratio: 0 };
 const issue = (
   code: RouteIssueCode,
   severity: Exclude<RouteDiagnosticStatus, 'healthy'>,
-  title: string,
-  description: string,
   brokerName?: string,
 ): RouteDiagnosticIssue => ({
   id: brokerName ? `${brokerName}:${code}` : code,
   code,
   severity,
-  title,
-  description,
   brokerName,
 });
 
@@ -226,8 +213,6 @@ const distributionIssues = (
       issue(
         'MISSING_BROKER_ADDRESS',
         'critical',
-        'Broker 地址缺失',
-        'NameServer 返回了队列元数据，但没有返回可用于定位 Broker 的地址。',
         brokerName,
       ),
     );
@@ -238,8 +223,6 @@ const distributionIssues = (
       issue(
         'MISSING_MASTER_ADDRESS',
         'warning',
-        'Master 地址缺失',
-        '该 Broker 只返回了非 master 地址，Topic 写入链路需要确认 master 是否在线。',
         brokerName,
       ),
     );
@@ -250,8 +233,6 @@ const distributionIssues = (
       issue(
         'WRITE_QUEUE_UNAVAILABLE',
         'critical',
-        '写队列不可用',
-        '该 Broker 没有可写队列，生产者不会把消息写到这个 Broker。',
         brokerName,
       ),
     );
@@ -262,8 +243,6 @@ const distributionIssues = (
       issue(
         'READ_QUEUE_UNAVAILABLE',
         'critical',
-        '读队列不可用',
-        '该 Broker 没有可读队列，消费者不会从这个 Broker 拉取消息。',
         brokerName,
       ),
     );
@@ -274,8 +253,6 @@ const distributionIssues = (
       issue(
         'PERMISSION_NOT_WRITABLE',
         'warning',
-        '权限不允许写入',
-        'Topic 权限缺少写权限，生产者发送可能失败或被路由到其他 Broker。',
         brokerName,
       ),
     );
@@ -286,8 +263,6 @@ const distributionIssues = (
       issue(
         'PERMISSION_NOT_READABLE',
         'warning',
-        '权限不允许读取',
-        'Topic 权限缺少读权限，消费者订阅后可能无法正常消费。',
         brokerName,
       ),
     );
@@ -298,8 +273,6 @@ const distributionIssues = (
       issue(
         'READ_WRITE_QUEUE_MISMATCH',
         'warning',
-        '读写队列不一致',
-        '该 Broker 的读队列数和写队列数不同，扩缩容或迁移后需要确认配置是否符合预期。',
         brokerName,
       ),
     );
@@ -310,8 +283,6 @@ const distributionIssues = (
       issue(
         'WRITE_QUEUE_SKEW',
         'warning',
-        '写队列分布不均',
-        '不同 Broker 的写队列数差距较大，生产流量可能无法均匀分摊。',
         brokerName,
       ),
     );
@@ -322,8 +293,6 @@ const distributionIssues = (
       issue(
         'READ_QUEUE_SKEW',
         'warning',
-        '读队列分布不均',
-        '不同 Broker 的读队列数差距较大，消费者负载可能无法均匀分摊。',
         brokerName,
       ),
     );
@@ -334,8 +303,6 @@ const distributionIssues = (
       issue(
         'DUPLICATE_BROKER_ADDRESS',
         'warning',
-        'Broker 地址重复',
-        '多个 BrokerName 返回了相同地址，请确认 NameServer 注册信息是否过期。',
         brokerName,
       ),
     );
@@ -349,32 +316,32 @@ const buildRecommendations = (issues: RouteDiagnosticIssue[]): string[] => {
   const codes = new Set(issues.map((item) => item.code));
 
   if (codes.has('NO_ROUTE')) {
-    actions.push('确认 Topic 已在目标 Broker 上创建；必要时使用“在 Broker 上重建”。');
+    actions.push('topicRoute.rec.noRoute');
   }
   if (codes.has('MISSING_BROKER_ADDRESS') || codes.has('MISSING_MASTER_ADDRESS')) {
-    actions.push('检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。');
+    actions.push('topicRoute.rec.checkRegistration');
   }
   if (codes.has('NO_WRITABLE_ROUTE') || codes.has('PERMISSION_NOT_WRITABLE')) {
-    actions.push('确认 Topic 权限包含写权限，避免生产者发送失败。');
+    actions.push('topicRoute.rec.ensureWritePerm');
   }
   if (codes.has('NO_READABLE_ROUTE') || codes.has('PERMISSION_NOT_READABLE')) {
-    actions.push('确认 Topic 权限包含读权限，避免消费者订阅后无可读队列。');
+    actions.push('topicRoute.rec.ensureReadPerm');
   }
   if (
     codes.has('WRITE_QUEUE_UNAVAILABLE') ||
     codes.has('READ_QUEUE_UNAVAILABLE') ||
     codes.has('READ_WRITE_QUEUE_MISMATCH')
   ) {
-    actions.push('对比各 Broker 上的 TopicConfig，统一读写队列数后再观察客户端路由。');
+    actions.push('topicRoute.rec.alignQueueConfig');
   }
   if (codes.has('WRITE_QUEUE_SKEW') || codes.has('READ_QUEUE_SKEW')) {
-    actions.push('评估是否需要扩容、迁移或重新分配队列，降低单 Broker 负载集中风险。');
+    actions.push('topicRoute.rec.balanceQueues');
   }
   if (codes.has('SINGLE_BROKER_ROUTE')) {
-    actions.push('确认该 Topic 是否预期只部署在单 Broker；生产业务建议准备冗余路由。');
+    actions.push('topicRoute.rec.confirmSingleBroker');
   }
   if (codes.has('DUPLICATE_BROKER_ADDRESS')) {
-    actions.push('清理过期 Broker 注册信息，避免客户端拿到重复或错误地址。');
+    actions.push('topicRoute.rec.cleanupRegistration');
   }
 
   return actions;
@@ -386,13 +353,10 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'NO_ROUTE',
         'critical',
-        'Broker 上没有 Topic 路由',
-        '元数据中存在 Topic 记录，但当前实例没有返回任何 Broker 路由。',
       ),
     ];
     return {
       status: 'critical',
-      statusText: STATUS_TEXT.critical,
       statusColor: STATUS_COLOR.critical,
       summary: {
         brokerCount: 0,
@@ -456,8 +420,6 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'NO_WRITABLE_ROUTE',
         'critical',
-        '没有可写路由',
-        '所有 Broker 都缺少写权限或写队列，生产者无法向该 Topic 发送消息。',
       ),
     );
   }
@@ -467,8 +429,6 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'NO_READABLE_ROUTE',
         'critical',
-        '没有可读路由',
-        '所有 Broker 都缺少读权限或读队列，消费者无法从该 Topic 拉取消息。',
       ),
     );
   }
@@ -478,8 +438,6 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'SINGLE_BROKER_ROUTE',
         'warning',
-        '单 Broker 路由',
-        '该 Topic 只返回一个 Broker 路由，生产业务需要确认是否符合容灾预期。',
       ),
     );
   }
@@ -489,7 +447,6 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
 
   return {
     status,
-    statusText: STATUS_TEXT[status],
     statusColor: STATUS_COLOR[status],
     summary: {
       brokerCount: routes.length,

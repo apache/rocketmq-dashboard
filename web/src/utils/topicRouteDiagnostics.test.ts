@@ -81,9 +81,7 @@ describe('topic route diagnostics', () => {
         severity: 'critical',
       }),
     ]);
-    expect(diagnostics.recommendations).toContain(
-      '确认 Topic 已在目标 Broker 上创建；必要时使用“在 Broker 上重建”。',
-    );
+    expect(diagnostics.recommendations).toContain('topicRoute.rec.noRoute');
   });
 
   it('flags route risks from permissions, queues, skew, and stale addresses', () => {
@@ -140,9 +138,9 @@ describe('topic route diagnostics', () => {
     });
     expect(diagnostics.recommendations).toEqual(
       expect.arrayContaining([
-        '检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。',
-        '对比各 Broker 上的 TopicConfig，统一读写队列数后再观察客户端路由。',
-        '评估是否需要扩容、迁移或重新分配队列，降低单 Broker 负载集中风险。',
+        'topicRoute.rec.checkRegistration',
+        'topicRoute.rec.alignQueueConfig',
+        'topicRoute.rec.balanceQueues',
       ]),
     );
   });
