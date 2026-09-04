@@ -1770,8 +1770,8 @@ const TopicPage = () => {
           if (!importing) setImportModalOpen(false);
         }}
         onOk={() => void handleImportTopics()}
-        okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
-        cancelText="关闭"
+        okText={importRows.some((row) => row.status === 'failed') ? t('topic.importRetry') : t('topic.importStart')}
+        cancelText={t('common.close')}
         confirmLoading={importing}
         okButtonProps={{
           disabled:
@@ -1787,24 +1787,22 @@ const TopicPage = () => {
             <Alert
               type="error"
               showIcon
-              message="CSV 无法导入"
+              message={t('topic.csvImportFailed')}
               description={importErrors.join('；')}
             />
           ) : importRows.some((row) => row.status === 'invalid') ? (
             <Alert
               type="warning"
               showIcon
-              message={`检测到 ${
-                importRows.filter((row) => row.status === 'invalid').length
-              } 行无效，将跳过这些行`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('topic.importInvalidSkip', { count: importRows.filter((row) => row.status === 'invalid').length })}
+              description={t('topic.importFieldsOnly')}
             />
           ) : (
             <Alert
               type="info"
               showIcon
-              message={`检测到 ${importRows.length} 个 Topic，将通过后端批量导入`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('topic.importWillImport', { count: importRows.length })}
+              description={t('topic.importFieldsOnly')}
             />
           )}
           <Table<ResourceImportRow<Partial<Topic>>>
@@ -1959,28 +1957,27 @@ const TopicPage = () => {
       </Modal>
 
       <Modal
-        title="同步数据"
+        title={t('topic.syncData')}
         open={syncModalOpen}
         onCancel={() => setSyncModalOpen(false)}
-        footer={<Button onClick={() => setSyncModalOpen(false)}>关闭</Button>}
+        footer={<Button onClick={() => setSyncModalOpen(false)}>{t('common.close')}</Button>}
         width={680}
         destroyOnHidden
       >
         {syncChecking ? (
           <Flex justify="center" align="center" style={{ padding: 48 }}>
-            <Spin tip="正在校验 Topic 路由…">
+            <Spin tip={t('topic.syncVerifying')}>
               <div style={{ width: 200 }} />
             </Spin>
           </Flex>
         ) : syncMissing.length === 0 ? (
           <div style={{ padding: '16px 0' }}>
-            <Text type="secondary">所有 Topic 在 Broker 上均有路由，无需同步。</Text>
+            <Text type="secondary">{t('topic.syncAllGood')}</Text>
           </div>
         ) : (
           <>
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              以下 {syncMissing.length} 个 Topic 在 Broker 上找不到路由，可同步写入对应集群的
-              Broker（按元数据记录的队列数重建）。
+              {t('topic.syncMissingDesc', { count: syncMissing.length })}
             </Text>
             <Table<Topic>
               dataSource={syncMissing}
@@ -1990,25 +1987,25 @@ const TopicPage = () => {
               columns={[
                 { title: 'Topic', dataIndex: 'name', key: 'name' },
                 {
-                  title: '写/读队列数',
+                  title: t('topic.writeReadQueues'),
                   key: 'queues',
                   width: 110,
                   render: (_: unknown, topic: Topic) =>
                     `${topic.writeQueues ?? '-'} / ${topic.readQueues ?? '-'}`,
                 },
                 {
-                  title: '状态',
+                  title: t('common.status'),
                   key: 'status',
                   width: 100,
                   render: (_: unknown, topic: Topic) =>
                     syncedTopics.has(topic.name) ? (
-                      <Tag color="green">已同步</Tag>
+                      <Tag color="green">{t('topic.syncedTag')}</Tag>
                     ) : (
-                      <Tag color="orange">缺失路由</Tag>
+                      <Tag color="orange">{t('topic.missingRouteTag')}</Tag>
                     ),
                 },
                 {
-                  title: '操作',
+                  title: t('topic.action'),
                   key: 'action',
                   width: 90,
                   render: (_: unknown, topic: Topic) => (
