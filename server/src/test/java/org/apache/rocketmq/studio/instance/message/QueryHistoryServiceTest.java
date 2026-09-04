@@ -165,4 +165,20 @@ class QueryHistoryServiceTest {
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
+
+    @Test
+    void storesTrimmedTopicAndMsgIdWhenRecording() {
+        service.recordMessageQuery("cluster-a", "KEY", " orders ", " msg-1 ", "tag", "k", 1L, 2L, 3, null);
+        service.recordTraceQuery("cluster-a", " msg-1 ", " orders ", 2, 1);
+
+        ArgumentCaptor<RmqMessageQuery> messageCaptor = ArgumentCaptor.forClass(RmqMessageQuery.class);
+        verify(messageQueryMapper).insert(messageCaptor.capture());
+        assertThat(messageCaptor.getValue().getTopic()).isEqualTo("orders");
+        assertThat(messageCaptor.getValue().getMsgId()).isEqualTo("msg-1");
+
+        ArgumentCaptor<RmqTraceQuery> traceCaptor = ArgumentCaptor.forClass(RmqTraceQuery.class);
+        verify(traceQueryMapper).insert(traceCaptor.capture());
+        assertThat(traceCaptor.getValue().getTopic()).isEqualTo("orders");
+        assertThat(traceCaptor.getValue().getMsgId()).isEqualTo("msg-1");
+    }
 }

@@ -74,8 +74,8 @@ public class QueryHistoryService {
                                    Long endTime, int resultCount, String resultSnapshot) {
         RmqMessageQuery query = new RmqMessageQuery();
         query.setQueryType(queryType);
-        query.setTopic(topic);
-        query.setMsgId(msgId);
+        query.setTopic(normalizeOptional(topic));
+        query.setMsgId(normalizeOptional(msgId));
         query.setTag(tag);
         query.setMessageKey(key);
         query.setStartTime(startTime);
@@ -144,8 +144,8 @@ public class QueryHistoryService {
 
     public void recordTraceQuery(String clusterId, String msgId, String topic, int nodeCount, int consumerCount) {
         RmqTraceQuery query = new RmqTraceQuery();
-        query.setMsgId(msgId);
-        query.setTopic(topic);
+        query.setMsgId(normalizeOptional(msgId));
+        query.setTopic(normalizeOptional(topic));
         query.setNodeCount(nodeCount);
         query.setConsumerCount(consumerCount);
         query.setClusterId(clusterId);
@@ -286,6 +286,10 @@ public class QueryHistoryService {
      * Escapes LIKE wildcards so user-supplied search terms match literally instead of being
      * interpreted as {@code %}/{@code _} patterns.
      */
+    static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
+    }
+
     private static String escapeLike(String search) {
         if (!StringUtils.hasText(search)) {
             return search;
