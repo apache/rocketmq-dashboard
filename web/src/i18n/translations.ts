@@ -1719,6 +1719,17 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.batchDeleteTitle': { zh: '确认批量删除', en: 'Confirm Batch Delete' },
+  'topic.batchDeleteContent': { zh: '确定要删除选中的 {count} 个 Topic 吗？此操作不可撤销。', en: 'Delete the {count} selected topics? This cannot be undone.' },
+  'topic.importLineNo': { zh: '行号', en: 'Line' },
+  'topic.importNoteCol': { zh: '说明', en: 'Notes' },
+  'topic.importStatusCol': { zh: '状态', en: 'Status' },
+  'topic.importFailedTag': { zh: '失败', en: 'Failed' },
+  'topic.importInvalidTag': { zh: '无效', en: 'Invalid' },
+  'topic.importPendingTag': { zh: '待导入', en: 'Pending' },
+  'topic.importSuccessTag': { zh: '成功', en: 'Success' },
+  'topic.searchNamePlaceholder': { zh: '搜索 Topic 名称', en: 'Search topic name' },
+  'topic.typeFilterPlaceholder': { zh: '类型筛选', en: 'Filter by type' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {

@@ -1158,22 +1158,22 @@ const TopicPage = () => {
   };
 
   const topicImportColumns: TableColumnsType<ResourceImportRow<Partial<Topic>>> = [
-    { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
-    { title: 'Topic 名称', dataIndex: 'name', key: 'name' },
+    { title: t('topic.importLineNo'), dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
+    { title: t('topic.name'), dataIndex: 'name', key: 'name' },
     {
-      title: '状态',
+      title: t('topic.importStatusCol'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (status: ResourceImportRow<Partial<Topic>>['status']) => {
-        if (status === 'success') return <Tag color="success">成功</Tag>;
-        if (status === 'failed') return <Tag color="error">失败</Tag>;
-        if (status === 'invalid') return <Tag color="warning">无效</Tag>;
-        return <Tag>待导入</Tag>;
+        if (status === 'success') return <Tag color="success">{t('topic.importSuccessTag')}</Tag>;
+        if (status === 'failed') return <Tag color="error">{t('topic.importFailedTag')}</Tag>;
+        if (status === 'invalid') return <Tag color="warning">{t('topic.importInvalidTag')}</Tag>;
+        return <Tag>{t('topic.importPendingTag')}</Tag>;
       },
     },
     {
-      title: '说明',
+      title: t('topic.importNoteCol'),
       dataIndex: 'message',
       key: 'message',
       render: (text?: string) => text || '-',
@@ -1286,7 +1286,7 @@ const TopicPage = () => {
             style={{ width: 220 }}
           />
           <Input.Search
-            placeholder="搜索 Topic 名称"
+            placeholder={t('topic.searchNamePlaceholder')}
             allowClear
             style={{ width: 260 }}
             onSearch={(value) => {
@@ -1301,7 +1301,7 @@ const TopicPage = () => {
             }}
           />
           <Select
-            placeholder="类型筛选"
+            placeholder={t('topic.typeFilterPlaceholder')}
             value={typeFilter}
             onChange={(value) => {
               setTypeFilter(value);
@@ -1318,11 +1318,11 @@ const TopicPage = () => {
               icon={<DeleteOutlined />}
               onClick={() => {
                 Modal.confirm({
-                  title: '确认批量删除',
-                  content: `确定要删除选中的 ${selectedRowKeys.length} 个 Topic 吗？此操作不可撤销。`,
-                  okText: '删除',
+                  title: t('topic.batchDeleteTitle'),
+                  content: t('topic.batchDeleteContent', { count: selectedRowKeys.length }),
+                  okText: t('topic.delete'),
                   okType: 'danger',
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     try {
                       const names = selectedRowKeys.map(String);
