@@ -46,6 +46,7 @@ import {
   CheckCircleOutlined,
   DownloadOutlined,
   HistoryOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -53,6 +54,7 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
+import SavedMessageQueriesDrawer from '../../components/SavedMessageQueriesDrawer';
 import {
   useQueueBrowser,
   QueueBrowserControls,
@@ -77,6 +79,7 @@ import {
   type MessageTraceDiagnostics,
   type TraceDiagnosticStatus,
 } from '../../utils/messageTraceDiagnostics';
+import type { SavedMessageQuery, SavedMessageQueryDraft } from '../../utils/savedMessageQueries';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -399,6 +402,7 @@ const MessagePageContent = ({
   const [traceQueryValue, setTraceQueryValue] = useState('');
   const [customTraceTopic, setCustomTraceTopic] = useState('');
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [savedQueriesDrawerOpen, setSavedQueriesDrawerOpen] = useState(false);
   const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
@@ -416,12 +420,19 @@ const MessagePageContent = ({
     [],
   );
 
-  const currentQueryParams: MessageQuery =
-    queryMode === 'topic'
-      ? { topic: selectedTopic, startTime: dateRange[0].valueOf(), endTime: dateRange[1].valueOf() }
-      : queryMode === 'key'
-        ? { topic: selectedTopic, key: keyInput || undefined }
-        : { topic: selectedTopic, msgId: msgIdInput || undefined };
+  const currentQueryParams: MessageQuery = useMemo(
+    () =>
+      queryMode === 'topic'
+        ? {
+            topic: selectedTopic,
+            startTime: dateRange[0].valueOf(),
+            endTime: dateRange[1].valueOf(),
+          }
+        : queryMode === 'key'
+          ? { topic: selectedTopic, key: keyInput || undefined }
+          : { topic: selectedTopic, msgId: msgIdInput || undefined },
+    [dateRange, keyInput, msgIdInput, queryMode, selectedTopic],
+  );
   const queryValidationError = getQueryValidationError(queryMode, currentQueryParams);
   const queryDisabledReason = !selectedInstanceId
     ? '请先选择实例'
@@ -430,6 +441,21 @@ const MessagePageContent = ({
       : topicError
         ? 'Topic 列表加载失败，请先重试'
         : queryValidationError;
+  const savableQuery = useMemo<SavedMessageQueryDraft | undefined>(() => {
+    if (!selectedInstanceId || queryMode === 'queue') return undefined;
+    const normalized = normalizeMessageQuery(queryMode, currentQueryParams);
+    if (getQueryValidationError(queryMode, normalized)) return undefined;
+    return {
+      instanceId: String(selectedInstanceId),
+      mode: queryMode,
+      topic: normalized.topic!,
+      ...(queryMode === 'key' ? { key: normalized.key } : {}),
+      ...(queryMode === 'msgid' ? { msgId: normalized.msgId } : {}),
+      ...(queryMode === 'topic'
+        ? { startTime: normalized.startTime, endTime: normalized.endTime }
+        : {}),
+    };
+  }, [currentQueryParams, queryMode, selectedInstanceId]);
 
   /* ─── Handlers ─── */
   const clearQueryResults = () => {
@@ -564,6 +590,19 @@ const MessagePageContent = ({
     setMsgIdInput(record.msgId);
     setHistoryDrawerOpen(false);
     void executeQuery('msgid', { topic: record.topic, msgId: record.msgId });
+  };
+
+  const applySavedQuery = (query: SavedMessageQuery) => {
+    queryGenerationRef.current += 1;
+    setQueryMode(query.mode);
+    setSelectedTopic(query.topic);
+    setKeyInput(query.key || '');
+    setMsgIdInput(query.msgId || '');
+    if (query.mode === 'topic' && query.startTime !== undefined && query.endTime !== undefined) {
+      setDateRange([dayjs(query.startTime), dayjs(query.endTime)]);
+    }
+    clearQueryResults();
+    message.success(t('message.saved.applied', { name: query.name }));
   };
 
   const handleVerifyConsume = () => {
@@ -1125,6 +1164,9 @@ const MessagePageContent = ({
               <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
                 服务端历史
               </Button>
+              <Button icon={<StarOutlined />} onClick={() => setSavedQueriesDrawerOpen(true)}>
+                {t('message.saved.button')}
+              </Button>
             </Space>
           )}
 
@@ -1161,6 +1203,13 @@ const MessagePageContent = ({
         onClose={() => setHistoryDrawerOpen(false)}
         onSelectMessage={replayHistoryRecord}
         onSelectTrace={replayTraceRecord}
+      />
+      <SavedMessageQueriesDrawer
+        open={savedQueriesDrawerOpen}
+        instanceId={selectedInstanceId ? String(selectedInstanceId) : undefined}
+        currentQuery={savableQuery}
+        onClose={() => setSavedQueriesDrawerOpen(false)}
+        onApply={applySavedQuery}
       />
 
       {queryError && (
