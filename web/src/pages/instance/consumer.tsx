@@ -983,11 +983,11 @@ const ConsumerPageContent = ({
             onClick={(e) => {
               e.stopPropagation();
               Modal.confirm({
-                title: `确认删除消费组 "${record.name}"？`,
-                content: '删除后该消费组的所有配置和消费进度将被清除，此操作不可恢复。',
-                okText: '删除',
+                title: t('consumer.deleteGroupTitle', { name: record.name }),
+                content: t('consumer.deleteGroupContent'),
+                okText: t('consumer.deleteOp'),
                 okButtonProps: { danger: true },
-                cancelText: '取消',
+                cancelText: t('common.cancel'),
                 onOk: async () => {
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
                   await reloadConsumerGroupPageAfterDelete();
@@ -997,7 +997,7 @@ const ConsumerPageContent = ({
               });
             }}
           >
-            删除
+            {t('consumer.deleteOp')}
           </Button>
         </Flex>
       ),
@@ -1412,9 +1412,9 @@ const ConsumerPageContent = ({
                 Modal.confirm({
                   title: '确认批量删除',
                   content: `确定要删除选中的 ${selectedRowKeys.length} 个 Group 吗？`,
-                  okText: '删除',
+                  okText: t('consumer.deleteOp'),
                   okButtonProps: { danger: true },
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
                     const { deleted, failed } = await batchDeleteConsumerGroups(
@@ -2148,14 +2148,10 @@ const ConsumerPageContent = ({
             <Alert
               type="info"
               showIcon
-              message="暂不支持采集该客户端的线程栈"
+              message={t('consumer.stackUnsupported')}
               description={
                 <>
-                  <div>
-                    经 Proxy 接入的客户端（gRPC、经 Proxy 的 Remoting）只在 Proxy 侧保持连接，Broker
-                    看不到它们；而 Proxy 目前未开放线程栈采集接口，因此这类客户端暂时无法采集。 直连
-                    Broker 的客户端可正常查看。
-                  </div>
+                  <div>{t('consumer.stackUnsupportedDesc')}</div>
                   {stackError && (
                     <div style={{ marginTop: 8, color: 'rgba(0,0,0,0.45)' }}>{stackError}</div>
                   )}
@@ -2194,7 +2190,7 @@ const ConsumerPageContent = ({
                 title: '确认创建',
                 content: `将创建消费组 "${values.name}"`,
                 okText: '确认创建',
-                cancelText: '取消',
+                cancelText: t('common.cancel'),
                 onOk: async () => {
                   setSubmitting(true);
                   try {

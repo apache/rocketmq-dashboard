@@ -1738,6 +1738,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.deleteGroupContent': { zh: '删除后该消费组的所有配置和消费进度将被清除，此操作不可恢复。', en: 'All configurations and consumption progress of this group will be cleared. This cannot be undone.' },
+  'consumer.deleteGroupTitle': { zh: '确认删除消费组 "{name}"？', en: 'Confirm deleting consumer group "{name}"?' },
+  'consumer.deleteOp': { zh: '删除', en: 'Delete' },
+  'consumer.stackUnsupported': { zh: '暂不支持采集该客户端的线程栈', en: 'Thread stacks cannot be collected for this client yet' },
+  'consumer.stackUnsupportedDesc': { zh: '经 Proxy 接入的客户端（gRPC、经 Proxy 的 Remoting）只在 Proxy 侧保持连接，Broker 看不到它们；而 Proxy 目前未开放线程栈采集接口，因此这类客户端暂时无法采集。 直连 Broker 的客户端可正常查看。', en: 'Clients connected through a Proxy (gRPC and Proxy-routed Remoting) only keep connections on the Proxy side, invisible to brokers; and the Proxy does not expose a stack-collection API yet, so these clients cannot be collected for now. Clients that connect directly to a broker work normally.' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
