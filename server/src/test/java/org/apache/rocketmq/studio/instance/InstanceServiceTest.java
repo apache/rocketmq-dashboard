@@ -34,6 +34,8 @@ import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -994,6 +996,34 @@ class InstanceServiceTest {
         instanceService.deleteInstance(1L);
 
         verify(instanceRepository).deleteById(1L);
+        verify(adminFactory).release("namesrv:9876");
+    }
+
+    @Test
+    void deleteInstanceShouldDeferEndpointReleaseUntilAfterCommit() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("to-delete")
+                .endpoint("namesrv:9876")
+                .build();
+        existing.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.findAll()).thenReturn(List.of());
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            instanceService.deleteInstance(1L);
+
+            verify(adminFactory, never()).release(any());
+
+            for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
+                sync.afterCommit();
+            }
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
         verify(adminFactory).release("namesrv:9876");
     }
 
