@@ -125,7 +125,7 @@ describe('K8sCertsPage', () => {
     renderPage();
 
     expect(await screen.findByTestId('k8s-cert-local-metadata-notice')).toHaveTextContent(
-      '当前证书记录仅保存为 Studio 本地元数据',
+      '当前证书记录仅保存为 Studio 本地配置',
     );
   });
 
