@@ -155,7 +155,11 @@ const TOPIC_TYPE_CARDS = [
 ];
 
 // ─── Perm label ───────────────────────────────────────────────────
-const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
+const PERM_LABEL: Record<string, string> = {
+  RW: 'topic.permRW',
+  RO: 'topic.permRO',
+  WO: 'topic.permWO',
+};
 
 type SendMessageFormValues = {
   topic: string;
@@ -867,10 +871,10 @@ const TopicPage = () => {
       width: 130,
       render: (_: string, record) => (
         <Space direction="vertical" size={4}>
-          <Tag>{PERM_LABEL[record.perm] || record.perm}</Tag>
+          <Tag>{t(PERM_LABEL[record.perm] || record.perm)}</Tag>
           <Space size={4}>
-            <Tag color={record.readable ? 'success' : 'error'}>读</Tag>
-            <Tag color={record.writable ? 'success' : 'error'}>写</Tag>
+            <Tag color={record.readable ? 'success' : 'error'}>{t('topic.permRead')}</Tag>
+            <Tag color={record.writable ? 'success' : 'error'}>{t('topic.permWrite')}</Tag>
           </Space>
         </Space>
       ),
@@ -1107,7 +1111,7 @@ const TopicPage = () => {
         <Descriptions.Item label="写队列数">{topic.writeQueues}</Descriptions.Item>
         <Descriptions.Item label="读队列数">{topic.readQueues}</Descriptions.Item>
         <Descriptions.Item label="权限">
-          <Tag>{PERM_LABEL[topic.perm]}</Tag>
+          <Tag>{t(PERM_LABEL[topic.perm])}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label="今日消息量">{formatNumber(topic.messageCount)}</Descriptions.Item>
         <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
