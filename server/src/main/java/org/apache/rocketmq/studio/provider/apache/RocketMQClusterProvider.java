@@ -143,6 +143,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
             log.debug("NameServer address not configured, cannot refresh cluster detail");
             return null;
         }
+        String normalizedClusterId = clusterId == null ? null : clusterId.trim();
 
         try {
             return executeAdmin(instanceId, namesrvAddr, admin -> {
@@ -154,7 +155,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 Map<String, Set<String>> clusterAddrTable = clusterInfo.getClusterAddrTable();
                 Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
 
-                Set<String> brokerNames = clusterAddrTable.get(clusterId);
+                Set<String> brokerNames = clusterAddrTable.get(normalizedClusterId);
                 if (brokerNames == null) {
                     return null;
                 }
