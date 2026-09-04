@@ -620,7 +620,7 @@ describe('ACL page', () => {
     await user.type(clusterInput, 'DefaultCluster');
     await user.click(await screen.findByRole('button', { name: /检\s*查\s*配\s*置/ }));
 
-    expect(await screen.findByText('rocketmq-admin')).toBeInTheDocument();
+    expect(await screen.findAllByText('rocketmq-admin')).not.toHaveLength(0);
     expect(screen.getByText('ACL 2.0')).toBeInTheDocument();
     expect(aclService.examineBrokerClusterAclConfig).toHaveBeenCalledTimes(1);
   });
@@ -717,8 +717,8 @@ describe('ACL page', () => {
       });
     });
 
-    expect(await screen.findByText('latest-account')).toBeInTheDocument();
-    expect(screen.getByText('ACL latest')).toBeInTheDocument();
+    expect(await screen.findAllByText('latest-account')).not.toHaveLength(0);
+    expect(screen.getAllByText('ACL latest')).not.toHaveLength(0);
     await waitFor(() => expect(examineButton).not.toHaveClass('ant-btn-loading'));
     expect(successSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).not.toHaveBeenCalled();
@@ -801,6 +801,43 @@ describe('ACL page', () => {
     expect(within(row).getByText('latest-access-key')).toBeInTheDocument();
     expect(screen.queryByText('stale-secret-key')).not.toBeInTheDocument();
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('renders ACL risk diagnostics for the examined cluster config', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValue({
+      clusterId: 'DefaultCluster',
+      aclEnabled: true,
+      aclVersion: 'ACL 2.0',
+      globalWhiteRemoteAddresses: ['*'],
+      accounts: [
+        {
+          accessKey: 'admin-ak',
+          admin: true,
+          whiteRemoteAddress: '0.0.0.0/0',
+          defaultTopicPerm: 'ALL',
+          defaultGroupPerm: 'ALL',
+          topicPerms: ['*=ALL'],
+          groupPerms: ['*=SUB'],
+        },
+      ],
+      accountCount: 1,
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    await user.click(await screen.findByRole('button', { name: /检\s*查\s*配\s*置/ }));
+
+    const diagnostics = await screen.findByTestId('acl-risk-diagnostics');
+    expect(within(diagnostics).getByText('ACL 风险诊断')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('ACL 配置存在高风险')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('全局 IP 白名单范围过大')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('管理员账号可从宽网段访问')).toBeInTheDocument();
+    expect(
+      within(diagnostics).getAllByText(
+        '将默认 Topic 权限改为 DENY，并为确需访问的 Topic 配置最小权限。',
+      ),
+    ).not.toHaveLength(0);
   });
 
   it('creates a plain access account', async () => {
