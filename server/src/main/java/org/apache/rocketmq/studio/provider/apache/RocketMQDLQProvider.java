@@ -266,6 +266,9 @@ public class RocketMQDLQProvider implements DLQProvider {
             List<MessageExt> resolved = new ArrayList<>(selected.size());
             for (String msgId : selected) {
                 try {
+                    if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(admin, msgId)) {
+                        continue;
+                    }
                     MessageExt deadLetter = admin.viewMessage(dlqTopic, msgId);
                     if (deadLetter != null) {
                         resolved.add(deadLetter);

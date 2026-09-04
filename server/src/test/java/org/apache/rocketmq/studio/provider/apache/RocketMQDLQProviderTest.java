@@ -25,10 +25,13 @@ import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -37,6 +40,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,9 +51,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -308,6 +315,73 @@ class RocketMQDLQProviderTest {
 
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
         verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendSelectedMessagesRejectsForgedMsgIdOutsideKnownTopology() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String forgedMsgId = MessageDecoder.createMessageId(new InetSocketAddress("10.2.3.4", 10911), 12345L);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        stubExistingTarget("target-topic");
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(forgedMsgId), "target-topic");
+
+        assertThat(result.getMatched()).isZero();
+        assertThat(result.getResent()).isZero();
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @Test
+    void resendSelectedMessagesResolvesInTopologyMsgIdNormally() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId(msgId);
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1, 2, 3});
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        when(adminExt.viewMessage(dlqTopic, msgId)).thenReturn(deadLetter);
+        stubExistingTarget("target-topic");
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(msgId), "target-topic");
+
+        assertThat(result.getMatched()).isEqualTo(1);
+        assertThat(result.getResent()).isEqualTo(1);
+        assertThat(result.getOutcome()).isEqualTo("SUCCESS");
+        verify(adminExt).viewMessage(dlqTopic, msgId);
+    }
+
+    @Test
+    void resendSelectedMessagesPassesNonOffsetIdsThroughToViewMessage() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(adminExt.viewMessage(dlqTopic, "uniq-key-1"))
+                .thenThrow(new IllegalStateException("unique key lookup handled by MQAdminImpl"));
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of("uniq-key-1"), null);
+
+        assertThat(result.getMatched()).isZero();
+        verify(adminExt).viewMessage(dlqTopic, "uniq-key-1");
+        verify(adminExt, never()).examineBrokerClusterInfo();
+    }
+
+    @Test
+    void resendSelectedMessagesFailsClosedWhenTopologyCannotBeVerified() throws Exception {
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("nameserver unreachable"));
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(msgId), null);
+
+        assertThat(result.getMatched()).isZero();
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
     @Test
@@ -703,5 +777,27 @@ class RocketMQDLQProviderTest {
                 provider.exportMessages("instance-a", "group-a", 100L, 200L, 0);
         assertThat(exported.getMessages()).isEmpty();
         assertThat(exported.getLimit()).isEqualTo(5000);
+    }
+
+    private void stubExistingTarget(String topic) throws Exception {
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of(topic));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+    }
+
+    private static ClusterInfo clusterInfoWithBrokerAddresses(String... brokerAddresses) {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        for (int index = 0; index < brokerAddresses.length; index++) {
+            BrokerData brokerData = new BrokerData();
+            brokerData.setBrokerName("broker-" + index);
+            brokerData.setCluster("cluster-a");
+            HashMap<Long, String> brokerAddrs = new HashMap<>();
+            brokerAddrs.put(0L, brokerAddresses[index]);
+            brokerData.setBrokerAddrs(brokerAddrs);
+            brokerAddrTable.put(brokerData.getBrokerName(), brokerData);
+        }
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        return clusterInfo;
     }
 }
