@@ -49,6 +49,22 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
     }
 
     @Override
+    public AlertSilenceVO update(AlertSilenceVO silence) {
+        RmqAlertSilence entity = toEntity(silence);
+        entity.setId(silence.getId());
+        if (mapper.updateById(entity) <= 0) {
+            throw new IllegalStateException("Unable to update alert silence: " + silence.getId());
+        }
+        return silence;
+    }
+
+    @Override
+    public AlertSilenceVO findById(Long id) {
+        RmqAlertSilence entity = mapper.selectById(id);
+        return entity == null ? null : toVo(entity);
+    }
+
+    @Override
     public List<AlertSilenceVO> findAll() {
         return mapper.selectList(new QueryWrapper<RmqAlertSilence>()
                         .orderByDesc("ends_at").orderByDesc("id"))

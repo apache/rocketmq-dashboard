@@ -467,6 +467,21 @@ export async function createAlertSilence(data: CreateAlertSilence): Promise<Aler
   return silence;
 }
 
+export async function updateAlertSilence(
+  id: number,
+  data: CreateAlertSilence,
+): Promise<AlertSilence> {
+  if (!isMockMode()) return opsApi.updateAlertSilence(id, data);
+  let updated: AlertSilence | undefined;
+  alertSilencesState = alertSilencesState.map((silence) => {
+    if (silence.id !== id) return silence;
+    updated = { ...silence, ...data } as AlertSilence;
+    return updated;
+  });
+  if (!updated) throw new Error(`Maintenance window not found: ${id}`);
+  return updated;
+}
+
 export async function deleteAlertSilence(id: number): Promise<void> {
   if (!isMockMode()) return opsApi.deleteAlertSilence(id);
   alertSilencesState = alertSilencesState.filter((silence) => silence.id !== id);

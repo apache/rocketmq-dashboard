@@ -19,6 +19,7 @@ import {
   listAlertDeliveries,
   listRelatedSystemAlerts,
   retryAlertDelivery,
+  updateAlertSilence,
   deleteAlertSilence,
   listAlertSilences,
   listAlertSilencesPage,
@@ -37,7 +38,18 @@ vi.mock('../../../services/opsService', () => ({
   listAlertSilences: vi.fn(),
   listAlertSilencesPage: vi.fn(),
   createAlertSilence: vi.fn(),
+  updateAlertSilence: vi.fn(),
   deleteAlertSilence: vi.fn(),
+}));
+
+const authState = {
+  admin: false as boolean | null,
+  userId: 1 as number | null,
+  logout: vi.fn(),
+};
+
+vi.mock('../../../stores/authStore', () => ({
+  default: (selector: (state: typeof authState) => unknown) => selector(authState),
 }));
 
 vi.mock('../../../utils/download', async () => {
@@ -73,7 +85,10 @@ const renderPage = () =>
 
 describe('SystemAlertsPage', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.clearAllMocks();
+    authState.admin = null;
+    authState.userId = null;
     vi.mocked(listSystemAlertsPage).mockResolvedValue({
       items: [
         {
@@ -337,6 +352,7 @@ describe('SystemAlertsPage', () => {
       size: 20,
     });
     const user = userEvent.setup();
+    authState.admin = true;
     renderPage();
 
     await screen.findByText('Historical disk alert');
@@ -606,6 +622,83 @@ describe('SystemAlertsPage', () => {
 
     await waitFor(() => {
       expect(deleteAlertSilence).toHaveBeenCalledWith(10);
+      expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
+    });
+  });
+
+  it('edits an existing maintenance window and submits the updated schedule', async () => {
+    vi.mocked(listAlertSilencesPage)
+      .mockReset()
+      .mockResolvedValue({
+        items: [
+          {
+            id: 9,
+            domain: 'CLUSTER',
+            instanceId: 'local',
+            labels: { brokerName: 'broker-a' },
+            startsAt: '2026-08-10T01:00:00Z',
+            endsAt: '2026-08-10T02:00:00Z',
+            recurrence: 'WEEKLY',
+            timeZone: 'Asia/Shanghai',
+            recurrenceDays: [1, 3],
+            recurrenceUntil: '2026-09-01T00:00:00Z',
+            reason: 'deploy',
+            createdBy: 'alice',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 10,
+      });
+    vi.mocked(updateAlertSilence).mockResolvedValue({
+      id: 9,
+      domain: 'CLUSTER',
+      instanceId: 'local',
+      startsAt: '2026-08-10T01:00:00Z',
+      endsAt: '2026-08-10T03:00:00Z',
+      recurrence: 'WEEKLY',
+      timeZone: 'Asia/Shanghai',
+      recurrenceDays: [1, 3],
+      recurrenceUntil: '2026-09-01T00:00:00Z',
+      createdBy: 'alice',
+    });
+    const user = userEvent.setup();
+    authState.admin = true;
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    expect(await screen.findByText(/CLUSTER.*local/)).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /编\s*辑/ }));
+
+    expect(screen.getByLabelText('规则 ID')).toHaveValue('');
+    expect(screen.getByLabelText('实例 ID')).toHaveValue('local');
+    expect(screen.getByLabelText('标签范围')).toHaveValue('brokerName=broker-a');
+    expect(screen.getByLabelText('开始时间')).toHaveValue('2026-08-10T01:00');
+    expect(screen.getByLabelText('结束时间')).toHaveValue('2026-08-10T02:00');
+    expect(screen.getByLabelText('时区')).toHaveValue('Asia/Shanghai');
+    expect(screen.getByLabelText('重复至')).toHaveValue('2026-09-01T00:00');
+    expect(screen.getByLabelText('原因')).toHaveValue('deploy');
+    expect(screen.getByRole('button', { name: /保\s*存/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-08-10T10:00' } });
+    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => {
+      expect(updateAlertSilence).toHaveBeenCalledWith(
+        9,
+        expect.objectContaining({
+          domain: 'CLUSTER',
+          instanceId: 'local',
+          labels: { brokerName: 'broker-a' },
+          startsAt: '2026-08-09T17:00:00.000Z',
+          endsAt: '2026-08-10T02:00:00.000Z',
+          recurrence: 'WEEKLY',
+          timeZone: 'Asia/Shanghai',
+          recurrenceDays: [1, 3],
+          recurrenceUntil: '2026-08-31T16:00:00.000Z',
+          reason: 'deploy',
+        }),
+      );
       expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
     });
   });

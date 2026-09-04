@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -155,5 +156,38 @@ class MybatisPlusAlertSilenceRepositoryTest {
         assertThat(restored.get(0).getRecurrenceDays()).containsExactlyInAnyOrder(1, 3, 5);
         assertThat(restored.get(1).getRecurrence()).isEqualTo(AlertSilenceRecurrence.ONCE);
         assertThat(restored.get(1).getRecurrenceDays()).isEmpty();
+    }
+
+    @Test
+    void updateShouldPersistTheProvidedIdAndScheduleTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        AlertSilenceVO silence = AlertSilenceVO.builder().id(31L)
+                .startsAt(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .endsAt(LocalDateTime.of(2026, 9, 1, 11, 0))
+                .recurrence(AlertSilenceRecurrence.DAILY).timeZone("UTC")
+                .recurrenceUntil(LocalDateTime.of(2026, 10, 1, 0, 0)).createdBy("alice").build();
+        when(mapper.updateById(any(RmqAlertSilence.class))).thenReturn(1);
+
+        AlertSilenceVO updated = repository.update(silence);
+
+        ArgumentCaptor<RmqAlertSilence> captor = ArgumentCaptor.forClass(RmqAlertSilence.class);
+        verify(mapper).updateById(captor.capture());
+        assertThat(updated).isSameAs(silence);
+        assertThat(captor.getValue().getId()).isEqualTo(31L);
+        assertThat(captor.getValue().getRecurrence()).isEqualTo("DAILY");
+        assertThat(captor.getValue().getRecurrenceUntil()).isEqualTo(LocalDateTime.of(2026, 10, 1, 0, 0));
+    }
+
+    @Test
+    void updateShouldFailWhenNoRowChangesTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        AlertSilenceVO silence = AlertSilenceVO.builder().id(404L).createdBy("alice").build();
+        when(mapper.updateById(any(RmqAlertSilence.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> repository.update(silence))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Unable to update alert silence: 404");
     }
 }
