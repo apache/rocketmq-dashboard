@@ -17,11 +17,17 @@
 
 import axios from 'axios';
 import { message } from 'antd';
+import { getInitialLanguage } from '../i18n/languagePreference';
+import translations from '../i18n/translations';
 import { clearAuthSession } from '../stores/authStorage';
 import { clearAiChatHistories } from '../stores/aiChatHistoryStore';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
+
+function apiText(key: string): string {
+  return translations[key]?.[getInitialLanguage()] ?? key;
+}
 const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/status']);
 
 interface BusinessResponse {
@@ -43,11 +49,8 @@ function getBusinessError(data: unknown): string | null {
   if (typeof data.code !== 'number' && !('message' in data) && !('data' in data)) {
     return null;
   }
-  return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
+  return typeof data.message === 'string' && data.message.trim() ? data.message : apiText('api.requestFailed');
 }
-
-const CORS_REJECTION_HINT =
-  '请求被服务端 CORS 策略拒绝（Invalid CORS request）：当前访问地址不在后端白名单，请检查部署的 STUDIO_CORS_ALLOWED_ORIGINS 配置';
 
 /**
  * Spring CORS rejects non-whitelisted origins with 403 and a plain-text body (often
@@ -103,9 +106,10 @@ client.interceptors.response.use(
       return Promise.reject(error);
     }
     if (isCorsRejection(error)) {
-      message.error(CORS_REJECTION_HINT);
+      const hint = apiText('api.corsRejection');
+      message.error(hint);
       if (error instanceof Error) {
-        error.message = CORS_REJECTION_HINT;
+        error.message = hint;
       }
       return Promise.reject(error);
     }
