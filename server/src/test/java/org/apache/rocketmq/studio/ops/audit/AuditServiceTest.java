@@ -201,4 +201,18 @@ class AuditServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("beforeDays must not exceed 365");
     }
+
+    @Test
+    void cleanupLogsDeletesBeforeComputedCutoffAndReturnsCount() {
+        when(auditRepository.deleteBefore(any())).thenReturn(7);
+
+        int deleted = auditService.cleanupLogs(30);
+
+        assertThat(deleted).isEqualTo(7);
+        ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(auditRepository).deleteBefore(captor.capture());
+        LocalDateTime cutoff = captor.getValue();
+        LocalDateTime now = LocalDateTime.now();
+        assertThat(cutoff).isAfter(now.minusDays(31)).isBefore(now.minusDays(29));
+    }
 }
