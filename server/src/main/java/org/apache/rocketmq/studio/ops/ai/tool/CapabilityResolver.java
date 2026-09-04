@@ -35,6 +35,9 @@ public class CapabilityResolver {
     }
 
     List<String> resolve(ClusterVO cluster) {
+        if (cluster == null) {
+            throw new BusinessException(404, "Cluster not found");
+        }
         if (cluster.getType() == null) {
             throw new BusinessException(
                     400, "Cluster type is unavailable: " + cluster.getId());
