@@ -2368,6 +2368,12 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'nav.studioUsers': { zh: '用户管理', en: 'User Management' },
+  'layout.searchNotFound': { zh: '未找到匹配页面', en: 'No matching page' },
+  'layout.searchNavHint': { zh: '↑↓ 切换', en: '↑↓ Navigate' },
+  'layout.searchOpenHint': { zh: '↵ 打开', en: '↵ Open' },
+  'layout.searchCloseHint': { zh: 'ESC 关闭', en: 'ESC Close' },
+  'layout.logoutServerFailed': { zh: '服务端退出失败，已清除本地登录状态', en: 'Server-side logout failed; local login cleared' },
   // ─── BrokerCluster ───
 };
 
