@@ -2368,6 +2368,18 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'messageQueryHistory.title': { zh: '服务端查询历史', en: 'Server-side Query History' },
+  'messageQueryHistory.statMessages': { zh: '消息查询', en: 'Message Queries' },
+  'messageQueryHistory.statTraces': { zh: '轨迹查询', en: 'Trace Queries' },
+  'messageQueryHistory.statLatest': { zh: '最近查询', en: 'Latest Query' },
+  'messageQueryHistory.searchPlaceholder': { zh: '搜索 Topic、Message ID、Key 或操作者', en: 'Search by Topic, Message ID, Key or operator' },
+  'messageQueryHistory.loadFailed': { zh: '查询历史加载失败', en: 'Failed to load query history' },
+  'messageQueryHistory.colType': { zh: '类型', en: 'Type' },
+  'messageQueryHistory.colResultCount': { zh: '结果数', en: 'Result Count' },
+  'messageQueryHistory.colOperator': { zh: '操作者', en: 'Operator' },
+  'messageQueryHistory.colQueryTime': { zh: '查询时间', en: 'Query Time' },
+  'messageQueryHistory.colTraceNodes': { zh: '轨迹节点', en: 'Trace Nodes' },
+  'messageQueryHistory.colConsumers': { zh: '消费者', en: 'Consumers' },
   // ─── BrokerCluster ───
 };
 
