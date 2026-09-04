@@ -22,6 +22,7 @@ import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  BrokerConfigDiffResult,
   ClusterInfo,
   ClusterProbeResult,
   NameServerConfigDiffResult,
@@ -669,6 +670,117 @@ describe('Cluster page', () => {
     });
 
     expect(dialog).toHaveClass('ant-zoom-leave');
+  });
+
+  it('does not reopen a closed Broker config diff when its request finishes', async () => {
+    const pendingDiff = deferred<BrokerConfigDiffResult>();
+    clusterServiceMocks.getBrokerConfigDiff.mockReturnValue(pendingDiff.promise);
+    renderWithProviders(<ClusterPage />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /Broker 管理/ }));
+    const row = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    fireEvent.click(within(row).getByRole('button', { name: /配置差异/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Broker 配置差异/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+    await waitFor(() => expect(dialog).toHaveClass('ant-zoom-leave'));
+
+    await act(async () => {
+      pendingDiff.resolve({
+        cluster: 'cluster-prod',
+        complete: true,
+        driftDetected: false,
+        brokerCount: 2,
+        reachableBrokerCount: 2,
+        comparedFields: ['flushDiskType', 'writeQueueNums'],
+        brokers: [
+          { name: 'rocketmq-prod-0', address: '10.101.2.11:10911', reachable: true },
+          { name: 'rocketmq-prod-1', address: '10.101.2.12:10911', reachable: true },
+        ],
+        differences: [],
+      });
+      await pendingDiff.promise;
+    });
+
+    expect(dialog).toHaveClass('ant-zoom-leave');
+  });
+
+  it('keeps the requested broker config diff when a slower response finishes last', async () => {
+    const staleDiff = deferred<BrokerConfigDiffResult>();
+    const latestDiff = deferred<BrokerConfigDiffResult>();
+    clusterServiceMocks.getBrokerConfigDiff
+      .mockReturnValueOnce(staleDiff.promise)
+      .mockReturnValueOnce(latestDiff.promise);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        id: 'cluster-stale',
+        nsClusterName: 'ns-stale',
+        brokers: [{ ...buildCluster().brokers[0], addr: '10.101.2.11:10911' }],
+      },
+      {
+        ...buildCluster(),
+        id: 'cluster-latest',
+        nsClusterName: 'ns-latest',
+        brokers: [{ ...buildCluster().brokers[0], addr: '10.101.2.99:10911' }],
+      },
+    ]);
+    renderWithProviders(<ClusterPage />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /Broker 管理/ }));
+    const staleRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    fireEvent.click(within(staleRow).getByRole('button', { name: /配置差异/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Broker 配置差异/ });
+
+    const latestRow = await screen.findByRole('row', { name: /10\.101\.2\.99:10911/ });
+    fireEvent.click(within(latestRow).getByRole('button', { name: /配置差异/ }));
+
+    await act(async () => {
+      latestDiff.resolve({
+        cluster: 'cluster-latest',
+        complete: true,
+        driftDetected: false,
+        brokerCount: 2,
+        reachableBrokerCount: 2,
+        comparedFields: ['flushDiskType'],
+        brokers: [
+          { name: 'rocketmq-prod-0', address: '10.101.2.11:10911', reachable: true },
+          { name: 'rocketmq-prod-1', address: '10.101.2.12:10911', reachable: true },
+        ],
+        differences: [],
+      });
+      await latestDiff.promise;
+      staleDiff.resolve({
+        cluster: 'cluster-stale',
+        complete: true,
+        driftDetected: true,
+        brokerCount: 2,
+        reachableBrokerCount: 2,
+        comparedFields: ['flushDiskType'],
+        brokers: [
+          { name: 'rocketmq-prod-0', address: '10.101.2.11:10911', reachable: true },
+          { name: 'rocketmq-prod-1', address: '10.101.2.12:10911', reachable: true },
+        ],
+        differences: [
+          {
+            field: 'writeQueueNums',
+            brokerProperty: 'defaultTopicQueueNums',
+            values: [
+              {
+                brokerName: 'rocketmq-prod-0',
+                address: '10.101.2.11:10911',
+                configured: true,
+                value: '8',
+              },
+            ],
+          },
+        ],
+      });
+      await staleDiff.promise;
+    });
+
+    await waitFor(() => expect(within(dialog).getByText('Broker 配置一致')).toBeInTheDocument());
+    expect(within(dialog).getByText(/ns-latest/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/ns-stale/)).not.toBeInTheDocument();
   });
 
   it('keeps the latest connection result after closing and reopening the modal', async () => {
