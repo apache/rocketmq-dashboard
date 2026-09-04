@@ -234,6 +234,63 @@ const translations: Record<string, Record<Lang, string>> = {
   'group.title': { zh: 'Group 管理', en: 'Group Management' },
   'acl.title': { zh: 'ACL 管理', en: 'ACL Management' },
   'message.title': { zh: '消息查询', en: 'Message Search' },
+  'message.saved.button': { zh: '已保存查询', en: 'Saved Queries' },
+  'message.saved.title': { zh: '已保存的消息查询', en: 'Saved Message Queries' },
+  'message.saved.scopeTitle': { zh: '查询预设按实例隔离', en: 'Queries are scoped by instance' },
+  'message.saved.scopeDescription': {
+    zh: '当前仅显示实例 {instance} 的查询预设。',
+    en: 'Showing saved queries for instance {instance}.',
+  },
+  'message.saved.selectInstance': {
+    zh: '请先选择实例，再保存或复用查询条件。',
+    en: 'Select an instance before saving or reusing query criteria.',
+  },
+  'message.saved.name': { zh: '预设名称', en: 'Preset Name' },
+  'message.saved.nameInput': { zh: '查询预设名称', en: 'Query preset name' },
+  'message.saved.namePlaceholder': {
+    zh: '例如：订单失败排查',
+    en: 'e.g. Failed order investigation',
+  },
+  'message.saved.renameInput': { zh: '重命名查询预设', en: 'Rename query preset' },
+  'message.saved.mode': { zh: '查询方式', en: 'Query Mode' },
+  'message.saved.mode.topic': { zh: 'Topic', en: 'Topic' },
+  'message.saved.mode.key': { zh: 'Key', en: 'Key' },
+  'message.saved.mode.msgid': { zh: '消息 ID', en: 'Message ID' },
+  'message.saved.criteria': { zh: '查询条件', en: 'Criteria' },
+  'message.saved.updatedAt': { zh: '更新时间', en: 'Updated At' },
+  'message.saved.apply': { zh: '应用', en: 'Apply' },
+  'message.saved.saveCurrent': { zh: '保存当前条件', en: 'Save Current Criteria' },
+  'message.saved.search': { zh: '搜索已保存查询', en: 'Search saved queries' },
+  'message.saved.searchPlaceholder': {
+    zh: '搜索名称、Topic、Key 或 Message ID',
+    en: 'Search name, Topic, Key, or Message ID',
+  },
+  'message.saved.empty': { zh: '当前实例暂无已保存查询', en: 'No saved queries for this instance' },
+  'message.saved.deleteConfirm': {
+    zh: '确定删除这个查询预设吗？',
+    en: 'Delete this saved query?',
+  },
+  'message.saved.saved': { zh: '查询条件已保存', en: 'Query criteria saved' },
+  'message.saved.renamed': { zh: '查询预设已重命名', en: 'Saved query renamed' },
+  'message.saved.deleted': { zh: '查询预设已删除', en: 'Saved query deleted' },
+  'message.saved.applied': { zh: '已应用查询预设“{name}”', en: 'Applied saved query “{name}”' },
+  'message.saved.duplicateName': {
+    zh: '当前实例已存在同名查询预设',
+    en: 'A saved query with this name already exists for the instance',
+  },
+  'message.saved.invalid': { zh: '查询预设内容无效', en: 'The saved query is invalid' },
+  'message.saved.incomplete': {
+    zh: '请先填写完整且有效的查询条件',
+    en: 'Complete the required query criteria first',
+  },
+  'message.saved.notFound': {
+    zh: '查询预设已不存在，列表已刷新',
+    en: 'The saved query no longer exists; the list was refreshed',
+  },
+  'message.saved.storageFailed': {
+    zh: '浏览器存储不可用，无法保存查询预设',
+    en: 'Browser storage is unavailable; the query could not be saved',
+  },
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
