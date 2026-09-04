@@ -37,7 +37,10 @@ export interface CsvColumn<T> {
 
 export const escapeCsvCell = (value: unknown) => {
   const text = value == null ? '' : String(value);
-  const formulaSafeText = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
+  // Prefix both formulas and literal apostrophe-prefixed formulas. The importer removes
+  // exactly one protection apostrophe, so any apostrophes supplied by the user survive a
+  // complete export/import round trip.
+  const formulaSafeText = /^(?:[=+\-@\t\r\n]|'+[=+\-@\t\r\n])/.test(text) ? `'${text}` : text;
   return `"${formulaSafeText.replace(/"/g, '""')}"`;
 };
 

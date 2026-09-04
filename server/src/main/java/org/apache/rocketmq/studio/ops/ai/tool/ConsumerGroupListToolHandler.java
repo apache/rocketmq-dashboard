@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.tool;
 
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -42,9 +43,11 @@ public class ConsumerGroupListToolHandler implements ToolHandler {
     public Object execute(Map<String, Object> input) {
         String clusterId = (String) input.get("cluster");
         String search = (String) input.get("search");
-        return metadataService.listConsumerGroups(clusterId, search).stream()
+        PageResult<ConsumerGroupVO> page = metadataService.listConsumerGroupsPage(
+                clusterId, null, search, ToolListPagination.page(input), ToolListPagination.pageSize(input));
+        return ToolListPagination.pagedResult(page, page.getItems().stream()
                 .map(ConsumerGroupListToolHandler::safeProjection)
-                .toList();
+                .toList());
     }
 
     private static Map<String, Object> safeProjection(ConsumerGroupVO group) {

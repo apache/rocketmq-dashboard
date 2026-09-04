@@ -46,7 +46,8 @@ public class AlertService {
 
     private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
     private static final Pattern METRIC_NAME_PATTERN = Pattern.compile("^[a-zA-Z_:][a-zA-Z0-9_:]*$");
-    private static final Pattern DURATION_PATTERN = Pattern.compile("^\\d+(ms|s|m|h|d|w|y)$");
+    private static final Pattern DURATION_PATTERN = Pattern.compile(
+            "^" + AlertRuleRequestDTO.PROMETHEUS_DURATION_REGEXP + "$");
 
     private final AlertRepository alertRepository;
     private final AlertStateRepository alertStateRepository;

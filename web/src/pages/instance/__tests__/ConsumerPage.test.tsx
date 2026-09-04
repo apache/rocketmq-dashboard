@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-import { App, Modal } from 'antd';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { App, Modal, message } from 'antd';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConsumerGroup } from '../../../api/metadata';
 import * as instanceService from '../../../services/instanceService';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -31,12 +31,15 @@ vi.mock('../../../services/consumerService', () => ({
   batchDeleteConsumerGroups: vi.fn(),
   createConsumerGroup: vi.fn(),
   deleteConsumerGroup: vi.fn(),
+  exportConsumerGroups: vi.fn(),
   getConsumerGroup: vi.fn(),
   getConsumerProgress: vi.fn(),
   getConsumerStack: vi.fn(),
   getConsumerSubscriptions: vi.fn(),
   getConsumerGroupSettings: vi.fn(),
+  importConsumerGroups: vi.fn(),
   listAllConsumerGroups: vi.fn(),
+  previewConsumerOffsetReset: vi.fn(),
   updateConsumerGroupSettings: vi.fn(),
   listConsumerGroupPage: vi.fn(),
   refreshConsumerGroup: vi.fn(),
@@ -46,7 +49,7 @@ const instanceServiceMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
 
 vi.mock('../../../services/instanceService', () => instanceServiceMocks);
 
-beforeAll(() => {
+const installBrowserMocks = () => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -68,7 +71,7 @@ beforeAll(() => {
     writable: true,
     value: vi.fn(),
   });
-});
+};
 
 const group: ConsumerGroup = {
   name: 'remote-cg',
@@ -88,6 +91,12 @@ const group: ConsumerGroup = {
   instances: [],
 };
 
+const buildGroups = (count: number): ConsumerGroup[] =>
+  Array.from({ length: count }, (_, index) => ({
+    ...group,
+    name: `remote-cg-${String(index + 1).padStart(2, '0')}`,
+  }));
+
 const groupPage = (
   items: ConsumerGroup[],
   overrides: Partial<{ total: number; page: number; size: number }> = {},
@@ -99,6 +108,14 @@ const groupPage = (
   ...overrides,
 });
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+};
+
 const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/consumer') =>
   render(
     <App>
@@ -108,9 +125,13 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/c
     </App>,
   );
 
+beforeAll(installBrowserMocks);
+
 describe('Consumer page', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.resetAllMocks();
+    installBrowserMocks();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
         id: 1,
@@ -126,6 +147,7 @@ describe('Consumer page', () => {
     ]);
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
     vi.mocked(consumerService.listAllConsumerGroups).mockResolvedValue([group]);
+    vi.mocked(consumerService.exportConsumerGroups).mockResolvedValue('"Name"\n"remote-cg"');
     vi.mocked(consumerService.refreshConsumerGroup).mockResolvedValue({
       ...group,
       totalLag: 42,
@@ -147,6 +169,26 @@ describe('Consumer page', () => {
           gmtModified: '2026-07-24T00:00:00Z',
         }) as ConsumerGroup,
     );
+    vi.mocked(consumerService.importConsumerGroups).mockResolvedValue({
+      imported: 1,
+      failed: 0,
+      groups: [
+        {
+          ...group,
+          name: 'imported-cg',
+          namespace: 'default',
+          clusterId: 'server-cluster',
+          onlineInstances: 0,
+          totalLag: 0,
+          delaySeconds: 0,
+          instances: [],
+          subscribedTopics: [],
+          gmtCreate: '2026-07-24T00:00:00Z',
+          gmtModified: '2026-07-24T00:00:00Z',
+        },
+      ],
+      failures: [],
+    });
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
       {
         topic: 'remote-topic',
@@ -174,6 +216,39 @@ describe('Consumer page', () => {
         consistency: '一致',
       },
     ]);
+    vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
+      instanceId: 'instance-1',
+      groupName: 'remote-cg',
+      topic: 'remote-topic',
+      timestamp: 1784246400000,
+      complete: true,
+      allowReset: true,
+      queueCount: 1,
+      warningCount: 1,
+      rewindQueueCount: 1,
+      fastForwardQueueCount: 0,
+      currentTotalLag: 30,
+      projectedTotalLag: 40,
+      totalOffsetDelta: -10,
+      warnings: ['1 queue(s) will move backward and may replay consumed messages'],
+      queues: [
+        {
+          topic: 'remote-topic',
+          broker: 'broker-a',
+          queueId: 0,
+          minOffset: 0,
+          maxOffset: 200,
+          brokerOffset: 120,
+          consumerOffset: 90,
+          targetOffset: 80,
+          currentLag: 30,
+          projectedLag: 40,
+          offsetDelta: -10,
+          riskLevel: 'WARNING',
+          message: 'Replays 10 message(s)',
+        },
+      ],
+    });
     vi.mocked(consumerService.getConsumerStack).mockResolvedValue({
       groupName: 'remote-cg',
       clientId: 'client-1',
@@ -217,6 +292,158 @@ describe('Consumer page', () => {
       pageSize: 20,
       search: undefined,
     });
+  });
+
+  afterEach(() => {
+    cleanup();
+    Modal.destroyAll();
+    message.destroy();
+  });
+
+  it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
+    const user = userEvent.setup();
+    let call = 0;
+    vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) => {
+      call += 1;
+      if (params?.page === 2) {
+        // Page 2 went out of range (its rows were deleted server-side).
+        return groupPage([], { total: 15, page: 2 });
+      }
+      // First load reports 45 rows (3 pages); the clamp re-fetch reports the shrunk 15.
+      return call === 1
+        ? groupPage(buildGroups(20), { total: 45, size: 20 })
+        : groupPage(buildGroups(15), { total: 15, size: 20 });
+    });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg-01')).toBeInTheDocument();
+
+    const secondPage = document.querySelector('.ant-pagination-item-2');
+    expect(secondPage).not.toBeNull();
+    await user.click(secondPage as HTMLElement);
+
+    // The empty out-of-range page is corrected: the list reloads page 1.
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
+  });
+
+  it('reloads the server page after deleting one consumer group', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(consumerService.deleteConsumerGroup).mockResolvedValue(undefined);
+    vi.mocked(consumerService.listConsumerGroupPage)
+      .mockResolvedValueOnce(groupPage([group]))
+      .mockResolvedValueOnce(groupPage([]));
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() =>
+      expect(consumerService.deleteConsumerGroup).toHaveBeenCalledWith('remote-cg', 'instance-1'),
+    );
+    await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('管理消费者组订阅关系与消费进度，共 0 个 Group')).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it('moves back from an emptied last consumer group page after batch deletion', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    const firstPage = buildGroups(20).map((item, index) => ({
+      ...item,
+      name: `cg-${String(index + 1).padStart(2, '0')}`,
+    }));
+    const lastGroup = { ...group, name: 'cg-21' };
+    let deletedLastPage = false;
+    vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) => {
+      if (params?.page === 2) {
+        return groupPage(deletedLastPage ? [] : [lastGroup], {
+          total: deletedLastPage ? 20 : 21,
+          page: 2,
+          size: 20,
+        });
+      }
+      return groupPage(firstPage, { total: deletedLastPage ? 20 : 21, page: 1, size: 20 });
+    });
+    vi.mocked(consumerService.batchDeleteConsumerGroups).mockImplementation(async () => {
+      deletedLastPage = true;
+      return {
+        deleted: ['cg-21'],
+        failed: [],
+      };
+    });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('cg-01')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-pagination-item-2') as HTMLElement);
+    expect(await screen.findByText('cg-21')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: /删除 \(1\)$/ }));
+
+    await waitFor(() =>
+      expect(consumerService.batchDeleteConsumerGroups).toHaveBeenCalledWith(
+        ['cg-21'],
+        'instance-1',
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText('cg-21')).not.toBeInTheDocument());
+    expect(screen.getByText('cg-01')).toBeInTheDocument();
+    expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+      instanceId: 'instance-1',
+      search: undefined,
+      page: 1,
+      pageSize: 20,
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it('keeps failed consumer groups selected after a partially successful batch deletion', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    const groups = ['cg-01', 'cg-02', 'cg-03'].map((name) => ({ ...group, name }));
+    vi.mocked(consumerService.listConsumerGroupPage)
+      .mockResolvedValueOnce(groupPage(groups))
+      .mockResolvedValueOnce(groupPage([{ ...group, name: 'cg-02' }]));
+    vi.mocked(consumerService.batchDeleteConsumerGroups).mockResolvedValue({
+      deleted: ['cg-01', 'cg-03'],
+      failed: ['cg-02'],
+    });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('cg-01')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: /删除 \(3\)$/ }));
+
+    await waitFor(() =>
+      expect(consumerService.batchDeleteConsumerGroups).toHaveBeenCalledWith(
+        ['cg-01', 'cg-02', 'cg-03'],
+        'instance-1',
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText('cg-01')).not.toBeInTheDocument());
+    expect(screen.getByText('cg-02')).toBeInTheDocument();
+    expect(screen.queryByText('cg-03')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+    expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+      instanceId: 'instance-1',
+      search: undefined,
+      page: 1,
+      pageSize: 20,
+    });
+    confirmSpy.mockRestore();
   });
 
   it('submits the canonical global delivery order type', async () => {
@@ -311,10 +538,13 @@ describe('Consumer page', () => {
         size: params?.pageSize ?? 20,
       });
     });
-    vi.mocked(consumerService.listAllConsumerGroups).mockImplementation(async (params) =>
-      params?.search
-        ? exportGroups.filter((item) => item.name.includes(params.search ?? ''))
-        : exportGroups,
+    vi.mocked(consumerService.exportConsumerGroups).mockResolvedValue(
+      [
+        '"Name","Namespace","Subscribed Topics"',
+        '"orders-cg","remote-ns","orders-topic;payments,topic"',
+        '"orders-cg-archive","\'=archive","orders-topic"',
+        '"orders-cg-formula","\'\r=formula-risk","orders-topic"',
+      ].join('\n'),
     );
     renderWithProviders(<ConsumerPage />);
 
@@ -324,11 +554,13 @@ describe('Consumer page', () => {
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
     await waitFor(() =>
-      expect(consumerService.listAllConsumerGroups).toHaveBeenCalledWith({
+      expect(consumerService.exportConsumerGroups).toHaveBeenCalledWith({
         instanceId: 'instance-1',
         search: 'orders',
+        subscriptionMode: undefined,
       }),
     );
+    expect(consumerService.listAllConsumerGroups).not.toHaveBeenCalled();
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:consumer-group-export');
@@ -364,6 +596,73 @@ describe('Consumer page', () => {
     );
     expect(consumerService.getConsumerGroup).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
+  });
+
+  it('shows group health diagnostics from subscriptions, progress and clients', async () => {
+    const riskyGroup: ConsumerGroup = {
+      ...group,
+      totalLag: 1_200,
+      delaySeconds: 720,
+      onlineInstances: 2,
+      instances: [
+        {
+          clientId: 'remote-cg-0@10.0.0.1',
+          protocol: 'GRPC',
+          address: '10.0.0.1:49152',
+          subscribedTopics: ['remote-topic'],
+          lastHeartbeat: '2026-07-23T00:00:00Z',
+          topicLag: { 'remote-topic': 10 },
+        },
+        {
+          clientId: 'remote-cg-1@10.0.0.2',
+          protocol: 'REMOTING',
+          address: '10.0.0.2:49152',
+          subscribedTopics: [],
+          lastHeartbeat: '2026-07-23T00:00:00Z',
+          topicLag: {},
+        },
+      ],
+    };
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([riskyGroup]));
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: 'tagA',
+        type: 'NORMAL',
+        filterMode: 'Tag 过滤',
+        consistency: '不一致',
+      },
+    ]);
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        broker: 'broker-a',
+        queueId: 0,
+        brokerOffset: 100,
+        consumerOffset: 90,
+        diffTotal: 10,
+      },
+      {
+        topic: 'remote-topic',
+        broker: 'broker-b',
+        queueId: 1,
+        brokerOffset: 1_200,
+        consumerOffset: 100,
+        diffTotal: 1_100,
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+
+    await waitFor(() => expect(within(panel).getAllByText('消费风险').length).toBeGreaterThan(0));
+    expect(within(panel).getByText('订阅表达式不一致')).toBeInTheDocument();
+    expect(within(panel).getByText('Queue 堆积分布严重倾斜')).toBeInTheDocument();
+    expect(within(panel).getAllByText('客户端心跳过期').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('处理建议')).toBeInTheDocument();
   });
 
   it('filters queue progress to the topic of the clicked distribution button', async () => {
@@ -433,7 +732,7 @@ describe('Consumer page', () => {
     );
   });
 
-  it('requires and submits a target topic when resetting consumer offsets', async () => {
+  it('previews queue impact before resetting consumer offsets', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
 
@@ -458,6 +757,22 @@ describe('Consumer page', () => {
       return element;
     });
     await user.click(option);
+    expect(confirm).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /预览影响/ }));
+
+    await waitFor(() =>
+      expect(consumerService.previewConsumerOffsetReset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'remote-cg',
+          instanceId: 'instance-1',
+          topic: 'remote-topic',
+          timestamp: expect.any(Number),
+        }),
+      ),
+    );
+    expect(await screen.findByText('重置后总堆积')).toBeInTheDocument();
+    expect(await screen.findByText('将回放 10 条消息')).toBeInTheDocument();
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
@@ -471,6 +786,87 @@ describe('Consumer page', () => {
         }),
       ),
     );
+  });
+
+  it('invalidates the reset preview when reset parameters change', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /重置位点/ }));
+    const topicSelect = screen.getByRole('combobox', { name: '目标 Topic' });
+    await user.click(topicSelect);
+    const option = await waitFor(() => {
+      const element = screen
+        .getAllByText('remote-topic')
+        .find((candidate) => candidate.classList.contains('ant-select-item-option-content'));
+      if (!element) throw new Error('Missing target Topic option');
+      return element;
+    });
+    await user.click(option);
+    await user.click(screen.getByRole('button', { name: /预览影响/ }));
+
+    expect(await screen.findByText('将回放 10 条消息')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '确认重置' })).toBeEnabled());
+
+    await user.click(screen.getByRole('button', { name: '1 小时前' }));
+
+    expect(screen.queryByText('将回放 10 条消息')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认重置' })).toBeDisabled();
+  });
+
+  it('blocks reset confirmation when the preview has failed queues', async () => {
+    vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
+      instanceId: 'instance-1',
+      groupName: 'remote-cg',
+      topic: 'remote-topic',
+      timestamp: 1784246400000,
+      complete: false,
+      allowReset: false,
+      queueCount: 1,
+      warningCount: 1,
+      rewindQueueCount: 0,
+      fastForwardQueueCount: 0,
+      currentTotalLag: 30,
+      projectedTotalLag: 30,
+      totalOffsetDelta: 0,
+      warnings: ['Failed to preview 1 queue(s); retry before applying the reset'],
+      queues: [
+        {
+          topic: 'remote-topic',
+          broker: 'broker-a',
+          queueId: 0,
+          minOffset: -1,
+          maxOffset: -1,
+          brokerOffset: 120,
+          consumerOffset: 90,
+          targetOffset: 90,
+          currentLag: 30,
+          projectedLag: 30,
+          offsetDelta: 0,
+          riskLevel: 'ERROR',
+          message: 'Failed to preview queue offset: timeout',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /重置位点/ }));
+    await user.click(screen.getByRole('combobox', { name: '目标 Topic' }));
+    const option = await waitFor(() => {
+      const element = screen
+        .getAllByText('remote-topic')
+        .find((candidate) => candidate.classList.contains('ant-select-item-option-content'));
+      if (!element) throw new Error('Missing target Topic option');
+      return element;
+    });
+    await user.click(option);
+    await user.click(screen.getByRole('button', { name: /预览影响/ }));
+
+    expect(await screen.findByText('不完整')).toBeInTheDocument();
+    expect(await screen.findByText('Failed to preview queue offset: timeout')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认重置' })).toBeDisabled();
+    expect(consumerService.resetConsumerOffset).not.toHaveBeenCalled();
   });
 
   it('reloads same-named group diagnostics after changing the selected instance', async () => {
@@ -749,25 +1145,30 @@ describe('Consumer page', () => {
 
   it('keeps per-row state when consumer group CSV import partially fails', async () => {
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([]));
-    vi.mocked(consumerService.createConsumerGroup).mockImplementation(
-      async (data: Partial<ConsumerGroup>) => {
-        if (data.name === 'cg-fail') throw new Error('broker rejected group');
-        return {
+    vi.mocked(consumerService.importConsumerGroups).mockResolvedValue({
+      imported: 1,
+      failed: 1,
+      groups: [
+        {
           ...group,
-          ...data,
-          name: data.name ?? '',
+          name: 'cg-ok',
+          subscriptionMode: 'Push',
+          consumeType: 'CLUSTERING',
+          retryMaxTimes: 16,
+          subscriptionDataType: 'NORMAL',
           namespace: 'default',
           clusterId: 'server-cluster',
           onlineInstances: 0,
           totalLag: 0,
           delaySeconds: 0,
           instances: [],
-          subscribedTopics: data.subscribedTopics ?? [],
+          subscribedTopics: [],
           gmtCreate: '2026-07-24T00:00:00Z',
           gmtModified: '2026-07-24T00:00:00Z',
-        } as ConsumerGroup;
-      },
-    );
+        },
+      ],
+      failures: [{ index: 1, name: 'cg-fail', message: 'broker rejected group' }],
+    });
 
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([
@@ -795,19 +1196,32 @@ describe('Consumer page', () => {
       screen.getByTestId('consumer-group-import-file'),
       new File([csv], 'groups.csv'),
     );
-    expect(await screen.findByText('检测到 2 个 Group，将按顺序调用创建接口')).toBeInTheDocument();
+    expect(await screen.findByText('检测到 2 个 Group，将通过后端批量导入')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '开始导入' }));
 
-    await waitFor(() => expect(consumerService.createConsumerGroup).toHaveBeenCalledTimes(2));
-    expect(consumerService.createConsumerGroup).toHaveBeenNthCalledWith(1, {
-      name: 'cg-ok',
-      subscriptionMode: 'Push',
-      consumeType: 'CLUSTERING',
-      retryMaxTimes: 16,
-      subscriptionDataType: 'NORMAL',
-      subscribedTopics: [],
-      instanceId: 'instance-proxy-1',
-    });
+    await waitFor(() => expect(consumerService.importConsumerGroups).toHaveBeenCalledTimes(1));
+    expect(consumerService.importConsumerGroups).toHaveBeenCalledWith('instance-proxy-1', [
+      {
+        name: 'cg-ok',
+        subscriptionMode: 'Push',
+        consumeType: 'CLUSTERING',
+        retryMaxTimes: 16,
+        subscriptionDataType: 'NORMAL',
+        subscribedTopics: [],
+        instanceId: 'instance-proxy-1',
+      },
+      {
+        name: 'cg-fail',
+        subscriptionMode: 'Pop',
+        consumeType: 'BROADCASTING',
+        retryMaxTimes: 4,
+        subscriptionDataType: 'FIFO',
+        deliveryOrderType: 'PARTITON_ORDER',
+        subscribedTopics: [],
+        instanceId: 'instance-proxy-1',
+      },
+    ]);
+    expect(consumerService.createConsumerGroup).not.toHaveBeenCalled();
     expect(await screen.findByText('已导入 1 个 Group，1 个失败')).toBeInTheDocument();
     expect(screen.getByText('broker rejected group')).toBeInTheDocument();
     expect(screen.getAllByText('cg-ok').length).toBeGreaterThan(0);
@@ -943,8 +1357,8 @@ describe('Consumer page', () => {
     renderWithProviders(<ConsumerPage />);
     await screen.findByRole('row', { name: /unknown-lag-cg/ });
 
-    await user.click(screen.getByText('名称升序'));
-    await user.click(await screen.findByText('堆积量降序'));
+    const [lagHeader] = screen.getAllByText('总堆积量');
+    await user.click(lagHeader);
     await waitFor(() => {
       const rows = Array.from(document.querySelectorAll('tbody tr'));
       const order = rows
@@ -959,5 +1373,64 @@ describe('Consumer page', () => {
         .filter(Boolean);
       expect(order).toEqual(['known', 'unknown']);
     });
+  });
+
+  it('ignores settings responses from a previously closed group modal', async () => {
+    const otherGroup = { ...group, name: 'other-cg' };
+    const firstSettings = deferred<{
+      groupName: string;
+      retryQueueNums: number;
+      retryMaxTimes: number;
+    }>();
+    const secondSettings = deferred<{
+      groupName: string;
+      retryQueueNums: number;
+      retryMaxTimes: number;
+    }>();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([group, otherGroup]),
+    );
+    vi.mocked(consumerService.getConsumerGroupSettings)
+      .mockImplementationOnce(() => firstSettings.promise)
+      .mockImplementationOnce(() => secondSettings.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    const firstRow = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(firstRow).getByRole('button', { name: '详情' }));
+    const firstDialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(firstDialog).getByRole('tab', { name: '配置' }));
+    await waitFor(() => {
+      expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-1',
+      );
+    });
+
+    fireEvent.click(firstDialog.querySelector('.ant-modal-close') as HTMLElement);
+
+    const secondRow = screen.getByRole('row', { name: /other-cg/ });
+    await user.click(within(secondRow).getByRole('button', { name: '详情' }));
+    const secondDialog = await screen.findByRole('dialog', { name: /other-cg/ });
+    await user.click(within(secondDialog).getByRole('tab', { name: '配置' }));
+    await waitFor(() => {
+      expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
+        'other-cg',
+        'instance-1',
+      );
+    });
+
+    await act(async () => {
+      secondSettings.resolve({ groupName: 'other-cg', retryQueueNums: 4, retryMaxTimes: 12 });
+    });
+    await waitFor(() => {
+      expect(within(secondDialog).getByLabelText('重试队列数')).toHaveValue('4');
+    });
+
+    await act(async () => {
+      firstSettings.resolve({ groupName: 'remote-cg', retryQueueNums: 1, retryMaxTimes: 16 });
+    });
+    expect(within(secondDialog).getByLabelText('重试队列数')).toHaveValue('4');
+    expect(within(secondDialog).getByLabelText('最大重试次数')).toHaveValue('12');
   });
 });

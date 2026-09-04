@@ -11,8 +11,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
@@ -35,11 +37,18 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.function.Supplier;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -54,7 +63,10 @@ import jakarta.mail.internet.InternetAddress;
 public class NotificationOutboxService {
     private static final int MAX_ATTEMPTS = 5;
     private static final int BATCH_SIZE = 20;
-    private static final Duration CLAIM_TIMEOUT = Duration.ofMinutes(1);
+    private static final Duration DEFAULT_CLAIM_TIMEOUT = Duration.ofMinutes(1);
+    private static final Duration DEFAULT_CLAIM_RENEWAL_INTERVAL = Duration.ofSeconds(20);
+    private static final int DEFAULT_HEARTBEAT_THREADS = 2;
+    private static final int MAX_HEARTBEAT_THREADS = 4;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final RmqAlertNotificationOutboxMapper mapper;
@@ -64,33 +76,54 @@ public class NotificationOutboxService {
     private final OperationAuditService operationAuditService;
     private final RestTemplate restTemplate;
     private final Supplier<JavaMailSender> mailSender;
+    private final AlertingProperties alertingProperties;
+    private final Duration claimTimeout;
+    private final Duration claimRenewalInterval;
+    private final ScheduledExecutorService heartbeatExecutor;
 
     NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
             AlertSilenceService silenceService, AlertRepository alertRepository,
             OperationAuditService operationAuditService) {
         this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, newClient(),
-                () -> null);
+                () -> null, new AlertingProperties(), null);
     }
 
     @Autowired
     public NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
             AlertSilenceService silenceService, AlertRepository alertRepository,
-            OperationAuditService operationAuditService, ObjectProvider<JavaMailSender> mailSender) {
+            OperationAuditService operationAuditService, ObjectProvider<JavaMailSender> mailSender,
+            AlertingProperties alertingProperties) {
         this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, newClient(),
-                mailSender::getIfAvailable);
+                mailSender::getIfAvailable, alertingProperties, null);
     }
 
     NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
             AlertSilenceService silenceService, AlertRepository alertRepository,
             OperationAuditService operationAuditService, RestTemplate restTemplate) {
         this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, restTemplate,
-                () -> null);
+                () -> null, new AlertingProperties(), null);
+    }
+
+    NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
+            AlertSilenceService silenceService, AlertRepository alertRepository,
+            OperationAuditService operationAuditService, AlertingProperties alertingProperties) {
+        this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, newClient(),
+                () -> null, alertingProperties, null);
     }
 
     NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
             AlertSilenceService silenceService, AlertRepository alertRepository,
             OperationAuditService operationAuditService, RestTemplate restTemplate,
             Supplier<JavaMailSender> mailSender) {
+        this(mapper, settingsRepository, silenceService, alertRepository, operationAuditService, restTemplate,
+                mailSender, new AlertingProperties(), null);
+    }
+
+    NotificationOutboxService(RmqAlertNotificationOutboxMapper mapper, SettingsRepository settingsRepository,
+            AlertSilenceService silenceService, AlertRepository alertRepository,
+            OperationAuditService operationAuditService, RestTemplate restTemplate,
+            Supplier<JavaMailSender> mailSender, AlertingProperties alertingProperties,
+            ScheduledExecutorService heartbeatExecutor) {
         this.mapper = mapper;
         this.settingsRepository = settingsRepository;
         this.silenceService = silenceService;
@@ -98,6 +131,19 @@ public class NotificationOutboxService {
         this.operationAuditService = operationAuditService;
         this.restTemplate = restTemplate;
         this.mailSender = mailSender;
+        this.alertingProperties = alertingProperties == null ? new AlertingProperties() : alertingProperties;
+        this.claimTimeout = positiveDuration(this.alertingProperties.getNotificationClaimTimeout(),
+                DEFAULT_CLAIM_TIMEOUT, "notificationClaimTimeout");
+        Duration configuredRenewal = positiveDuration(
+                this.alertingProperties.getNotificationClaimRenewalInterval(),
+                DEFAULT_CLAIM_RENEWAL_INTERVAL, "notificationClaimRenewalInterval");
+        this.claimRenewalInterval = safeRenewalInterval(configuredRenewal, claimTimeout);
+        this.heartbeatExecutor = heartbeatExecutor == null ? newHeartbeatExecutor(this.alertingProperties) : heartbeatExecutor;
+    }
+
+    @PreDestroy
+    void closeHeartbeatExecutor() {
+        heartbeatExecutor.shutdownNow();
     }
 
     public void enqueue(SystemAlertVO alert, AlertRuleVO rule) {
@@ -131,7 +177,7 @@ public class NotificationOutboxService {
         Set<String> channels = new LinkedHashSet<>();
         if (rule.getChannels() != null) {
             rule.getChannels().stream().filter(StringUtils::hasText)
-                    .map(value -> value.trim().toLowerCase()).forEach(channels::add);
+                    .map(value -> value.trim().toLowerCase(Locale.ROOT)).forEach(channels::add);
         }
         for (String channel : channels) {
             if (!"dingtalk".equals(channel) && !"sms".equals(channel) && !"email".equals(channel)) {
@@ -195,7 +241,7 @@ public class NotificationOutboxService {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Only failed notification deliveries can be retried");
         }
-        recordDelivery(row, "RETRY_ALERT_NOTIFICATION_MANUALLY", "SUCCESS", null);
+        recordDeliverySafely(row, "RETRY_ALERT_NOTIFICATION_MANUALLY", "SUCCESS", null);
     }
 
     public NotificationDeliveryBulkRetryResult retryFailedDeliveries(List<Long> deliveryIds) {
@@ -218,7 +264,7 @@ public class NotificationOutboxService {
 
     private static String normalizeFilter(String value) {
         String normalized = normalizeTrim(value);
-        return normalized == null ? null : normalized.toLowerCase();
+        return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
     }
 
     private static String normalizeTrim(String value) {
@@ -231,7 +277,7 @@ public class NotificationOutboxService {
             return null;
         }
         try {
-            return NotificationOutboxStatus.valueOf(value.toUpperCase()).name();
+            return NotificationOutboxStatus.valueOf(value.toUpperCase(Locale.ROOT)).name();
         } catch (IllegalArgumentException error) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Unknown notification delivery status: " + status);
@@ -240,24 +286,69 @@ public class NotificationOutboxService {
 
     @Scheduled(fixedDelayString = "${studio.alerting.notification-dispatch-interval:PT10S}")
     public void dispatch() {
-        LocalDateTime now = utcNow();
-        LocalDateTime staleBefore = now.minus(CLAIM_TIMEOUT);
-        List<RmqAlertNotificationOutbox> due = mapper.findDispatchable(now, staleBefore, BATCH_SIZE);
+        LocalDateTime dispatchStartedAt = utcNow();
+        LocalDateTime staleBefore = dispatchStartedAt.minus(claimTimeout);
+        List<RmqAlertNotificationOutbox> due = mapper.findDispatchable(dispatchStartedAt, staleBefore, BATCH_SIZE);
         for (RmqAlertNotificationOutbox row : due) {
             String claimToken = UUID.randomUUID().toString();
-            if (mapper.claimForDispatch(row.getId(), now, staleBefore, now, claimToken) != 1) {
+            // A previous delivery in this batch may have taken a long time. Use a fresh timestamp for
+            // each claim so a row cannot be born with an already-expired lease.
+            LocalDateTime claimStartedAt = utcNow();
+            LocalDateTime claimStaleBefore = claimStartedAt.minus(claimTimeout);
+            if (mapper.claimForDispatch(row.getId(), claimStartedAt, claimStaleBefore, claimStartedAt,
+                    claimToken) != 1) {
                 continue;
             }
-            send(row, now, claimToken);
+            send(row, claimToken);
         }
     }
 
-    private void send(RmqAlertNotificationOutbox row, LocalDateTime now, String claimToken) {
+    @Scheduled(fixedDelayString = "${studio.alerting.notification-cleanup-interval:PT1H}")
+    public int cleanupTerminalDeliveries() {
+        Duration retention;
         try {
+            retention = Duration.parse(alertingProperties.getNotificationRetention());
+        } catch (RuntimeException error) {
+            log.warn("Skipping alert notification cleanup because retention is invalid: {}",
+                    alertingProperties.getNotificationRetention());
+            return 0;
+        }
+        if (retention.isZero() || retention.isNegative()) {
+            return 0;
+        }
+        int batchSize = Math.max(1, alertingProperties.getNotificationCleanupBatchSize());
+        int maxBatches = Math.max(1, alertingProperties.getNotificationCleanupMaxBatches());
+        LocalDateTime cutoff = utcNow().minus(retention);
+        int total = 0;
+        for (int batch = 0; batch < maxBatches; batch++) {
+            int deleted;
+            try {
+                deleted = mapper.deleteTerminalBefore(cutoff, batchSize);
+            } catch (RuntimeException error) {
+                log.warn("Stopped alert notification cleanup after deleting {} rows", total, error);
+                return total;
+            }
+            total += deleted;
+            if (deleted < batchSize) {
+                break;
+            }
+        }
+        return total;
+    }
+
+    private void send(RmqAlertNotificationOutbox row, String claimToken) {
+        LeaseHeartbeat heartbeat = null;
+        boolean externalSendCompleted = false;
+        try {
+            heartbeat = new LeaseHeartbeat(row.getId(), claimToken);
+            if (!heartbeat.isLeaseOwned()) {
+                return;
+            }
+            LocalDateTime attemptStartedAt = utcNow();
             SystemAlertVO alert = loadAlert(row.getAlertId());
             LocalDateTime silenceEndsAt = silenceService.activeUntil(
                     AlertRuleVO.builder().id(alert.getRuleId()).domain(alert.getDomain()).build(),
-                    alert.getInstanceId(), alert.getLabels(), now);
+                    alert.getInstanceId(), alert.getLabels(), attemptStartedAt);
             if (silenceEndsAt != null) {
                 deferUntilSilenceEnds(row, silenceEndsAt, claimToken);
                 return;
@@ -268,22 +359,42 @@ public class NotificationOutboxService {
             } else {
                 sendWebhook(settings, alert, row.getChannel(), message(row, alert));
             }
-            if (!updateClaimed(row, claimToken, new UpdateWrapper<RmqAlertNotificationOutbox>()
-                    .set("status", NotificationOutboxStatus.DELIVERED.name()).set("delivered_at", now)
-                    .set("sending_started_at", null)
-                    .set("last_error", null))) {
+            externalSendCompleted = true;
+            if (!heartbeat.isLeaseOwned()) {
+                log.warn("Notification delivery {} lost its claim after the external send completed", row.getId());
                 return;
             }
-            recordDelivery(row, "DELIVER_ALERT_NOTIFICATION", "SUCCESS", null);
+            LocalDateTime deliveredAt = utcNow();
+            if (!updateClaimed(row, claimToken, new UpdateWrapper<RmqAlertNotificationOutbox>()
+                    .set("status", NotificationOutboxStatus.DELIVERED.name()).set("delivered_at", deliveredAt)
+                    .set("sending_started_at", null)
+                    .set("last_error", null).set("claim_token", null))) {
+                return;
+            }
+            recordDeliverySafely(row, "DELIVER_ALERT_NOTIFICATION", "SUCCESS", null);
         } catch (Exception error) {
-            retry(row, now, claimToken, error.getMessage());
+            if (externalSendCompleted) {
+                // The receiver has already accepted the notification. A transient database failure while
+                // recording that outcome must leave the row for stale-claim recovery, not trigger another send.
+                log.warn("Notification delivery {} completed externally but its state update failed: {}", row.getId(),
+                        error.getMessage());
+            } else if (heartbeat == null || heartbeat.isLeaseOwned()) {
+                retry(row, utcNow(), claimToken, error.getMessage());
+            } else {
+                log.warn("Notification delivery {} failed after its claim was lost: {}", row.getId(),
+                        error.getMessage());
+            }
+        } finally {
+            if (heartbeat != null) {
+                heartbeat.close();
+            }
         }
     }
 
     private void deferUntilSilenceEnds(RmqAlertNotificationOutbox row, LocalDateTime silenceEndsAt, String claimToken) {
         updateClaimed(row, claimToken, new UpdateWrapper<RmqAlertNotificationOutbox>()
                 .set("status", NotificationOutboxStatus.PENDING.name()).set("next_attempt_at", silenceEndsAt)
-                .set("sending_started_at", null));
+                .set("sending_started_at", null).set("claim_token", null));
     }
 
     private void sendWebhook(GeneralSettingsVO settings, SystemAlertVO alert, String channel, String content) {
@@ -402,10 +513,10 @@ public class NotificationOutboxService {
                         : NotificationOutboxStatus.RETRY_WAIT).name())
                 .set("next_attempt_at", now.plusSeconds(Math.min(300, 5L << Math.min(attempts - 1, 5))))
                 .set("sending_started_at", null)
-                .set("last_error", abbreviate(error)))) {
+                .set("last_error", abbreviate(error)).set("claim_token", null))) {
             return;
         }
-        recordDelivery(row, exhausted ? "FAIL_ALERT_NOTIFICATION" : "RETRY_ALERT_NOTIFICATION",
+        recordDeliverySafely(row, exhausted ? "FAIL_ALERT_NOTIFICATION" : "RETRY_ALERT_NOTIFICATION",
                 exhausted ? "FAILURE" : "RETRYING", abbreviate(error));
         log.warn("Alert notification {} for event {}: {}", exhausted ? "failed" : "will retry", row.getAlertId(), error);
     }
@@ -415,6 +526,15 @@ public class NotificationOutboxService {
                 "alertId=" + row.getAlertId() + ", channel=" + row.getChannel(), result, error);
     }
 
+    private void recordDeliverySafely(RmqAlertNotificationOutbox row, String operation, String result, String error) {
+        try {
+            recordDelivery(row, operation, result, error);
+        } catch (RuntimeException auditFailure) {
+            log.warn("Failed to record notification delivery audit for {}: {}", row.getId(),
+                    auditFailure.getMessage());
+        }
+    }
+
     private static String abbreviate(String value) {
         if (value == null) return "Delivery failed";
         return value.length() > 1000 ? value.substring(0, 1000) : value;
@@ -422,7 +542,105 @@ public class NotificationOutboxService {
 
     private boolean updateClaimed(RmqAlertNotificationOutbox row, String claimToken,
             UpdateWrapper<RmqAlertNotificationOutbox> updates) {
-        return mapper.update(null, updates.eq("id", row.getId()).eq("claim_token", claimToken)) == 1;
+        return mapper.update(null, updates.eq("id", row.getId()).eq("status", NotificationOutboxStatus.SENDING.name())
+                .eq("claim_token", claimToken)) == 1;
+    }
+
+    private static Duration positiveDuration(String configured, Duration fallback, String propertyName) {
+        if (configured == null || configured.isBlank()) {
+            return fallback;
+        }
+        try {
+            Duration parsed = Duration.parse(configured.trim());
+            if (!parsed.isZero() && !parsed.isNegative()) {
+                return parsed;
+            }
+        } catch (RuntimeException ignored) {
+            // Fall through to the safe default below.
+        }
+        log.warn("Invalid {} {}; using {}", propertyName, configured, fallback);
+        return fallback;
+    }
+
+    private static Duration safeRenewalInterval(Duration configured, Duration timeout) {
+        if (configured.compareTo(timeout) < 0) {
+            return configured;
+        }
+        Duration fallback = timeout.dividedBy(2);
+        if (fallback.isZero() || fallback.isNegative()) {
+            fallback = Duration.ofMillis(1);
+        }
+        log.warn("Notification claim renewal interval {} must be shorter than claim timeout {}; using {}",
+                configured, timeout, fallback);
+        return fallback;
+    }
+
+    private static ScheduledExecutorService newHeartbeatExecutor(AlertingProperties properties) {
+        int configuredThreads = properties == null ? DEFAULT_HEARTBEAT_THREADS
+                : properties.getNotificationHeartbeatThreads();
+        int threads = Math.max(1, Math.min(MAX_HEARTBEAT_THREADS, configuredThreads));
+        ThreadFactory factory = runnable -> {
+            Thread thread = new Thread(runnable, "studio-notification-lease-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        };
+        return Executors.newScheduledThreadPool(threads, factory);
+    }
+
+    private final class LeaseHeartbeat implements AutoCloseable {
+        private final Long rowId;
+        private final String claimToken;
+        private final AtomicBoolean leaseOwned = new AtomicBoolean(true);
+        private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final ScheduledFuture<?> future;
+
+        private LeaseHeartbeat(Long rowId, String claimToken) {
+            this.rowId = rowId;
+            this.claimToken = claimToken;
+            this.future = schedule();
+        }
+
+        private ScheduledFuture<?> schedule() {
+            try {
+                long intervalMillis = Math.max(1, claimRenewalInterval.toMillis());
+                return heartbeatExecutor.scheduleAtFixedRate(this::renew, intervalMillis, intervalMillis,
+                        TimeUnit.MILLISECONDS);
+            } catch (RuntimeException schedulingFailure) {
+                loseLease("unable to schedule renewal: " + schedulingFailure.getMessage());
+                return null;
+            }
+        }
+
+        private void renew() {
+            if (closed.get() || !leaseOwned.get()) {
+                return;
+            }
+            LocalDateTime renewedAt = utcNow();
+            try {
+                if (mapper.renewClaim(rowId, claimToken, renewedAt) != 1) {
+                    loseLease("the database no longer recognizes this claim");
+                }
+            } catch (RuntimeException renewalFailure) {
+                loseLease("renewal failed: " + renewalFailure.getMessage());
+            }
+        }
+
+        private void loseLease(String reason) {
+            if (leaseOwned.compareAndSet(true, false)) {
+                log.warn("Notification delivery {} lost its claim: {}", rowId, reason);
+            }
+        }
+
+        private boolean isLeaseOwned() {
+            return leaseOwned.get();
+        }
+
+        @Override
+        public void close() {
+            if (closed.compareAndSet(false, true) && future != null) {
+                future.cancel(false);
+            }
+        }
     }
 
     private static LocalDateTime utcNow() {

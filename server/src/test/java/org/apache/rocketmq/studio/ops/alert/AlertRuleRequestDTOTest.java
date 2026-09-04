@@ -42,11 +42,29 @@ class AlertRuleRequestDTOTest {
     }
 
     @Test
+    void durationShouldAcceptCompositePrometheusDurationTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setDuration("1h30m");
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
     void toAlertRuleVOShouldTrimAndDeduplicateChannelsInInputOrderTest() {
         AlertRuleRequestDTO request = new AlertRuleRequestDTO();
         request.setName("High Lag");
         request.setChannels(List.of(" email ", "sms", "email", " sms "));
 
         assertThat(request.toAlertRuleVO().getChannels()).containsExactly("email", "sms");
+    }
+
+    @Test
+    void toAlertRuleVOShouldNormalizeTheNativeMetricKeyTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setMetric("  consumer.lag.total  ");
+
+        assertThat(request.toAlertRuleVO().getMetric()).isEqualTo("consumer.lag.total");
     }
 }

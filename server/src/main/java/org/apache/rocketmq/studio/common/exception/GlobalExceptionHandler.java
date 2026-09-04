@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -144,5 +145,17 @@ public class GlobalExceptionHandler {
             HttpMediaTypeNotSupportedException ex) {
         log.warn("Unsupported media type: {}", ex.getMessage());
         return Result.error(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(), ex.getMessage());
+    }
+
+    /**
+     * Requests that cannot accept any available response representation must be
+     * reported as 406, not 500.
+     */
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    @ResponseStatus(HttpStatus.NOT_ACCEPTABLE)
+    public Result<?> handleHttpMediaTypeNotAcceptableException(
+            HttpMediaTypeNotAcceptableException ex) {
+        log.warn("No acceptable response media type: {}", ex.getMessage());
+        return Result.error(HttpStatus.NOT_ACCEPTABLE.value(), ex.getMessage());
     }
 }

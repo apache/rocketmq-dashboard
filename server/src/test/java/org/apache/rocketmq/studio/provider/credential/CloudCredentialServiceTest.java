@@ -28,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 
 import java.util.List;
@@ -244,6 +245,24 @@ class CloudCredentialServiceTest {
         assertThatThrownBy(() -> service.delete(1L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Cloud credential not found: 1");
+
+        verify(aliyunClientFactory, never()).invalidateCredential(any());
+    }
+
+    @Test
+    void deleteShouldTranslateConcurrentInstanceReferenceToConflictTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(1L);
+        stored.setVendor(InstanceVendor.ALIYUN);
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
+        when(instanceRepository.existsByCredentialId(1L)).thenReturn(false);
+        when(credentialRepository.deleteById(1L))
+                .thenThrow(new DataIntegrityViolationException("foreign key constraint"));
+
+        assertThatThrownBy(() -> service.delete(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential is referenced by existing instances")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
 
         verify(aliyunClientFactory, never()).invalidateCredential(any());
     }

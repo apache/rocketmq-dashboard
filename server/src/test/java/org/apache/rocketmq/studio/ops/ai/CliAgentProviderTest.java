@@ -18,10 +18,15 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class CliAgentProviderTest {
 
-    private static final class FakeCli extends CliAgentProvider {
+    private static class FakeCli extends CliAgentProvider {
         private final String script;
         private final int outputLimitBytes;
         private final Map<String, String> environment;
@@ -89,6 +94,20 @@ class CliAgentProviderTest {
         }
     }
 
+    private static final class AvailabilityCli extends FakeCli {
+        private final Process process;
+
+        AvailabilityCli(Process process) {
+            super("echo unused");
+            this.process = process;
+        }
+
+        @Override
+        protected Process startAvailabilityProcess(ProcessBuilder builder) {
+            return process;
+        }
+    }
+
     @Test
     void completeSurvivesLargeStderrOutput() {
         // Write well over the 64 KiB pipe buffer to stderr, then print the completion on stdout.
@@ -152,5 +171,30 @@ class CliAgentProviderTest {
                 assertThat(environment).doesNotContainKey("SERVER_SECRET"));
         assertThat(processEnvironment.childEnvironments.get(1))
                 .containsEntry("PROVIDER_TOKEN", "request-token");
+    }
+
+    @Test
+    void availabilityDestroysProbeWhenItTimesOut() throws Exception {
+        Process process = mock(Process.class);
+        when(process.waitFor(anyLong(), eq(java.util.concurrent.TimeUnit.SECONDS))).thenReturn(false);
+
+        assertThat(new AvailabilityCli(process).available()).isFalse();
+
+        verify(process).destroyForcibly();
+    }
+
+    @Test
+    void availabilityDestroysProbeAndPreservesInterrupt() throws Exception {
+        Process process = mock(Process.class);
+        when(process.waitFor(anyLong(), eq(java.util.concurrent.TimeUnit.SECONDS)))
+                .thenThrow(new InterruptedException("test interrupt"));
+
+        try {
+            assertThat(new AvailabilityCli(process).available()).isFalse();
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            verify(process).destroyForcibly();
+        } finally {
+            Thread.interrupted();
+        }
     }
 }

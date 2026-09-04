@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { useQueueBrowser } from '../QueueBrowser';
+import { formatTimeMs, useQueueBrowser } from '../QueueBrowser';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
@@ -85,9 +85,23 @@ function QueueBrowserProbe({ instanceId = 'instance-a' }: { instanceId?: string 
         {state.entries.map((entry) => entry.message?.msgId ?? 'empty').join(',')}
       </output>
       <output aria-label="loading">{String(state.loading)}</output>
+      <output aria-label="pulling">{state.pulling.size > 0 ? 'true' : 'false'}</output>
     </div>
   );
 }
+
+describe('formatTimeMs', () => {
+  it('preserves the Unix epoch timestamp', () => {
+    expect(formatTimeMs(0)).not.toBe('-');
+  });
+
+  it.each(['not-a-date', Number.NaN, Number.POSITIVE_INFINITY])(
+    'returns a placeholder for invalid timestamp %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe('-');
+    },
+  );
+});
 
 describe('QueueBrowser request ownership', () => {
   beforeEach(() => {
@@ -166,5 +180,39 @@ describe('QueueBrowser request ownership', () => {
     });
     expect(screen.getByLabelText('entries')).toHaveTextContent('');
     expect(screen.queryByText('stale-message')).not.toBeInTheDocument();
+  });
+
+  it('deduplicates pulls for the same queue before loading state renders', async () => {
+    const pull = createDeferred<MessageRecord | null>();
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset).mockReturnValue(pull.promise);
+    const user = userEvent.setup();
+    render(<QueueBrowserProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+
+    const pullButton = screen.getByRole('button', { name: 'pull' });
+    fireEvent.click(pullButton);
+    fireEvent.click(pullButton);
+
+    expect(pullMessageAtOffset).toHaveBeenCalledTimes(1);
+    await act(async () => pull.resolve(messageRecord('message-a')));
+  });
+
+  it('deduplicates queue loads before loading state renders', async () => {
+    const queues = createDeferred<QueueOffset[]>();
+    vi.mocked(getQueueOffsets).mockReturnValue(queues.promise);
+    const user = userEvent.setup();
+    render(<QueueBrowserProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    const loadButton = screen.getByRole('button', { name: 'load' });
+    fireEvent.click(loadButton);
+    fireEvent.click(loadButton);
+
+    expect(getQueueOffsets).toHaveBeenCalledTimes(1);
+    await act(async () => queues.resolve([queue('broker-a')]));
   });
 });

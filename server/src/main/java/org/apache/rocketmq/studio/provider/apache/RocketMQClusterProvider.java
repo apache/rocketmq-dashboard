@@ -210,9 +210,10 @@ public class RocketMQClusterProvider implements ClusterProvider {
             // Use master address (brokerId = 0) preferentially
             String masterAddr = brokerData.getBrokerAddrs().get(0L);
             if (!StringUtils.hasText(masterAddr)) {
-                masterAddr = brokerData.getBrokerAddrs().values().stream()
-                        .filter(StringUtils::hasText)
-                        .findFirst()
+                masterAddr = brokerData.getBrokerAddrs().entrySet().stream()
+                        .filter(entry -> StringUtils.hasText(entry.getValue()))
+                        .min(Map.Entry.comparingByKey())
+                        .map(Map.Entry::getValue)
                         .orElse(null);
             }
             if (!StringUtils.hasText(masterAddr)) {
@@ -276,7 +277,9 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 try {
                     double parsedRatio = Double.parseDouble(diskRatio);
                     if (Double.isFinite(parsedRatio) && parsedRatio >= 0) {
-                        builder.diskUsage(parsedRatio);
+                        // RocketMQ exposes commitLogDiskRatio as a fraction in [0, 1],
+                        // while BrokerVO and the web progress bars use percentage points.
+                        builder.diskUsage(parsedRatio * 100D);
                     }
                 } catch (NumberFormatException ignored) {
                     // keep default

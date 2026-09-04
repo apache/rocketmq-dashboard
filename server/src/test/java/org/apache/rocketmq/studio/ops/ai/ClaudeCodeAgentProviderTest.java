@@ -51,6 +51,18 @@ class ClaudeCodeAgentProviderTest {
     }
 
     @Test
+    void streamShouldBoundStderrIncludedInFailuresTest() {
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
+                List.of("sh", "-c", "yes failure | head -c 131072 >&2; exit 1"), 5);
+
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessageContaining("[stderr truncated]")
+                .satisfies(exception -> assertThat(exception.getMessage().length()).isLessThan(70_000));
+    }
+
+    @Test
     void streamShouldEnforceTimeoutBeforeWaitingForStdoutTest() {
         TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
                 List.of("sh", "-c", "sleep 2"), 1);

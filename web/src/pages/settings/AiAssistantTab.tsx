@@ -117,6 +117,7 @@ export const AiAssistantTab = () => {
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [testResult, setTestResult] = useState<TestState | null>(null);
   const testRequestIdRef = useRef(0);
+  const configGenerationRef = useRef(0);
 
   const buildModelOptions = (
     nextProvider: string,
@@ -167,6 +168,7 @@ export const AiAssistantTab = () => {
     return () => {
       cancelled = true;
       testRequestIdRef.current += 1;
+      configGenerationRef.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -175,6 +177,11 @@ export const AiAssistantTab = () => {
     testRequestIdRef.current += 1;
     setTesting(false);
     setTestResult(null);
+  };
+
+  const handleValuesChange = () => {
+    configGenerationRef.current += 1;
+    invalidateTestRequest();
   };
 
   const handleProviderChange = (nextProvider: string) => {
@@ -290,6 +297,7 @@ export const AiAssistantTab = () => {
   const handleSave = async () => {
     const payload = await buildPayload();
     if (!payload) return;
+    const configGeneration = configGenerationRef.current;
     setSaving(true);
     try {
       const result = await saveLlmConfig(payload);
@@ -302,9 +310,13 @@ export const AiAssistantTab = () => {
         try {
           const models = await getLlmModels();
           const remoteModels = models.data?.map((model) => model.id || '').filter(Boolean) ?? [];
-          setModelOptions(buildModelOptions(payload.provider, remoteModels, payload.model));
+          if (configGenerationRef.current === configGeneration) {
+            setModelOptions(buildModelOptions(payload.provider, remoteModels, payload.model));
+          }
         } catch {
-          message.warning(t('ai.modelsRefreshFailedAfterSave'));
+          if (configGenerationRef.current === configGeneration) {
+            message.warning(t('ai.modelsRefreshFailedAfterSave'));
+          }
         }
       } else {
         message.error(result.errMsg || t('settings.saveFailedShort'));
@@ -322,7 +334,7 @@ export const AiAssistantTab = () => {
         form={form}
         layout="vertical"
         initialValues={{ provider: 'tongyi', engine: 'claude-code' }}
-        onValuesChange={invalidateTestRequest}
+        onValuesChange={handleValuesChange}
       >
         <Flex vertical gap={24}>
           <Card

@@ -16,12 +16,12 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
-import type { Topic } from '../../../api/metadata';
+import type { BrokerRoute, Topic } from '../../../api/metadata';
 import { parseMessageProperties } from '../../../utils/messageProperties';
 import TopicPage from '../topic';
 
@@ -29,9 +29,11 @@ const topicServiceMocks = vi.hoisted(() => ({
   batchDeleteTopics: vi.fn(),
   createTopic: vi.fn(),
   deleteTopic: vi.fn(),
+  exportTopics: vi.fn(),
   getTopicConsumers: vi.fn(),
   getTopicConsumerPage: vi.fn(),
   getTopicRoutes: vi.fn(),
+  importTopics: vi.fn(),
   listAllTopics: vi.fn(),
   listTopics: vi.fn(),
   listTopicsPage: vi.fn(),
@@ -130,10 +132,18 @@ const getTableBody = () => {
   return tableBody as HTMLElement;
 };
 
+const getSendDialog = async () => {
+  const title = await screen.findByText('发送消息到 topic-01');
+  const dialog = title.closest('[role="dialog"]');
+  expect(dialog).not.toBeNull();
+  return dialog as HTMLElement;
+};
+
 describe('TopicPage', () => {
   beforeEach(() => {
     mockTopicsList(buildTopics(25));
     topicServiceMocks.listAllTopics.mockResolvedValue(buildTopics(25));
+    topicServiceMocks.exportTopics.mockResolvedValue('"Name"\n"topic-01"');
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({ deleted: [], failed: [] });
     topicServiceMocks.createTopic.mockImplementation(async (data: Partial<Topic>) => ({
       ...buildTopics(1)[0],
@@ -146,6 +156,24 @@ describe('TopicPage', () => {
       gmtCreate: '2026-01-02T00:00:00Z',
       gmtModified: '2026-01-02T00:00:00Z',
     }));
+    topicServiceMocks.importTopics.mockResolvedValue({
+      imported: 1,
+      failed: 0,
+      topics: [
+        {
+          ...buildTopics(1)[0],
+          name: 'imported-topic',
+          namespace: 'default',
+          clusterId: 'server-cluster',
+          messageCount: 0,
+          tps: 0,
+          consumerGroupCount: 0,
+          gmtCreate: '2026-01-02T00:00:00Z',
+          gmtModified: '2026-01-02T00:00:00Z',
+        },
+      ],
+      failures: [],
+    });
     topicServiceMocks.getTopicRoutes.mockResolvedValue([]);
     topicServiceMocks.getTopicConsumers.mockResolvedValue([]);
     topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
@@ -153,6 +181,11 @@ describe('TopicPage', () => {
       total: 0,
       page: 1,
       pageSize: 20,
+    });
+    topicServiceMocks.sendTopicMessage.mockResolvedValue({
+      msgId: 'MSG-0001',
+      sendTime: '2026-01-02T00:00:00Z',
+      offsetMsgId: 'OFFSET-0001',
     });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
@@ -170,6 +203,8 @@ describe('TopicPage', () => {
   });
 
   afterEach(() => {
+    Modal.destroyAll();
+    cleanup();
     vi.clearAllMocks();
   });
 
@@ -218,24 +253,14 @@ describe('TopicPage', () => {
         remark: '\t=orders, "critical"',
       },
     ];
-    const archivedTopic = {
-      ...buildTopics(1)[0],
-      name: 'orders-topic-archive',
-      namespace: 'trade',
-      remark: '=archive',
-    };
-    const allMatchingTopics = [
-      ...currentPageTopics,
-      archivedTopic,
-      {
-        ...buildTopics(1)[0],
-        name: 'users-topic',
-        namespace: 'user',
-        remark: '=formula-risk',
-      },
-    ];
     mockTopicsList(currentPageTopics);
-    topicServiceMocks.listAllTopics.mockResolvedValue(allMatchingTopics);
+    topicServiceMocks.exportTopics.mockResolvedValue(
+      [
+        '"Name","Namespace","Remark"',
+        '"orders-topic","trade","\'\t=orders, ""critical"""',
+        '"orders-topic-archive","trade","\'=archive"',
+      ].join('\n'),
+    );
     renderWithProviders();
 
     expect(await screen.findByText('orders-topic')).toBeInTheDocument();
@@ -245,12 +270,13 @@ describe('TopicPage', () => {
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
     await waitFor(() =>
-      expect(topicServiceMocks.listAllTopics).toHaveBeenCalledWith({
+      expect(topicServiceMocks.exportTopics).toHaveBeenCalledWith({
         instanceId: 'instance-proxy-1',
         type: undefined,
         search: 'orders',
       }),
     );
+    expect(topicServiceMocks.listAllTopics).not.toHaveBeenCalled();
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:topic-export');
@@ -312,6 +338,100 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
   });
 
+  it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
+    const user = userEvent.setup();
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 6,
+        name: 'instance-a',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        remark: '',
+        topicCount: 45,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    const requestedPages: number[] = [];
+    topicServiceMocks.listTopicsPage.mockImplementation(async (params) => {
+      requestedPages.push(params?.page ?? 0);
+      if (params?.page === 2) {
+        // Page 2 went out of range (its rows were deleted server-side):
+        // report no items and the shrunk total.
+        return { items: [], total: 15, page: 2, size: 20 };
+      }
+      // The first load reports 45 rows (3 pages); the clamp re-fetch
+      // reports the shrunk 15 rows that fit on a single page.
+      return requestedPages.length === 1
+        ? {
+            items: buildTopics(20).map((t) => ({ ...t, instanceId: 'instance-a' })),
+            total: 45,
+            page: 1,
+            size: 20,
+          }
+        : {
+            items: buildTopics(15).map((t) => ({ ...t, instanceId: 'instance-a' })),
+            total: 15,
+            page: 1,
+            size: 20,
+          };
+    });
+    renderWithProviders('/instance/instance-a/topic');
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+
+    const secondPage = document.querySelector('.ant-pagination-item-2');
+    expect(secondPage).not.toBeNull();
+    await user.click(secondPage as HTMLElement);
+
+    // The empty out-of-range page is corrected: the table reloads the last valid page.
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
+    expect(requestedPages).toEqual([1, 2, 1]);
+    expect(within(getTableBody()).getByText('topic-15')).toBeInTheDocument();
+  });
+
+  it('reloads the server page after deleting one topic', async () => {
+    const user = userEvent.setup();
+    const topic = buildTopics(1)[0];
+    let call = 0;
+    topicServiceMocks.listTopicsPage.mockImplementation(async () => {
+      call += 1;
+      return call === 1
+        ? {
+            items: [topic],
+            total: 1,
+            page: 1,
+            size: 20,
+          }
+        : {
+            items: [],
+            total: 0,
+            page: 1,
+            size: 20,
+          };
+    });
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    renderWithProviders();
+
+    const row = await screen.findByRole('row', { name: /topic-01/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+    const dialog = (await screen.findByText(/确定要删除 Topic「topic-01」/)).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    await waitFor(() => expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('共 0 个 Topic')).toBeInTheDocument();
+  });
+
   it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
     const user = userEvent.setup();
     const topic = { ...buildTopics(1)[0], instanceId: 'instance-a' };
@@ -342,9 +462,77 @@ describe('TopicPage', () => {
     expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith('topic-01', 'instance-a');
   });
 
+  it('renders topic route health diagnostics in the detail modal', async () => {
+    const user = userEvent.setup();
+    const routes: BrokerRoute[] = [
+      {
+        brokerName: 'broker-a',
+        brokerAddr: '',
+        masterAddr: '',
+        brokerAddrs: {
+          '1': '10.0.0.2:10911',
+        },
+        brokerIds: [1],
+        replicaCount: 1,
+        writeQueues: 12,
+        readQueues: 0,
+        perm: 'WO',
+        permCode: 2,
+        readable: false,
+        writable: true,
+        topicSysFlag: 0,
+      },
+      {
+        brokerName: 'broker-b',
+        brokerAddr: '10.0.0.3:10911',
+        masterAddr: '10.0.0.3:10911',
+        brokerAddrs: {
+          '0': '10.0.0.3:10911',
+        },
+        brokerIds: [0],
+        replicaCount: 0,
+        writeQueues: 2,
+        readQueues: 8,
+        perm: 'RW',
+        permCode: 6,
+        readable: true,
+        writable: true,
+        topicSysFlag: 0,
+      },
+    ];
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicRoutes.mockResolvedValue(routes);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('路由诊断：不可用')).toBeInTheDocument();
+    expect(screen.getByText('可写 Broker')).toBeInTheDocument();
+    expect(screen.getByText('14 个写队列')).toBeInTheDocument();
+    expect(screen.getByText('Replica 1')).toBeInTheDocument();
+    expect(screen.getAllByText('写队列分布不均').length).toBeGreaterThan(0);
+    expect(screen.getByText('broker-a：读队列不可用')).toBeInTheDocument();
+    expect(
+      screen.getByText('检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。'),
+    ).toBeInTheDocument();
+  });
+
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
     const user = userEvent.setup();
-    mockTopicsList(buildTopics(3));
+    const remainingTopics = [buildTopics(3)[1]];
+    topicServiceMocks.listTopicsPage
+      .mockResolvedValueOnce({
+        items: buildTopics(3),
+        total: 3,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: remainingTopics,
+        total: 1,
+        page: 1,
+        size: 20,
+      });
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({
       deleted: ['topic-01', 'topic-03'],
       failed: ['topic-02'],
@@ -363,6 +551,70 @@ describe('TopicPage', () => {
     expect(screen.queryByText('topic-03')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
     expect(screen.getByText('已删除 2 个 Topic，1 个删除失败')).toBeInTheDocument();
+    expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith({
+      instanceId: 'instance-proxy-1',
+      type: undefined,
+      search: undefined,
+      page: 1,
+      pageSize: 20,
+    });
+  });
+
+  it('moves back from an emptied last topic page after batch deletion', async () => {
+    const user = userEvent.setup();
+    const firstPage = buildTopics(20);
+    const secondPage = [buildTopics(21)[20]];
+    let deletedLastPage = false;
+    topicServiceMocks.listTopicsPage.mockImplementation(async (params) => {
+      if (params?.page === 2) {
+        return {
+          items: deletedLastPage ? [] : secondPage,
+          total: deletedLastPage ? 20 : 21,
+          page: 2,
+          size: 20,
+        };
+      }
+      return {
+        items: firstPage,
+        total: deletedLastPage ? 20 : 21,
+        page: 1,
+        size: 20,
+      };
+    });
+    topicServiceMocks.batchDeleteTopics.mockImplementation(async () => {
+      deletedLastPage = true;
+      return {
+        deleted: ['topic-21'],
+        failed: [],
+      };
+    });
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-pagination-item-2') as HTMLElement);
+    expect(await screen.findByText('topic-21')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: /删除 \(1\)$/ }));
+    const dialog = (await screen.findByText(/确定要删除选中的 1 个 Topic/)).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.batchDeleteTopics).toHaveBeenCalledWith(
+        ['topic-21'],
+        'instance-proxy-1',
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText('topic-21')).not.toBeInTheDocument());
+    expect(screen.getByText('topic-01')).toBeInTheDocument();
+    expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith({
+      instanceId: 'instance-proxy-1',
+      type: undefined,
+      search: undefined,
+      page: 1,
+      pageSize: 20,
+    });
   });
 
   it('filters topics by the instance from the route and shows its endpoint', async () => {
@@ -403,7 +655,7 @@ describe('TopicPage', () => {
     expect(screen.getByText('10.0.2.21:8080')).toBeInTheDocument();
   });
 
-  it('imports valid topic CSV rows through the create service with the selected instance', async () => {
+  it('imports valid topic CSV rows through the backend batch service with the selected instance', async () => {
     const user = userEvent.setup();
     mockTopicsList([]);
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
@@ -415,25 +667,28 @@ describe('TopicPage', () => {
       '"imported-topic","ignored","NORMAL","ignored-cluster","4","6","RW","orders"',
     ].join('\n');
     await user.upload(screen.getByTestId('topic-import-file'), new File([csv], 'topics.csv'));
-    expect(await screen.findByText('检测到 1 个 Topic，将按顺序调用创建接口')).toBeInTheDocument();
+    expect(await screen.findByText('检测到 1 个 Topic，将通过后端批量导入')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '开始导入' }));
 
     await waitFor(() =>
-      expect(topicServiceMocks.createTopic).toHaveBeenCalledWith({
-        name: 'imported-topic',
-        type: 'NORMAL',
-        writeQueues: 4,
-        readQueues: 6,
-        perm: 'RW',
-        remark: 'orders',
-        instanceId: 'instance-proxy-1',
-      }),
+      expect(topicServiceMocks.importTopics).toHaveBeenCalledWith('instance-proxy-1', [
+        {
+          name: 'imported-topic',
+          type: 'NORMAL',
+          writeQueues: 4,
+          readQueues: 6,
+          perm: 'RW',
+          remark: 'orders',
+          instanceId: 'instance-proxy-1',
+        },
+      ]),
     );
+    expect(topicServiceMocks.createTopic).not.toHaveBeenCalled();
     expect(await screen.findByText('已导入 1 个 Topic')).toBeInTheDocument();
     expect(screen.getAllByText('imported-topic').length).toBeGreaterThan(0);
   });
 
-  it('does not call createTopic when imported topic CSV is invalid or duplicated', async () => {
+  it('does not call importTopics when imported topic CSV is invalid or duplicated', async () => {
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
     mockTopicsList([{ ...buildTopics(1)[0], instanceId: 'instance-proxy-1' }]);
@@ -452,13 +707,22 @@ describe('TopicPage', () => {
     expect(screen.getAllByText(/Name 仅支持/).length).toBeGreaterThan(0);
     expect(screen.getByText(/重复/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
-    expect(topicServiceMocks.createTopic).not.toHaveBeenCalled();
+    expect(topicServiceMocks.importTopics).not.toHaveBeenCalled();
   });
 
   it('imports valid topic rows while skipping duplicate rows', async () => {
     const user = userEvent.setup();
     mockTopicsList([]);
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    topicServiceMocks.importTopics.mockResolvedValue({
+      imported: 2,
+      failed: 0,
+      topics: [
+        { ...buildTopics(1)[0], name: 'topic-a', instanceId: 'instance-proxy-1' },
+        { ...buildTopics(1)[0], name: 'topic-b', instanceId: 'instance-proxy-1', type: 'FIFO' },
+      ],
+      failures: [],
+    });
     renderWithProviders('/instance/instance-proxy-1/topic');
 
     await screen.findByText(/共 0 个 Topic/);
@@ -475,15 +739,11 @@ describe('TopicPage', () => {
     expect(screen.getByText(/Name 与第 2 行重复/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '开始导入' }));
 
-    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(2));
-    expect(topicServiceMocks.createTopic).toHaveBeenNthCalledWith(
-      1,
+    await waitFor(() => expect(topicServiceMocks.importTopics).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.importTopics).toHaveBeenCalledWith('instance-proxy-1', [
       expect.objectContaining({ name: 'topic-a', instanceId: 'instance-proxy-1' }),
-    );
-    expect(topicServiceMocks.createTopic).toHaveBeenNthCalledWith(
-      2,
       expect.objectContaining({ name: 'topic-b', instanceId: 'instance-proxy-1' }),
-    );
+    ]);
     expect(await screen.findByText('已导入 2 个 Topic，1 行无效已跳过')).toBeInTheDocument();
   });
 
@@ -510,6 +770,76 @@ describe('TopicPage', () => {
       properties: { signature: 'part-a=part-b' },
       errors: [],
     });
+  });
+
+  it('previews the send payload and submits the normalized properties', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('Tag'), { target: { value: ' paid ' } });
+    fireEvent.change(within(dialog).getByLabelText('Key'), { target: { value: ' order-1 ' } });
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: '{"orderId":"order-1","amount":128}' },
+    });
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    fireEvent.change(within(dialog).getByPlaceholderText('属性名'), {
+      target: { value: 'traceId' },
+    });
+    fireEvent.change(within(dialog).getByPlaceholderText('属性值'), {
+      target: { value: 'trace-1' },
+    });
+
+    await waitFor(() => expect(within(dialog).getByText('可以发送')).toBeInTheDocument());
+    expect(within(dialog).getByText('JSON Object')).toBeInTheDocument();
+    expect(within(dialog).getByText('Tag paid')).toBeInTheDocument();
+    expect(within(dialog).getByText('Key order-1')).toBeInTheDocument();
+    expect(within(dialog).getByText('traceId=trace-1')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith({
+      topic: 'topic-01',
+      instanceId: 'instance-proxy-1',
+      tag: 'paid',
+      key: 'order-1',
+      body: '{"orderId":"order-1","amount":128}',
+      properties: { traceId: 'trace-1' },
+    });
+  });
+
+  it('blocks duplicate form properties in the send payload preflight', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: '{"event":"created"}' },
+    });
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    const propertyKeys = within(dialog).getAllByPlaceholderText('属性名');
+    const propertyValues = within(dialog).getAllByPlaceholderText('属性值');
+    fireEvent.change(propertyKeys[0], { target: { value: 'traceId' } });
+    fireEvent.change(propertyValues[0], { target: { value: 'first' } });
+    fireEvent.change(propertyKeys[1], { target: { value: 'traceId' } });
+    fireEvent.change(propertyValues[1], { target: { value: 'second' } });
+
+    await waitFor(() => expect(within(dialog).getByText('阻止发送')).toBeInTheDocument());
+    expect(within(dialog).getByText('属性名重复')).toBeInTheDocument();
+    expect(within(dialog).getByText('重复属性会覆盖前面的值：traceId')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/发送前预检未通过：属性名重复/)).toBeInTheDocument(),
+    );
+    expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
   });
 
   it('renders unavailable Topic consumer metrics distinctly from zero', async () => {

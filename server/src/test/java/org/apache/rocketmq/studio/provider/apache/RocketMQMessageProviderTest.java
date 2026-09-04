@@ -230,17 +230,88 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByMsgIdIgnoresUnrelatedTimeBounds() throws Exception {
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-1");
+        message.setTopic("TopicA");
+        when(adminExt.viewMessage("TopicA", "msg-1")).thenReturn(message);
+
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", "msg-1", null, null, 200L, 100L))
+                .singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo("msg-1");
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", "msg-1", null, null, 100L, 100L))
+                .singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo("msg-1");
+
+        verify(adminExt, times(2)).viewMessage("TopicA", "msg-1");
+    }
+
+    @Test
     void queryByMsgIdRejectsDecodedBrokerOutsideKnownTopology() throws Exception {
         String msgId = MessageDecoder.createMessageId(new InetSocketAddress("10.2.3.4", 10911), 12345L);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
-        when(adminExt.viewMessage("TopicA", msgId))
-                .thenThrow(new IllegalStateException("primary lookup failed"));
 
         List<MessageRecordVO> result = provider.queryMessages(
                 "instance-a", "TopicA", msgId, null, null, 100L, 200L);
 
         assertThat(result).isEmpty();
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
         verify(adminExt, never()).getDefaultMQAdminExtImpl();
+    }
+
+    @Test
+    void queryByMsgIdRejectsOffsetIdWhenTopologyCannotBeVerified() throws Exception {
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("nameserver unreachable"));
+
+        List<MessageRecordVO> result = provider.queryMessages(
+                "instance-a", "TopicA", msgId, null, null, 100L, 200L);
+
+        assertThat(result).isEmpty();
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+        verify(adminExt, never()).getDefaultMQAdminExtImpl();
+    }
+
+    @Test
+    void queryByMsgIdRejectsOffsetIdWhenTopologyIsEmpty() throws Exception {
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses());
+
+        List<MessageRecordVO> result = provider.queryMessages(
+                "instance-a", "TopicA", msgId, null, null, 100L, 200L);
+
+        assertThat(result).isEmpty();
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+    }
+
+    @Test
+    void queryByMsgIdPassesNonOffsetIdsThroughToViewMessage() throws Exception {
+        when(adminExt.viewMessage("TopicA", "uniq-key-1"))
+                .thenThrow(new IllegalStateException("unique key lookup handled by MQAdminImpl"));
+
+        List<MessageRecordVO> result = provider.queryMessages(
+                "instance-a", "TopicA", "uniq-key-1", null, null, 100L, 200L);
+
+        assertThat(result).isEmpty();
+        verify(adminExt).viewMessage("TopicA", "uniq-key-1");
+        verify(adminExt, never()).examineBrokerClusterInfo();
+    }
+
+    @Test
+    void queryByMsgIdStillViewsMessagesInsideKnownTopology() throws Exception {
+        String msgId = MessageDecoder.createMessageId(
+                new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic("TopicA");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        when(adminExt.viewMessage("TopicA", msgId)).thenReturn(message);
+
+        List<MessageRecordVO> result = provider.queryMessages(
+                "instance-a", "TopicA", msgId, null, null, 100L, 200L);
+
+        assertThat(result).singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo(msgId);
+        verify(adminExt).viewMessage("TopicA", msgId);
     }
 
     @Test
@@ -644,13 +715,12 @@ class RocketMQMessageProviderTest {
     void getMessageTraceDoesNotUseDecodedBrokerOutsideKnownTopology() throws Exception {
         String msgId = MessageDecoder.createMessageId(new InetSocketAddress("10.2.3.4", 10911), 12345L);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
-        when(adminExt.viewMessage("TopicA", msgId))
-                .thenThrow(new IllegalStateException("topic lookup failed"));
         when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
                 .thenReturn(new QueryResult(0L, List.of()));
 
         provider.getMessageTrace("instance-a", msgId, "TopicA");
 
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
         verify(adminExt, never()).getDefaultMQAdminExtImpl();
         ArgumentCaptor<Long> beginCaptor = ArgumentCaptor.forClass(Long.class);
         ArgumentCaptor<Long> endCaptor = ArgumentCaptor.forClass(Long.class);

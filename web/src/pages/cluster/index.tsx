@@ -53,6 +53,8 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { countClusterComponents } from './clusterStats';
 import type {
+  BrokerConfigDiffResult,
+  BrokerConfigDifference,
   BrokerInfo,
   ProxyInfo,
   NameserverRegistryEntry,
@@ -67,6 +69,7 @@ import type {
 import {
   createNameserverRegistry,
   deleteNameserverRegistry,
+  getBrokerConfigDiff,
   getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
@@ -93,6 +96,7 @@ type ProxyDetail = ProxyInfo & { clusterId: string; clusterName: string; nsClust
 type ClusterConfigFormValues = Partial<ClusterConfig> & { maxMessageSizeMB: number };
 type ClusterConfigRequest = { id: string; instanceId?: string } & Partial<ClusterConfig>;
 type NameServerConfigDiffNode = NameServerConfigDiffResult['nodes'][number];
+type BrokerConfigDiffBroker = BrokerConfigDiffResult['brokers'][number];
 
 const safeText = (value: string | null | undefined) => value ?? '';
 const searchText = (value: string | null | undefined) => safeText(value).toLowerCase();
@@ -108,6 +112,8 @@ const CONFIG_FIELD_LABEL_KEYS: Record<string, string> = {
   writeQueueNums: 'cluster.writeQueues',
   readQueueNums: 'cluster.readQueues',
   brokerPermission: 'cluster.brokerPermission',
+  deleteWhen: 'cluster.deleteWhen',
+  msgTraceTopicName: 'cluster.msgTraceTopicName',
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -143,6 +149,17 @@ const ClusterPage = () => {
     cluster: null,
     result: null,
   });
+  const [brokerConfigDiffState, setBrokerConfigDiffState] = useState<{
+    open: boolean;
+    loading: boolean;
+    cluster: ClusterInfo | null;
+    result: BrokerConfigDiffResult | null;
+  }>({
+    open: false,
+    loading: false,
+    cluster: null,
+    result: null,
+  });
   const [configForm] = Form.useForm();
 
   const [k8sIdOptions, setK8sIdOptions] = useState<string[]>([]);
@@ -152,6 +169,8 @@ const ClusterPage = () => {
   const nsRegistryRequestRef = useRef(0);
   const registryClustersRequestRef = useRef(0);
   const k8sCertsRequestRef = useRef(0);
+  const nsConfigDiffRequestRef = useRef(0);
+  const connectionTestRequestRef = useRef(0);
 
   const loadRegistryClusters = useCallback(async () => {
     const requestId = ++registryClustersRequestRef.current;
@@ -210,6 +229,8 @@ const ClusterPage = () => {
       nsRegistryRequestRef.current += 1;
       registryClustersRequestRef.current += 1;
       k8sCertsRequestRef.current += 1;
+      nsConfigDiffRequestRef.current += 1;
+      connectionTestRequestRef.current += 1;
     },
     [],
   );
@@ -311,6 +332,7 @@ const ClusterPage = () => {
 
   const openNameServerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
+      const requestId = ++nsConfigDiffRequestRef.current;
       setNsConfigDiffState({
         open: true,
         loading: true,
@@ -319,6 +341,7 @@ const ClusterPage = () => {
       });
       try {
         const result = await getNameServerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        if (requestId !== nsConfigDiffRequestRef.current) return;
         setNsConfigDiffState({
           open: true,
           loading: false,
@@ -326,12 +349,41 @@ const ClusterPage = () => {
           result,
         });
       } catch {
+        if (requestId !== nsConfigDiffRequestRef.current) return;
         setNsConfigDiffState((current) => ({ ...current, loading: false }));
         message.error(t('cluster.nsConfigDiffFailed'));
       }
     },
     [t],
   );
+
+  const openBrokerConfigDiff = useCallback(
+    async (cluster: ClusterInfo) => {
+      setBrokerConfigDiffState({
+        open: true,
+        loading: true,
+        cluster,
+        result: null,
+      });
+      try {
+        const result = await getBrokerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        setBrokerConfigDiffState({
+          open: true,
+          loading: false,
+          cluster,
+          result,
+        });
+      } catch {
+        setBrokerConfigDiffState((current) => ({ ...current, loading: false }));
+        message.error(t('cluster.brokerConfigDiffFailed'));
+      }
+    },
+    [t],
+  );
+  const closeNameServerConfigDiff = useCallback(() => {
+    nsConfigDiffRequestRef.current += 1;
+    setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null });
+  }, []);
 
   // ─── Connection test ──────────────────────────────────────────────────────
   const [connectModalOpen, setConnectModalOpen] = useState(false);
@@ -340,11 +392,14 @@ const ClusterPage = () => {
   const [connectForm] = Form.useForm();
 
   const openConnectModal = useCallback(() => {
+    connectionTestRequestRef.current += 1;
     setProbeResult(null);
+    setConnectTesting(false);
     setConnectModalOpen(true);
   }, []);
 
   const closeConnectModal = useCallback(() => {
+    connectionTestRequestRef.current += 1;
     setConnectModalOpen(false);
     setConnectTesting(false);
     setProbeResult(null);
@@ -352,22 +407,26 @@ const ClusterPage = () => {
   }, [connectForm]);
 
   const handleTestConnection = useCallback(async () => {
+    const requestId = ++connectionTestRequestRef.current;
     let namesrvAddr: string;
     try {
       ({ namesrvAddr } = await connectForm.validateFields());
     } catch {
       return;
     }
+    if (requestId !== connectionTestRequestRef.current) return;
     setConnectTesting(true);
     setProbeResult(null);
     try {
       const result = await testClusterConnection(namesrvAddr);
+      if (requestId !== connectionTestRequestRef.current) return;
       setProbeResult(result);
       message.success(t('cluster.testConnectionSuccess'));
     } catch {
+      if (requestId !== connectionTestRequestRef.current) return;
       message.error(t('cluster.testConnectionFailed'));
     } finally {
-      setConnectTesting(false);
+      if (requestId === connectionTestRequestRef.current) setConnectTesting(false);
     }
   }, [connectForm, t]);
 
@@ -797,18 +856,8 @@ const ClusterPage = () => {
       <Modal
         title={t('cluster.nsConfigDiffTitle', { name: titleName })}
         open={open}
-        onCancel={() =>
-          setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null })
-        }
-        footer={
-          <Button
-            onClick={() =>
-              setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null })
-            }
-          >
-            {t('common.close')}
-          </Button>
-        }
+        onCancel={closeNameServerConfigDiff}
+        footer={<Button onClick={closeNameServerConfigDiff}>{t('common.close')}</Button>}
         width={920}
         destroyOnHidden
       >
@@ -859,6 +908,154 @@ const ClusterPage = () => {
             </>
           ) : (
             <Alert showIcon type="info" message={t('cluster.nsConfigDiffLoading')} />
+          )}
+        </Spin>
+      </Modal>
+    );
+  }
+
+  function renderBrokerConfigDiffModal() {
+    const { cluster, loading: diffLoading, open, result } = brokerConfigDiffState;
+    const titleName = cluster?.nsClusterName ?? cluster?.name ?? result?.cluster ?? '-';
+    const brokerColumns: ColumnsType<BrokerConfigDiffBroker> = [
+      {
+        title: t('cluster.brokerName'),
+        dataIndex: 'name',
+        key: 'name',
+        width: 180,
+        render: (name: string) => <Text strong>{name}</Text>,
+      },
+      {
+        title: t('common.address'),
+        dataIndex: 'address',
+        key: 'address',
+        render: (address: string) => <Text copyable>{address}</Text>,
+      },
+      {
+        title: t('common.status'),
+        dataIndex: 'reachable',
+        key: 'reachable',
+        width: 120,
+        render: (reachable: boolean) => (
+          <Tag color={reachable ? 'green' : 'red'}>
+            {reachable
+              ? t('cluster.brokerConfigDiffReachable')
+              : t('cluster.brokerConfigDiffUnreachable')}
+          </Tag>
+        ),
+      },
+      {
+        title: t('common.message'),
+        dataIndex: 'message',
+        key: 'message',
+        ellipsis: true,
+        render: (value?: string | null) => value || <Text type="secondary">-</Text>,
+      },
+    ];
+    const differenceColumns: ColumnsType<BrokerConfigDifference> = [
+      {
+        title: t('cluster.configPreviewField'),
+        dataIndex: 'field',
+        key: 'field',
+        width: 180,
+        render: (field: string) => <Text strong>{configFieldLabel(field)}</Text>,
+      },
+      {
+        title: t('cluster.configPreviewProperty'),
+        dataIndex: 'brokerProperty',
+        key: 'brokerProperty',
+        width: 190,
+        render: (value: string) => <Text code>{value}</Text>,
+      },
+      {
+        title: t('cluster.brokerConfigDiffValues'),
+        dataIndex: 'values',
+        key: 'values',
+        render: (values: BrokerConfigDifference['values']) => (
+          <Space size={[0, 4]} wrap>
+            {values.map((value) => (
+              <Tag
+                key={`${value.address}-${value.value ?? 'missing'}`}
+                color={value.configured ? 'blue' : 'default'}
+              >
+                {`${value.brokerName || value.address}: ${
+                  value.configured
+                    ? (value.value ?? '-')
+                    : t('cluster.brokerConfigDiffUnconfigured')
+                }`}
+              </Tag>
+            ))}
+          </Space>
+        ),
+      },
+    ];
+
+    return (
+      <Modal
+        title={t('cluster.brokerConfigDiffTitle', { name: titleName })}
+        open={open}
+        onCancel={() =>
+          setBrokerConfigDiffState({ open: false, loading: false, cluster: null, result: null })
+        }
+        footer={
+          <Button
+            onClick={() =>
+              setBrokerConfigDiffState({ open: false, loading: false, cluster: null, result: null })
+            }
+          >
+            {t('common.close')}
+          </Button>
+        }
+        width={980}
+        destroyOnHidden
+      >
+        <Spin spinning={diffLoading}>
+          {result ? (
+            <>
+              <Alert
+                showIcon
+                type={result.driftDetected ? 'warning' : 'success'}
+                message={
+                  result.driftDetected
+                    ? t('cluster.brokerConfigDiffDriftDetected')
+                    : t('cluster.brokerConfigDiffNoDrift')
+                }
+                style={{ marginBottom: 16 }}
+              />
+              <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
+                <Descriptions.Item label={t('cluster.configPreviewTargets')}>
+                  {`${result.reachableBrokerCount}/${result.brokerCount}`}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('cluster.brokerConfigDiffComplete')}>
+                  {result.complete ? t('common.yes') : t('common.no')}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('cluster.brokerConfigDiffComparedFields')} span={2}>
+                  <Space size={[0, 4]} wrap>
+                    {result.comparedFields.map((field) => (
+                      <Tag key={field}>{configFieldLabel(field)}</Tag>
+                    ))}
+                  </Space>
+                </Descriptions.Item>
+              </Descriptions>
+              <Table<BrokerConfigDiffBroker>
+                columns={brokerColumns}
+                dataSource={result.brokers}
+                rowKey="address"
+                pagination={false}
+                size="small"
+                style={{ marginBottom: 16 }}
+              />
+              <Table<BrokerConfigDifference>
+                columns={differenceColumns}
+                dataSource={result.differences}
+                rowKey="field"
+                pagination={false}
+                size="small"
+                locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
+              />
+            </>
+          ) : (
+            <Alert showIcon type="info" message={t('cluster.brokerConfigDiffLoading')} />
           )}
         </Spin>
       </Modal>
@@ -986,12 +1183,25 @@ const ClusterPage = () => {
       {
         title: t('common.actions'),
         key: 'action',
-        width: 160,
+        width: 260,
         render: (_: unknown, record: BrokerWithCluster) => (
           <Flex gap={6}>
             <Button
               size="small"
+              icon={<EyeOutlined />}
+              aria-label={t('cluster.brokerConfigDiff')}
+              loading={
+                brokerConfigDiffState.loading &&
+                brokerConfigDiffState.cluster?.id === record.cluster.id
+              }
+              onClick={() => void openBrokerConfigDiff(record.cluster)}
+            >
+              {t('cluster.brokerConfigDiff')}
+            </Button>
+            <Button
+              size="small"
               icon={<SettingOutlined />}
+              aria-label={t('cluster.config')}
               style={{ borderColor: '#1677ff', color: '#1677ff' }}
               onClick={() => handleConfigOpen(record.cluster)}
             >
@@ -1000,6 +1210,7 @@ const ClusterPage = () => {
             <Button
               size="small"
               icon={<ReloadOutlined />}
+              aria-label={t('cluster.restart')}
               danger
               style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
               onClick={() => message.warning(t('cluster.restartNotSupported'))}
@@ -1594,6 +1805,7 @@ const ClusterPage = () => {
       </Modal>
 
       {renderNameServerConfigDiffModal()}
+      {renderBrokerConfigDiffModal()}
 
       <Modal
         title={t('cluster.testConnectionTitle')}

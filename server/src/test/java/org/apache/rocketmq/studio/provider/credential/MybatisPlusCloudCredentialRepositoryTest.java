@@ -17,12 +17,17 @@
 
 package org.apache.rocketmq.studio.provider.credential;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqCloudCredential;
 import org.apache.rocketmq.studio.persistence.mapper.RmqCloudCredentialMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,6 +37,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,13 +55,25 @@ class MybatisPlusCloudCredentialRepositoryTest {
         CloudCredentialVO credential = new CloudCredentialVO();
         credential.setId(1L);
         credential.setVendor(InstanceVendor.ALIYUN);
-        when(credentialMapper.selectById(1L)).thenReturn(entity(1L, "cred-1", "ALIYUN"));
         when(credentialMapper.updateById(any(RmqCloudCredential.class))).thenReturn(0);
 
         assertThatThrownBy(() -> repository.save(credential))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Cloud credential update was not applied: 1")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+    }
+
+    @Test
+    void saveShouldNotReinsertACredentialDeletedConcurrently() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(credentialMapper.updateById(any(RmqCloudCredential.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> repository.save(credential))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential update was not applied: 1");
+        verify(credentialMapper, never()).insert(any(RmqCloudCredential.class));
     }
 
     @Test
@@ -75,6 +94,20 @@ class MybatisPlusCloudCredentialRepositoryTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Invalid persisted cloud credential vendor")
                 .hasMessageContaining("3");
+    }
+
+    @Test
+    void findPageShouldTrimTheSearchTerm() {
+        when(credentialMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqCloudCredential>(1, 20));
+
+        repository.findPage(null, "  credential  ", 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqCloudCredential>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(credentialMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqCloudCredential> query = (QueryWrapper<RmqCloudCredential>) queryCaptor.getValue();
+        query.getCustomSqlSegment();
+        assertThat(query.getParamNameValuePairs()).containsValue("%credential%");
     }
 
     private RmqCloudCredential entity(Long id, String name, String vendor) {

@@ -175,6 +175,45 @@ describe('AiAssistantTab', () => {
     ).toBeInTheDocument();
   });
 
+  it('ignores a saved model refresh after the provider changes', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    let resolveModels!: (result: { status: number; data: { id: string }[] }) => void;
+    const user = userEvent.setup();
+    llmApiMocks.getLlmModels
+      .mockResolvedValueOnce({ status: 0, data: [{ id: 'qwen3.8-max' }] })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveModels = resolve;
+          }),
+      );
+    renderPage();
+
+    await screen.findByText('API key configured');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(llmApiMocks.getLlmModels).toHaveBeenCalledTimes(2));
+
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(
+      await screen.findByText('OpenAI', { selector: '.ant-select-item-option-content' }),
+    );
+    await act(async () =>
+      resolveModels({ status: 0, data: [{ id: 'stale-saved-provider-model' }] }),
+    );
+
+    const modelBox = screen.getAllByRole('combobox')[2];
+    await user.click(modelBox);
+    await user.clear(modelBox);
+    expect(
+      screen.queryByText('stale-saved-provider-model', {
+        selector: '.ant-select-item-option-content',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('gpt-5.6-sol', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+  });
+
   it('refreshes the model list from a successful connection test', async () => {
     const user = userEvent.setup();
     llmApiMocks.testLlmConnection.mockResolvedValue({

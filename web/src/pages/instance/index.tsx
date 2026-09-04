@@ -357,12 +357,19 @@ const InstancePage = () => {
     try {
       const result = await importCloudInstances({ vendor, credentialId });
       await loadInstances();
+      const failedCount = result.failedCount ?? result.failed.length;
       const summary =
         result.imported > 0
           ? `导入完成：共同步 ${result.imported + result.skipped} 个实例（新导入 ${result.imported}，已存在跳过 ${result.skipped}）`
-          : `云上实例均已在 Studio 中（共 ${result.skipped} 个），无需重复导入`;
-      if (result.failed.length > 0) {
-        message.warning(`${summary}，失败 ${result.failed.length} 个：${result.failed.join('；')}`);
+          : failedCount > 0
+            ? `导入未完成：新导入 ${result.imported} 个，已存在跳过 ${result.skipped} 个`
+            : `云上实例均已在 Studio 中（共 ${result.skipped} 个），无需重复导入`;
+      if (failedCount > 0) {
+        const details = result.failed.length > 0 ? `：${result.failed.join('；')}` : '';
+        const omitted = result.failureDetailsTruncated
+          ? `（仅显示前 ${result.failed.length} 条）`
+          : '';
+        message.warning(`${summary}，失败 ${failedCount} 个${omitted}${details}`);
       } else {
         message.success(summary);
       }

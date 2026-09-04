@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.alert;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.util.StringUtils;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -73,6 +74,8 @@ final class NativeAlertRulePolicy {
         if (StringUtils.hasText(rule.getTopic()) && !TOPIC_SCOPED_METRICS.contains(rule.getMetric())) {
             throw new BusinessException(400, "topic is not supported for metric " + rule.getMetric());
         }
+        AlertRuleDuration.parse(rule.getDuration());
+        AlertRuleDuration.parse(rule.getReminderInterval());
         if (rule.getConsecutiveSamples() < 1) {
             throw new BusinessException(400, "consecutiveSamples must be at least 1");
         }
@@ -83,7 +86,8 @@ final class NativeAlertRulePolicy {
             return;
         }
         for (String channel : rule.getChannels()) {
-            if (!StringUtils.hasText(channel) || !NOTIFICATION_CHANNELS.contains(channel.trim().toLowerCase())) {
+            if (!StringUtils.hasText(channel)
+                    || !NOTIFICATION_CHANNELS.contains(channel.trim().toLowerCase(Locale.ROOT))) {
                 throw new BusinessException(400, "Unsupported notification channel: " + channel);
             }
         }

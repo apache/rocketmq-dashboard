@@ -29,6 +29,8 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -138,6 +140,9 @@ public class SettingsService {
             settings.setDingtalkSigningSecret(currentSettings.getDingtalkSigningSecret());
         }
         if (currentSettings != null) {
+            if (!StringUtils.hasText(settings.getLlmEngine())) {
+                settings.setLlmEngine(currentSettings.getLlmEngine());
+            }
             if (!StringUtils.hasText(settings.getDeploymentName())) {
                 settings.setDeploymentName(currentSettings.getDeploymentName());
             }
@@ -146,6 +151,12 @@ public class SettingsService {
             }
             if (!StringUtils.hasText(settings.getAwsRegion())) {
                 settings.setAwsRegion(currentSettings.getAwsRegion());
+            }
+            if (settings.getMaxTokens() == null) {
+                settings.setMaxTokens(currentSettings.getMaxTokens());
+            }
+            if (settings.getTemperature() == null) {
+                settings.setTemperature(currentSettings.getTemperature());
             }
         }
         settings.setClearApiKey(false);
@@ -197,11 +208,17 @@ public class SettingsService {
     }
 
 
+    // The full-list endpoint is hit by every metrics tab on first paint and
+    // every time the datasource dropdown re-fetches. Caching it with the
+    // write paths evicted below keeps the user-visible list correct while
+    // removing a per-tab DB round trip.
+    @Cacheable("data-sources")
     public List<DataSourceVO> listDataSources() {
         log.debug("Listing all data sources");
         return settingsRepository.findAllDataSources();
     }
 
+    @Cacheable(value = "data-sources", key = "'page:' + #search + ':' + #type + ':' + #page + ':' + #pageSize")
     public PageResult<DataSourceVO> listDataSources(String search, String type, int page, int pageSize) {
         if (page < 1) {
             throw new BusinessException(400, "page must be greater than zero");
@@ -215,6 +232,7 @@ public class SettingsService {
     }
 
 
+    @CacheEvict(value = "data-sources", allEntries = true)
     public DataSourceVO createDataSource(DataSourceVO dataSource) {
         if (dataSource == null) {
             throw new BusinessException(400, "Data source request is required");
@@ -227,6 +245,7 @@ public class SettingsService {
     }
 
 
+    @CacheEvict(value = "data-sources", allEntries = true)
     public DataSourceVO updateDataSource(DataSourceVO dataSource) {
         if (dataSource == null) {
             throw new BusinessException(400, "Data source request is required");
@@ -251,6 +270,7 @@ public class SettingsService {
     }
 
 
+    @CacheEvict(value = "data-sources", allEntries = true)
     public void deleteDataSource(String key) {
         String normalizedKey = normalizeDataSourceKey(key);
         log.info("Deleting data source: {}", normalizedKey);

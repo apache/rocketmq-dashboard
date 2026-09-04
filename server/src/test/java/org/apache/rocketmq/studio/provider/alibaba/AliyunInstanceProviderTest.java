@@ -44,6 +44,7 @@ import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
@@ -224,6 +225,73 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldFetchExactlyFiveFullPagesTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class))).thenAnswer(invocation -> {
+            ListConsumerGroupsRequest request = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(groupsResponse(500L,
+                    groupIdsForPage(request.getPageNumber(), AliyunConverters.PAGE_SIZE)));
+        });
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).hasSize(500);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient, times(5)).listConsumerGroups(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageNumber)
+                .containsExactly(1, 2, 3, 4, 5);
+    }
+
+    @Test
+    void listConsumerGroupsShouldTraversePastLegacyFivePageCapTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class))).thenAnswer(invocation -> {
+            ListConsumerGroupsRequest request = invocation.getArgument(0);
+            int pageNumber = request.getPageNumber();
+            if (pageNumber <= 5) {
+                return CompletableFuture.completedFuture(groupsResponse(501L,
+                        groupIdsForPage(pageNumber, AliyunConverters.PAGE_SIZE)));
+            }
+            return CompletableFuture.completedFuture(groupsResponse(501L, "GID_500"));
+        });
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).hasSize(501);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient, times(6)).listConsumerGroups(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageNumber)
+                .containsExactly(1, 2, 3, 4, 5, 6);
+    }
+
+    @Test
+    void listConsumerGroupsShouldStopOnShortPageWhenTotalCountIsMissingTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class))).thenAnswer(invocation -> {
+            ListConsumerGroupsRequest request = invocation.getArgument(0);
+            if (request.getPageNumber() == 1) {
+                return CompletableFuture.completedFuture(groupsResponse(null,
+                        groupIdsForPage(1, AliyunConverters.PAGE_SIZE)));
+            }
+            return CompletableFuture.completedFuture(groupsResponse(null, "GID_100"));
+        });
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).hasSize(101);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient, times(2)).listConsumerGroups(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageNumber)
+                .containsExactly(1, 2);
+    }
+
+    @Test
     void getGroupProgressShouldMapLagRowsTest() {
         stubInstance();
         stubCallThrough();
@@ -256,6 +324,37 @@ class AliyunInstanceProviderTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(totalRow.getDiffTotal()).isEqualTo(100L);
+    }
+
+    @Test
+    void previewResetOffsetShouldAllowLimitedCloudPreviewTest() {
+        stubInstance();
+        stubCallThrough();
+        GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetConsumerGroupLagResponseBody.builder()
+                        .data(GetConsumerGroupLagResponseBody.Data.builder()
+                                .consumerGroupId("GID_test")
+                                .topicLagMap(Map.of("topic-a",
+                                        DataTopicLagMapValue.builder().readyCount(42L).build()))
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.getConsumerGroupLag(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        ResetConsumerOffsetPreviewVO preview = provider.previewResetOffset(
+                STUDIO_INSTANCE_ID, "GID_test", 1679458628000L, "topic-a");
+
+        assertThat(preview.isComplete()).isFalse();
+        assertThat(preview.isAllowReset()).isTrue();
+        assertThat(preview.getQueueCount()).isEqualTo(1);
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(42L);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(-1L);
+        assertThat(preview.getWarnings())
+                .containsExactly("Provider does not expose per-queue target offset preview; confirm with current lag only");
+        assertThat(preview.getQueues().get(0).getTargetOffset()).isEqualTo(-1L);
+        assertThat(preview.getQueues().get(0).getRiskLevel()).isEqualTo("WARNING");
     }
 
     @Test
@@ -702,6 +801,12 @@ class AliyunInstanceProviderTest {
                                 .build())
                         .build())
                 .build();
+    }
+
+    private static String[] groupIdsForPage(int pageNumber, int pageSize) {
+        return IntStream.range(0, pageSize)
+                .mapToObj(index -> "GID_" + ((pageNumber - 1) * pageSize + index))
+                .toArray(String[]::new);
     }
 
     @Test

@@ -1,5 +1,9 @@
-import { exportAuditLogs as exportAuditLogsApi, fetchAuditFilterOptions } from '../api/audit';
-import type { AuditFilter, AuditFilterOptions } from '../api/audit';
+import {
+  exportAuditLogs as exportAuditLogsApi,
+  fetchAuditFilterOptions,
+  fetchAuditSummary,
+} from '../api/audit';
+import type { AuditFilter, AuditFilterOptions, AuditSummary } from '../api/audit';
 import { isMockMode } from './dataMode';
 import * as opsApi from '../api/ops';
 import type {
@@ -21,6 +25,7 @@ import type {
   NotificationDeliveryBulkRetryResult,
   NotificationDeliveryQuery,
   NotificationDeliveryRecord,
+  AlertSilenceQuery,
   AlertSilence,
   CreateAlertSilence,
 } from '../api/ops';
@@ -29,7 +34,11 @@ import { mockAuditRecords } from '../mock/audit';
 import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
 
 let auditRecordsState = mockAuditRecords as unknown as AuditRecord[];
-const alertRulesState = mockAlertRules as unknown as AlertRule[];
+const initialAlertRules = mockAlertRules as unknown as AlertRule[];
+const alertRulesState: Record<AlertRuleDomain, AlertRule[]> = {
+  CLUSTER: initialAlertRules.map(copyAlertRule),
+  BUSINESS: initialAlertRules.map(copyAlertRule),
+};
 let alertSilencesState: AlertSilence[] = [];
 
 function copyAlertRule(rule: AlertRule): AlertRule {
@@ -112,7 +121,7 @@ function formatAuditCsv(records: AuditRecord[]): string {
 }
 
 export async function listAlertRules(domain: AlertRuleDomain = 'CLUSTER'): Promise<AlertRule[]> {
-  if (isMockMode()) return alertRulesState.map(copyAlertRule);
+  if (isMockMode()) return alertRulesState[domain].map(copyAlertRule);
   return opsApi.listAlertRules(domain);
 }
 export async function listAlertRulesPage(
@@ -124,7 +133,7 @@ export async function listAlertRulesPage(
   const search = query.search?.trim().toLowerCase();
   const page = Math.max(1, query.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
-  const filtered = alertRulesState
+  const filtered = alertRulesState[domain]
     .filter((rule) => query.enabled == null || rule.enabled === query.enabled)
     .filter(
       (rule) =>
@@ -149,7 +158,8 @@ export async function listAlertRuleRuntime(
 export async function exportAlertRulesTransfer(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRuleTransfer> {
-  if (isMockMode()) return { version: 1, domain, rules: alertRulesState.map(copyAlertRule) };
+  if (isMockMode())
+    return { version: 1, domain, rules: alertRulesState[domain].map(copyAlertRule) };
   return opsApi.exportAlertRulesTransfer(domain);
 }
 
@@ -163,7 +173,7 @@ export async function importAlertRulesTransfer(
     ...copyAlertRule(rule as AlertRule),
     id: startId + index,
   }));
-  alertRulesState.push(...imported);
+  alertRulesState[domain].push(...imported);
   return imported.map(copyAlertRule);
 }
 
@@ -236,7 +246,7 @@ export async function createAlertRule(
       ...data,
       channels: [...(data.channels ?? [])],
     };
-    alertRulesState.push(rule);
+    alertRulesState[domain].push(rule);
     return copyAlertRule(rule);
   }
   return opsApi.createAlertRule(data, domain);
@@ -247,10 +257,10 @@ export async function updateAlertRule(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule> {
   if (isMockMode()) {
-    const index = alertRulesState.findIndex((rule) => rule.id === data.id);
+    const index = alertRulesState[domain].findIndex((rule) => rule.id === data.id);
     if (index < 0) throw new Error(`Alert rule not found: ${data.id}`);
     const rule = copyAlertRule(data);
-    alertRulesState[index] = rule;
+    alertRulesState[domain][index] = rule;
     return copyAlertRule(rule);
   }
   return opsApi.updateAlertRule(data, domain);
@@ -262,7 +272,7 @@ export async function toggleAlertRule(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule> {
   if (isMockMode()) {
-    const rule = alertRulesState.find((item) => item.id === id);
+    const rule = alertRulesState[domain].find((item) => item.id === id);
     if (!rule) throw new Error(`Alert rule not found: ${id}`);
     rule.enabled = enabled;
     return copyAlertRule(rule);
@@ -275,8 +285,8 @@ export async function deleteAlertRule(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<void> {
   if (isMockMode()) {
-    const idx = alertRulesState.findIndex((rule) => rule.id === id);
-    if (idx >= 0) alertRulesState.splice(idx, 1);
+    const idx = alertRulesState[domain].findIndex((rule) => rule.id === id);
+    if (idx >= 0) alertRulesState[domain].splice(idx, 1);
     return;
   }
   return opsApi.deleteAlertRule(id, domain);
@@ -292,7 +302,7 @@ export async function bulkToggleAlertRules(
   const failures: Record<string, string> = {};
   const updatedRules: AlertRule[] = [];
   for (const id of [...new Set(ids)]) {
-    const rule = alertRulesState.find((item) => item.id === id);
+    const rule = alertRulesState[domain].find((item) => item.id === id);
     if (!rule) {
       failures[String(id)] = 'Alert rule not found';
       continue;
@@ -312,12 +322,12 @@ export async function bulkDeleteAlertRules(
   const succeededIds: number[] = [];
   const failures: Record<string, string> = {};
   for (const id of [...new Set(ids)]) {
-    const index = alertRulesState.findIndex((item) => item.id === id);
+    const index = alertRulesState[domain].findIndex((item) => item.id === id);
     if (index < 0) {
       failures[String(id)] = 'Alert rule not found';
       continue;
     }
-    alertRulesState.splice(index, 1);
+    alertRulesState[domain].splice(index, 1);
     succeededIds.push(id);
   }
   return { succeededIds, failures, updatedRules: [] };
@@ -437,6 +447,19 @@ export async function listAlertSilences(): Promise<AlertSilence[]> {
   return opsApi.listAlertSilences();
 }
 
+export async function listAlertSilencesPage(
+  params: AlertSilenceQuery = {},
+): Promise<PageResult<AlertSilence>> {
+  if (!isMockMode()) return opsApi.listAlertSilencesPage(params);
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? 10;
+  const start = (page - 1) * pageSize;
+  const items = alertSilencesState
+    .slice(start, start + pageSize)
+    .map((silence) => ({ ...silence }));
+  return { items, total: alertSilencesState.length, page, size: pageSize };
+}
+
 export async function createAlertSilence(data: CreateAlertSilence): Promise<AlertSilence> {
   if (!isMockMode()) return opsApi.createAlertSilence(data);
   const silence = { ...data, id: Date.now(), createdBy: 'admin' } as AlertSilence;
@@ -472,6 +495,35 @@ export async function getAuditFilterOptions(): Promise<AuditFilterOptions> {
 export async function exportAuditLogs(params: AuditFilter = {}): Promise<string> {
   if (!isMockMode()) return exportAuditLogsApi(params);
   return formatAuditCsv(filterAuditRecords(params));
+}
+
+export async function getAuditSummary(params: AuditFilter = {}): Promise<AuditSummary> {
+  if (!isMockMode()) return fetchAuditSummary(params);
+  const records = filterAuditRecords(params);
+  const countBy = (field: 'operationType' | 'resourceType') =>
+    Array.from(
+      records.reduce((counts, record) => {
+        const name = record[field] || 'UNKNOWN';
+        counts.set(name, (counts.get(name) || 0) + 1);
+        return counts;
+      }, new Map<string, number>()),
+      ([name, count]) => ({ name, count }),
+    )
+      .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+      .slice(0, 8);
+  const resultCount = (name: string) =>
+    records.filter((record) => record.result.toUpperCase() === name).length;
+  const timestamps = records.map((record) => record.timestamp).sort();
+  return {
+    total: records.length,
+    successful: resultCount('SUCCESS'),
+    failed: resultCount('FAILED'),
+    partial: resultCount('PARTIAL'),
+    uniqueOperators: new Set(records.map((record) => record.operator).filter(Boolean)).size,
+    latestAt: timestamps[timestamps.length - 1] || null,
+    byOperation: countBy('operationType'),
+    byResourceType: countBy('resourceType'),
+  };
 }
 
 export async function cleanupAuditLogs(beforeDays: number): Promise<number> {

@@ -30,6 +30,7 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceResponse;
 import com.tencentcloudapi.trocket.v20230308.models.MessageItem;
 import com.tencentcloudapi.trocket.v20230308.models.MessageTraceItem;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListRequest;
@@ -51,8 +52,10 @@ import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -537,6 +540,28 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldContinuePastTenThousandRecordsWhenTotalCountRequiresItTest() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_page");
+        when(client.DescribeConsumerGroupList(any())).thenAnswer(invocation -> {
+            DescribeConsumerGroupListRequest request = invocation.getArgument(0);
+            DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+            response.setTotalCount(10_001L);
+            response.setData(request.getOffset() < 10_000L
+                    ? IntStream.range(0, 100).mapToObj(index -> item).toArray(ConsumeGroupItem[]::new)
+                    : new ConsumeGroupItem[]{item});
+            return response;
+        });
+
+        assertThat(provider.listConsumerGroups(STUDIO_INSTANCE_ID, "does-not-match")).isEmpty();
+
+        ArgumentCaptor<DescribeConsumerGroupListRequest> captor =
+                ArgumentCaptor.forClass(DescribeConsumerGroupListRequest.class);
+        verify(client, times(101)).DescribeConsumerGroupList(captor.capture());
+        assertThat(captor.getAllValues().get(100).getOffset()).isEqualTo(10_000L);
+    }
+
+    @Test
     void createConsumerGroupShouldCallTencentOpenApiTest() throws Exception {
         when(client.CreateConsumerGroup(any())).thenReturn(null);
         ConsumerGroupVO group = new ConsumerGroupVO();
@@ -591,6 +616,70 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void previewResetOffsetShouldAllowLimitedCloudPreviewTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setConsumerLag(42L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        ResetConsumerOffsetPreviewVO preview = provider.previewResetOffset(
+                STUDIO_INSTANCE_ID, "GID_test", 1600000000000L, "orders");
+
+        assertThat(preview.isComplete()).isFalse();
+        assertThat(preview.isAllowReset()).isTrue();
+        assertThat(preview.getQueueCount()).isEqualTo(1);
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(42L);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(-1L);
+        assertThat(preview.getWarnings())
+                .containsExactly("Provider does not expose per-queue target offset preview; confirm with current lag only");
+        assertThat(preview.getQueues().get(0).getTargetOffset()).isEqualTo(-1L);
+        assertThat(preview.getQueues().get(0).getRiskLevel()).isEqualTo("WARNING");
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldFetchExactlyTenThousandTencentSubscriptionsTest() throws Exception {
+        when(client.DescribeTopicListByGroup(any())).thenAnswer(invocation -> {
+            DescribeTopicListByGroupRequest request = invocation.getArgument(0);
+            DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+            response.setTotalCount(10000L);
+            response.setData(subscriptionPage(request.getOffset(), request.getLimit(), 10000));
+            return response;
+        });
+
+        assertThat(provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test")).hasSize(10000);
+        verify(client, times(100)).DescribeTopicListByGroup(any());
+    }
+
+    @Test
+    void getGroupProgressShouldFetchPastLegacyTenThousandTencentSubscriptionCapTest() throws Exception {
+        when(client.DescribeTopicListByGroup(any())).thenAnswer(invocation -> {
+            DescribeTopicListByGroupRequest request = invocation.getArgument(0);
+            DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+            response.setTotalCount(10001L);
+            response.setData(subscriptionPage(request.getOffset(), request.getLimit(), 10001));
+            return response;
+        });
+
+        assertThat(provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test")).hasSize(10001);
+        verify(client, times(101)).DescribeTopicListByGroup(any());
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldStopOnShortPageWhenTencentTotalCountIsMissingTest() throws Exception {
+        when(client.DescribeTopicListByGroup(any())).thenAnswer(invocation -> {
+            DescribeTopicListByGroupRequest request = invocation.getArgument(0);
+            DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+            response.setData(subscriptionPage(request.getOffset(), request.getLimit(), 150));
+            return response;
+        });
+
+        assertThat(provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test")).hasSize(150);
+        verify(client, times(2)).DescribeTopicListByGroup(any());
+    }
+
+    @Test
     void resetOffsetShouldCallTencentOpenApiTest() throws Exception {
         when(client.ResetConsumerGroupOffset(any())).thenReturn(null);
 
@@ -619,6 +708,22 @@ class TencentInstanceProviderTest {
         subscription.setConsumeType("CLUSTERING");
         subscription.setMessageModel("CLUSTERING");
         return subscription;
+    }
+
+    private static SubscriptionData[] subscriptionPage(Long offset, Long limit, int total) {
+        int start = offset == null ? 0 : offset.intValue();
+        int size = Math.min(limit == null ? TencentInstanceProvider.PAGE_SIZE : limit.intValue(),
+                Math.max(total - start, 0));
+        return IntStream.range(0, size)
+                .mapToObj(index -> {
+                    SubscriptionData subscription = subscription("GID_test");
+                    subscription.setTopic("topic-" + (start + index));
+                    subscription.setSubString("*");
+                    subscription.setExpressionType("TAG");
+                    subscription.setConsumerLag((long) start + index);
+                    return subscription;
+                })
+                .toArray(SubscriptionData[]::new);
     }
 
     @Test
@@ -809,6 +914,51 @@ class TencentInstanceProviderTest {
         assertThat(requests.get(1).getTaskRequestId())
                 .isEqualTo(requests.get(0).getTaskRequestId())
                 .isNotBlank();
+    }
+
+    @Test
+    void queryMessagesShouldReportTheProviderResultBudget() throws Exception {
+        // A full first page and a large TotalCount mean the provider stopped because it reached
+        // its result budget, not because Tencent returned the final page.
+        MessageItem[] page1Items = new MessageItem[TencentInstanceProvider.MESSAGE_LIMIT];
+        for (int i = 0; i < page1Items.length; i++) {
+            MessageItem item = new MessageItem();
+            item.setMsgId("MSG-" + (i + 1));
+            item.setProduceTime("2024-09-12 14:06:55,591");
+            page1Items[i] = item;
+        }
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setData(page1Items);
+        response.setTotalCount((long) TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT + 1L);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).hasSize(TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT);
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(client, org.mockito.Mockito.times(
+                        TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT
+                                / TencentInstanceProvider.MESSAGE_LIMIT))
+                .DescribeMessageList(any());
+    }
+
+    @Test
+    void queryMessagesShouldReportCompleteWhenTencentReturnsAShortPage() throws Exception {
+        MessageItem one = new MessageItem();
+        one.setMsgId("MSG-1");
+        one.setProduceTime("2024-09-12 14:06:55,591");
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setData(new MessageItem[]{one});
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).hasSize(1);
+        assertThat(result.mayBeTruncated()).isFalse();
     }
 
     @Test

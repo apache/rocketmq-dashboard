@@ -58,7 +58,7 @@ RULES = [
      'histogram_quantile(0.99, rate(rocketmq_dispatch_latency_bucket[5m])) > 1', "5m", "warning", "topic",
      "Dispatch latency high", "99th percentile dispatch latency is above 1 second."),
     ("rocketmq-client-connection-drop", "RocketMQClientConnectionDrop", "rocketmq-client.rules",
-     'changes(rocketmq_producer_count[5m]) < -5', "5m", "warning", "client",
+     'delta(rocketmq_producer_count[5m]) < -5', "5m", "warning", "client",
      "Client connections dropped", "More than 5 producer connections dropped in 5 minutes."),
     ("rocketmq-client-timeout", "RocketMQClientTimeout", "rocketmq-client.rules",
      'rocketmq_send_to_client_latency > 3000', "5m", "warning", "client",

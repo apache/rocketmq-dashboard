@@ -4,7 +4,7 @@
  * this work for additional information regarding copyright ownership.
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -55,19 +55,18 @@ const NotificationDeliveriesPage = () => {
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
   const [retryingVisible, setRetryingVisible] = useState(false);
+  const retryingIdsInFlight = useRef(new Set<number>());
+  const retryingVisibleInFlight = useRef(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   const refresh = () => {
     setLoading(true);
-    void listAlertDeliveriesPage({ channel, status, instanceId, page, pageSize })
-      .then((result) => {
-        setItems(result.items);
-        setTotal(result.total);
-      })
-      .catch(() => message.error(t('deliveries.loadFailed')))
-      .finally(() => setLoading(false));
+    setRefreshNonce((current) => current + 1);
   };
 
   const retryDelivery = async (record: NotificationDeliveryRecord) => {
+    if (retryingVisibleInFlight.current || retryingIdsInFlight.current.has(record.id)) return;
+    retryingIdsInFlight.current.add(record.id);
     setRetryingIds((current) => new Set(current).add(record.id));
     try {
       await retryAlertDelivery(record.id);
@@ -81,6 +80,7 @@ const NotificationDeliveriesPage = () => {
     } catch {
       message.error(t('deliveries.retryFailed'));
     } finally {
+      retryingIdsInFlight.current.delete(record.id);
       setRetryingIds((current) => {
         const next = new Set(current);
         next.delete(record.id);
@@ -92,6 +92,9 @@ const NotificationDeliveriesPage = () => {
   const retryVisibleFailures = async () => {
     const ids = items.filter((item) => item.status === 'FAILED').map((item) => item.id);
     if (ids.length === 0) return;
+    if (retryingVisibleInFlight.current || ids.some((id) => retryingIdsInFlight.current.has(id)))
+      return;
+    retryingVisibleInFlight.current = true;
     setRetryingVisible(true);
     try {
       const result = await retryAlertDeliveries(ids);
@@ -106,6 +109,7 @@ const NotificationDeliveriesPage = () => {
     } catch {
       message.error(t('deliveries.bulkRetryFailed'));
     } finally {
+      retryingVisibleInFlight.current = false;
       setRetryingVisible(false);
     }
   };
@@ -133,7 +137,7 @@ const NotificationDeliveriesPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [channel, status, instanceId, page, pageSize, t]);
+  }, [channel, status, instanceId, page, pageSize, refreshNonce, t]);
 
   const resetPage = (change: () => void) => {
     setLoading(true);

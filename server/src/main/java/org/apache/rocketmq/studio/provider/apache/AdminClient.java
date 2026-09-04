@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 
 
 public interface AdminClient {
@@ -35,5 +36,6 @@ public interface AdminClient {
     ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name, int retryQueueNums,
                                                          int retryMaxTimes);
     void deleteConsumerGroup(String instanceId, String name);
+    ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String name, long timestamp, String topic);
     void resetOffset(String instanceId, String name, long timestamp, String topic);
 }

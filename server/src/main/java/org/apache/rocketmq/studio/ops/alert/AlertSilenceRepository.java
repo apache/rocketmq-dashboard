@@ -16,12 +16,19 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
+
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface AlertSilenceRepository {
     AlertSilenceVO save(AlertSilenceVO silence);
 
     List<AlertSilenceVO> findAll();
+
+    PageResult<AlertSilenceVO> findPage(int page, int pageSize);
+
+    List<AlertSilenceVO> findActiveCandidates(AlertDomain domain, Long ruleId, String instanceId, LocalDateTime now);
 
     boolean deleteById(Long id);
 }

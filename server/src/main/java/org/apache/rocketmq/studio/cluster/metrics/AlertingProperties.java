@@ -32,6 +32,20 @@ public class AlertingProperties {
      * native samples and emitting duplicate alert events.
      */
     private String collectionLeaseDuration = "PT1M";
+    /** Maximum time between lease heartbeats; the scheduler clamps this below the lease duration. */
+    private String collectionLeaseRenewalInterval = "PT15S";
     /** Retain short-lived diagnostic samples without allowing the snapshot table to grow indefinitely. */
     private String snapshotRetention = "PT24H";
+    /** Retain terminal notification deliveries before deleting them from the outbox. */
+    private String notificationRetention = "P30D";
+    /** Maximum number of terminal notification deliveries deleted per cleanup batch. */
+    private int notificationCleanupBatchSize = 500;
+    /** Maximum number of cleanup batches executed during one scheduled pass. */
+    private int notificationCleanupMaxBatches = 10;
+    /** How long a notification dispatcher may hold an outbox row without renewing it. */
+    private String notificationClaimTimeout = "PT1M";
+    /** How often an in-flight notification claim is renewed. */
+    private String notificationClaimRenewalInterval = "PT20S";
+    /** Bounded daemon threads used for notification claim renewal. */
+    private int notificationHeartbeatThreads = 2;
 }

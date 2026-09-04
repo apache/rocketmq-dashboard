@@ -10,14 +10,18 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
+import { downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
   createAlertSilence,
   listAlertDeliveries,
   listRelatedSystemAlerts,
   retryAlertDelivery,
+  deleteAlertSilence,
   listAlertSilences,
+  listAlertSilencesPage,
   listSystemAlertsPage,
 } from '../../../services/opsService';
 import SystemAlertsPage from '../systemAlerts';
@@ -31,9 +35,16 @@ vi.mock('../../../services/opsService', () => ({
   listRelatedSystemAlerts: vi.fn().mockResolvedValue([]),
   retryAlertDelivery: vi.fn(),
   listAlertSilences: vi.fn(),
+  listAlertSilencesPage: vi.fn(),
   createAlertSilence: vi.fn(),
   deleteAlertSilence: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return { ...actual, downloadCsv: vi.fn() };
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -87,6 +98,52 @@ describe('SystemAlertsPage', () => {
       size: 20,
     });
     vi.mocked(listAlertSilences).mockResolvedValue([]);
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({ items: [], total: 0, page: 1, size: 10 });
+  });
+
+  it('finishes an export when a later page is empty after the result set shrinks', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(listSystemAlertsPage)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            level: 'error',
+            title: 'Broker unavailable',
+            description: 'broker a',
+            time: '2026-08-10 01:00',
+            acknowledged: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            level: 'error',
+            title: 'Broker unavailable',
+            description: 'broker a',
+            time: '2026-08-10 01:00',
+            acknowledged: false,
+          },
+        ],
+        total: 200,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({ items: [], total: 200, page: 2, size: 100 });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker unavailable');
+
+    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    await waitFor(() => expect(downloadCsv).toHaveBeenCalledTimes(1));
+    expect(listSystemAlertsPage).toHaveBeenCalledTimes(3);
+    expect(listSystemAlertsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 100 });
   });
 
   it('renders an alert with an unknown backend level', async () => {
@@ -391,16 +448,21 @@ describe('SystemAlertsPage', () => {
   });
 
   it('shows maintenance windows and creates a scoped silence', async () => {
-    vi.mocked(listAlertSilences).mockResolvedValue([
-      {
-        id: 9,
-        domain: 'CLUSTER',
-        instanceId: 'local',
-        startsAt: '2026-08-10T01:00',
-        endsAt: '2026-08-10T02:00',
-        createdBy: 'admin',
-      },
-    ]);
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          domain: 'CLUSTER',
+          instanceId: 'local',
+          startsAt: '2026-08-10T01:00',
+          endsAt: '2026-08-10T02:00',
+          createdBy: 'admin',
+        },
+      ],
+      total: 11,
+      page: 1,
+      size: 10,
+    });
     vi.mocked(createAlertSilence).mockResolvedValue({
       id: 10,
       domain: 'BUSINESS',
@@ -413,6 +475,7 @@ describe('SystemAlertsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: '维护窗口' }));
     expect(await screen.findByText(/CLUSTER.*local/)).toBeInTheDocument();
+    expect(listAlertSilencesPage).toHaveBeenCalledWith({ page: 1, pageSize: 10 });
 
     await user.type(screen.getByLabelText('规则 ID'), '42');
     await user.type(screen.getByLabelText('标签范围'), 'brokerName=broker-a,topic=orders');
@@ -430,6 +493,120 @@ describe('SystemAlertsPage', () => {
           endsAt: new Date('2026-08-11T02:00:00').toISOString(),
         }),
       );
+      expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
+    });
+  });
+
+  it('creates a bounded weekly maintenance schedule in an IANA time zone', async () => {
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 10,
+    });
+    vi.mocked(createAlertSilence).mockResolvedValue({
+      id: 12,
+      startsAt: '2026-09-07T01:00:00Z',
+      endsAt: '2026-09-07T02:00:00Z',
+      recurrence: 'WEEKLY',
+      timeZone: 'Asia/Shanghai',
+      recurrenceDays: [1, 3, 5],
+      recurrenceUntil: '2026-10-01T00:00:00Z',
+      createdBy: 'admin',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    const recurrenceSelect = screen.getByLabelText('重复方式');
+    fireEvent.mouseDown(recurrenceSelect.parentElement!);
+    await user.click(await screen.findByText('每周'));
+
+    await user.clear(screen.getByLabelText('时区'));
+    await user.type(screen.getByLabelText('时区'), 'Asia/Shanghai');
+    const weekdaySelect = screen.getByLabelText('重复日期');
+    fireEvent.mouseDown(weekdaySelect.parentElement!);
+    await user.click(await screen.findByText('周一'));
+
+    fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-09-07T09:00' } });
+    fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-09-07T10:00' } });
+    fireEvent.change(screen.getByLabelText('重复至'), { target: { value: '2026-10-01T08:00' } });
+    await user.click(screen.getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => {
+      expect(createAlertSilence).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recurrence: 'WEEKLY',
+          timeZone: 'Asia/Shanghai',
+          recurrenceDays: [1],
+          startsAt: '2026-09-07T01:00:00.000Z',
+          endsAt: '2026-09-07T02:00:00.000Z',
+          recurrenceUntil: '2026-10-01T00:00:00.000Z',
+        }),
+      );
+    });
+  });
+
+  it('loads maintenance windows by page and backs up after deleting the last page item', async () => {
+    vi.mocked(listAlertSilencesPage)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 9,
+            domain: 'CLUSTER',
+            instanceId: 'local',
+            startsAt: '2026-08-10T01:00',
+            endsAt: '2026-08-10T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 11,
+        page: 1,
+        size: 10,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 10,
+            domain: 'BUSINESS',
+            instanceId: 'remote',
+            startsAt: '2026-08-11T01:00',
+            endsAt: '2026-08-11T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 11,
+        page: 2,
+        size: 10,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 9,
+            domain: 'CLUSTER',
+            instanceId: 'local',
+            startsAt: '2026-08-10T01:00',
+            endsAt: '2026-08-10T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 10,
+        page: 1,
+        size: 10,
+      });
+    vi.mocked(deleteAlertSilence).mockResolvedValue();
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    await user.click(await screen.findByRole('listitem', { name: '2' }));
+    expect(await screen.findByText(/BUSINESS.*remote/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /结\s*束/ }));
+
+    await waitFor(() => {
+      expect(deleteAlertSilence).toHaveBeenCalledWith(10);
+      expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
     });
   });
 });

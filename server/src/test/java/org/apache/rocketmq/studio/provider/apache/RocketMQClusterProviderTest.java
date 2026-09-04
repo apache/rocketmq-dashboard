@@ -74,6 +74,22 @@ class RocketMQClusterProviderTest {
     }
 
     @Test
+    void discoverClustersShouldConvertDiskRatioToPercentage() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        KVTable runtime = runtimeStats();
+        runtime.getTable().put("commitLogDiskRatio", "0.625");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(broker -> broker.getDiskUsage())
+                .isEqualTo(62.5D);
+    }
+
+    @Test
     void discoverClustersShouldPopulateSafeDefaults() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = newProvider(adminExt);
@@ -192,6 +208,25 @@ class RocketMQClusterProviderTest {
         assertThat(cluster.getBrokers()).singleElement()
                 .extracting(broker -> broker.getAddr())
                 .isEqualTo("10.0.0.12:10911");
+    }
+
+    @Test
+    void discoverClustersShouldUseLowestBrokerIdWhenMasterIsMissing() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        ClusterInfo info = clusterInfo();
+        HashMap<Long, String> addrs = new HashMap<>();
+        addrs.put(32L, "10.0.0.32:10911");
+        addrs.put(1L, "10.0.0.1:10911");
+        info.getBrokerAddrTable().put(
+                "broker-a", new BrokerData("DefaultCluster", "broker-a", addrs));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(broker -> broker.getAddr())
+                .isEqualTo("10.0.0.1:10911");
     }
 
     @Test

@@ -16,22 +16,15 @@
  */
 
 import type { Lang } from './translations';
+import { readLocalStorage, writeLocalStorage } from '../utils/browserStorage';
 
 export const LANGUAGE_STORAGE_KEY = 'rocketmq-studio-language';
 
 export function getInitialLanguage(): Lang {
-  try {
-    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return stored === 'en' || stored === 'zh' ? stored : 'zh';
-  } catch {
-    return 'zh';
-  }
+  const stored = readLocalStorage(LANGUAGE_STORAGE_KEY);
+  return stored === 'en' || stored === 'zh' ? stored : 'zh';
 }
 
 export function persistLanguage(lang: Lang): void {
-  try {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
-  } catch {
-    // Language selection still works when browser storage is unavailable.
-  }
+  writeLocalStorage(LANGUAGE_STORAGE_KEY, lang);
 }

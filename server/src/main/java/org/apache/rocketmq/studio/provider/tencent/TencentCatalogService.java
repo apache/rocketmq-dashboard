@@ -43,7 +43,6 @@ import java.util.Locale;
 public class TencentCatalogService implements CloudCatalogProvider {
 
     static final int PAGE_SIZE = 100;
-    static final int MAX_PAGES = 100;
     static final List<CloudRegionVO> SUPPORTED_REGIONS = List.of(
             region("ap-guangzhou", "Guangzhou"),
             region("ap-shenzhen-fsi", "Shenzhen Finance"),
@@ -83,9 +82,9 @@ public class TencentCatalogService implements CloudCatalogProvider {
         requireId(credentialId, "credentialId");
         requireNonBlank(regionId, "regionId");
         List<CloudInstanceOptionVO> instances = new ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeInstanceListRequest request = new DescribeInstanceListRequest();
-            request.setOffset((long) page * PAGE_SIZE);
+            request.setOffset(offset);
             request.setLimit((long) PAGE_SIZE);
             DescribeInstanceListResponse response = clientFactory.call(credentialId, regionId,
                     client -> client.DescribeInstanceList(request));
@@ -102,11 +101,15 @@ public class TencentCatalogService implements CloudCatalogProvider {
                     instances.add(option);
                 }
             }
-            if (data.length < PAGE_SIZE) {
+            if (data.length < PAGE_SIZE || hasFetchedAll(offset, response.getTotalCount())) {
                 break;
             }
         }
         return instances;
+    }
+
+    private static boolean hasFetchedAll(long offset, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && offset + PAGE_SIZE >= totalCount;
     }
 
     @Override

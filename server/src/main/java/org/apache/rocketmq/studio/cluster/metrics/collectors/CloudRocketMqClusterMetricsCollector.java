@@ -31,6 +31,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 
 /** Collects the cloud provider's managed-instance lifecycle status for Aliyun and Tencent. */
 @Slf4j
@@ -47,6 +48,11 @@ public class CloudRocketMqClusterMetricsCollector implements ClusterMetricsColle
                 || instance.getVendor() == InstanceVendor.TENCENT) && StringUtils.hasText(instance.getName())
                 && instance.getCredentialId() != null && StringUtils.hasText(instance.getRegionId())
                 && StringUtils.hasText(instance.getCloudInstanceId());
+    }
+
+    @Override
+    public Set<String> metricKeys() {
+        return Set.of(CLOUD_INSTANCE_AVAILABILITY);
     }
 
     @Override

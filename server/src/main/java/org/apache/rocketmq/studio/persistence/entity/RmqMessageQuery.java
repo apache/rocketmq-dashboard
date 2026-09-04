@@ -46,6 +46,8 @@ public class RmqMessageQuery {
 
     private Integer resultCount;
 
+    private String resultSnapshot;
+
     private String clusterId;
 
     private String queriedBy;

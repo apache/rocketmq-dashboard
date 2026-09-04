@@ -47,7 +47,8 @@ import java.util.function.LongFunction;
 @Component
 public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
-    private static final long HTTP_STREAM_TIMEOUT_MILLIS = 60_000L;
+    // Keep this above the client timeout so provider timeouts can be sent as SSE errors.
+    private static final long HTTP_STREAM_TIMEOUT_MILLIS = 125_000L;
     private static final long CLI_STREAM_TIMEOUT_MILLIS = 300_000L;
     private static final int MAX_CONCURRENT_CHATS = 16;
 
@@ -95,6 +96,8 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
             return errorEmitter(incompleteConfigException());
         }
         String engine = resolveEngine(request == null ? null : request.getEngine(), config);
+        log.info("Starting AI chat: engine={}, model={}", engine,
+                request == null ? null : request.getModel());
         if (isCliEngine(engine)) {
             return submitChat(CLI_STREAM_TIMEOUT_MILLIS,
                     session -> runCliChat(request, config, engine, session));

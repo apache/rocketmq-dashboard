@@ -75,8 +75,11 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(authorization.get()).isEqualTo("Bearer sk-test");
         assertThat(requestBody.get().path("model").asText()).isEqualTo("gpt-4o-mini");
         assertThat(requestBody.get().path("stream").asBoolean()).isFalse();
-        assertThat(requestBody.get().path("messages").path(0).path("role").asText()).isEqualTo("user");
-        assertThat(requestBody.get().path("messages").path(0).path("content").asText()).isEqualTo("hello");
+        assertThat(requestBody.get().path("messages").path(0).path("role").asText()).isEqualTo("system");
+        assertThat(requestBody.get().path("messages").path(0).path("content").asText())
+                .contains("valid CommonMark Markdown");
+        assertThat(requestBody.get().path("messages").path(1).path("role").asText()).isEqualTo("user");
+        assertThat(requestBody.get().path("messages").path(1).path("content").asText()).isEqualTo("hello");
         assertThat(requestBody.get().path("max_tokens").asInt()).isEqualTo(256);
     }
 

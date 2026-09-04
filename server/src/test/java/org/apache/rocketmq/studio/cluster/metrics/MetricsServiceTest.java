@@ -245,6 +245,47 @@ class MetricsServiceTest {
     }
 
     @Test
+    void queryShouldRejectReversedWindowWhenTimestampSubtractionWouldOverflow() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(Long.MAX_VALUE)
+                .end(Long.MIN_VALUE)
+                .step("1m")
+                .build();
+
+        assertBadRequest(query, "Metric query end must be later than start");
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldRejectOversizedWindowWhenTimestampSubtractionWouldOverflow() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(Long.MIN_VALUE)
+                .end(Long.MAX_VALUE)
+                .step("1h")
+                .build();
+
+        assertBadRequest(query, "Metric query range must not exceed 31 days");
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldAcceptMaximumWindowNearTimestampUpperBound() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(Long.MAX_VALUE - 31L * 24 * 60 * 60)
+                .end(Long.MAX_VALUE)
+                .step("1h")
+                .build();
+        when(metricsSource.query(query)).thenReturn(emptyMetricData());
+
+        metricsService.query(query);
+
+        verify(metricsSource).query(query);
+    }
+
+    @Test
     void queryShouldRejectOversizedWindow() {
         MetricQueryDTO query = MetricQueryDTO.builder()
                 .metric("rocketmq_messages_in_total")

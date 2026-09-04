@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.audit;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,8 @@ public class AuditService {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_EXPORT_RECORDS = 10_000;
+    private static final int CLEANUP_BATCH_SIZE = 500;
+    private static final int CLEANUP_MAX_BATCHES = 20;
     private static final String CSV_HEADER =
             "timestamp,operator,operationType,resourceType,target,clusterId,detail,result,errorMessage\r\n";
 
@@ -58,6 +61,13 @@ public class AuditService {
         return auditRepository.findFilterOptions();
     }
 
+    public AuditSummaryVO summarize(String search, String operationType, String resourceType,
+                                    String clusterId, String startDate, String endDate, String result) {
+        DateRange range = parseDateRange(startDate, endDate);
+        return auditRepository.summarize(search, operationType, resourceType, clusterId,
+                range.start(), range.end(), result);
+    }
+
     public String exportLogs(String search, String operationType, String resourceType,
                              String clusterId, String startDate, String endDate, String result) {
         PageResult<AuditRecordVO> page = findPage(
@@ -69,7 +79,7 @@ public class AuditService {
         }
         StringBuilder csv = new StringBuilder("\uFEFF").append(CSV_HEADER);
         for (AuditRecordVO record : page.getItems()) {
-            appendCsvRow(csv,
+            CsvUtil.appendRow(csv,
                     record.getTimestamp(),
                     record.getOperator(),
                     record.getOperationType(),
@@ -117,7 +127,7 @@ public class AuditService {
         }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
-        return auditRepository.deleteBefore(cutoff);
+        return auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
     }
 
     private void validatePagination(int page, int pageSize) {
@@ -133,31 +143,18 @@ public class AuditService {
                                                String resourceType, String clusterId,
                                                String startDate, String endDate,
                                                String result, int page, int pageSize) {
+        DateRange range = parseDateRange(startDate, endDate);
+        return auditRepository.findPage(search, operationType, resourceType, clusterId,
+                range.start(), range.end(), result, page, pageSize);
+    }
+
+    private DateRange parseDateRange(String startDate, String endDate) {
         LocalDateTime start = parseDate(startDate, true, "startDate");
         LocalDateTime end = parseDate(endDate, false, "endDate");
         if (start != null && end != null && start.isAfter(end)) {
             throw new BusinessException(400, "startDate must not be after endDate");
         }
-        return auditRepository.findPage(search, operationType, resourceType, clusterId,
-                start, end, result, page, pageSize);
-    }
-
-    private void appendCsvRow(StringBuilder csv, Object... values) {
-        for (int i = 0; i < values.length; i++) {
-            if (i > 0) {
-                csv.append(',');
-            }
-            csv.append(toCsvCell(values[i]));
-        }
-        csv.append("\r\n");
-    }
-
-    private String toCsvCell(Object value) {
-        String text = value == null ? "" : value.toString();
-        if (!text.isEmpty() && "=+-@\t\r\n".indexOf(text.charAt(0)) >= 0) {
-            text = "'" + text;
-        }
-        return '"' + text.replace("\"", "\"\"") + '"';
+        return new DateRange(start, end);
     }
 
     private LocalDateTime parseDate(String dateStr, boolean startOfDay, String parameterName) {
@@ -170,5 +167,8 @@ public class AuditService {
         } catch (DateTimeParseException e) {
             throw new BusinessException(400, parameterName + " must use YYYY-MM-DD");
         }
+    }
+
+    private record DateRange(LocalDateTime start, LocalDateTime end) {
     }
 }

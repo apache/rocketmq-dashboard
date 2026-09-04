@@ -29,6 +29,8 @@ import {
   InputNumber,
   Typography,
   message,
+  Space,
+  Tooltip,
 } from 'antd';
 import { Trash } from '@phosphor-icons/react';
 import { DownloadOutlined } from '@ant-design/icons';
@@ -37,31 +39,32 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import type { AuditFilter, AuditFilterOptions } from '../../api/audit';
+import type { AuditFilter, AuditFilterOptions, AuditSummary } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
 import {
   cleanupAuditLogs,
   exportAuditLogs,
   getAuditFilterOptions,
+  getAuditSummary,
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
+import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import {
+  describeAuditRecord,
+  getAuditOperationPresentation,
+  getAuditResourcePresentation,
+  getAuditResultPresentation,
+  parseAuditDetail,
+} from './auditPresentation';
+import AuditSummaryCards from './AuditSummaryCards';
 
 const emptyFilterOptions: AuditFilterOptions = {
   operationTypes: [],
   resourceTypes: [],
   clusterIds: [],
   results: [],
-};
-
-const formatFilterLabel = (value: string) => value.trim().replace(/_/g, ' ');
-
-const resultColor = (result: string) => {
-  const normalized = result.toUpperCase();
-  if (normalized === 'SUCCESS') return 'green';
-  if (normalized === 'PARTIAL') return 'orange';
-  return 'red';
 };
 
 const buildAuditFilter = (
@@ -100,6 +103,8 @@ const AuditPage: React.FC = () => {
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
   const [exporting, setExporting] = useState(false);
+  const [summary, setSummary] = useState<AuditSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
 
@@ -199,7 +204,84 @@ const AuditPage: React.FC = () => {
     ],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    // Reset the loading flag whenever the filters change so a stale summary is
+    // not shown while the refreshed aggregate is still in flight. The microtask
+    // mirrors the record-list effect so the flag update is not applied synchronously.
+    void Promise.resolve().then(() => {
+      if (!cancelled) setSummaryLoading(true);
+    });
+    void getAuditSummary(activeFilter)
+      .then((value) => {
+        if (!cancelled) setSummary(value);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('审计概览加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilter, refreshKey]);
+
   const { Text } = Typography;
+
+  const renderOperationType = (type: string) => {
+    const presentation = getAuditOperationPresentation(type);
+    return (
+      <Tooltip title={type}>
+        <Tag color={presentation.color}>
+          {presentation.labelKey ? t(presentation.labelKey) : presentation.label}
+        </Tag>
+      </Tooltip>
+    );
+  };
+
+  const renderResourceType = (type: string) => {
+    const presentation = getAuditResourcePresentation(type);
+    return (
+      <Tooltip title={type}>
+        <Tag color={presentation.color}>
+          {presentation.labelKey ? t(presentation.labelKey) : presentation.label}
+        </Tag>
+      </Tooltip>
+    );
+  };
+
+  const renderResult = (result: string) => {
+    const presentation = getAuditResultPresentation(result);
+    return (
+      <Tooltip title={result}>
+        <Tag color={presentation.color}>
+          {presentation.labelKey ? t(presentation.labelKey) : presentation.label}
+        </Tag>
+      </Tooltip>
+    );
+  };
+
+  const renderDetail = (detail: string | null | undefined) => {
+    const tokens = parseAuditDetail(detail);
+    if (tokens.length === 0) return <Text type="secondary">-</Text>;
+    if (tokens.length === 1 && !tokens[0].label) {
+      return (
+        <Text ellipsis={{ tooltip: tokens[0].value }} style={{ maxWidth: 420 }}>
+          {tokens[0].value}
+        </Text>
+      );
+    }
+    return (
+      <Space size={[4, 4]} wrap>
+        {tokens.map((token) => (
+          <Tag key={`${token.label}:${token.value}`} style={{ marginInlineEnd: 0 }}>
+            {token.label}: {token.value}
+          </Tag>
+        ))}
+      </Space>
+    );
+  };
 
   const handleCleanup = async () => {
     try {
@@ -233,26 +315,31 @@ const AuditPage: React.FC = () => {
       width: 180,
       sorter: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
       defaultSortOrder: 'descend',
+      render: (timestamp: string) => formatDateTime(timestamp),
     },
     {
       title: t('audit.operator'),
       dataIndex: 'operator',
       width: 130,
+      align: 'center',
       sorter: (a, b) => (a.operator ?? '').localeCompare(b.operator ?? ''),
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
       width: 190,
+      align: 'center',
       sorter: (a, b) => (a.operationType ?? '').localeCompare(b.operationType ?? ''),
-      render: (type: string) => <Tag>{formatFilterLabel(type)}</Tag>,
+      render: renderOperationType,
     },
     {
       title: t('audit.resourceType'),
       dataIndex: 'resourceType',
-      width: 120,
+      width: 150,
       ellipsis: true,
+      align: 'right',
       sorter: (a, b) => (a.resourceType ?? '').localeCompare(b.resourceType ?? ''),
+      render: renderResourceType,
     },
     {
       title: t('audit.cluster'),
@@ -266,20 +353,26 @@ const AuditPage: React.FC = () => {
       dataIndex: 'target',
       width: 200,
       ellipsis: true,
+      align: 'center',
+      render: (_: string, record) => (
+        <Tooltip title={describeAuditRecord(record, t)}>
+          <span>{record.target || '-'}</span>
+        </Tooltip>
+      ),
     },
     {
       title: t('audit.detail'),
       dataIndex: 'detail',
       ellipsis: true,
+      render: renderDetail,
     },
     {
       title: t('audit.result'),
       dataIndex: 'result',
       width: 80,
+      align: 'center',
       sorter: (a, b) => (a.result ?? '').localeCompare(b.result ?? ''),
-      render: (result: string) => (
-        <Tag color={resultColor(result)}>{formatFilterLabel(result)}</Tag>
-      ),
+      render: renderResult,
     },
     {
       title: t('audit.error'),
@@ -316,10 +409,13 @@ const AuditPage: React.FC = () => {
               setPage(1);
               setSelectedType(value);
             }}
-            options={filterOptions.operationTypes.map((value) => ({
-              label: formatFilterLabel(value),
-              value,
-            }))}
+            options={filterOptions.operationTypes.map((value) => {
+              const presentation = getAuditOperationPresentation(value);
+              return {
+                label: presentation.labelKey ? t(presentation.labelKey) : presentation.label,
+                value,
+              };
+            })}
           />
           <Select
             aria-label={t('audit.resourceType')}
@@ -331,10 +427,13 @@ const AuditPage: React.FC = () => {
               setPage(1);
               setSelectedResourceType(value);
             }}
-            options={filterOptions.resourceTypes.map((value) => ({
-              label: formatFilterLabel(value),
-              value,
-            }))}
+            options={filterOptions.resourceTypes.map((value) => {
+              const presentation = getAuditResourcePresentation(value);
+              return {
+                label: presentation.labelKey ? t(presentation.labelKey) : presentation.label,
+                value,
+              };
+            })}
           />
           <Select
             aria-label={t('audit.cluster')}
@@ -365,10 +464,13 @@ const AuditPage: React.FC = () => {
             style={{ width: 120 }}
             options={[
               { label: t('common.all'), value: 'all' },
-              ...filterOptions.results.map((value) => ({
-                label: formatFilterLabel(value),
-                value,
-              })),
+              ...filterOptions.results.map((value) => {
+                const presentation = getAuditResultPresentation(value);
+                return {
+                  label: presentation.labelKey ? t(presentation.labelKey) : presentation.label,
+                  value,
+                };
+              }),
             ]}
           />
         </Flex>
@@ -385,6 +487,8 @@ const AuditPage: React.FC = () => {
           </Button>
         </Flex>
       </Flex>
+
+      <AuditSummaryCards summary={summary} loading={summaryLoading} />
 
       {/* ─── Table ─── */}
       <Card styles={{ body: { padding: 0 } }}>

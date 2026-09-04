@@ -36,7 +36,10 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
@@ -434,8 +437,11 @@ class RocketMQDashboardProviderTest {
     void dashboardShouldReportUnconfiguredLegacyTopologyAsUnavailable() {
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr(" ");
+        InstanceRepository instanceRepository = mock(InstanceRepository.class);
+        when(instanceRepository.findAll()).thenReturn(List.of());
         RocketMQDashboardProvider provider = new RocketMQDashboardProvider(
-                mock(MqAdminExtFactory.class), properties, mock(RuntimeAdminClientResolver.class));
+                mock(MqAdminExtFactory.class), properties, mock(RuntimeAdminClientResolver.class),
+                instanceRepository);
 
         DashboardDataVO dashboard = provider.getDashboardData();
 
@@ -475,6 +481,26 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
             assertThat(cluster.getTpsIn()).isEqualTo(3_000_000_000L);
             assertThat(cluster.getTpsOut()).isEqualTo(4_000_000_000L);
+        });
+    }
+
+    @Test
+    void dashboardShouldIgnoreNonFiniteNegativeAndOverflowingTps() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("NaN", "Infinity"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("-1", "1e300"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isZero();
+        assertThat(dashboard.getStats().getTpsOut()).isZero();
+        assertThat(dashboard.getClusters()).allSatisfy(cluster -> {
+            assertThat(cluster.getTpsIn()).isZero();
+            assertThat(cluster.getTpsOut()).isZero();
         });
     }
 
@@ -539,17 +565,105 @@ class RocketMQDashboardProviderTest {
         });
     }
 
+    @Test
+    void dashboardShouldAggregateAllApacheInstancesTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO first = apacheInstance("cluster-a", InstanceType.DIRECT);
+        InstanceVO second = apacheInstance("cluster-b", InstanceType.PROXY_LOCAL);
+        InstanceVO cloud = InstanceVO.builder()
+                .name("cloud-instance").type(InstanceType.CLOUD)
+                .endpoint("rmq.aliyuncs.com:8080").vendor(InstanceVendor.ALIYUN).build();
+        when(resolver.resolveInstance("cluster-a")).thenReturn(first);
+        when(resolver.resolveInstance("cluster-b")).thenReturn(second);
+        when(resolver.execute(any(InstanceVO.class), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("orders"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard =
+                newProvider(adminExt, resolver, List.of(first, second, cloud)).getDashboardData();
+
+        // Cloud instances stay out of the Apache-runtime overview.
+        assertThat(dashboard.getClusters()).extracting(ClusterOverviewVO::getName)
+                .containsExactly("cluster-a / DefaultCluster", "cluster-b / DefaultCluster");
+        assertThat(dashboard.getClusters()).extracting(ClusterOverviewVO::getId)
+                .containsExactly("cluster-a/DefaultCluster", "cluster-b/DefaultCluster");
+        assertThat(dashboard.getClusters()).allSatisfy(cluster ->
+                assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.healthy));
+        assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(2);
+        assertThat(dashboard.getStats().getHealthyClusters()).isEqualTo(2);
+        assertThat(dashboard.getStats().getTotalBrokers()).isEqualTo(2);
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(2);
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(4);
+        assertThat(dashboard.getStats().getTotalMessagesToday()).isEqualTo(84);
+        verify(resolver, never()).execute(eq(cloud), any());
+    }
+
+    @Test
+    void dashboardShouldFlagUnreachableInstancesAsWarningTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO reachable = apacheInstance("cluster-a", InstanceType.DIRECT);
+        InstanceVO unreachable = apacheInstance("cluster-b", InstanceType.DIRECT);
+        when(resolver.resolveInstance("cluster-a")).thenReturn(reachable);
+        when(resolver.resolveInstance("cluster-b")).thenReturn(unreachable);
+        when(resolver.execute(eq(reachable), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(resolver.execute(eq(unreachable), any()))
+                .thenThrow(new BusinessException(502, "connect to ns-b:9876 failed"));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("orders"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard =
+                newProvider(adminExt, resolver, List.of(reachable, unreachable)).getDashboardData();
+
+        assertThat(dashboard.getClusters()).hasSize(2);
+        assertThat(dashboard.getClusters().get(0).getName()).isEqualTo("cluster-a / DefaultCluster");
+        assertThat(dashboard.getClusters().get(0).getStatus()).isEqualTo(ClusterStatus.healthy);
+        assertThat(dashboard.getClusters().get(1)).satisfies(cluster -> {
+            assertThat(cluster.getName()).isEqualTo("cluster-b");
+            assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.warning);
+            assertThat(cluster.getBrokers()).isZero();
+        });
+        assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(2);
+        assertThat(dashboard.getStats().getHealthyClusters()).isEqualTo(1);
+        assertThat(dashboard.getStats().getTotalBrokers()).isEqualTo(1);
+    }
+
+    private InstanceVO apacheInstance(String name, InstanceType type) {
+        InstanceVO instance = InstanceVO.builder()
+                .name(name)
+                .type(type)
+                .endpoint(type == InstanceType.DIRECT ? name + ":9876" : name + ":8080")
+                .vendor(InstanceVendor.APACHE)
+                .build();
+        instance.setId((long) name.length());
+        return instance;
+    }
+
     private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt) {
         return newProvider(adminExt, mock(RuntimeAdminClientResolver.class));
     }
 
     private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt, RuntimeAdminClientResolver resolver) {
+        return newProvider(adminExt, resolver, List.of());
+    }
+
+    private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt, RuntimeAdminClientResolver resolver,
+                                                  List<InstanceVO> instances) {
         MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
         when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr("10.0.0.1:9876");
-        return new RocketMQDashboardProvider(adminFactory, properties, resolver);
+        InstanceRepository instanceRepository = mock(InstanceRepository.class);
+        when(instanceRepository.findAll()).thenReturn(instances);
+        return new RocketMQDashboardProvider(adminFactory, properties, resolver, instanceRepository);
     }
     private ClusterInfo clusterInfo() {
         ClusterInfo info = new ClusterInfo();

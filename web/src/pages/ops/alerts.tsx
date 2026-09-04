@@ -15,9 +15,10 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState, type Key } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Key } from 'react';
 import { Copy, DownloadSimple, Plus, Pencil, Trash, UploadSimple } from '@phosphor-icons/react';
 import {
+  Alert,
   Button,
   Card,
   Table,
@@ -27,6 +28,7 @@ import {
   Form,
   Input,
   Select,
+  Space,
   InputNumber,
   Checkbox,
   Flex,
@@ -61,11 +63,18 @@ import {
   testAlertRule,
   updateAlertRule,
 } from '../../services/opsService';
+import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
 import { formatDateTime } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
+import {
+  ALERT_NOTIFICATION_TEMPLATE_VARIABLES,
+  createDefaultAlertTemplate,
+  previewAlertNotificationTemplate,
+  type AlertTemplatePreviewIssue,
+} from '../../utils/alertTemplatePreview';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 const { TextArea } = Input;
 
@@ -77,20 +86,7 @@ const channelColors: Record<string, string> = {
 
 const durationOptions = ['1m', '5m', '15m', '30m'];
 const reminderIntervalOptions = ['5m', '15m', '30m', '1h', '4h'];
-const notificationTemplateVariables = [
-  'ruleName',
-  'title',
-  'description',
-  'transition',
-  'metric',
-  'instanceId',
-  'value',
-  'threshold',
-  'thresholdUnit',
-  'level',
-  'time',
-  'labels',
-];
+const notificationTemplateVariables = ALERT_NOTIFICATION_TEMPLATE_VARIABLES;
 const availabilityMetrics = new Set([
   'nameserver.availability',
   'broker.availability',
@@ -138,6 +134,19 @@ export const formatThresholdCondition = (
   return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
 };
 
+const previewValueForMetric = (metric?: string, threshold?: string | number | null): string => {
+  if (metric && nativeRatioMetrics.has(metric)) {
+    const value = Number(threshold);
+    return Number.isFinite(value) ? `${Math.min(100, value + 6)}%` : '91%';
+  }
+  if (metric === 'consumer.delay.seconds') return '420';
+  if (metric === 'consumer.lag.total' || metric === 'topic.backlog.total') return '12000';
+  if (metric === 'dlq.message.count') return '3';
+  if (availabilityMetrics.has(metric ?? '')) return '0';
+  const value = Number(threshold);
+  return Number.isFinite(value) ? String(value + 10) : '120';
+};
+
 interface AlertsPageProps {
   domain?: AlertRuleDomain;
 }
@@ -166,6 +175,15 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const selectedMetric = Form.useWatch('metric', form);
   const selectedOperator = Form.useWatch('operator', form);
   const selectedThresholdUnit = Form.useWatch('thresholdUnit', form);
+  const previewRuleName = Form.useWatch('name', form);
+  const previewDescription = Form.useWatch('description', form);
+  const previewInstanceId = Form.useWatch('instanceId', form);
+  const previewThreshold = Form.useWatch('threshold', form);
+  const previewConsumerGroup = Form.useWatch('consumerGroup', form);
+  const previewTopic = Form.useWatch('topic', form);
+  const previewClusterName = Form.useWatch('clusterName', form);
+  const previewBrokerName = Form.useWatch('brokerName', form);
+  const notificationTemplateValue = Form.useWatch('notificationTemplate', form);
   const [metricOptions, setMetricOptions] = useState<NativeAlertMetricInfo[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [metricLoading, setMetricLoading] = useState(false);
@@ -197,11 +215,120 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     return t('alerts.reasonUnknownUnavailable');
   };
 
-  const metricLabel = (metric: string, fallback = metric) => {
-    const key = nativeMetricTranslationKeys[metric] ?? legacyMetricTranslationKeys[metric];
-    if (!key) return fallback;
-    const translated = t(key);
-    return translated === key ? fallback : translated;
+  const metricLabel = useCallback(
+    (metric: string, fallback = metric) => {
+      const key = nativeMetricTranslationKeys[metric] ?? legacyMetricTranslationKeys[metric];
+      if (!key) return fallback;
+      const translated = t(key);
+      return translated === key ? fallback : translated;
+    },
+    [t],
+  );
+
+  const notificationTemplatePreview = useMemo(() => {
+    const metric = selectedMetric ? normalizeMetric(String(selectedMetric)) : '';
+    const metricInfo = metricOptions.find((option) => option.key === metric);
+    const metricText = metric
+      ? metricLabel(metric, metricInfo?.label ?? metric)
+      : t('alerts.notificationTemplateSampleMetric');
+    const ruleName =
+      typeof previewRuleName === 'string' && previewRuleName.trim()
+        ? previewRuleName.trim()
+        : t('alerts.notificationTemplateSampleRule');
+    const instanceId =
+      typeof previewInstanceId === 'string' && previewInstanceId.trim()
+        ? previewInstanceId.trim()
+        : (selectedInstanceId ?? 'rocketmq-prod');
+    const threshold = selectedOperator === 'UNAVAILABLE' ? 0 : (previewThreshold ?? 85);
+    const metricKey = metric || 'broker.disk.usage_ratio';
+    const thresholdUnit = thresholdUnitSuffix ?? (nativeRatioMetrics.has(metricKey) ? '%' : '');
+    const scopeLabels: Record<string, string> = {
+      domain,
+      instanceId,
+      metric: metricKey,
+    };
+
+    if (domain === 'BUSINESS') {
+      scopeLabels.consumerGroup =
+        typeof previewConsumerGroup === 'string' && previewConsumerGroup.trim()
+          ? previewConsumerGroup.trim()
+          : 'order-consumer';
+      scopeLabels.topic =
+        typeof previewTopic === 'string' && previewTopic.trim()
+          ? previewTopic.trim()
+          : 'order-topic';
+    } else {
+      scopeLabels.cluster =
+        typeof previewClusterName === 'string' && previewClusterName.trim()
+          ? previewClusterName.trim()
+          : 'DefaultCluster';
+      scopeLabels.broker =
+        typeof previewBrokerName === 'string' && previewBrokerName.trim()
+          ? previewBrokerName.trim()
+          : 'broker-a';
+    }
+
+    return previewAlertNotificationTemplate(
+      notificationTemplateValue,
+      {
+        ruleName,
+        title:
+          selectedOperator === 'UNAVAILABLE'
+            ? t('alerts.notificationTemplateSampleUnavailableTitle', { metric: metricText })
+            : t('alerts.notificationTemplateSampleFiringTitle', { metric: metricText }),
+        description:
+          typeof previewDescription === 'string' && previewDescription.trim()
+            ? previewDescription.trim()
+            : t('alerts.notificationTemplateSampleDescription'),
+        transition: 'FIRING',
+        metric: metricText,
+        instanceId,
+        value: previewValueForMetric(metricKey, threshold),
+        threshold,
+        thresholdUnit,
+        level: selectedOperator === 'UNAVAILABLE' ? 'CRITICAL' : 'WARNING',
+        time: '2026-09-03 10:00:00',
+        labels: scopeLabels,
+      },
+      { maxLength: 4000 },
+    );
+  }, [
+    domain,
+    metricOptions,
+    metricLabel,
+    notificationTemplateValue,
+    previewBrokerName,
+    previewClusterName,
+    previewConsumerGroup,
+    previewDescription,
+    previewInstanceId,
+    previewRuleName,
+    previewThreshold,
+    previewTopic,
+    selectedInstanceId,
+    selectedMetric,
+    selectedOperator,
+    t,
+    thresholdUnitSuffix,
+  ]);
+
+  const templateIssueText = (issue: AlertTemplatePreviewIssue) => {
+    const variables = issue.variables?.join(', ') ?? '';
+    if (issue.code === 'EMPTY_TEMPLATE') return t('alerts.notificationTemplateEmpty');
+    if (issue.code === 'NO_DYNAMIC_VARIABLE') return t('alerts.notificationTemplateNoDynamic');
+    if (issue.code === 'UNKNOWN_VARIABLE') {
+      return t('alerts.notificationTemplateUnknownVariables', { variables });
+    }
+    if (issue.code === 'MISSING_VALUE') {
+      return t('alerts.notificationTemplateMissingVariables', { variables });
+    }
+    if (issue.code === 'LENGTH_LIMIT') {
+      return t('alerts.notificationTemplateLengthLimit', {
+        length: notificationTemplatePreview.length,
+        max: notificationTemplatePreview.maxLength,
+      });
+    }
+    return issue.message;
   };
 
   const channelLabels: Record<string, string> = {
@@ -340,7 +467,11 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   const openEditModal = (rule: AlertRule) => {
     setEditingRule(rule);
-    form.setFieldsValue(rule);
+    form.setFieldsValue({
+      ...rule,
+      metric: normalizeMetric(rule.metric),
+      duration: normalizeDuration(rule.duration),
+    });
     setSelectedInstanceId(rule.instanceId);
     if (rule.instanceId?.trim()) {
       void loadMetricCapabilities(rule.instanceId, false);
@@ -355,7 +486,12 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     setTestResult(null);
     setSelectedInstanceId(rule.instanceId);
     const { id: _id, lastTriggered: _lastTriggered, ...copy } = rule;
-    form.setFieldsValue({ ...copy, name: t('alerts.duplicateName', { name: rule.name }) });
+    form.setFieldsValue({
+      ...copy,
+      name: t('alerts.duplicateName', { name: rule.name }),
+      metric: normalizeMetric(copy.metric),
+      duration: normalizeDuration(copy.duration),
+    });
     if (rule.instanceId?.trim()) {
       void loadMetricCapabilities(rule.instanceId, false);
     } else {
@@ -615,8 +751,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     try {
       const values = await form.validateFields();
       const payload = {
-        ...values,
-        ...(nativeRatioMetrics.has(values.metric) ? { thresholdUnit: '%' } : {}),
+        ...attachThresholdUnit(values),
+        ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
       } as Partial<AlertRule>;
       setSubmitting(true);
       if (editingRule) {
@@ -649,8 +785,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     try {
       const values = await form.validateFields();
       const payload = {
-        ...values,
-        ...(nativeRatioMetrics.has(values.metric) ? { thresholdUnit: '%' } : {}),
+        ...attachThresholdUnit(values),
+        ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
       } as Partial<AlertRule>;
       setTesting(true);
       const result = await (domain === 'CLUSTER'
@@ -715,6 +851,11 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       selectionStart + placeholder.length,
       selectionStart + placeholder.length,
     );
+  };
+
+  const applyDefaultNotificationTemplate = () => {
+    form.setFieldValue('notificationTemplate', createDefaultAlertTemplate());
+    notificationTemplateRef.current?.resizableTextArea?.textArea?.focus();
   };
 
   return (
@@ -1214,7 +1355,12 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               style={{ gridColumn: '1 / -1' }}
               extra={
                 <div style={{ paddingTop: 24 }}>
-                  <div style={{ marginBottom: 8 }}>{t('alerts.notificationTemplateVariables')}</div>
+                  <Flex align="center" justify="space-between" gap={8} style={{ marginBottom: 8 }}>
+                    <div>{t('alerts.notificationTemplateVariables')}</div>
+                    <Button size="small" onClick={applyDefaultNotificationTemplate}>
+                      {t('alerts.notificationTemplateApplyDefault')}
+                    </Button>
+                  </Flex>
                   <Flex gap={6} wrap="wrap">
                     {notificationTemplateVariables.map((variable) => (
                       <Tag
@@ -1245,6 +1391,80 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
                 showCount
               />
             </Form.Item>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <Card
+                size="small"
+                title={t('alerts.notificationTemplatePreview')}
+                variant="borderless"
+                extra={
+                  <Tag
+                    color={notificationTemplatePreview.status === 'ready' ? 'success' : 'warning'}
+                  >
+                    {notificationTemplatePreview.status === 'ready'
+                      ? t('alerts.notificationTemplateReady')
+                      : t('alerts.notificationTemplateAttention')}
+                  </Tag>
+                }
+                style={{ background: token.colorFillQuaternary }}
+                styles={{ body: { padding: 12 } }}
+              >
+                <Typography.Paragraph
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    overflowWrap: 'anywhere',
+                    padding: 12,
+                    marginBottom: 12,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    borderRadius: 8,
+                    background: token.colorBgContainer,
+                    minHeight: 72,
+                  }}
+                >
+                  {notificationTemplatePreview.rendered ||
+                    t('alerts.notificationTemplateEmptyPreview')}
+                </Typography.Paragraph>
+                <Flex gap={6} wrap="wrap" style={{ marginBottom: 12 }}>
+                  <Tag>
+                    {t('alerts.notificationTemplateLength', {
+                      length: notificationTemplatePreview.length,
+                      max: notificationTemplatePreview.maxLength,
+                    })}
+                  </Tag>
+                  <Tag
+                    color={notificationTemplatePreview.usedVariables.length ? 'blue' : 'default'}
+                  >
+                    {t('alerts.notificationTemplateUsedVariables', {
+                      variables: notificationTemplatePreview.usedVariables.join(', ') || '-',
+                    })}
+                  </Tag>
+                  {notificationTemplatePreview.unknownVariables.map((variable) => (
+                    <Tag key={variable} color="orange">{`\${${variable}}`}</Tag>
+                  ))}
+                </Flex>
+                {notificationTemplatePreview.issues.length > 0 ? (
+                  <Alert
+                    showIcon
+                    type={notificationTemplatePreview.status === 'ready' ? 'info' : 'warning'}
+                    message={t('alerts.notificationTemplateIssues')}
+                    description={
+                      <Space direction="vertical" size={2}>
+                        {notificationTemplatePreview.issues.map((issue) => (
+                          <Typography.Text key={`${issue.code}-${issue.variables?.join(',')}`}>
+                            {templateIssueText(issue)}
+                          </Typography.Text>
+                        ))}
+                      </Space>
+                    }
+                  />
+                ) : (
+                  <Alert
+                    showIcon
+                    type="success"
+                    message={t('alerts.notificationTemplateNoIssue')}
+                  />
+                )}
+              </Card>
+            </div>
           </div>
         </Form>
       </Modal>

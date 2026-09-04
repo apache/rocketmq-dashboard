@@ -27,7 +27,11 @@ public interface AuditRepository {
 
     AuditFilterOptionsVO findFilterOptions();
 
+    AuditSummaryVO summarize(String search, String operationType, String resourceType,
+                             String clusterId, LocalDateTime startDate, LocalDateTime endDate,
+                             String result);
+
     void save(AuditRecordVO record);
 
-    int deleteBefore(LocalDateTime cutoff);
+    int deleteBefore(LocalDateTime cutoff, int batchSize, int maxBatches);
 }

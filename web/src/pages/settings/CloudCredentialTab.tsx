@@ -74,6 +74,7 @@ export const CloudCredentialTab = () => {
   const [form] = Form.useForm<CredentialFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const requestSeqRef = useRef(0);
+  const submitInFlightRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -133,10 +134,14 @@ export const CloudCredentialTab = () => {
     setPage(1);
   };
 
-  const closeModal = () => {
+  const resetModal = () => {
     setModalOpen(false);
     setEditingCredential(null);
     form.resetFields();
+  };
+
+  const closeModal = () => {
+    if (!submitInFlightRef.current) resetModal();
   };
 
   const openCreateModal = () => {
@@ -156,9 +161,11 @@ export const CloudCredentialTab = () => {
   };
 
   const handleSubmit = async () => {
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
     try {
       const values = await form.validateFields();
-      setSubmitting(true);
       if (editingCredential) {
         const saved = await updateCloudCredential({
           id: editingCredential.id,
@@ -180,13 +187,14 @@ export const CloudCredentialTab = () => {
         message.success(t('settings.credentialAdded'));
       }
       await loadCredentials();
-      closeModal();
+      resetModal();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
       message.error(t('settings.credentialSaveFailed'));
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
   };
@@ -312,6 +320,10 @@ export const CloudCredentialTab = () => {
         onCancel={closeModal}
         onOk={() => void handleSubmit()}
         confirmLoading={submitting}
+        closable={!submitting}
+        maskClosable={!submitting}
+        keyboard={!submitting}
+        cancelButtonProps={{ disabled: submitting }}
         destroyOnHidden
       >
         {editingCredential && (

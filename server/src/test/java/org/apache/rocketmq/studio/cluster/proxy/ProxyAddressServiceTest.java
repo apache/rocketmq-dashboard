@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.cluster.proxy;
 
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +39,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -51,12 +53,16 @@ class ProxyAddressServiceTest {
     @Mock
     private RestTemplate restTemplate;
 
+    @Mock
+    private OperationAuditService operationAuditService;
+
     private final ProxyHealthProbe healthProbe = mock(ProxyHealthProbe.class);
     private ProxyAddressService proxyAddressService;
 
     @BeforeEach
     void setUp() {
-        proxyAddressService = new ProxyAddressService(clusterService, healthProbe, restTemplate);
+        proxyAddressService = new ProxyAddressService(clusterService, healthProbe, restTemplate,
+                operationAuditService);
         // Default probe outcome: everything reachable with 1 ms latency.
         when(healthProbe.probe(anyString(), anyInt(), anyInt()))
                 .thenReturn(ProxyHealthProbe.ProbeResult.reachable(1L));
@@ -78,6 +84,8 @@ class ProxyAddressServiceTest {
         ProxyHomeVO home = proxyAddressService.getHomePage();
         assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081", "10.0.0.1:8081");
         assertThat(home.getCurrentProxyAddr()).isEqualTo("127.0.0.1:8081");
+        verify(operationAuditService, times(1)).record("ADD_PROXY_ADDRESS", "PROXY", "10.0.0.1:8081",
+                null, null, "SUCCESS", null);
     }
 
     @Test
@@ -104,7 +112,10 @@ class ProxyAddressServiceTest {
                 "10.0.0.1:0",
                 "10.0.0.1:65536",
                 "http://10.0.0.1:8081",
-                "10.0.0.1:8081/path"
+                "10.0.0.1:8081/path",
+                "[:::]:8081",
+                "[2001:db8::1::2]:8081",
+                "[127.0.0.1]:8081"
         );
 
         for (String invalidProxyAddr : invalidProxyAddrs) {
@@ -124,6 +135,19 @@ class ProxyAddressServiceTest {
         ProxyHomeVO home = proxyAddressService.getHomePage();
         assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081");
         assertThat(home.getCurrentProxyAddr()).isEqualTo("127.0.0.1:8081");
+        verify(operationAuditService).record("REMOVE_PROXY_ADDRESS", "PROXY", "10.0.0.1:8081",
+                null, null, "SUCCESS", null);
+    }
+
+    @Test
+    void auditFailureShouldNotAbortProxyAddressMutation() {
+        doThrow(new RuntimeException("audit unavailable")).when(operationAuditService)
+                .record("ADD_PROXY_ADDRESS", "PROXY", "10.0.0.1:8081", null, null, "SUCCESS", null);
+
+        proxyAddressService.addProxyAddr("10.0.0.1:8081");
+
+        assertThat(proxyAddressService.getHomePage().getProxyAddrList())
+                .containsExactly("127.0.0.1:8081", "10.0.0.1:8081");
     }
 
     @Test
@@ -195,6 +219,8 @@ class ProxyAddressServiceTest {
 
         verify(clusterService).requireProxy("cluster-1", "10.0.0.10:8081");
         verify(restTemplate).postForEntity(eq("http://10.0.0.10:8081/admin/reloadConfig"), isNull(), eq(String.class));
+        verify(operationAuditService).record("RELOAD_PROXY_CONFIG", "PROXY", "10.0.0.10:8081",
+                "cluster-1", null, "SUCCESS", null);
     }
 
     @Test

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Card,
@@ -33,6 +33,8 @@ import {
   Input,
   Space,
   Flex,
+  Progress,
+  Statistic,
   message,
 } from 'antd';
 import {
@@ -57,6 +59,7 @@ import {
   QueueBrowserResults,
 } from '../../components/QueueBrowser';
 import type { MessageQueryHistory, TraceQueryHistory } from '../../api/messageHistory';
+import { getMessageQueryResults } from '../../api/messageHistory';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import {
@@ -68,7 +71,16 @@ import {
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import {
+  readMessageTraceTopic,
+  writeMessageTraceTopic,
+} from '../../utils/messageTraceTopicStorage';
 import { tableScrollX } from '../../utils/table';
+import {
+  analyzeMessageTrace,
+  type MessageTraceDiagnostics,
+  type TraceDiagnosticStatus,
+} from '../../utils/messageTraceDiagnostics';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -135,6 +147,13 @@ const formatBody = (body: string): string => {
   }
 };
 
+const formatDurationMs = (value: number | null): string => {
+  if (value == null) return '-';
+  if (value >= 60000) return `${(value / 60000).toFixed(1)} min`;
+  if (value >= 1000) return `${(value / 1000).toFixed(2)} s`;
+  return `${value} ms`;
+};
+
 const getQueryValidationError = (mode: QueryMode, params: MessageQuery): string | null => {
   if (!params.topic?.trim()) return '请选择 Topic';
   if (mode === 'key' && !params.key?.trim()) return '请输入 Message Key';
@@ -179,6 +198,119 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
     return apiError.message;
   }
   return fallback;
+};
+
+const diagnosticTagColor: Record<TraceDiagnosticStatus, string> = {
+  healthy: 'success',
+  warning: 'warning',
+  critical: 'error',
+};
+
+const diagnosticStatusText: Record<TraceDiagnosticStatus, string> = {
+  healthy: '健康',
+  warning: '关注',
+  critical: '异常',
+};
+
+const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagnostics }) => {
+  const issueData = diagnostics.issues.slice(0, 8);
+
+  return (
+    <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 16 }}>
+      <Alert
+        showIcon
+        type={diagnostics.statusColor}
+        message={
+          <Flex gap={8} align="center" wrap>
+            <span>轨迹诊断</span>
+            <Tag color={diagnosticTagColor[diagnostics.status]}>{diagnostics.statusText}</Tag>
+            {issueData.map((issue) => (
+              <Tag key={issue.id} color={diagnosticTagColor[issue.severity]}>
+                {issue.title}
+              </Tag>
+            ))}
+          </Flex>
+        }
+      />
+      <Flex gap={16} wrap>
+        <div style={{ minWidth: 160 }}>
+          <div style={{ color: '#8c8c8c', marginBottom: 6 }}>健康分</div>
+          <Progress
+            percent={diagnostics.score}
+            status={diagnostics.status === 'critical' ? 'exception' : 'normal'}
+            strokeColor={diagnostics.status === 'healthy' ? '#52c41a' : undefined}
+          />
+        </div>
+        <Statistic title="轨迹阶段" value={diagnostics.summary.nodeCount} />
+        <Statistic
+          title="端到端耗时"
+          value={formatDurationMs(diagnostics.summary.endToEndLatencyMs)}
+        />
+        <Statistic
+          title="阶段耗时合计"
+          value={formatDurationMs(diagnostics.summary.totalNodeCostMs)}
+        />
+        <Statistic
+          title="消费成功率"
+          value={
+            diagnostics.summary.successfulConsumerRate == null
+              ? '-'
+              : `${diagnostics.summary.successfulConsumerRate}%`
+          }
+        />
+      </Flex>
+      {diagnostics.summary.slowestNode && (
+        <Typography.Text type="secondary">
+          最慢阶段：{diagnostics.summary.slowestNode.title}，
+          {formatDurationMs(diagnostics.summary.slowestNode.valueMs)}
+          {diagnostics.summary.slowestGap
+            ? `；最大阶段间隔：${diagnostics.summary.slowestGap.title}，${formatDurationMs(
+                diagnostics.summary.slowestGap.valueMs,
+              )}`
+            : ''}
+        </Typography.Text>
+      )}
+      {issueData.length > 0 && (
+        <Table
+          columns={[
+            {
+              title: '级别',
+              dataIndex: 'severity',
+              key: 'severity',
+              width: 90,
+              render: (severity: TraceDiagnosticStatus) => (
+                <Tag color={diagnosticTagColor[severity]}>{diagnosticStatusText[severity]}</Tag>
+              ),
+            },
+            {
+              title: '风险',
+              dataIndex: 'title',
+              key: 'title',
+              width: 150,
+            },
+            {
+              title: '说明',
+              dataIndex: 'description',
+              key: 'description',
+            },
+          ]}
+          dataSource={issueData}
+          rowKey="id"
+          pagination={false}
+          size="small"
+        />
+      )}
+      {diagnostics.recommendations.length > 0 && (
+        <Space direction="vertical" size={4}>
+          {diagnostics.recommendations.slice(0, 4).map((recommendation) => (
+            <Typography.Text key={recommendation} type="secondary">
+              {recommendation}
+            </Typography.Text>
+          ))}
+        </Space>
+      )}
+    </Space>
+  );
 };
 
 /* ═══════════════════════════════════════════
@@ -269,7 +401,9 @@ const MessagePageContent = ({
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceQueryMode, setTraceQueryMode] = useState<'msgid' | 'key'>('msgid');
   const [traceQueryValue, setTraceQueryValue] = useState('');
-  const [customTraceTopic, setCustomTraceTopic] = useState('');
+  const [customTraceTopic, setCustomTraceTopic] = useState(() =>
+    readMessageTraceTopic(selectedInstanceId),
+  );
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
@@ -277,6 +411,8 @@ const MessagePageContent = ({
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
+  const traceCacheRef = useRef(new Map<string, Promise<TraceRecord | null>>());
+  const traceDiagnostics = useMemo(() => analyzeMessageTrace(traceData), [traceData]);
 
   useEffect(
     () => () => {
@@ -285,6 +421,10 @@ const MessagePageContent = ({
     },
     [],
   );
+
+  useEffect(() => {
+    writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
+  }, [customTraceTopic, selectedInstanceId]);
 
   const currentQueryParams: MessageQuery =
     queryMode === 'topic'
@@ -302,15 +442,29 @@ const MessagePageContent = ({
         : queryValidationError;
 
   /* ─── Handlers ─── */
+  const clearQueryResults = () => {
+    setMessages([]);
+    setMessageTotal(0);
+    setMessagePage(1);
+    setResultMayBeTruncated(false);
+    setQueryError(null);
+    setQueryLoading(false);
+  };
+
   const handleReset = () => {
     queryGenerationRef.current += 1;
     setSelectedTopic(undefined);
     setKeyInput('');
     setMsgIdInput('');
     setDateRange(getDefaultRange());
-    setMessages([]);
-    setQueryError(null);
-    setQueryLoading(false);
+    clearQueryResults();
+  };
+
+  const handleQueryModeChange = (mode: QueryMode) => {
+    if (mode === queryMode) return;
+    queryGenerationRef.current += 1;
+    setQueryMode(mode);
+    clearQueryResults();
   };
 
   const executeQuery = async (
@@ -365,17 +519,10 @@ const MessagePageContent = ({
     await executeQuery(queryMode, currentQueryParams);
   };
 
-  const replayHistoryRecord = (record: MessageQueryHistory) => {
+  const replayHistoryRecord = async (record: MessageQueryHistory) => {
     const modeMap: Record<string, QueryMode> = { TOPIC: 'topic', KEY: 'key', MSG_ID: 'msgid' };
     const mode = modeMap[record.queryType] || 'topic';
-    const params: MessageQuery = {
-      topic: record.topic,
-      msgId: record.msgId || undefined,
-      key: record.messageKey || undefined,
-      startTime: record.startTime,
-      endTime: record.endTime,
-    };
-    setQueryMode(mode);
+    handleQueryModeChange(mode);
     setSelectedTopic(record.topic);
     setKeyInput(record.messageKey || '');
     setMsgIdInput(record.msgId || '');
@@ -383,13 +530,49 @@ const MessagePageContent = ({
       setDateRange([dayjs(record.startTime), dayjs(record.endTime)]);
     }
     setHistoryDrawerOpen(false);
-    void executeQuery(mode, params);
+    const requestGeneration = queryGenerationRef.current + 1;
+    queryGenerationRef.current = requestGeneration;
+    setQueryLoading(true);
+    setQueryError(null);
+    try {
+      const results = await getMessageQueryResults(record.id);
+      if (queryGenerationRef.current !== requestGeneration) return;
+      const mapped: MessageRecord[] = results.map((r) => ({
+        msgId: r.msgId,
+        topic: r.topic,
+        tag: r.tag || null,
+        key: r.key || null,
+        brokerName: r.brokerName || null,
+        queueId: r.queueId,
+        queueOffset: r.queueOffset,
+        body: '',
+        storeTime: r.storeTime,
+        bornHost: r.bornHost,
+        storeHost: r.storeHost,
+        properties: {},
+        size: r.size,
+      }));
+      setMessages(mapped);
+      setMessageTotal(mapped.length);
+      setMessagePage(1);
+      setResultMayBeTruncated(false);
+      message.success(`已加载历史查询结果，共 ${mapped.length} 条`);
+    } catch (error) {
+      if (queryGenerationRef.current === requestGeneration) {
+        setQueryError(getErrorMessage(error, '加载历史结果失败'));
+      }
+    } finally {
+      if (queryGenerationRef.current === requestGeneration) {
+        setQueryLoading(false);
+      }
+    }
   };
 
   const replayTraceRecord = (record: TraceQueryHistory) => {
-    setQueryMode('msgid');
+    handleQueryModeChange('msgid');
     setSelectedTopic(record.topic);
     setMsgIdInput(record.msgId);
+    setCustomTraceTopic(record.traceTopic?.trim() || '');
     setHistoryDrawerOpen(false);
     void executeQuery('msgid', { topic: record.topic, msgId: record.msgId });
   };
@@ -397,21 +580,36 @@ const MessagePageContent = ({
   const handleVerifyConsume = () => {
     message.warning('消费验证接口尚未接入，无法确认该消息的真实消费状态');
   };
-  const openDetail = async (record: MessageRecord, tab = 'content') => {
+  const loadMessageTrace = async (record: MessageRecord) => {
     const requestGeneration = traceGenerationRef.current + 1;
     traceGenerationRef.current = requestGeneration;
-    setSelectedMsg(record);
-    setModalTab(tab);
-    setModalOpen(true);
     setTraceData(null);
     setTraceLoading(true);
     setTraceError(null);
-    if (tab === 'trace') {
-      setTraceQueryMode('msgid');
-      setTraceQueryValue(record.msgId);
+    setTraceQueryMode('msgid');
+    setTraceQueryValue(record.msgId);
+    const normalizedTraceTopic = customTraceTopic.trim();
+    const cacheKey = JSON.stringify([
+      selectedInstanceId,
+      record.topic,
+      record.msgId,
+      normalizedTraceTopic,
+    ]);
+    let traceRequest = traceCacheRef.current.get(cacheKey);
+    if (!traceRequest) {
+      traceRequest = getMessageTrace(
+        record.msgId,
+        selectedInstanceId,
+        record.topic,
+        normalizedTraceTopic,
+      ).catch((error) => {
+        traceCacheRef.current.delete(cacheKey);
+        throw error;
+      });
+      traceCacheRef.current.set(cacheKey, traceRequest);
     }
     try {
-      const result = await getMessageTrace(record.msgId, selectedInstanceId, record.topic);
+      const result = await traceRequest;
       if (traceGenerationRef.current !== requestGeneration) return;
       setTraceData(result);
       setTraceError(null);
@@ -424,6 +622,22 @@ const MessagePageContent = ({
         setTraceLoading(false);
       }
     }
+  };
+
+  const openDetail = (record: MessageRecord, tab = 'content') => {
+    traceGenerationRef.current += 1;
+    setSelectedMsg(record);
+    setModalTab(tab);
+    setModalOpen(true);
+    setTraceData(null);
+    setTraceLoading(false);
+    setTraceError(null);
+    if (tab === 'trace') void loadMessageTrace(record);
+  };
+
+  const handleModalTabChange = (tab: string) => {
+    setModalTab(tab);
+    if (tab === 'trace' && selectedMsg) void loadMessageTrace(selectedMsg);
   };
 
   const runTraceQuery = async () => {
@@ -768,23 +982,26 @@ const MessagePageContent = ({
           ) : traceError ? (
             <Alert showIcon type="warning" message={traceError} />
           ) : traceData?.nodes?.length ? (
-            <Steps
-              direction="vertical"
-              size="small"
-              items={traceData.nodes.map((node) => ({
-                title: node.title,
-                description: (
-                  <div style={{ fontSize: 14 }}>
-                    <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
-                      {formatTimeMs(node.timestamp)}
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              <TraceDiagnosticsPanel diagnostics={traceDiagnostics} />
+              <Steps
+                direction="vertical"
+                size="small"
+                items={traceData.nodes.map((node) => ({
+                  title: node.title,
+                  description: (
+                    <div style={{ fontSize: 14 }}>
+                      <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
+                        {formatTimeMs(node.timestamp)}
+                      </div>
+                      <div style={{ marginTop: 2 }}>{node.description}</div>
+                      <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
                     </div>
-                    <div style={{ marginTop: 2 }}>{node.description}</div>
-                    <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
-                  </div>
-                ),
-                status: node.status,
-              }))}
-            />
+                  ),
+                  status: node.status,
+                }))}
+              />
+            </Space>
           ) : (
             <Typography.Text type="secondary">暂无轨迹数据</Typography.Text>
           )}
@@ -826,7 +1043,7 @@ const MessagePageContent = ({
             <Segmented
               options={QUERY_OPTIONS}
               value={queryMode}
-              onChange={(v) => setQueryMode(v as QueryMode)}
+              onChange={(v) => handleQueryModeChange(v as QueryMode)}
             />
           </Space>
 
@@ -1022,7 +1239,7 @@ const MessagePageContent = ({
           </Flex>
         }
       >
-        <Tabs activeKey={modalTab} onChange={setModalTab} items={modalTabs} />
+        <Tabs activeKey={modalTab} onChange={handleModalTabChange} items={modalTabs} />
       </Modal>
 
       <Modal

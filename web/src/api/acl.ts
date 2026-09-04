@@ -50,8 +50,8 @@ export interface AclUserPage {
 export interface AclUser {
   id: AclEntityId;
   username: string;
-  accessKey: string;
-  secretKey: string;
+  accessKey?: string | null;
+  secretKey?: string | null;
   admin: boolean;
   clusters: string[];
   permRead?: boolean;

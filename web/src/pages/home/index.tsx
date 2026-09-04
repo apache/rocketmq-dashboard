@@ -135,7 +135,7 @@ const HomePage = () => {
         })),
       );
       setSelectedModel((current) =>
-        current && values.includes(current) ? current : values[0] || '',
+        current && values.includes(current) ? current : configuredModel || values[0] || '',
       );
     };
 
@@ -213,6 +213,10 @@ const HomePage = () => {
           }
         : null,
     });
+  };
+
+  const handleHistoryOpen = () => {
+    navigate('/ai', { state: { historyIntent: 'open' } });
   };
 
   return (
@@ -470,7 +474,13 @@ const HomePage = () => {
                     />
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors">
+                    <button
+                      type="button"
+                      className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
+                      aria-label={t('ai.history.title')}
+                      title={t('ai.history.title')}
+                      onClick={handleHistoryOpen}
+                    >
                       <ClockCounterClockwise size={20} />
                     </button>
                   </div>

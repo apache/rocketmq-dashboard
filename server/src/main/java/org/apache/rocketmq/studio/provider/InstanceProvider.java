@@ -22,10 +22,13 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetQueuePreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
@@ -33,6 +36,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicVO;
 
 import java.util.List;
 import java.util.Set;
+import java.util.ArrayList;
 
 /**
  * Unified instance-scoped operations SPI. Every method takes the Studio instance id as its
@@ -105,10 +109,65 @@ public interface InstanceProvider {
 
     List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String groupName);
 
+    default ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String groupName,
+                                                            long timestamp, String topic) {
+        List<QueueProgressVO> progressRows = getGroupProgress(instanceId, groupName);
+        List<ResetConsumerOffsetQueuePreviewVO> queues = new ArrayList<>();
+        for (QueueProgressVO progress : progressRows) {
+            if (progress == null || !topic.equals(progress.getTopic())) {
+                continue;
+            }
+            queues.add(ResetConsumerOffsetQueuePreviewVO.builder()
+                    .topic(progress.getTopic())
+                    .broker(progress.getBroker())
+                    .queueId(progress.getQueueId())
+                    .minOffset(-1L)
+                    .maxOffset(-1L)
+                    .brokerOffset(progress.getBrokerOffset())
+                    .consumerOffset(progress.getConsumerOffset())
+                    .targetOffset(-1L)
+                    .currentLag(progress.getDiffTotal())
+                    .projectedLag(-1L)
+                    .offsetDelta(0L)
+                    .riskLevel("WARNING")
+                    .message("Provider does not expose target offset preview; current lag is shown before reset")
+                    .build());
+        }
+        List<String> warnings = List.of(
+                "Provider does not expose per-queue target offset preview; confirm with current lag only");
+        return ResetConsumerOffsetPreviewVO.builder()
+                .instanceId(instanceId)
+                .groupName(groupName)
+                .topic(topic)
+                .timestamp(timestamp)
+                .complete(false)
+                .allowReset(!queues.isEmpty())
+                .queueCount(queues.size())
+                .warningCount(warnings.size())
+                .rewindQueueCount(0)
+                .fastForwardQueueCount(0)
+                .currentTotalLag(queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getCurrentLag).sum())
+                .projectedTotalLag(-1L)
+                .totalOffsetDelta(0L)
+                .warnings(warnings)
+                .queues(queues)
+                .build();
+    }
+
     void resetOffset(String instanceId, String groupName, long timestamp, String topic);
 
     List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                         String tag, String key, Long startTime, Long endTime);
+
+    /**
+     * Message query with an explicit provider truncation signal. Providers that page remote APIs
+     * should return a bounded result and set {@code mayBeTruncated} when they stop at the budget.
+     */
+    default MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId,
+                                                      String tag, String key, Long startTime, Long endTime) {
+        return MessageQueryResult.complete(queryMessages(instanceId, topic, msgId, tag, key,
+                startTime, endTime));
+    }
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
 

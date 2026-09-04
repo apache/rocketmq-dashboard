@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -91,6 +92,29 @@ class NativeAlertRulePolicyTest {
         assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
                 "rocketmq_consumer_lag_messages").channels(List.of("webhook")).build()))
                 .isInstanceOf(BusinessException.class).hasMessageContaining("Unsupported notification channel");
+    }
+
+    @Test
+    void acceptsNotificationChannelsIndependentlyOfTheDefaultLocaleTest() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
+                    "rocketmq_consumer_lag_messages").channels(List.of(" DINGTALK ")).build()))
+                    .doesNotThrowAnyException();
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
+    @Test
+    void rejectsOverflowingNativeRuleDurationsBeforePersistenceTest() {
+        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").duration("9223372036854775807y").build()))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid alert duration");
+        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").reminderInterval("9223372036854775807y").build()))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid alert duration");
     }
 
     private static AlertRuleVO.AlertRuleVOBuilder rule(AlertDomain domain, String metric) {

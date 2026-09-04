@@ -32,6 +32,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DemoDataSqlCompatibilityTest {
 
@@ -58,6 +59,7 @@ class DemoDataSqlCompatibilityTest {
             assertThat(allIdsAreNumeric(connection, "rmq_instance")).isTrue();
             assertThat(allIdsAreNumeric(connection, "rmq_acl_rule")).isTrue();
             assertThat(allIdsAreNumeric(connection, "rmq_acl_user")).isTrue();
+            assertThat(hasImportedKey(connection, "rmq_instance", "fk_instance_cloud_credential")).isTrue();
         }
     }
 
@@ -82,6 +84,23 @@ class DemoDataSqlCompatibilityTest {
             assertThat(hasColumn(connection, "rmq_alert_rule", "gmt_modified")).isTrue();
             assertThat(hasColumn(connection, "rmq_alert_rule", "created_at")).isFalse();
             assertThat(hasColumn(connection, "rmq_system_alert", "updated_at")).isFalse();
+        }
+    }
+
+    @Test
+    void schemaShouldEnforceSingletonSettingsKeyTest() throws Exception {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:h2:mem:settings-schema-sql;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", "sa", "")) {
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/schema.sql"));
+
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate("INSERT INTO rmq_settings (json) VALUES ('{}')");
+
+                assertThatThrownBy(() -> statement.executeUpdate("INSERT INTO rmq_settings (json) VALUES ('{}')"))
+                        .isInstanceOf(SQLException.class);
+            }
+
+            assertThat(hasColumn(connection, "rmq_settings", "settings_key")).isTrue();
         }
     }
 
@@ -142,6 +161,18 @@ class DemoDataSqlCompatibilityTest {
     private static boolean hasColumn(Connection connection, String table, String column) throws SQLException {
         try (ResultSet columns = connection.getMetaData().getColumns(null, null, table, column)) {
             return columns.next();
+        }
+    }
+
+    private static boolean hasImportedKey(Connection connection, String table, String foreignKeyName)
+            throws SQLException {
+        try (ResultSet keys = connection.getMetaData().getImportedKeys(null, null, table)) {
+            while (keys.next()) {
+                if (foreignKeyName.equalsIgnoreCase(keys.getString("FK_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

@@ -16,9 +16,11 @@
  */
 package org.apache.rocketmq.studio.instance.message;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
@@ -33,37 +35,50 @@ import org.springframework.util.StringUtils;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
 
 @Slf4j
 @Service
 public class QueryHistoryService {
 
+    private static final int DEFAULT_CLEANUP_BATCH_SIZE = 500;
+    private static final int MAX_CLEANUP_BATCH_SIZE = 5_000;
+    private static final int DEFAULT_CLEANUP_MAX_BATCHES = 20;
+    private static final int MAX_CLEANUP_MAX_BATCHES = 100;
+
     private final RmqMessageQueryMapper messageQueryMapper;
     private final RmqTraceQueryMapper traceQueryMapper;
     private final QueryHistoryProperties properties;
     private final Clock clock;
+    private final ObjectMapper objectMapper;
 
     @Autowired
     public QueryHistoryService(RmqMessageQueryMapper messageQueryMapper,
                                RmqTraceQueryMapper traceQueryMapper,
-                               QueryHistoryProperties properties) {
-        this(messageQueryMapper, traceQueryMapper, properties, Clock.systemUTC());
+                               QueryHistoryProperties properties,
+                               ObjectMapper objectMapper) {
+        this(messageQueryMapper, traceQueryMapper, properties, Clock.systemUTC(), objectMapper);
     }
 
     QueryHistoryService(RmqMessageQueryMapper messageQueryMapper,
                         RmqTraceQueryMapper traceQueryMapper,
                         QueryHistoryProperties properties,
-                        Clock clock) {
+                        Clock clock,
+                        ObjectMapper objectMapper) {
         this.messageQueryMapper = messageQueryMapper;
         this.traceQueryMapper = traceQueryMapper;
         this.properties = properties;
         this.clock = clock;
+        this.objectMapper = objectMapper;
     }
 
     public void recordMessageQuery(String clusterId, String queryType, String topic, String msgId,
                                    String tag, String key, Long startTime,
-                                   Long endTime, int resultCount) {
+                                   Long endTime, int resultCount, String resultSnapshot) {
         RmqMessageQuery query = new RmqMessageQuery();
         query.setQueryType(queryType);
         query.setTopic(topic);
@@ -73,6 +88,7 @@ public class QueryHistoryService {
         query.setStartTime(startTime);
         query.setEndTime(endTime);
         query.setResultCount(resultCount);
+        query.setResultSnapshot(resultSnapshot);
         query.setClusterId(clusterId);
         query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
         LocalDateTime now = LocalDateTime.now(clock);
@@ -82,10 +98,67 @@ public class QueryHistoryService {
         log.debug("Message query recorded: clusterId={} type={} topic={}", clusterId, queryType, topic);
     }
 
-    public void recordTraceQuery(String clusterId, String msgId, String topic, int nodeCount, int consumerCount) {
+    /**
+     * Builds a JSON snapshot of query results, excluding message body and properties to save storage.
+     */
+    public String buildResultSnapshot(List<MessageRecordVO> results) {
+        if (results == null || results.isEmpty()) {
+            return null;
+        }
+        try {
+            List<Map<String, Object>> snapshots = results.stream().map(r -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("msgId", r.getMsgId() == null ? "" : r.getMsgId());
+                m.put("topic", r.getTopic() == null ? "" : r.getTopic());
+                m.put("tag", r.getTag() == null ? "" : r.getTag());
+                m.put("key", r.getKey() == null ? "" : r.getKey());
+                m.put("brokerName", r.getBrokerName() == null ? "" : r.getBrokerName());
+                m.put("queueId", r.getQueueId() == null ? 0 : r.getQueueId());
+                m.put("queueOffset", r.getQueueOffset() == null ? 0L : r.getQueueOffset());
+                m.put("storeTime", r.getStoreTime());
+                m.put("bornHost", r.getBornHost() == null ? "" : r.getBornHost());
+                m.put("storeHost", r.getStoreHost() == null ? "" : r.getStoreHost());
+                m.put("size", r.getSize());
+                return m;
+            }).toList();
+            return objectMapper.writeValueAsString(snapshots);
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to serialize result snapshot: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Retrieves the stored result snapshot for a given history record.
+     */
+    public List<MessageRecordVO> getMessageQueryResults(long id) {
+        RmqMessageQuery query = messageQueryMapper.selectById(id);
+        if (query == null) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Query history record not found");
+        }
+        String snapshot = query.getResultSnapshot();
+        if (!StringUtils.hasText(snapshot)) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(snapshot,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, MessageRecordVO.class));
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to deserialize result snapshot for id={}: {}", id, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Records a message-id trace lookup together with the exact trace topic used by the
+     * provider. The topic is optional because older/default lookups use the provider default.
+     */
+    public void recordTraceQuery(String clusterId, String msgId, String topic, String traceTopic,
+                                 int nodeCount, int consumerCount) {
         RmqTraceQuery query = new RmqTraceQuery();
         query.setMsgId(msgId);
         query.setTopic(topic);
+        query.setTraceTopic(normalizeOptional(traceTopic));
         query.setNodeCount(nodeCount);
         query.setConsumerCount(consumerCount);
         query.setClusterId(clusterId);
@@ -94,7 +167,12 @@ public class QueryHistoryService {
         query.setGmtCreate(now);
         query.setGmtModified(now);
         traceQueryMapper.insert(query);
-        log.debug("Trace query recorded: clusterId={} msgId={} topic={}", clusterId, msgId, topic);
+        log.debug("Trace query recorded: clusterId={} msgId={} topic={} traceTopic={}", clusterId, msgId,
+                topic, query.getTraceTopic());
+    }
+
+    public void recordTraceQuery(String clusterId, String msgId, String topic, int nodeCount, int consumerCount) {
+        recordTraceQuery(clusterId, msgId, topic, null, nodeCount, consumerCount);
     }
 
     public PageResult<MessageQueryHistoryVO> listMessageQueries(String clusterId, String queryType,
@@ -127,6 +205,7 @@ public class QueryHistoryService {
                 .and(StringUtils.hasText(search), nested -> nested
                         .like("topic", pattern)
                         .or().like("msg_id", pattern)
+                        .or().like("trace_topic", pattern)
                         .or().like("queried_by", pattern))
                 .orderByDesc("gmt_create", "id");
         Page<RmqTraceQuery> result = traceQueryMapper.selectPage(new Page<>(page, pageSize), query);
@@ -179,8 +258,7 @@ public class QueryHistoryService {
 
     private void deleteExpiredMessageQueries(LocalDateTime cutoff) {
         try {
-            int deleted = messageQueryMapper.delete(Wrappers.<RmqMessageQuery>query()
-                    .lt("gmt_create", cutoff));
+            int deleted = deleteExpiredInBatches(messageQueryMapper, RmqMessageQuery::getId, cutoff);
             log.debug("Purged {} expired message query records", deleted);
         } catch (RuntimeException e) {
             log.warn("Failed to purge expired message query records: {}", e.getMessage());
@@ -189,12 +267,50 @@ public class QueryHistoryService {
 
     private void deleteExpiredTraceQueries(LocalDateTime cutoff) {
         try {
-            int deleted = traceQueryMapper.delete(Wrappers.<RmqTraceQuery>query()
-                    .lt("gmt_create", cutoff));
+            int deleted = deleteExpiredInBatches(traceQueryMapper, RmqTraceQuery::getId, cutoff);
             log.debug("Purged {} expired trace query records", deleted);
         } catch (RuntimeException e) {
             log.warn("Failed to purge expired trace query records: {}", e.getMessage());
         }
+    }
+
+    private <T> int deleteExpiredInBatches(BaseMapper<T> mapper, Function<T, Long> idExtractor,
+                                          LocalDateTime cutoff) {
+        int batchSize = boundedPositive(properties.getCleanupBatchSize(),
+                DEFAULT_CLEANUP_BATCH_SIZE, MAX_CLEANUP_BATCH_SIZE);
+        int maxBatches = boundedPositive(properties.getCleanupMaxBatches(),
+                DEFAULT_CLEANUP_MAX_BATCHES, MAX_CLEANUP_MAX_BATCHES);
+        int totalDeleted = 0;
+        for (int batch = 0; batch < maxBatches; batch++) {
+            List<T> expired = mapper.selectList(new QueryWrapper<T>()
+                    .select("id")
+                    .lt("gmt_create", cutoff)
+                    .orderByAsc("gmt_create", "id")
+                    .last("LIMIT " + batchSize));
+            if (expired.isEmpty()) {
+                break;
+            }
+            List<Long> ids = expired.stream()
+                    .map(idExtractor)
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (ids.isEmpty()) {
+                break;
+            }
+            int deleted = mapper.deleteByIds(ids);
+            totalDeleted += deleted;
+            if (deleted < batchSize) {
+                break;
+            }
+        }
+        return totalDeleted;
+    }
+
+    private static int boundedPositive(int value, int defaultValue, int maxValue) {
+        if (value <= 0) {
+            return defaultValue;
+        }
+        return Math.min(value, maxValue);
     }
 
     private static LocalDateTime latestOf(LocalDateTime left, LocalDateTime right) {
@@ -216,6 +332,7 @@ public class QueryHistoryService {
     private static TraceQueryHistoryVO toTraceHistory(RmqTraceQuery query) {
         return TraceQueryHistoryVO.builder()
                 .id(query.getId()).msgId(query.getMsgId()).topic(query.getTopic())
+                .traceTopic(query.getTraceTopic())
                 .nodeCount(query.getNodeCount() == null ? 0 : query.getNodeCount())
                 .consumerCount(query.getConsumerCount() == null ? 0 : query.getConsumerCount())
                 .clusterId(query.getClusterId()).queriedBy(query.getQueriedBy())
@@ -231,5 +348,9 @@ public class QueryHistoryService {
             return search;
         }
         return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    private static String normalizeOptional(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 }

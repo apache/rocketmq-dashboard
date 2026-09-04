@@ -1,5 +1,7 @@
 # Stage 1: Build
-FROM node:20-alpine AS build
+# Pin Node and nginx base images to a specific minor so CI builds are
+# reproducible (the bare :20-alpine and :alpine tags are rolling).
+FROM node:20.19.0-alpine AS build
 ARG VITE_GIT_COMMIT
 ENV VITE_GIT_COMMIT=${VITE_GIT_COMMIT}
 WORKDIR /app
@@ -9,7 +11,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Serve
-FROM nginx:alpine
+FROM nginx:1.27.2-alpine
 ENV NGINX_ENVSUBST_FILTER=^RESOLVER$
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template

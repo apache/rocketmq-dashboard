@@ -24,6 +24,12 @@ public interface MessageProvider {
     List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key, Long startTime,
                                         Long endTime);
 
+    default MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId,
+                                                      String tag, String key, Long startTime, Long endTime) {
+        return MessageQueryResult.complete(queryMessages(instanceId, topic, msgId, tag, key,
+                startTime, endTime));
+    }
+
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
 
     List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic);

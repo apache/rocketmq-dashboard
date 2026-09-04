@@ -9,6 +9,7 @@ package org.apache.rocketmq.studio.ops.alert;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertNotificationOutbox;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertNotificationOutboxMapper;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
@@ -27,13 +28,25 @@ import java.time.Duration;
 import java.util.TimeZone;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +57,110 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class NotificationOutboxServiceTest {
+    @Test
+    void cleanupShouldDeleteOnlyTerminalDeliveriesOlderThanRetentionTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT24H");
+        properties.setNotificationCleanupBatchSize(50);
+        properties.setNotificationCleanupMaxBatches(1);
+        when(mapper.deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class))).thenReturn(3);
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isEqualTo(3);
+        org.mockito.ArgumentCaptor<LocalDateTime> cutoff =
+                org.mockito.ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(mapper).deleteTerminalBefore(cutoff.capture(), org.mockito.ArgumentMatchers.eq(50));
+        assertThat(Duration.between(cutoff.getValue().toInstant(ZoneOffset.UTC),
+                java.time.Instant.now().minus(Duration.ofHours(24))).abs()).isLessThan(Duration.ofSeconds(2));
+    }
+
+    @Test
+    void cleanupShouldStopAtTheConfiguredMaximumBatchCountTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT24H");
+        properties.setNotificationCleanupBatchSize(2);
+        properties.setNotificationCleanupMaxBatches(3);
+        when(mapper.deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class))).thenReturn(2, 2, 2);
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isEqualTo(6);
+        verify(mapper, org.mockito.Mockito.times(3)).deleteTerminalBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(2));
+    }
+
+    @Test
+    void cleanupShouldStopAfterAPartialBatchTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT24H");
+        properties.setNotificationCleanupBatchSize(10);
+        properties.setNotificationCleanupMaxBatches(5);
+        when(mapper.deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class))).thenReturn(10, 4);
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isEqualTo(14);
+        verify(mapper, org.mockito.Mockito.times(2)).deleteTerminalBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(10));
+    }
+
+    @Test
+    void cleanupShouldBeDisabledWhenRetentionIsNonPositiveTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT0S");
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isZero();
+        verify(mapper, never()).deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class));
+    }
+
+    @Test
+    void cleanupShouldIsolateInvalidRetentionConfigurationTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("30d");
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isZero();
+        verify(mapper, never()).deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class));
+    }
+
+    @Test
+    void cleanupShouldStopWhenOneBatchFailsTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationRetention("PT24H");
+        properties.setNotificationCleanupBatchSize(10);
+        properties.setNotificationCleanupMaxBatches(3);
+        when(mapper.deleteTerminalBefore(any(LocalDateTime.class), any(Integer.class))).thenReturn(10)
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        int deleted = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class),
+                properties).cleanupTerminalDeliveries();
+
+        assertThat(deleted).isEqualTo(10);
+        verify(mapper, org.mockito.Mockito.times(2)).deleteTerminalBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(10));
+    }
+
     @Test
     void schedulesOutboxWorkInUtcRegardlessOfTheJvmDefaultTimeZoneTest() {
         TimeZone previous = TimeZone.getDefault();
@@ -341,6 +458,24 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void normalizesDeliveryFiltersIndependentlyOfTheDefaultLocaleTest() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+            when(mapper.countPage("dingtalk", "PENDING", "Local")).thenReturn(0L);
+
+            new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
+                    mock(AlertRepository.class), mock(OperationAuditService.class))
+                    .listDeliveries(" DINGTALK ", "pending", "Local", 1, 20);
+
+            verify(mapper).countPage("dingtalk", "PENDING", "Local");
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
+    @Test
     void retriesOnlyFailedDeliveryAndResetsItsDispatchStateTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         OperationAuditService audit = mock(OperationAuditService.class);
@@ -393,5 +528,238 @@ class NotificationOutboxServiceTest {
 
         assertThat(result.getSucceededIds()).containsExactly(8L);
         assertThat(result.getFailures()).containsKey(9L);
+    }
+
+    @Test
+    void renewsClaimWhileEmailDeliveryIsStillInFlightTest() throws Exception {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        ScheduledExecutorService heartbeatExecutor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> heartbeatFuture = mock(ScheduledFuture.class);
+        AtomicReference<Runnable> renewal = new AtomicReference<>();
+        when(heartbeatExecutor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), any(TimeUnit.class)))
+                .thenAnswer(invocation -> {
+                    renewal.set(invocation.getArgument(0));
+                    return heartbeatFuture;
+                });
+
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(8L);
+        row.setAlertId(9L);
+        row.setChannel("email");
+        row.setStatus("PENDING");
+        row.setAttemptCount(0);
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString())).thenReturn(1);
+        when(mapper.renewClaim(eq(8L), anyString(), any(LocalDateTime.class))).thenReturn(1);
+        when(mapper.update(any(), any())).thenReturn(1);
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .emailRecipients("ops@example.com").build());
+
+        CountDownLatch sendStarted = new CountDownLatch(1);
+        CountDownLatch releaseSend = new CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            sendStarted.countDown();
+            if (!releaseSend.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("test send timed out");
+            }
+            return null;
+        }).when(mailSender).send(any(SimpleMailMessage.class));
+
+        AlertingProperties properties = new AlertingProperties();
+        properties.setNotificationClaimTimeout("PT1M");
+        properties.setNotificationClaimRenewalInterval("PT10S");
+        NotificationOutboxService service = new NotificationOutboxService(mapper, settings,
+                mock(AlertSilenceService.class), alerts, mock(OperationAuditService.class), new RestTemplate(),
+                () -> mailSender, properties, heartbeatExecutor);
+
+        ExecutorService dispatcher = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> dispatch = dispatcher.submit(service::dispatch);
+            org.junit.jupiter.api.Assertions.assertTrue(sendStarted.await(5, TimeUnit.SECONDS));
+            org.junit.jupiter.api.Assertions.assertNotNull(renewal.get());
+            renewal.get().run();
+            releaseSend.countDown();
+            dispatch.get(5, TimeUnit.SECONDS);
+        } finally {
+            releaseSend.countDown();
+            dispatcher.shutdownNow();
+            service.closeHeartbeatExecutor();
+        }
+
+        verify(mapper).renewClaim(eq(8L), anyString(), any(LocalDateTime.class));
+        verify(mapper).update(any(), any());
+        verify(heartbeatFuture).cancel(false);
+    }
+
+    @Test
+    void doesNotRetryAfterDeliveryWhenAuditRecordingFailsTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        ScheduledExecutorService heartbeatExecutor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> heartbeatFuture = mock(ScheduledFuture.class);
+        when(heartbeatExecutor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), any(TimeUnit.class)))
+                .thenAnswer(invocation -> heartbeatFuture);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            if ("DELIVER_ALERT_NOTIFICATION".equals(invocation.getArgument(0))) {
+                throw new IllegalStateException("audit database unavailable");
+            }
+            return null;
+        }).when(audit).record(anyString(), anyString(), anyString(), any(), anyString(), anyString(), any());
+
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(8L);
+        row.setAlertId(9L);
+        row.setChannel("dingtalk");
+        row.setStatus("PENDING");
+        row.setAttemptCount(0);
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString())).thenReturn(1);
+        when(mapper.update(any(), any())).thenReturn(1);
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://example.com/hook").build());
+
+        RestTemplate client = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(client).build();
+        server.expect(once(), requestTo("https://example.com/hook"))
+                .andRespond(withSuccess("{\"errcode\":0}", MediaType.APPLICATION_JSON));
+
+        NotificationOutboxService service = new NotificationOutboxService(mapper, settings,
+                mock(AlertSilenceService.class), alerts, audit, client, () -> null,
+                new AlertingProperties(), heartbeatExecutor);
+        try {
+            service.dispatch();
+        } finally {
+            service.closeHeartbeatExecutor();
+        }
+
+        server.verify();
+        verify(mapper, times(1)).update(any(), any());
+        verify(audit).record("DELIVER_ALERT_NOTIFICATION", "ALERT_NOTIFICATION", "8", null,
+                "alertId=9, channel=dingtalk", "SUCCESS", null);
+    }
+
+    @Test
+    void abandonsStateUpdateWhenDeliveryLeaseIsLostDuringSendTest() throws Exception {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        ScheduledExecutorService heartbeatExecutor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> heartbeatFuture = mock(ScheduledFuture.class);
+        AtomicReference<Runnable> renewal = new AtomicReference<>();
+        when(heartbeatExecutor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), any(TimeUnit.class)))
+                .thenAnswer(invocation -> {
+                    renewal.set(invocation.getArgument(0));
+                    return heartbeatFuture;
+                });
+
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(8L);
+        row.setAlertId(9L);
+        row.setChannel("email");
+        row.setStatus("PENDING");
+        row.setAttemptCount(0);
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString())).thenReturn(1);
+        when(mapper.renewClaim(eq(8L), anyString(), any(LocalDateTime.class))).thenReturn(0);
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .emailRecipients("ops@example.com").build());
+
+        CountDownLatch sendStarted = new CountDownLatch(1);
+        CountDownLatch releaseSend = new CountDownLatch(1);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            sendStarted.countDown();
+            if (!releaseSend.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("test send timed out");
+            }
+            return null;
+        }).when(mailSender).send(any(SimpleMailMessage.class));
+
+        NotificationOutboxService service = new NotificationOutboxService(mapper, settings,
+                mock(AlertSilenceService.class), alerts, audit, new RestTemplate(), () -> mailSender,
+                new AlertingProperties(), heartbeatExecutor);
+        ExecutorService dispatcher = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> dispatch = dispatcher.submit(service::dispatch);
+            org.junit.jupiter.api.Assertions.assertTrue(sendStarted.await(5, TimeUnit.SECONDS));
+            org.junit.jupiter.api.Assertions.assertNotNull(renewal.get());
+            renewal.get().run();
+            releaseSend.countDown();
+            dispatch.get(5, TimeUnit.SECONDS);
+        } finally {
+            releaseSend.countDown();
+            dispatcher.shutdownNow();
+            service.closeHeartbeatExecutor();
+        }
+
+        verify(mapper).renewClaim(eq(8L), anyString(), any(LocalDateTime.class));
+        verify(mapper, never()).update(any(), any());
+        verify(audit, never()).record(any(), any(), any(), any(), any(), any(), any());
+        verify(heartbeatFuture).cancel(false);
+    }
+
+    @Test
+    void doesNotRetryWhenDeliveryStateWriteFailsAfterExternalSuccessTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        ScheduledExecutorService heartbeatExecutor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> heartbeatFuture = mock(ScheduledFuture.class);
+        when(heartbeatExecutor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), any(TimeUnit.class)))
+                .thenAnswer(invocation -> heartbeatFuture);
+
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(8L);
+        row.setAlertId(9L);
+        row.setChannel("dingtalk");
+        row.setStatus("PENDING");
+        row.setAttemptCount(0);
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString())).thenReturn(1);
+        when(mapper.update(any(), any())).thenThrow(new IllegalStateException("outbox database unavailable"));
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://example.com/hook").build());
+
+        RestTemplate client = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(client).build();
+        server.expect(once(), requestTo("https://example.com/hook"))
+                .andRespond(withSuccess("{\"errcode\":0}", MediaType.APPLICATION_JSON));
+
+        NotificationOutboxService service = new NotificationOutboxService(mapper, settings,
+                mock(AlertSilenceService.class), alerts, audit, client, () -> null,
+                new AlertingProperties(), heartbeatExecutor);
+        try {
+            service.dispatch();
+        } finally {
+            service.closeHeartbeatExecutor();
+        }
+
+        server.verify();
+        verify(mapper).update(any(), any());
+        verify(audit, never()).record(any(), any(), any(), any(), any(), any(), any());
+        verify(heartbeatFuture).cancel(false);
     }
 }

@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -92,12 +93,33 @@ class TopicControllerTest {
 
     @Test
     void topicRuntimeDiagnosticsShouldPassSelectedInstance() throws Exception {
-        when(metadataService.getTopicRoutes("instance-a", "orders")).thenReturn(List.of());
+        BrokerRouteVO route = BrokerRouteVO.builder()
+                .brokerName("broker-a")
+                .brokerAddr("10.0.0.1:10911")
+                .masterAddr("10.0.0.1:10911")
+                .brokerAddrs(Map.of(0L, "10.0.0.1:10911", 1L, "10.0.0.2:10911"))
+                .brokerIds(List.of(0L, 1L))
+                .replicaCount(1)
+                .writeQueues(8)
+                .readQueues(8)
+                .perm(TopicPerm.RW)
+                .permCode(6)
+                .readable(true)
+                .writable(true)
+                .topicSysFlag(0)
+                .build();
+        when(metadataService.getTopicRoutes("instance-a", "orders")).thenReturn(List.of(route));
         when(metadataService.getTopicConsumers("instance-a", "orders")).thenReturn(List.of());
 
         mockMvc.perform(get("/api/topics/orders/routes").param("instanceId", "instance-a"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].brokerName").value("broker-a"))
+                .andExpect(jsonPath("$.data[0].masterAddr").value("10.0.0.1:10911"))
+                .andExpect(jsonPath("$.data[0].brokerIds[1]").value(1))
+                .andExpect(jsonPath("$.data[0].replicaCount").value(1))
+                .andExpect(jsonPath("$.data[0].readable").value(true))
+                .andExpect(jsonPath("$.data[0].writable").value(true));
         mockMvc.perform(get("/api/topics/orders/consumers").param("instanceId", "instance-a"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
@@ -120,6 +142,22 @@ class TopicControllerTest {
                 .andExpect(jsonPath("$.data.total").value(3));
 
         verify(metadataService).getTopicConsumersPage("instance-a", "orders", 2, 20);
+    }
+
+    @Test
+    void exportTopicsShouldPassFiltersAndSelectedNames() throws Exception {
+        when(metadataService.exportTopics("instance-a", "FIFO", "orders", List.of("topic-a", "topic-b")))
+                .thenReturn("\"Name\"\n\"topic-a\"");
+
+        mockMvc.perform(get("/api/topics/export")
+                        .param("instanceId", "instance-a")
+                        .param("type", "FIFO")
+                        .param("search", "orders")
+                        .param("names", "topic-a, topic-b,topic-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value("\"Name\"\n\"topic-a\""));
+
+        verify(metadataService).exportTopics("instance-a", "FIFO", "orders", List.of("topic-a", "topic-b"));
     }
 
     @Test
@@ -152,6 +190,44 @@ class TopicControllerTest {
         assertThat(captor.getValue().getInstanceId()).isEqualTo("open-source-local");
         assertThat(captor.getValue().getWriteQueues()).isEqualTo(16);
         assertThat(captor.getValue().getReadQueues()).isEqualTo(16);
+    }
+
+    @Test
+    void importTopicsShouldNormalizeInstanceAndDelegateBatch() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "1",
+                "topics", List.of(Map.of(
+                        "name", "imported-topic",
+                        "type", "NORMAL",
+                        "writeQueues", 8,
+                        "readQueues", 8,
+                        "perm", "RW"
+                ))
+        );
+        TopicVO imported = new TopicVO();
+        imported.setName("imported-topic");
+        when(instanceService.normalizeIdentifier("1")).thenReturn("open-source-local");
+        when(metadataService.importTopics(eq("open-source-local"), any()))
+                .thenReturn(ImportTopicsResultVO.builder()
+                        .imported(1)
+                        .failed(0)
+                        .topics(List.of(imported))
+                        .failures(List.of())
+                        .build());
+
+        mockMvc.perform(post("/api/topics/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.topics[0].name").value("imported-topic"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<CreateTopicDTO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(metadataService).importTopics(eq("open-source-local"), captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).getName()).isEqualTo("imported-topic");
+        assertThat(captor.getValue().get(0).getWriteQueues()).isEqualTo(8);
     }
 
     @Test

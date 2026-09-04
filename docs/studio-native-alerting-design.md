@@ -239,6 +239,10 @@ Snapshots have short retention, initially 24 hours. Studio is not a replacement 
 
 `CollectorScheduler` creates per-instance jobs at a default 30-second interval. Each job has a bounded timeout and the scheduler uses bounded concurrency, so one slow remote instance does not indefinitely delay every other instance. Collection failure records an unavailable sample and health diagnostic; it does not block other instances.
 
+The database lease is held for the entire collection pass, including passes in which every collector returns an empty sample list. The active holder renews it periodically (by default every 15 seconds, clamped to no more than one third of the configured lease duration). Renewal only succeeds for the current holder while its previous lease is still unexpired. If renewal fails, the scheduler cancels outstanding collection jobs and refuses to persist later samples, so an expired replica cannot continue acting as the active collector.
+
+The lease duration and heartbeat interval can be configured with `STUDIO_ALERTING_COLLECTION_LEASE_DURATION` and `STUDIO_ALERTING_COLLECTION_LEASE_RENEWAL_INTERVAL`. The interval should be comfortably shorter than the duration to tolerate transient database latency.
+
 For multi-replica Studio deployment, the scheduler uses a database lease:
 
 ```text
@@ -246,11 +250,16 @@ rmq_metric_collector_lease
   collector_name, owner_id, expires_at
 ```
 
-Only the active lease holder collects and evaluates. Notification outbox rows use claimant-bound state transitions so a stale worker cannot overwrite a newer claimant. Delivery is at-least-once: receivers should use the event and channel identity to deduplicate a request that times out after reaching the remote service.
+Only the active lease holder collects and evaluates. Notification outbox rows use claimant-bound state transitions so a stale worker cannot overwrite a newer claimant. A delivery worker renews its claim while a webhook or SMTP call is in flight; the renewal is conditional on the claim token, and a worker that loses the lease stops updating that row. The delivery state is committed before its audit entry, so an audit-store failure cannot turn a completed external send into another retry. Delivery is still at-least-once: receivers should use the event and channel identity to deduplicate a request that times out after reaching the remote service.
 
 ## Notifications and Silences
 
 The supported notification channels are DingTalk, the SMS webhook configured in General Settings, and Email. A real event creates outbox rows for enabled supported channels. Independent notification-channel and notification-policy CRUD are future work.
+
+The dispatcher claims a row for one minute by default and renews the claim every 20 seconds while the external
+delivery is running. Deployments with slower receivers can tune `studio.alerting.notification-claim-timeout` and
+`studio.alerting.notification-claim-renewal-interval`; the renewal interval must remain shorter than the claim timeout.
+`studio.alerting.notification-heartbeat-threads` bounds the daemon workers used for these renewals.
 
 Email delivery uses Spring's standard SMTP configuration. Configure `STUDIO_ALERTING_SMTP_HOST`,
 `STUDIO_ALERTING_SMTP_PORT`, `STUDIO_ALERTING_SMTP_USERNAME`, `STUDIO_ALERTING_SMTP_PASSWORD`,
@@ -263,6 +272,8 @@ PENDING -> SENDING -> DELIVERED
 ```
 
 Retries use bounded exponential backoff. Channel configuration is encrypted at rest and only write-only secrets are returned by APIs. A test-send action uses the same sender implementation but does not create an alert event.
+
+Terminal delivery rows are retained for `studio.alerting.notification-retention` (`P30D` by default). The scheduled cleanup only removes `DELIVERED` and `FAILED` rows older than the retention cutoff, and it runs with bounded batches using `studio.alerting.notification-cleanup-batch-size` and `studio.alerting.notification-cleanup-max-batches`.
 
 Silences match `domain`, rule ID, instance ID, and optional resource labels. They suppress delivery but do not hide active state from the Alert Events page.
 

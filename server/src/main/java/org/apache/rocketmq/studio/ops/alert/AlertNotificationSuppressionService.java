@@ -17,12 +17,14 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,6 +34,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AlertNotificationSuppressionService {
     private static final Duration CORRELATION_WINDOW = Duration.ofMinutes(30);
+    private static final int CANDIDATE_PAGE_SIZE = 100;
 
     private final AlertRepository alertRepository;
 
@@ -40,20 +43,44 @@ public class AlertNotificationSuppressionService {
             return Optional.empty();
         }
         LocalDateTime windowStart = event.getTime().minus(CORRELATION_WINDOW);
-        List<SystemAlertVO> candidates = alertRepository.findAlertsPage(new SystemAlertQuery(null, AlertDomain.CLUSTER,
-                        event.getInstanceId(), null, null, null, windowStart, event.getTime(), 1, 100))
-                .getItems().stream()
-                .filter(candidate -> AlertCorrelationScope.matches(event, candidate))
-                .toList();
         Map<String, SystemAlertVO> latestByIncident = new HashMap<>();
-        for (SystemAlertVO candidate : candidates) {
-            String incident = candidate.getFingerprint() == null ? String.valueOf(candidate.getId())
-                    : candidate.getFingerprint();
-            latestByIncident.merge(incident, candidate, (left, right) -> later(left, right) ? left : right);
+        int page = 1;
+        long fetched = 0;
+        while (true) {
+            PageResult<SystemAlertVO> result = alertRepository.findAlertsPage(new SystemAlertQuery(
+                    null, AlertDomain.CLUSTER, event.getInstanceId(), null, null, null,
+                    windowStart, event.getTime(), page, CANDIDATE_PAGE_SIZE));
+            List<SystemAlertVO> candidates = result.getItems();
+            for (SystemAlertVO candidate : candidates) {
+                if (!AlertCorrelationScope.matches(event, candidate)) {
+                    continue;
+                }
+                String incident = candidate.getFingerprint() == null
+                        ? legacyIncidentKey(candidate)
+                        : candidate.getFingerprint();
+                latestByIncident.merge(incident, candidate, (left, right) -> later(left, right) ? left : right);
+            }
+            fetched += candidates.size();
+            if (candidates.isEmpty() || fetched >= result.getTotal()) {
+                break;
+            }
+            page++;
         }
         return latestByIncident.values().stream()
                 .filter(candidate -> "FIRING".equalsIgnoreCase(candidate.getTransition()))
                 .max(Comparator.comparing(SystemAlertVO::getTime, Comparator.nullsLast(Comparator.naturalOrder())));
+    }
+
+    private static String legacyIncidentKey(SystemAlertVO alert) {
+        Map<String, String> identityLabels = new LinkedHashMap<>();
+        if (alert.getLabels() != null) {
+            identityLabels.putAll(alert.getLabels());
+        }
+        long ruleId = alert.getRuleId() == null ? 0L : alert.getRuleId();
+        if (alert.getRuleId() == null && alert.getTitle() != null) {
+            identityLabels.put("__legacy_title", alert.getTitle());
+        }
+        return "legacy:" + AlertFingerprint.of(ruleId, alert.getInstanceId(), identityLabels);
     }
 
     private static boolean later(SystemAlertVO left, SystemAlertVO right) {

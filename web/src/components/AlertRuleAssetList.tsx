@@ -50,6 +50,7 @@ export const AlertRuleAssetList: React.FC = () => {
   const mountedRef = useRef(true);
   const listRequestId = useRef(0);
   const viewRequestId = useRef(0);
+  const exportingNamesRef = useRef<Set<string>>(new Set());
   const [exportingNames, setExportingNames] = useState<Set<string>>(() => new Set());
 
   const severityOptions = useMemo(
@@ -135,7 +136,9 @@ export const AlertRuleAssetList: React.FC = () => {
   };
 
   const handleExport = async (info: AlertRuleAssetInfo) => {
-    setExportingNames((current) => new Set(current).add(info.name));
+    if (exportingNamesRef.current.has(info.name)) return;
+    exportingNamesRef.current.add(info.name);
+    setExportingNames(new Set(exportingNamesRef.current));
     try {
       const blob = await exportAlertRuleAsset(info.name);
       downloadBlob(blob, `${info.name}.yaml`);
@@ -143,11 +146,8 @@ export const AlertRuleAssetList: React.FC = () => {
     } catch {
       message.error(t('alertAssets.exportFailed'));
     } finally {
-      setExportingNames((current) => {
-        const next = new Set(current);
-        next.delete(info.name);
-        return next;
-      });
+      exportingNamesRef.current.delete(info.name);
+      if (mountedRef.current) setExportingNames(new Set(exportingNamesRef.current));
     }
   };
 

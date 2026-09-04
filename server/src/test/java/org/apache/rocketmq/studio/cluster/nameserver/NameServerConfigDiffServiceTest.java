@@ -218,6 +218,40 @@ class NameServerConfigDiffServiceTest {
     }
 
     @Test
+    void compareShouldDeduplicateDnsHostnamesIgnoringCase() throws Exception {
+        stubAdminFactory();
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                "ns.example.com:9876", List.of(nameServer("NS.EXAMPLE.COM:9876"))));
+        when(admin.getNameServerConfig(List.of("NS.EXAMPLE.COM:9876")))
+                .thenReturn(Map.of("NS.EXAMPLE.COM:9876", properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compare("cluster-a");
+
+        assertThat(result.getNodeCount()).isEqualTo(1);
+        assertThat(result.getReachableNodeCount()).isEqualTo(1);
+        verify(admin).getNameServerConfig(List.of("NS.EXAMPLE.COM:9876"));
+    }
+
+    @Test
+    void compareShouldPreserveIpv6ZoneCase() throws Exception {
+        stubAdminFactory();
+        String lowerZone = "[fe80::1%en0]:9876";
+        String upperZone = "[fe80::1%EN0]:9876";
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                upperZone, List.of(nameServer(lowerZone))));
+        when(admin.getNameServerConfig(List.of(lowerZone)))
+                .thenReturn(Map.of(lowerZone, properties("listenPort", "9876")));
+        when(admin.getNameServerConfig(List.of(upperZone)))
+                .thenReturn(Map.of(upperZone, properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compare("cluster-a");
+
+        assertThat(result.getNodeCount()).isEqualTo(2);
+        verify(admin).getNameServerConfig(List.of(lowerZone));
+        verify(admin).getNameServerConfig(List.of(upperZone));
+    }
+
+    @Test
     void compareShouldMarkTheCheckIncompleteWhenEveryNodeIsUnavailable() throws Exception {
         stubAdminFactory();
         when(clusterService.getCluster("cluster-a")).thenReturn(cluster(

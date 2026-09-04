@@ -24,7 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { DLQGroup, DLQGroupPage, DLQMessagePage, DLQResendResult } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as messageService from '../../../services/messageService';
-import DLQPage from '../dlq';
+import DLQPage, { formatDateTime } from '../dlq';
 
 vi.mock('../../../services/messageService', () => ({
   listDLQGroups: vi.fn(),
@@ -153,6 +153,12 @@ describe('DLQ page', () => {
   afterEach(() => {
     clickSpy.mockRestore();
     vi.clearAllMocks();
+  });
+
+  it('renders invalid message timestamps as unavailable without throwing', () => {
+    expect(formatDateTime(Number.NaN)).toBe('-');
+    expect(formatDateTime(Number.POSITIVE_INFINITY)).toBe('-');
+    expect(formatDateTime(0)).not.toBe('-');
   });
 
   it('loads DLQ groups through the service layer', async () => {
@@ -388,6 +394,31 @@ describe('DLQ page', () => {
     await user.click(screen.getByRole('button', { name: '确认重投' }));
 
     expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
+  });
+
+  it('submits one resend when confirm is clicked twice before rendering', async () => {
+    let resolveResend!: (result: DLQResendResult) => void;
+    vi.mocked(messageService.resendDLQ).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveResend = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    const confirm = screen.getByRole('button', { name: '确认重投' });
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+
+    expect(messageService.resendDLQ).toHaveBeenCalledTimes(1);
+    await act(async () => resolveResend({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
   });
 
   it('warns when DLQ resend scans only part of the available queues', async () => {

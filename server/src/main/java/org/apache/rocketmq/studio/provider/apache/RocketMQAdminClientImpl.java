@@ -26,6 +26,7 @@ import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
@@ -38,6 +39,8 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetQueuePreviewVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -57,7 +60,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -73,6 +78,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private static final int MAX_MESSAGE_SIZE = 4 * 1024 * 1024; // 4 MB default broker limit
     private static final String LEGACY_METADATA_SCOPE = "";
+    private static final long RESET_OFFSET_PREVIEW_TIMEOUT_MILLIS = 3_000L;
+    private static final String RISK_INFO = "INFO";
+    private static final String RISK_WARNING = "WARNING";
+    private static final String RISK_ERROR = "ERROR";
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
@@ -93,7 +102,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 if (routeData == null || routeData.getQueueDatas() == null || routeData.getQueueDatas().isEmpty()) {
                     throw new BusinessException(404, "Topic not found: " + name);
                 }
-                var qd = routeData.getQueueDatas().get(0);
+                var qd = routeData.getQueueDatas().stream()
+                        .filter(queueData -> queueData != null)
+                        .findFirst()
+                        .orElseThrow(() -> new BusinessException(404, "Topic not found: " + name));
                 TopicVO vo = new TopicVO();
                 vo.setName(name);
                 vo.setWriteQueues(qd.getWriteQueueNums());
@@ -658,6 +670,211 @@ public class RocketMQAdminClientImpl implements AdminClient {
             recordAudit("DELETE_GROUP", name, e.getMessage(), "FAILED");
             throw classifyBrokerFailure(e, "delete consumer group");
         }
+    }
+
+    @Override
+    public ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String name,
+                                                           long timestamp, String topic) {
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "topic is required for offset reset preview");
+        }
+        String topicName = topic.trim();
+        try {
+            return executeForInstance(instanceId, admin -> doPreviewResetOffset(
+                    instanceId, admin, name, timestamp, topicName));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(500, "Failed to preview reset offset: " + e.getMessage());
+        }
+    }
+
+    private ResetConsumerOffsetPreviewVO doPreviewResetOffset(String instanceId, MQAdminExt admin,
+                                                              String name, long timestamp, String topic) {
+        try {
+            ConsumeStats stats = admin.examineConsumeStats(name);
+            if (stats == null || stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
+                return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
+                        "No consume offset data found for consumer group " + name);
+            }
+
+            List<ResetConsumerOffsetQueuePreviewVO> queues = new ArrayList<>();
+            for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                MessageQueue queue = entry.getKey();
+                if (queue == null || !topic.equals(queue.getTopic())) {
+                    continue;
+                }
+                queues.add(previewResetOffsetQueue(admin, queue, entry.getValue(), timestamp));
+            }
+            queues.sort(Comparator
+                    .comparing((ResetConsumerOffsetQueuePreviewVO queue) ->
+                                    queue.getBroker() == null ? "" : queue.getBroker(),
+                            String.CASE_INSENSITIVE_ORDER)
+                    .thenComparingInt(ResetConsumerOffsetQueuePreviewVO::getQueueId));
+            if (queues.isEmpty()) {
+                return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
+                        "No consume offset data found for topic " + topic);
+            }
+
+            long currentTotalLag = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getCurrentLag).sum();
+            long projectedTotalLag = queues.stream()
+                    .mapToLong(ResetConsumerOffsetQueuePreviewVO::getProjectedLag)
+                    .sum();
+            long totalOffsetDelta = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getOffsetDelta).sum();
+            int rewindQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() < 0).count();
+            int fastForwardQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() > 0).count();
+            List<String> warnings = buildResetOffsetPreviewWarnings(queues, rewindQueueCount, fastForwardQueueCount);
+            boolean complete = queues.stream().noneMatch(queue -> RISK_ERROR.equals(queue.getRiskLevel()));
+
+            return ResetConsumerOffsetPreviewVO.builder()
+                    .instanceId(instanceId)
+                    .groupName(name)
+                    .topic(topic)
+                    .timestamp(timestamp)
+                    .complete(complete)
+                    .allowReset(complete)
+                    .queueCount(queues.size())
+                    .warningCount(warnings.size())
+                    .rewindQueueCount(rewindQueueCount)
+                    .fastForwardQueueCount(fastForwardQueueCount)
+                    .currentTotalLag(currentTotalLag)
+                    .projectedTotalLag(projectedTotalLag)
+                    .totalOffsetDelta(totalOffsetDelta)
+                    .warnings(warnings)
+                    .queues(queues)
+                    .build();
+        } catch (Exception e) {
+            if (isConsumerNotOnline(e)) {
+                return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
+                        "Consumer group is not online and no consume offset data is available");
+            }
+            throw new BusinessException(500, "Failed to preview reset offset: " + e.getMessage());
+        }
+    }
+
+    private ResetConsumerOffsetQueuePreviewVO previewResetOffsetQueue(MQAdminExt admin, MessageQueue queue,
+                                                                      OffsetWrapper wrapper, long timestamp) {
+        long brokerOffset = wrapper == null ? 0L : wrapper.getBrokerOffset();
+        long consumerOffset = wrapper == null ? 0L : wrapper.getConsumerOffset();
+        long currentLag = resolveLag(brokerOffset, consumerOffset);
+        try {
+            long minOffset = admin.minOffset(queue);
+            long maxOffset = admin.maxOffset(queue);
+            long targetOffset = admin.searchOffset(queue.getBrokerName(), queue.getTopic(), queue.getQueueId(),
+                    timestamp, RESET_OFFSET_PREVIEW_TIMEOUT_MILLIS);
+            targetOffset = clampOffset(targetOffset, minOffset, maxOffset);
+            long offsetDelta = targetOffset - consumerOffset;
+            long projectedLag = resolveLag(brokerOffset, targetOffset);
+            return ResetConsumerOffsetQueuePreviewVO.builder()
+                    .topic(queue.getTopic())
+                    .broker(queue.getBrokerName())
+                    .queueId(queue.getQueueId())
+                    .minOffset(minOffset)
+                    .maxOffset(maxOffset)
+                    .brokerOffset(brokerOffset)
+                    .consumerOffset(consumerOffset)
+                    .targetOffset(targetOffset)
+                    .currentLag(currentLag)
+                    .projectedLag(projectedLag)
+                    .offsetDelta(offsetDelta)
+                    .riskLevel(resetOffsetRiskLevel(offsetDelta, targetOffset, minOffset, maxOffset))
+                    .message(resetOffsetPreviewMessage(offsetDelta, targetOffset, minOffset, maxOffset))
+                    .build();
+        } catch (Exception e) {
+            return ResetConsumerOffsetQueuePreviewVO.builder()
+                    .topic(queue.getTopic())
+                    .broker(queue.getBrokerName())
+                    .queueId(queue.getQueueId())
+                    .minOffset(-1L)
+                    .maxOffset(-1L)
+                    .brokerOffset(brokerOffset)
+                    .consumerOffset(consumerOffset)
+                    .targetOffset(consumerOffset)
+                    .currentLag(currentLag)
+                    .projectedLag(currentLag)
+                    .offsetDelta(0L)
+                    .riskLevel(RISK_ERROR)
+                    .message("Failed to preview queue offset: " + e.getMessage())
+                    .build();
+        }
+    }
+
+    private ResetConsumerOffsetPreviewVO emptyResetOffsetPreview(String instanceId, String name,
+                                                                 long timestamp, String topic, String warning) {
+        return ResetConsumerOffsetPreviewVO.builder()
+                .instanceId(instanceId)
+                .groupName(name)
+                .topic(topic)
+                .timestamp(timestamp)
+                .complete(false)
+                .allowReset(false)
+                .queueCount(0)
+                .warningCount(1)
+                .rewindQueueCount(0)
+                .fastForwardQueueCount(0)
+                .currentTotalLag(0)
+                .projectedTotalLag(0)
+                .totalOffsetDelta(0)
+                .warnings(List.of(warning))
+                .queues(List.of())
+                .build();
+    }
+
+    private List<String> buildResetOffsetPreviewWarnings(List<ResetConsumerOffsetQueuePreviewVO> queues,
+                                                         int rewindQueueCount, int fastForwardQueueCount) {
+        List<String> warnings = new ArrayList<>();
+        long failedQueueCount = queues.stream().filter(queue -> RISK_ERROR.equals(queue.getRiskLevel())).count();
+        if (failedQueueCount > 0) {
+            warnings.add("Failed to preview " + failedQueueCount + " queue(s); retry before applying the reset");
+        }
+        if (fastForwardQueueCount > 0) {
+            warnings.add(fastForwardQueueCount + " queue(s) will move forward and may skip unconsumed messages");
+        }
+        if (rewindQueueCount > 0) {
+            warnings.add(rewindQueueCount + " queue(s) will move backward and may replay consumed messages");
+        }
+        if (queues.stream().anyMatch(queue -> queue.getMinOffset() >= 0
+                && queue.getTargetOffset() == queue.getMinOffset())) {
+            warnings.add("At least one queue will reset to the minimum retained offset");
+        }
+        if (queues.stream().anyMatch(queue -> queue.getMaxOffset() >= 0
+                && queue.getTargetOffset() == queue.getMaxOffset())) {
+            warnings.add("At least one queue will reset to the latest offset");
+        }
+        return warnings;
+    }
+
+    private long resolveLag(long brokerOffset, long consumerOffset) {
+        return Math.max(0L, brokerOffset - consumerOffset);
+    }
+
+    private long clampOffset(long offset, long minOffset, long maxOffset) {
+        return Math.max(minOffset, Math.min(offset, maxOffset));
+    }
+
+    private String resetOffsetRiskLevel(long offsetDelta, long targetOffset, long minOffset, long maxOffset) {
+        if (offsetDelta != 0 || targetOffset == minOffset || targetOffset == maxOffset) {
+            return RISK_WARNING;
+        }
+        return RISK_INFO;
+    }
+
+    private String resetOffsetPreviewMessage(long offsetDelta, long targetOffset, long minOffset, long maxOffset) {
+        List<String> messages = new ArrayList<>();
+        if (offsetDelta < 0) {
+            messages.add("Replays " + Math.abs(offsetDelta) + " message(s)");
+        } else if (offsetDelta > 0) {
+            messages.add("Skips " + offsetDelta + " unconsumed message(s)");
+        } else {
+            messages.add("Offset unchanged");
+        }
+        if (targetOffset == minOffset) {
+            messages.add("target is the minimum retained offset");
+        }
+        if (targetOffset == maxOffset) {
+            messages.add("target is the latest offset");
+        }
+        return String.join("; ", messages);
     }
 
     @Override

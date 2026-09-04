@@ -32,6 +32,8 @@ export interface TraceQueryHistory {
   id: number;
   msgId: string;
   topic?: string;
+  /** The custom trace topic used by the lookup; absent means the provider default. */
+  traceTopic?: string;
   nodeCount: number;
   consumerCount: number;
   clusterId?: string;
@@ -76,5 +78,26 @@ export async function getQueryHistorySummary(clusterId?: string) {
   const response = await client.get<{ data: QueryHistorySummary }>('/query-history/summary', {
     params: clusterId ? { clusterId } : undefined,
   });
+  return response.data.data;
+}
+
+export interface MessageResultSnapshot {
+  msgId: string;
+  topic: string;
+  tag: string;
+  key: string;
+  brokerName: string;
+  queueId: number;
+  queueOffset: number;
+  storeTime: number;
+  bornHost: string;
+  storeHost: string;
+  size: number;
+}
+
+export async function getMessageQueryResults(id: number) {
+  const response = await client.get<{ data: MessageResultSnapshot[] }>(
+    `/query-history/messages/${id}/results`,
+  );
   return response.data.data;
 }

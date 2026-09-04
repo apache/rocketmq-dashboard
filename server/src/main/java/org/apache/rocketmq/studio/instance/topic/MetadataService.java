@@ -16,15 +16,25 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.Operation;
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.ResourceType;
+import org.apache.rocketmq.studio.audit.OperationAuditConstants.Result;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
+import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
+import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
+import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
 import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
@@ -33,7 +43,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Supplier;
 
 @Slf4j
 @Service
@@ -46,6 +60,7 @@ public class MetadataService {
     private final AdminClient adminClient;
     private final InstanceProviderRegistry providerRegistry;
     private final org.apache.rocketmq.studio.instance.InstanceRepository instanceRepository;
+    private final OperationAuditService operationAuditService;
 
     /**
      * External callers address instances by their globally unique instance ID (name);
@@ -99,15 +114,22 @@ public class MetadataService {
 
     public TopicVO createTopic(TopicVO topic) {
         requireTopic(topic);
+        if (SystemTopicFilter.isSystem(topic.getName())) {
+            throw new BusinessException(400, "System topics cannot be created: " + topic.getName());
+        }
         String instanceId = topic.getInstanceId();
-        return resolve(instanceId).createTopic(instanceId, topic);
+        InstanceProvider provider = resolve(instanceId);
+        return executeWithAudit(provider, Operation.CREATE_TOPIC, ResourceType.TOPIC, topic.getName(),
+                instanceId, topicDetail(topic), () -> provider.createTopic(instanceId, topic));
     }
 
 
     public TopicVO updateTopic(TopicVO topic) {
         requireTopic(topic);
         String instanceId = topic.getInstanceId();
-        return resolve(instanceId).updateTopic(instanceId, topic);
+        InstanceProvider provider = resolve(instanceId);
+        return executeWithAudit(provider, Operation.UPDATE_TOPIC, ResourceType.TOPIC, topic.getName(),
+                instanceId, topicDetail(topic), () -> provider.updateTopic(instanceId, topic));
     }
 
 
@@ -117,7 +139,11 @@ public class MetadataService {
 
     public void deleteTopic(String instanceId, String name) {
         instanceId = normalizeInstanceId(instanceId);
-        resolve(instanceId).deleteTopic(instanceId, requireName(name, "topic name"));
+        String topicName = requireName(name, "topic name");
+        InstanceProvider provider = resolve(instanceId);
+        String normalizedInstanceId = instanceId;
+        executeWithAudit(provider, Operation.DELETE_TOPIC, ResourceType.TOPIC,
+                topicName, instanceId, null, () -> provider.deleteTopic(normalizedInstanceId, topicName));
     }
 
 
@@ -253,7 +279,10 @@ public class MetadataService {
 
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
         String instanceId = group == null ? null : group.getInstanceId();
-        return resolve(instanceId).createConsumerGroup(instanceId, group);
+        InstanceProvider provider = resolve(instanceId);
+        return executeWithAudit(provider, Operation.CREATE_GROUP, ResourceType.GROUP,
+                group == null ? null : group.getName(), instanceId, consumerGroupDetail(group),
+                () -> provider.createConsumerGroup(instanceId, group));
     }
 
     public ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name) {
@@ -266,8 +295,8 @@ public class MetadataService {
                                                                  int retryMaxTimes) {
         instanceId = normalizeInstanceId(instanceId);
         requireApacheInstance(instanceId);
-        return adminClient.updateConsumerGroupSettings(instanceId, requireName(name, "consumer group name"),
-                retryQueueNums, retryMaxTimes);
+        String groupName = requireName(name, "consumer group name");
+        return adminClient.updateConsumerGroupSettings(instanceId, groupName, retryQueueNums, retryMaxTimes);
     }
 
 
@@ -277,7 +306,11 @@ public class MetadataService {
 
     public void deleteConsumerGroup(String instanceId, String name) {
         instanceId = normalizeInstanceId(instanceId);
-        resolve(instanceId).deleteConsumerGroup(instanceId, name);
+        String groupName = requireName(name, "consumer group name");
+        InstanceProvider provider = resolve(instanceId);
+        String normalizedInstanceId = instanceId;
+        executeWithAudit(provider, Operation.DELETE_GROUP, ResourceType.GROUP,
+                groupName, instanceId, null, () -> provider.deleteConsumerGroup(normalizedInstanceId, groupName));
     }
 
 
@@ -285,9 +318,23 @@ public class MetadataService {
         resetOffset(null, name, timestamp, topic);
     }
 
+    public ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String name,
+                                                           long timestamp, String topic) {
+        instanceId = normalizeInstanceId(instanceId);
+        String groupName = requireName(name, "consumer group name");
+        String topicName = requireName(topic, "topic name");
+        return resolve(instanceId).previewResetOffset(instanceId, groupName, timestamp, topicName);
+    }
+
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
         instanceId = normalizeInstanceId(instanceId);
-        resolve(instanceId).resetOffset(instanceId, name, timestamp, topic);
+        String groupName = requireName(name, "consumer group name");
+        String topicName = requireName(topic, "topic name");
+        InstanceProvider provider = resolve(instanceId);
+        String normalizedInstanceId = instanceId;
+        executeWithAudit(provider, Operation.RESET_OFFSET, ResourceType.GROUP, groupName, instanceId,
+                "topic=" + topicName + ", timestamp=" + timestamp,
+                () -> provider.resetOffset(normalizedInstanceId, groupName, timestamp, topicName));
     }
 
 
@@ -331,10 +378,244 @@ public class MetadataService {
         }
     }
 
+    private static final int MAX_IMPORT_GROUPS = 100;
+
+    public ImportConsumerGroupsResultVO importConsumerGroups(String instanceId,
+                                                             List<CreateConsumerGroupDTO> groups) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(400, "instanceId is required");
+        }
+        if (groups == null || groups.isEmpty()) {
+            throw new BusinessException(400, "groups is required");
+        }
+        if (groups.size() > MAX_IMPORT_GROUPS) {
+            throw new BusinessException(400, "At most 100 consumer groups are allowed per import");
+        }
+
+        String normalizedInstanceId = normalizeInstanceId(instanceId);
+        List<ConsumerGroupVO> imported = new ArrayList<>();
+        List<ImportConsumerGroupsResultVO.Failure> failures = new ArrayList<>();
+        for (int index = 0; index < groups.size(); index++) {
+            CreateConsumerGroupDTO request = groups.get(index);
+            String name = request == null ? null : request.getName();
+            try {
+                if (request == null) {
+                    throw new BusinessException(400, "consumer group request is required");
+                }
+                ConsumerGroupVO group = request.toConsumerGroupVO();
+                group.setInstanceId(normalizedInstanceId);
+                imported.add(createConsumerGroup(group));
+            } catch (Exception exception) {
+                failures.add(ImportConsumerGroupsResultVO.Failure.builder()
+                        .index(index)
+                        .name(name)
+                        .message(StringUtils.hasText(exception.getMessage())
+                                ? exception.getMessage() : "Failed to create consumer group")
+                        .build());
+            }
+        }
+
+        return ImportConsumerGroupsResultVO.builder()
+                .imported(imported.size())
+                .failed(failures.size())
+                .groups(imported)
+                .failures(failures)
+                .build();
+    }
+
+    public String exportConsumerGroups(String instanceId, String search, String subscriptionMode,
+                                       List<String> names) {
+        instanceId = normalizeInstanceId(instanceId);
+        List<ConsumerGroupVO> groups = new ArrayList<>(listConsumerGroups(instanceId, null, search));
+        Set<String> selectedNames = new HashSet<>(names == null ? List.of() : names);
+        if (!selectedNames.isEmpty()) {
+            groups.removeIf(group -> !selectedNames.contains(group.getName()));
+        }
+        if (StringUtils.hasText(subscriptionMode) && !"ALL".equals(subscriptionMode)) {
+            groups.removeIf(group -> !subscriptionMode.equals(toText(group.getSubscriptionMode())));
+        }
+
+        groups.sort(this::compareNames);
+        return buildConsumerGroupCsv(groups);
+    }
+
+    private int compareNames(ConsumerGroupVO left, ConsumerGroupVO right) {
+        String leftName = left.getName() == null ? "" : left.getName();
+        String rightName = right.getName() == null ? "" : right.getName();
+        return leftName.compareTo(rightName);
+    }
+
+    private String buildConsumerGroupCsv(List<ConsumerGroupVO> groups) {
+        StringBuilder csv = new StringBuilder();
+        CsvUtil.appendRow(csv, "Name", "Namespace", "Cluster ID", "Subscription Mode", "Consume Type",
+                "Online Instances", "Total Lag", "Delay Seconds", "Subscription Data Type",
+                "Delivery Order Type", "Retry Max Times", "Subscribed Topics", "Created At", "Updated At");
+        for (ConsumerGroupVO group : groups) {
+            CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
+                    toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
+                    group.getOnlineInstances(), group.getTotalLag(), group.getDelaySeconds(),
+                    group.getSubscriptionDataType(), group.getDeliveryOrderType(), group.getRetryMaxTimes(),
+                    String.join(";", group.getSubscribedTopics() == null ? List.of() : group.getSubscribedTopics()),
+                    group.getGmtCreate(), group.getGmtModified());
+        }
+        return csv.toString();
+    }
+
+    private String toText(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof SubscriptionMode mode) {
+            return mode.name();
+        }
+        return value.toString();
+    }
+
+    private static final int MAX_IMPORT_TOPICS = 100;
+
+    public ImportTopicsResultVO importTopics(String instanceId, List<CreateTopicDTO> topics) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(400, "instanceId is required");
+        }
+        if (topics == null || topics.isEmpty()) {
+            throw new BusinessException(400, "topics is required");
+        }
+        if (topics.size() > MAX_IMPORT_TOPICS) {
+            throw new BusinessException(400, "At most 100 topics are allowed per import");
+        }
+
+        String normalizedInstanceId = normalizeInstanceId(instanceId);
+        List<TopicVO> imported = new ArrayList<>();
+        List<ImportTopicsResultVO.Failure> failures = new ArrayList<>();
+        for (int index = 0; index < topics.size(); index++) {
+            CreateTopicDTO request = topics.get(index);
+            String name = request == null ? null : request.getName();
+            try {
+                if (request == null) {
+                    throw new BusinessException(400, "topic request is required");
+                }
+                TopicVO topic = request.toTopicVO();
+                topic.setInstanceId(normalizedInstanceId);
+                imported.add(createTopic(topic));
+            } catch (Exception exception) {
+                failures.add(ImportTopicsResultVO.Failure.builder()
+                        .index(index)
+                        .name(name)
+                        .message(StringUtils.hasText(exception.getMessage())
+                                ? exception.getMessage() : "Failed to create topic")
+                        .build());
+            }
+        }
+
+        return ImportTopicsResultVO.builder()
+                .imported(imported.size())
+                .failed(failures.size())
+                .topics(imported)
+                .failures(failures)
+                .build();
+    }
+
+    public String exportTopics(String instanceId, String type, String search, List<String> names) {
+        instanceId = normalizeInstanceId(instanceId);
+        List<TopicVO> topics = new ArrayList<>(listTopics(instanceId, null, type, search));
+        Set<String> selectedNames = new HashSet<>(names == null ? List.of() : names);
+        if (!selectedNames.isEmpty()) {
+            topics.removeIf(topic -> !selectedNames.contains(topic.getName()));
+        }
+        topics.sort((left, right) -> compareNames(left.getName(), right.getName()));
+        return buildTopicCsv(topics);
+    }
+
+    private int compareNames(String left, String right) {
+        String leftName = left == null ? "" : left;
+        String rightName = right == null ? "" : right;
+        return leftName.compareTo(rightName);
+    }
+
+    private String buildTopicCsv(List<TopicVO> topics) {
+        StringBuilder csv = new StringBuilder();
+        CsvUtil.appendRow(csv, "Name", "Namespace", "Type", "Cluster ID", "Write Queues", "Read Queues",
+                "Permission", "Message Count", "TPS", "Consumer Groups", "Remark", "Created At", "Updated At");
+        for (TopicVO topic : topics) {
+            CsvUtil.appendRow(csv, topic.getName(), topic.getNamespace(), toText(topic.getType()), topic.getClusterId(),
+                    topic.getWriteQueues(), topic.getReadQueues(), toText(topic.getPerm()), topic.getMessageCount(),
+                    topic.getTps(), topic.getConsumerGroupCount(), topic.getRemark(),
+                    topic.getGmtCreate(), topic.getGmtModified());
+        }
+        return csv.toString();
+    }
+
     private String requireName(String value, String fieldName) {
         if (!StringUtils.hasText(value)) {
             throw new BusinessException(400, fieldName + " is required");
         }
         return value.trim();
+    }
+
+    private String topicDetail(TopicVO topic) {
+        return "type=" + optionalDetail(topic.getType())
+                + ", writeQueues=" + topic.getWriteQueues()
+                + ", readQueues=" + topic.getReadQueues()
+                + ", perm=" + optionalDetail(topic.getPerm());
+    }
+
+    private String consumerGroupDetail(ConsumerGroupVO group) {
+        if (group == null) {
+            return null;
+        }
+        return "consumeType=" + optionalDetail(group.getConsumeType())
+                + ", subscriptionMode=" + optionalDetail(group.getSubscriptionMode())
+                + ", retryMaxTimes=" + group.getRetryMaxTimes();
+    }
+
+    private String optionalDetail(Object value) {
+        if (value == null) {
+            return "-";
+        }
+        String text = value.toString();
+        return StringUtils.hasText(text) ? text.trim() : "-";
+    }
+
+    private <T> T executeWithAudit(InstanceProvider provider, String operation, String resourceType,
+                                   String resourceName, String instanceId, String detail, Supplier<T> action) {
+        if (provider.vendor() == InstanceVendor.APACHE) {
+            return action.get();
+        }
+        try {
+            T result = action.get();
+            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.SUCCESS, null);
+            return result;
+        } catch (RuntimeException failure) {
+            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.FAILED,
+                    failure.getMessage());
+            throw failure;
+        }
+    }
+
+    private void executeWithAudit(InstanceProvider provider, String operation, String resourceType,
+                                  String resourceName, String instanceId, String detail, Runnable action) {
+        if (provider.vendor() == InstanceVendor.APACHE) {
+            action.run();
+            return;
+        }
+        try {
+            action.run();
+            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.SUCCESS, null);
+        } catch (RuntimeException failure) {
+            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.FAILED,
+                    failure.getMessage());
+            throw failure;
+        }
+    }
+
+    private void recordAudit(String operation, String resourceType, String resourceName, String instanceId,
+                             String detail, String result, String errorMessage) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, instanceId,
+                    detail, result, errorMessage);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
     }
 }

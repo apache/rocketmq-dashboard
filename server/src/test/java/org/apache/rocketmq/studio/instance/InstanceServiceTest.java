@@ -40,6 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -47,6 +48,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -55,6 +58,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -296,6 +300,25 @@ class InstanceServiceTest {
     }
 
     @Test
+    void listInstancesShouldClearPreviouslyLoadedCountsWhenRefreshFailsTest() {
+        InstanceVO instance = InstanceVO.builder().name("stale-counts").build();
+        instance.setId(6L);
+        instance.setTopicCount(12);
+        instance.setConsumerGroupCount(8);
+        instance.setResourceCountsAvailable(true);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("6"))
+                .thenThrow(new IllegalStateException("provider unavailable"));
+
+        InstanceVO result = instanceService.listInstances(null, null).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isFalse();
+        assertThat(result.getTopicCount()).isZero();
+        assertThat(result.getConsumerGroupCount()).isZero();
+    }
+
+    @Test
     void listInstancesShouldApplyASingleDeadlineToSlowCountsTest() throws InterruptedException {
         // Three hung providers: waiting per future would cost 3s each (9s total); a shared
         // deadline must bound the whole batch to roughly one timeout.
@@ -320,6 +343,62 @@ class InstanceServiceTest {
                 .as("batch must not wait one timeout per instance")
                 .isLessThan(2L * InstanceService.COUNT_TIMEOUT_SECONDS * 1000);
         assertThat(result).allSatisfy(vo -> assertThat(vo.isResourceCountsAvailable()).isFalse());
+    }
+
+    @Test
+    void timedOutCountTaskShouldNotMutateReturnedInstanceAfterRequestCompletesTest() throws Exception {
+        InstanceVO slow = InstanceVO.builder().name("slow").build();
+        slow.setId(24L);
+        when(instanceRepository.findAll()).thenReturn(List.of(slow));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        CountDownLatch topicCountStarted = new CountDownLatch(1);
+        CountDownLatch releaseProvider = new CountDownLatch(1);
+        CountDownLatch providerFinished = new CountDownLatch(1);
+        when(instanceProvider.countTopics("24")).thenAnswer(invocation -> {
+            topicCountStarted.countDown();
+            boolean interrupted = false;
+            while (true) {
+                try {
+                    releaseProvider.await();
+                    break;
+                } catch (InterruptedException exception) {
+                    // Simulate a vendor SDK that does not abort an in-flight HTTP request
+                    // when Future.cancel(true) interrupts the worker.
+                    interrupted = true;
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return 7;
+        });
+        when(instanceProvider.countGroups("24")).thenAnswer(invocation -> {
+            providerFinished.countDown();
+            return 5;
+        });
+
+        try {
+            List<InstanceVO> result = instanceService.listInstances(null, null);
+
+            assertThat(topicCountStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(result).singleElement().satisfies(instance -> {
+                assertThat(instance.isResourceCountsAvailable()).isFalse();
+                assertThat(instance.getTopicCount()).isZero();
+                assertThat(instance.getConsumerGroupCount()).isZero();
+            });
+
+            releaseProvider.countDown();
+            assertThat(providerFinished.await(1, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(result).singleElement().satisfies(instance -> {
+                assertThat(instance.isResourceCountsAvailable()).isFalse();
+                assertThat(instance.getTopicCount()).isZero();
+                assertThat(instance.getConsumerGroupCount()).isZero();
+            });
+        } finally {
+            releaseProvider.countDown();
+        }
     }
 
     @Test
@@ -783,6 +862,50 @@ class InstanceServiceTest {
     }
 
     @Test
+    void deleteInstancesShouldContinueAfterProviderRuntimeFailureTest() {
+        InstanceVO failedInstance = InstanceVO.builder().name("inst-a").build();
+        failedInstance.setId(1L);
+        InstanceVO deletedInstance = InstanceVO.builder().name("inst-b").build();
+        deletedInstance.setId(2L);
+        when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(failedInstance));
+        when(instanceRepository.findByIdentifier("inst-b")).thenReturn(Optional.of(deletedInstance));
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(failedInstance));
+        when(instanceRepository.findById(2L)).thenReturn(Optional.of(deletedInstance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException("broker unavailable"));
+        when(instanceProvider.countTopics("2")).thenReturn(0);
+        when(instanceProvider.countGroups("2")).thenReturn(0);
+        when(instanceRepository.deleteById(2L)).thenReturn(true);
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "inst-b"));
+
+        assertThat(result.getDeleted()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("inst-a: broker unavailable");
+        verify(instanceProvider).countTopics("1");
+        verify(instanceRepository).findByIdentifier("inst-b");
+        verify(instanceProvider).countTopics("2");
+        verify(instanceProvider).countGroups("2");
+        verify(instanceRepository).deleteById(2L);
+    }
+
+    @Test
+    void deleteInstancesShouldBoundUnexpectedFailureMessagesTest() {
+        InstanceVO existing = InstanceVO.builder().name("inst-a").build();
+        existing.setId(1L);
+        String oversizedMessage = "x".repeat(600);
+        when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException(oversizedMessage));
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a"));
+
+        assertThat(result.getDeleted()).isZero();
+        assertThat(result.getFailed()).singleElement()
+                .isEqualTo("inst-a: " + "x".repeat(500));
+    }
+
+    @Test
     void deleteInstancesShouldRejectEmptySelectionTest() {
         assertThatThrownBy(() -> instanceService.deleteInstances(List.of()))
                 .isInstanceOf(BusinessException.class)
@@ -1212,6 +1335,181 @@ class InstanceServiceTest {
     }
 
     @Test
+    void importCloudInstancesShouldContinueAfterUnexpectedRegionFailureTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        CloudRegionVO broken = new CloudRegionVO("cn-broken", "Broken");
+        CloudRegionVO working = new CloudRegionVO("  cn-working  ", "Working");
+        when(catalog.listRegions(1L)).thenReturn(List.of(broken, working));
+        when(catalog.listCloudInstances(1L, "cn-broken", null))
+                .thenThrow(new IllegalStateException("regional outage"));
+
+        CloudInstanceOptionVO option = new CloudInstanceOptionVO();
+        option.setInstanceId("  rmq-working  ");
+        when(catalog.listCloudInstances(1L, "cn-working", null)).thenReturn(List.of(option));
+        when(catalog.getCloudInstance(1L, "cn-working", "rmq-working"))
+                .thenReturn(cloudDetail("rmq-working", "vpc-working:8080"));
+        when(instanceRepository.findByName("rmq-working")).thenReturn(Optional.empty());
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isEqualTo(1);
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getSkipped()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.isFailureDetailsTruncated()).isFalse();
+        assertThat(result.getFailed()).containsExactly("cn-broken: regional outage");
+        verify(catalog).listCloudInstances(1L, "cn-working", null);
+        verify(catalog).getCloudInstance(1L, "cn-working", "rmq-working");
+        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
+                argThat(detail -> detail.contains("imported=1") && detail.contains("failed=1")),
+                eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void importCloudInstancesShouldContinueAfterUnexpectedInstanceFailuresTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        CloudRegionVO region = new CloudRegionVO("cn-hangzhou", "Hangzhou");
+        when(catalog.listRegions(1L)).thenReturn(List.of(region));
+
+        CloudInstanceOptionVO detailFailure = cloudOption("rmq-detail-failure");
+        CloudInstanceOptionVO saveFailure = cloudOption("rmq-save-failure");
+        CloudInstanceOptionVO successful = cloudOption("rmq-success");
+        when(catalog.listCloudInstances(1L, "cn-hangzhou", null))
+                .thenReturn(List.of(detailFailure, saveFailure, successful));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-detail-failure"))
+                .thenThrow(new IllegalStateException("detail lookup failed"));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-save-failure"))
+                .thenReturn(cloudDetail("rmq-save-failure", "vpc-save:8080"));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-success"))
+                .thenReturn(cloudDetail("rmq-success", "vpc-success:8080"));
+        when(instanceRepository.findByName(anyString())).thenReturn(Optional.empty());
+        String longFailure = "persistence failure ".repeat(60);
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> {
+            InstanceVO instance = invocation.getArgument(0);
+            if ("rmq-save-failure".equals(instance.getName())) {
+                throw new IllegalStateException(longFailure);
+            }
+            return instance;
+        });
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isEqualTo(3);
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getSkipped()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(2);
+        assertThat(result.getFailed()).hasSize(2)
+                .contains("rmq-detail-failure: detail lookup failed")
+                .anySatisfy(failure -> assertThat(failure)
+                        .startsWith("rmq-save-failure: ")
+                        .endsWith("…")
+                        .hasSizeLessThan(550));
+        verify(catalog).getCloudInstance(1L, "cn-hangzhou", "rmq-detail-failure");
+        verify(catalog).getCloudInstance(1L, "cn-hangzhou", "rmq-save-failure");
+        verify(catalog).getCloudInstance(1L, "cn-hangzhou", "rmq-success");
+        verify(instanceRepository, times(2)).save(any(InstanceVO.class));
+    }
+
+    @Test
+    void importCloudInstancesShouldHandleNullCatalogResponsesTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L)).thenReturn(List.of(new CloudRegionVO("cn-empty", "Empty")));
+        when(catalog.listCloudInstances(1L, "cn-empty", null)).thenReturn(null);
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("cn-empty: catalog returned a null instance list");
+        assertThat(result.isFailureDetailsTruncated()).isFalse();
+        verify(catalog).listCloudInstances(1L, "cn-empty", null);
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldBoundMalformedCatalogFailuresTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        CloudRegionVO blank = new CloudRegionVO("  ", "Blank");
+        List<CloudRegionVO> regions = new ArrayList<>();
+        regions.add(null);
+        regions.add(blank);
+        regions.add(new CloudRegionVO("cn-malformed", "Malformed"));
+        when(catalog.listRegions(1L)).thenReturn(regions);
+
+        List<CloudInstanceOptionVO> options = new ArrayList<>();
+        for (int i = 0; i < 105; i++) {
+            options.add(cloudOption(" "));
+        }
+        when(catalog.listCloudInstances(1L, "cn-malformed", null)).thenReturn(options);
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getSkipped()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(107);
+        assertThat(result.getFailed()).hasSize(InstanceService.MAX_CLOUD_IMPORT_FAILURE_DETAILS);
+        assertThat(result.isFailureDetailsTruncated()).isTrue();
+        assertThat(result.getFailed()).first().isEqualTo("region: catalog returned an invalid region entry");
+        verify(catalog).listCloudInstances(1L, "cn-malformed", null);
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldReturnPartialResultWhenRegionDiscoveryFailsTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L)).thenThrow(new IllegalStateException("region discovery unavailable"));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("regions: region discovery unavailable");
+        verify(catalog, never()).listCloudInstances(any(Long.class), anyString(), any());
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldReportMissingCatalogProviderTest() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(null);
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isZero();
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("catalog: provider returned no cloud catalog");
+        verifyNoInteractions(instanceRepository);
+    }
+
+    @Test
+    void importCloudInstancesShouldDeduplicateCatalogRowsTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L)).thenReturn(List.of(new CloudRegionVO("cn-hangzhou", "Hangzhou")));
+        when(catalog.listCloudInstances(1L, "cn-hangzhou", null)).thenReturn(
+                List.of(cloudOption(" rmq-duplicate "), cloudOption("rmq-duplicate")));
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-duplicate"))
+                .thenReturn(cloudDetail("rmq-duplicate", "vpc-duplicate:8080"));
+        when(instanceRepository.findByName("rmq-duplicate")).thenReturn(Optional.empty());
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getDiscovered()).isEqualTo(1);
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getFailedCount()).isZero();
+        verify(catalog, times(1)).getCloudInstance(1L, "cn-hangzhou", "rmq-duplicate");
+        verify(instanceRepository, times(1)).save(any(InstanceVO.class));
+    }
+
+    @Test
     void createInstanceShouldSkipNullCloudEndpointEntries() {
         InstanceVO instance = InstanceVO.builder()
                 .vendor(InstanceVendor.ALIYUN)
@@ -1302,6 +1600,62 @@ class InstanceServiceTest {
     }
 
     @Test
+    void createCloudInstanceShouldTranslateDeletedCredentialDuringSaveToConflictTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId(1L)
+                .cloudInstanceId("rmq-cn-race")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-race");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-cn-race")).thenReturn(detail);
+        when(instanceRepository.save(any(InstanceVO.class)))
+                .thenThrow(new DataIntegrityViolationException(
+                        "foreign key constraint fk_instance_cloud_credential"));
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential no longer exists: 1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        verify(operationAuditService, never()).record(anyString(), anyString(), anyString(), any(), anyString(),
+                anyString(), any());
+    }
+
+    @Test
+    void createCloudInstanceShouldNotTranslateUnrelatedForeignKeyViolationTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId(1L)
+                .cloudInstanceId("rmq-cn-race")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-race");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-cn-race")).thenReturn(detail);
+        DataIntegrityViolationException violation = new DataIntegrityViolationException(
+                "foreign key constraint fk_instance_owner");
+        when(instanceRepository.save(any(InstanceVO.class))).thenThrow(violation);
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance)).isSameAs(violation);
+    }
+
+    @Test
     void updateInstanceShouldKeepCloudFieldsImmutableTest() {
         InstanceVO existing = InstanceVO.builder()
                 .name("aliyun-inst")
@@ -1323,5 +1677,29 @@ class InstanceServiceTest {
         assertThat(updated.getEndpoint()).isEqualTo("vpc:8080");
         assertThat(updated.getRemark()).isEqualTo("updated");
         assertThat(updated.getCloudInstanceId()).isEqualTo("rmq-cn-xxx");
+    }
+
+    private CloudCatalogProvider prepareAliyunCatalog() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        return catalog;
+    }
+
+    private CloudInstanceOptionVO cloudOption(String instanceId) {
+        CloudInstanceOptionVO option = new CloudInstanceOptionVO();
+        option.setInstanceId(instanceId);
+        return option;
+    }
+
+    private CloudInstanceDetailVO cloudDetail(String instanceId, String endpoint) {
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId(instanceId);
+        detail.setInstanceName(instanceId + "-name");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", endpoint)));
+        return detail;
     }
 }

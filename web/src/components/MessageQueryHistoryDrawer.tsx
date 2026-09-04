@@ -109,6 +109,12 @@ const MessageQueryHistoryDrawer = ({
   const traceColumns: ColumnsType<TraceQueryHistory> = [
     { title: 'Message ID', dataIndex: 'msgId', ellipsis: true },
     { title: 'Topic', dataIndex: 'topic', ellipsis: true },
+    {
+      title: '轨迹 Topic',
+      dataIndex: 'traceTopic',
+      ellipsis: true,
+      render: (value?: string) => value?.trim() || '默认',
+    },
     { title: '轨迹节点', dataIndex: 'nodeCount', width: 90 },
     { title: '消费者', dataIndex: 'consumerCount', width: 90 },
     { title: '操作者', dataIndex: 'queriedBy', width: 110 },
@@ -124,7 +130,7 @@ const MessageQueryHistoryDrawer = ({
       </Flex>
       <Input.Search
         allowClear
-        placeholder="搜索 Topic、Message ID、Key 或操作者"
+        placeholder="搜索 Topic、轨迹 Topic、Message ID、Key 或操作者"
         onSearch={(value) => {
           setPage(1);
           setSearch(value.trim());

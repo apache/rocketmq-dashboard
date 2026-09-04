@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -214,5 +215,34 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$.data.results[0]").value("FAILED"));
 
         verify(auditService).getFilterOptions();
+    }
+
+    @Test
+    void summaryShouldForwardFiltersAndReturnDashboardMetricsTest() throws Exception {
+        AuditSummaryVO summary = AuditSummaryVO.builder()
+                .total(12).successful(9).failed(2).partial(1).uniqueOperators(3)
+                .latestAt(LocalDateTime.of(2026, 8, 12, 9, 30))
+                .byOperation(List.of(new AuditSummaryBucketVO("DELETE_TOPIC", 5)))
+                .byResourceType(List.of(new AuditSummaryBucketVO("TOPIC", 8)))
+                .build();
+        when(auditService.summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+                eq("2026-08-01"), eq("2026-08-12"), eq("SUCCESS"))).thenReturn(summary);
+
+        mockMvc.perform(get("/api/audit-logs/summary")
+                        .param("search", "topic")
+                        .param("operationType", "DELETE_TOPIC")
+                        .param("resourceType", "TOPIC")
+                        .param("clusterId", "prod-cn")
+                        .param("startDate", "2026-08-01")
+                        .param("endDate", "2026-08-12")
+                        .param("result", "SUCCESS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(12))
+                .andExpect(jsonPath("$.data.successful").value(9))
+                .andExpect(jsonPath("$.data.uniqueOperators").value(3))
+                .andExpect(jsonPath("$.data.byOperation[0].name").value("DELETE_TOPIC"));
+
+        verify(auditService).summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+                eq("2026-08-01"), eq("2026-08-12"), eq("SUCCESS"));
     }
 }

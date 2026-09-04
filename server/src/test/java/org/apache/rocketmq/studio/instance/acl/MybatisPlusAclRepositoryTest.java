@@ -40,6 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -153,6 +154,26 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void findUserPageShouldNormalizeSearchWithRootLocale() {
+        Page<RmqAclUser> mapperPage = new Page<RmqAclUser>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(userMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            repository.findUserPage(" INSTANCE ", 1, 20);
+        } finally {
+            Locale.setDefault(previous);
+        }
+        ArgumentCaptor<Wrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(userMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAclUser> query = (QueryWrapper<RmqAclUser>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("username", "access_key");
+        assertThat(query.getParamNameValuePairs()).containsValue("%instance%");
+    }
+
+    @Test
     void replaceRuleShouldReturnEmptyWhenConcurrentDeleteWins() {
         RmqAclRule existing = new RmqAclRule();
         existing.setId(1L);
@@ -261,6 +282,26 @@ class MybatisPlusAclRepositoryTest {
 
         verify(userMapper, never()).insert(any(RmqAclUser.class));
         verify(ruleMapper, never()).insert(any(RmqAclRule.class));
+    }
+
+    @Test
+    void createShouldTranslateConcurrentDuplicateAccessKeyToConflict() {
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+        when(userMapper.insert(any(RmqAclUser.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("duplicate accessKey"));
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .secretKey("secret-x")
+                .build();
+
+        assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(config))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Plain access account already exists for accessKey: svc-x")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        // The conflict aborts before any permission rules are touched.
+        verifyNoInteractions(ruleMapper);
     }
 
     @Test

@@ -40,4 +40,15 @@ class AlertNotificationTemplateTest {
         assertThat(AlertNotificationTemplate.render(null, alert, null))
                 .isEqualTo("[info] Test - connection works\nLabels: ");
     }
+
+    @Test
+    void doesNotExpandPlaceholderSyntaxIntroducedByAlertValuesTest() {
+        SystemAlertVO alert = SystemAlertVO.builder()
+                .title("${description}")
+                .description("internal detail")
+                .build();
+
+        assertThat(AlertNotificationTemplate.render("${title}", alert, null))
+                .isEqualTo("${description}");
+    }
 }

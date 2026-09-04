@@ -60,6 +60,15 @@ describe('LoginPage', () => {
       </MemoryRouter>,
     );
 
+  const fillCredentials = () => {
+    fireEvent.change(screen.getByPlaceholderText('login.usernamePlaceholder'), {
+      target: { value: 'alice' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('login.passwordPlaceholder'), {
+      target: { value: 'secret' },
+    });
+  };
+
   it('renders the brand and an accessible theme toggle', () => {
     renderPage();
     expect(screen.getByText('RocketMQ Studio')).toBeTruthy();
@@ -71,17 +80,43 @@ describe('LoginPage', () => {
       user: { username: 'alice', userId: 42, admin: true },
     });
     renderPage();
-    fireEvent.change(screen.getByPlaceholderText('login.usernamePlaceholder'), {
-      target: { value: 'alice' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('login.passwordPlaceholder'), {
-      target: { value: 'secret' },
-    });
+    fillCredentials();
     fireEvent.click(screen.getByRole('button', { name: 'login.title' }));
 
     await waitFor(() => expect(loginStoreMock).toHaveBeenCalledWith('alice', 42, true));
     expect(loginApiMock).toHaveBeenCalledWith('alice', 'secret');
     expect(navigateMock).toHaveBeenCalledWith('/', { replace: true });
+  });
+
+  it('owns an in-flight login request synchronously and allows retry after failure', async () => {
+    let rejectFirst: ((reason?: unknown) => void) | undefined;
+    loginApiMock
+      .mockReturnValueOnce(
+        new Promise((_, reject) => {
+          rejectFirst = reject;
+        }),
+      )
+      .mockResolvedValueOnce({
+        user: { username: 'alice', userId: 42, admin: true },
+      });
+    renderPage();
+    fillCredentials();
+
+    const form = document.querySelector('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+    fireEvent.submit(form!);
+
+    await waitFor(() => expect(loginApiMock).toHaveBeenCalledTimes(1));
+    rejectFirst?.(new Error('temporary failure'));
+    const submitButton = document.querySelector<HTMLButtonElement>('button[type="submit"]');
+    expect(submitButton).not.toBeNull();
+    await waitFor(() => expect(submitButton!.disabled).toBe(false));
+
+    fireEvent.submit(form!);
+
+    await waitFor(() => expect(loginApiMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(loginStoreMock).toHaveBeenCalledWith('alice', 42, true));
   });
 
   it('keeps required-field validation and does not call the API on empty submit', async () => {

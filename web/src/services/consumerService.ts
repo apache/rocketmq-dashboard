@@ -2,21 +2,42 @@ import { isMockMode } from './dataMode';
 import * as metadataApi from '../api/metadata';
 import type {
   ConsumerGroup,
+  ConsumerGroupExportQuery,
   ConsumerGroupPageQuery,
   ConsumerGroupQuery,
   ConsumerGroupSettings,
   ConsumerGroupDetail,
   ConsumerStackTrace,
+  ImportConsumerGroupsResult,
   PageResult,
   QueueProgress,
+  ResetConsumerOffsetPreview,
+  ResetConsumerOffsetQueuePreview,
   ResetConsumerOffsetRequest,
   SubscriptionEntry,
 } from '../api/metadata';
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
+import { buildCsv, type CsvColumn } from '../utils/download';
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
+const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
+  { header: 'Name', value: (group) => group.name },
+  { header: 'Namespace', value: (group) => group.namespace },
+  { header: 'Cluster ID', value: (group) => group.clusterId },
+  { header: 'Subscription Mode', value: (group) => group.subscriptionMode },
+  { header: 'Consume Type', value: (group) => group.consumeType },
+  { header: 'Online Instances', value: (group) => group.onlineInstances },
+  { header: 'Total Lag', value: (group) => group.totalLag },
+  { header: 'Delay Seconds', value: (group) => group.delaySeconds },
+  { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
+  { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
+  { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },
+  { header: 'Subscribed Topics', value: (group) => (group.subscribedTopics ?? []).join(';') },
+  { header: 'Created At', value: (group) => group.gmtCreate },
+  { header: 'Updated At', value: (group) => group.gmtModified },
+];
 
 function copyConsumerInstance(
   instance: ConsumerGroup['instances'][number],
@@ -44,6 +65,14 @@ function copySubscription(subscription: SubscriptionEntry): SubscriptionEntry {
   return { ...subscription };
 }
 
+function copyResetOffsetPreview(preview: ResetConsumerOffsetPreview): ResetConsumerOffsetPreview {
+  return {
+    ...preview,
+    warnings: [...preview.warnings],
+    queues: preview.queues.map((queue) => ({ ...queue })),
+  };
+}
+
 const normalizeConsumerGroup = <T extends ConsumerGroup>(group: T): T => ({
   ...group,
   subscribedTopics: group.subscribedTopics ?? [],
@@ -52,12 +81,27 @@ const normalizeConsumerGroup = <T extends ConsumerGroup>(group: T): T => ({
 
 function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
   let result = [...consumerGroupsState];
+  if (params?.instanceId) {
+    result = result.filter((group) => group.instanceId === params.instanceId);
+  }
   if (params?.clusterId) result = result.filter((group) => group.clusterId === params.clusterId);
   if (params?.search) {
     const kw = params.search.trim().toLowerCase();
     if (kw) result = result.filter((group) => group.name.toLowerCase().includes(kw));
   }
   return result;
+}
+
+function visibleConsumerGroups(groups: ConsumerGroup[], params?: ConsumerGroupExportQuery) {
+  let result = groups;
+  if (params?.names?.length) {
+    const selectedNames = new Set(params.names);
+    result = result.filter((group) => selectedNames.has(group.name));
+  }
+  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
+    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
+  }
+  return [...result].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<ConsumerGroup[]> {
@@ -123,7 +167,9 @@ export async function getConsumerGroup(
   instanceId?: string,
 ): Promise<ConsumerGroupDetail> {
   if (isMockMode()) {
-    const group = mockConsumerGroups.find((item) => item.name === name);
+    const group = mockConsumerGroups.find(
+      (item) => item.name === name && (!instanceId || item.instanceId === instanceId),
+    );
     if (!group) throw new Error(`Consumer group not found: ${name}`);
     return copyConsumerGroup(group as unknown as ConsumerGroupDetail) as ConsumerGroupDetail;
   }
@@ -155,7 +201,9 @@ export async function refreshConsumerGroup(
   instanceId?: string,
 ): Promise<ConsumerGroup | null> {
   if (isMockMode()) {
-    const group = mockConsumerGroups.find((item) => item.name === name);
+    const group = mockConsumerGroups.find(
+      (item) => item.name === name && (!instanceId || item.instanceId === instanceId),
+    );
     return group ? copyConsumerGroup(group) : null;
   }
   const data = await metadataApi.refreshConsumerGroup(name, instanceId);
@@ -193,9 +241,16 @@ export async function getConsumerStack(
 
 export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise<ConsumerGroup> {
   if (isMockMode()) {
+    const instanceId = data.instanceId ?? '';
+    const duplicate = consumerGroupsState.some(
+      (group) => group.name === data.name && group.instanceId === instanceId,
+    );
+    if (duplicate) throw new Error(`Consumer group already exists: ${data.name}`);
+
     const now = new Date().toISOString();
     const group = {
       name: data.name ?? '',
+      instanceId,
       namespace: data.namespace ?? 'default',
       clusterId: data.clusterId ?? '',
       subscriptionMode: data.subscriptionMode ?? 'Push',
@@ -216,9 +271,46 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
   return metadataApi.createConsumerGroup(data);
 }
 
+export async function importConsumerGroups(
+  instanceId: string,
+  groups: Partial<ConsumerGroup>[],
+): Promise<ImportConsumerGroupsResult> {
+  if (isMockMode()) {
+    const imported: ConsumerGroup[] = [];
+    const failures: ImportConsumerGroupsResult['failures'] = [];
+    for (const [index, group] of groups.entries()) {
+      try {
+        imported.push(await createConsumerGroup({ ...group, instanceId }));
+      } catch (error) {
+        failures.push({
+          index,
+          name: group.name,
+          message: error instanceof Error ? error.message : '创建失败',
+        });
+      }
+    }
+    return { imported: imported.length, failed: failures.length, groups: imported, failures };
+  }
+  const result = await metadataApi.importConsumerGroups({ instanceId, groups });
+  return {
+    ...result,
+    groups: result.groups.map(normalizeConsumerGroup),
+  };
+}
+
+export async function exportConsumerGroups(params: ConsumerGroupExportQuery = {}): Promise<string> {
+  if (isMockMode()) {
+    const groups = await listAllConsumerGroups(params);
+    return buildCsv(GROUP_EXPORT_COLUMNS, visibleConsumerGroups(groups, params));
+  }
+  return metadataApi.exportConsumerGroups(params);
+}
+
 export async function deleteConsumerGroup(name: string, instanceId?: string): Promise<void> {
   if (isMockMode()) {
-    const idx = consumerGroupsState.findIndex((group) => group.name === name);
+    const idx = consumerGroupsState.findIndex(
+      (group) => group.name === name && (!instanceId || group.instanceId === instanceId),
+    );
     if (idx >= 0) consumerGroupsState.splice(idx, 1);
     return;
   }
@@ -228,6 +320,96 @@ export async function deleteConsumerGroup(name: string, instanceId?: string): Pr
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Promise<void> {
   if (isMockMode()) return;
   return metadataApi.resetConsumerOffset(data);
+}
+
+export async function previewConsumerOffsetReset(
+  data: ResetConsumerOffsetRequest,
+): Promise<ResetConsumerOffsetPreview> {
+  if (isMockMode()) return buildMockResetOffsetPreview(data);
+  return metadataApi.previewConsumerOffsetReset(data);
+}
+
+function buildMockResetOffsetPreview(data: ResetConsumerOffsetRequest): ResetConsumerOffsetPreview {
+  const progressRows = ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
+    (progress) => !progress.topic || progress.topic === data.topic,
+  );
+  const queues = progressRows.map((progress) =>
+    buildMockResetOffsetQueuePreview(data.topic, progress),
+  );
+  const currentTotalLag = queues.reduce((sum, queue) => sum + queue.currentLag, 0);
+  const projectedTotalLag = queues.reduce((sum, queue) => sum + queue.projectedLag, 0);
+  const rewindQueueCount = queues.filter((queue) => queue.offsetDelta < 0).length;
+  const fastForwardQueueCount = queues.filter((queue) => queue.offsetDelta > 0).length;
+  const warnings = buildMockResetOffsetWarnings(queues, rewindQueueCount, fastForwardQueueCount);
+
+  return copyResetOffsetPreview({
+    instanceId: data.instanceId,
+    groupName: data.name,
+    topic: data.topic,
+    timestamp: data.timestamp,
+    complete: queues.length > 0,
+    allowReset: queues.length > 0,
+    queueCount: queues.length,
+    warningCount: warnings.length,
+    rewindQueueCount,
+    fastForwardQueueCount,
+    currentTotalLag,
+    projectedTotalLag,
+    totalOffsetDelta: queues.reduce((sum, queue) => sum + queue.offsetDelta, 0),
+    warnings,
+    queues,
+  });
+}
+
+function buildMockResetOffsetQueuePreview(
+  topic: string,
+  progress: QueueProgress,
+): ResetConsumerOffsetQueuePreview {
+  const maxOffset = progress.brokerOffset;
+  const minOffset = 0;
+  const rewindWindow = Math.min(500, Math.max(1, Math.floor(Math.max(progress.diffTotal, 1) / 2)));
+  const targetOffset = Math.max(
+    minOffset,
+    Math.min(maxOffset, progress.consumerOffset - rewindWindow),
+  );
+  const offsetDelta = targetOffset - progress.consumerOffset;
+  const currentLag = Math.max(0, progress.brokerOffset - progress.consumerOffset);
+  const projectedLag = Math.max(0, progress.brokerOffset - targetOffset);
+
+  return {
+    topic: progress.topic || topic,
+    broker: progress.broker,
+    queueId: progress.queueId,
+    minOffset,
+    maxOffset,
+    brokerOffset: progress.brokerOffset,
+    consumerOffset: progress.consumerOffset,
+    targetOffset,
+    currentLag,
+    projectedLag,
+    offsetDelta,
+    riskLevel: offsetDelta === 0 ? 'INFO' : 'WARNING',
+    message:
+      offsetDelta === 0
+        ? 'Offset unchanged'
+        : `Replays ${Math.abs(offsetDelta).toLocaleString()} message(s)`,
+  };
+}
+
+function buildMockResetOffsetWarnings(
+  queues: ResetConsumerOffsetQueuePreview[],
+  rewindQueueCount: number,
+  fastForwardQueueCount: number,
+): string[] {
+  if (queues.length === 0) return ['No consume offset data found for the selected topic'];
+  const warnings: string[] = [];
+  if (fastForwardQueueCount > 0) {
+    warnings.push(`${fastForwardQueueCount} queue(s) will move forward and may skip messages`);
+  }
+  if (rewindQueueCount > 0) {
+    warnings.push(`${rewindQueueCount} queue(s) will replay consumed messages`);
+  }
+  return warnings;
 }
 
 export interface BatchDeleteConsumerGroupsResult {

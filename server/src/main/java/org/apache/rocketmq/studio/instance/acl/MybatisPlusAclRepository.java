@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclUser;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclRuleMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclUserMapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -37,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -105,7 +107,7 @@ public class MybatisPlusAclRepository implements AclRepository {
 
     @Override
     public PageResult<AclUserVO> findUserPage(String keyword, int page, int pageSize) {
-        String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase() : null;
+        String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase(Locale.ROOT) : null;
         QueryWrapper<RmqAclUser> query = new QueryWrapper<RmqAclUser>()
                 .and(search != null, w -> w
                         .like("username", search)
@@ -236,7 +238,15 @@ public class MybatisPlusAclRepository implements AclRepository {
                         .set("white_remote_address", null));
             }
         } else {
-            userMapper.insert(entity);
+            try {
+                userMapper.insert(entity);
+            } catch (DuplicateKeyException exception) {
+                // A concurrent create of the same accessKey can win the check-then-insert
+                // race and hit the unique key instead; surface it as a conflict like the
+                // other duplicate-key paths (e.g. CloudCredentialService).
+                throw new BusinessException(409,
+                        "Plain access account already exists for accessKey: " + config.getAccessKey());
+            }
         }
 
         upsertPlainAccessRules(config);

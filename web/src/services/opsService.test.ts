@@ -20,8 +20,11 @@ import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
   createAlertRule,
+  deleteAlertRule,
+  exportAlertRulesTransfer,
   exportAuditLogs,
   getAuditFilterOptions,
+  importAlertRulesTransfer,
   listAlertRules,
   listAlertRulesPage,
   listAuditRecords,
@@ -109,6 +112,73 @@ describe('ops service mock data', () => {
     const after = await listAlertRules();
     expect(after.map((rule) => rule.id)).toEqual(before.map((rule) => rule.id));
     expect(after.find((rule) => rule.id === 999999)).toBeUndefined();
+  });
+
+  it('keeps alert rule CRUD isolated between cluster and business domains', async () => {
+    const clusterRule = await createAlertRule(
+      { name: 'cluster-domain-rule', channels: ['email'] },
+      'CLUSTER',
+    );
+    const businessRule = await createAlertRule(
+      { name: 'business-domain-rule', channels: ['sms'] },
+      'BUSINESS',
+    );
+
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.name)).toContain(
+      'cluster-domain-rule',
+    );
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.name)).not.toContain(
+      'business-domain-rule',
+    );
+    expect((await listAlertRules('BUSINESS')).map((rule) => rule.name)).toContain(
+      'business-domain-rule',
+    );
+    expect((await listAlertRules('BUSINESS')).map((rule) => rule.name)).not.toContain(
+      'cluster-domain-rule',
+    );
+
+    await updateAlertRule({ ...businessRule, name: 'updated-business-domain-rule' }, 'BUSINESS');
+    expect((await listAlertRules('BUSINESS')).map((rule) => rule.name)).toContain(
+      'updated-business-domain-rule',
+    );
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.name)).not.toContain(
+      'updated-business-domain-rule',
+    );
+
+    await deleteAlertRule(clusterRule.id, 'CLUSTER');
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.id)).not.toContain(clusterRule.id);
+    expect((await listAlertRules('BUSINESS')).map((rule) => rule.id)).toContain(businessRule.id);
+    await deleteAlertRule(businessRule.id, 'BUSINESS');
+  });
+
+  it('imports and exports alert rules within the selected domain only', async () => {
+    const imported = await importAlertRulesTransfer(
+      {
+        version: 1,
+        domain: 'BUSINESS',
+        rules: [
+          {
+            name: 'business-transfer-rule',
+            metric: 'consumer.lag.total',
+            operator: '>',
+            threshold: 100,
+            duration: '5m',
+            channels: ['email'],
+            enabled: true,
+            description: 'business-only transfer',
+          },
+        ],
+      },
+      'BUSINESS',
+    );
+
+    expect((await exportAlertRulesTransfer('BUSINESS')).rules.map((rule) => rule.name)).toContain(
+      'business-transfer-rule',
+    );
+    expect(
+      (await exportAlertRulesTransfer('CLUSTER')).rules.map((rule) => rule.name),
+    ).not.toContain('business-transfer-rule');
+    await deleteAlertRule(imported[0].id, 'BUSINESS');
   });
 
   it('returns copied system alert rows', async () => {

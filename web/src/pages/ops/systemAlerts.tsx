@@ -45,7 +45,7 @@ import {
   listSystemAlertsPage,
   createAlertSilence,
   deleteAlertSilence,
-  listAlertSilences,
+  listAlertSilencesPage,
 } from '../../services/opsService';
 import type {
   AlertSilence,
@@ -57,8 +57,22 @@ import type {
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
 
 const { Text } = Typography;
+
+const ALERT_EXPORT_PAGE_SIZE = 100;
+const ALERT_EXPORT_MAX_PAGES = 10_000;
+const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const WEEKDAYS = [
+  { value: 1, key: 'sysAlerts.monday' },
+  { value: 2, key: 'sysAlerts.tuesday' },
+  { value: 3, key: 'sysAlerts.wednesday' },
+  { value: 4, key: 'sysAlerts.thursday' },
+  { value: 5, key: 'sysAlerts.friday' },
+  { value: 6, key: 'sysAlerts.saturday' },
+  { value: 7, key: 'sysAlerts.sunday' },
+] as const;
 
 const normalizeAlertLevel = (level?: string | null) => (level ?? '').toLowerCase();
 const formatAlertTransition = (
@@ -155,9 +169,13 @@ const SystemAlertsPage = () => {
   const [silencesVisible, setSilencesVisible] = useState(false);
   const [silences, setSilences] = useState<AlertSilence[]>([]);
   const [loadingSilences, setLoadingSilences] = useState(false);
+  const [silencePage, setSilencePage] = useState(1);
+  const [silenceTotal, setSilenceTotal] = useState(0);
   const [savingSilence, setSavingSilence] = useState(false);
   const [deletingSilenceId, setDeletingSilenceId] = useState<number | null>(null);
+  const silencePageSize = 10;
   const [silenceForm] = Form.useForm();
+  const silenceRecurrence = Form.useWatch('recurrence', silenceForm) ?? 'ONCE';
 
   const currentQuery = () => {
     const labelSeparator = labelFilter.indexOf('=');
@@ -256,11 +274,27 @@ const SystemAlertsPage = () => {
     setExporting(true);
     try {
       const query = currentQuery();
-      const first = await listSystemAlertsPage({ ...query, page: 1, pageSize: 100 });
+      const first = await listSystemAlertsPage({
+        ...query,
+        page: 1,
+        pageSize: ALERT_EXPORT_PAGE_SIZE,
+      });
       const rows = [...first.items];
-      for (let currentPage = 2; rows.length < first.total; currentPage += 1) {
-        const result = await listSystemAlertsPage({ ...query, page: currentPage, pageSize: 100 });
+      let expectedTotal = first.total;
+      let currentPage = 2;
+      while (rows.length < expectedTotal) {
+        if (currentPage > ALERT_EXPORT_MAX_PAGES) {
+          throw new Error('System alert export exceeded the pagination limit');
+        }
+        const result = await listSystemAlertsPage({
+          ...query,
+          page: currentPage,
+          pageSize: ALERT_EXPORT_PAGE_SIZE,
+        });
+        if (result.items.length === 0) break;
         rows.push(...result.items);
+        expectedTotal = Math.min(expectedTotal, result.total);
+        currentPage += 1;
       }
       downloadCsv(
         `rocketmq-system-alerts-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -325,10 +359,13 @@ const SystemAlertsPage = () => {
     }
   };
 
-  const loadSilences = async () => {
+  const loadSilences = async (nextPage = silencePage) => {
     setLoadingSilences(true);
     try {
-      setSilences(await listAlertSilences());
+      const result = await listAlertSilencesPage({ page: nextPage, pageSize: silencePageSize });
+      setSilences(result.items);
+      setSilenceTotal(result.total);
+      setSilencePage(result.page);
     } catch {
       message.error(t('sysAlerts.silenceLoadFailed'));
     } finally {
@@ -337,8 +374,9 @@ const SystemAlertsPage = () => {
   };
 
   const openSilences = () => {
+    setSilencePage(1);
     setSilencesVisible(true);
-    void loadSilences();
+    void loadSilences(1);
   };
 
   const createSilence = async () => {
@@ -350,6 +388,10 @@ const SystemAlertsPage = () => {
       endsAt: string;
       reason?: string;
       labelsText?: string;
+      recurrence?: 'ONCE' | 'DAILY' | 'WEEKLY';
+      timeZone?: string;
+      recurrenceDays?: number[];
+      recurrenceUntil?: string;
     };
     try {
       values = await silenceForm.validateFields();
@@ -358,18 +400,31 @@ const SystemAlertsPage = () => {
     }
     setSavingSilence(true);
     try {
+      const recurrence = values.recurrence ?? 'ONCE';
+      const convertTime = (value: string) =>
+        recurrence === 'ONCE'
+          ? localDateTimeToUtc(value)
+          : zonedLocalDateTimeToUtc(value, values.timeZone!);
       const request: CreateAlertSilence = {
         instanceId: values.instanceId,
-        startsAt: localDateTimeToUtc(values.startsAt),
-        endsAt: localDateTimeToUtc(values.endsAt),
+        startsAt: convertTime(values.startsAt),
+        endsAt: convertTime(values.endsAt),
         reason: values.reason,
         ruleId: values.ruleId ? Number(values.ruleId) : undefined,
         domain: values.domain || undefined,
         labels: parseSilenceLabels(values.labelsText, t('sysAlerts.labelsFormatInvalid')),
+        recurrence,
+        timeZone: recurrence !== 'ONCE' ? values.timeZone : undefined,
+        recurrenceDays: recurrence === 'WEEKLY' ? values.recurrenceDays : undefined,
+        recurrenceUntil:
+          recurrence !== 'ONCE' && values.recurrenceUntil
+            ? convertTime(values.recurrenceUntil)
+            : undefined,
       };
       await createAlertSilence(request);
       silenceForm.resetFields();
-      await loadSilences();
+      setSilencePage(1);
+      await loadSilences(1);
       message.success(t('sysAlerts.silenceCreated'));
     } catch {
       message.error(t('sysAlerts.silenceCreateFailed'));
@@ -382,7 +437,9 @@ const SystemAlertsPage = () => {
     setDeletingSilenceId(id);
     try {
       await deleteAlertSilence(id);
-      await loadSilences();
+      const nextPage = silences.length === 1 && silencePage > 1 ? silencePage - 1 : silencePage;
+      setSilencePage(nextPage);
+      await loadSilences(nextPage);
       message.success(t('sysAlerts.silenceEnded'));
     } catch {
       message.error(t('sysAlerts.silenceEndFailed'));
@@ -775,7 +832,11 @@ const SystemAlertsPage = () => {
         width={680}
       >
         {canManageSilences && (
-          <Form form={silenceForm} layout="vertical" initialValues={{ domain: 'BUSINESS' }}>
+          <Form
+            form={silenceForm}
+            layout="vertical"
+            initialValues={{ domain: 'BUSINESS', recurrence: 'ONCE', timeZone: DEFAULT_TIME_ZONE }}
+          >
             <Flex gap={8}>
               <Form.Item name="domain" label={t('sysAlerts.domain')} style={{ flex: 1 }}>
                 <Select
@@ -797,6 +858,57 @@ const SystemAlertsPage = () => {
                 <Input />
               </Form.Item>
             </Flex>
+            <Flex gap={8} align="start">
+              <Form.Item name="recurrence" label={t('sysAlerts.recurrence')} style={{ flex: 1 }}>
+                <Select
+                  options={[
+                    { value: 'ONCE', label: t('sysAlerts.recurrenceOnce') },
+                    { value: 'DAILY', label: t('sysAlerts.recurrenceDaily') },
+                    { value: 'WEEKLY', label: t('sysAlerts.recurrenceWeekly') },
+                  ]}
+                />
+              </Form.Item>
+              {silenceRecurrence !== 'ONCE' && (
+                <Form.Item
+                  name="timeZone"
+                  label={t('sysAlerts.timeZone')}
+                  style={{ flex: 1 }}
+                  rules={[{ required: true, message: t('sysAlerts.timeZoneRequired') }]}
+                  extra={t('sysAlerts.timeZoneHelp')}
+                >
+                  <Input placeholder="Asia/Shanghai" />
+                </Form.Item>
+              )}
+            </Flex>
+            {silenceRecurrence !== 'ONCE' && (
+              <Flex gap={8} align="start">
+                {silenceRecurrence === 'WEEKLY' && (
+                  <Form.Item
+                    name="recurrenceDays"
+                    label={t('sysAlerts.recurrenceDays')}
+                    style={{ flex: 1 }}
+                    rules={[{ required: true, message: t('sysAlerts.recurrenceDaysRequired') }]}
+                  >
+                    <Select
+                      mode="multiple"
+                      options={WEEKDAYS.map((day) => ({
+                        value: day.value,
+                        label: t(day.key),
+                      }))}
+                    />
+                  </Form.Item>
+                )}
+                <Form.Item
+                  name="recurrenceUntil"
+                  label={t('sysAlerts.recurrenceUntil')}
+                  style={{ flex: 1 }}
+                  rules={[{ required: true, message: t('sysAlerts.recurrenceUntilRequired') }]}
+                  extra={t('sysAlerts.recurrenceUntilHelp')}
+                >
+                  <Input type="datetime-local" />
+                </Form.Item>
+              </Flex>
+            )}
             <Flex gap={8}>
               <Form.Item
                 name="startsAt"
@@ -835,6 +947,13 @@ const SystemAlertsPage = () => {
             {silences.map((silence) => (
               <Flex key={silence.id} justify="space-between" align="center" gap={8}>
                 <Text>
+                  {silence.recurrence && silence.recurrence !== 'ONCE' && (
+                    <Tag color="blue">
+                      {silence.recurrence === 'DAILY'
+                        ? t('sysAlerts.recurrenceDaily')
+                        : t('sysAlerts.recurrenceWeekly')}
+                    </Tag>
+                  )}
                   {silence.domain ?? t('common.all')} ·{' '}
                   {silence.instanceId ?? t('sysAlerts.allInstances')} · {silence.startsAt} -{' '}
                   {silence.endsAt}
@@ -842,6 +961,11 @@ const SystemAlertsPage = () => {
                     ? ` · ${Object.entries(silence.labels)
                         .map(([key, value]) => `${key}=${value}`)
                         .join(', ')}`
+                    : ''}
+                  {silence.recurrence && silence.recurrence !== 'ONCE'
+                    ? ` · ${silence.timeZone} · ${t('sysAlerts.repeatsUntil', {
+                        time: silence.recurrenceUntil ?? '',
+                      })}`
                     : ''}
                 </Text>
                 {canManageSilences && (
@@ -856,6 +980,17 @@ const SystemAlertsPage = () => {
                 )}
               </Flex>
             ))}
+            {silenceTotal > silencePageSize && (
+              <Pagination
+                size="small"
+                current={silencePage}
+                pageSize={silencePageSize}
+                total={silenceTotal}
+                showSizeChanger={false}
+                style={{ alignSelf: 'flex-end', marginTop: 8 }}
+                onChange={(nextPage) => void loadSilences(nextPage)}
+              />
+            )}
           </Flex>
         </Spin>
       </Modal>

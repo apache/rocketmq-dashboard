@@ -27,11 +27,17 @@ describe('buildCsv', () => {
       [
         { name: '=SUM(A1:A2)', remark: 'hello, "mq"' },
         { name: '\nline-feed', remark: null },
+        { name: "'=literal", remark: "''+two-apostrophes" },
       ],
     );
 
     expect(csv).toBe(
-      ['"Name","Remark"', '"\'=SUM(A1:A2)","hello, ""mq"""', '"\'\nline-feed",""'].join('\n'),
+      [
+        '"Name","Remark"',
+        '"\'=SUM(A1:A2)","hello, ""mq"""',
+        '"\'\nline-feed",""',
+        "\"''=literal\",\"'''+two-apostrophes\"",
+      ].join('\n'),
     );
   });
 });

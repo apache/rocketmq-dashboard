@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, message } from 'antd';
+import { App, Modal, message } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -129,6 +129,120 @@ describe('ACL page', () => {
     expect(screen.getByText('remote-topic')).toBeInTheDocument();
     expect(aclService.listAclRules).toHaveBeenCalledTimes(1);
     expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads the server rule page after deleting one ACL rule', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(aclService.deleteAclRule).mockResolvedValue(undefined);
+    vi.mocked(aclService.listAclRules)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            principal: 'remote-user',
+            resource: 'remote-topic',
+            resourceType: 'Topic',
+            resourcePattern: 'LITERAL',
+            actions: ['PUB'],
+            decision: 'ALLOW',
+            scope: 'cluster',
+            aclVersion: 2,
+            gmtCreate: '2026-07-23T00:00:00Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        page: 1,
+        size: 20,
+      });
+    renderWithProviders(<AclPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-topic/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() => expect(aclService.deleteAclRule).toHaveBeenCalledWith(1, undefined));
+    await waitFor(() => expect(aclService.listAclRules).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('remote-topic')).not.toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it('shows a non-copyable placeholder when an ACL user has no access key', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 12,
+          username: 'cloud-role',
+          accessKey: null,
+          secretKey: null,
+          admin: false,
+          clusters: ['cluster-a'],
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    const row = await screen.findByRole('row', { name: /cloud-role/ });
+    const accessKeyCell = row.querySelectorAll('td')[1];
+
+    expect(within(accessKeyCell).getByText('-')).toBeInTheDocument();
+    expect(within(accessKeyCell).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('clamps rules back to a valid page when the current page becomes empty', async () => {
+    const user = userEvent.setup();
+    const ruleItems = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: index + 1,
+        principal: 'remote-user',
+        resource: `acl-topic-${String(index + 1).padStart(2, '0')}`,
+        resourceType: 'Topic',
+        resourcePattern: 'LITERAL',
+        actions: ['PUB'],
+        decision: 'ALLOW',
+        scope: 'cluster',
+        aclVersion: 2,
+        gmtCreate: '2026-07-23T00:00:00Z',
+      }));
+    let call = 0;
+    vi.mocked(aclService.listAclRules).mockImplementation(async (params) => {
+      call += 1;
+      if (params?.page === 2) {
+        // Page 2 went out of range (its rules were deleted server-side).
+        return { items: [], total: 15, page: 2, size: 20 };
+      }
+      // First load reports 45 rules (3 pages); the clamp re-fetch reports the shrunk 15.
+      return call === 1
+        ? { items: ruleItems(20), total: 45, page: 1, size: 20 }
+        : { items: ruleItems(15), total: 15, page: 1, size: 20 };
+    });
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('acl-topic-01')).toBeInTheDocument();
+
+    const secondPage = document.querySelector('.ant-pagination-item-2');
+    expect(secondPage).not.toBeNull();
+    await user.click(secondPage as HTMLElement);
+
+    // The empty out-of-range page is corrected: the rules reload page 1.
+    await waitFor(() =>
+      expect(aclService.listAclRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
   });
 
   it('closes an ACL rule dialog when switching to another instance', async () => {
@@ -550,7 +664,7 @@ describe('ACL page', () => {
     await user.type(clusterInput, 'DefaultCluster');
     await user.click(await screen.findByRole('button', { name: /检\s*查\s*配\s*置/ }));
 
-    expect(await screen.findByText('rocketmq-admin')).toBeInTheDocument();
+    expect(await screen.findAllByText('rocketmq-admin')).not.toHaveLength(0);
     expect(screen.getByText('ACL 2.0')).toBeInTheDocument();
     expect(aclService.examineBrokerClusterAclConfig).toHaveBeenCalledTimes(1);
   });
@@ -647,8 +761,8 @@ describe('ACL page', () => {
       });
     });
 
-    expect(await screen.findByText('latest-account')).toBeInTheDocument();
-    expect(screen.getByText('ACL latest')).toBeInTheDocument();
+    expect(await screen.findAllByText('latest-account')).not.toHaveLength(0);
+    expect(screen.getAllByText('ACL latest')).not.toHaveLength(0);
     await waitFor(() => expect(examineButton).not.toHaveClass('ant-btn-loading'));
     expect(successSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).not.toHaveBeenCalled();
@@ -731,6 +845,43 @@ describe('ACL page', () => {
     expect(within(row).getByText('latest-access-key')).toBeInTheDocument();
     expect(screen.queryByText('stale-secret-key')).not.toBeInTheDocument();
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('renders ACL risk diagnostics for the examined cluster config', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValue({
+      clusterId: 'DefaultCluster',
+      aclEnabled: true,
+      aclVersion: 'ACL 2.0',
+      globalWhiteRemoteAddresses: ['*'],
+      accounts: [
+        {
+          accessKey: 'admin-ak',
+          admin: true,
+          whiteRemoteAddress: '0.0.0.0/0',
+          defaultTopicPerm: 'ALL',
+          defaultGroupPerm: 'ALL',
+          topicPerms: ['*=ALL'],
+          groupPerms: ['*=SUB'],
+        },
+      ],
+      accountCount: 1,
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    await user.click(await screen.findByRole('button', { name: /检\s*查\s*配\s*置/ }));
+
+    const diagnostics = await screen.findByTestId('acl-risk-diagnostics');
+    expect(within(diagnostics).getByText('ACL 风险诊断')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('ACL 配置存在高风险')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('全局 IP 白名单范围过大')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('管理员账号可从宽网段访问')).toBeInTheDocument();
+    expect(
+      within(diagnostics).getAllByText(
+        '将默认 Topic 权限改为 DENY，并为确需访问的 Topic 配置最小权限。',
+      ),
+    ).not.toHaveLength(0);
   });
 
   it('creates a plain access account', async () => {

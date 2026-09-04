@@ -22,6 +22,14 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             + "(SELECT id FROM rmq_system_alert WHERE acknowledged = 1)")
     int deleteForAcknowledgedAlerts();
 
+    @Delete("DELETE FROM rmq_alert_notification_outbox WHERE id IN ("
+            + "SELECT id FROM (SELECT id FROM rmq_alert_notification_outbox WHERE "
+            + "(status = 'DELIVERED' AND ((delivered_at IS NOT NULL AND delivered_at < #{cutoff}) "
+            + "OR (delivered_at IS NULL AND gmt_modified < #{cutoff}))) "
+            + "OR (status = 'FAILED' AND gmt_modified < #{cutoff}) "
+            + "ORDER BY id LIMIT #{limit}) expired_terminal_deliveries)")
+    int deleteTerminalBefore(@Param("cutoff") LocalDateTime cutoff, @Param("limit") int limit);
+
     @Select("SELECT * FROM rmq_alert_notification_outbox WHERE "
             + "(status IN ('PENDING', 'RETRY_WAIT') AND next_attempt_at <= #{now}) "
             + "OR (status = 'SENDING' AND (sending_started_at IS NULL OR sending_started_at <= #{staleBefore})) "
@@ -36,6 +44,11 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
     int claimForDispatch(@Param("id") Long id, @Param("now") LocalDateTime now,
             @Param("staleBefore") LocalDateTime staleBefore, @Param("claimedAt") LocalDateTime claimedAt,
             @Param("claimToken") String claimToken);
+
+    @Update("UPDATE rmq_alert_notification_outbox SET sending_started_at = #{renewedAt} "
+            + "WHERE id = #{id} AND status = 'SENDING' AND claim_token = #{claimToken}")
+    int renewClaim(@Param("id") Long id, @Param("claimToken") String claimToken,
+            @Param("renewedAt") LocalDateTime renewedAt);
 
     @Select("<script>"
             + "SELECT o.id, o.alert_id AS alertId, o.channel, o.status, o.attempt_count AS attemptCount, "

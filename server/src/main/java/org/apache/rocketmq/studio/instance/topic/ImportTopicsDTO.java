@@ -14,12 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.instance.topic;
 
-package org.apache.rocketmq.studio.auth;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
 
-import org.springframework.context.annotation.Configuration;
+import java.util.List;
 
-@Configuration
-public class SecurityConfig {
-    // TODO: Add Spring Security configuration when Spring Security dependency is added
+@Data
+public class ImportTopicsDTO {
+
+    @NotBlank(message = "instanceId is required")
+    private String instanceId;
+
+    @Valid
+    @NotEmpty(message = "topics is required")
+    @Size(max = 100, message = "At most 100 topics are allowed per import")
+    private List<CreateTopicDTO> topics;
 }

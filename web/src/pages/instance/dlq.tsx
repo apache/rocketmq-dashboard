@@ -78,9 +78,9 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-const formatDateTime = (iso?: string | null): string => {
-  if (!iso) return '-';
-  const d = new Date(iso);
+export const formatDateTime = (value?: string | number | null): string => {
+  if (value === undefined || value === null || value === '') return '-';
+  const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '-';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -143,6 +143,7 @@ const DLQPage = () => {
   const detailRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
   const groupRequestIdRef = useRef(0);
+  const resendInFlightRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -245,7 +246,9 @@ const DLQPage = () => {
       return;
     }
     if (!retryGroup || !selectedInstanceId) return;
+    if (resendInFlightRef.current) return;
 
+    resendInFlightRef.current = true;
     const requestId = retryRequestIdRef.current + 1;
     retryRequestIdRef.current = requestId;
     const groupName = retryGroup.groupName;
@@ -279,6 +282,7 @@ const DLQPage = () => {
         setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
       }
     } finally {
+      resendInFlightRef.current = false;
       if (retryRequestIdRef.current === requestId) {
         setRetrySubmitting(false);
       }
@@ -353,6 +357,8 @@ const DLQPage = () => {
 
   const resendSelectedMessages = async (msgIds: string[]) => {
     if (!selectedInstanceId || !detailGroup || msgIds.length === 0) return;
+    if (resendInFlightRef.current) return;
+    resendInFlightRef.current = true;
     setDetailResending(true);
     setDetailError(null);
     try {
@@ -373,6 +379,7 @@ const DLQPage = () => {
     } catch (error) {
       setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
     } finally {
+      resendInFlightRef.current = false;
       setDetailResending(false);
     }
   };
@@ -534,9 +541,7 @@ const DLQPage = () => {
       key: 'storeTime',
       width: 160,
       render: (storeTime: number) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>
-          {formatDateTime(new Date(storeTime).toISOString())}
-        </Text>
+        <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatDateTime(storeTime)}</Text>
       ),
     },
     {
@@ -555,7 +560,7 @@ const DLQPage = () => {
       ellipsis: true,
       render: (body: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {body && body.length > 80 ? `${body.slice(0, 80)}…` : body ?? '-'}
+          {body && body.length > 80 ? `${body.slice(0, 80)}…` : (body ?? '-')}
         </Text>
       ),
     },
@@ -791,7 +796,10 @@ const DLQPage = () => {
             >
               <Space size={24} wrap>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
+                  >
                     DLQ Topic
                   </Text>
                   <Text copyable style={{ fontFamily: 'monospace' }}>
@@ -799,17 +807,26 @@ const DLQPage = () => {
                   </Text>
                 </div>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
+                  >
                     死信数量
                   </Text>
-                  <Text strong style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}>
+                  <Text
+                    strong
+                    style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}
+                  >
                     {detailGroup.statsAvailable === false
                       ? '不可用'
                       : detailGroup.messageCount.toLocaleString()}
                   </Text>
                 </div>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
+                  >
                     最近入队时间
                   </Text>
                   <Text style={{ fontFamily: 'monospace' }}>

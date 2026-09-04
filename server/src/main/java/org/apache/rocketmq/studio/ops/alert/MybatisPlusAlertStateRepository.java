@@ -17,24 +17,35 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertState;
+import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertStateMapper;
+import org.apache.rocketmq.studio.persistence.mapper.RmqSystemAlertMapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Repository
 @RequiredArgsConstructor
 public class MybatisPlusAlertStateRepository implements AlertStateRepository {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final RmqAlertStateMapper mapper;
+    private final RmqSystemAlertMapper alertMapper;
 
     @Override
     public Optional<AlertRuleState> find(AlertStateKey key) {
@@ -83,6 +94,35 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
     }
 
     @Override
+    public List<ActiveAlertState> findActive(MetricCollectionScope scope, List<AlertRuleVO> rules) {
+        if (scope == null || rules == null || rules.isEmpty()) {
+            return List.of();
+        }
+        Set<String> metricKeys = scope.metricKeys();
+        Map<Long, AlertRuleVO> scopedRules = rules.stream()
+                .filter(rule -> rule.getId() != null)
+                .filter(AlertRuleVO::isEnabled)
+                .filter(rule -> ruleDomain(rule) == scope.domain())
+                .filter(rule -> metricKeys.contains(rule.getMetric()))
+                .filter(rule -> !StringUtils.hasText(rule.getInstanceId())
+                        || scope.instanceId().equals(rule.getInstanceId()))
+                .collect(Collectors.toMap(AlertRuleVO::getId, rule -> rule, (left, right) -> left));
+        if (scopedRules.isEmpty()) {
+            return List.of();
+        }
+        List<RmqAlertState> activeStates = mapper.selectList(new QueryWrapper<RmqAlertState>()
+                        .in("rule_id", scopedRules.keySet())
+                        .in("status", List.of(AlertStateStatus.FIRING.name(), AlertStateStatus.ACKED.name())));
+        Map<AlertStateKey, RmqSystemAlert> latestAlerts = findLatestAlerts(scope, activeStates);
+        return activeStates
+                .stream()
+                .map(state -> toActiveState(state, latestAlerts.get(new AlertStateKey(state.getRuleId(),
+                        state.getFingerprint()))))
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    @Override
     public List<AlertRuleRuntimeVO> findRuntimeByRuleIds(List<AlertRuleVO> rules) {
         Map<Long, AlertRuleVO> byId = rules.stream().filter(rule -> rule.getId() != null)
                 .collect(Collectors.toMap(AlertRuleVO::getId, rule -> rule));
@@ -97,6 +137,40 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
         return AlertRuleRuntimeVO.builder().ruleId(entity.getRuleId()).fingerprint(entity.getFingerprint())
                 .status(AlertStateStatus.valueOf(entity.getStatus())).consecutiveHits(entity.getConsecutiveHits() == null ? 0 : entity.getConsecutiveHits())
                 .currentValue(entity.getCurrentValue()).lastNotifiedAt(entity.getLastNotifiedAt()).nextReminderAt(next).build();
+    }
+
+    private Map<AlertStateKey, RmqSystemAlert> findLatestAlerts(MetricCollectionScope scope,
+            List<RmqAlertState> activeStates) {
+        if (activeStates.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> ruleIds = activeStates.stream().map(RmqAlertState::getRuleId).collect(Collectors.toSet());
+        Set<String> fingerprints = activeStates.stream().map(RmqAlertState::getFingerprint).collect(Collectors.toSet());
+        Set<AlertStateKey> activeKeys = activeStates.stream()
+                .map(state -> new AlertStateKey(state.getRuleId(), state.getFingerprint()))
+                .collect(Collectors.toCollection(HashSet::new));
+        return alertMapper.selectList(new QueryWrapper<RmqSystemAlert>()
+                        .in("rule_id", ruleIds)
+                        .in("fingerprint", fingerprints)
+                        .eq("domain", scope.domain().name())
+                        .eq("instance_id", scope.instanceId())
+                        .orderByDesc("time", "id"))
+                .stream()
+                .filter(alert -> activeKeys.contains(new AlertStateKey(alert.getRuleId(), alert.getFingerprint())))
+                .collect(Collectors.toMap(alert -> new AlertStateKey(alert.getRuleId(), alert.getFingerprint()),
+                        alert -> alert, (latest, ignored) -> latest));
+    }
+
+    private Optional<ActiveAlertState> toActiveState(RmqAlertState state, RmqSystemAlert alert) {
+        if (alert == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new ActiveAlertState(new AlertStateKey(state.getRuleId(), state.getFingerprint()),
+                toState(state), alert.getInstanceId(), readLabels(alert.getLabelsJson())));
+    }
+
+    private static AlertDomain ruleDomain(AlertRuleVO rule) {
+        return rule.getDomain() == null ? AlertDomain.BUSINESS : rule.getDomain();
     }
 
     private static void apply(RmqAlertState entity, AlertRuleState state) {
@@ -123,5 +197,16 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
 
     private static Instant toInstant(LocalDateTime value) {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
+    }
+
+    private static Map<String, String> readLabels(String labelsJson) {
+        if (!StringUtils.hasText(labelsJson)) {
+            return Map.of();
+        }
+        try {
+            return OBJECT_MAPPER.readValue(labelsJson, new TypeReference<>() { });
+        } catch (Exception error) {
+            throw new IllegalStateException("Unable to read alert labels", error);
+        }
     }
 }

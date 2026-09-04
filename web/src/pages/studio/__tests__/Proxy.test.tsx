@@ -101,6 +101,19 @@ describe('ProxyPage', () => {
     storageSpy.mockRestore();
   });
 
+  it('uses the default cluster when stored preferences cannot be read', async () => {
+    const storageSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('storage disabled', 'SecurityError');
+    });
+    try {
+      renderPage();
+      await screen.findAllByText('127.0.0.1:8081');
+      expect(screen.getByDisplayValue('DefaultCluster')).toBeInTheDocument();
+    } finally {
+      storageSpy.mockRestore();
+    }
+  });
+
   it('loads Proxy nodes once after the page mounts', async () => {
     renderPage();
 
@@ -193,6 +206,24 @@ describe('ProxyPage', () => {
 
     expect(addProxyAddress).not.toHaveBeenCalled();
     expect(await screen.findByText('请输入 Proxy 地址')).toBeInTheDocument();
+  });
+
+  it('submits one address mutation when add is clicked twice before rendering', async () => {
+    const mutation = createDeferred<typeof proxyHome>();
+    vi.mocked(addProxyAddress).mockImplementation(() => mutation.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.type(screen.getByLabelText('Proxy 地址'), '10.0.0.10:8081');
+    const addButton = screen.getByRole('button', { name: '新增' });
+    act(() => {
+      addButton.click();
+      addButton.click();
+    });
+
+    expect(addProxyAddress).toHaveBeenCalledTimes(1);
+    mutation.resolve(proxyHome);
   });
 
   it('removes a Proxy address and applies the updated address list', async () => {

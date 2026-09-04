@@ -22,10 +22,13 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -76,6 +79,23 @@ class AlertNotificationSuppressionServiceTest {
     }
 
     @Test
+    void doesNotSuppressAfterALegacyIncidentWithoutFingerprintsHasResolvedTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        LocalDateTime now = LocalDateTime.now();
+        SystemAlertVO firing = event(1L, AlertDomain.CLUSTER, "FIRING", "broker-1", now.minusMinutes(3));
+        firing.setTitle("Broker unavailable");
+        firing.setRuleId(7L);
+        SystemAlertVO resolved = event(2L, AlertDomain.CLUSTER, "RESOLVED", "broker-1", now.minusMinutes(1));
+        resolved.setTitle("Broker unavailable");
+        resolved.setRuleId(7L);
+        when(repository.findAlertsPage(any())).thenReturn(PageResult.of(List.of(firing, resolved), 2, 1, 100));
+
+        assertThat(new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(event(3L, AlertDomain.BUSINESS, "FIRING", "broker-1", now)))
+                .isEmpty();
+    }
+
+    @Test
     void doesNotSuppressAcrossDifferentBrokerScopesTest() {
         AlertRepository repository = mock(AlertRepository.class);
         LocalDateTime now = LocalDateTime.now();
@@ -85,6 +105,29 @@ class AlertNotificationSuppressionServiceTest {
         assertThat(new AlertNotificationSuppressionService(repository)
                 .findSuppressingClusterAlert(event(2L, AlertDomain.BUSINESS, "FIRING", "broker-1", now)))
                 .isEmpty();
+    }
+
+    @Test
+    void searchesBeyondTheFirstCandidatePageTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        LocalDateTime now = LocalDateTime.now();
+        List<SystemAlertVO> unrelated = IntStream.range(0, 100)
+                .mapToObj(index -> event((long) index, AlertDomain.CLUSTER, "FIRING",
+                        "broker-" + index, now.minusMinutes(1)))
+                .toList();
+        SystemAlertVO cause = event(101L, AlertDomain.CLUSTER, "FIRING", "target-broker",
+                now.minusMinutes(2));
+        when(repository.findAlertsPage(any())).thenReturn(
+                PageResult.of(unrelated, 101, 1, 100),
+                PageResult.of(List.of(cause), 101, 2, 100));
+
+        Optional<SystemAlertVO> result = new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(event(102L, AlertDomain.BUSINESS, "FIRING",
+                        "target-broker", now));
+
+        assertThat(result).contains(cause);
+        verify(repository, times(2)).findAlertsPage(any());
+        verify(repository).findAlertsPage(org.mockito.ArgumentMatchers.argThat(query -> query.page() == 2));
     }
 
     private static SystemAlertVO event(Long id, AlertDomain domain, String transition, String brokerName,

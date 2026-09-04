@@ -9,9 +9,9 @@ import json
 import os
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "main", "resources", "grafana")
-os.makedirs(OUT_DIR, exist_ok=True)
 
 DS = "${DS_PROMETHEUS}"
+GRID_WIDTH = 24
 
 
 def ts_panel(panel_id, title, expr, grid, y, legend=None, unit="short"):
@@ -63,7 +63,8 @@ def gauge_panel(panel_id, title, expr, grid, y, max_=100):
             "defaults": {
                 "unit": "percent",
                 "max": max_,
-                "custom": {"min": 0},
+                "min": 0,
+                "custom": {},
             },
             "overrides": [],
         },
@@ -131,17 +132,33 @@ def dashboard(uid, title, description, panels, vars_=None):
     }
 
 
-def y_stack(panels):
-    """Assign gridPos y offsets sequentially (2 per row of w=12)."""
+def layout_panels(panels):
+    """Return panels packed into rows without mutating the input definitions."""
+    laid_out = []
+    x = 0
     y = 0
-    for p in panels:
-        w = p["gridPos"]["w"]
-        p["gridPos"]["x"] = 0 if (panels.index(p) % 2 == 0 or w == 24) else 12
-        if w == 24:
-            p["gridPos"]["x"] = 0
-        p["gridPos"]["y"] = y
-        y += p["gridPos"]["h"]
-    return panels
+    row_height = 0
+    for panel in panels:
+        grid = panel["gridPos"]
+        width = grid["w"]
+        height = grid["h"]
+        if width <= 0 or width > GRID_WIDTH:
+            raise ValueError(f"panel width must be between 1 and {GRID_WIDTH}: {width}")
+        if height <= 0:
+            raise ValueError(f"panel height must be positive: {height}")
+        if x + width > GRID_WIDTH:
+            y += row_height
+            x = 0
+            row_height = 0
+
+        laid_out.append({**panel, "gridPos": {**grid, "x": x, "y": y}})
+        x += width
+        row_height = max(row_height, height)
+        if x == GRID_WIDTH:
+            y += row_height
+            x = 0
+            row_height = 0
+    return laid_out
 
 
 specs = []
@@ -281,13 +298,20 @@ specs.append((
     ],
 ))
 
-for uid, title, desc, panels in specs:
-    panels = y_stack(panels)
-    doc = dashboard(uid, title, desc, panels)
-    path = os.path.join(OUT_DIR, f"{uid}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(doc, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    print(f"wrote {path} ({len(panels)} panels)")
+def generate_dashboards(out_dir=OUT_DIR):
+    """Write all dashboard assets to ``out_dir`` in a deterministic order."""
+    os.makedirs(out_dir, exist_ok=True)
+    for uid, title, desc, panels in specs:
+        laid_out = layout_panels(panels)
+        doc = dashboard(uid, title, desc, laid_out)
+        path = os.path.join(out_dir, f"{uid}.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        print(f"wrote {path} ({len(laid_out)} panels)")
 
-print(f"TOTAL dashboards: {len(specs)}")
+    print(f"TOTAL dashboards: {len(specs)}")
+
+
+if __name__ == "__main__":
+    generate_dashboards()

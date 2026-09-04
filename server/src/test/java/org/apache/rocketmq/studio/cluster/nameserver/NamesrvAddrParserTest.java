@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.cluster.nameserver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -32,6 +34,18 @@ class NamesrvAddrParserTest {
     @Test
     void lowercasesHostsTest() {
         assertThat(NamesrvAddrParser.normalize("NS1.Example.COM:9876")).isEqualTo("ns1.example.com:9876");
+    }
+
+    @Test
+    void lowercasesHostsIndependentlyOfTheDefaultLocaleTest() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertThat(NamesrvAddrParser.normalize("INTERNAL.Example.COM:9876"))
+                    .isEqualTo("internal.example.com:9876");
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test
@@ -62,6 +76,16 @@ class NamesrvAddrParserTest {
     @Test
     void rejectsConsecutiveSeparatorsTest() {
         assertThatThrownBy(() -> NamesrvAddrParser.normalize("ns1:9876;;ns2:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("empty address segment");
+    }
+
+    @Test
+    void rejectsTrailingSeparatorsTest() {
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("ns1:9876,"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("empty address segment");
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("ns1:9876;"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("empty address segment");
     }
@@ -120,6 +144,12 @@ class NamesrvAddrParserTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("malformed IPv6");
         assertThatThrownBy(() -> NamesrvAddrParser.normalize("[::1-g]:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("malformed IPv6");
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("[1:2:3]:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("malformed IPv6");
+        assertThatThrownBy(() -> NamesrvAddrParser.normalize("[1::2::3]:9876"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("malformed IPv6");
     }

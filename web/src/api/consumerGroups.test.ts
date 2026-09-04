@@ -26,6 +26,7 @@ import {
   listConsumerGroupPage,
   listConsumerGroups,
   deleteConsumerGroup,
+  previewConsumerOffsetReset,
   resetConsumerOffset,
   updateConsumerGroupSettings,
 } from './metadata';
@@ -116,6 +117,54 @@ describe('consumer groups API contract', () => {
 
     await expect(getConsumerGroup(group.name)).resolves.toEqual(group);
     await expect(resetConsumerOffset(reset)).resolves.toBeUndefined();
+  });
+
+  it('posts reset preview requests and unwraps queue impact data', async () => {
+    const request = {
+      name: group.name,
+      instanceId: 'instance-1',
+      topic: 'orders',
+      timestamp: 1784246400000,
+    };
+    const preview = {
+      instanceId: 'instance-1',
+      groupName: group.name,
+      topic: 'orders',
+      timestamp: 1784246400000,
+      complete: true,
+      allowReset: true,
+      queueCount: 1,
+      warningCount: 1,
+      rewindQueueCount: 1,
+      fastForwardQueueCount: 0,
+      currentTotalLag: 30,
+      projectedTotalLag: 40,
+      totalOffsetDelta: -10,
+      warnings: ['1 queue(s) will move backward and may replay consumed messages'],
+      queues: [
+        {
+          topic: 'orders',
+          broker: 'broker-a',
+          queueId: 0,
+          minOffset: 0,
+          maxOffset: 200,
+          brokerOffset: 120,
+          consumerOffset: 90,
+          targetOffset: 80,
+          currentLag: 30,
+          projectedLag: 40,
+          offsetDelta: -10,
+          riskLevel: 'WARNING',
+          message: 'Replays 10 message(s)',
+        },
+      ],
+    };
+    mock.onPost('/groups/reset-offset/preview').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(request);
+      return [200, { code: 200, data: preview }];
+    });
+
+    await expect(previewConsumerOffsetReset(request)).resolves.toEqual(preview);
   });
 
   it('includes selected instance context when deleting a consumer group', async () => {

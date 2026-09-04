@@ -17,16 +17,22 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertSilence;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertSilenceMapper;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 @Repository
 @RequiredArgsConstructor
@@ -50,6 +56,42 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
     }
 
     @Override
+    public PageResult<AlertSilenceVO> findPage(int page, int pageSize) {
+        IPage<RmqAlertSilence> mapperPage = mapper.selectPage(new Page<>(page, pageSize),
+                new QueryWrapper<RmqAlertSilence>().orderByDesc("ends_at").orderByDesc("id"));
+        return PageResult.of(mapperPage.getRecords().stream().map(this::toVo).toList(), mapperPage.getTotal(),
+                (int) mapperPage.getCurrent(), (int) mapperPage.getSize());
+    }
+
+    @Override
+    public List<AlertSilenceVO> findActiveCandidates(AlertDomain domain, Long ruleId, String instanceId,
+            LocalDateTime now) {
+        QueryWrapper<RmqAlertSilence> query = new QueryWrapper<RmqAlertSilence>()
+                .and(schedule -> schedule
+                        .nested(once -> once
+                                .and(type -> type.isNull("recurrence").or()
+                                        .eq("recurrence", AlertSilenceRecurrence.ONCE.name()))
+                                .le("starts_at", now).gt("ends_at", now))
+                        .or(recurring -> recurring
+                                .in("recurrence", AlertSilenceRecurrence.DAILY.name(),
+                                        AlertSilenceRecurrence.WEEKLY.name())
+                                .le("starts_at", now).gt("recurrence_until", now)))
+                .and(scope -> scope.isNull("domain").or().eq("domain", domain.name()));
+        if (ruleId == null) {
+            query.isNull("rule_id");
+        } else {
+            query.and(scope -> scope.isNull("rule_id").or().eq("rule_id", ruleId));
+        }
+        if (instanceId == null) {
+            query.isNull("instance_id");
+        } else {
+            query.and(scope -> scope.isNull("instance_id").or().eq("instance_id", instanceId));
+        }
+        query.orderByDesc("ends_at").orderByDesc("id");
+        return mapper.selectList(query).stream().map(this::toVo).toList();
+    }
+
+    @Override
     public boolean deleteById(Long id) {
         return mapper.deleteById(id) > 0;
     }
@@ -62,6 +104,11 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
         entity.setLabelsJson(writeLabels(silence.getLabels()));
         entity.setStartsAt(silence.getStartsAt());
         entity.setEndsAt(silence.getEndsAt());
+        entity.setRecurrence((silence.getRecurrence() == null ? AlertSilenceRecurrence.ONCE
+                : silence.getRecurrence()).name());
+        entity.setTimeZone(silence.getTimeZone());
+        entity.setRecurrenceDaysJson(writeDays(silence.getRecurrenceDays()));
+        entity.setRecurrenceUntil(silence.getRecurrenceUntil());
         entity.setReason(silence.getReason());
         entity.setCreatedBy(silence.getCreatedBy());
         return entity;
@@ -73,6 +120,10 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
                 .ruleId(entity.getRuleId()).instanceId(entity.getInstanceId())
                 .labels(readLabels(entity.getLabelsJson()))
                 .startsAt(entity.getStartsAt()).endsAt(entity.getEndsAt())
+                .recurrence(entity.getRecurrence() == null ? AlertSilenceRecurrence.ONCE
+                        : AlertSilenceRecurrence.valueOf(entity.getRecurrence()))
+                .timeZone(entity.getTimeZone()).recurrenceDays(readDays(entity.getRecurrenceDaysJson()))
+                .recurrenceUntil(entity.getRecurrenceUntil())
                 .reason(entity.getReason()).createdBy(entity.getCreatedBy()).build();
     }
 
@@ -91,6 +142,24 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
             return objectMapper.readValue(labelsJson, new TypeReference<>() { });
         } catch (Exception error) {
             throw new IllegalStateException("Unable to read alert silence labels", error);
+        }
+    }
+
+    private String writeDays(Set<Integer> days) {
+        if (days == null || days.isEmpty()) return null;
+        try {
+            return objectMapper.writeValueAsString(new TreeSet<>(days));
+        } catch (Exception error) {
+            throw new IllegalArgumentException("Unable to serialize alert silence weekdays", error);
+        }
+    }
+
+    private Set<Integer> readDays(String daysJson) {
+        if (daysJson == null || daysJson.isBlank()) return Set.of();
+        try {
+            return Set.copyOf(objectMapper.readValue(daysJson, new TypeReference<Set<Integer>>() { }));
+        } catch (Exception error) {
+            throw new IllegalStateException("Unable to read alert silence weekdays", error);
         }
     }
 }

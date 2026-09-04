@@ -195,7 +195,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
                         "JSON_CONTAINS(labels_json, JSON_OBJECT({0}, {1}))", query.labelKey(), query.labelValue())
                 .ge(query.from() != null, "time", query.from())
                 .le(query.to() != null, "time", query.to())
-                .orderByDesc("time");
+                .orderByDesc("time", "id");
         Page<RmqSystemAlert> result = alertMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
         return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toAlertVO).toList(),
                 result.getTotal(), query.page(), query.pageSize());

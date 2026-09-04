@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   LockOutlined,
   MoonOutlined,
@@ -40,6 +40,7 @@ interface LoginFormValues {
 
 const LoginPage = () => {
   const [loading, setLoading] = useState(false);
+  const loginInFlightRef = useRef(false);
   const [form] = Form.useForm<LoginFormValues>();
   const { t } = useLang();
   const { message } = App.useApp();
@@ -48,6 +49,10 @@ const LoginPage = () => {
   const { darkMode, toggleTheme } = useTheme();
 
   const onFinish = async (values: LoginFormValues) => {
+    // React state is applied on the next render, so it cannot prevent two submit
+    // events in the same tick. Own the request synchronously before awaiting it.
+    if (loginInFlightRef.current) return;
+    loginInFlightRef.current = true;
     setLoading(true);
     try {
       const data = await loginApi(values.username, values.password);
@@ -58,6 +63,7 @@ const LoginPage = () => {
       const errorMsg = err instanceof Error ? err.message : t('login.failed');
       message.error(errorMsg);
     } finally {
+      loginInFlightRef.current = false;
       setLoading(false);
     }
   };

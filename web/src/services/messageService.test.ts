@@ -20,6 +20,7 @@ import {
   consumeMessageDirectly,
   getMessageTrace,
   listDLQGroups,
+  queryMessagePage,
   queryMessages,
 } from './messageService';
 
@@ -52,6 +53,15 @@ describe('message service mock data', () => {
     });
 
     expect(messages.map((message) => message.msgId)).toEqual(['AC1E0A6400002A9F0000000001A3F7C2']);
+  });
+
+  it('validates mock message pagination like the real endpoint', async () => {
+    await expect(queryMessagePage({ topic: 'order-create', page: 0 })).rejects.toThrow(
+      'page must be positive',
+    );
+    await expect(
+      queryMessagePage({ topic: 'order-create', page: 1, pageSize: 201 }),
+    ).rejects.toThrow('pageSize must be between 1 and 200');
   });
 
   it('returns copied message trace rows', async () => {
