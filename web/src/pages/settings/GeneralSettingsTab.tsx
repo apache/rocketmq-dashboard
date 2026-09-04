@@ -187,8 +187,10 @@ export const GeneralSettingsTab = () => {
       if (!(await mergeAndSave(values))) return;
       await testNotification(channel);
       message.success(t('settings.testMessageSent'));
-    } catch (error: any) {
-      message.error(error?.response?.data?.message ?? t('settings.testMessageFailed'));
+    } catch (error) {
+      const apiMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
+        ?.message;
+      message.error(typeof apiMessage === 'string' ? apiMessage : t('settings.testMessageFailed'));
     } finally {
       setTestingChannel(undefined);
     }

@@ -26,11 +26,15 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -67,5 +71,41 @@ class AlertSilenceControllerTest {
                 .andExpect(jsonPath("$.data.size").value(10));
 
         verify(silenceService).listPage(eq(2), eq(10));
+    }
+
+    @Test
+    void createShouldBindAndReturnRecurringScheduleTest() throws Exception {
+        AlertSilenceVO silence = AlertSilenceVO.builder().id(13L)
+                .startsAt(LocalDateTime.of(2026, 9, 7, 1, 0))
+                .endsAt(LocalDateTime.of(2026, 9, 7, 2, 0))
+                .recurrence(AlertSilenceRecurrence.WEEKLY).timeZone("Asia/Shanghai")
+                .recurrenceDays(Set.of(1, 3, 5))
+                .recurrenceUntil(LocalDateTime.of(2026, 10, 1, 0, 0)).createdBy("admin").build();
+        when(silenceService.create(any(CreateAlertSilenceDTO.class))).thenReturn(silence);
+
+        mockMvc.perform(post("/api/alert-silences")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "startsAt": "2026-09-07T09:00:00+08:00",
+                                  "endsAt": "2026-09-07T10:00:00+08:00",
+                                  "recurrence": "WEEKLY",
+                                  "timeZone": "Asia/Shanghai",
+                                  "recurrenceDays": [1, 3, 5],
+                                  "recurrenceUntil": "2026-10-01T08:00:00+08:00"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.data.id").value(13))
+                .andExpect(jsonPath("$.data.recurrence").value("WEEKLY"))
+                .andExpect(jsonPath("$.data.timeZone").value("Asia/Shanghai"))
+                .andExpect(jsonPath("$.data.recurrenceDays.length()").value(3))
+                .andExpect(jsonPath("$.data.recurrenceUntil").value("2026-10-01T00:00:00"));
+
+        verify(silenceService).create(org.mockito.ArgumentMatchers.argThat(request ->
+                request.getRecurrence() == AlertSilenceRecurrence.WEEKLY
+                        && request.getRecurrenceDays().equals(Set.of(1, 3, 5))
+                        && "Asia/Shanghai".equals(request.getTimeZone())));
     }
 }

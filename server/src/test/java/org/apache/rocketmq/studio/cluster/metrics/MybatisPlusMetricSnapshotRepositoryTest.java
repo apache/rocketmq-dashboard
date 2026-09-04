@@ -27,7 +27,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +44,14 @@ class MybatisPlusMetricSnapshotRepositoryTest {
 
     @Mock
     private RmqMetricSnapshotMapper mapper;
+
+    @Test
+    void saveAllShouldUseOneTransactionForTheWholeSampleBatchTest() throws Exception {
+        Method saveAll = MybatisPlusMetricSnapshotRepository.class
+                .getMethod("saveAll", List.class);
+
+        assertThat(saveAll.isAnnotationPresent(Transactional.class)).isTrue();
+    }
 
     @Test
     void nullClusterScopeShouldOnlyReadUnscopedSnapshotsTest() {

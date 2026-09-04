@@ -27,6 +27,7 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -34,6 +35,7 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
@@ -178,6 +180,9 @@ public class RocketMQDLQProvider implements DLQProvider {
         if (begin >= end) {
             throw new BusinessException(400, "DLQ resend start time must be before end time");
         }
+        if (StringUtils.hasText(targetTopic)) {
+            validateResendTargetTopic(instanceId, targetTopic);
+        }
 
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
@@ -251,6 +256,9 @@ public class RocketMQDLQProvider implements DLQProvider {
         if (selected.isEmpty()) {
             throw new BusinessException(400, "At least one valid msgId is required for selected DLQ resend");
         }
+        if (StringUtils.hasText(targetTopic)) {
+            validateResendTargetTopic(instanceId, targetTopic);
+        }
 
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
@@ -258,6 +266,9 @@ public class RocketMQDLQProvider implements DLQProvider {
             List<MessageExt> resolved = new ArrayList<>(selected.size());
             for (String msgId : selected) {
                 try {
+                    if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(admin, msgId)) {
+                        continue;
+                    }
                     MessageExt deadLetter = admin.viewMessage(dlqTopic, msgId);
                     if (deadLetter != null) {
                         resolved.add(deadLetter);
@@ -545,6 +556,42 @@ public class RocketMQDLQProvider implements DLQProvider {
             log.warn("Failed to resend dead letter msgId={} to topic={}: {}",
                     deadLetter.getMsgId(), destination, e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * An explicit resend target is a powerful override: without validation it can feed dead
+     * letters back into their own DLQ or retry topic, poison broker system topics, or silently
+     * create new topics on clusters with autoCreateTopicEnable. Restrict it to valid, existing,
+     * non-system topics on the selected instance.
+     */
+    private void validateResendTargetTopic(String instanceId, String targetTopic) {
+        TopicValidator.ValidateResult validity = TopicValidator.validateTopic(targetTopic);
+        if (!validity.isValid()) {
+            throw new BusinessException(400, "targetTopic is not a valid RocketMQ topic name: "
+                    + targetTopic);
+        }
+        if (SystemTopicFilter.isSystem(targetTopic)) {
+            throw new BusinessException(400,
+                    "targetTopic must not be a RocketMQ system, retry or DLQ topic: " + targetTopic);
+        }
+        boolean exists;
+        try {
+            exists = Boolean.TRUE.equals(runtimeAdminClientResolver.execute(instanceId, admin -> {
+                TopicList topics = admin.fetchAllTopicList();
+                return topics != null && topics.getTopicList() != null
+                        && topics.getTopicList().contains(targetTopic);
+            }));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(502, "Failed to verify targetTopic on the selected instance: "
+                    + e.getMessage());
+        }
+        if (!exists) {
+            throw new BusinessException(400,
+                    "targetTopic does not exist on the selected instance; create the topic before resending: "
+                            + targetTopic);
         }
     }
 

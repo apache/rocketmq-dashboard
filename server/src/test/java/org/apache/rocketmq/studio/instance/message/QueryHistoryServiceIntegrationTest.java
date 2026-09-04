@@ -51,7 +51,7 @@ class QueryHistoryServiceIntegrationTest {
             AuthenticatedUserContext.setUser(longUsername, true);
             queryHistoryService.recordMessageQuery("qh-cluster", "TOPIC", "qh-topic",
                     null, null, null, null, null, 3, null);
-            queryHistoryService.recordTraceQuery("qh-cluster", "qh-msg-id", "qh-topic", 2, 1);
+            queryHistoryService.recordTraceQuery("qh-cluster", "qh-msg-id", "qh-topic", "qh-trace-topic", 2, 1);
 
             PageResult<MessageQueryHistoryVO> messageHistory =
                     queryHistoryService.listMessageQueries("qh-cluster", null, null, 1, 20);
@@ -60,8 +60,10 @@ class QueryHistoryServiceIntegrationTest {
 
             PageResult<TraceQueryHistoryVO> traceHistory =
                     queryHistoryService.listTraceQueries("qh-cluster", null, 1, 20);
-            assertThat(traceHistory.getItems()).anySatisfy(item ->
-                    assertThat(item.getQueriedBy()).isEqualTo(longUsername));
+            assertThat(traceHistory.getItems()).anySatisfy(item -> {
+                assertThat(item.getQueriedBy()).isEqualTo(longUsername);
+                assertThat(item.getTraceTopic()).isEqualTo("qh-trace-topic");
+            });
         } finally {
             AuthenticatedUserContext.clear();
             messageQueryMapper.delete(new QueryWrapper<RmqMessageQuery>()

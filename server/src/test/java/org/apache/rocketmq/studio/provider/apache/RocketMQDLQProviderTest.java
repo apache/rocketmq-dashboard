@@ -25,10 +25,13 @@ import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -37,6 +40,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,9 +51,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -237,9 +244,153 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void resendMessagesRejectsRetryAndDlqTopicsAsTarget() throws Exception {
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "%DLQ%group-a"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not be a RocketMQ system, retry or DLQ topic")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(adminExt, never()).fetchAllTopicList();
+    }
+
+    @Test
+    void resendMessagesRejectsSystemTopicsAsTarget() {
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "RMQ_SYS_TRACE_TOPIC"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not be a RocketMQ system, retry or DLQ topic");
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @Test
+    void resendMessagesRejectsInvalidTargetTopicName() throws Exception {
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "not a valid topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("not a valid RocketMQ topic name");
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(adminExt, never()).fetchAllTopicList();
+    }
+
+    @Test
+    void resendMessagesRejectsTargetTopicMissingFromInstance() throws Exception {
+        TopicList otherTopics = new TopicList();
+        otherTopics.setTopicList(Set.of("unrelated-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(otherTopics);
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("targetTopic does not exist on the selected instance");
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendSelectedMessagesRejectsSystemTopicAsTarget() throws Exception {
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", List.of("msg-1"), "%DLQ%group-a"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not be a RocketMQ system, retry or DLQ topic");
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(adminExt, never()).fetchAllTopicList();
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendMessagesFailsGracefullyWhenTopicListCannotBeRead() throws Exception {
+        when(adminExt.fetchAllTopicList()).thenThrow(new IllegalStateException("nameserver unreachable"));
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to verify targetTopic on the selected instance")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendSelectedMessagesRejectsForgedMsgIdOutsideKnownTopology() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String forgedMsgId = MessageDecoder.createMessageId(new InetSocketAddress("10.2.3.4", 10911), 12345L);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        stubExistingTarget("target-topic");
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(forgedMsgId), "target-topic");
+
+        assertThat(result.getMatched()).isZero();
+        assertThat(result.getResent()).isZero();
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @Test
+    void resendSelectedMessagesResolvesInTopologyMsgIdNormally() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId(msgId);
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1, 2, 3});
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        when(adminExt.viewMessage(dlqTopic, msgId)).thenReturn(deadLetter);
+        stubExistingTarget("target-topic");
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(msgId), "target-topic");
+
+        assertThat(result.getMatched()).isEqualTo(1);
+        assertThat(result.getResent()).isEqualTo(1);
+        assertThat(result.getOutcome()).isEqualTo("SUCCESS");
+        verify(adminExt).viewMessage(dlqTopic, msgId);
+    }
+
+    @Test
+    void resendSelectedMessagesPassesNonOffsetIdsThroughToViewMessage() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(adminExt.viewMessage(dlqTopic, "uniq-key-1"))
+                .thenThrow(new IllegalStateException("unique key lookup handled by MQAdminImpl"));
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of("uniq-key-1"), null);
+
+        assertThat(result.getMatched()).isZero();
+        verify(adminExt).viewMessage(dlqTopic, "uniq-key-1");
+        verify(adminExt, never()).examineBrokerClusterInfo();
+    }
+
+    @Test
+    void resendSelectedMessagesFailsClosedWhenTopologyCannotBeVerified() throws Exception {
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("nameserver unreachable"));
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(msgId), null);
+
+        assertThat(result.getMatched()).isZero();
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @Test
     void resendMessagesShouldNormalizeGroupNameBeforeBuildingDlqTopicAndAuditing() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(null);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         provider.resendMessages("instance-a", " group-a ", 100L, 200L, "target-topic");
 
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
@@ -253,6 +404,9 @@ class RocketMQDLQProviderTest {
     void resendMessagesDoesNotPullWhenDlqQueueSetIsNull() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(null);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
@@ -285,6 +439,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
@@ -296,6 +453,9 @@ class RocketMQDLQProviderTest {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
                 .thenThrow(new IllegalStateException("broker unavailable"));
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Failed to scan DLQ topic " + dlqTopic)
@@ -322,6 +482,9 @@ class RocketMQDLQProviderTest {
                 .thenThrow(new IllegalStateException("broker unavailable"));
         when(pullConsumer.searchOffset(eq(emptyQueue), anyLong())).thenReturn(0L);
         when(pullConsumer.pull(eq(emptyQueue), eq("*"), eq(0L), eq(32))).thenReturn(emptyResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .extracting("matched", "resent", "failed", "outcome", "scanIncomplete", "failedQueueCount")
                 .containsExactly(0, 0, 0, "PARTIAL", true, 1);
@@ -345,6 +508,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(10L);
         when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
         verify(pullConsumer, times(1)).pull(queue, "*", 10L, 32);
@@ -373,6 +539,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.pull(queue, "*", 20L, 32)).thenReturn(foundAfterCorrection);
         when(pullConsumer.pull(queue, "*", 40L, 32)).thenReturn(endOfQueue);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("orders"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "orders"))
                 .extracting("matched", "resent", "failed", "outcome")
                 .containsExactly(1, 1, 0, "SUCCESS");
@@ -409,6 +578,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .extracting("matched", "resent", "failed", "outcome")
                 .containsExactly(1, 0, 1, "FAILED");
@@ -446,6 +618,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .extracting("matched", "resent", "failed", "outcome")
                 .containsExactly(1, 1, 0, "SUCCESS");
@@ -474,6 +649,9 @@ class RocketMQDLQProviderTest {
 
         when(adminExt.viewMessage(dlqTopic, "old-msg")).thenReturn(oldDeadLetter);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
 
         assertThat(provider.resendMessages(
                 "instance-a", "group-a", List.of("old-msg"), "target-topic"))
@@ -498,6 +676,9 @@ class RocketMQDLQProviderTest {
                 .thenThrow(new IllegalStateException("message not found"));
         when(adminExt.viewMessage(dlqTopic, "found-msg")).thenReturn(found);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
 
         assertThat(provider.resendMessages(
                 "instance-a", "group-a", List.of("missing-msg", "found-msg"), "target-topic"))
@@ -531,6 +712,9 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.searchOffset(queue, 200L)).thenReturn(5001L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
         assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                 .extracting("matched", "resent", "failed", "outcome", "scanIncomplete", "failedQueueCount")
                 .containsExactly(5000, 5000, 0, "PARTIAL", true, 0);
@@ -593,5 +777,27 @@ class RocketMQDLQProviderTest {
                 provider.exportMessages("instance-a", "group-a", 100L, 200L, 0);
         assertThat(exported.getMessages()).isEmpty();
         assertThat(exported.getLimit()).isEqualTo(5000);
+    }
+
+    private void stubExistingTarget(String topic) throws Exception {
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of(topic));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+    }
+
+    private static ClusterInfo clusterInfoWithBrokerAddresses(String... brokerAddresses) {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        for (int index = 0; index < brokerAddresses.length; index++) {
+            BrokerData brokerData = new BrokerData();
+            brokerData.setBrokerName("broker-" + index);
+            brokerData.setCluster("cluster-a");
+            HashMap<Long, String> brokerAddrs = new HashMap<>();
+            brokerAddrs.put(0L, brokerAddresses[index]);
+            brokerData.setBrokerAddrs(brokerAddrs);
+            brokerAddrTable.put(brokerData.getBrokerName(), brokerData);
+        }
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        return clusterInfo;
     }
 }

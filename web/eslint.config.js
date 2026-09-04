@@ -20,7 +20,10 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // The codebase had 0 explicit `any` at the 2026-08 cleanup; keep it that way
+      // by making the rule an error so any new escape hatch shows up in CI instead
+      // of slipping through as a warning.
+      '@typescript-eslint/no-explicit-any': 'error',
     },
   },
 );

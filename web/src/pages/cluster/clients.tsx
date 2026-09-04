@@ -24,6 +24,7 @@ import {
   Flex,
   Input,
   Modal,
+  Progress,
   Select,
   Space,
   Statistic,
@@ -45,6 +46,12 @@ import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { tableScrollX } from '../../utils/table';
+import {
+  analyzeClientConnections,
+  type ClientConnectionIssue,
+  type ClientResourceSummary,
+} from '../../utils/clientConnectionDiagnostics';
+import { matchesClientSearch } from './clientsSearch';
 
 const { Text } = Typography;
 const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
@@ -59,6 +66,30 @@ const typeConfig: Record<string, { color: string; label: string }> = {
 const protocolConfig: Record<string, { color: string; label: string }> = {
   gRPC: { color: 'green', label: 'gRPC' },
   Remoting: { color: 'blue', label: 'Remoting' },
+};
+
+const healthStatusColor: Record<ClientResourceSummary['status'], string> = {
+  healthy: 'green',
+  warning: 'gold',
+  critical: 'red',
+};
+
+const healthStatusTextKey: Record<ClientResourceSummary['status'], string> = {
+  healthy: 'clients.healthStatusHealthy',
+  warning: 'clients.healthStatusWarning',
+  critical: 'clients.healthStatusCritical',
+};
+
+const issueSeverityColor: Record<ClientConnectionIssue['severity'], string> = {
+  critical: 'red',
+  warning: 'gold',
+  info: 'blue',
+};
+
+const issueSeverityTextKey: Record<ClientConnectionIssue['severity'], string> = {
+  critical: 'clients.issueSeverityCritical',
+  warning: 'clients.issueSeverityWarning',
+  info: 'clients.issueSeverityInfo',
 };
 
 const languageConfig: Record<string, { color: string; label: string }> = {
@@ -117,6 +148,8 @@ function getLoadErrorMessage(error: unknown): string {
   }
   return DEFAULT_LOAD_ERROR;
 }
+
+const displayMetadata = (value: string | null | undefined) => value || '-';
 
 /* ═══════════════════════════════════════════
    ClientsPage
@@ -249,7 +282,7 @@ const ClientsPage = () => {
     const instances = Array.from(
       new Map(
         clusterConnections.map((connection) => [
-          `${connection.type}:${connection.clientId}`,
+          `${connection.type}:${connection.clientId ?? connection.address ?? connection.groupOrTopic}`,
           connection,
         ]),
       ).values(),
@@ -265,15 +298,53 @@ const ClientsPage = () => {
     };
   }, [clusterConnections]);
 
+  const clientDiagnostics = useMemo(
+    () => analyzeClientConnections(clusterConnections),
+    [clusterConnections],
+  );
+
+  const diagnosticProgressStatus =
+    clientDiagnostics.status === 'critical'
+      ? 'exception'
+      : clientDiagnostics.status === 'healthy'
+        ? 'success'
+        : 'normal';
+
+  const diagnosticStrokeColor =
+    clientDiagnostics.status === 'critical'
+      ? '#ff4d4f'
+      : clientDiagnostics.status === 'warning'
+        ? '#faad14'
+        : '#52c41a';
+
+  const diagnosticSummaryItems = [
+    {
+      key: 'resources',
+      title: t('clients.diagnosticResources'),
+      value: clientDiagnostics.summary.resourceCount,
+    },
+    {
+      key: 'mixedProtocol',
+      title: t('clients.diagnosticMixedProtocols'),
+      value: clientDiagnostics.summary.mixedProtocolResourceCount,
+    },
+    {
+      key: 'mixedVersion',
+      title: t('clients.diagnosticVersionSkews'),
+      value: clientDiagnostics.summary.mixedVersionResourceCount,
+    },
+    {
+      key: 'singleConsumer',
+      title: t('clients.diagnosticSingleConsumers'),
+      value: clientDiagnostics.summary.singleConsumerGroupCount,
+    },
+  ];
+
   /* ─── Filtered data (search + cluster only, table handles column filters) ─── */
-  const filtered = useMemo(() => {
-    const normalizedSearch = search.toLowerCase();
-    return clusterConnections.filter(
-      (connection) =>
-        connection.clientId.toLowerCase().includes(normalizedSearch) ||
-        connection.address?.toLowerCase().includes(normalizedSearch),
-    );
-  }, [clusterConnections, search]);
+  const filtered = useMemo(
+    () => clusterConnections.filter((connection) => matchesClientSearch(connection, search)),
+    [clusterConnections, search],
+  );
 
   const exportConnections = useMemo(() => {
     const matches = (key: string, value: string) => {
@@ -319,16 +390,16 @@ const ClientsPage = () => {
       key: 'clientId',
       width: 260,
       ellipsis: true,
-      render: (id: string) => (
+      render: (id?: string | null) => (
         <Text
-          copyable
+          copyable={Boolean(id)}
           style={{
             fontSize: 14,
             fontFamily: 'monospace',
             whiteSpace: 'nowrap',
           }}
         >
-          {id}
+          {displayMetadata(id)}
         </Text>
       ),
     },
@@ -379,8 +450,8 @@ const ClientsPage = () => {
       dataIndex: 'address',
       key: 'address',
       width: 180,
-      render: (addr: string) => (
-        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{addr}</Text>
+      render: (addr?: string | null) => (
+        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{displayMetadata(addr)}</Text>
       ),
     },
     {
@@ -430,6 +501,146 @@ const ClientsPage = () => {
         >
           {t('common.detail')}
         </Button>
+      ),
+    },
+  ];
+
+  const resourceColumns: ColumnsType<ClientResourceSummary> = [
+    {
+      title: t('common.status'),
+      dataIndex: 'status',
+      key: 'status',
+      width: 90,
+      render: (status: ClientResourceSummary['status']) => (
+        <Tag color={healthStatusColor[status]}>{t(healthStatusTextKey[status])}</Tag>
+      ),
+    },
+    {
+      title: t('clients.groupOrTopic'),
+      key: 'resource',
+      width: 220,
+      render: (_: unknown, record) => (
+        <Space direction="vertical" size={2}>
+          <Text strong>{record.resource}</Text>
+          <Text type="secondary">{record.type}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: t('clients.diagnosticClients'),
+      key: 'clients',
+      width: 170,
+      render: (_: unknown, record) => (
+        <Space size={4} wrap>
+          <Tag>
+            {record.uniqueClientCount} {t('clients.diagnosticClientUnit')}
+          </Tag>
+          <Tag>
+            {record.uniqueAddressCount} {t('clients.diagnosticAddressUnit')}
+          </Tag>
+        </Space>
+      ),
+    },
+    {
+      title: t('clients.protocol'),
+      dataIndex: 'protocols',
+      key: 'protocols',
+      width: 160,
+      render: (protocols: string[]) => (
+        <Space size={4} wrap>
+          {protocols.map((protocol) => (
+            <Tag key={protocol} color={protocolConfig[protocol]?.color ?? 'default'}>
+              {protocol}
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: `${t('clients.language')} / ${t('common.version')}`,
+      key: 'versions',
+      width: 220,
+      render: (_: unknown, record) => (
+        <Space size={4} wrap>
+          {record.languages.map((language) => (
+            <Tag key={language} color={languageConfig[language]?.color ?? 'default'}>
+              {languageConfig[language]?.label ?? language}
+            </Tag>
+          ))}
+          {record.versions.map((version) => (
+            <Text key={version} code>
+              {version}
+            </Text>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: t('clients.diagnosticIssues'),
+      dataIndex: 'issueCount',
+      key: 'issueCount',
+      width: 90,
+      render: (count: number) => <Tag color={count > 0 ? 'gold' : 'green'}>{count}</Tag>,
+    },
+  ];
+
+  const issueColumns: ColumnsType<ClientConnectionIssue> = [
+    {
+      title: t('clients.diagnosticSeverity'),
+      dataIndex: 'severity',
+      key: 'severity',
+      width: 90,
+      render: (severity: ClientConnectionIssue['severity']) => (
+        <Tag color={issueSeverityColor[severity]}>{t(issueSeverityTextKey[severity])}</Tag>
+      ),
+    },
+    {
+      title: t('clients.diagnosticIssue'),
+      key: 'issue',
+      width: 260,
+      render: (_: unknown, record) => (
+        <Space direction="vertical" size={2}>
+          <Text strong>{record.title}</Text>
+          <Text type="secondary">{record.description}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: t('clients.clientId'),
+      dataIndex: 'clientId',
+      key: 'clientId',
+      width: 180,
+      render: (clientId?: string) =>
+        clientId ? (
+          <Text style={{ fontFamily: 'monospace' }}>{clientId}</Text>
+        ) : (
+          <Text type="secondary">-</Text>
+        ),
+    },
+    {
+      title: t('clients.groupOrTopic'),
+      dataIndex: 'resource',
+      key: 'resource',
+      width: 160,
+      render: (resource?: string) => resource || '-',
+    },
+    {
+      title: t('clients.diagnosticEvidence'),
+      dataIndex: 'evidence',
+      key: 'evidence',
+      width: 220,
+      render: (evidence: string[]) => (
+        <Space size={4} wrap>
+          {evidence.length === 0 ? (
+            <Text type="secondary">-</Text>
+          ) : (
+            evidence.map((item) => (
+              <Text key={item} code>
+                {item}
+              </Text>
+            ))
+          )}
+        </Space>
       ),
     },
   ];
@@ -582,13 +793,97 @@ const ClientsPage = () => {
         </div>
       </Flex>
 
+      <div
+        data-testid="client-connection-diagnostics"
+        style={{
+          marginBottom: 16,
+          padding: '16px',
+          background: token.colorBgContainer,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: token.borderRadiusLG,
+        }}
+      >
+        <Flex gap={20} align="center" wrap="wrap" style={{ marginBottom: 16 }}>
+          <Progress
+            type="circle"
+            percent={clientDiagnostics.score}
+            size={92}
+            status={diagnosticProgressStatus}
+            strokeColor={diagnosticStrokeColor}
+            format={(percent) => `${percent}`}
+          />
+          <div style={{ minWidth: 220, flex: '1 1 260px' }}>
+            <Typography.Title level={5} style={{ margin: 0 }}>
+              {t('clients.diagnostics')}
+            </Typography.Title>
+            <Text type="secondary">{clientDiagnostics.statusText}</Text>
+            <div style={{ marginTop: 8 }}>
+              <Tag color={clientDiagnostics.statusColor}>
+                {t('clients.diagnosticIssues')}: {clientDiagnostics.issues.length}
+              </Tag>
+              <Tag>
+                {t('clients.diagnosticUniqueClients')}:{' '}
+                {clientDiagnostics.summary.uniqueClientCount}
+              </Tag>
+              <Tag>
+                {t('clients.diagnosticUniqueAddresses')}:{' '}
+                {clientDiagnostics.summary.uniqueAddressCount}
+              </Tag>
+            </div>
+          </div>
+          <Flex gap={16} wrap="wrap" style={{ flex: '2 1 440px' }}>
+            {diagnosticSummaryItems.map((item) => (
+              <div key={item.key} style={{ minWidth: 126 }}>
+                <Statistic title={item.title} value={item.value} valueStyle={{ fontSize: 22 }} />
+              </div>
+            ))}
+          </Flex>
+        </Flex>
+
+        <Table<ClientResourceSummary>
+          columns={resourceColumns}
+          dataSource={clientDiagnostics.resources}
+          rowKey="id"
+          pagination={false}
+          size="small"
+          scroll={{ x: tableScrollX(resourceColumns) }}
+          locale={{ emptyText: t('common.noData') }}
+          style={{ marginBottom: 12 }}
+        />
+
+        {clientDiagnostics.issues.length > 0 ? (
+          <Table<ClientConnectionIssue>
+            columns={issueColumns}
+            dataSource={clientDiagnostics.issues}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            scroll={{ x: tableScrollX(issueColumns) }}
+            style={{ marginBottom: 12 }}
+          />
+        ) : (
+          <Alert type="success" showIcon message={t('clients.diagnosticHealthyMessage')} />
+        )}
+
+        <div style={{ marginTop: 12 }}>
+          <Text strong>{t('clients.diagnosticRecommendations')}</Text>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+            {clientDiagnostics.recommendations.map((item) => (
+              <li key={item}>
+                <Text>{item}</Text>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
       {/* ─── Table ─── */}
       <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={filtered}
           rowKey={(connection) =>
-            `${connection.type}:${connection.clientId}:${connection.groupOrTopic}`
+            `${connection.type}:${connection.clientId ?? ''}:${connection.address ?? ''}:${connection.groupOrTopic}`
           }
           loading={loading}
           onChange={(pagination, filters, _sorter, extra) => {
@@ -612,7 +907,7 @@ const ClientsPage = () => {
       </Card>
 
       <Modal
-        title={t('clients.detailTitle', { id: selectedConnection?.clientId ?? '' })}
+        title={t('clients.detailTitle', { id: displayMetadata(selectedConnection?.clientId) })}
         open={Boolean(selectedConnection)}
         onCancel={() => setSelectedConnection(null)}
         footer={<Button onClick={() => setSelectedConnection(null)}>{t('common.close')}</Button>}
@@ -622,8 +917,11 @@ const ClientsPage = () => {
         {selectedConnection && (
           <Descriptions column={1} bordered size="small">
             <Descriptions.Item label={t('clients.clientId')}>
-              <Text copyable style={{ fontFamily: 'monospace' }}>
-                {selectedConnection.clientId}
+              <Text
+                copyable={Boolean(selectedConnection.clientId)}
+                style={{ fontFamily: 'monospace' }}
+              >
+                {displayMetadata(selectedConnection.clientId)}
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.cluster')}>
@@ -641,7 +939,9 @@ const ClientsPage = () => {
               </Tag>
             </Descriptions.Item>
             <Descriptions.Item label={t('common.address')}>
-              <Text style={{ fontFamily: 'monospace' }}>{selectedConnection.address}</Text>
+              <Text style={{ fontFamily: 'monospace' }}>
+                {displayMetadata(selectedConnection.address)}
+              </Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.language')}>
               <Tag color={languageConfig[selectedConnection.language]?.color ?? 'default'}>

@@ -39,6 +39,7 @@ import org.apache.rocketmq.studio.settings.SettingsRepository;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,11 +52,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -73,20 +69,18 @@ public class InstanceService {
     private final RegionNames regionNames;
 
     static final int COUNT_PARALLELISM = 8;
+    static final int COUNT_QUEUE_CAPACITY = 128;
     static final long COUNT_TIMEOUT_SECONDS = 3;
     private static final int MAX_BATCH_FAILURE_MESSAGE_LENGTH = 500;
     static final int MAX_CLOUD_IMPORT_FAILURE_DETAILS = 100;
     static final int MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH = 500;
 
-    private final ExecutorService countExecutor = Executors.newFixedThreadPool(COUNT_PARALLELISM, runnable -> {
-        Thread thread = new Thread(runnable, "instance-resource-counts");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final InstanceResourceCountRunner countRunner = new InstanceResourceCountRunner(
+            COUNT_PARALLELISM, COUNT_QUEUE_CAPACITY, COUNT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
     @PreDestroy
-    void shutdownCountExecutor() {
-        countExecutor.shutdownNow();
+    void shutdownCountRunner() {
+        countRunner.close();
     }
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
@@ -124,42 +118,42 @@ public class InstanceService {
         if (instances.isEmpty()) {
             return;
         }
-        List<Callable<Void>> tasks = instances.stream()
-                .<Callable<Void>>map(instance -> () -> {
-                    fillCounts(instance);
-                    return null;
-                })
-                .toList();
-        List<Future<Void>> futures;
-        try {
-            // A single deadline for the whole batch. Waiting per future would let one hung
-            // vendor add COUNT_TIMEOUT_SECONDS to the response for every instance.
-            futures = countExecutor.invokeAll(tasks, COUNT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            instances.forEach(instance -> instance.setResourceCountsAvailable(false));
-            return;
-        }
-        for (int i = 0; i < futures.size(); i++) {
-            InstanceVO instance = instances.get(i);
-            Future<Void> future = futures.get(i);
-            if (future.isCancelled()) {
-                // Missed the shared deadline; invokeAll already interrupted the task.
-                instance.setResourceCountsAvailable(false);
-                log.warn("Resource counts timed out after {}s for instance {}",
-                        COUNT_TIMEOUT_SECONDS, instance.getId());
-            } else {
-                try {
-                    future.get();
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    instance.setResourceCountsAvailable(false);
-                } catch (ExecutionException ex) {
-                    instance.setResourceCountsAvailable(false);
-                    log.warn("Failed to load resource counts for instance {}: {}",
-                            instance.getId(), ex.getMessage());
-                }
+        List<InstanceResourceCountRunner.CountOutcome> outcomes =
+                countRunner.countAll(instances, this::loadCounts);
+        int rejected = 0;
+        int timedOut = 0;
+        int failed = 0;
+        for (int index = 0; index < instances.size(); index++) {
+            InstanceVO instance = instances.get(index);
+            InstanceResourceCountRunner.CountOutcome outcome = outcomes.get(index);
+            if (outcome.available()) {
+                applyCounts(instance, outcome.counts());
+                continue;
             }
+
+            clearCounts(instance);
+            switch (outcome.status()) {
+                case REJECTED -> rejected++;
+                case TIMED_OUT -> timedOut++;
+                case FAILED -> {
+                    failed++;
+                    log.warn("Failed to load resource counts for instance {}: {}",
+                            instance.getId(), rootMessage(outcome.failure()));
+                }
+                case INTERRUPTED -> log.debug(
+                        "Resource count lookup interrupted for instance {}", instance.getId());
+                case SUCCESS -> throw new IllegalStateException("available count outcome has no values");
+            }
+        }
+        if (timedOut > 0) {
+            log.warn("Resource count deadline reached after {}s for {} instance(s)",
+                    COUNT_TIMEOUT_SECONDS, timedOut);
+        }
+        if (rejected > 0) {
+            log.warn("Resource count executor saturated; {} instance(s) marked unavailable", rejected);
+        }
+        if (failed > 0) {
+            log.debug("Resource count lookup failed for {} instance(s)", failed);
         }
     }
 
@@ -167,18 +161,36 @@ public class InstanceService {
      * Resource counts live on the vendor side (cloud APIs) or in the local tables (Apache),
      * so resolve them uniformly through the vendor provider.
      */
-    private void fillCounts(InstanceVO instance) {
+    private InstanceResourceCountRunner.ResourceCounts loadCounts(InstanceVO instance) {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
-        try {
-            InstanceProvider provider = providerRegistry.forVendor(vendor);
-            instance.setTopicCount(provider.countTopics(String.valueOf(instance.getId())));
-            instance.setConsumerGroupCount(provider.countGroups(String.valueOf(instance.getId())));
-            instance.setResourceCountsAvailable(true);
-        } catch (RuntimeException ex) {
-            instance.setResourceCountsAvailable(false);
-            log.warn("Failed to load resource counts for instance {}: {}",
-                    instance.getId(), ex.getMessage());
+        InstanceProvider provider = providerRegistry.forVendor(vendor);
+        int topicCount = provider.countTopics(String.valueOf(instance.getId()));
+        int consumerGroupCount = provider.countGroups(String.valueOf(instance.getId()));
+        return new InstanceResourceCountRunner.ResourceCounts(topicCount, consumerGroupCount);
+    }
+
+    private static void applyCounts(InstanceVO instance, InstanceResourceCountRunner.ResourceCounts counts) {
+        instance.setTopicCount(counts.topicCount());
+        instance.setConsumerGroupCount(counts.consumerGroupCount());
+        instance.setResourceCountsAvailable(true);
+    }
+
+    private static void clearCounts(InstanceVO instance) {
+        instance.setTopicCount(0);
+        instance.setConsumerGroupCount(0);
+        instance.setResourceCountsAvailable(false);
+    }
+
+    private static String rootMessage(Throwable failure) {
+        if (failure == null) {
+            return "unknown failure";
         }
+        Throwable current = failure;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return StringUtils.hasText(message) ? message : current.getClass().getSimpleName();
     }
 
     public InstanceVO createInstance(InstanceVO instance) {
@@ -194,7 +206,15 @@ public class InstanceService {
         requireUniqueInstanceName(instance.getName(), null);
         instance.setGmtCreate(LocalDateTime.now());
         instance.setGmtModified(LocalDateTime.now());
-        InstanceVO saved = instanceRepository.save(instance);
+        InstanceVO saved;
+        try {
+            saved = instanceRepository.save(instance);
+        } catch (DataIntegrityViolationException exception) {
+            if (vendor != InstanceVendor.APACHE && isCloudCredentialReferenceViolation(exception)) {
+                throw new BusinessException(409, "Cloud credential no longer exists: " + instance.getCredentialId());
+            }
+            throw exception;
+        }
         recordAudit("CREATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
@@ -679,6 +699,26 @@ public class InstanceService {
     private String instanceAuditDetail(InstanceVO instance) {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         return "name=" + instance.getName() + ", vendor=" + vendor + ", type=" + instance.getType();
+    }
+
+    private boolean isCloudCredentialReferenceViolation(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                boolean foreignKeyFailure = lower.contains("foreign key")
+                        || lower.contains("referential integrity");
+                boolean credentialReference = lower.contains("credential_id")
+                        || lower.contains("rmq_cloud_credential");
+                if (lower.contains("fk_instance_cloud_credential")
+                        || foreignKeyFailure && credentialReference) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private InstanceVO copyOf(InstanceVO instance) {

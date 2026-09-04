@@ -396,6 +396,31 @@ describe('DLQ page', () => {
     expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
   });
 
+  it('submits one resend when confirm is clicked twice before rendering', async () => {
+    let resolveResend!: (result: DLQResendResult) => void;
+    vi.mocked(messageService.resendDLQ).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveResend = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    const confirm = screen.getByRole('button', { name: '确认重投' });
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+
+    expect(messageService.resendDLQ).toHaveBeenCalledTimes(1);
+    await act(async () => resolveResend({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
+  });
+
   it('warns when DLQ resend scans only part of the available queues', async () => {
     vi.mocked(messageService.resendDLQ).mockResolvedValue({
       matched: 3,

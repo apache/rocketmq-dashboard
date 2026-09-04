@@ -208,8 +208,6 @@ const collectAddressDuplicates = (routes: BrokerRoute[]): Set<string> => {
 
 const distributionIssues = (
   route: BrokerRoute,
-  writeSkew: RouteQueueSkew,
-  readSkew: RouteQueueSkew,
   duplicateAddresses: Set<string>,
 ): RouteDiagnosticIssue[] => {
   const brokerName = route.brokerName || 'unknown';
@@ -300,30 +298,6 @@ const distributionIssues = (
         'warning',
         '读写队列不一致',
         '该 Broker 的读队列数和写队列数不同，扩缩容或迁移后需要确认配置是否符合预期。',
-        brokerName,
-      ),
-    );
-  }
-
-  if (hasSkew(writeSkew)) {
-    issues.push(
-      issue(
-        'WRITE_QUEUE_SKEW',
-        'warning',
-        '写队列分布不均',
-        '不同 Broker 的写队列数差距较大，生产流量可能无法均匀分摊。',
-        brokerName,
-      ),
-    );
-  }
-
-  if (hasSkew(readSkew)) {
-    issues.push(
-      issue(
-        'READ_QUEUE_SKEW',
-        'warning',
-        '读队列分布不均',
-        '不同 Broker 的读队列数差距较大，消费者负载可能无法均匀分摊。',
         brokerName,
       ),
     );
@@ -421,7 +395,7 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
 
   const distributions = routes.map<RouteDistribution>((route, index) => {
     const brokerIds = routeBrokerIds(route);
-    const routeIssues = distributionIssues(route, writeSkew, readSkew, duplicateAddresses);
+    const routeIssues = distributionIssues(route, duplicateAddresses);
 
     return {
       key: `${route.brokerName || 'broker'}-${index}`,
@@ -444,6 +418,26 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
   });
 
   const issues = distributions.flatMap((distribution) => distribution.issues);
+  if (hasSkew(writeSkew)) {
+    issues.push(
+      issue(
+        'WRITE_QUEUE_SKEW',
+        'warning',
+        '写队列分布不均',
+        '不同 Broker 的写队列数差距较大，生产流量可能无法均匀分摊。',
+      ),
+    );
+  }
+  if (hasSkew(readSkew)) {
+    issues.push(
+      issue(
+        'READ_QUEUE_SKEW',
+        'warning',
+        '读队列分布不均',
+        '不同 Broker 的读队列数差距较大，消费者负载可能无法均匀分摊。',
+      ),
+    );
+  }
   const writableBrokerCount = distributions.filter(
     (distribution) => distribution.writable && distribution.writeQueues > 0,
   ).length;

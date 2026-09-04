@@ -65,6 +65,8 @@ public class AlertSchemaMigration implements ApplicationRunner {
                     + "gmt_modified DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
                     + "domain VARCHAR(16), rule_id BIGINT, instance_id VARCHAR(128), "
                     + "labels_json TEXT, starts_at DATETIME NOT NULL, ends_at DATETIME NOT NULL, reason VARCHAR(512), "
+                    + "recurrence VARCHAR(16) NOT NULL DEFAULT 'ONCE', time_zone VARCHAR(64), "
+                    + "recurrence_days_json VARCHAR(64), recurrence_until DATETIME, "
                     + "created_by VARCHAR(128) NOT NULL)"),
             new Table("rmq_alert_notification_outbox", "CREATE TABLE rmq_alert_notification_outbox ("
                     + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
@@ -98,6 +100,10 @@ public class AlertSchemaMigration implements ApplicationRunner {
             new Column("rmq_system_alert", "suppression_cause_alert_id", "BIGINT"),
             new Column("rmq_system_alert", "suppression_reason", "VARCHAR(512)"),
             new Column("rmq_system_alert", "labels_json", "TEXT"),
+            new Column("rmq_alert_silence", "recurrence", "VARCHAR(16) NOT NULL DEFAULT 'ONCE'"),
+            new Column("rmq_alert_silence", "time_zone", "VARCHAR(64)"),
+            new Column("rmq_alert_silence", "recurrence_days_json", "VARCHAR(64)"),
+            new Column("rmq_alert_silence", "recurrence_until", "DATETIME"),
             new Column("rmq_alert_notification_outbox", "gmt_create",
                     "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             new Column("rmq_alert_notification_outbox", "gmt_modified",
@@ -118,6 +124,8 @@ public class AlertSchemaMigration implements ApplicationRunner {
             new Index("rmq_alert_silence", "idx_alert_silence_active", "starts_at, ends_at"),
             new Index("rmq_alert_silence", "idx_alert_silence_expiry", "ends_at, starts_at"),
             new Index("rmq_alert_silence", "idx_alert_silence_scope", "domain, rule_id, instance_id"),
+            new Index("rmq_alert_silence", "idx_alert_silence_recurrence",
+                    "recurrence, recurrence_until, starts_at"),
             new Index("rmq_alert_notification_outbox", "idx_alert_notification_ready", "status, next_attempt_at"),
             new Index("rmq_alert_notification_outbox", "idx_alert_notification_delivered_retention",
                     "status, delivered_at"),

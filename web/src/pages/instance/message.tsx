@@ -71,6 +71,10 @@ import {
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import {
+  readMessageTraceTopic,
+  writeMessageTraceTopic,
+} from '../../utils/messageTraceTopicStorage';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeMessageTrace,
@@ -397,7 +401,9 @@ const MessagePageContent = ({
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceQueryMode, setTraceQueryMode] = useState<'msgid' | 'key'>('msgid');
   const [traceQueryValue, setTraceQueryValue] = useState('');
-  const [customTraceTopic, setCustomTraceTopic] = useState('');
+  const [customTraceTopic, setCustomTraceTopic] = useState(() =>
+    readMessageTraceTopic(selectedInstanceId),
+  );
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
@@ -415,6 +421,10 @@ const MessagePageContent = ({
     },
     [],
   );
+
+  useEffect(() => {
+    writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
+  }, [customTraceTopic, selectedInstanceId]);
 
   const currentQueryParams: MessageQuery =
     queryMode === 'topic'
@@ -562,6 +572,7 @@ const MessagePageContent = ({
     handleQueryModeChange('msgid');
     setSelectedTopic(record.topic);
     setMsgIdInput(record.msgId);
+    setCustomTraceTopic(record.traceTopic?.trim() || '');
     setHistoryDrawerOpen(false);
     void executeQuery('msgid', { topic: record.topic, msgId: record.msgId });
   };
@@ -577,15 +588,24 @@ const MessagePageContent = ({
     setTraceError(null);
     setTraceQueryMode('msgid');
     setTraceQueryValue(record.msgId);
-    const cacheKey = JSON.stringify([selectedInstanceId, record.topic, record.msgId]);
+    const normalizedTraceTopic = customTraceTopic.trim();
+    const cacheKey = JSON.stringify([
+      selectedInstanceId,
+      record.topic,
+      record.msgId,
+      normalizedTraceTopic,
+    ]);
     let traceRequest = traceCacheRef.current.get(cacheKey);
     if (!traceRequest) {
-      traceRequest = getMessageTrace(record.msgId, selectedInstanceId, record.topic).catch(
-        (error) => {
-          traceCacheRef.current.delete(cacheKey);
-          throw error;
-        },
-      );
+      traceRequest = getMessageTrace(
+        record.msgId,
+        selectedInstanceId,
+        record.topic,
+        normalizedTraceTopic,
+      ).catch((error) => {
+        traceCacheRef.current.delete(cacheKey);
+        throw error;
+      });
       traceCacheRef.current.set(cacheKey, traceRequest);
     }
     try {

@@ -29,6 +29,7 @@ import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
@@ -390,25 +391,31 @@ class ToolGatewayServiceTest {
         when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         TopicVO topic = topic();
         topic.setRemark("do-not-expose");
-        when(metadataService.listTopics("cluster-v5", "NORMAL", "order"))
-                .thenReturn(List.of(topic));
+        when(metadataService.listTopicsPage("cluster-v5", null, "NORMAL", "order", 2, 20))
+                .thenReturn(PageResult.of(List.of(topic), 101, 2, 20));
 
         Object output = gateway.execute("rmq.topic.list", Map.of(
                 "cluster", "cluster-v5",
                 "type", "NORMAL",
-                "search", "order"));
+                "search", "order",
+                "page", 2,
+                "pageSize", 20));
 
-        assertThat(output).isEqualTo(List.of(Map.of(
-                "name", "order-topic",
-                "namespace", "default",
-                "clusterId", "cluster-v5",
-                "type", "NORMAL",
-                "writeQueues", 8,
-                "readQueues", 8,
-                "perm", "RW",
-                "messageCount", 1200L,
-                "tps", 23.5D,
-                "consumerGroupCount", 3)));
+        assertThat(output).isEqualTo(Map.of(
+                "items", List.of(Map.of(
+                        "name", "order-topic",
+                        "namespace", "default",
+                        "clusterId", "cluster-v5",
+                        "type", "NORMAL",
+                        "writeQueues", 8,
+                        "readQueues", 8,
+                        "perm", "RW",
+                        "messageCount", 1200L,
+                        "tps", 23.5D,
+                        "consumerGroupCount", 3)),
+                "total", 101L,
+                "page", 2,
+                "size", 20));
         assertThat(output.toString()).doesNotContain("do-not-expose");
     }
 
@@ -425,22 +432,29 @@ class ToolGatewayServiceTest {
         when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         ConsumerGroupVO group = consumerGroup();
         group.setDelaySeconds(30);
-        when(metadataService.listConsumerGroups("cluster-v5", "order")).thenReturn(List.of(group));
+        when(metadataService.listConsumerGroupsPage("cluster-v5", null, "order", 2, 20))
+                .thenReturn(PageResult.of(List.of(group), 101, 2, 20));
 
         Object output = gateway.execute("rmq.group.list", Map.of(
                 "cluster", "cluster-v5",
-                "search", "order"));
+                "search", "order",
+                "page", 2,
+                "pageSize", 20));
 
-        assertThat(output).isEqualTo(List.of(Map.of(
-                "name", "cg-order",
-                "namespace", "default",
-                "clusterId", "cluster-v5",
-                "subscriptionMode", "Push",
-                "consumeType", "CLUSTERING",
-                "onlineInstances", 2,
-                "totalLag", 42L,
-                "subscribedTopics", List.of("order-topic"),
-                "retryMaxTimes", 16)));
+        assertThat(output).isEqualTo(Map.of(
+                "items", List.of(Map.of(
+                        "name", "cg-order",
+                        "namespace", "default",
+                        "clusterId", "cluster-v5",
+                        "subscriptionMode", "Push",
+                        "consumeType", "CLUSTERING",
+                        "onlineInstances", 2,
+                        "totalLag", 42L,
+                        "subscribedTopics", List.of("order-topic"),
+                        "retryMaxTimes", 16)),
+                "total", 101L,
+                "page", 2,
+                "size", 20));
         assertThat(output.toString()).doesNotContain("delaySeconds");
     }
 
@@ -454,26 +468,32 @@ class ToolGatewayServiceTest {
 
     @Test
     void executesAlertRuleListThroughADataMinimizingProjection() {
-        when(alertService.listRules()).thenReturn(List.of(
-                alertRule(1L, "High Lag", "rocketmq_consumer_lag_messages", true),
-                alertRule(2L, "Broker Down", "up", false)));
+        when(alertService.listRules("  LAG  ", true, 2, 20)).thenReturn(PageResult.of(
+                List.of(alertRule(1L, "High Lag", "rocketmq_consumer_lag_messages", true)),
+                101, 2, 20));
 
         Object output = gateway.execute("rmq.alert.rule.list", Map.of(
                 "cluster", "cluster-v5",
                 "search", "  LAG  ",
-                "enabled", true));
-
-        assertThat(output).isEqualTo(List.of(Map.of(
-                "id", 1L,
-                "name", "High Lag",
-                "metric", "rocketmq_consumer_lag_messages",
-                "operator", ">",
-                "threshold", 100000D,
-                "thresholdUnit", "messages",
-                "duration", "5m",
-                "channels", List.of("email"),
                 "enabled", true,
-                "description", "Consumer lag is high")));
+                "page", 2,
+                "pageSize", 20));
+
+        assertThat(output).isEqualTo(Map.of(
+                "items", List.of(Map.of(
+                        "id", 1L,
+                        "name", "High Lag",
+                        "metric", "rocketmq_consumer_lag_messages",
+                        "operator", ">",
+                        "threshold", 100000D,
+                        "thresholdUnit", "messages",
+                        "duration", "5m",
+                        "channels", List.of("email"),
+                        "enabled", true,
+                        "description", "Consumer lag is high")),
+                "total", 101L,
+                "page", 2,
+                "size", 20));
         assertThat(output.toString()).doesNotContain("lastTriggered");
     }
 

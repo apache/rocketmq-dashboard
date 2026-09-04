@@ -55,6 +55,7 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -913,6 +914,51 @@ class TencentInstanceProviderTest {
         assertThat(requests.get(1).getTaskRequestId())
                 .isEqualTo(requests.get(0).getTaskRequestId())
                 .isNotBlank();
+    }
+
+    @Test
+    void queryMessagesShouldReportTheProviderResultBudget() throws Exception {
+        // A full first page and a large TotalCount mean the provider stopped because it reached
+        // its result budget, not because Tencent returned the final page.
+        MessageItem[] page1Items = new MessageItem[TencentInstanceProvider.MESSAGE_LIMIT];
+        for (int i = 0; i < page1Items.length; i++) {
+            MessageItem item = new MessageItem();
+            item.setMsgId("MSG-" + (i + 1));
+            item.setProduceTime("2024-09-12 14:06:55,591");
+            page1Items[i] = item;
+        }
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setData(page1Items);
+        response.setTotalCount((long) TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT + 1L);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).hasSize(TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT);
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(client, org.mockito.Mockito.times(
+                        TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT
+                                / TencentInstanceProvider.MESSAGE_LIMIT))
+                .DescribeMessageList(any());
+    }
+
+    @Test
+    void queryMessagesShouldReportCompleteWhenTencentReturnsAShortPage() throws Exception {
+        MessageItem one = new MessageItem();
+        one.setMsgId("MSG-1");
+        one.setProduceTime("2024-09-12 14:06:55,591");
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setData(new MessageItem[]{one});
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).hasSize(1);
+        assertThat(result.mayBeTruncated()).isFalse();
     }
 
     @Test

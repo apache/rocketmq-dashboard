@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.common.util;
 
+import org.apache.rocketmq.common.MixAll;
+
 /**
  * Shared utility for identifying RocketMQ system consumer groups.
  *
@@ -39,15 +41,12 @@ public final class SystemGroupFilter {
         if (group == null || group.isEmpty()) {
             return true;
         }
-        return group.startsWith("CID_RMQ_SYS_")
+        return MixAll.isSysConsumerGroupPullMessage(group)
                 || group.startsWith("CID_ONSAPI_")
                 || group.startsWith("CID_SYS_")
                 || group.startsWith("CID_HOUSEKEEPING")
                 || group.startsWith("rmq_sys_")
                 || group.startsWith("%RETRY%")
-                || group.startsWith("%DLQ%")
-                || group.startsWith("TOOLS_CONSUMER")
-                || group.startsWith("FILTERSRV_CONSUMER")
-                || group.startsWith("SELF_TEST_");
+                || group.startsWith("%DLQ%");
     }
 }

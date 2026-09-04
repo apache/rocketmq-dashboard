@@ -1,4 +1,7 @@
 # Shared runtime dependencies
+# Note: a pinned dragonwell patch tag (e.g. 21.0.10-anolis) would be preferable for
+# reproducibility, but such tags are not reachable through the deployment registry
+# mirrors in use, so keep the rolling :21 tag until a verifiable pin is available.
 FROM alibabadragonwell/dragonwell:21 AS runtime-base
 WORKDIR /app
 # Node.js + agent CLIs for the claude-code / qoder agent providers.
