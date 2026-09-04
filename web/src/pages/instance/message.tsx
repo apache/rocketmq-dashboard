@@ -645,6 +645,10 @@ const MessagePageContent = ({
     traceGenerationRef.current = requestGeneration;
     const value = traceQueryValue.trim();
     if (!value) {
+      // The bump above already invalidated any in-flight trace load, so its guarded
+      // finally block will never reset traceLoading — stop it here instead.
+      setTraceData(null);
+      setTraceLoading(false);
       setTraceError(traceQueryMode === 'key' ? '请输入 Message Key' : '请输入 Message ID');
       return;
     }
