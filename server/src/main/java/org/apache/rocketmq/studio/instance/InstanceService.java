@@ -41,6 +41,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -605,9 +607,22 @@ public class InstanceService {
             throw new BusinessException(404, "InstanceVO not found: " + id);
         }
         removeDataSourceBindings(existing.getName());
-        releaseApacheEndpointIfUnused(existing, null);
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing));
+        releaseApacheEndpointAfterCommit(existing);
+    }
+
+    private void releaseApacheEndpointAfterCommit(InstanceVO existing) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            releaseApacheEndpointIfUnused(existing, null);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                releaseApacheEndpointIfUnused(existing, null);
+            }
+        });
     }
 
     /**
