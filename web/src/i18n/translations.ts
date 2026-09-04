@@ -1738,6 +1738,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.autoRefresh': { zh: '自动刷新', en: 'Auto Refresh' },
+  'consumer.createGroup': { zh: '创建 Group', en: 'Create Group' },
+  'consumer.autoRefreshTooltip': { zh: '开启后每 2 秒自动刷新列表', en: 'Refreshes the list every 2 seconds when enabled' },
+  'consumer.export': { zh: '导出', en: 'Export' },
+  'consumer.import': { zh: '导入', en: 'Import' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },

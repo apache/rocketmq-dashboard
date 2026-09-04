@@ -1454,10 +1454,10 @@ const ConsumerPageContent = ({
             disabled={!hasSelectedInstance || importing}
             onClick={() => importInputRef.current?.click()}
           >
-            导入
+            {t('consumer.import')}
           </Button>
           <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
-            导出
+            {t('consumer.export')}
           </Button>
           <Button
             type="primary"
@@ -1465,9 +1465,9 @@ const ConsumerPageContent = ({
             disabled={!hasSelectedInstance}
             onClick={() => setCreateModalOpen(true)}
           >
-            创建 Group
+            {t('consumer.createGroup')}
           </Button>
-          <Tooltip title="开启后每 2 秒自动刷新列表">
+          <Tooltip title={t('consumer.autoRefreshTooltip')}>
             <Button
               icon={<SyncOutlined spin={autoRefresh} />}
               type={autoRefresh ? 'primary' : 'default'}
@@ -1479,7 +1479,7 @@ const ConsumerPageContent = ({
                 if (next) triggerRefresh(true);
               }}
             >
-              自动刷新
+              {t('consumer.autoRefresh')}
             </Button>
           </Tooltip>
         </Space>
