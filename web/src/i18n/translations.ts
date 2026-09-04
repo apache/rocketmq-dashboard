@@ -1893,6 +1893,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.permRO': { zh: '只读', en: 'Read-Only' },
+  'topic.permRW': { zh: '读写', en: 'Read-Write' },
+  'topic.permWO': { zh: '只写', en: 'Write-Only' },
+  'topic.permission': { zh: '权限', en: 'Permission' },
+  'topic.queuesPerBroker': { zh: '每个 Broker 节点 8 个队列', en: '8 queues per broker node' },
+  'topic.readQueues': { zh: '读队列数', en: 'Read Queues' },
+  'topic.remarkPlaceholder': { zh: '可选，描述 Topic 用途', en: 'Optional: describe the topic purpose' },
+  'topic.writeQueues': { zh: '写队列数', en: 'Write Queues' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {

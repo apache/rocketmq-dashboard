@@ -1725,20 +1725,20 @@ const TopicPage = () => {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label="写队列数"
+                  label={t('topic.writeQueues')}
                   name="writeQueues"
                   rules={[{ required: true }]}
-                  extra="每个 Broker 节点 8 个队列"
+                  extra={t('topic.queuesPerBroker')}
                 >
                   <InputNumber min={1} max={256} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
-                  label="读队列数"
+                  label={t('topic.readQueues')}
                   name="readQueues"
                   rules={[{ required: true }]}
-                  extra="每个 Broker 节点 8 个队列"
+                  extra={t('topic.queuesPerBroker')}
                 >
                   <InputNumber min={1} max={256} style={{ width: '100%' }} />
                 </Form.Item>
@@ -1747,17 +1747,17 @@ const TopicPage = () => {
           )}
 
           {!isCloudInstance && (
-            <Form.Item label="权限" name="perm" rules={[{ required: true }]}>
+            <Form.Item label={t('topic.permission')} name="perm" rules={[{ required: true }]}>
               <Radio.Group>
-                <Radio.Button value="RW">读写</Radio.Button>
-                <Radio.Button value="RO">只读</Radio.Button>
-                <Radio.Button value="WO">只写</Radio.Button>
+                <Radio.Button value="RW">{t('topic.permRW')}</Radio.Button>
+                <Radio.Button value="RO">{t('topic.permRO')}</Radio.Button>
+                <Radio.Button value="WO">{t('topic.permWO')}</Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}
 
-          <Form.Item label="备注" name="remark">
-            <Input.TextArea rows={3} placeholder="可选，描述 Topic 用途" />
+          <Form.Item label={t('topic.remark')} name="remark">
+            <Input.TextArea rows={3} placeholder={t('topic.remarkPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>
