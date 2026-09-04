@@ -82,7 +82,7 @@ public class QueryHistoryService {
         query.setEndTime(endTime);
         query.setResultCount(resultCount);
         query.setResultSnapshot(resultSnapshot);
-        query.setClusterId(clusterId);
+        query.setClusterId(normalizeOptional(clusterId));
         query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
         LocalDateTime now = LocalDateTime.now(clock);
         query.setGmtCreate(now);
@@ -148,7 +148,7 @@ public class QueryHistoryService {
         query.setTopic(topic);
         query.setNodeCount(nodeCount);
         query.setConsumerCount(consumerCount);
-        query.setClusterId(clusterId);
+        query.setClusterId(normalizeOptional(clusterId));
         query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
         LocalDateTime now = LocalDateTime.now(clock);
         query.setGmtCreate(now);
@@ -286,6 +286,10 @@ public class QueryHistoryService {
      * Escapes LIKE wildcards so user-supplied search terms match literally instead of being
      * interpreted as {@code %}/{@code _} patterns.
      */
+    static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
+    }
+
     private static String escapeLike(String search) {
         if (!StringUtils.hasText(search)) {
             return search;

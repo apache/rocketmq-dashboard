@@ -165,4 +165,20 @@ class QueryHistoryServiceTest {
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
+
+    @Test
+    void storesNormalizedClusterIdWhenRecordingQueries() {
+        AuthenticatedUserContext.setUsername("alice");
+        service.recordMessageQuery(" cluster-a ", "TOPIC", "orders", null, "tag-a", "key-a",
+                1L, 2L, 3, null);
+        service.recordTraceQuery(" cluster-a ", "msg-1", "orders", 2, 1);
+
+        ArgumentCaptor<RmqMessageQuery> messageCaptor = ArgumentCaptor.forClass(RmqMessageQuery.class);
+        verify(messageQueryMapper).insert(messageCaptor.capture());
+        assertThat(messageCaptor.getValue().getClusterId()).isEqualTo("cluster-a");
+
+        ArgumentCaptor<RmqTraceQuery> traceCaptor = ArgumentCaptor.forClass(RmqTraceQuery.class);
+        verify(traceQueryMapper).insert(traceCaptor.capture());
+        assertThat(traceCaptor.getValue().getClusterId()).isEqualTo("cluster-a");
+    }
 }
