@@ -1448,6 +1448,57 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.optional': { zh: '可选', en: 'Optional' },
   'settings.aliyun': { zh: '阿里云', en: 'Aliyun' },
   'settings.tencent': { zh: '腾讯云', en: 'Tencent Cloud' },
+  'settings.credentialUsageAction': { zh: '使用清单', en: 'Usage inventory' },
+  'settings.credentialUsageTitle': { zh: '云凭据使用清单', en: 'Cloud credential usage inventory' },
+  'settings.credentialUsageLoad': { zh: '加载清单', en: 'Load inventory' },
+  'settings.credentialUsageExport': { zh: '导出当前结果', en: 'Export current results' },
+  'settings.credentialUsageLoadFailed': {
+    zh: '云凭据使用清单加载失败，请稍后重试',
+    en: 'Failed to load the cloud credential usage inventory. Please try again later.',
+  },
+  'settings.credentialUsagePrivacyTitle': {
+    zh: '只读元数据分析',
+    en: 'Read-only metadata analysis',
+  },
+  'settings.credentialUsagePrivacyDescription': {
+    zh: '清单只关联凭据名称、厂商与实例引用；不会读取或导出 AccessKey、SecretKey。',
+    en: 'The inventory only correlates credential names and vendors with instance references. AccessKey and SecretKey values are never read or exported.',
+  },
+  'settings.credentialUsageEmpty': {
+    zh: '按需加载全部凭据和实例，检查未使用凭据、厂商不匹配与悬空引用。',
+    en: 'Load credentials and instances on demand to find unused credentials, vendor mismatches, and orphan references.',
+  },
+  'settings.credentialUsageCredentials': { zh: '凭据总数', en: 'Credentials' },
+  'settings.credentialUsageCovered': { zh: '已关联实例', en: 'Linked instances' },
+  'settings.credentialUsageUsed': { zh: '已使用', en: 'Used' },
+  'settings.credentialUsageUnused': { zh: '未使用', en: 'Unused' },
+  'settings.credentialUsageMismatch': { zh: '引用异常', en: 'Reference issues' },
+  'settings.credentialUsageStatus': { zh: '使用状态', en: 'Usage status' },
+  'settings.credentialUsageInstances': { zh: '关联实例', en: 'Linked instances' },
+  'settings.credentialUsageInstance': { zh: '实例', en: 'Instance' },
+  'settings.credentialUsageRegions': { zh: '地域', en: 'Regions' },
+  'settings.credentialUsageMissingId': { zh: '缺失凭据 ID', en: 'Missing credential ID' },
+  'settings.credentialUsageAllStatuses': { zh: '全部使用状态', en: 'All usage statuses' },
+  'settings.credentialUsageSearch': {
+    zh: '搜索凭据、实例或地域',
+    en: 'Search credentials, instances, or regions',
+  },
+  'settings.credentialUsageFiltered': {
+    zh: '显示 {visible} / {total} 条凭据',
+    en: 'Showing {visible} of {total} credentials',
+  },
+  'settings.credentialUsageCredentialsTab': {
+    zh: '凭据使用情况 ({count})',
+    en: 'Credential usage ({count})',
+  },
+  'settings.credentialUsageOrphansTab': {
+    zh: '悬空实例引用 ({count})',
+    en: 'Orphan instance references ({count})',
+  },
+  'settings.credentialUsageAttention': {
+    zh: '发现 {mismatch} 个厂商不匹配凭据、{orphan} 个悬空实例引用，请核对实例配置。',
+    en: 'Found {mismatch} credentials with vendor mismatches and {orphan} orphan instance references. Review the instance configuration.',
+  },
   'settings.aiEngineModel': { zh: '执行引擎与模型', en: 'Execution engine and model' },
   'settings.aiEngine': { zh: '执行引擎', en: 'Execution engine' },
   'settings.aiEngineHelp': {

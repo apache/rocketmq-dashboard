@@ -30,7 +30,7 @@ import {
   Tag,
   message,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { ApartmentOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -43,6 +43,7 @@ import {
 } from '../../api/cloudCredential';
 import type { CloudCredential } from '../../api/cloudCredential';
 import type { InstanceVendor } from '../../api/instance';
+import CloudCredentialUsageDrawer from './CloudCredentialUsageDrawer';
 
 const vendorTagColor: Record<string, string> = {
   ALIYUN: 'orange',
@@ -73,6 +74,7 @@ export const CloudCredentialTab = () => {
   const [editingCredential, setEditingCredential] = useState<CloudCredential | null>(null);
   const [form] = Form.useForm<CredentialFormValues>();
   const [submitting, setSubmitting] = useState(false);
+  const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
   const requestSeqRef = useRef(0);
   const submitInFlightRef = useRef(false);
 
@@ -285,9 +287,19 @@ export const CloudCredentialTab = () => {
             ]}
           />
         </Flex>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} disabled={loading}>
-          {t('settings.addCredential')}
-        </Button>
+        <Space>
+          <Button icon={<ApartmentOutlined />} onClick={() => setUsageDrawerOpen(true)}>
+            {t('settings.credentialUsageAction')}
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openCreateModal}
+            disabled={loading}
+          >
+            {t('settings.addCredential')}
+          </Button>
+        </Space>
       </Flex>
 
       <Table<CloudCredential>
@@ -400,6 +412,10 @@ export const CloudCredentialTab = () => {
           </Form.Item>
         </Form>
       </Modal>
+      <CloudCredentialUsageDrawer
+        open={usageDrawerOpen}
+        onClose={() => setUsageDrawerOpen(false)}
+      />
     </>
   );
 };
