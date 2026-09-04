@@ -142,7 +142,9 @@ public class RocketMQMessageProvider implements MessageProvider {
         MessageExt messageExt = null;
         if (StringUtils.hasText(topic)) {
             try {
-                messageExt = adminExt.viewMessage(topic, msgId);
+                if (isWithinKnownBrokerTopology(adminExt, msgId)) {
+                    messageExt = adminExt.viewMessage(topic, msgId);
+                }
             } catch (Exception e) {
                 log.warn("viewMessage(topic={}, msgId={}) failed: {}", topic, msgId, e.getMessage());
             }
@@ -188,6 +190,29 @@ public class RocketMQMessageProvider implements MessageProvider {
         log.warn("Rejecting decoded broker address {} for msgId={} because it is not a known broker endpoint"
                 + " for the selected instance", brokerAddr, msgId);
         return null;
+    }
+
+    /**
+     * Offset-style message ids embed a broker address that {@code MQAdminImpl#viewMessage} connects
+     * to directly, so ids whose embedded address is outside the selected instance topology must be
+     * rejected before that call. Ids that do not decode as offset ids take MQAdminImpl's unique-key
+     * lookup, which resolves brokers from the topic route and needs no guard. When the topology
+     * itself cannot be verified, reject too — mirroring the fallback path's behavior — instead of
+     * handing an unverified address to remoting.
+     */
+    private boolean isWithinKnownBrokerTopology(DefaultMQAdminExt adminExt, String msgId) {
+        MessageId messageId;
+        try {
+            messageId = MessageDecoder.decodeMessageId(msgId);
+        } catch (Exception e) {
+            return true;
+        }
+        try {
+            return validatedBrokerAddr(adminExt, msgId, messageId) != null;
+        } catch (Exception e) {
+            log.warn("Could not verify broker topology for msgId={}: {}", msgId, e.getMessage());
+            return false;
+        }
     }
 
     private String decodedBrokerAddr(MessageId messageId) {
@@ -566,7 +591,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId, String topic) {
         if (StringUtils.hasText(topic)) {
             try {
-                MessageExt messageExt = adminExt.viewMessage(topic, msgId);
+                MessageExt messageExt = null;
+                if (isWithinKnownBrokerTopology(adminExt, msgId)) {
+                    messageExt = adminExt.viewMessage(topic, msgId);
+                }
                 if (messageExt != null) {
                     return messageExt.getStoreTimestamp();
                 }
