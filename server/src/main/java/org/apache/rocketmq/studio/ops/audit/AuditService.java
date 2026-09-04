@@ -179,6 +179,10 @@ public class AuditService {
         return new DateRange(start, end);
     }
 
+    private static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
+    }
+
     private LocalDateTime parseDate(String dateStr, boolean startOfDay, String parameterName) {
         if (dateStr == null || dateStr.isEmpty()) {
             return null;
