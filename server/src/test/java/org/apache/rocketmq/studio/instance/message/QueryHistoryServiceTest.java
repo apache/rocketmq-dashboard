@@ -165,4 +165,22 @@ class QueryHistoryServiceTest {
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
+
+    @Test
+    void trimsSearchTermsBeforeLikeMatching() {
+        assertThat(QueryHistoryService.normalizeSearch(null)).isNull();
+        assertThat(QueryHistoryService.normalizeSearch("")).isEmpty();
+        assertThat(QueryHistoryService.normalizeSearch("  orders ")).isEqualTo("orders");
+        assertThat(QueryHistoryService.normalizeSearch("  ")).isEmpty();
+    }
+
+    @Test
+    void escapesLikeWildcardsInSearchTerms() {
+        assertThat(QueryHistoryService.escapeLike("orders")).isEqualTo("orders");
+        assertThat(QueryHistoryService.escapeLike("100%")).isEqualTo("100\\%");
+        assertThat(QueryHistoryService.escapeLike("a_b")).isEqualTo("a\\_b");
+        assertThat(QueryHistoryService.escapeLike("a\\b")).isEqualTo("a\\\\b");
+        assertThat(QueryHistoryService.escapeLike("   ")).isEqualTo("   ");
+        assertThat(QueryHistoryService.escapeLike(null)).isNull();
+    }
 }

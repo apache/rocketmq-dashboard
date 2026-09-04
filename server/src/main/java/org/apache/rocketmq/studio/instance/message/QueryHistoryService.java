@@ -159,13 +159,14 @@ public class QueryHistoryService {
 
     public PageResult<MessageQueryHistoryVO> listMessageQueries(String clusterId, String queryType,
                                                                  String search, int page, int pageSize) {
-        String pattern = escapeLike(search);
+        String searchTerm = normalizeSearch(search);
+        String pattern = escapeLike(searchTerm);
         String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
         QueryWrapper<RmqMessageQuery> query = new QueryWrapper<RmqMessageQuery>()
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
                 .eq("queried_by", queriedBy)
                 .eq(StringUtils.hasText(queryType), "query_type", queryType)
-                .and(StringUtils.hasText(search), nested -> nested
+                .and(StringUtils.hasText(searchTerm), nested -> nested
                         .like("topic", pattern)
                         .or().like("msg_id", pattern)
                         .or().like("message_key", pattern)
@@ -179,12 +180,13 @@ public class QueryHistoryService {
 
     public PageResult<TraceQueryHistoryVO> listTraceQueries(String clusterId, String search,
                                                              int page, int pageSize) {
-        String pattern = escapeLike(search);
+        String searchTerm = normalizeSearch(search);
+        String pattern = escapeLike(searchTerm);
         String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
         QueryWrapper<RmqTraceQuery> query = new QueryWrapper<RmqTraceQuery>()
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
                 .eq("queried_by", queriedBy)
-                .and(StringUtils.hasText(search), nested -> nested
+                .and(StringUtils.hasText(searchTerm), nested -> nested
                         .like("topic", pattern)
                         .or().like("msg_id", pattern)
                         .or().like("queried_by", pattern))
@@ -286,7 +288,11 @@ public class QueryHistoryService {
      * Escapes LIKE wildcards so user-supplied search terms match literally instead of being
      * interpreted as {@code %}/{@code _} patterns.
      */
-    private static String escapeLike(String search) {
+    static String normalizeSearch(String search) {
+        return search == null ? null : search.trim();
+    }
+
+    static String escapeLike(String search) {
         if (!StringUtils.hasText(search)) {
             return search;
         }
