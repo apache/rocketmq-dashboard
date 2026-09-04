@@ -150,6 +150,75 @@ class LoginRateLimiterTest {
                 .isInstanceOf(BusinessException.class);
     }
 
+    @Test
+    void capacityShouldNotDisableRateLimitingForAnUntrackedUsernameTest() {
+        limiter = new LoginRateLimiter(clock, 2);
+        limiter.recordFailure("decoy-one");
+        limiter.recordFailure("decoy-two");
+
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            assertThatCode(() -> limiter.checkAllowed("operator")).doesNotThrowAnyException();
+            limiter.recordFailure("operator");
+        }
+
+        assertThat(limiter.trackedUsernameCount()).isEqualTo(2);
+        assertThatThrownBy(() -> limiter.checkAllowed("operator"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(429));
+    }
+
+    @Test
+    void trackerCapacityShouldRemainBoundedWhenAllSlotsAreLockedTest() {
+        limiter = new LoginRateLimiter(clock, 2);
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("operator");
+            limiter.recordFailure("second-user");
+        }
+
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("attacker");
+        }
+        assertThat(limiter.trackedUsernameCount()).isEqualTo(2);
+        assertThatThrownBy(() -> limiter.checkAllowed("operator"))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> limiter.checkAllowed("second-user"))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> limiter.checkAllowed("attacker"))
+                .isInstanceOf(BusinessException.class);
+        assertThat(limiter.activeOverflowBucketCount()).isEqualTo(1);
+    }
+
+    @Test
+    void failureAlreadyInFlightShouldNotClearAnActiveLockTest() {
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("operator");
+        }
+
+        // A login request can pass checkAllowed before another request creates the lock,
+        // then finish password verification and record its failure after the lock exists.
+        limiter.recordFailure("operator");
+
+        assertThatThrownBy(() -> limiter.checkAllowed("operator"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(429));
+    }
+
+    @Test
+    void activeLocksShouldNotEvictEachOtherWhenNewFailuresArriveTest() {
+        limiter = new LoginRateLimiter(clock, 2);
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            limiter.recordFailure("operator");
+            limiter.recordFailure("second-user");
+        }
+        limiter.recordFailure("operator");
+
+        assertThat(limiter.trackedUsernameCount()).isEqualTo(2);
+        assertThatThrownBy(() -> limiter.checkAllowed("second-user"))
+                .isInstanceOf(BusinessException.class);
+    }
+
     private static final class MutableClock extends Clock {
 
         private Instant now;
