@@ -249,11 +249,11 @@ const K8sCertsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title="K8s 证书管理" subtitle={`共 ${filteredCerts.length} 个证书`} />
+      <PageHeader title="K8s 证书配置" subtitle={`共 ${filteredCerts.length} 个证书`} />
       <InfoBanner
         data-testid="k8s-cert-local-metadata-notice"
-        title="当前证书记录仅保存为 Studio 本地元数据"
-        description="创建、续期和删除操作尚不会应用到 Kubernetes 集群或 cert-manager。请在集群侧管理实际证书，直到 Kubernetes Provider 接入完成。"
+        title="当前证书记录仅保存为 Studio 本地配置"
+        description="这些操作不会连接 Kubernetes 集群或修改集群中的证书资源。请在集群侧管理实际证书。"
       />
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>
