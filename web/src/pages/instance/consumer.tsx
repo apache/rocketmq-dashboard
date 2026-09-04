@@ -1723,7 +1723,7 @@ const ConsumerPageContent = ({
                         <Flex align="center" gap={6}>
                           <ListBullets size={15} color="#1677ff" />
                           <Text strong style={{ fontSize: 14 }}>
-                            订阅一致性检查
+                            {t('consumer.consistencyCheck')}
                           </Text>
                         </Flex>
                         <Button
@@ -1735,7 +1735,7 @@ const ConsumerPageContent = ({
                             void loadSubscriptions(selectedGroup.name, true);
                           }}
                         >
-                          重新检查
+                          {t('consumer.reCheck')}
                         </Button>
                       </Flex>
                       <Alert
@@ -1752,17 +1752,17 @@ const ConsumerPageContent = ({
                         }
                         message={
                           subscriptionErrorByGroup[selectedDiagnosticKey]
-                            ? '订阅一致性检查失败，当前保留上次检查结果'
+                            ? t('consumer.consistencyCheckFailed')
                             : subscriptionLoadingByGroup[selectedDiagnosticKey] &&
                                 selectedSubscriptions.length === 0
-                              ? '正在检查订阅一致性'
+                              ? t('consumer.consistencyChecking')
                               : inconsistentSubscriptions.length > 0
-                                ? `发现 ${inconsistentSubscriptions.length} 个订阅配置不一致`
+                                ? t('consumer.inconsistencyFound', { count: inconsistentSubscriptions.length })
                                 : unknownSubscriptions.length > 0
-                                  ? `${unknownSubscriptions.length} 个订阅配置状态未知`
+                                  ? t('consumer.unknownSubs', { count: unknownSubscriptions.length })
                                   : selectedSubscriptions.length > 0
-                                    ? `全部 ${selectedSubscriptions.length} 个订阅配置一致`
-                                    : '暂无订阅关系可检查'
+                                    ? t('consumer.allConsistent', { count: selectedSubscriptions.length })
+                                    : t('consumer.noSubsToCheck')
                         }
                         action={
                           <Checkbox
@@ -1770,7 +1770,7 @@ const ConsumerPageContent = ({
                             disabled={inconsistentSubscriptions.length === 0}
                             onChange={(event) => setShowOnlyInconsistent(event.target.checked)}
                           >
-                            仅看不一致
+                            {t('consumer.onlyInconsistent')}
                           </Checkbox>
                         }
                         style={{ marginBottom: 12 }}
@@ -1944,19 +1944,19 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <ArrowsClockwise size={14} />
-                    <span>消费进度</span>
+                    <span>{t('consumer.progressTab')}</span>
                   </Space>
                 ),
                 children: (
                   <div>
                     {progressTopicOptions.length > 0 && (
                       <Flex align="center" gap={8} style={{ marginBottom: 12 }}>
-                        <Text type="secondary">Topic 筛选:</Text>
+                        <Text type="secondary">{t('consumer.topicFilterLabel')}</Text>
                         <Select
                           size="small"
                           style={{ minWidth: 240 }}
                           allowClear
-                          placeholder="全部 Topic"
+                          placeholder={t('consumer.allTopics')}
                           value={
                             progressTopic && progressTopicOptions.includes(progressTopic)
                               ? progressTopic
@@ -1981,15 +1981,15 @@ const ConsumerPageContent = ({
                     >
                       <Space size={24}>
                         <Space size={4}>
-                          <Text type="secondary">总 Broker 数:</Text>
+                          <Text type="secondary">{t('consumer.totalBrokers')}</Text>
                           <Text strong>{new Set(visibleProgress.map((q) => q.broker)).size}</Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">总 Queue 数:</Text>
+                          <Text type="secondary">{t('consumer.totalQueues')}</Text>
                           <Text strong>{visibleProgress.length}</Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">总堆积:</Text>
+                          <Text type="secondary">{t('consumer.totalBacklogCol')}</Text>
                           {hasUnknownProgressLag ? (
                             <Text strong style={{ color: UNKNOWN_LAG_COLOR }}>
                               {UNAVAILABLE_LAG_LABEL}
@@ -2015,7 +2015,7 @@ const ConsumerPageContent = ({
                       pagination={false}
                       size="small"
                       scroll={{ x: tableScrollX(queueColumns), y: 380 }}
-                      locale={{ emptyText: '消费组不在线，暂无队列进度数据' }}
+                      locale={{ emptyText: t('consumer.emptyProgress') }}
                     />
                   </div>
                 ),
