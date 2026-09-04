@@ -104,7 +104,7 @@ function compareResourceCounts(
    InstancePage
    ═══════════════════════════════════════════ */
 const InstancePage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -359,10 +359,19 @@ const InstancePage = () => {
       await loadInstances();
       const summary =
         result.imported > 0
-          ? `导入完成：共同步 ${result.imported + result.skipped} 个实例（新导入 ${result.imported}，已存在跳过 ${result.skipped}）`
-          : `云上实例均已在 Studio 中（共 ${result.skipped} 个），无需重复导入`;
+          ? t('instanceImport.done', {
+              total: result.imported + result.skipped,
+              imported: result.imported,
+              skipped: result.skipped,
+            })
+          : t('instanceImport.allPresent', { skipped: result.skipped });
       if (result.failed.length > 0) {
-        message.warning(`${summary}，失败 ${result.failed.length} 个：${result.failed.join('；')}`);
+        message.warning(
+          `${summary}${t('instanceImport.failedSuffix', {
+            failed: result.failed.length,
+            names: result.failed.join(lang === 'zh' ? '；' : '; '),
+          })}`,
+        );
       } else {
         message.success(summary);
       }
@@ -428,12 +437,14 @@ const InstancePage = () => {
       (instance) => instance.vendor === 'ALIYUN' || instance.vendor === 'TENCENT',
     );
     const warning = hasCloud
-      ? '云厂商实例仅从 Studio 移除记录，不会释放云上的 RocketMQ 实例；仍有 Topic/Group 的开源实例无法删除。'
-      : '仍有 Topic/Group 的开源实例无法删除。';
+      ? t('instanceDelete.cloudWarning')
+      : t('instanceDelete.localWarning');
     Modal.confirm({
-      title: `确认删除选中的 ${names.length} 个实例？`,
-      content: `将删除：${names.join('、')}。${warning}`,
-      okText: '删除',
+      title: t('instanceDelete.confirmTitle', { count: names.length }),
+      content: `${t('instanceDelete.willDelete', {
+        names: names.join(lang === 'zh' ? '、' : ', '),
+      })}${warning}`,
+      okText: t('instanceDelete.ok'),
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -773,27 +784,35 @@ const InstancePage = () => {
           <>
             <Form form={addForm} layout="vertical">
               <Form.Item
-                label="云凭据"
+                label={t('instanceAdd.credentialLabel')}
                 name="credentialId"
-                rules={[{ required: true, message: '请选择云凭据' }]}
+                rules={[{ required: true, message: t('instanceAdd.credentialRequired') }]}
                 extra={
                   <span>
-                    凭据为{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，
-                    <Link to="/settings?tab=credential">前往「设置 - 云凭据管理」添加</Link>
+                    {t('instanceAdd.credentialExtra', {
+                      vendor: t(vendor === 'ALIYUN' ? 'instanceAdd.aliyun' : 'instanceAdd.tencent'),
+                    })}
+                    {lang === 'zh' ? '，' : ', '}
+                    <Link to="/settings?tab=credential">{t('instanceAdd.gotoCredential')}</Link>
                   </span>
                 }
               >
                 <Select
-                  placeholder="选择已录入的 AK/SK 凭据"
+                  placeholder={t('instanceAdd.credentialPlaceholder')}
                   loading={credentialsLoading}
                   onChange={handleCredentialChange}
                   notFoundContent={
                     credentialsLoading ? (
-                      '加载中…'
+                      t('instanceAdd.loading')
                     ) : (
                       <span>
-                        暂无{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}凭据，
-                        <Link to="/settings?tab=credential">去设置中添加</Link>
+                        {t('instanceAdd.noCredential', {
+                          vendor: t(
+                            vendor === 'ALIYUN' ? 'instanceAdd.aliyun' : 'instanceAdd.tencent',
+                          ),
+                        })}
+                        {lang === 'zh' ? '，' : ', '}
+                        <Link to="/settings?tab=credential">{t('instanceAdd.gotoAdd')}</Link>
                       </span>
                     )
                   }
