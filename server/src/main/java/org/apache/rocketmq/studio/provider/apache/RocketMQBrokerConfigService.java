@@ -47,12 +47,13 @@ public class RocketMQBrokerConfigService {
     }
 
     public ClusterConfigVO getBrokerConfig(String brokerAddr, String instanceId) {
+        String normalizedAddr = requireBrokerAddress(brokerAddr);
         return execute(instanceId, admin -> {
             try {
-                Properties props = admin.getBrokerConfig(brokerAddr);
+                Properties props = admin.getBrokerConfig(normalizedAddr);
                 return mapToClusterConfigVO(props);
             } catch (Exception e) {
-                log.error("Failed to get broker config from {}", brokerAddr, e);
+                log.error("Failed to get broker config from {}", normalizedAddr, e);
                 throw new BusinessException(500, "Failed to get broker config: " + e.getMessage());
             }
         });
@@ -73,20 +74,28 @@ public class RocketMQBrokerConfigService {
     }
 
     public void updateBrokerConfig(String brokerAddr, String clusterId, String instanceId, Properties newConfig) {
+        String normalizedAddr = requireBrokerAddress(brokerAddr);
         execute(instanceId, admin -> {
             try {
-                admin.updateBrokerConfig(brokerAddr, newConfig);
-                String detail = "brokerAddr=" + brokerAddr + ", config=" + newConfig;
+                admin.updateBrokerConfig(normalizedAddr, newConfig);
+                String detail = "brokerAddr=" + normalizedAddr + ", config=" + newConfig;
                 recordAudit(clusterId, detail, "SUCCESS");
-                log.info("Broker config updated successfully: {}", brokerAddr);
+                log.info("Broker config updated successfully: {}", normalizedAddr);
                 return null;
             } catch (Exception e) {
-                log.error("Failed to update broker config at {}", brokerAddr, e);
-                String detail = "brokerAddr=" + brokerAddr + ", error=" + e.getMessage();
+                log.error("Failed to update broker config at {}", normalizedAddr, e);
+                String detail = "brokerAddr=" + normalizedAddr + ", error=" + e.getMessage();
                 recordAudit(clusterId, detail, "FAILED");
                 throw new BusinessException(500, "Failed to update broker config: " + e.getMessage());
             }
         });
+    }
+
+    private static String requireBrokerAddress(String brokerAddr) {
+        if (!StringUtils.hasText(brokerAddr)) {
+            throw new BusinessException(400, "brokerAddr is required");
+        }
+        return brokerAddr.trim();
     }
 
     private void recordAudit(String clusterId, String detail, String result) {

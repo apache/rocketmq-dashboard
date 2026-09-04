@@ -87,4 +87,14 @@ class RocketMQBrokerConfigServiceTest {
                 "UPDATE_BROKER_CONFIG", "BROKER", "CLUSTER:cluster-a", "cluster-a",
                 "brokerAddr=broker-a:10911, config={}", "SUCCESS");
     }
+
+    @Test
+    void rejectsBlankBrokerAddresses() {
+        assertThatThrownBy(() -> brokerConfigService.getBrokerConfig("   "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("brokerAddr");
+        assertThatThrownBy(() -> brokerConfigService.updateBrokerConfig(" ", "cluster-a", new Properties()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("brokerAddr");
+    }
 }
