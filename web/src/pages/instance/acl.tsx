@@ -47,9 +47,10 @@ import {
   EyeSlash,
   Key,
 } from '@phosphor-icons/react';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { DiffOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
+import AclPolicyComparisonDrawer from '../../components/AclPolicyComparisonDrawer';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
@@ -145,6 +146,7 @@ const AclPageContent = ({
   const [ruleTotal, setRuleTotal] = useState(0);
   const [rulePage, setRulePage] = useState(1);
   const [rulePageSize, setRulePageSize] = useState(20);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
 
   // Rule filters
   const [rulePrincipalFilter, setRulePrincipalFilter] = useState('');
@@ -1065,13 +1067,22 @@ const AclPageContent = ({
         title={t('acl.title')}
         subtitle={t('acl.subtitle', { rules: rules.length, users: users.length })}
         extra={
-          <Button
-            type="primary"
-            icon={<Plus size={14} weight="bold" />}
-            onClick={activeTab === 'rules' ? openAddRuleModal : openAddUserModal}
-          >
-            {activeTab === 'rules' ? t('acl.addRule') : t('acl.addUser')}
-          </Button>
+          <Space>
+            <Button
+              icon={<DiffOutlined />}
+              disabled={instances.length < 2}
+              onClick={() => setComparisonOpen(true)}
+            >
+              {t('aclCompare.open')}
+            </Button>
+            <Button
+              type="primary"
+              icon={<Plus size={14} weight="bold" />}
+              onClick={activeTab === 'rules' ? openAddRuleModal : openAddUserModal}
+            >
+              {activeTab === 'rules' ? t('acl.addRule') : t('acl.addUser')}
+            </Button>
+          </Space>
         }
       />
 
@@ -1430,6 +1441,15 @@ const AclPageContent = ({
           ]}
         />
       </Card>
+
+      {comparisonOpen && (
+        <AclPolicyComparisonDrawer
+          open
+          instances={instances}
+          currentInstanceId={selectedInstanceId}
+          onClose={() => setComparisonOpen(false)}
+        />
+      )}
 
       {/* ─── Add/Edit Rule Modal ─── */}
       <Modal
