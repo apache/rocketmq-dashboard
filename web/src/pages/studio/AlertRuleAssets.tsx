@@ -26,7 +26,7 @@ const AlertRuleAssetsPage: React.FC = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('alertAssets.title')} subtitle="可复用的业务告警规则模板资产" />
+      <PageHeader title={t('alertAssets.title')} subtitle={t('alertAssets.subtitle')} />
       <Card styles={{ body: { padding: 0 } }}>
         <div style={{ padding: 16 }}>
           <AlertRuleAssetList />
