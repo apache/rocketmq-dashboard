@@ -2368,6 +2368,12 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'ai.thinking': { zh: '正在思考…', en: 'Thinking…' },
+  'ai.selectCluster': { zh: '选择集群', en: 'Select cluster' },
+  'ai.globalTools': { zh: '全局工具', en: 'Global tools' },
+  'ai.selectTool': { zh: '选择工具', en: 'Select tool' },
+  'ai.inputParams': { zh: '输入参数 (JSON)', en: 'Input parameters (JSON)' },
+  'ai.runResult': { zh: '执行结果', en: 'Result' },
   // ─── BrokerCluster ───
 };
 
