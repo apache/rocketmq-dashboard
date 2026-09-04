@@ -106,6 +106,7 @@ public class NativeAlertProcessor {
         Set<AlertStateKey> presentKeys = samples.stream()
                 .filter(scope::contains)
                 .flatMap(sample -> rules.stream()
+                        .filter(rule -> sample.metricKey().equals(rule.getMetric()))
                         .filter(rule -> NativeAlertRuleScopeMatcher.matches(rule, sample))
                         .map(rule -> new AlertStateKey(rule.getId(),
                                 AlertFingerprint.of(rule.getId(), sample.instanceId(), sample.labels()))))
