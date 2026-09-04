@@ -2368,6 +2368,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'alertAssets.subtitle': { zh: '可复用的业务告警规则模板资产', en: 'Reusable business alert rule template assets' },
   // ─── BrokerCluster ───
 };
 
