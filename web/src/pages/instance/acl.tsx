@@ -340,11 +340,7 @@ const AclPageContent = ({
   const handleDeleteRule = async (id: AclEntityId) => {
     try {
       await deleteAclRule(id, selectedInstanceId);
-      if (rules.length === 1 && rulePage > 1) {
-        setRulePage((prev) => prev - 1);
-      } else {
-        setRuleRefreshKey((prev) => prev + 1);
-      }
+      setRuleRefreshKey((prev) => prev + 1);
       message.success(t('acl.ruleDeleted'));
     } catch {
       message.error(t('common.operationFailed'));

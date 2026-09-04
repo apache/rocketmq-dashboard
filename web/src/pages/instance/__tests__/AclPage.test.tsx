@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, message } from 'antd';
+import { App, Modal, message } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -129,6 +129,50 @@ describe('ACL page', () => {
     expect(screen.getByText('remote-topic')).toBeInTheDocument();
     expect(aclService.listAclRules).toHaveBeenCalledTimes(1);
     expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads the server rule page after deleting one ACL rule', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(aclService.deleteAclRule).mockResolvedValue(undefined);
+    vi.mocked(aclService.listAclRules)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            principal: 'remote-user',
+            resource: 'remote-topic',
+            resourceType: 'Topic',
+            resourcePattern: 'LITERAL',
+            actions: ['PUB'],
+            decision: 'ALLOW',
+            scope: 'cluster',
+            aclVersion: 2,
+            gmtCreate: '2026-07-23T00:00:00Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        page: 1,
+        size: 20,
+      });
+    renderWithProviders(<AclPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-topic/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() => expect(aclService.deleteAclRule).toHaveBeenCalledWith(1, undefined));
+    await waitFor(() => expect(aclService.listAclRules).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('remote-topic')).not.toBeInTheDocument();
+    confirmSpy.mockRestore();
   });
 
   it('shows a non-copyable placeholder when an ACL user has no access key', async () => {
