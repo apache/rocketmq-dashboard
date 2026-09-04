@@ -39,6 +39,8 @@ import org.apache.rocketmq.studio.settings.SettingsRepository;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -71,6 +73,10 @@ public class InstanceService {
     private final OperationAuditService operationAuditService;
     private final SettingsRepository settingsRepository;
     private final RegionNames regionNames;
+
+    @Lazy
+    @Autowired
+    private InstanceService self;
 
     static final int COUNT_PARALLELISM = 8;
     static final long COUNT_TIMEOUT_SECONDS = 3;
@@ -631,7 +637,7 @@ public class InstanceService {
         List<String> failed = new ArrayList<>();
         for (String instanceId : normalizedIds) {
             try {
-                deleteInstance(resolveInstanceId(instanceId));
+                self.deleteInstance(resolveInstanceId(instanceId));
                 deleted++;
             } catch (BusinessException ex) {
                 failed.add(instanceId + ": " + ex.getMessage());
