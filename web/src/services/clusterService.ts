@@ -78,6 +78,28 @@ export async function deleteNameserverRegistry(id: number): Promise<void> {
   await clusterApi.deleteNameserverRegistry(id);
 }
 
+export async function discoverKubernetesNameServers(
+  namespace: string,
+): Promise<clusterApi.KubernetesNameServerDiscoveryResult> {
+  if (isMockMode()) {
+    return {
+      namespace,
+      observedAt: new Date().toISOString(),
+      candidates: [
+        {
+          namespace,
+          resourceName: 'rocketmq-nameserver',
+          namesrvAddr: `rocketmq-nameserver.${namespace}.svc.cluster.local:9876`,
+          source: 'SERVICE_PORT',
+          confidence: 'HIGH',
+          stable: true,
+        },
+      ],
+    };
+  }
+  return clusterApi.discoverKubernetesNameServers(namespace);
+}
+
 export async function testClusterConnection(namesrvAddr: string): Promise<ClusterProbeResult> {
   if (isMockMode()) {
     const trimmed = namesrvAddr.trim();

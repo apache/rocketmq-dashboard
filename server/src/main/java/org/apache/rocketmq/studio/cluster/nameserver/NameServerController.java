@@ -39,6 +39,7 @@ public class NameServerController {
     private final ClusterService clusterService;
     private final NameServerConfigDiffService configDiffService;
     private final NameserverRegistryService registryService;
+    private final KubernetesNameServerDiscoveryService kubernetesDiscoveryService;
 
     @GetMapping
     public Result<List<NameserverRegistryVO>> listRegistry() {
@@ -65,6 +66,13 @@ public class NameServerController {
         requireCommand(command);
         registryService.delete(command.getId());
         return Result.ok();
+    }
+
+    @PostMapping("/kubernetes/discover")
+    public Result<KubernetesNameServerDiscoveryVO> discoverFromKubernetes(
+            @Valid @RequestBody(required = false) DiscoverKubernetesNameServersDTO command) {
+        requireCommand(command);
+        return Result.ok(kubernetesDiscoveryService.discover(command));
     }
 
     @GetMapping("/config-diff")

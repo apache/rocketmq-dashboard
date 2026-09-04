@@ -23,6 +23,7 @@ import {
   createNameServer,
   deleteK8sCert,
   deleteNameServer,
+  discoverKubernetesNameServers,
   getBrokerConfigDiff,
   getNameServerConfigDiff,
   getCluster,
@@ -282,5 +283,40 @@ describe('K8s certificate API', () => {
     });
 
     await expect(restartProxy(target)).resolves.toBeUndefined();
+  });
+});
+
+describe('Kubernetes NameServer discovery API', () => {
+  beforeEach(() => {
+    mock.reset();
+    vi.stubGlobal('localStorage', { getItem: vi.fn().mockReturnValue(null) });
+  });
+
+  afterEach(() => {
+    mock.reset();
+    vi.unstubAllGlobals();
+  });
+
+  it('posts the selected namespace and unwraps discovery candidates', async () => {
+    const result = {
+      namespace: 'mq',
+      observedAt: '2026-09-04T12:00:00Z',
+      candidates: [
+        {
+          namespace: 'mq',
+          resourceName: 'rocketmq-nameserver',
+          namesrvAddr: 'rocketmq-nameserver.mq.svc.cluster.local:9876',
+          source: 'SERVICE_PORT' as const,
+          confidence: 'HIGH' as const,
+          stable: true,
+        },
+      ],
+    };
+    mock.onPost('/nameservers/kubernetes/discover').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ namespace: 'mq' });
+      return [200, { code: 200, message: 'success', data: result }];
+    });
+
+    await expect(discoverKubernetesNameServers('mq')).resolves.toEqual(result);
   });
 });

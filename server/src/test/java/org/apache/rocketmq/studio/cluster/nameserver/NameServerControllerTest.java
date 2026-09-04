@@ -55,6 +55,9 @@ class NameServerControllerTest {
     @MockBean
     private NameserverRegistryService registryService;
 
+    @MockBean
+    private KubernetesNameServerDiscoveryService kubernetesDiscoveryService;
+
     @Test
     void listRegistryShouldReturnRegisteredNameserversTest() throws Exception {
         when(registryService.list()).thenReturn(java.util.List.of(
@@ -177,6 +180,43 @@ class NameServerControllerTest {
                 .andExpect(jsonPath("$.message").value("id is required"));
 
         verifyNoInteractions(registryService);
+    }
+
+    @Test
+    void discoverFromKubernetesShouldReturnCandidatesTest() throws Exception {
+        when(kubernetesDiscoveryService.discover(any(DiscoverKubernetesNameServersDTO.class)))
+                .thenReturn(KubernetesNameServerDiscoveryVO.builder()
+                        .namespace("mq")
+                        .candidates(java.util.List.of(KubernetesNameServerCandidateVO.builder()
+                                .namespace("mq")
+                                .resourceName("rmq-nameserver")
+                                .namesrvAddr("rmq-nameserver.mq.svc.cluster.local:9876")
+                                .source("SERVICE_PORT")
+                                .confidence("HIGH")
+                                .stable(true)
+                                .build()))
+                        .build());
+
+        mockMvc.perform(post("/api/nameservers/kubernetes/discover")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"namespace\":\"mq\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.namespace").value("mq"))
+                .andExpect(jsonPath("$.data.candidates[0].resourceName").value("rmq-nameserver"))
+                .andExpect(jsonPath("$.data.candidates[0].stable").value(true));
+
+        verify(kubernetesDiscoveryService).discover(any(DiscoverKubernetesNameServersDTO.class));
+    }
+
+    @Test
+    void discoverFromKubernetesShouldRequireNamespaceTest() throws Exception {
+        mockMvc.perform(post("/api/nameservers/kubernetes/discover")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("namespace is required"));
+
+        verifyNoInteractions(kubernetesDiscoveryService);
     }
 
     @Test

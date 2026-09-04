@@ -79,6 +79,13 @@ studio:
         admin: true
   cluster:
     seed-demo-data: ${STUDIO_CLUSTER_SEED_DEMO_DATA:false}
+  kubernetes:
+    nameserver-discovery:
+      enabled: ${STUDIO_KUBERNETES_NAMESERVER_DISCOVERY_ENABLED:false}
+      port: ${STUDIO_KUBERNETES_NAMESERVER_PORT:9876}
+      cluster-domain: ${STUDIO_KUBERNETES_CLUSTER_DOMAIN:cluster.local}
+      pod-fallback-enabled: ${STUDIO_KUBERNETES_POD_FALLBACK_ENABLED:true}
+      max-candidates: ${STUDIO_KUBERNETES_DISCOVERY_MAX_CANDIDATES:50}
   metrics:
     prometheus:
       base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}

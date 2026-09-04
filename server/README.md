@@ -30,7 +30,7 @@ org.apache.rocketmq.studio
 | 子包 | 职责 |
 |---|---|
 | `cluster.broker` | 集群拓扑、Broker 配置读写、`MqAdminExtFactory`（按 namesrv 地址缓存 admin 客户端）、`RuntimeAdminClientResolver`（按实例 endpoint 解析） |
-| `cluster.nameserver` | NameServer 地址注册表 CRUD |
+| `cluster.nameserver` | NameServer 地址注册表 CRUD、Kubernetes Service/EndpointSlice/Pod 级联发现 |
 | `cluster.proxy` | Proxy 节点管理（列表/重启/地址维护、兼容旧 `.do` 路径） |
 | `cluster.client` | 客户端连接信息 |
 | `cluster.metrics` | Prometheus 指标接入（多数据源、健康检查），`metrics.grafana` 子包提供 Grafana 面板嵌入 |

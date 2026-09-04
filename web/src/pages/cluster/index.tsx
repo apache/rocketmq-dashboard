@@ -47,6 +47,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
+  CloudSyncOutlined,
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
@@ -65,10 +66,12 @@ import type {
   ClusterProbeResult,
   NameServerConfigDiffResult,
   NameServerConfigDifference,
+  KubernetesNameServerCandidate,
 } from '../../api/cluster';
 import {
   createNameserverRegistry,
   deleteNameserverRegistry,
+  discoverKubernetesNameServers,
   getBrokerConfigDiff,
   getNameServerConfigDiff,
   listClusters,
@@ -171,6 +174,7 @@ const ClusterPage = () => {
   const k8sCertsRequestRef = useRef(0);
   const nsConfigDiffRequestRef = useRef(0);
   const connectionTestRequestRef = useRef(0);
+  const kubernetesDiscoveryRequestRef = useRef(0);
 
   const loadRegistryClusters = useCallback(async () => {
     const requestId = ++registryClustersRequestRef.current;
@@ -231,6 +235,7 @@ const ClusterPage = () => {
       k8sCertsRequestRef.current += 1;
       nsConfigDiffRequestRef.current += 1;
       connectionTestRequestRef.current += 1;
+      kubernetesDiscoveryRequestRef.current += 1;
     },
     [],
   );
@@ -239,6 +244,13 @@ const ClusterPage = () => {
   const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
   const [nsEditId, setNsEditId] = useState<number | null>(null);
   const [nsCreateForm] = Form.useForm();
+  const [kubernetesDiscoveryOpen, setKubernetesDiscoveryOpen] = useState(false);
+  const [kubernetesDiscoveryLoading, setKubernetesDiscoveryLoading] = useState(false);
+  const [kubernetesDiscoveryCandidates, setKubernetesDiscoveryCandidates] = useState<
+    KubernetesNameServerCandidate[]
+  >([]);
+  const [kubernetesDiscoverySearched, setKubernetesDiscoverySearched] = useState(false);
+  const [kubernetesDiscoveryForm] = Form.useForm<{ namespace: string }>();
 
   const handleNsSubmit = useCallback(async () => {
     let values: Record<string, string>;
@@ -291,6 +303,68 @@ const ClusterPage = () => {
       setNsCreateModalOpen(true);
     },
     [nsCreateForm],
+  );
+
+  const openKubernetesDiscovery = useCallback(() => {
+    kubernetesDiscoveryRequestRef.current += 1;
+    setKubernetesDiscoveryCandidates([]);
+    setKubernetesDiscoverySearched(false);
+    setKubernetesDiscoveryLoading(false);
+    kubernetesDiscoveryForm.resetFields();
+    setKubernetesDiscoveryOpen(true);
+  }, [kubernetesDiscoveryForm]);
+
+  const closeKubernetesDiscovery = useCallback(() => {
+    kubernetesDiscoveryRequestRef.current += 1;
+    setKubernetesDiscoveryOpen(false);
+    setKubernetesDiscoveryLoading(false);
+  }, []);
+
+  const handleKubernetesDiscovery = useCallback(async () => {
+    let namespace: string;
+    try {
+      ({ namespace } = await kubernetesDiscoveryForm.validateFields());
+    } catch {
+      return;
+    }
+    const requestId = ++kubernetesDiscoveryRequestRef.current;
+    setKubernetesDiscoveryLoading(true);
+    try {
+      const result = await discoverKubernetesNameServers(namespace.trim());
+      if (requestId !== kubernetesDiscoveryRequestRef.current) return;
+      setKubernetesDiscoveryCandidates(result.candidates);
+      setKubernetesDiscoverySearched(true);
+      if (result.candidates.length === 0) {
+        message.info(t('cluster.k8sDiscoveryEmpty'));
+      }
+    } catch (error) {
+      if (requestId !== kubernetesDiscoveryRequestRef.current) return;
+      setKubernetesDiscoveryCandidates([]);
+      setKubernetesDiscoverySearched(true);
+      message.error(
+        error instanceof Error && error.message ? error.message : t('cluster.k8sDiscoveryFailed'),
+      );
+    } finally {
+      if (requestId === kubernetesDiscoveryRequestRef.current) {
+        setKubernetesDiscoveryLoading(false);
+      }
+    }
+  }, [kubernetesDiscoveryForm, t]);
+
+  const selectKubernetesCandidate = useCallback(
+    (candidate: KubernetesNameServerCandidate) => {
+      setNsModalMode('create');
+      setNsEditId(null);
+      nsCreateForm.setFieldsValue({
+        name: candidate.resourceName,
+        namesrvAddr: candidate.namesrvAddr,
+        k8sNamespace: candidate.namespace,
+        description: t('cluster.k8sDiscoveredDescription', { source: candidate.source }),
+      });
+      setNsCreateModalOpen(true);
+      closeKubernetesDiscovery();
+    },
+    [closeKubernetesDiscovery, nsCreateForm, t],
   );
 
   const handleNsDelete = useCallback(
@@ -1454,9 +1528,14 @@ const ClusterPage = () => {
               style={{ width: 240 }}
             />
           </Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openNsCreateModal}>
-            {t('cluster.createNameServer')}
-          </Button>
+          <Space>
+            <Button icon={<CloudSyncOutlined />} onClick={openKubernetesDiscovery}>
+              {t('cluster.k8sDiscoverAction')}
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openNsCreateModal}>
+              {t('cluster.createNameServer')}
+            </Button>
+          </Space>
         </Flex>
         <Card styles={{ body: { padding: 0 } }}>
           <Table
@@ -1713,6 +1792,108 @@ const ClusterPage = () => {
         }
       `}</style>
       {/* ─── NameServer 注册表新建/编辑弹窗 ─── */}
+      <Modal
+        title={t('cluster.k8sDiscoveryTitle')}
+        open={kubernetesDiscoveryOpen}
+        onCancel={closeKubernetesDiscovery}
+        footer={null}
+        width={920}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          message={t('cluster.k8sDiscoveryReadOnly')}
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={kubernetesDiscoveryForm} layout="inline" style={{ marginBottom: 16 }}>
+          <Form.Item
+            name="namespace"
+            label={t('cluster.k8sNamespace')}
+            rules={[{ required: true, message: t('cluster.k8sNamespaceRequired') }]}
+          >
+            <Input placeholder="rocketmq" style={{ width: 260 }} />
+          </Form.Item>
+          <Form.Item>
+            <Button
+              type="primary"
+              icon={<CloudSyncOutlined />}
+              loading={kubernetesDiscoveryLoading}
+              onClick={() => void handleKubernetesDiscovery()}
+            >
+              {t('cluster.k8sDiscoverAction')}
+            </Button>
+          </Form.Item>
+        </Form>
+        <Table<KubernetesNameServerCandidate>
+          rowKey={(candidate) => `${candidate.source}:${candidate.namesrvAddr}`}
+          dataSource={kubernetesDiscoveryCandidates}
+          loading={kubernetesDiscoveryLoading}
+          pagination={false}
+          size="small"
+          locale={{
+            emptyText: kubernetesDiscoverySearched
+              ? t('cluster.k8sDiscoveryEmpty')
+              : t('cluster.k8sDiscoveryPending'),
+          }}
+          columns={[
+            {
+              title: t('common.name'),
+              dataIndex: 'resourceName',
+              width: 180,
+              ellipsis: true,
+            },
+            {
+              title: t('cluster.nsAddr'),
+              dataIndex: 'namesrvAddr',
+              ellipsis: true,
+            },
+            {
+              title: t('cluster.k8sDiscoverySource'),
+              dataIndex: 'source',
+              width: 150,
+              render: (source: KubernetesNameServerCandidate['source']) => (
+                <Tag>{t(`cluster.k8sDiscoverySource.${source}`)}</Tag>
+              ),
+            },
+            {
+              title: t('cluster.k8sDiscoveryConfidence'),
+              dataIndex: 'confidence',
+              width: 100,
+              render: (confidence: KubernetesNameServerCandidate['confidence']) => (
+                <Tag
+                  color={
+                    confidence === 'HIGH' ? 'green' : confidence === 'MEDIUM' ? 'gold' : 'default'
+                  }
+                >
+                  {t(`cluster.k8sDiscoveryConfidence.${confidence}`)}
+                </Tag>
+              ),
+            },
+            {
+              title: t('cluster.k8sDiscoveryStability'),
+              dataIndex: 'stable',
+              width: 100,
+              render: (stable: boolean) =>
+                stable ? t('cluster.k8sDiscoveryStable') : t('cluster.k8sDiscoveryUnstable'),
+            },
+            {
+              title: t('common.actions'),
+              key: 'action',
+              width: 80,
+              render: (_: unknown, candidate: KubernetesNameServerCandidate) => (
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => selectKubernetesCandidate(candidate)}
+                >
+                  {t('cluster.k8sDiscoveryUse')}
+                </Button>
+              ),
+            },
+          ]}
+        />
+      </Modal>
       <Modal
         title={
           nsModalMode === 'create' ? t('cluster.createNameServer') : t('cluster.editNameServer')

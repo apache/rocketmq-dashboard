@@ -73,6 +73,21 @@ export interface NameserverRegistryEntry {
   gmtModified: string | null;
 }
 
+export interface KubernetesNameServerCandidate {
+  namespace: string;
+  resourceName: string;
+  namesrvAddr: string;
+  source: 'SERVICE_PORT' | 'SERVICE_HINT' | 'ENDPOINT_SLICE' | 'POD_LABEL' | 'POD_IMAGE';
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  stable: boolean;
+}
+
+export interface KubernetesNameServerDiscoveryResult {
+  namespace: string;
+  observedAt: string;
+  candidates: KubernetesNameServerCandidate[];
+}
+
 export interface ClusterConfig {
   flushDiskType: string;
   autoCreateTopicEnable: boolean;
@@ -299,6 +314,14 @@ export async function updateNameserverRegistry(data: {
 
 export async function deleteNameserverRegistry(id: number) {
   await client.post('/nameservers/registry/delete', { id });
+}
+
+export async function discoverKubernetesNameServers(namespace: string) {
+  const res = await client.post<{ data: KubernetesNameServerDiscoveryResult }>(
+    '/nameservers/kubernetes/discover',
+    { namespace },
+  );
+  return res.data.data;
 }
 
 export async function restartNameServer(data: { clusterId: string; addr: string }) {
