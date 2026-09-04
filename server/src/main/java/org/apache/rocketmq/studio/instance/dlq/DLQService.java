@@ -56,30 +56,34 @@ public class DLQService {
     public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              String targetTopic) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
-        log.info("Resending DLQ messages: group={}, targetTopic={}", groupName, targetTopic);
-        return dlqProvider.resendMessages(instanceId, groupName, startTime, endTime, targetTopic);
+        String normalizedGroup = requireGroupName(groupName);
+        validateResendRequest(normalizedGroup, startTime, endTime);
+        log.info("Resending DLQ messages: group={}, targetTopic={}", normalizedGroup, targetTopic);
+        return dlqProvider.resendMessages(instanceId, normalizedGroup, startTime, endTime, targetTopic);
     }
 
     public DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                             Integer maxCount) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
-        log.info("Exporting DLQ messages: group={}, maxCount={}", groupName, maxCount);
-        return dlqProvider.exportMessages(instanceId, groupName, startTime, endTime, maxCount);
+        String normalizedGroup = requireGroupName(groupName);
+        validateResendRequest(normalizedGroup, startTime, endTime);
+        log.info("Exporting DLQ messages: group={}, maxCount={}", normalizedGroup, maxCount);
+        return dlqProvider.exportMessages(instanceId, normalizedGroup, startTime, endTime, maxCount);
     }
 
     public PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                                  int page, int pageSize) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
-        log.info("Listing DLQ messages: group={}, page={}, pageSize={}", groupName, page, pageSize);
-        return dlqProvider.listMessages(instanceId, groupName, startTime, endTime, page, pageSize);
+        String normalizedGroup = requireGroupName(groupName);
+        validateResendRequest(normalizedGroup, startTime, endTime);
+        log.info("Listing DLQ messages: group={}, page={}, pageSize={}", normalizedGroup, page, pageSize);
+        return dlqProvider.listMessages(instanceId, normalizedGroup, startTime, endTime, page, pageSize);
     }
 
     public DLQResendResultVO resendSelectedMessages(String instanceId, String groupName, List<String> msgIds,
                                                     String targetTopic) {
         requireApacheInstance(instanceId);
+        String normalizedGroup = requireGroupName(groupName);
         if (msgIds == null || msgIds.isEmpty()) {
             throw new BusinessException(400, "At least one msgId is required");
         }
@@ -87,20 +91,21 @@ public class DLQService {
             throw new BusinessException(400, "At most 100 msgIds are allowed per resend");
         }
         log.info("Resending selected DLQ messages: group={}, count={}, targetTopic={}",
-                groupName, msgIds.size(), targetTopic);
-        return dlqProvider.resendMessages(instanceId, groupName, msgIds, targetTopic);
+                normalizedGroup, msgIds.size(), targetTopic);
+        return dlqProvider.resendMessages(instanceId, normalizedGroup, msgIds, targetTopic);
     }
 
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
                                               List<String> msgIds) {
         requireApacheInstance(instanceId);
-        validateResendRequest(groupName, startTime, endTime);
+        String normalizedGroup = requireGroupName(groupName);
+        validateResendRequest(normalizedGroup, startTime, endTime);
         if (msgIds != null && msgIds.size() > MAX_SELECTED_MESSAGES) {
             throw new BusinessException(400, "At most 100 msgIds are allowed per export");
         }
-        log.info("Exporting DLQ messages as Excel: group={}, selected={}", groupName,
+        log.info("Exporting DLQ messages as Excel: group={}, selected={}", normalizedGroup,
                 msgIds == null ? 0 : msgIds.size());
-        return dlqProvider.exportExcel(instanceId, groupName, startTime, endTime, msgIds);
+        return dlqProvider.exportExcel(instanceId, normalizedGroup, startTime, endTime, msgIds);
     }
 
     private void requireApacheInstance(String instanceId) {
@@ -109,6 +114,13 @@ public class DLQService {
                 throw new BusinessException(501, "DLQ operations are not supported for cloud instances");
             }
         });
+    }
+
+    private static String requireGroupName(String groupName) {
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "groupName is required");
+        }
+        return groupName.trim();
     }
 
     private void validateResendRequest(String groupName, Long startTime, Long endTime) {
