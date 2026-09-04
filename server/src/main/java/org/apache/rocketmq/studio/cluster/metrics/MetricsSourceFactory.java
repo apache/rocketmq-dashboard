@@ -39,6 +39,10 @@ public class MetricsSourceFactory {
     private final ObjectMapper objectMapper;
 
     public MetricsSource create(org.apache.rocketmq.studio.model.MetricsDataSourceConfig config) {
+        if (config == null) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(
+                    400, "metrics data source config is required");
+        }
         MetricsBackendType backendType = MetricsBackendType.fromProviderType(config.getProviderType());
         MetricsSourceSettings settings = MetricsSourceSettings.builder()
                 .backendType(backendType)
