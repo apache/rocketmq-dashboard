@@ -2026,27 +2026,27 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <SlidersHorizontal size={14} />
-                    <span>配置</span>
+                    <span>{t('consumer.configTab')}</span>
                   </Space>
                 ),
                 disabled: isCloudInstance,
                 children: (
                   <Spin spinning={settingsLoading}>
                     <Form form={settingsForm} layout="vertical" style={{ maxWidth: 480 }}>
-                      <Form.Item label="Group 名称">
+                      <Form.Item label={t('consumer.name')}>
                         <Text strong>{selectedGroup.name}</Text>
                       </Form.Item>
                       <Form.Item
-                        label="重试队列数"
+                        label={t('consumer.retryQueueCount')}
                         name="retryQueueNums"
-                        rules={[{ required: true, message: '请输入重试队列数' }]}
+                        rules={[{ required: true, message: t('consumer.retryQueueRequired') }]}
                       >
                         <InputNumber min={1} max={128} style={{ width: '100%' }} />
                       </Form.Item>
                       <Form.Item
-                        label="最大重试次数"
+                        label={t('consumer.maxRetry')}
                         name="retryMaxTimes"
-                        rules={[{ required: true, message: '请输入最大重试次数' }]}
+                        rules={[{ required: true, message: t('consumer.maxRetryRequired') }]}
                       >
                         <InputNumber min={1} max={128} style={{ width: '100%' }} />
                       </Form.Item>
@@ -2056,7 +2056,7 @@ const ConsumerPageContent = ({
                           loading={settingsSubmitting}
                           onClick={() => void saveSettings()}
                         >
-                          保存
+                          {t('common.save')}
                         </Button>
                       </Form.Item>
                     </Form>
@@ -2075,7 +2075,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <ListBullets size={18} color="#1677ff" />
-            <span>消费者线程栈</span>
+            <span>{t('consumer.threadStackModal')}</span>
           </Space>
         }
         open={stackModalOpen}
@@ -2100,16 +2100,16 @@ const ConsumerPageContent = ({
                 {selectedStack?.clientId ?? selectedStackClient?.clientId ?? '-'}
               </Text>
             </Descriptions.Item>
-            <Descriptions.Item label="采集时间">
+            <Descriptions.Item label={t('consumer.collectTime')}>
               {selectedStack?.capturedAt ? formatDateTime(selectedStack.capturedAt) : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="线程数">{selectedStack?.threadCount ?? 0}</Descriptions.Item>
+            <Descriptions.Item label={t('consumer.threadCount')}>{selectedStack?.threadCount ?? 0}</Descriptions.Item>
           </Descriptions>
 
           {stackLoading ? (
             <Table
               loading
-              columns={[{ title: '线程', dataIndex: 'threadName', key: 'threadName' }]}
+              columns={[{ title: t('consumer.threadCol'), dataIndex: 'threadName', key: 'threadName' }]}
               dataSource={[]}
               pagination={false}
               size="small"
