@@ -49,6 +49,8 @@ public class QueryHistoryService {
     private final Clock clock;
     private final ObjectMapper objectMapper;
 
+    private static final int MAX_SNAPSHOT_RECORDS = 500;
+
     @Autowired
     public QueryHistoryService(RmqMessageQueryMapper messageQueryMapper,
                                RmqTraceQueryMapper traceQueryMapper,
@@ -99,21 +101,23 @@ public class QueryHistoryService {
             return null;
         }
         try {
-            List<Map<String, Object>> snapshots = results.stream().map(r -> {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("msgId", r.getMsgId() == null ? "" : r.getMsgId());
-                m.put("topic", r.getTopic() == null ? "" : r.getTopic());
-                m.put("tag", r.getTag() == null ? "" : r.getTag());
-                m.put("key", r.getKey() == null ? "" : r.getKey());
-                m.put("brokerName", r.getBrokerName() == null ? "" : r.getBrokerName());
-                m.put("queueId", r.getQueueId() == null ? 0 : r.getQueueId());
-                m.put("queueOffset", r.getQueueOffset() == null ? 0L : r.getQueueOffset());
-                m.put("storeTime", r.getStoreTime());
-                m.put("bornHost", r.getBornHost() == null ? "" : r.getBornHost());
-                m.put("storeHost", r.getStoreHost() == null ? "" : r.getStoreHost());
-                m.put("size", r.getSize());
-                return m;
-            }).toList();
+            List<Map<String, Object>> snapshots = results.stream()
+                    .limit(MAX_SNAPSHOT_RECORDS)
+                    .map(r -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("msgId", r.getMsgId() == null ? "" : r.getMsgId());
+                        m.put("topic", r.getTopic() == null ? "" : r.getTopic());
+                        m.put("tag", r.getTag() == null ? "" : r.getTag());
+                        m.put("key", r.getKey() == null ? "" : r.getKey());
+                        m.put("brokerName", r.getBrokerName() == null ? "" : r.getBrokerName());
+                        m.put("queueId", r.getQueueId() == null ? 0 : r.getQueueId());
+                        m.put("queueOffset", r.getQueueOffset() == null ? 0L : r.getQueueOffset());
+                        m.put("storeTime", r.getStoreTime());
+                        m.put("bornHost", r.getBornHost() == null ? "" : r.getBornHost());
+                        m.put("storeHost", r.getStoreHost() == null ? "" : r.getStoreHost());
+                        m.put("size", r.getSize());
+                        return m;
+                    }).toList();
             return objectMapper.writeValueAsString(snapshots);
         } catch (JsonProcessingException e) {
             log.warn("Failed to serialize result snapshot: {}", e.getMessage());

@@ -165,4 +165,34 @@ class QueryHistoryServiceTest {
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
+
+    @Test
+    void capsResultSnapshotsToTheRecordLimit() throws Exception {
+        java.util.List<MessageRecordVO> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 1200; i++) {
+            many.add(MessageRecordVO.builder().msgId("msg-" + i).topic("orders").build());
+        }
+
+        String snapshot = service.buildResultSnapshot(many);
+        java.util.List<?> parsed = new ObjectMapper().readValue(
+                snapshot, new ObjectMapper().getTypeFactory()
+                        .constructCollectionType(java.util.List.class, java.util.Map.class));
+
+        assertThat(parsed).hasSize(500);
+    }
+
+    @Test
+    void keepsSmallSnapshotsUnchangedAndHandlesNull() throws Exception {
+        assertThat(service.buildResultSnapshot(null)).isNull();
+        assertThat(service.buildResultSnapshot(java.util.List.of())).isNull();
+
+        java.util.List<MessageRecordVO> two = java.util.List.of(
+                MessageRecordVO.builder().msgId("a").build(),
+                MessageRecordVO.builder().msgId("b").build());
+        String snapshot = service.buildResultSnapshot(two);
+        java.util.List<?> parsed = new ObjectMapper().readValue(
+                snapshot, new ObjectMapper().getTypeFactory()
+                        .constructCollectionType(java.util.List.class, java.util.Map.class));
+        assertThat(parsed).hasSize(2);
+    }
 }
