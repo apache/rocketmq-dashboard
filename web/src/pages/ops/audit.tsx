@@ -83,7 +83,7 @@ const buildAuditFilter = (
 });
 
 const AuditPage: React.FC = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [records, setRecords] = useState<AuditRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -337,7 +337,8 @@ const AuditPage: React.FC = () => {
       title: t('audit.detail'),
       dataIndex: 'detail',
       ellipsis: true,
-      render: renderDetail,
+      render: (_: string, record: AuditRecord) =>
+        renderDetail(lang === 'en' ? (record.enDetail ?? record.detail) : record.detail),
     },
     {
       title: t('audit.result'),
