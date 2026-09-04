@@ -2325,8 +2325,8 @@ const ConsumerPageContent = ({
           if (!importing) setImportModalOpen(false);
         }}
         onOk={() => void handleImportConsumerGroups()}
-        okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
-        cancelText="关闭"
+        okText={importRows.some((row) => row.status === 'failed') ? t('consumer.importGroupRetry') : t('consumer.importGroupStart')}
+        cancelText={t('common.close')}
         confirmLoading={importing}
         okButtonProps={{
           disabled:
@@ -2342,24 +2342,22 @@ const ConsumerPageContent = ({
             <Alert
               type="error"
               showIcon
-              message="CSV 无法导入"
+              message={t('consumer.csvImportFailed')}
               description={importErrors.join('；')}
             />
           ) : importRows.some((row) => row.status === 'invalid') ? (
             <Alert
               type="warning"
               showIcon
-              message={`检测到 ${
-                importRows.filter((row) => row.status === 'invalid').length
-              } 行无效，将跳过这些行`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('consumer.importGroupInvalidSkip', { count: importRows.filter((row) => row.status === 'invalid').length })}
+              description={t('consumer.importFieldsOnly')}
             />
           ) : (
             <Alert
               type="info"
               showIcon
-              message={`检测到 ${importRows.length} 个 Group，将通过后端批量导入`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('consumer.importGroupWillImport', { count: importRows.length })}
+              description={t('consumer.importFieldsOnly')}
             />
           )}
           <Table<ResourceImportRow<Partial<ConsumerGroup>>>
