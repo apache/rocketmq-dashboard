@@ -61,24 +61,26 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
 
     @Override
     public ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId) {
+        String normalizedGroup = normalizeOptional(groupName);
+        String normalizedClient = normalizeOptional(clientId);
         // Clients that connect through a proxy keep their channel on the proxy and never register
         // on a broker, so ask the proxy first; the broker only knows directly connected clients
         // and answers "not online" for everyone else.
         ConsumerRunningInfo viaProxy = proxyConsumerResolver == null
                 ? null
-                : proxyConsumerResolver.resolveConsumerRunningInfo(instanceId, groupName, clientId);
+                : proxyConsumerResolver.resolveConsumerRunningInfo(instanceId, normalizedGroup, normalizedClient);
         if (viaProxy != null) {
-            return toStackTrace(groupName, clientId, viaProxy);
+            return toStackTrace(normalizedGroup, normalizedClient, viaProxy);
         }
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId,
-                    admin -> getConsumerStack(admin, groupName, clientId));
+                    admin -> getConsumerStack(admin, normalizedGroup, normalizedClient));
         }
         if (!StringUtils.hasText(properties.getNamesrvAddr())) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
         return adminFactory.execute(properties.getNamesrvAddr(), null,
-                admin -> getConsumerStack(admin, groupName, clientId));
+                admin -> getConsumerStack(admin, normalizedGroup, normalizedClient));
     }
 
     private ConsumerStackTraceVO getConsumerStack(MQAdminExt admin, String groupName, String clientId) {
@@ -98,6 +100,10 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
         } catch (Exception e) {
             throw diagnosticsFailure(groupName, clientId, e);
         }
+    }
+
+    static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
     }
 
     private ConsumerStackTraceVO toStackTrace(String groupName, String clientId, ConsumerRunningInfo runningInfo) {

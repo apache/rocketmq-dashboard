@@ -237,4 +237,15 @@ class RocketMQConsumerDiagnosticsProviderTest {
                 .hasMessageContaining("Failed to get consumer stack for client-1")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
     }
+
+    @Test
+    void trimsGroupAndClientBeforeQueryingRunningInfo() throws Exception {
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(null);
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", " cg-orders ", " client-1 "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("client-1");
+
+        verify(adminExt).getConsumerRunningInfo("cg-orders", "client-1", true);
+    }
 }
