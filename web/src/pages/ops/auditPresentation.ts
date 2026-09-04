@@ -272,7 +272,8 @@ export function parseAuditDetail(detail: string | null | undefined): AuditDetail
   const text = detail?.trim();
   if (!text) return [];
 
-  const parts = text.split(/\s*,\s*/).filter(Boolean);
+  const parts = splitTopLevelDetailFields(text);
+  if (!parts) return [{ label: '', value: text }];
   if (parts.length <= 1) return [{ label: '', value: text }];
 
   const tokens = parts.map((part) => {
@@ -289,4 +290,56 @@ export function parseAuditDetail(detail: string | null | undefined): AuditDetail
     return [{ label: '', value: text }];
   }
   return tokens as AuditDetailToken[];
+}
+
+const DETAIL_DELIMITERS: Record<string, string> = {
+  '{': '}',
+  '[': ']',
+  '(': ')',
+};
+
+function splitTopLevelDetailFields(text: string): string[] | null {
+  const fields: string[] = [];
+  const expectedClosings: string[] = [];
+  let fieldStart = 0;
+  let quote = '';
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === quote) {
+        quote = '';
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    const closing = DETAIL_DELIMITERS[char];
+    if (closing) {
+      expectedClosings.push(closing);
+      continue;
+    }
+    if (char === '}' || char === ']' || char === ')') {
+      if (expectedClosings.pop() !== char) return null;
+      continue;
+    }
+    if (char === ',' && expectedClosings.length === 0) {
+      const field = text.slice(fieldStart, index).trim();
+      if (field) fields.push(field);
+      fieldStart = index + 1;
+    }
+  }
+
+  if (quote || expectedClosings.length > 0) return null;
+  const field = text.slice(fieldStart).trim();
+  if (field) fields.push(field);
+  return fields;
 }

@@ -85,7 +85,7 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
     @Override
     public CloudCredentialVO save(CloudCredentialVO credential) {
         RmqCloudCredential entity = toEntity(credential);
-        if (entity.getId() != null && credentialMapper.selectById(entity.getId()) != null) {
+        if (entity.getId() != null) {
             if (credentialMapper.updateById(entity) == 0) {
                 throw new BusinessException(409,
                         "Cloud credential update was not applied: " + entity.getId());
