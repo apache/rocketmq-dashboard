@@ -644,7 +644,7 @@ const InstancePage = () => {
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('instance.title')}</h2>
         <div style={{ marginTop: 6, fontSize: 14, color: '#9CA3AF' }}>
-          接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {instances.length} 个实例
+          {t('instance.headerDesc', { count: instances.length })}
         </div>
       </div>
 
@@ -658,7 +658,7 @@ const InstancePage = () => {
       >
         <Space size={12} wrap>
           <Input
-            placeholder="搜索实例 ID 或地址"
+            placeholder={t('instance.searchPlaceholder')}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -670,11 +670,11 @@ const InstancePage = () => {
             onChange={setTypeFilter}
             style={{ width: 140 }}
             options={[
-              { value: 'ALL', label: '全部架构' },
-              { value: 'CLOUD', label: '云服务' },
-              { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
-              { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
-              { value: 'DIRECT', label: 'Direct 模式' },
+              { value: 'ALL', label: t('instance.allTypes') },
+              { value: 'CLOUD', label: t('instance.typeCloud') },
+              { value: 'PROXY_LOCAL', label: t('instance.typeProxyLocal') },
+              { value: 'PROXY_CLUSTER', label: t('instance.typeProxyCluster') },
+              { value: 'DIRECT', label: t('instance.typeDirect') },
             ]}
           />
         </Space>
@@ -885,9 +885,9 @@ const InstancePage = () => {
               <Select
                 placeholder="选择接入方式"
                 options={[
-                  { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
-                  { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
-                  { value: 'DIRECT', label: 'Direct 模式' },
+                  { value: 'PROXY_LOCAL', label: t('instance.typeProxyLocal') },
+                  { value: 'PROXY_CLUSTER', label: t('instance.typeProxyCluster') },
+                  { value: 'DIRECT', label: t('instance.typeDirect') },
                 ]}
               />
             </Form.Item>
@@ -962,9 +962,9 @@ const InstancePage = () => {
                 editingInstance?.vendor && editingInstance.vendor !== 'APACHE'
                   ? [{ value: 'CLOUD', label: '云服务' }]
                   : [
-                      { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
-                      { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
-                      { value: 'DIRECT', label: 'Direct 模式' },
+                      { value: 'PROXY_LOCAL', label: t('instance.typeProxyLocal') },
+                      { value: 'PROXY_CLUSTER', label: t('instance.typeProxyCluster') },
+                      { value: 'DIRECT', label: t('instance.typeDirect') },
                     ]
               }
             />
