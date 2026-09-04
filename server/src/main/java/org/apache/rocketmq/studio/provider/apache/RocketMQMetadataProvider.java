@@ -139,11 +139,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
+        String pattern = escapeLike(normalizeSearch(search));
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
                 .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
-                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .like(StringUtils.hasText(pattern), RmqTopic::getName, pattern)
                 .orderByAsc(RmqTopic::getName);
 
         List<TopicVO> result = new ArrayList<>();
@@ -220,10 +221,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
+        String pattern = escapeLike(normalizeSearch(search));
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
-                .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .like(StringUtils.hasText(pattern), RmqGroup::getName, pattern)
                 .orderByAsc(RmqGroup::getName);
 
         List<ConsumerGroupVO> result = new ArrayList<>();
@@ -398,6 +400,17 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return Collections.emptyList();
         }
         return adminExecute(admin -> getTopicRoutes(admin, name));
+    }
+
+    static String normalizeSearch(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    static String escapeLike(String search) {
+        if (!StringUtils.hasText(search)) {
+            return search;
+        }
+        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private List<BrokerRouteVO> getTopicRoutes(MQAdminExt admin, String name) {
