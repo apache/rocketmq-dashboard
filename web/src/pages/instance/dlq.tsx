@@ -614,7 +614,7 @@ const DLQPage = () => {
           />
           <Space size={8}>
             <Text type="secondary" style={{ fontSize: 14 }}>
-              导出时间范围
+              {t('dlq.exportTimeRange')}
             </Text>
             <RangePicker
               showTime
@@ -683,7 +683,7 @@ const DLQPage = () => {
         title={
           <Space>
             <ArrowsCounterClockwise size={18} color="#fa8c16" />
-            <span>重投死信消息</span>
+            <span>{t('dlq.resendTitle')}</span>
           </Space>
         }
         open={retryModalOpen}
@@ -694,8 +694,8 @@ const DLQPage = () => {
         }}
         onOk={handleRetry}
         confirmLoading={retrySubmitting}
-        okText="确认重投"
-        cancelText="取消"
+        okText={t('dlq.confirmResend')}
+        cancelText={t('common.cancel')}
         width={520}
         destroyOnHidden
       >
@@ -715,13 +715,13 @@ const DLQPage = () => {
               }}
             >
               <Text type="warning" style={{ fontSize: 14 }}>
-                ⚠️ 重投操作将把死信消息重新发送到指定 Topic，请确认目标 Topic 正确。
+                {t('dlq.resendWarning')}
               </Text>
             </div>
 
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                源 Group
+                {t('dlq.sourceGroup')}
               </Text>
               <Text strong style={{ fontSize: 14 }}>
                 {retryGroup.groupName}
@@ -730,16 +730,16 @@ const DLQPage = () => {
 
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                死信数量
+                {t('dlq.deadCount')}
               </Text>
               <Text strong style={{ fontSize: 14, color: '#fa8c16' }}>
-                {retryGroup.messageCount.toLocaleString()} 条
+                {retryGroup.messageCount.toLocaleString()}{t('dlq.messageUnit')}
               </Text>
             </div>
 
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                重投时间范围
+                {t('dlq.resendTimeRange')}
               </Text>
               <RangePicker
                 showTime
@@ -756,10 +756,10 @@ const DLQPage = () => {
 
             <div>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                目标 Topic
+                {t('dlq.targetTopic')}
               </Text>
               <Input
-                placeholder="输入目标 Topic 名称"
+                placeholder={t('dlq.targetTopicPlaceholder')}
                 value={retryTargetTopic}
                 onChange={(e) => setRetryTargetTopic(e.target.value)}
               />
@@ -772,7 +772,7 @@ const DLQPage = () => {
          Message Detail Drawer
          ═══════════════════════════════════════════ */}
       <Drawer
-        title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
+        title={detailGroup ? `${t('dlq.detailTitle')} · ${detailGroup.groupName}` : t('dlq.detailTitle')}
         width={1080}
         open={detailOpen}
         onClose={() => {
@@ -811,14 +811,14 @@ const DLQPage = () => {
                     type="secondary"
                     style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
                   >
-                    死信数量
+                    {t('dlq.deadCount')}
                   </Text>
                   <Text
                     strong
                     style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}
                   >
                     {detailGroup.statsAvailable === false
-                      ? '不可用'
+                      ? t('dlq.unavailable')
                       : detailGroup.messageCount.toLocaleString()}
                   </Text>
                 </div>
@@ -827,7 +827,7 @@ const DLQPage = () => {
                     type="secondary"
                     style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
                   >
-                    最近入队时间
+                    {t('dlq.lastEnqueueTime')}
                   </Text>
                   <Text style={{ fontFamily: 'monospace' }}>
                     {formatDateTime(detailGroup.lastEnqueueTime)}
@@ -840,8 +840,8 @@ const DLQPage = () => {
                 onClick={() => void exportDetailExcel()}
               >
                 {detailSelectedMsgIds.length > 0
-                  ? `导出选中 (${detailSelectedMsgIds.length})`
-                  : '导出全部'}
+                  ? t('dlq.exportSelected', { count: detailSelectedMsgIds.length })
+                  : t('dlq.exportAll')}
               </Button>
             </Flex>
 
@@ -890,7 +890,7 @@ const DLQPage = () => {
                   loading={detailResending}
                   onClick={() => void resendSelectedMessages(detailSelectedMsgIds)}
                 >
-                  批量重发选中 ({detailSelectedMsgIds.length})
+                  {t('dlq.batchResendSelected', { count: detailSelectedMsgIds.length })}
                 </Button>
               </Flex>
             )}
