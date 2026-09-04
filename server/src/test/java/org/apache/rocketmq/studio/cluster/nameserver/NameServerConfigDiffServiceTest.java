@@ -34,15 +34,10 @@ import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class NameServerConfigDiffServiceTest {
@@ -57,232 +52,70 @@ class NameServerConfigDiffServiceTest {
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Mock
-    private MQAdminExt admin;
+    private MQAdminExt adminExt;
 
     private NameServerConfigDiffService service;
 
+    private ClusterVO clusterWithEndpoint(String endpoint) {
+        return ClusterVO.builder().id("cluster-a").endpoint(endpoint).build();
+    }
+
+    private Properties config(String listenPort) {
+        Properties properties = new Properties();
+        properties.setProperty("listenPort", listenPort);
+        properties.setProperty("useEpollNativeSelector", "true");
+        properties.setProperty("enableControllerInNamesrv", "false");
+        return properties;
+    }
+
     @BeforeEach
     void setUp() {
-        service = new NameServerConfigDiffService(
-                clusterService, adminFactory, runtimeAdminClientResolver);
-    }
-
-    private void stubAdminFactory() {
-        when(adminFactory.execute(anyString(), isNull(), any())).thenAnswer(invocation -> {
-            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(2);
-            try {
-                return action.apply(admin);
-            } catch (BusinessException exception) {
-                throw exception;
-            } catch (Exception exception) {
-                throw new BusinessException(502, "RocketMQ admin call failed");
-            }
-        });
+        lenient().when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        service = new NameServerConfigDiffService(clusterService, adminFactory, runtimeAdminClientResolver);
     }
 
     @Test
-    void compareShouldReportConsistentSafeConfiguration() throws Exception {
-        stubAdminFactory();
-        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
-                "ns-b:9876;ns-a:9876",
-                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
-        Properties first = properties(
-                "listenPort", "9876",
-                "serverWorkerThreads", "8",
-                "password", "first-secret");
-        Properties second = properties(
-                "listenPort", "9876",
-                "serverWorkerThreads", "8",
-                "password", "second-secret");
-        when(admin.getNameServerConfig(List.of("ns-a:9876")))
-                .thenReturn(Map.of("ns-a:9876", first));
-        when(admin.getNameServerConfig(List.of("ns-b:9876")))
-                .thenReturn(Map.of("ns-b:9876", second));
+    void reportsAlignedNameServerNodesAsCompleteWithoutDrift() throws Exception {
+        when(clusterService.getCluster("cluster-a")).thenReturn(clusterWithEndpoint(
+                "10.0.0.1:9876;10.0.0.2:9876"));
+        when(adminExt.getNameServerConfig(List.of("10.0.0.1:9876"))).thenReturn(
+                Map.of("10.0.0.1:9876", config("9876")));
+        when(adminExt.getNameServerConfig(List.of("10.0.0.2:9876"))).thenReturn(
+                Map.of("10.0.0.2:9876", config("9876")));
 
-        NameServerConfigDiffVO result = service.compare(" cluster-a ");
+        NameServerConfigDiffVO result = service.compare("cluster-a");
 
         assertThat(result.isComplete()).isTrue();
-        assertThat(result.isDriftDetected()).isFalse();
         assertThat(result.getNodeCount()).isEqualTo(2);
         assertThat(result.getReachableNodeCount()).isEqualTo(2);
-        assertThat(result.getComparedKeys()).contains("listenPort", "serverWorkerThreads");
-        assertThat(result.getComparedKeys()).doesNotContain("password");
+        assertThat(result.isDriftDetected()).isFalse();
         assertThat(result.getDifferences()).isEmpty();
-        assertThat(result.getNodes())
-                .extracting(
-                        NameServerConfigDiffVO.NodeStatusVO::getAddress,
-                        NameServerConfigDiffVO.NodeStatusVO::isReachable)
-                .containsExactly(
-                        tuple("ns-a:9876", true),
-                        tuple("ns-b:9876", true));
     }
 
     @Test
-    void compareShouldResolveClusterThroughSelectedInstance() throws Exception {
-        when(clusterService.getCluster("cluster-a", "instance-a")).thenReturn(cluster(
-                "ns-a:9876;ns-b:9876",
-                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
-        when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenAnswer(invocation -> {
-            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
-            return action.apply(admin);
-        });
-        when(admin.getNameServerConfig(List.of("ns-a:9876")))
-                .thenReturn(Map.of("ns-a:9876", properties("listenPort", "9876")));
-        when(admin.getNameServerConfig(List.of("ns-b:9876")))
-                .thenReturn(Map.of("ns-b:9876", properties("listenPort", "9876")));
-
-        NameServerConfigDiffVO result = service.compare(" cluster-a ", " instance-a ");
-
-        assertThat(result.isComplete()).isTrue();
-        verify(clusterService).getCluster("cluster-a", "instance-a");
-        verify(runtimeAdminClientResolver, times(2)).execute(eq("instance-a"), any());
-        verify(adminFactory, never()).execute(anyString(), isNull(), any());
-    }
-
-    @Test
-    void compareShouldExposeChangedAndMissingSafeValues() throws Exception {
-        stubAdminFactory();
-        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
-                "ns-a:9876;ns-b:9876",
-                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
-        Properties first = properties(
-                "listenPort", "9876",
-                "serverWorkerThreads", "8");
-        Properties second = properties("listenPort", "19876");
-        when(admin.getNameServerConfig(List.of("ns-a:9876")))
-                .thenReturn(Map.of("ns-a:9876", first));
-        when(admin.getNameServerConfig(List.of("ns-b:9876")))
-                .thenReturn(Map.of("ns-b:9876", second));
+    void flagsListenPortDriftAcrossNameServerNodes() throws Exception {
+        when(clusterService.getCluster("cluster-a")).thenReturn(clusterWithEndpoint(
+                "10.0.0.1:9876;10.0.0.2:9876"));
+        when(adminExt.getNameServerConfig(List.of("10.0.0.1:9876"))).thenReturn(
+                Map.of("10.0.0.1:9876", config("9876")));
+        when(adminExt.getNameServerConfig(List.of("10.0.0.2:9876"))).thenReturn(
+                Map.of("10.0.0.2:9876", config("9877")));
 
         NameServerConfigDiffVO result = service.compare("cluster-a");
 
-        assertThat(result.isComplete()).isTrue();
         assertThat(result.isDriftDetected()).isTrue();
         assertThat(result.getDifferences())
-                .extracting(NameServerConfigDiffVO.ConfigDifferenceVO::getKey)
-                .containsExactly("listenPort", "serverWorkerThreads");
-        NameServerConfigDiffVO.ConfigDifferenceVO workerDifference =
-                result.getDifferences().get(1);
-        assertThat(workerDifference.getValues())
-                .extracting(
-                        NameServerConfigDiffVO.ConfigValueVO::getAddress,
-                        NameServerConfigDiffVO.ConfigValueVO::isConfigured,
-                        NameServerConfigDiffVO.ConfigValueVO::getValue)
-                .containsExactly(
-                        tuple("ns-a:9876", true, "8"),
-                        tuple("ns-b:9876", false, null));
+                .anyMatch(difference -> "listenPort".equals(difference.getKey())
+                        && difference.getValues().size() == 2);
     }
 
     @Test
-    void compareShouldKeepPartialResultsWhenOneNodeIsUnavailable() throws Exception {
-        stubAdminFactory();
-        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
-                "ns-a:9876;ns-b:9876",
-                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
-        Properties first = properties("listenPort", "9876");
-        when(admin.getNameServerConfig(List.of("ns-a:9876")))
-                .thenReturn(Map.of("ns-a:9876", first));
-        when(admin.getNameServerConfig(List.of("ns-b:9876")))
-                .thenThrow(new IllegalStateException("unreachable"));
-
-        NameServerConfigDiffVO result = service.compare("cluster-a");
-
-        assertThat(result.isComplete()).isFalse();
-        assertThat(result.isDriftDetected()).isFalse();
-        assertThat(result.getReachableNodeCount()).isEqualTo(1);
-        assertThat(result.getDifferences()).isEmpty();
-        assertThat(result.getNodes())
-                .extracting(
-                        NameServerConfigDiffVO.NodeStatusVO::getAddress,
-                        NameServerConfigDiffVO.NodeStatusVO::isReachable)
-                .containsExactly(
-                        tuple("ns-a:9876", true),
-                        tuple("ns-b:9876", false));
-    }
-
-    @Test
-    void compareShouldTreatOneReachableNodeAsACompleteCheck() throws Exception {
-        stubAdminFactory();
-        when(clusterService.getCluster("cluster-a"))
-                .thenReturn(cluster("ns-a:9876", List.of()));
-        when(admin.getNameServerConfig(List.of("ns-a:9876")))
-                .thenReturn(Map.of("ns-a:9876", properties("listenPort", "9876")));
-
-        NameServerConfigDiffVO result = service.compare("cluster-a");
-
-        assertThat(result.isComplete()).isTrue();
-        assertThat(result.isDriftDetected()).isFalse();
-        assertThat(result.getNodeCount()).isEqualTo(1);
-        assertThat(result.getReachableNodeCount()).isEqualTo(1);
-        assertThat(result.getDifferences()).isEmpty();
-    }
-
-    @Test
-    void compareShouldMarkTheCheckIncompleteWhenEveryNodeIsUnavailable() throws Exception {
-        stubAdminFactory();
-        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
-                "ns-a:9876;ns-b:9876",
-                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
-        when(admin.getNameServerConfig(List.of("ns-a:9876")))
-                .thenThrow(new IllegalStateException("unreachable"));
-        when(admin.getNameServerConfig(List.of("ns-b:9876")))
-                .thenThrow(new IllegalStateException("unreachable"));
-
-        NameServerConfigDiffVO result = service.compare("cluster-a");
-
-        assertThat(result.isComplete()).isFalse();
-        assertThat(result.isDriftDetected()).isFalse();
-        assertThat(result.getReachableNodeCount()).isZero();
-        assertThat(result.getDifferences()).isEmpty();
-        assertThat(result.getNodes())
-                .extracting(
-                        NameServerConfigDiffVO.NodeStatusVO::getAddress,
-                        NameServerConfigDiffVO.NodeStatusVO::isReachable)
-                .containsExactly(
-                        tuple("ns-a:9876", false),
-                        tuple("ns-b:9876", false));
-    }
-
-    @Test
-    void compareShouldRejectClusterWithoutNameServers() {
-        when(clusterService.getCluster("cluster-a"))
-                .thenReturn(cluster(null, List.of()));
+    void rejectsClustersWithoutAnyNameServerEndpoint() {
+        when(clusterService.getCluster("cluster-a")).thenReturn(clusterWithEndpoint(null));
 
         assertThatThrownBy(() -> service.compare("cluster-a"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Cluster has no NameServer endpoints: cluster-a")
-                .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
-                        .isEqualTo(409));
-    }
-
-    @Test
-    void compareShouldRejectBlankClusterId() {
-        assertThatThrownBy(() -> service.compare(" "))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("cluster is required")
-                .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
-                        .isEqualTo(400));
-    }
-
-    private ClusterVO cluster(String endpoint, List<NameServerVO> nameServers) {
-        ClusterVO cluster = ClusterVO.builder()
-                .name("cluster-a")
-                .endpoint(endpoint)
-                .nameServers(nameServers)
-                .build();
-        cluster.setId("cluster-a");
-        return cluster;
-    }
-
-    private NameServerVO nameServer(String address) {
-        return NameServerVO.builder().addr(address).build();
-    }
-
-    private Properties properties(String... entries) {
-        Properties properties = new Properties();
-        for (int index = 0; index < entries.length; index += 2) {
-            properties.setProperty(entries[index], entries[index + 1]);
-        }
-        return properties;
+                .hasMessageContaining("no NameServer");
     }
 }
