@@ -67,6 +67,11 @@ public class MessageService {
         if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new BusinessException(400, "page must be positive and pageSize must be between 1 and 200");
         }
+        // The Apache / Aliyun / Tencent providers all cap topic-keyed scans at a fixed
+        // broker-side limit (see RocketMQMessageProvider#DEFAULT_TOPIC_LIMIT). RocketMQ has
+        // no server-side "skip the first N messages" API, so the in-memory subList below is
+        // the page slice within that cap; the total / resultMayBeTruncated fields let the UI
+        // tell the user when deeper pages may be empty.
         MessageQueryResult queryResult = queryMessagesDetailed(
                 instanceId, topic, msgId, tag, key, startTime, endTime, page == 1);
         List<MessageRecordVO> result = queryResult.messages();

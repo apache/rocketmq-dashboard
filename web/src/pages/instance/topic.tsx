@@ -86,6 +86,7 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
+import { formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeTopicRoutes,
@@ -286,17 +287,6 @@ const RANDOM_BODY_GENERATORS = [
   { label: '通知消息', fn: randomNotificationBody },
   { label: '监控指标', fn: randomMetricsBody },
 ];
-
-// ─── Format helpers ───────────────────────────────────────────────
-const formatNumber = (n: number) => n.toLocaleString('zh-CN');
-
-const formatDateTime = (iso?: string): string => {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
 
 const ROUTE_STATUS_META: Record<
   RouteDiagnosticStatus,

@@ -11,6 +11,17 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:studio123}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # Studio is polled by multiple tabs / dashboards; the Spring Boot default of 10
+      # connections saturates fast under concurrent filters + alerting. 30 leaves
+      # headroom without overwhelming a default MySQL max-connections=151.
+      maximum-pool-size: 30
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      pool-name: studio-pool
+      leak-detection-threshold: 30000
   mail:
     host: ${STUDIO_ALERTING_SMTP_HOST:}
     port: ${STUDIO_ALERTING_SMTP_PORT:587}
