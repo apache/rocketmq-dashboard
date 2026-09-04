@@ -349,65 +349,7 @@ const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
 };
 
 const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
-  const { lang } = useLang();
-  const queryErrorFallback = lang === 'zh' ? 'Prometheus 查询失败' : 'Prometheus query failed';
-  const copy =
-    lang === 'zh'
-      ? {
-          title: 'Prometheus 指标',
-          profile: '指标模板',
-          range: '时间范围',
-          refresh: '刷新全部面板',
-          profileError: '指标模板加载失败',
-          noProfiles: '暂无指标模板',
-          noSamples: '暂无数据',
-          histogram: '直方图',
-          histogramTooltip: '无标量样本，趋势由直方图观测值推导',
-          hiddenSeries: (count: number) =>
-            `另有 ${count} 条序列未显示（按最新值保留前 ${MAX_SERIES} 条）`,
-          defaultDataSource: '默认数据源',
-          customTitle: '自定义查询',
-          customPlaceholder:
-            '输入 PromQL，如 sum(rate(rocketmq_messages_in_total[1m])) by (cluster)',
-          customRun: '查询',
-          customEmpty: '输入 PromQL 后点击查询',
-          authTitle: '数据源认证',
-          authDescription: '凭据仅用于当前数据源，离开该数据源后会被清除。',
-          username: '用户名',
-          password: '密码',
-          token: '令牌',
-          connect: '连接',
-          cancel: '取消',
-          required: '此项为必填项',
-        }
-      : {
-          title: 'Prometheus Metrics',
-          profile: 'Metric profile',
-          range: 'Time range',
-          refresh: 'Refresh all panels',
-          profileError: 'Failed to load metric profiles',
-          noProfiles: 'No metric profiles',
-          noSamples: 'No samples',
-          histogram: 'Histogram',
-          histogramTooltip: 'No scalar samples; trend derived from histogram observations',
-          hiddenSeries: (count: number) =>
-            `${count} more series hidden (showing top ${MAX_SERIES} by latest value)`,
-          defaultDataSource: 'Default source',
-          customTitle: 'Custom query',
-          customPlaceholder:
-            'Enter PromQL, e.g. sum(rate(rocketmq_messages_in_total[1m])) by (cluster)',
-          customRun: 'Run',
-          customEmpty: 'Enter a PromQL expression and run the query',
-          authTitle: 'Data source authentication',
-          authDescription:
-            'Credentials are used only for this source and cleared when you leave it.',
-          username: 'Username',
-          password: 'Password',
-          token: 'Token',
-          connect: 'Connect',
-          cancel: 'Cancel',
-          required: 'This field is required',
-        };
+  const { t, lang } = useLang();
   const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
   const [authForm] = Form.useForm<AuthFormValues>();
   const [profiles, setProfiles] = useState<MetricProfile[]>([]);
@@ -504,7 +446,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 ...previous,
                 [metric.semanticMetric]: {
                   loading: false,
-                  error: getQueryErrorMessage(error, queryErrorFallback),
+                  error: getQueryErrorMessage(error, t('metricsExplorer.queryErrorFallback')),
                 },
               }));
             }
@@ -512,7 +454,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         }),
       );
     },
-    [queryErrorFallback, runQuery],
+    [t, runQuery],
   );
 
   useEffect(() => {
@@ -569,12 +511,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         if (currentRequest === requestId.current) {
           setCustomPanel({
             loading: false,
-            error: getQueryErrorMessage(error, queryErrorFallback),
+            error: getQueryErrorMessage(error, t('metricsExplorer.queryErrorFallback')),
           });
         }
       }
     },
-    [queryErrorFallback, runQuery],
+    [t, runQuery],
   );
 
   const activateDataSource = (nextKey: string, credentials?: AuthFormValues) => {
@@ -695,14 +637,14 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               data={state.data}
               metric={metric}
               locale={locale}
-              noSamples={copy.noSamples}
-              histogramLabel={copy.histogram}
-              histogramTooltip={copy.histogramTooltip}
-              hiddenSeriesText={copy.hiddenSeries}
+              noSamples={t('metricsExplorer.noSamples')}
+              histogramLabel={t('metricsExplorer.histogram')}
+              histogramTooltip={t('metricsExplorer.histogramTooltip')}
+              hiddenSeriesText={(count: number) => t('metricsExplorer.hiddenSeries', { count, maxSeries: MAX_SERIES })}
             />
           </>
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.noSamples} />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('metricsExplorer.noSamples')} />
         )}
       </Card>
     );
@@ -710,7 +652,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const customMetric: MetricMapping = {
     semanticMetric: 'custom',
-    name: appliedCustomPromql || copy.customTitle,
+    name: appliedCustomPromql || t('metricsExplorer.customTitle'),
     unit: '',
     prometheusMetric: '',
     promql: appliedCustomPromql,
@@ -727,23 +669,23 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         style={{ marginBottom: 12 }}
       >
         <Title id="metrics-explorer-title" level={4} style={{ margin: 0, fontSize: 16 }}>
-          {copy.title}
+          {t('metricsExplorer.title')}
         </Title>
 
         <Flex gap={8} wrap="wrap" align="center" style={{ maxWidth: '100%' }}>
           <Select
-            aria-label="数据源"
+            aria-label={t('metricsExplorer.dataSource')}
             value={dataSourceKey}
             loading={dataSourcesLoading}
             onChange={handleDataSourceChange}
             options={[
-              { label: copy.defaultDataSource, value: '' },
+              { label: t('metricsExplorer.defaultDataSource'), value: '' },
               ...availableDataSources.map((ds) => ({ label: ds.name, value: ds.key })),
             ]}
             style={{ width: 200, maxWidth: '100%' }}
           />
           <Select
-            aria-label={copy.profile}
+            aria-label={t('metricsExplorer.profile')}
             value={profileId || undefined}
             loading={profilesLoading}
             onChange={handleProfileChange}
@@ -751,15 +693,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             style={{ width: 210, maxWidth: '100%' }}
           />
           <Segmented
-            aria-label={copy.range}
+            aria-label={t('metricsExplorer.range')}
             size="small"
             value={rangeId}
             onChange={(value) => handleRangeChange(value as RangeOption['value'])}
             options={RANGE_OPTIONS.map(({ label, value }) => ({ label, value }))}
           />
-          <Tooltip title={copy.refresh}>
+          <Tooltip title={t('metricsExplorer.refresh')}>
             <Button
-              aria-label={copy.refresh}
+              aria-label={t('metricsExplorer.refresh')}
               icon={<ArrowsClockwise size={16} />}
               onClick={() => {
                 void loadAll(selectedProfile, selectedRange);
@@ -776,14 +718,14 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       {profilesLoading ? (
         <Skeleton active paragraph={{ rows: 5 }} />
       ) : profileError ? (
-        <Alert type="error" showIcon message={copy.profileError} />
+        <Alert type="error" showIcon message={t('metricsExplorer.profileError')} />
       ) : profiles.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.noProfiles} />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('metricsExplorer.noProfiles')} />
       ) : (
         <>
           <Card
             size="small"
-            title={copy.customTitle}
+            title={t('metricsExplorer.customTitle')}
             style={{ marginBottom: 16 }}
             extra={
               <Button
@@ -793,12 +735,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 disabled={!customPromql.trim()}
                 onClick={() => void runCustomQuery(customPromql, selectedRange)}
               >
-                {copy.customRun}
+                {t('metricsExplorer.customRun')}
               </Button>
             }
           >
             <Input.TextArea
-              aria-label={copy.customTitle}
+              aria-label={t('metricsExplorer.customTitle')}
               value={customPromql}
               onChange={(event) => setCustomPromql(event.target.value)}
               onPressEnter={(event) => {
@@ -807,7 +749,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                   void runCustomQuery(customPromql, selectedRange);
                 }
               }}
-              placeholder={copy.customPlaceholder}
+              placeholder={t('metricsExplorer.customPlaceholder')}
               autoSize={{ minRows: 2, maxRows: 6 }}
               style={{ fontFamily: 'monospace' }}
             />
@@ -833,14 +775,14 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                     data={customPanel.data}
                     metric={customMetric}
                     locale={locale}
-                    noSamples={copy.noSamples}
-                    histogramLabel={copy.histogram}
-                    histogramTooltip={copy.histogramTooltip}
-                    hiddenSeriesText={copy.hiddenSeries}
+                    noSamples={t('metricsExplorer.noSamples')}
+                    histogramLabel={t('metricsExplorer.histogram')}
+                    histogramTooltip={t('metricsExplorer.histogramTooltip')}
+                    hiddenSeriesText={(count: number) => t('metricsExplorer.hiddenSeries', { count, maxSeries: MAX_SERIES })}
                   />
                 </>
               ) : (
-                <Text type="secondary">{copy.customEmpty}</Text>
+                <Text type="secondary">{t('metricsExplorer.customEmpty')}</Text>
               )}
             </div>
           </Card>
@@ -857,15 +799,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         </>
       )}
       <Modal
-        title={copy.authTitle}
+        title={t('metricsExplorer.authTitle')}
         open={pendingDataSource !== null}
-        okText={copy.connect}
-        cancelText={copy.cancel}
+        okText={t('metricsExplorer.connect')}
+        cancelText={t('metricsExplorer.cancel')}
         onOk={() => authForm.submit()}
         onCancel={handleAuthCancel}
         afterClose={() => authForm.resetFields()}
       >
-        <Text type="secondary">{copy.authDescription}</Text>
+        <Text type="secondary">{t('metricsExplorer.authDescription')}</Text>
         <Form<AuthFormValues>
           form={authForm}
           layout="vertical"
@@ -876,15 +818,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             <>
               <Form.Item
                 name="username"
-                label={copy.username}
-                rules={[{ required: true, whitespace: true, message: copy.required }]}
+                label={t('metricsExplorer.username')}
+                rules={[{ required: true, whitespace: true, message: t('metricsExplorer.required') }]}
               >
                 <Input autoComplete="username" />
               </Form.Item>
               <Form.Item
                 name="password"
-                label={copy.password}
-                rules={[{ required: true, whitespace: true, message: copy.required }]}
+                label={t('metricsExplorer.password')}
+                rules={[{ required: true, whitespace: true, message: t('metricsExplorer.required') }]}
               >
                 <Input.Password autoComplete="current-password" />
               </Form.Item>
@@ -892,8 +834,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           ) : pendingAuthMode === 'bearer' ? (
             <Form.Item
               name="bearerToken"
-              label={copy.token}
-              rules={[{ required: true, whitespace: true, message: copy.required }]}
+              label={t('metricsExplorer.token')}
+              rules={[{ required: true, whitespace: true, message: t('metricsExplorer.required') }]}
             >
               <Input.Password autoComplete="off" />
             </Form.Item>
