@@ -283,11 +283,11 @@ const formatDateTime = (iso?: string): string => {
 
 const ROUTE_STATUS_META: Record<
   RouteDiagnosticStatus,
-  { color: string; label: string; icon: React.ReactNode }
+  { color: string; icon: React.ReactNode }
 > = {
-  healthy: { color: 'success', label: '健康', icon: <CheckCircleOutlined /> },
-  warning: { color: 'warning', label: '关注', icon: <WarningOutlined /> },
-  critical: { color: 'error', label: '异常', icon: <ExclamationCircleOutlined /> },
+  healthy: { color: 'success', icon: <CheckCircleOutlined /> },
+  warning: { color: 'warning', icon: <WarningOutlined /> },
+  critical: { color: 'error', icon: <ExclamationCircleOutlined /> },
 };
 
 const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
@@ -299,7 +299,7 @@ const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -698,18 +698,18 @@ const TopicPage = () => {
     const meta = ROUTE_STATUS_META[status];
     return (
       <Tag color={meta.color} icon={meta.icon}>
-        {meta.label}
+        {t(`topicRoute.status.${status}`)}
       </Tag>
     );
   };
 
   const renderRouteIssueTags = (issues: RouteDiagnosticIssue[]) => {
-    if (issues.length === 0) return <Text type="secondary">无</Text>;
+    if (issues.length === 0) return <Text type="secondary">{t('topicRoute.noIssues')}</Text>;
     return (
       <Space size={[4, 4]} wrap>
         {issues.slice(0, 3).map((item) => (
           <Tag key={item.id} color={ISSUE_SEVERITY_COLOR[item.severity]}>
-            {item.title}
+            {t(`topicRoute.issue.${item.code}`)}
           </Tag>
         ))}
         {issues.length > 3 && <Tag>+{issues.length - 3}</Tag>}
@@ -888,20 +888,22 @@ const TopicPage = () => {
         style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 12 }}
       >
         <Text strong style={{ display: 'block', marginBottom: 8 }}>
-          诊断项
+          {t('topic.diagItem')}
         </Text>
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           {issues.map((item) => (
             <Flex key={item.id} align="flex-start" gap={8}>
               <Tag color={ISSUE_SEVERITY_COLOR[item.severity]} style={{ marginTop: 1 }}>
-                {item.severity === 'critical' ? '异常' : '关注'}
+                {item.severity === 'critical' ? t('topic.routeCritical') : t('topic.routeWarning')}
               </Tag>
               <div>
                 <Text strong>
-                  {item.brokerName ? `${item.brokerName}：${item.title}` : item.title}
+                  {item.brokerName
+                    ? `${item.brokerName}${lang === 'zh' ? '：' : ': '}${t(`topicRoute.issue.${item.code}`)}`
+                    : t(`topicRoute.issue.${item.code}`)}
                 </Text>
                 <Text type="secondary" style={{ display: 'block' }}>
-                  {item.description}
+                  {t(`topicRoute.issueDesc.${item.code}`)}
                 </Text>
               </div>
             </Flex>
@@ -915,12 +917,12 @@ const TopicPage = () => {
     if (recommendations.length === 0) return null;
     return (
       <InfoBanner
-        title="建议处理"
+        title={t('topic.suggestAction')}
         description={
           <Space direction="vertical" size={2}>
             {recommendations.map((item) => (
               <Text key={item} style={{ fontSize: 14 }}>
-                {item}
+                {t(item)}
               </Text>
             ))}
           </Space>
@@ -937,18 +939,18 @@ const TopicPage = () => {
     return (
       <>
         <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-          路由信息
+          {t('topic.routeInfo')}
         </Text>
         {!detailLoading && (
           <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 12 }}>
             <Alert
               type={diagnostics.statusColor}
               showIcon
-              message={`路由诊断：${diagnostics.statusText}`}
+              message={t('topic.diagTitle', { status: t(`topicRoute.status.${diagnostics.status}`) })}
               description={
                 diagnostics.status === 'healthy'
-                  ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
-                  : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
+                  ? t('topic.diagSummaryGood', { brokers: summary.brokerCount, write: summary.totalWriteQueues, read: summary.totalReadQueues })
+                  : t('topic.diagSummaryIssues', { count: diagnostics.issues.length })
               }
               action={
                 routes.length === 0 ? (
@@ -958,33 +960,33 @@ const TopicPage = () => {
                     loading={rebuilding}
                     onClick={() => void rebuildTopic(topic)}
                   >
-                    在 Broker 上重建
+                    {t('topic.rebuildOnBroker')}
                   </Button>
                 ) : undefined
               }
             />
             <Row gutter={[12, 12]}>
               {renderRouteMetric(
-                'Broker 数',
+                t('topic.brokerCountStat'),
                 summary.brokerCount,
-                `${summary.addressCount} 个地址`,
+                t('topic.addrCount', { count: summary.addressCount }),
               )}
               {renderRouteMetric(
-                '可写 Broker',
+                t('topic.writableBrokers'),
                 summary.writableBrokerCount,
-                `${summary.totalWriteQueues} 个写队列`,
+                t('topic.writeQueueCount', { count: summary.totalWriteQueues }),
               )}
               {renderRouteMetric(
-                '可读 Broker',
+                t('topic.readableBrokers'),
                 summary.readableBrokerCount,
-                `${summary.totalReadQueues} 个读队列`,
+                t('topic.readQueueCount', { count: summary.totalReadQueues }),
               )}
               {renderRouteMetric(
-                'Replica 数',
+                t('topic.replicaCountStat'),
                 summary.replicaCount,
                 summary.writeSkew.gap > 0 || summary.readSkew.gap > 0
-                  ? `队列差距 写 ${summary.writeSkew.gap} / 读 ${summary.readSkew.gap}`
-                  : '队列均衡',
+                  ? t('topic.queueSkew', { w: summary.writeSkew.gap, r: summary.readSkew.gap })
+                  : t('topic.queueBalanced'),
               )}
             </Row>
             {renderRouteIssues(diagnostics.issues)}
