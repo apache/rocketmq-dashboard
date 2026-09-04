@@ -1719,6 +1719,20 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
+  'topic.cluster': { zh: '集群', en: 'Cluster' },
+  'topic.colDiagnostics': { zh: '诊断', en: 'Diagnostics' },
+  'topic.consumeModeCol': { zh: '消费模式', en: 'Consume Mode' },
+  'topic.consumeTpsCol': { zh: '消费 TPS', en: 'Consume TPS' },
+  'topic.consumerGroupCol': { zh: '消费者组', en: 'Consumer Group' },
+  'topic.consumerGroupCountStat': { zh: '消费者组数', en: 'Consumer Groups' },
+  'topic.lagAmount': { zh: '堆积量', en: 'Backlog' },
+  'topic.metricsUnavailable': { zh: '不可用', en: 'Unavailable' },
+  'topic.permission': { zh: '权限', en: 'Permission' },
+  'topic.permRead': { zh: '读', en: 'Read' },
+  'topic.permWrite': { zh: '写', en: 'Write' },
+  'topic.readQueues': { zh: '读队列数', en: 'Read Queues' },
+  'topic.todayMessagesStat': { zh: '今日消息量', en: 'Messages Today' },
+  'topic.writeQueues': { zh: '写队列数', en: 'Write Queues' },
 
   // ─── Group / Consumer (detailed) ───
   'group.subtitle': {
