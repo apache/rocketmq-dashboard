@@ -2368,6 +2368,13 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'consumer.previewFailFallback': { zh: '预览重置影响失败', en: 'Failed to preview the reset impact' },
+  'consumer.resetOffsetSuccess': { zh: '{group} 在 {topic} 的消费位点已重置到 {time}', en: 'The offset of {group} on {topic} was reset to {time}' },
+  'consumer.csvParseFailed': { zh: 'CSV 解析失败', en: 'Failed to parse CSV' },
+  'consumer.importRowFailed': { zh: '创建失败', en: 'Creation failed' },
+  'consumer.importRowCreated': { zh: '已创建', en: 'Created' },
+  'consumer.confirmResetImpact': { zh: '请确认以下影响', en: 'Please confirm the following impact' },
+  'consumer.noPreviewableQueues': { zh: '未找到可预览的 Queue 位点', en: 'No previewable queue offsets found' },
   // ─── BrokerCluster ───
 };
 
