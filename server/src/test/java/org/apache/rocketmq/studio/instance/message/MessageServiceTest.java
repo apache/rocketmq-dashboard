@@ -268,6 +268,26 @@ class MessageServiceTest {
     }
 
     @Test
+    void recordsTheCustomTraceTopicUsedByMessageIdLookup() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.getMessageTrace("instance-a", "msg-001", "orders", "CUSTOM_TRACE"))
+                .thenReturn(trace);
+
+        assertThat(service.getMessageTrace("instance-a", "msg-001", "orders", "  CUSTOM_TRACE  "))
+                .isSameAs(trace);
+
+        verify(provider).getMessageTrace("instance-a", "msg-001", "orders", "CUSTOM_TRACE");
+        verify(history).recordTraceQuery("instance-a", "msg-001", "orders", "CUSTOM_TRACE", 0, 0);
+        verifyNoInteractions(fallback);
+    }
+
+    @Test
     void keyTraceLookupDoesNotRecordTraceQueryHistory() {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
@@ -284,5 +304,23 @@ class MessageServiceTest {
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void normalizesCustomTraceTopicForKeyLookup() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(fallback.getMessageTraceByKey("instance-a", "ORDER-1", "orders", "CUSTOM_TRACE"))
+                .thenReturn(trace);
+
+        assertThat(service.getMessageTraceByKey("instance-a", "ORDER-1", "orders", "  CUSTOM_TRACE  "))
+                .isSameAs(trace);
+
+        verify(fallback).getMessageTraceByKey("instance-a", "ORDER-1", "orders", "CUSTOM_TRACE");
+        verifyNoInteractions(history);
     }
 }

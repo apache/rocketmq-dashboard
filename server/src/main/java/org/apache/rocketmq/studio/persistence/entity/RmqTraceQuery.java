@@ -34,6 +34,13 @@ public class RmqTraceQuery {
 
     private String topic;
 
+    /**
+     * The trace topic selected for the lookup. A null value means that the provider default
+     * (normally {@code RMQ_SYS_TRACE_TOPIC}) was used. Keeping this nullable preserves the
+     * meaning of history rows written before custom trace-topic support existed.
+     */
+    private String traceTopic;
+
     private Integer nodeCount;
 
     private Integer consumerCount;

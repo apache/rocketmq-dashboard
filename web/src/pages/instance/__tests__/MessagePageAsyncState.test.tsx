@@ -33,6 +33,11 @@ const serviceMocks = vi.hoisted(() => ({
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
 }));
+const historyMocks = vi.hoisted(() => ({
+  getQueryHistorySummary: vi.fn(),
+  listMessageQueryHistory: vi.fn(),
+  listTraceQueryHistory: vi.fn(),
+}));
 
 vi.mock('../../../services/messageService', () => ({
   ...serviceMocks,
@@ -50,6 +55,8 @@ vi.mock('../../../services/messageService', () => ({
     ),
 }));
 vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
+
+vi.mock('../../../api/messageHistory', () => historyMocks);
 
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
@@ -137,8 +144,22 @@ const selectTopic = async (user: ReturnType<typeof userEvent.setup>) => {
 describe('MessagePage async request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     serviceMocks.getMessageTrace.mockResolvedValue(null);
     serviceMocks.getMessageTraceByKey.mockResolvedValue(null);
+    historyMocks.getQueryHistorySummary.mockResolvedValue({ messageQueries: 0, traceQueries: 0 });
+    historyMocks.listMessageQueryHistory.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+    });
+    historyMocks.listTraceQueryHistory.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+    });
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,
       selectInstance: vi.fn(),
@@ -437,6 +458,112 @@ describe('MessagePage async request ownership', () => {
     expect(within(dialog).getAllByText('消费投递失败')).not.toHaveLength(0);
     expect(within(dialog).getAllByText(/cg-billing/)).not.toHaveLength(0);
     expect(within(dialog).getByText(/cg-notification/)).toBeInTheDocument();
+  });
+
+  it('remembers a custom trace topic per instance across page remounts', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('remembered-message')]);
+    const user = userEvent.setup();
+    const firstRender = renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const firstRow = await screen.findByRole('row', { name: /remembered-message/ });
+    await user.click(within(firstRow).getByRole('button', { name: /轨迹/ }));
+    const firstDialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const firstTraceTopicInput =
+      within(firstDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）');
+    await user.type(firstTraceTopicInput, '  CUSTOM_TRACE  ');
+
+    await waitFor(() => {
+      expect(localStorage.getItem('rocketmq-studio-message-trace-topic:1')).toBe('CUSTOM_TRACE');
+    });
+
+    firstRender.unmount();
+    renderPage();
+    await selectTopic(user);
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const secondRow = await screen.findByRole('row', { name: /remembered-message/ });
+    await user.click(within(secondRow).getByRole('button', { name: /轨迹/ }));
+    const secondDialog = await screen.findByRole('dialog', { name: '消息详情' });
+
+    expect(within(secondDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
+      'CUSTOM_TRACE',
+    );
+  });
+
+  it('does not leak a stored custom trace topic between instances', async () => {
+    localStorage.setItem('rocketmq-studio-message-trace-topic:1', 'TRACE_A');
+    localStorage.setItem('rocketmq-studio-message-trace-topic:2', 'TRACE_B');
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('instance-message')]);
+    let currentInstanceId = 1;
+    instanceFilterMocks.useInstanceFilter.mockImplementation(() => ({
+      selectedInstanceId: currentInstanceId,
+      selectInstance: vi.fn(),
+      instanceOptions: [
+        { value: 1, label: 'Instance A' },
+        { value: 2, label: 'Instance B' },
+      ],
+    }));
+    const user = userEvent.setup();
+    const view = renderPage();
+    await selectTopic(user);
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const firstRow = await screen.findByRole('row', { name: /instance-message/ });
+    await user.click(within(firstRow).getByRole('button', { name: /轨迹/ }));
+    const firstDialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(within(firstDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
+      'TRACE_A',
+    );
+
+    currentInstanceId = 2;
+    view.rerender(<MessagePageWithProviders />);
+    await selectTopic(user);
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const secondRow = await screen.findByRole('row', { name: /instance-message/ });
+    await user.click(within(secondRow).getByRole('button', { name: /轨迹/ }));
+    const secondDialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(within(secondDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
+      'TRACE_B',
+    );
+  });
+
+  it('restores a custom trace topic from history before opening the trace again', async () => {
+    historyMocks.listTraceQueryHistory.mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          msgId: 'history-message',
+          topic: 'orders',
+          traceTopic: 'CUSTOM_TRACE',
+          nodeCount: 1,
+          consumerCount: 0,
+          queriedBy: 'alice',
+          queriedAt: '2026-08-05T12:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('history-message')]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: /服务端历史/ }));
+    await user.click(await screen.findByRole('tab', { name: '轨迹查询' }));
+    await user.click(await screen.findByText('history-message'));
+
+    const row = await screen.findByRole('row', { name: /history-message/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getMessageTrace).toHaveBeenLastCalledWith(
+        'history-message',
+        1,
+        'topic-history-message',
+        'CUSTOM_TRACE',
+      );
+    });
   });
 
   it('keeps the latest query loading and ignores an earlier query result', async () => {
