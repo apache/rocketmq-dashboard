@@ -198,6 +198,53 @@ describe('Clients page', () => {
     expect(within(languageVersions).getByText('C++ 4.9.8: 1')).toBeInTheDocument();
   });
 
+  it('renders client connection diagnostics for risky inventories', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: 'shared-client',
+        groupOrTopic: 'order-create',
+        address: '10.0.1.12:49152',
+      },
+      {
+        ...connection,
+        clientId: 'shared-client',
+        groupOrTopic: 'order-create',
+        address: '10.0.1.13:49152',
+      },
+      {
+        ...connection,
+        clientId: 'consumer-a',
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        address: '10.0.2.10:49152',
+        protocol: 'gRPC',
+        version: '5.0.7',
+      },
+      {
+        ...connection,
+        clientId: 'consumer-b',
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        address: '10.0.2.11:49152',
+        protocol: 'Remoting',
+        version: '4.9.8',
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    const diagnostics = await screen.findByTestId('client-connection-diagnostics');
+    expect(within(diagnostics).getByText('客户端连接诊断')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('客户端连接存在高风险')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('Client ID 连接到多个地址')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('同一资源存在多协议连接')).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText(
+        '确认该资源是否处于协议迁移期，并分别检查 Proxy 与 Broker 侧连接状态。',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('updates statistics when the selected cluster filter changes', async () => {
     const user = userEvent.setup();
     vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
@@ -447,9 +494,7 @@ describe('Clients page', () => {
 
     expect(await screen.findByText('Unable to load registry clusters')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /重\s*试/ }));
-    await waitFor(() =>
-      expect(clusterService.listRegistryClusters).toHaveBeenNthCalledWith(2),
-    );
+    await waitFor(() => expect(clusterService.listRegistryClusters).toHaveBeenNthCalledWith(2));
 
     await act(async () => {
       stale.resolve([]);
