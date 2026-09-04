@@ -750,6 +750,11 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Failed to load maintenance windows. Please try again later.',
   },
   'sysAlerts.silenceCreated': { zh: '维护窗口已创建', en: 'Maintenance window created.' },
+  'sysAlerts.silenceUpdated': { zh: '维护窗口已更新', en: 'Maintenance window updated.' },
+  'sysAlerts.silenceUpdateFailed': {
+    zh: '更新维护窗口失败，请稍后重试。',
+    en: 'Failed to update maintenance window. Please try again later.',
+  },
   'sysAlerts.silenceCreateFailed': {
     zh: '维护窗口创建失败，请检查时间范围',
     en: 'Failed to create maintenance window. Check the time range.',
