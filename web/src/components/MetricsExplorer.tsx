@@ -365,7 +365,7 @@ const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
 };
 
 const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
-  const { lang } = useLang();
+  const { t, lang } = useLang();
   const queryErrorFallback = lang === 'zh' ? 'Prometheus 查询失败' : 'Prometheus query failed';
   const copy =
     lang === 'zh'
@@ -634,7 +634,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 ...previous,
                 [metric.semanticMetric]: {
                   loading: false,
-                  error: getQueryErrorMessage(error, queryErrorFallback),
+                  error: getQueryErrorMessage(error, t('metricsExplorer.queryErrorFallback')),
                 },
               }));
             }
@@ -741,7 +741,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         if (currentRequest === customRequestIdRef.current) {
           setCustomPanel({
             loading: false,
-            error: getQueryErrorMessage(error, queryErrorFallback),
+            error: getQueryErrorMessage(error, t('metricsExplorer.queryErrorFallback')),
           });
         }
       }
@@ -1180,7 +1180,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         ) : state?.data ? (
           renderMetricResult(metric, state, summary)
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.noSamples} />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('metricsExplorer.noSamples')} />
         )}
       </Card>
     );
@@ -1207,23 +1207,23 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         style={{ marginBottom: 12 }}
       >
         <Title id="metrics-explorer-title" level={4} style={{ margin: 0, fontSize: 16 }}>
-          {copy.title}
+          {t('metricsExplorer.title')}
         </Title>
 
         <Flex gap={8} wrap="wrap" align="center" style={{ maxWidth: '100%' }}>
           <Select
-            aria-label="数据源"
+            aria-label={t('metricsExplorer.dataSource')}
             value={dataSourceKey}
             loading={dataSourcesLoading}
             onChange={handleDataSourceChange}
             options={[
-              { label: copy.defaultDataSource, value: '' },
+              { label: t('metricsExplorer.defaultDataSource'), value: '' },
               ...availableDataSources.map((ds) => ({ label: ds.name, value: ds.key })),
             ]}
             style={{ width: 200, maxWidth: '100%' }}
           />
           <Select
-            aria-label={copy.profile}
+            aria-label={t('metricsExplorer.profile')}
             value={profileId || undefined}
             loading={profilesLoading}
             onChange={handleProfileChange}
@@ -1231,7 +1231,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             style={{ width: 210, maxWidth: '100%' }}
           />
           <Segmented
-            aria-label={copy.range}
+            aria-label={t('metricsExplorer.range')}
             size="small"
             value={rangeId}
             onChange={(value) => handleRangeChange(value as RangeOption['value'])}
@@ -1246,7 +1246,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           </Tooltip>
           <Tooltip title={copy.refresh}>
             <Button
-              aria-label={copy.refresh}
+              aria-label={t('metricsExplorer.refresh')}
               icon={<ArrowsClockwise size={16} />}
               onClick={() => {
                 void loadAll(selectedProfile, selectedRange);
@@ -1263,14 +1263,14 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       {profilesLoading ? (
         <Skeleton active paragraph={{ rows: 5 }} />
       ) : profileError ? (
-        <Alert type="error" showIcon message={copy.profileError} />
+        <Alert type="error" showIcon message={t('metricsExplorer.profileError')} />
       ) : profiles.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.noProfiles} />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('metricsExplorer.noProfiles')} />
       ) : (
         <>
           <Card
             size="small"
-            title={copy.customTitle}
+            title={t('metricsExplorer.customTitle')}
             style={{ marginBottom: 16 }}
             extra={
               <Space size={4}>
@@ -1310,7 +1310,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             }
           >
             <Input.TextArea
-              aria-label={copy.customTitle}
+              aria-label={t('metricsExplorer.customTitle')}
               value={customPromql}
               onChange={(event) => setCustomPromql(event.target.value)}
               onPressEnter={(event) => {
@@ -1319,7 +1319,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                   void runCustomQuery(customPromql, selectedRange);
                 }
               }}
-              placeholder={copy.customPlaceholder}
+              placeholder={t('metricsExplorer.customPlaceholder')}
               autoSize={{ minRows: 2, maxRows: 6 }}
               style={{ fontFamily: 'monospace' }}
             />
@@ -1333,7 +1333,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               ) : customPanel?.data ? (
                 renderMetricResult(customMetric, customPanel, customSummary)
               ) : (
-                <Text type="secondary">{copy.customEmpty}</Text>
+                <Text type="secondary">{t('metricsExplorer.customEmpty')}</Text>
               )}
             </div>
           </Card>
@@ -1463,15 +1463,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         />
       </Drawer>
       <Modal
-        title={copy.authTitle}
+        title={t('metricsExplorer.authTitle')}
         open={pendingDataSource !== null}
-        okText={copy.connect}
-        cancelText={copy.cancel}
+        okText={t('metricsExplorer.connect')}
+        cancelText={t('metricsExplorer.cancel')}
         onOk={() => authForm.submit()}
         onCancel={handleAuthCancel}
         afterClose={() => authForm.resetFields()}
       >
-        <Text type="secondary">{copy.authDescription}</Text>
+        <Text type="secondary">{t('metricsExplorer.authDescription')}</Text>
         <Form<AuthFormValues>
           form={authForm}
           layout="vertical"
@@ -1482,15 +1482,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             <>
               <Form.Item
                 name="username"
-                label={copy.username}
-                rules={[{ required: true, whitespace: true, message: copy.required }]}
+                label={t('metricsExplorer.username')}
+                rules={[{ required: true, whitespace: true, message: t('metricsExplorer.required') }]}
               >
                 <Input autoComplete="username" />
               </Form.Item>
               <Form.Item
                 name="password"
-                label={copy.password}
-                rules={[{ required: true, whitespace: true, message: copy.required }]}
+                label={t('metricsExplorer.password')}
+                rules={[{ required: true, whitespace: true, message: t('metricsExplorer.required') }]}
               >
                 <Input.Password autoComplete="current-password" />
               </Form.Item>
@@ -1498,8 +1498,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           ) : pendingAuthMode === 'bearer' ? (
             <Form.Item
               name="bearerToken"
-              label={copy.token}
-              rules={[{ required: true, whitespace: true, message: copy.required }]}
+              label={t('metricsExplorer.token')}
+              rules={[{ required: true, whitespace: true, message: t('metricsExplorer.required') }]}
             >
               <Input.Password autoComplete="off" />
             </Form.Item>
