@@ -32,6 +32,7 @@ import {
 } from '../../services/opsService';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import NotificationDeliveryAnalyticsDrawer from '../../components/NotificationDeliveryAnalyticsDrawer';
 
 const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   PENDING: 'default',
@@ -58,6 +59,7 @@ const NotificationDeliveriesPage = () => {
   const retryingIdsInFlight = useRef(new Set<number>());
   const retryingVisibleInFlight = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
 
   const refresh = () => {
     setLoading(true);
@@ -229,7 +231,13 @@ const NotificationDeliveriesPage = () => {
   return (
     <>
       <div style={{ padding: 24 }}>
-        <PageHeader title={t('deliveries.title')} subtitle={t('deliveries.subtitle')} />
+        <PageHeader
+          title={t('deliveries.title')}
+          subtitle={t('deliveries.subtitle')}
+          extra={
+            <Button onClick={() => setAnalyticsOpen(true)}>{t('deliveryAnalytics.open')}</Button>
+          }
+        />
         <Card bodyStyle={{ padding: 20 }}>
           <Flex gap={12} wrap="wrap" style={{ marginBottom: 20 }}>
             <Button
@@ -291,6 +299,9 @@ const NotificationDeliveriesPage = () => {
           />
         </Card>
       </div>
+      {analyticsOpen && (
+        <NotificationDeliveryAnalyticsDrawer open onClose={() => setAnalyticsOpen(false)} />
+      )}
       <Drawer
         title={t('deliveries.details')}
         width={640}
