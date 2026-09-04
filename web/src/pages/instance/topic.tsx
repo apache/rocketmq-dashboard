@@ -262,12 +262,12 @@ const randomMetricsBody = () =>
   );
 
 const RANDOM_BODY_GENERATORS = [
-  { label: '订单事件', fn: randomOrderBody },
-  { label: '用户行为', fn: randomUserEventBody },
-  { label: '支付回调', fn: randomPaymentBody },
-  { label: '库存变更', fn: randomInventoryBody },
-  { label: '通知消息', fn: randomNotificationBody },
-  { label: '监控指标', fn: randomMetricsBody },
+  { label: 'order', fn: randomOrderBody },
+  { label: 'userEvent', fn: randomUserEventBody },
+  { label: 'payment', fn: randomPaymentBody },
+  { label: 'inventory', fn: randomInventoryBody },
+  { label: 'notification', fn: randomNotificationBody },
+  { label: 'metrics', fn: randomMetricsBody },
 ];
 
 // ─── Format helpers ───────────────────────────────────────────────
@@ -1082,7 +1082,7 @@ const TopicPage = () => {
       setImportErrors(validation.errors);
     } catch (error) {
       setImportRows([]);
-      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+      setImportErrors([error instanceof Error ? error.message : t('topic.csvParseFailed')]);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
@@ -1115,9 +1115,9 @@ const TopicPage = () => {
           ? {
               ...nextRows[index],
               status: 'failed',
-              message: failure.message || '创建失败',
+              message: failure.message || t('topic.importRowFailed'),
             }
-          : { ...nextRows[index], status: 'success', message: '已创建' };
+          : { ...nextRows[index], status: 'success', message: t('topic.importRowCreated') };
       });
     } catch (error) {
       for (const { index } of targetIndexes) {
@@ -1439,7 +1439,7 @@ const TopicPage = () => {
           <>
             {/* Section 1: 基本信息 */}
             <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-              基本信息
+              {t('topic.basicInfo')}
             </Text>
             {renderDetailTab(selectedTopic)}
 
@@ -1511,11 +1511,11 @@ const TopicPage = () => {
               { required: true, message: '请输入 Topic 名称' },
               {
                 pattern: RESOURCE_NAME_PATTERN,
-                message: '仅支持字母、数字、下划线、短横线、% 和 |',
+                message: t('topic.namePattern'),
               },
               {
                 max: RESOURCE_NAME_MAX_LENGTH.topic,
-                message: `名称不能超过 ${RESOURCE_NAME_MAX_LENGTH.topic} 个字符`,
+                message: t('topic.nameMaxLength', { max: RESOURCE_NAME_MAX_LENGTH.topic }),
               },
             ]}
           >
@@ -1698,7 +1698,7 @@ const TopicPage = () => {
                   onClick={() => sendForm.setFieldValue('body', gen.fn())}
                   style={{ fontSize: 14, color: '#8c8c8c', height: 22, padding: '0 6px' }}
                 >
-                  {gen.label}
+                  {t(`topic.quickFill.${gen.label}`)}
                 </Button>
               ))}
             </Space>

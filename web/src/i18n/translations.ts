@@ -2368,6 +2368,18 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'topic.quickFill.order': { zh: '订单事件', en: 'Order event' },
+  'topic.quickFill.userEvent': { zh: '用户行为', en: 'User behavior' },
+  'topic.quickFill.payment': { zh: '支付回调', en: 'Payment callback' },
+  'topic.quickFill.inventory': { zh: '库存变更', en: 'Inventory change' },
+  'topic.quickFill.notification': { zh: '通知消息', en: 'Notification' },
+  'topic.quickFill.metrics': { zh: '监控指标', en: 'Metrics' },
+  'topic.basicInfo': { zh: '基本信息', en: 'Basic Info' },
+  'topic.namePattern': { zh: '仅支持字母、数字、下划线、短横线、% 和 |', en: 'Supports only letters, digits, underscore, hyphen, % and |' },
+  'topic.nameMaxLength': { zh: '名称不能超过 {max} 个字符', en: 'Name cannot exceed {max} characters' },
+  'topic.csvParseFailed': { zh: 'CSV 解析失败', en: 'Failed to parse CSV' },
+  'topic.importRowFailed': { zh: '创建失败', en: 'Creation failed' },
+  'topic.importRowCreated': { zh: '已创建', en: 'Created' },
   // ─── BrokerCluster ───
 };
 
