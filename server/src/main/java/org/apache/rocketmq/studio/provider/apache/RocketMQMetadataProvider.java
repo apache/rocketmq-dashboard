@@ -394,6 +394,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         return StringUtils.hasText(instanceId) ? instanceId.trim() : "";
     }
 
+    static String normalizeOptional(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    static String normalizeSearch(String value) {
+        return value == null ? null : value.trim();
+    }
+
     private ConsumeType parseConsumeType(String messageModel) {
         if (!StringUtils.hasText(messageModel)) {
             return ConsumeType.CLUSTERING;
