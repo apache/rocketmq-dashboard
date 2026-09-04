@@ -432,7 +432,7 @@ class ToolGatewayServiceTest {
         when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         ConsumerGroupVO group = consumerGroup();
         group.setDelaySeconds(30);
-        when(metadataService.listConsumerGroupsPage("cluster-v5", null, "order", 2, 20))
+        when(metadataService.listConsumerGroupsPage("cluster-v5", null, "order", null, 2, 20))
                 .thenReturn(PageResult.of(List.of(group), 101, 2, 20));
 
         Object output = gateway.execute("rmq.group.list", Map.of(

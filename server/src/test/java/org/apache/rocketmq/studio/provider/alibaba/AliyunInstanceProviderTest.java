@@ -313,17 +313,12 @@ class AliyunInstanceProviderTest {
 
         List<QueueProgressVO> rows = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
 
-        assertThat(rows).hasSize(2);
         QueueProgressVO topicRow = rows.stream()
                 .filter(row -> "topic:topic-a".equals(row.getBroker()))
                 .findFirst()
                 .orElseThrow();
         assertThat(topicRow.getDiffTotal()).isEqualTo(42L);
-        QueueProgressVO totalRow = rows.stream()
-                .filter(row -> "total".equals(row.getBroker()))
-                .findFirst()
-                .orElseThrow();
-        assertThat(totalRow.getDiffTotal()).isEqualTo(100L);
+        assertThat(rows).noneMatch(row -> "total".equals(row.getBroker()));
     }
 
     @Test
