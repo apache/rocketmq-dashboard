@@ -42,19 +42,22 @@ public class MessageService {
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
-        return queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime, true);
+        return queryMessagesDetailed(instanceId, topic, msgId, tag, key, startTime, endTime, true)
+                .messages();
     }
 
-    private List<MessageRecordVO> queryMessages(
+    private MessageQueryResult queryMessagesDetailed(
             String instanceId, String topic, String msgId, String tag, String key,
             Long startTime, Long endTime, boolean recordHistory) {
         validateTopicQueryWindow(topic, msgId, key, startTime, endTime);
         log.info("Querying messages: topic={}, msgId={}, tag={}, key={}", topic, msgId, tag, key);
-        List<MessageRecordVO> result = providerRegistry.byInstanceId(instanceId)
-                .map(provider -> provider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime))
-                .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
+        MessageQueryResult result = providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.queryMessagesDetailed(instanceId, topic, msgId, tag,
+                        key, startTime, endTime))
+                .orElseGet(() -> messageProvider.queryMessagesDetailed(instanceId, topic, msgId,
+                        tag, key, startTime, endTime));
         if (recordHistory) {
-            recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result);
+            recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.messages());
         }
         return result;
     }
@@ -64,15 +67,17 @@ public class MessageService {
         if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new BusinessException(400, "page must be positive and pageSize must be between 1 and 200");
         }
-        List<MessageRecordVO> result = queryMessages(
+        MessageQueryResult queryResult = queryMessagesDetailed(
                 instanceId, topic, msgId, tag, key, startTime, endTime, page == 1);
+        List<MessageRecordVO> result = queryResult.messages();
         long offset = (long) (page - 1) * pageSize;
         int from = (int) Math.min(offset, result.size());
         int to = Math.min(from + pageSize, result.size());
         boolean topicQuery = StringUtils.hasText(topic) && !StringUtils.hasText(msgId)
                 && !StringUtils.hasText(key);
         return MessageQueryPageVO.builder().items(result.subList(from, to)).total(result.size()).page(page)
-                .size(pageSize).resultMayBeTruncated(topicQuery && result.size() >= TOPIC_QUERY_RESULT_LIMIT).build();
+                .size(pageSize).resultMayBeTruncated(queryResult.mayBeTruncated()
+                        || topicQuery && result.size() >= TOPIC_QUERY_RESULT_LIMIT).build();
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {

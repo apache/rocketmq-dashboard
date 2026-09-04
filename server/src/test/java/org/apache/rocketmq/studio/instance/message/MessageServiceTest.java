@@ -118,8 +118,9 @@ class MessageServiceTest {
         QueryHistoryService history = mock(QueryHistoryService.class);
         MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
         when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
-        when(provider.queryMessages("cloud-instance", "orders", null, null, "ORDER-1", null, null))
-                .thenReturn(List.of(MessageRecordVO.builder().msgId("msg-1").build()));
+        when(provider.queryMessagesDetailed("cloud-instance", "orders", null, null, "ORDER-1", null, null))
+                .thenReturn(MessageQueryResult.complete(
+                        List.of(MessageRecordVO.builder().msgId("msg-1").build())));
 
         service.queryMessages("cloud-instance", "orders", null, null, "ORDER-1", null, null);
 
@@ -175,9 +176,10 @@ class MessageServiceTest {
         QueryHistoryService history = mock(QueryHistoryService.class);
         MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
-        when(provider.queryMessages("instance-a", "TopicA", null, null, null, 1000L, 2000L))
-                .thenReturn(java.util.stream.IntStream.range(0, 200)
-                        .mapToObj(index -> MessageRecordVO.builder().msgId("msg-" + index).build()).toList());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, null, 1000L, 2000L))
+                .thenReturn(MessageQueryResult.complete(java.util.stream.IntStream.range(0, 200)
+                        .mapToObj(index -> MessageRecordVO.builder().msgId("msg-" + index).build())
+                        .toList()));
 
         MessageQueryPageVO page = service.queryMessagesPage("instance-a", "TopicA", null, null, null,
                 1000L, 2000L, 2, 50);
@@ -188,14 +190,52 @@ class MessageServiceTest {
     }
 
     @Test
+    void pageQueryPropagatesProviderTruncationBelowTheGenericTopicThreshold() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, null, 1000L, 2000L))
+                .thenReturn(MessageQueryResult.truncated(
+                        java.util.stream.IntStream.range(0, 120)
+                                .mapToObj(index -> MessageRecordVO.builder().msgId("msg-" + index).build())
+                                .toList()));
+
+        MessageQueryPageVO page = service.queryMessagesPage("instance-a", "TopicA", null, null, null,
+                1000L, 2000L, 2, 50);
+
+        assertThat(page.getTotal()).isEqualTo(120);
+        assertThat(page.isResultMayBeTruncated()).isTrue();
+    }
+
+    @Test
+    void providerTruncationSignalIsAlsoReturnedForKeyAndIdQueries() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "order-1", 1000L, 2000L))
+                .thenReturn(MessageQueryResult.truncated(List.of(
+                        MessageRecordVO.builder().msgId("msg-1").build())));
+
+        MessageQueryPageVO page = service.queryMessagesPage("instance-a", "TopicA", null, null,
+                "order-1", 1000L, 2000L, 1, 50);
+
+        assertThat(page.isResultMayBeTruncated()).isTrue();
+    }
+
+    @Test
     void pageQueryRecordsHistoryOnlyForTheFirstPage() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
         MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
-        when(provider.queryMessages("instance-a", "TopicA", null, null, null, 1000L, 2000L))
-                .thenReturn(List.of(MessageRecordVO.builder().msgId("msg-1").build()));
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, null, 1000L, 2000L))
+                .thenReturn(MessageQueryResult.complete(
+                        List.of(MessageRecordVO.builder().msgId("msg-1").build())));
 
         service.queryMessagesPage("instance-a", "TopicA", null, null, null,
                 1000L, 2000L, 1, 50);
@@ -203,7 +243,7 @@ class MessageServiceTest {
                 1000L, 2000L, 2, 50);
 
         verify(provider, org.mockito.Mockito.times(2))
-                .queryMessages("instance-a", "TopicA", null, null, null, 1000L, 2000L);
+                .queryMessagesDetailed("instance-a", "TopicA", null, null, null, 1000L, 2000L);
         verify(history, org.mockito.Mockito.times(1)).recordMessageQuery(
                 "instance-a", "TOPIC", "TopicA", null, null, null, 1000L, 2000L, 1, null);
     }
