@@ -168,6 +168,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+  localStorage.clear();
   vi.mocked(listDataSources).mockResolvedValue([]);
   vi.mocked(listMetricProfiles).mockResolvedValue(profiles);
   vi.mocked(queryByDataSource).mockResolvedValue(metricData);
@@ -253,6 +254,131 @@ describe('MetricsExplorer', () => {
     );
   });
 
+  it('renders one panel per metric in the selected profile', async () => {
+    vi.mocked(listMetricProfiles).mockResolvedValue([
+      {
+        id: 'rocketmq5-native',
+        name: 'RocketMQ 5.x Native',
+        description: 'RocketMQ 5.x native metrics',
+        metrics: [
+          {
+            semanticMetric: 'message_in_tps',
+            name: 'Message In TPS',
+            unit: 'messages/s',
+            prometheusMetric: 'rocketmq_messages_in_total',
+            promql: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+            labels: ['cluster'],
+          },
+          {
+            semanticMetric: 'consumer_lag_messages',
+            name: 'Consumer Lag Messages',
+            unit: 'messages',
+            prometheusMetric: 'rocketmq_consumer_lag_messages',
+            promql: 'sum(rocketmq_consumer_lag_messages) by (cluster)',
+            labels: ['cluster'],
+          },
+        ],
+      },
+    ]);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Message In TPS')).toBeInTheDocument();
+    expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
+    expect(queryMetrics).toHaveBeenCalledWith({
+      metric: 'sum(rocketmq_consumer_lag_messages) by (cluster)',
+      start: 1_799_996_400,
+      end: 1_800_000_000,
+      step: '30s',
+    });
+  });
+
+  it('caps the plotted series and reports the hidden count', async () => {
+    const manySeries = Array.from({ length: 14 }, (_, index) => ({
+      labels: { cluster: 'prod', node_id: `broker-${index}` },
+      values: [
+        { timestamp: 1_799_996_400, value: String(index) },
+        { timestamp: 1_800_000_000, value: String(index + 1) },
+      ],
+      histograms: [],
+    }));
+    vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: manySeries });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText(/另有 4 条序列未显示/)).toBeInTheDocument();
+    const chart = screen.getByRole('img', { name: 'Message In TPS time series' });
+    expect(chart.querySelectorAll('polyline')).toHaveLength(10);
+  });
+
+  it('runs a custom PromQL expression from the query box', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+
+    await waitFor(() =>
+      expect(queryMetrics).toHaveBeenCalledWith({
+        metric: 'sum(rocketmq_topic_number)',
+        start: 1_799_996_400,
+        end: 1_800_000_000,
+        step: '30s',
+      }),
+    );
+    expect(await screen.findAllByText('cluster=prod / node_id=broker-a')).not.toHaveLength(0);
+  });
+
+  it('refreshes profile panels and the custom query independently', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByText('42 messages/s');
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+
+    await waitFor(() =>
+      expect(queryMetrics).toHaveBeenCalledWith({
+        metric: 'sum(rocketmq_topic_number)',
+        start: 1_799_996_400,
+        end: 1_800_000_000,
+        step: '30s',
+      }),
+    );
+
+    const refreshedProfileData = {
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [{ timestamp: 1_800_000_000, value: '77' }],
+        },
+      ],
+    };
+    const refreshedCustomData = {
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          labels: { cluster: 'prod', query: 'custom' },
+          values: [{ timestamp: 1_800_000_000, value: '9' }],
+        },
+      ],
+    };
+    vi.mocked(queryMetrics).mockImplementation((query) =>
+      Promise.resolve(
+        query.metric === 'sum(rocketmq_topic_number)' ? refreshedCustomData : refreshedProfileData,
+      ),
+    );
+
+    await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+
+    expect(await screen.findByText('77 messages/s')).toBeInTheDocument();
+    expect(screen.getByText('cluster=prod / query=custom')).toBeInTheDocument();
+  });
+
   it('queries the first metric when the version profile changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
@@ -310,7 +436,7 @@ describe('MetricsExplorer', () => {
 
     expect(await screen.findByText('Prometheus 查询失败')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: '指标模板' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '刷新指标' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '刷新全部面板' })).toBeInTheDocument();
   });
 
   it('shows the actionable message returned by the metrics API', async () => {
@@ -608,30 +734,62 @@ describe('MetricsExplorer', () => {
     expect(screen.getAllByTitle('默认数据源').length).toBeGreaterThan(0);
   });
 
-  it('exports the current metric result as CSV', async () => {
+  it('exports the clicked metric panel as CSV', async () => {
     const user = userEvent.setup();
+    const consumerLagData = {
+      resultType: 'matrix',
+      series: [
+        {
+          labels: { cluster: 'prod', group: 'group-a', topic: 'topic-a' },
+          values: [{ timestamp: 1_800_000_000, value: '101' }],
+          histograms: [],
+        },
+      ],
+      warnings: [],
+    };
+    vi.mocked(listMetricProfiles).mockResolvedValue([
+      {
+        ...profiles[0],
+        metrics: [
+          profiles[0].metrics[0],
+          {
+            semanticMetric: 'consumer_lag_messages',
+            name: 'Consumer Lag Messages',
+            unit: 'messages',
+            prometheusMetric: 'rocketmq_consumer_lag_messages',
+            promql: 'sum(rocketmq_consumer_lag_messages) by (cluster, group, topic)',
+            labels: ['cluster', 'group', 'topic'],
+          },
+        ],
+      },
+    ]);
+    vi.mocked(queryMetrics).mockImplementation((query) =>
+      Promise.resolve(
+        query.metric.includes('rocketmq_consumer_lag_messages') ? consumerLagData : metricData,
+      ),
+    );
+
     renderWithProviders(<MetricsExplorer />);
 
-    await screen.findByRole('img', { name: 'Message In TPS time series' });
-    await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+    await screen.findByText('101 messages');
+    await user.click(screen.getByRole('button', { name: 'Consumer Lag Messages 导出 CSV' }));
 
     expect(downloadCsv).toHaveBeenCalledTimes(1);
     const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
-    expect(filename).toMatch(/^rocketmq-studio-metrics-message-in-tps-/);
-    expect(csv).toContain('"Message In TPS"');
-    expect(csv).toContain('"cluster=prod / node_id=broker-a"');
-    expect(csv).toContain('"2027-01-15T08:00:00.000Z"');
+    expect(filename).toMatch(/^rocketmq-studio-metrics-consumer-lag-messages-/);
+    expect(csv).toContain('"Consumer Lag Messages"');
+    expect(csv).toContain('"cluster=prod / group=group-a / topic=topic-a"');
+    expect(csv).not.toContain('"Message In TPS"');
   });
 
-  it('opens a series detail drawer for the active metric result', async () => {
+  it('opens series details from the clicked metric panel', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
 
     await screen.findByRole('img', { name: 'Message In TPS time series' });
-    await user.click(screen.getByRole('button', { name: '序列明细' }));
+    await user.click(screen.getByRole('button', { name: 'Message In TPS 序列明细' }));
 
-    const detailsDialog = await screen.findByRole('dialog', { name: '指标序列明细' });
-    expect(detailsDialog).toBeInTheDocument();
+    const detailsDialog = await screen.findByRole('dialog', { name: /指标序列明细/ });
     expect(within(detailsDialog).getByText('scalar')).toBeInTheDocument();
     expect(
       within(detailsDialog).getByText('{"cluster":"prod","node_id":"broker-a"}'),
@@ -639,7 +797,7 @@ describe('MetricsExplorer', () => {
     expect(within(detailsDialog).getByText('42')).toBeInTheDocument();
   });
 
-  it('restores a metric, profile, and range from query history', async () => {
+  it('restores profile, range, and source from query history', async () => {
     const user = userEvent.setup();
     localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify([createHistoryEntry()]));
 
@@ -648,7 +806,10 @@ describe('MetricsExplorer', () => {
     await screen.findByRole('img', { name: 'Message In TPS time series' });
     await user.click(screen.getByRole('button', { name: '查询历史' }));
 
-    const historyItem = screen.getByText('Consumer Lag Messages').closest('.ant-list-item');
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog)
+      .getByText('Consumer Lag Messages')
+      .closest('.ant-list-item');
     expect(historyItem).not.toBeNull();
     await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
 
@@ -661,6 +822,35 @@ describe('MetricsExplorer', () => {
       }),
     );
     expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
+  });
+
+  it('filters query history from other instances and shows the current instance context', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({
+          id: 'history-instance-a',
+          metricName: 'Instance A Lag',
+          instanceId: 'instance-a',
+        }),
+        createHistoryEntry({
+          id: 'history-instance-b',
+          metricName: 'Instance B Lag',
+          instanceId: 'instance-b',
+        }),
+      ]),
+    );
+
+    renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    expect(within(historyDialog).getByText('Instance A Lag')).toBeInTheDocument();
+    expect(within(historyDialog).getAllByText('实例: instance-a').length).toBeGreaterThan(0);
+    expect(within(historyDialog).queryByText('Instance B Lag')).not.toBeInTheDocument();
   });
 
   it('requires credentials again when restoring a protected data source history item', async () => {
@@ -698,17 +888,25 @@ describe('MetricsExplorer', () => {
 
     renderWithProviders(<MetricsExplorer />);
 
-    await screen.findByRole('combobox', { name: '数据源' });
+    const sourceSelect = await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(sourceSelect);
+    await screen.findByText('Protected Prometheus', {
+      selector: '.ant-select-item-option-content',
+    });
+    await user.keyboard('{Escape}');
     await user.click(screen.getByRole('button', { name: '查询历史' }));
 
-    const historyItem = screen.getByText('Protected Prometheus').closest('.ant-list-item');
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog)
+      .getByText('Protected Prometheus')
+      .closest('.ant-list-item');
     expect(historyItem).not.toBeNull();
     await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
 
-    expect(await screen.findByRole('dialog', { name: '数据源认证' })).toBeInTheDocument();
-    await user.type(screen.getByLabelText('用户名'), 'metrics-reader');
-    await user.type(screen.getByLabelText('密码'), 'secret-value');
-    await user.click(screen.getByRole('button', { name: /连\s*接/ }));
+    const authDialog = await screen.findByRole('dialog', { name: '数据源认证' });
+    await user.type(within(authDialog).getByLabelText('用户名'), 'metrics-reader');
+    await user.type(within(authDialog).getByLabelText('密码'), 'secret-value');
+    await user.click(within(authDialog).getByRole('button', { name: /连\s*接/ }));
 
     await waitFor(() =>
       expect(queryByDataSource).toHaveBeenCalledWith({
