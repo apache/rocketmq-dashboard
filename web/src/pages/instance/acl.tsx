@@ -754,7 +754,7 @@ const AclPageContent = ({
               copyable={revealed && secret ? { text: secret } : false}
               style={{ fontFamily: 'monospace', fontSize: 14 }}
             >
-              {revealed ? (secret ?? '加载中…') : '••••••••••••'}
+              {revealed ? (secret ?? t('acl.secretLoading')) : '••••••••••••'}
             </Typography.Text>
             <Button
               type="text"
