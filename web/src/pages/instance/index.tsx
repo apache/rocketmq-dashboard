@@ -35,7 +35,12 @@ import {
 } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
-import { EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import {
+  AppstoreOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  QuestionCircleOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
@@ -58,6 +63,7 @@ import {
   updateInstance,
 } from '../../services/instanceService';
 import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOptions';
+import InstanceCapabilityMatrixDrawer from '../../components/InstanceCapabilityMatrixDrawer';
 
 const { Text } = Typography;
 
@@ -130,6 +136,7 @@ const InstancePage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [capabilityMatrixOpen, setCapabilityMatrixOpen] = useState(false);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
   const listQueryRef = useRef<InstanceQuery>({});
@@ -679,6 +686,9 @@ const InstancePage = () => {
           />
         </Space>
         <Space size={12}>
+          <Button icon={<AppstoreOutlined />} onClick={() => setCapabilityMatrixOpen(true)}>
+            {t('capabilityMatrix.open')}
+          </Button>
           <Button
             danger
             icon={<DeleteOutlined />}
@@ -715,6 +725,14 @@ const InstancePage = () => {
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
+
+      {capabilityMatrixOpen && (
+        <InstanceCapabilityMatrixDrawer
+          open
+          instances={instances}
+          onClose={() => setCapabilityMatrixOpen(false)}
+        />
+      )}
 
       {/* Add Instance Modal */}
       <Modal
