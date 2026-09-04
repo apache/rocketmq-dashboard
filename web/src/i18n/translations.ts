@@ -1738,6 +1738,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.delayDays': { zh: '{n}天', en: '{n} day' },
+  'consumer.delayDaysPlural': { zh: '{n}天', en: '{n} days' },
+  'consumer.delayHours': { zh: '{n}小时', en: '{n} hour' },
+  'consumer.delayHoursPlural': { zh: '{n}小时', en: '{n} hours' },
+  'consumer.delayMinutes': { zh: '{n}分钟', en: '{n} minute' },
+  'consumer.delayMinutesPlural': { zh: '{n}分钟', en: '{n} minutes' },
+  'consumer.delaySeconds': { zh: '{n}秒', en: '{n} second' },
+  'consumer.delaySecondsPlural': { zh: '{n}秒', en: '{n} seconds' },
+  'consumer.delayZero': { zh: '0秒', en: '0s' },
+  'consumer.langZh': { zh: 'zh', en: 'en' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
