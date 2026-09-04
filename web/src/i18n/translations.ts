@@ -2368,6 +2368,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'dlq.exportDetailHint': { zh: '明细按「导出时间范围」查询（{range}）。勾选后可单条或批量重发、导出 Excel。', en: 'Details are queried by the export time range ({range}). After selecting, you can resend or export to Excel individually or in batch.' },
   // ─── BrokerCluster ───
 };
 
