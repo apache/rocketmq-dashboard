@@ -438,8 +438,8 @@ const InstancePage = () => {
       ? '云厂商实例仅从 Studio 移除记录，不会释放云上的 RocketMQ 实例；仍有 Topic/Group 的开源实例无法删除。'
       : '仍有 Topic/Group 的开源实例无法删除。';
     Modal.confirm({
-      title: `确认删除选中的 ${names.length} 个实例？`,
-      content: `将删除：${names.join('、')}。${warning}`,
+      title: t('instance.batchDeleteTitle', { count: names.length }),
+      content: `${t('instance.batchDeleteIntro')}${names.join('、')}。${warning}`,
       okText: '删除',
       okButtonProps: { danger: true },
       onOk: async () => {
@@ -447,11 +447,9 @@ const InstancePage = () => {
           const result = await deleteInstancesBatch(names);
           await loadInstances();
           setSelectedRowKeys([]);
-          const summary = `已删除 ${result.deleted} 个`;
+          const summary = t('instance.deletedSummary', { count: result.deleted });
           if (result.failed.length > 0) {
-            message.warning(
-              `${summary}，${result.failed.length} 个未能删除：${result.failed.join('；')}`,
-            );
+            message.warning(t('instance.deletePartial', { deleted: result.deleted, failed: result.failed.length, details: result.failed.join('；') }));
           } else {
             message.success(summary);
           }
