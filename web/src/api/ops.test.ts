@@ -46,6 +46,7 @@ import {
   listAlertSilences,
   listAlertSilencesPage,
   createAlertSilence,
+  updateAlertSilence,
   deleteAlertSilence,
   listAuditRecords,
   cleanupAuditLogs,
@@ -373,6 +374,7 @@ describe('Ops API - System Alerts & Audit', () => {
       return [200, { code: 200, data: { items: [silence], total: 21, page: 2, size: 10 } }];
     });
     mock.onPost('/alert-silences').reply(200, { code: 200, data: silence });
+    mock.onPut('/alert-silences/2').reply(200, { code: 200, data: silence });
     mock.onDelete('/alert-silences/2').reply(200, { code: 200 });
     await expect(listAlertSilences()).resolves.toEqual([silence]);
     await expect(listAlertSilencesPage({ page: 2, pageSize: 10 })).resolves.toEqual({
@@ -382,6 +384,7 @@ describe('Ops API - System Alerts & Audit', () => {
       size: 10,
     });
     await expect(createAlertSilence(silence)).resolves.toEqual(silence);
+    await expect(updateAlertSilence(2, silence)).resolves.toEqual(silence);
     await expect(deleteAlertSilence(2)).resolves.toBeUndefined();
   });
 
