@@ -2368,6 +2368,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'common.createFailed': { zh: '创建失败', en: 'Creation failed' },
   // ─── BrokerCluster ───
 };
 

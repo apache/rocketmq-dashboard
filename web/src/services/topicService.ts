@@ -14,6 +14,13 @@ import type {
 } from '../api/metadata';
 import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
 import { buildCsv, type CsvColumn } from '../utils/download';
+import { getInitialLanguage } from '../i18n/languagePreference';
+import translations from '../i18n/translations';
+
+function serviceText(key: string): string {
+  return translations[key]?.[getInitialLanguage()] ?? key;
+}
+
 
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
@@ -139,7 +146,7 @@ export async function importTopics(
         failures.push({
           index,
           name: topic.name,
-          message: error instanceof Error ? error.message : '创建失败',
+          message: error instanceof Error ? error.message : serviceText('common.createFailed'),
         });
       }
     }
