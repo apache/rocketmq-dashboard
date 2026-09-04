@@ -1293,6 +1293,13 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },
+  'ai.qaCheckStatus': { zh: '查看集群状态', en: 'Check Cluster Status' },
+  'ai.qaCreateTopic': { zh: '创建 Topic', en: 'Create a Topic' },
+  'ai.qaDiagnoseLag': { zh: '诊断消费延迟', en: 'Diagnose Consumption Lag' },
+  'ai.qaTop10Lag': { zh: 'Topic 堆积 Top10', en: 'Topic Backlog Top 10' },
+  'ai.qaTraceQuery': { zh: '消息轨迹查询', en: 'Query Message Trace' },
+  'ai.qaScaleEval': { zh: '扩缩容评估', en: 'Scaling Assessment' },
+  'ai.thinkingChainLabel': { zh: '思维链：Prompt 增强改写', en: 'Chain of Thought: Prompt-Enhanced Rewrite' },
 
   // ─── Theme Constants ───
   'theme.clusterV4': { zh: 'V4 直连', en: 'V4 Direct' },
