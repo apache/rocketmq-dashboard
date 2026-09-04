@@ -56,10 +56,12 @@ import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   WarningOutlined,
+  DiffOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
+import TopicConfigComparisonDrawer from '../../components/TopicConfigComparisonDrawer';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -307,6 +309,7 @@ const TopicPage = () => {
     selectInstance,
     instanceOptions,
     instancesLoading,
+    instances,
   } = useInstanceFilter();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
@@ -349,6 +352,7 @@ const TopicPage = () => {
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
 
   const topicRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
@@ -1378,6 +1382,13 @@ const TopicPage = () => {
           <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
             导出
           </Button>
+          <Button
+            icon={<DiffOutlined />}
+            disabled={instances.length < 2}
+            onClick={() => setComparisonOpen(true)}
+          >
+            {t('topicCompare.open')}
+          </Button>
           {!isCloudInstance && (
             <Button
               icon={<SyncOutlined />}
@@ -1428,6 +1439,15 @@ const TopicPage = () => {
           })}
         />
       </Card>
+
+      {comparisonOpen && (
+        <TopicConfigComparisonDrawer
+          open
+          instances={instances}
+          currentInstanceId={selectedInstanceId}
+          onClose={() => setComparisonOpen(false)}
+        />
+      )}
 
       {/* ── Detail Modal ──────────────────────────────────────── */}
       <Modal
