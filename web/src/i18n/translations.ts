@@ -1738,6 +1738,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.subscriptionMode': { zh: '订阅模式', en: 'Subscription Mode' },
   'consumer.subGroupType': { zh: '订阅组类型', en: 'Subscription Group Type' },
   'consumer.maxRetry': { zh: '最大重试次数', en: 'Max Retries' },
+  'consumer.autoRefresh2s': { zh: '每 2s 自动刷新', en: 'Auto-refresh every 2s' },
+  'consumer.cluster': { zh: '所属集群', en: 'Cluster' },
+  'consumer.consumeType': { zh: '消费类型', en: 'Consume Type' },
+  'consumer.groupDetailTitle': { zh: 'Group 详情', en: 'Group Details' },
+  'consumer.onlineInstances': { zh: '在线实例', en: 'Online Instances' },
+  'consumer.overviewTab': { zh: '概览', en: 'Overview' },
+  'consumer.subTopicCountStat': { zh: '订阅 Topic 数', en: 'Subscribed Topics' },
+  'consumer.subscribedTopics': { zh: '订阅 Topic', en: 'Subscribed Topics' },
+  'consumer.timesSuffix': { zh: '次', en: ' times' },
+  'consumer.totalLagShort': { zh: '总堆积', en: 'Total Backlog' },
 
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },

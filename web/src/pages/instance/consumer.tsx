@@ -1546,11 +1546,11 @@ const ConsumerPageContent = ({
                 <span style={{ fontWeight: 600 }}>{selectedGroup.name}</span>
               </Space>
               <Text type="secondary" style={{ fontSize: 14, fontWeight: 400, marginRight: 28 }}>
-                <SyncOutlined style={{ marginRight: 4 }} />每 2s 自动刷新
+                <SyncOutlined style={{ marginRight: 4 }} />{t('consumer.autoRefresh2s')}
               </Text>
             </Flex>
           ) : (
-            'Group 详情'
+            t('consumer.groupDetailTitle')
           )
         }
         open={modalOpen}
@@ -1578,7 +1578,7 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <Info size={14} />
-                    <span>概览</span>
+                    <span>{t('consumer.overviewTab')}</span>
                   </Space>
                 ),
                 children: (
@@ -1594,7 +1594,7 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="在线实例"
+                            title={t('consumer.onlineInstances')}
                             value={selectedGroup.onlineInstances}
                             prefix={<Users size={18} color="#52c41a" />}
                             valueStyle={{ color: '#52c41a' }}
@@ -1610,7 +1610,7 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="总堆积"
+                            title={t('consumer.totalLagShort')}
                             value={selectedGroup.totalLag}
                             formatter={(value) => formatLag(Number(value), UNAVAILABLE_LAG_LABEL)}
                             prefix={
@@ -1631,7 +1631,7 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="订阅 Topic 数"
+                            title={t('consumer.subTopicCountStat')}
                             value={(selectedGroup.subscribedTopics ?? []).length}
                             prefix={<ListBullets size={18} color="#1677ff" />}
                             valueStyle={{ color: '#1677ff' }}
@@ -1647,25 +1647,25 @@ const ConsumerPageContent = ({
                       size="small"
                       styles={{ label: { fontWeight: 500, width: 140 } }}
                     >
-                      <Descriptions.Item label="Group 名称">
+                      <Descriptions.Item label={t('consumer.name')}>
                         <Text strong>{selectedGroup.name}</Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label="所属集群">
+                      <Descriptions.Item label={t('consumer.cluster')}>
                         {selectedGroup.clusterId}
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅模式">
+                      <Descriptions.Item label={t('consumer.subMode')}>
                         <Tag color={selectedGroup.subscriptionMode === 'Push' ? 'blue' : 'green'}>
                           {selectedGroup.subscriptionMode}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="消费类型">
+                      <Descriptions.Item label={t('consumer.consumeType')}>
                         <Tag
                           color={selectedGroup.consumeType === 'CLUSTERING' ? 'geekblue' : 'purple'}
                         >
                           {selectedGroup.consumeType}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅组类型">
+                      <Descriptions.Item label={t('consumer.subGroupType')}>
                         <Tag
                           color={
                             TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]?.color || 'default'
@@ -1676,19 +1676,19 @@ const ConsumerPageContent = ({
                             : selectedGroup.subscriptionDataType}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="消费延迟">
+                      <Descriptions.Item label={t('consumer.delay')}>
                         <Text strong>{formatDelay(selectedGroup.delaySeconds)}</Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label="最大重试次数">
-                        <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
+                      <Descriptions.Item label={t('consumer.maxRetry')}>
+                        <Text strong>{selectedGroup.retryMaxTimes}</Text>{t('consumer.timesSuffix')}
                       </Descriptions.Item>
-                      <Descriptions.Item label="创建时间" span={2}>
+                      <Descriptions.Item label={t('consumer.createdAt')} span={2}>
                         <Space size={4}>
                           <Clock size={13} color="#9CA3AF" />
                           <Text type="secondary">{selectedGroup.gmtCreate}</Text>
                         </Space>
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅 Topic" span={2}>
+                      <Descriptions.Item label={t('consumer.subscribedTopics')} span={2}>
                         <Space size={4} wrap>
                           {(selectedGroup.subscribedTopics ?? []).map((t) => (
                             <Tag key={t} color="blue">
@@ -1704,7 +1704,7 @@ const ConsumerPageContent = ({
                       <Flex align="center" gap={6} style={{ marginBottom: 12 }}>
                         <Users size={15} color="#52c41a" />
                         <Text strong style={{ fontSize: 14 }}>
-                          在线实例 ({(selectedGroup.instances ?? []).length})
+                          {t('consumer.onlineInstances')} ({(selectedGroup.instances ?? []).length})
                         </Text>
                       </Flex>
                       <Table
