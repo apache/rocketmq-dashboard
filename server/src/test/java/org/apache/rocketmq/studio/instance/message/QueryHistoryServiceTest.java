@@ -165,4 +165,16 @@ class QueryHistoryServiceTest {
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
+
+    @Test
+    void summarizesEmptyHistoryStreams() {
+        when(messageQueryMapper.selectCount(any())).thenReturn(0L);
+        when(traceQueryMapper.selectCount(any())).thenReturn(0L);
+
+        QueryHistorySummaryVO summary = service.summarize("cluster-a");
+
+        assertThat(summary.getMessageQueries()).isZero();
+        assertThat(summary.getTraceQueries()).isZero();
+        assertThat(summary.getLatestQueryAt()).isNull();
+    }
 }
