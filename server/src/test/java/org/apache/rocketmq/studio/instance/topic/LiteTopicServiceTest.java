@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -24,42 +25,58 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class LiteTopicServiceTest {
 
-    private final LiteTopicService service = new LiteTopicService();
+    private final LiteTopicService liteTopicService = new LiteTopicService();
 
     @Test
-    void reportsCapabilityAsUnavailableUntilProviderIntegrates() {
-        assertThat(service.getCapability().isSupported()).isFalse();
+    void listLiteTopicsShouldReturnUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> liteTopicService.listLiteTopics("hat", " DEFAULT "))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo("LiteTopic provider integration is not available");
+                });
     }
 
     @Test
-    void listAndSessionMethodsSignalNotImplemented() {
-        assertThatThrownBy(() -> service.listLiteTopics("order*", "default"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("not available");
-        assertThatThrownBy(() -> service.getSession("session-1"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("not available");
-        assertThatThrownBy(() -> service.getQuota("default"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("not available");
+    void getQuotaShouldReturnUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> liteTopicService.getQuota("default"))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo("LiteTopic provider integration is not available");
+                });
     }
 
     @Test
-    void validatesTtlExtensionArgumentsBeforeSignallingNotImplemented() {
-        assertThatThrownBy(() -> service.extendTTL(null, 60L))
+    void getSessionShouldReturnUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> liteTopicService.getSession("sess-001"))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo("LiteTopic provider integration is not available");
+                });
+    }
+
+    @Test
+    void extendTTLShouldRejectInvalidInput() {
+        assertThatThrownBy(() -> liteTopicService.extendTTL("", 1L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("topicPattern");
-        assertThatThrownBy(() -> service.extendTTL("  ", 60L))
+                .hasMessage("topicPattern is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> liteTopicService.extendTTL("chat/{sessionId}", 0L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("topicPattern");
-        assertThatThrownBy(() -> service.extendTTL("order*", null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("newTTL");
-        assertThatThrownBy(() -> service.extendTTL("order*", 0L))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("newTTL");
-        assertThatThrownBy(() -> service.extendTTL("order*", 60L))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("not available");
+                .hasMessage("newTTL must be positive")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void extendTTLShouldReturnUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> liteTopicService.extendTTL("chat/{sessionId}", 7_200_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo("LiteTopic provider integration is not available");
+                });
+    }
+
+    @Test
+    void getCapabilityShouldReportUnsupportedByDefault() {
+        assertThat(liteTopicService.getCapability().isSupported()).isFalse();
     }
 }
