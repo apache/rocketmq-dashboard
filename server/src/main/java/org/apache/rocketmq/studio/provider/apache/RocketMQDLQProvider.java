@@ -39,6 +39,7 @@ import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQResendFailureVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageExcelRow;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
@@ -78,6 +79,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final int RESEND_HARD_CAP = 5000;
+    private static final int MAX_REPORTED_RESEND_FAILURES = 100;
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final String ORIGIN_MESSAGE_ID_PROPERTY = "studio_dlq_origin_message_id";
@@ -198,26 +200,22 @@ public class RocketMQDLQProvider implements DLQProvider {
             throw e;
         }
         List<MessageExt> deadLetters = scanResult.messages();
-        int[] counts = {0, 0};
+        ResendBatch batch = new ResendBatch();
         if (!deadLetters.isEmpty()) {
             try {
                 runtimeAdminClientResolver.executeProducer(instanceId, producer -> {
                     for (MessageExt deadLetter : deadLetters) {
-                        if (resendOne(producer, deadLetter, targetTopic)) {
-                            counts[0]++;
-                        } else {
-                            counts[1]++;
-                        }
+                        batch.record(resendOne(producer, deadLetter, targetTopic));
                     }
                     return null;
                 });
             } catch (Exception e) {
                 log.warn("Failed to resend dead letters for group {}: {}", groupName, e.getMessage());
-                counts[1] += deadLetters.size() - counts[0];
+                batch.recordProducerFailure(deadLetters, e);
             }
         }
-        int resent = counts[0];
-        int failed = counts[1];
+        int resent = batch.resent();
+        int failed = batch.failed();
 
         String outcome = classifyOutcome(deadLetters.size(), resent, failed, scanResult.scanIncomplete());
         String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, matched=%d, resent=%d, "
@@ -225,7 +223,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 instanceId, groupName, dlqTopic, StringUtils.hasText(targetTopic) ? targetTopic : "<original>",
                 deadLetters.size(), resent, failed, scanResult.scanIncomplete(), scanResult.truncated(),
                 scanResult.failedQueueCount());
-        recordAudit(groupName, detail, outcome);
+        recordAudit(groupName, detail + batch.auditDetail(), outcome);
         log.info("DLQ resend completed: {}", detail);
         return DLQResendResultVO.builder()
                 .matched(deadLetters.size())
@@ -234,8 +232,12 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .outcome(outcome)
                 .scanIncomplete(scanResult.scanIncomplete())
                 .failedQueueCount(scanResult.failedQueueCount())
+                .failures(batch.reportedFailures())
+                .failuresTruncated(batch.failuresTruncated())
                 .build();
     }
+
+
 
     @Override
     public DLQResendResultVO resendMessages(String instanceId, String groupName, List<String> msgIds,
@@ -280,32 +282,28 @@ public class RocketMQDLQProvider implements DLQProvider {
             }
             return resolved;
         });
-        int[] counts = {0, 0};
+        ResendBatch batch = new ResendBatch();
         if (!deadLetters.isEmpty()) {
             try {
                 runtimeAdminClientResolver.executeProducer(instanceId, producer -> {
                     for (MessageExt deadLetter : deadLetters) {
-                        if (resendOne(producer, deadLetter, targetTopic)) {
-                            counts[0]++;
-                        } else {
-                            counts[1]++;
-                        }
+                        batch.record(resendOne(producer, deadLetter, targetTopic));
                     }
                     return null;
                 });
             } catch (Exception e) {
                 log.warn("Failed to resend selected dead letters for group {}: {}", groupName, e.getMessage());
-                counts[1] += deadLetters.size() - counts[0];
+                batch.recordProducerFailure(deadLetters, e);
             }
         }
-        int resent = counts[0];
-        int failed = counts[1];
+        int resent = batch.resent();
+        int failed = batch.failed();
         boolean foundAll = deadLetters.size() == selected.size();
 
         String outcome = classifyOutcome(deadLetters.size(), resent, failed, !foundAll);
         String detail = String.format("instanceId=%s, group=%s, selected=%d, matched=%d, resent=%d, failed=%d",
                 instanceId, groupName, selected.size(), deadLetters.size(), resent, failed);
-        recordAudit(groupName, detail, outcome);
+        recordAudit(groupName, detail + batch.auditDetail(), outcome);
         log.info("Selected DLQ resend completed: {}", detail);
         return DLQResendResultVO.builder()
                 .matched(deadLetters.size())
@@ -313,6 +311,9 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .failed(failed)
                 .outcome(outcome)
                 .scanIncomplete(!foundAll)
+                .failedQueueCount(0)
+                .failures(batch.reportedFailures())
+                .failuresTruncated(batch.failuresTruncated())
                 .build();
     }
 
@@ -512,11 +513,12 @@ public class RocketMQDLQProvider implements DLQProvider {
         return new DeadLetterScanResult(result, failedQueueCount, truncated);
     }
 
-    private boolean resendOne(DefaultMQProducer producer, MessageExt deadLetter, String targetTopic) {
+    private ResendOutcome resendOne(DefaultMQProducer producer, MessageExt deadLetter, String targetTopic) {
         String destination = resolveTargetTopic(deadLetter, targetTopic);
         if (!StringUtils.hasText(destination)) {
             log.warn("Skip resend of msgId={}: no target topic resolvable", deadLetter.getMsgId());
-            return false;
+            return ResendOutcome.failed(deadLetter.getMsgId(), destination,
+                    "No target topic resolvable from dead-letter properties");
         }
         try {
             Message message = new Message(destination, deadLetter.getBody());
@@ -547,15 +549,17 @@ public class RocketMQDLQProvider implements DLQProvider {
                 log.warn("DLQ resend was not accepted: msgId={} topic={} sendStatus={}",
                         deadLetter.getMsgId(), destination,
                         sendResult == null ? "<null>" : sendResult.getSendStatus());
-                return false;
+                return ResendOutcome.failed(deadLetter.getMsgId(), destination,
+                        "Producer returned " + (sendResult == null ? "null" : sendResult.getSendStatus()));
             }
             log.debug("Resent dead letter msgId={} to topic={}, sendStatus={}",
                     deadLetter.getMsgId(), destination, sendResult.getSendStatus());
-            return true;
+            return ResendOutcome.success();
         } catch (Exception e) {
             log.warn("Failed to resend dead letter msgId={} to topic={}: {}",
                     deadLetter.getMsgId(), destination, e.getMessage());
-            return false;
+            return ResendOutcome.failed(deadLetter.getMsgId(), destination,
+                    e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
         }
     }
 
@@ -640,6 +644,85 @@ public class RocketMQDLQProvider implements DLQProvider {
     private record DeadLetterScanResult(List<MessageExt> messages, int failedQueueCount, boolean truncated) {
         boolean scanIncomplete() {
             return failedQueueCount > 0 || truncated;
+        }
+    }
+
+    private final class ResendBatch {
+        private final List<DLQResendFailureVO> failures = new ArrayList<>();
+        private int resent;
+        private int failed;
+
+        void record(ResendOutcome outcome) {
+            if (outcome.succeeded()) {
+                resent++;
+                return;
+            }
+            failed++;
+            if (failures.size() < MAX_REPORTED_RESEND_FAILURES) {
+                failures.add(DLQResendFailureVO.builder()
+                        .msgId(outcome.msgId())
+                        .targetTopic(outcome.targetTopic())
+                        .reason(outcome.reason())
+                        .build());
+            }
+        }
+
+        void recordProducerFailure(List<MessageExt> deadLetters, Exception error) {
+            String reason = "Producer session failed: "
+                    + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
+            for (MessageExt deadLetter : deadLetters) {
+                record(ResendOutcome.failed(deadLetter.getMsgId(),
+                        resolveDestination(deadLetter), reason));
+            }
+        }
+
+        private static String resolveDestination(MessageExt deadLetter) {
+            Map<String, String> properties = deadLetter.getProperties();
+            if (properties == null) {
+                return null;
+            }
+            String origin = properties.get(MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC);
+            return StringUtils.hasText(origin) ? origin : properties.get(MessageConst.PROPERTY_RETRY_TOPIC);
+        }
+
+        int resent() {
+            return resent;
+        }
+
+        int failed() {
+            return failed;
+        }
+
+        List<DLQResendFailureVO> reportedFailures() {
+            return List.copyOf(failures);
+        }
+
+        boolean failuresTruncated() {
+            return failed > failures.size();
+        }
+
+        String auditDetail() {
+            if (failures.isEmpty()) {
+                return "";
+            }
+            String sample = failures.stream()
+                    .limit(5)
+                    .map(failure -> failure.getMsgId() + "->" + failure.getTargetTopic()
+                            + "(" + failure.getReason() + ")")
+                    .collect(java.util.stream.Collectors.joining("; "));
+            return ", failureSample=" + sample + ", reportedFailures=" + failures.size()
+                    + ", failuresTruncated=" + failuresTruncated();
+        }
+    }
+
+    private record ResendOutcome(boolean succeeded, String msgId, String targetTopic, String reason) {
+
+        static ResendOutcome success() {
+            return new ResendOutcome(true, null, null, null);
+        }
+
+        static ResendOutcome failed(String msgId, String targetTopic, String reason) {
+            return new ResendOutcome(false, msgId, targetTopic, reason);
         }
     }
 }

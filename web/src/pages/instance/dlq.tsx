@@ -38,7 +38,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
-import type { DLQGroup, DLQMessage } from '../../api/message';
+import type { DLQGroup, DLQMessage, DLQResendResult } from '../../api/message';
 import {
   exportDLQExcel,
   listDLQGroups,
@@ -76,6 +76,19 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
     return apiError.message;
   }
   return fallback;
+};
+
+const describeResendFailures = (result: DLQResendResult): string | null => {
+  const failures = result.failures ?? [];
+  if (failures.length === 0) return null;
+  const lines = failures.slice(0, 5).map((failure) => {
+    const target = failure.targetTopic || '未知 Topic';
+    return `${failure.msgId} → ${target}：${failure.reason}`;
+  });
+  if (result.failuresTruncated || failures.length > lines.length) {
+    lines.push(`另有 ${result.failed - lines.length} 条失败消息未展示`);
+  }
+  return lines.join('\n');
 };
 
 export const formatDateTime = (value?: string | number | null): string => {
@@ -270,7 +283,13 @@ const DLQPage = () => {
           `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
         );
       } else if (result.failed > 0) {
-        message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+        const failureDetail = describeResendFailures(result);
+        message.warning({
+          content: failureDetail
+            ? `重投部分完成：成功 ${result.resent}，失败 ${result.failed}\n${failureDetail}`
+            : `重投部分完成：成功 ${result.resent}，失败 ${result.failed}`,
+          duration: 6,
+        });
       } else {
         message.success(`重投完成：${groupName} → ${targetTopic}（${result.resent} 条）`);
       }
@@ -368,9 +387,21 @@ const DLQPage = () => {
         msgIds,
       });
       if (result.outcome === 'FAILED' && result.failed > 0) {
-        message.error(`重发失败：成功 ${result.resent}，失败 ${result.failed}`);
+        const failureDetail = describeResendFailures(result);
+        message.error({
+          content: failureDetail
+            ? `重发失败：成功 ${result.resent}，失败 ${result.failed}\n${failureDetail}`
+            : `重发失败：成功 ${result.resent}，失败 ${result.failed}`,
+          duration: 6,
+        });
       } else if (result.resent > 0 && result.failed > 0) {
-        message.warning(`重发部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+        const failureDetail = describeResendFailures(result);
+        message.warning({
+          content: failureDetail
+            ? `重发部分完成：成功 ${result.resent}，失败 ${result.failed}\n${failureDetail}`
+            : `重发部分完成：成功 ${result.resent}，失败 ${result.failed}`,
+          duration: 6,
+        });
       } else {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
