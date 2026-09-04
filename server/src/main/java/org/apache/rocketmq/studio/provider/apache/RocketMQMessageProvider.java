@@ -27,8 +27,6 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
-import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
-import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -51,8 +49,6 @@ import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.charset.CharacterCodingException;
@@ -61,7 +57,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Base64;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -142,7 +137,7 @@ public class RocketMQMessageProvider implements MessageProvider {
         MessageExt messageExt = null;
         if (StringUtils.hasText(topic)) {
             try {
-                if (isWithinKnownBrokerTopology(adminExt, msgId)) {
+                if (BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId)) {
                     messageExt = adminExt.viewMessage(topic, msgId);
                 }
             } catch (Exception e) {
@@ -165,7 +160,7 @@ public class RocketMQMessageProvider implements MessageProvider {
     private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
         try {
             MessageId messageId = MessageDecoder.decodeMessageId(msgId);
-            String brokerAddr = validatedBrokerAddr(adminExt, msgId, messageId);
+            String brokerAddr = BrokerTopologyGuards.validatedBrokerAddr(adminExt, msgId, messageId);
             if (!StringUtils.hasText(brokerAddr)) {
                 return null;
             }
@@ -177,74 +172,6 @@ public class RocketMQMessageProvider implements MessageProvider {
             log.warn("viewMessage by decoded offset id failed for msgId={}: {}", msgId, e.getMessage());
             return null;
         }
-    }
-
-    private String validatedBrokerAddr(DefaultMQAdminExt adminExt, String msgId, MessageId messageId) throws Exception {
-        String brokerAddr = decodedBrokerAddr(messageId);
-        if (!StringUtils.hasText(brokerAddr)) {
-            return null;
-        }
-        if (knownBrokerEndpoints(adminExt).contains(brokerAddr)) {
-            return brokerAddr;
-        }
-        log.warn("Rejecting decoded broker address {} for msgId={} because it is not a known broker endpoint"
-                + " for the selected instance", brokerAddr, msgId);
-        return null;
-    }
-
-    /**
-     * Offset-style message ids embed a broker address that {@code MQAdminImpl#viewMessage} connects
-     * to directly, so ids whose embedded address is outside the selected instance topology must be
-     * rejected before that call. Ids that do not decode as offset ids take MQAdminImpl's unique-key
-     * lookup, which resolves brokers from the topic route and needs no guard. When the topology
-     * itself cannot be verified, reject too — mirroring the fallback path's behavior — instead of
-     * handing an unverified address to remoting.
-     */
-    private boolean isWithinKnownBrokerTopology(DefaultMQAdminExt adminExt, String msgId) {
-        MessageId messageId;
-        try {
-            messageId = MessageDecoder.decodeMessageId(msgId);
-        } catch (Exception e) {
-            return true;
-        }
-        try {
-            return validatedBrokerAddr(adminExt, msgId, messageId) != null;
-        } catch (Exception e) {
-            log.warn("Could not verify broker topology for msgId={}: {}", msgId, e.getMessage());
-            return false;
-        }
-    }
-
-    private String decodedBrokerAddr(MessageId messageId) {
-        SocketAddress address = messageId.getAddress();
-        if (!(address instanceof InetSocketAddress)) {
-            return null;
-        }
-        InetSocketAddress inet = (InetSocketAddress) address;
-        if (inet.getAddress() == null) {
-            return null;
-        }
-        return inet.getAddress().getHostAddress() + ":" + inet.getPort();
-    }
-
-    private Set<String> knownBrokerEndpoints(DefaultMQAdminExt adminExt) throws Exception {
-        ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
-        if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null
-                || clusterInfo.getBrokerAddrTable().isEmpty()) {
-            return Collections.emptySet();
-        }
-        Set<String> endpoints = new HashSet<>();
-        for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-            if (brokerData == null || brokerData.getBrokerAddrs() == null || brokerData.getBrokerAddrs().isEmpty()) {
-                continue;
-            }
-            for (String brokerAddr : brokerData.getBrokerAddrs().values()) {
-                if (StringUtils.hasText(brokerAddr)) {
-                    endpoints.add(brokerAddr.trim());
-                }
-            }
-        }
-        return endpoints;
     }
 
     private List<MessageRecordVO> queryByKey(DefaultMQAdminExt adminExt, String topic, String key,
@@ -592,7 +519,7 @@ public class RocketMQMessageProvider implements MessageProvider {
         if (StringUtils.hasText(topic)) {
             try {
                 MessageExt messageExt = null;
-                if (isWithinKnownBrokerTopology(adminExt, msgId)) {
+                if (BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId)) {
                     messageExt = adminExt.viewMessage(topic, msgId);
                 }
                 if (messageExt != null) {
