@@ -151,9 +151,9 @@ const formatDurationMs = (value: number | null): string => {
 };
 
 const getQueryValidationError = (mode: QueryMode, params: MessageQuery): string | null => {
-  if (!params.topic?.trim()) return '请选择 Topic';
-  if (mode === 'key' && !params.key?.trim()) return '请输入 Message Key';
-  if (mode === 'msgid' && !params.msgId?.trim()) return '请输入 Message ID';
+  if (!params.topic?.trim()) return 'message.queryTopicRequired';
+  if (mode === 'key' && !params.key?.trim()) return 'message.queryKeyRequired';
+  if (mode === 'msgid' && !params.msgId?.trim()) return 'message.queryMsgIdRequired';
   return null;
 };
 
@@ -473,7 +473,7 @@ const MessagePageContent = ({
     const normalizedParams = normalizeMessageQuery(mode, params);
     const validationError = getQueryValidationError(mode, normalizedParams);
     if (validationError) {
-      setQueryError(validationError);
+      setQueryError(t(validationError));
       setQueryLoading(false);
       return;
     }
@@ -1112,7 +1112,7 @@ const MessagePageContent = ({
                 type="primary"
                 icon={<SearchOutlined />}
                 disabled={Boolean(queryDisabledReason)}
-                title={queryDisabledReason || undefined}
+                title={queryDisabledReason ? t(queryDisabledReason) : undefined}
                 onClick={() => {
                   void handleQuery();
                 }}

@@ -1807,6 +1807,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.batchResend': { zh: '批量重发', en: 'Batch Resend' },
   'message.batchExport': { zh: '批量导出', en: 'Batch Export' },
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
+  'message.queryKeyRequired': { zh: '请输入 Message Key', en: 'Enter the message key' },
+  'message.queryMsgIdRequired': { zh: '请输入 Message ID', en: 'Enter the message ID' },
+  'message.queryTopicRequired': { zh: '请选择 Topic', en: 'Select a topic' },
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {
