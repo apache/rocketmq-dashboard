@@ -581,9 +581,16 @@ class RocketMQDLQProviderTest {
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
         when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
-        assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic");
+        assertThat(result)
                 .extracting("matched", "resent", "failed", "outcome")
                 .containsExactly(1, 0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getMsgId()).isEqualTo("msg-1");
+            assertThat(failure.getTargetTopic()).isEqualTo("target-topic");
+            assertThat(failure.getReason()).contains("FLUSH_DISK_TIMEOUT");
+        });
 
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
         verify(runtimeAdminClientResolver).executeProducer(eq("instance-a"), any());
@@ -593,7 +600,11 @@ class RocketMQDLQProviderTest {
                 eq("DLQ"),
                 eq("group-a"),
                 isNull(),
-                contains("matched=1, resent=0, failed=1"),
+                org.mockito.ArgumentMatchers.argThat(detail -> String.valueOf(detail)
+                        .contains("failed=1")
+                        && String.valueOf(detail).contains("failureSample=msg-1->target-topic")
+                        && String.valueOf(detail).contains("reportedFailures=1")
+                        && String.valueOf(detail).contains("failuresTruncated=false")),
                 eq("FAILED"));
     }
 
