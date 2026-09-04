@@ -129,28 +129,28 @@ const CLUSTER_NAME_MAP: Record<string, { name: string; type: string }> = {
 };
 
 const TYPE_OPTIONS = [
-  { label: '全部', value: '' },
-  { label: '普通', value: 'NORMAL' },
-  { label: '顺序', value: 'FIFO' },
-  { label: '延迟', value: 'DELAY' },
-  { label: '事务', value: 'TRANSACTION' },
-  { label: 'LiteTopic', value: 'LITE' },
+  { labelKey: 'topic.filterAll', value: '' },
+  { labelKey: 'topic.filterNormal', value: 'NORMAL' },
+  { labelKey: 'topic.filterFifo', value: 'FIFO' },
+  { labelKey: 'topic.filterDelay', value: 'DELAY' },
+  { labelKey: 'topic.filterTransaction', value: 'TRANSACTION' },
+  { labelKey: 'topic.filterLite', value: 'LITE' },
 ];
 
 // Topic 类型选项（描述参考阿里云 RocketMQ 消息类型语义），创建弹窗用 Segmented 展示
 const TOPIC_TYPE_CARDS = [
-  { value: 'NORMAL', label: '普通消息', desc: '适用于无特殊顺序要求的常规消息收发场景。' },
-  { value: 'FIFO', label: '顺序消息', desc: '严格按照消息发送顺序消费，适用于顺序敏感的业务。' },
-  { value: 'DELAY', label: '延迟消息', desc: '消息在指定的延迟时间或定时后才投递给消费者。' },
+  { value: 'NORMAL', labelKey: 'topic.typeNormal', descKey: 'topic.typeNormalDesc' },
+  { value: 'FIFO', labelKey: 'topic.typeFifo', descKey: 'topic.typeFifoDesc' },
+  { value: 'DELAY', labelKey: 'topic.typeDelay', descKey: 'topic.typeDelayDesc' },
   {
     value: 'TRANSACTION',
-    label: '事务消息',
-    desc: '支持分布式事务，保证本地事务与消息发送的最终一致性。',
+    labelKey: 'topic.typeTransaction',
+    descKey: 'topic.typeTransactionDesc',
   },
   {
     value: 'LITE',
-    label: 'LiteTopic',
-    desc: '轻量级主题，资源开销更低，适用于大规模轻量消息场景。',
+    labelKey: 'topic.filterLite',
+    descKey: 'topic.typeLiteDesc',
   },
 ];
 
@@ -1479,7 +1479,7 @@ const TopicPage = () => {
               setTypeFilter(value);
               resetTablePage();
             }}
-            options={TYPE_OPTIONS}
+            options={TYPE_OPTIONS.map((option) => ({ ...option, label: t(option.labelKey) }))}
             style={{ width: 140 }}
           />
         </Space>
@@ -1712,11 +1712,11 @@ const TopicPage = () => {
             label="类型"
             name="type"
             rules={[{ required: true }]}
-            extra={TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.desc}
+            extra={TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.descKey ? t(TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType).descKey) : undefined}
           >
             <Segmented
               options={TOPIC_TYPE_CARDS.filter((c) => !isCloudInstance || c.value !== 'LITE').map(
-                ({ value, label }) => ({ value, label }),
+                ({ value, labelKey }) => ({ value, label: t(labelKey) }),
               )}
             />
           </Form.Item>
