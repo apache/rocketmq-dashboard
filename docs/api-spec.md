@@ -61,7 +61,6 @@
 | 18 | GET | `/api/k8s-certs` | K8s 证书列表 |
 | 19 | POST | `/api/k8s-certs/create` | 添加证书 |
 | 20 | POST | `/api/k8s-certs/update` | 更新证书 |
-| 21 | POST | `/api/k8s-certs/renew` | 续期证书 |
 | 22 | POST | `/api/k8s-certs/delete` | 删除证书 |
 | 23 | GET | `/api/topics` | Topic 列表 |
 | 24 | POST | `/api/topics/create` | 创建 Topic |
@@ -624,6 +623,8 @@ POST /api/proxies/restart
 
 ### 4.12 获取 K8s 证书列表
 
+K8s 证书接口仅管理 Studio 本地配置记录，不会连接 Kubernetes API，也不会创建、修改或删除集群中的 Secret 或证书资源。
+
 ```
 GET /api/k8s-certs
 ```
@@ -681,21 +682,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 续期 K8s 证书
-
-```
-POST /api/k8s-certs/renew
-```
-
-**Request Body:**
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `id` | `string` | 是 | 证书 ID |
-
-**Response `data`:** `K8sCertInfo`
-
-### 4.16 删除 K8s 证书
+### 4.15 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete

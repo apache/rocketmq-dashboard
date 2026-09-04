@@ -140,7 +140,6 @@ class K8sCertControllerTest {
         String[] paths = {
             "/api/k8s-certs/create",
             "/api/k8s-certs/update",
-            "/api/k8s-certs/renew",
             "/api/k8s-certs/delete"
         };
 
@@ -227,17 +226,11 @@ class K8sCertControllerTest {
     }
 
     @Test
-    void renewCertShouldRejectBlankId() throws Exception {
+    void renewEndpointShouldNotBeExposed() throws Exception {
         mockMvc.perform(post("/api/k8s-certs/renew")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                    "id": null
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("id is required"));
+                        .content("{\"id\":1}"))
+                .andExpect(status().isNotFound());
 
         verifyNoInteractions(k8sCertService);
     }
