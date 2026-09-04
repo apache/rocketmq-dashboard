@@ -207,7 +207,7 @@ describe('Cluster page', () => {
       {
         id: 10,
         name: 'instance-1',
-        endpoint: 'namesrv-1:9876',
+        endpoint: '10.101.2.1:9876',
         type: 'DIRECT',
         vendor: 'APACHE',
         remark: '',
@@ -410,6 +410,157 @@ describe('Cluster page', () => {
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
   });
 
+  it('targets broker config actions at the instance that owns the registry row', async () => {
+    const user = userEvent.setup();
+    instanceServiceMocks.listInstances.mockReset().mockResolvedValue([
+      {
+        id: 1,
+        name: 'instance-a',
+        endpoint: 'ns-a:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'instance-b',
+        endpoint: 'ns-b:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        id: 'DefaultCluster',
+        name: 'registry-a',
+        nsClusterName: 'DefaultCluster',
+        endpoint: 'ns-a:9876',
+        nameServers: [{ addr: 'ns-a:9876', status: 'healthy' }],
+        brokers: [{ ...buildCluster().brokers[0], addr: '10.0.0.11:10911' }],
+      },
+      {
+        ...buildCluster(),
+        id: 'DefaultCluster',
+        name: 'registry-b',
+        nsClusterName: 'DefaultCluster',
+        endpoint: 'ns-b:9876',
+        nameServers: [{ addr: 'ns-b:9876', status: 'healthy' }],
+        brokers: [{ ...buildCluster().brokers[0], addr: '10.0.0.12:10911' }],
+      },
+    ]);
+    renderWithRoute(<ClusterPage />, '/cluster?instanceId=instance-a');
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.0\.0\.12:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - registry-b/ });
+    const writeQueuesInput = within(dialog).getByLabelText('写队列数');
+    await user.clear(writeQueuesInput);
+    await user.type(writeQueuesInput, '16');
+
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'DefaultCluster',
+          instanceId: 'instance-b',
+          writeQueueNums: 16,
+        }),
+      ),
+    );
+
+    await user.click(within(dialog).getByRole('button', { name: /^(OK|确\s*定)$/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'DefaultCluster',
+          instanceId: 'instance-b',
+          writeQueueNums: 16,
+        }),
+      ),
+    );
+  });
+
+  it('rejects broker config actions when no instance owns the registry endpoint', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    instanceServiceMocks.listInstances.mockReset().mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-1',
+        endpoint: 'other-nameserver:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    await user.click(within(brokerRow).getByRole('button', { name: /配置差异/ }));
+
+    expect(errorSpy).toHaveBeenCalledWith('无法唯一确定该注册集群所属的实例，已拒绝执行配置操作');
+    expect(clusterServiceMocks.previewClusterConfig).not.toHaveBeenCalled();
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
+    expect(clusterServiceMocks.getBrokerConfigDiff).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: /配置 - / })).not.toBeInTheDocument();
+  });
+
+  it('rejects broker config actions when multiple instances share the registry endpoint', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    instanceServiceMocks.listInstances.mockReset().mockResolvedValue([
+      {
+        id: 1,
+        name: 'instance-a',
+        endpoint: '10.101.2.1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'instance-b',
+        endpoint: '10.101.2.1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+
+    expect(errorSpy).toHaveBeenCalledWith('无法唯一确定该注册集群所属的实例，已拒绝执行配置操作');
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: /配置 - / })).not.toBeInTheDocument();
+  });
+
   it('keeps cluster tabs usable when address fields are missing', async () => {
     const user = userEvent.setup();
     const submitSearch = async (placeholder: string, value: string) => {
@@ -497,6 +648,20 @@ describe('Cluster page', () => {
 
   it('opens NameServer config drift details from a registry row', async () => {
     const user = userEvent.setup();
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
     clusterServiceMocks.listRegistryClusters.mockResolvedValue([
       {
         ...buildCluster(),
@@ -635,6 +800,20 @@ describe('Cluster page', () => {
 
   it('does not reopen a closed NameServer config diff when its request finishes', async () => {
     const pendingDiff = deferred<NameServerConfigDiffResult>();
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
     clusterServiceMocks.listRegistryClusters.mockResolvedValue([
       {
         ...buildCluster(),
