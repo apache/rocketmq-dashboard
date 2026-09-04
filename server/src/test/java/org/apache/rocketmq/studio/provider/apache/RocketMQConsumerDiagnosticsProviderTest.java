@@ -237,4 +237,14 @@ class RocketMQConsumerDiagnosticsProviderTest {
                 .hasMessageContaining("Failed to get consumer stack for client-1")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
     }
+
+    @Test
+    void rejectsBlankGroupAndClientBeforeAnyLookup() {
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "   ", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("group");
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("client");
+    }
 }
