@@ -209,14 +209,15 @@ public class MetadataService {
     }
 
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
-                                                              int page, int pageSize) {
+                                                               String subscriptionMode, int page, int pageSize) {
         validatePagination(page, pageSize);
         instanceId = normalizeInstanceId(instanceId);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
             return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
-                    normalizeFilter(search), page, pageSize);
+                    normalizeFilter(search), normalizeFilter(subscriptionMode), page, pageSize);
         }
         return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(search),
+                normalizeFilter(subscriptionMode),
                 page, pageSize);
     }
 

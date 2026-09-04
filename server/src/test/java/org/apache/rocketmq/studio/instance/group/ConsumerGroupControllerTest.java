@@ -82,13 +82,15 @@ class ConsumerGroupControllerTest {
     @Test
     void listConsumerGroupsPageShouldPassSelectedInstanceFiltersAndPaging() throws Exception {
         PageResult<ConsumerGroupVO> page = PageResult.of(List.of(), 3, 2, 20);
-        when(metadataService.listConsumerGroupsPage("instance-a", "cluster-a", "orders", 2, 20))
+        when(metadataService.listConsumerGroupsPage(
+                "instance-a", "cluster-a", "orders", "Pop", 2, 20))
                 .thenReturn(page);
 
         mockMvc.perform(get("/api/groups/page")
                         .param("instanceId", "instance-a")
                         .param("clusterId", "cluster-a")
                         .param("search", "orders")
+                        .param("subscriptionMode", "Pop")
                         .param("page", "2")
                         .param("pageSize", "20"))
                 .andExpect(status().isOk())
@@ -96,7 +98,8 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.data.page").value(2))
                 .andExpect(jsonPath("$.data.size").value(20));
 
-        verify(metadataService).listConsumerGroupsPage("instance-a", "cluster-a", "orders", 2, 20);
+        verify(metadataService).listConsumerGroupsPage(
+                "instance-a", "cluster-a", "orders", "Pop", 2, 20);
     }
 
     @Test

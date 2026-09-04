@@ -291,6 +291,7 @@ describe('Consumer page', () => {
       page: 1,
       pageSize: 20,
       search: undefined,
+      subscriptionMode: undefined,
     });
   });
 
@@ -921,6 +922,7 @@ describe('Consumer page', () => {
         page: 1,
         pageSize: 20,
         search: undefined,
+        subscriptionMode: undefined,
       }),
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

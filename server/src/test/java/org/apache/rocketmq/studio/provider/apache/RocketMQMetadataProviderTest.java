@@ -76,6 +76,24 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class RocketMQMetadataProviderTest {
 
+    @Test
+    void listConsumerGroupsPageShouldFilterBySubscriptionMode() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        Page<RmqGroup> databasePage = new Page<>(1, 20, 0);
+        databasePage.setRecords(List.of());
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(databasePage);
+        RocketMQMetadataProvider provider = newProvider();
+
+        provider.listConsumerGroupsPage("instance-a", null, null, "Pop", 1, 20);
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).selectPage(any(Page.class), captor.capture());
+        assertThat(captor.getValue().getSqlSegment())
+                .contains("message_model =")
+                .contains("instance_id");
+    }
+
     @Mock
     private RmqTopicMapper topicMapper;
 
@@ -216,7 +234,7 @@ class RocketMQMetadataProviderTest {
         RocketMQMetadataProvider provider = newProvider();
 
         PageResult<ConsumerGroupVO> result = provider.listConsumerGroupsPage(
-                "instance-a", "cluster-1", "group", 2, 1);
+                "instance-a", "cluster-1", "group", null, 2, 1);
 
         assertThat(result.getItems()).hasSize(1);
         assertThat(result.getItems().get(0).getName()).isEqualTo("group-b");

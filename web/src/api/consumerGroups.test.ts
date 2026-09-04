@@ -75,6 +75,7 @@ describe('consumer groups API contract', () => {
       instanceId: 'instance-1',
       clusterId: 'cluster-a',
       search: 'orders',
+      subscriptionMode: 'Pop',
       page: 2,
       pageSize: 10,
     };
