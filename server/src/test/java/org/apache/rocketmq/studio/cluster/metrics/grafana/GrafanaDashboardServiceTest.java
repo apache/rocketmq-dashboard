@@ -19,52 +19,190 @@ package org.apache.rocketmq.studio.cluster.metrics.grafana;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourcePatternResolver;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipInputStream;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class GrafanaDashboardServiceTest {
 
-    private final GrafanaDashboardService service =
-            new GrafanaDashboardService(new ObjectMapper());
+    private final GrafanaDashboardService service = new GrafanaDashboardService(new ObjectMapper());
 
     @Test
-    void listsBundledDashboardsSortedByUid() {
+    void listDashboardsShouldExposeBundledAssets() {
         List<GrafanaDashboardInfo> dashboards = service.listDashboards();
 
-        assertThat(dashboards).isNotEmpty();
-        assertThat(dashboards).isSortedAccordingTo((left, right) -> left.uid().compareTo(right.uid()));
-        for (GrafanaDashboardInfo dashboard : dashboards) {
-            assertThat(dashboard.title()).isNotBlank();
+        assertFalse(dashboards.isEmpty(), "expected bundled dashboards to be present");
+        assertTrue(dashboards.size() >= 10, "expected at least 10 dashboards, got " + dashboards.size());
+
+        for (GrafanaDashboardInfo info : dashboards) {
+            assertFalse(info.uid().isBlank(), "dashboard uid must not be blank");
+            assertFalse(info.title().isBlank(), "dashboard title must not be blank");
+            assertTrue(info.tags().contains("rocketmq"), "dashboard should be tagged rocketmq");
         }
     }
 
     @Test
-    void returnsDashboardModelAndRawJsonForKnownUid() {
-        String uid = service.listDashboards().get(0).uid();
+    void getDashboardShouldReturnParsedModel() {
+        Map<String, Object> model = service.getDashboard("rocketmq-overview");
 
-        assertThat(service.getDashboard(uid)).containsKey("title");
-        assertThat(service.getDashboardJson(uid)).contains("\"uid\"");
+        assertEquals("rocketmq-overview", model.get("uid"));
+        assertEquals("RocketMQ Cluster Overview", model.get("title"));
+        assertTrue(model.containsKey("panels"), "dashboard should contain panels");
     }
 
     @Test
-    void rejectsUnknownUidsWith404() {
-        assertThatThrownBy(() -> service.getDashboardJson("no-such-dashboard"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("not found");
+    void getDashboardShouldRejectNullJsonAsset() {
+        GrafanaDashboardService service = serviceWithResources(resource("null.json", "null"));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.getDashboard("null"));
+
+        assertEquals(500, exception.getCode());
+        assertEquals("Failed to read Grafana dashboard: null", exception.getMessage());
     }
 
     @Test
-    void exportsAllValidDashboardsAsZip() {
+    void getDashboardShouldThrowWhenUidUnknown() {
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.getDashboard("no-such-dashboard"));
+        assertEquals(404, exception.getCode());
+    }
+
+    @Test
+    void getDashboardJsonShouldReturnRawContent() {
+        String json = service.getDashboardJson("rocketmq-broker");
+
+        assertFalse(json.isBlank());
+        assertTrue(json.contains("\"uid\""));
+        assertTrue(json.contains("rocketmq-broker"));
+    }
+
+    @Test
+    void getDashboardJsonShouldDecodeBundledAssetAsUtf8() throws Exception {
+        try (InputStream input = getClass().getClassLoader()
+                .getResourceAsStream("grafana/rocketmq-broker.json")) {
+            assertTrue(input != null, "expected bundled dashboard resource");
+            String expected = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertEquals(expected, service.getDashboardJson("rocketmq-broker"));
+        }
+    }
+
+    @Test
+    void getDashboardJsonShouldThrowWhenUidUnknown() {
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.getDashboardJson("no-such-dashboard"));
+        assertEquals(404, exception.getCode());
+    }
+
+    @Test
+    void getDashboardsArchiveShouldIncludeAllVisibleDashboards() throws Exception {
+        GrafanaDashboardService service = serviceWithResources(
+                resource("b.json", "{\"uid\":\"b\",\"title\":\"B\",\"tags\":[\"rocketmq\"]}"),
+                resource("invalid.json", "[]"),
+                resource("a.json", "{\"uid\":\"a\",\"title\":\"A\",\"tags\":[\"rocketmq\"]}"));
+
         byte[] archive = service.getDashboardsArchive();
 
-        assertThat(archive).startsWith((byte) 'P', (byte) 'K');
-        String sample = new String(archive, StandardCharsets.ISO_8859_1);
-        for (GrafanaDashboardInfo dashboard : service.listDashboards()) {
-            assertThat(sample).contains(dashboard.uid() + ".json");
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive), StandardCharsets.UTF_8)) {
+            assertEquals("a.json", zip.getNextEntry().getName());
+            assertTrue(new String(zip.readAllBytes(), StandardCharsets.UTF_8).contains("\"uid\":\"a\""));
+            assertEquals("b.json", zip.getNextEntry().getName());
+            assertTrue(new String(zip.readAllBytes(), StandardCharsets.UTF_8).contains("\"uid\":\"b\""));
+            assertNull(zip.getNextEntry());
         }
+    }
+
+    @Test
+    void getDashboardsArchiveShouldRejectEmptyDashboardSet() {
+        GrafanaDashboardService service = serviceWithResources(resource("invalid.json", "[]"));
+
+        BusinessException exception = assertThrows(BusinessException.class, service::getDashboardsArchive);
+
+        assertEquals(404, exception.getCode());
+    }
+
+    @Test
+    void listDashboardsShouldSkipEmptyAndNonObjectAssets() {
+        GrafanaDashboardService service = serviceWithResources(
+                resource("empty.json", ""),
+                resource("array.json", "[]"),
+                resource("valid.json", "{\"title\":\"Valid\",\"tags\":[\"rocketmq\"]}"));
+
+        List<GrafanaDashboardInfo> dashboards = service.listDashboards();
+
+        assertEquals(List.of(new GrafanaDashboardInfo("valid", "Valid", "", List.of("rocketmq"))), dashboards);
+    }
+
+    @Test
+    void listDashboardsShouldSurfaceResourceDiscoveryFailure() throws Exception {
+        ResourcePatternResolver resolver = mock(ResourcePatternResolver.class);
+        when(resolver.getResources("classpath*:grafana/*.json")).thenThrow(new java.io.IOException("broken jar"));
+        GrafanaDashboardService service = new GrafanaDashboardService(new ObjectMapper(), resolver);
+
+        BusinessException exception = assertThrows(BusinessException.class, service::listDashboards);
+
+        assertEquals(500, exception.getCode());
+        assertTrue(exception.getMessage().contains("resolve bundled Grafana dashboards"));
+    }
+
+    @Test
+    void dashboardOperationsShouldDeterministicallyDeduplicateUid() throws Exception {
+        GrafanaDashboardService service = serviceWithResources(
+                resource("duplicate.json", "z-location", "{\"title\":\"Second\"}"),
+                resource("duplicate.json", "a-location", "{\"title\":\"First\"}"));
+
+        assertEquals(List.of(new GrafanaDashboardInfo("duplicate", "First", "", List.of())),
+                service.listDashboards());
+        assertEquals("First", service.getDashboard("duplicate").get("title"));
+
+        try (ZipInputStream zip = new ZipInputStream(
+                new ByteArrayInputStream(service.getDashboardsArchive()), StandardCharsets.UTF_8)) {
+            assertEquals("duplicate.json", zip.getNextEntry().getName());
+            assertTrue(new String(zip.readAllBytes(), StandardCharsets.UTF_8).contains("First"));
+            assertNull(zip.getNextEntry());
+        }
+    }
+
+    private static GrafanaDashboardService serviceWithResources(Resource... resources) {
+        return new GrafanaDashboardService(new ObjectMapper()) {
+            @Override
+            protected Resource[] resolveResources() {
+                return resources;
+            }
+        };
+    }
+
+    private static Resource resource(String filename, String content) {
+        return resource(filename, filename, content);
+    }
+
+    private static Resource resource(String filename, String description, String content) {
+        return new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public String getFilename() {
+                return filename;
+            }
+
+            @Override
+            public String getDescription() {
+                return description;
+            }
+        };
     }
 }
