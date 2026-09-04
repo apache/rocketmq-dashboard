@@ -15,9 +15,14 @@
  * limitations under the License.
  */
 
+export type PropertyParseError =
+  | { kind: 'invalidFormat'; value: string }
+  | { kind: 'emptyName'; value: string }
+  | { kind: 'duplicate'; key: string };
+
 interface ParsedProperties {
   properties: Record<string, string>;
-  errors: string[];
+  errors: PropertyParseError[];
 }
 
 // 解析批量粘贴的用户属性串：每行一个 key=value，等号只取第一个。
@@ -30,14 +35,14 @@ export const parseMessageProperties = (text: string): ParsedProperties => {
     if (!trimmed) continue;
     const eqIndex = trimmed.indexOf('=');
     if (eqIndex <= 0) {
-      errors.push(`“${trimmed}”应使用 key=value 格式`);
+      errors.push({ kind: 'invalidFormat', value: trimmed });
       continue;
     }
     const key = trimmed.slice(0, eqIndex).trim();
     if (!key) {
-      errors.push(`“${trimmed}”的属性名不能为空`);
+      errors.push({ kind: 'emptyName', value: trimmed });
     } else if (entries.has(key)) {
-      errors.push(`属性名“${key}”重复`);
+      errors.push({ kind: 'duplicate', key });
     } else {
       entries.set(key, trimmed.slice(eqIndex + 1).trim());
     }

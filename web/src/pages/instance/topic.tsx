@@ -299,7 +299,7 @@ const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -1196,7 +1196,19 @@ const TopicPage = () => {
       if (propsMode === 'text') {
         const parsed = parseMessageProperties(values.propsText || '');
         if (parsed.errors.length > 0) {
-          message.error(`消息属性格式错误：${parsed.errors.join('；')}`);
+          message.error(
+            `${t('messageProperties.invalidProperties')}${lang === 'zh' ? '：' : ': '}${parsed.errors
+              .map((error) => {
+                if (error.kind === 'invalidFormat') {
+                  return t('messageProperties.invalidFormat', { value: error.value });
+                }
+                if (error.kind === 'emptyName') {
+                  return t('messageProperties.emptyName', { value: error.value });
+                }
+                return t('messageProperties.duplicate', { key: error.key });
+              })
+              .join(lang === 'zh' ? '；' : '; ')}`,
+          );
           return;
         }
         props = parsed.properties;

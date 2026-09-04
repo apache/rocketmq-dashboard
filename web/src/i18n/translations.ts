@@ -2368,6 +2368,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'messageProperties.invalidProperties': { zh: '消息属性格式错误', en: 'Invalid message property format' },
+  'messageProperties.invalidFormat': { zh: '“{value}”应使用 key=value 格式', en: '“{value}” must use the key=value format' },
+  'messageProperties.emptyName': { zh: '“{value}”的属性名不能为空', en: 'The property name in “{value}” cannot be empty' },
+  'messageProperties.duplicate': { zh: '属性名“{key}”重复', en: 'Duplicate property name “{key}”' },
   // ─── BrokerCluster ───
 };
 

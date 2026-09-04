@@ -61,6 +61,6 @@ describe('parseMessageProperties', () => {
     const result = parseMessageProperties('__proto__=first\n__proto__=second');
 
     expect(result.properties['__proto__']).toBe('first');
-    expect(result.errors).toEqual(['属性名“__proto__”重复']);
+    expect(result.errors).toEqual([{ kind: 'duplicate', key: '__proto__' }]);
   });
 });
