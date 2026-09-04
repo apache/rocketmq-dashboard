@@ -16,10 +16,10 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { BrokerRoute, Topic } from '../../../api/metadata';
 import { parseMessageProperties } from '../../../utils/messageProperties';
@@ -132,6 +132,13 @@ const getTableBody = () => {
   return tableBody as HTMLElement;
 };
 
+const getSendDialog = async () => {
+  const title = await screen.findByText('发送消息到 topic-01');
+  const dialog = title.closest('[role="dialog"]');
+  expect(dialog).not.toBeNull();
+  return dialog as HTMLElement;
+};
+
 describe('TopicPage', () => {
   beforeEach(() => {
     mockTopicsList(buildTopics(25));
@@ -175,6 +182,11 @@ describe('TopicPage', () => {
       page: 1,
       pageSize: 20,
     });
+    topicServiceMocks.sendTopicMessage.mockResolvedValue({
+      msgId: 'MSG-0001',
+      sendTime: '2026-01-02T00:00:00Z',
+      offsetMsgId: 'OFFSET-0001',
+    });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 5,
@@ -191,6 +203,8 @@ describe('TopicPage', () => {
   });
 
   afterEach(() => {
+    Modal.destroyAll();
+    cleanup();
     vi.clearAllMocks();
   });
 
@@ -642,6 +656,76 @@ describe('TopicPage', () => {
       properties: { signature: 'part-a=part-b' },
       errors: [],
     });
+  });
+
+  it('previews the send payload and submits the normalized properties', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('Tag'), { target: { value: ' paid ' } });
+    fireEvent.change(within(dialog).getByLabelText('Key'), { target: { value: ' order-1 ' } });
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: '{"orderId":"order-1","amount":128}' },
+    });
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    fireEvent.change(within(dialog).getByPlaceholderText('属性名'), {
+      target: { value: 'traceId' },
+    });
+    fireEvent.change(within(dialog).getByPlaceholderText('属性值'), {
+      target: { value: 'trace-1' },
+    });
+
+    await waitFor(() => expect(within(dialog).getByText('可以发送')).toBeInTheDocument());
+    expect(within(dialog).getByText('JSON Object')).toBeInTheDocument();
+    expect(within(dialog).getByText('Tag paid')).toBeInTheDocument();
+    expect(within(dialog).getByText('Key order-1')).toBeInTheDocument();
+    expect(within(dialog).getByText('traceId=trace-1')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith({
+      topic: 'topic-01',
+      instanceId: 'instance-proxy-1',
+      tag: 'paid',
+      key: 'order-1',
+      body: '{"orderId":"order-1","amount":128}',
+      properties: { traceId: 'trace-1' },
+    });
+  });
+
+  it('blocks duplicate form properties in the send payload preflight', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: '{"event":"created"}' },
+    });
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    const propertyKeys = within(dialog).getAllByPlaceholderText('属性名');
+    const propertyValues = within(dialog).getAllByPlaceholderText('属性值');
+    fireEvent.change(propertyKeys[0], { target: { value: 'traceId' } });
+    fireEvent.change(propertyValues[0], { target: { value: 'first' } });
+    fireEvent.change(propertyKeys[1], { target: { value: 'traceId' } });
+    fireEvent.change(propertyValues[1], { target: { value: 'second' } });
+
+    await waitFor(() => expect(within(dialog).getByText('阻止发送')).toBeInTheDocument());
+    expect(within(dialog).getByText('属性名重复')).toBeInTheDocument();
+    expect(within(dialog).getByText('重复属性会覆盖前面的值：traceId')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/发送前预检未通过：属性名重复/)).toBeInTheDocument(),
+    );
+    expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
   });
 
   it('renders unavailable Topic consumer metrics distinctly from zero', async () => {

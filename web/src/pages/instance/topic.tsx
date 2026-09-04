@@ -86,7 +86,6 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
-import { parseMessageProperties } from '../../utils/messageProperties';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeTopicRoutes,
@@ -94,6 +93,13 @@ import {
   type RouteDiagnosticStatus,
   type RouteDistribution,
 } from '../../utils/topicRouteDiagnostics';
+import {
+  analyzeMessagePayloadPreview,
+  type MessageBodyFormat,
+  type MessagePayloadIssue,
+  type MessagePayloadPreviewStatus,
+  type MessagePropertyInput,
+} from '../../utils/messagePayloadPreview';
 
 const { Text } = Typography;
 
@@ -149,6 +155,15 @@ const TOPIC_TYPE_CARDS = [
 
 // ─── Perm label ───────────────────────────────────────────────────
 const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
+
+type SendMessageFormValues = {
+  topic: string;
+  tag?: string;
+  key?: string;
+  body: string;
+  propsText?: string;
+  properties?: MessagePropertyInput[];
+};
 
 const visibleTopics = (
   topics: Topic[],
@@ -299,6 +314,35 @@ const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
 
 const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 
+const formatBytes = (bytes: number): string => {
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+  return `${bytes} B`;
+};
+
+const BODY_FORMAT_LABEL: Record<MessageBodyFormat, string> = {
+  empty: '空 Body',
+  'json-object': 'JSON Object',
+  'json-array': 'JSON Array',
+  'json-scalar': 'JSON 标量',
+  'plain-text': '文本',
+};
+
+const PAYLOAD_STATUS_META: Record<
+  MessagePayloadPreviewStatus,
+  { label: string; color: string; alertType: 'success' | 'warning' | 'error' }
+> = {
+  ready: { label: '可以发送', color: 'success', alertType: 'success' },
+  warning: { label: '建议检查', color: 'warning', alertType: 'warning' },
+  error: { label: '阻止发送', color: 'error', alertType: 'error' },
+};
+
+const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
+  info: 'blue',
+  warning: 'warning',
+  error: 'error',
+};
+
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
   const { t } = useLang();
@@ -344,6 +388,12 @@ const TopicPage = () => {
   const [sending, setSending] = useState(false);
   const [sendForm] = Form.useForm();
   const [propsMode, setPropsMode] = useState<'form' | 'text'>('form');
+  const sendTagValue = Form.useWatch('tag', sendForm);
+  const sendKeyValue = Form.useWatch('key', sendForm);
+  const sendBodyValue = Form.useWatch('body', sendForm);
+  const sendPropsTextValue = Form.useWatch('propsText', sendForm);
+  const sendPropertiesValue = Form.useWatch('properties', sendForm) as
+    MessagePropertyInput[] | undefined;
   const { modal } = App.useApp();
   const importInputRef = useRef<HTMLInputElement>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -358,6 +408,28 @@ const TopicPage = () => {
   const detailRequestIdRef = useRef(0);
   const consumersRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
+
+  const sendPayloadPreview = useMemo(
+    () =>
+      analyzeMessagePayloadPreview({
+        topic: sendTopic?.name,
+        tag: sendTagValue,
+        key: sendKeyValue,
+        body: sendBodyValue,
+        propsMode,
+        propsText: sendPropsTextValue,
+        properties: sendPropertiesValue,
+      }),
+    [
+      propsMode,
+      sendBodyValue,
+      sendKeyValue,
+      sendPropertiesValue,
+      sendPropsTextValue,
+      sendTagValue,
+      sendTopic?.name,
+    ],
+  );
 
   useEffect(() => {
     if (!selectedInstanceId) {
@@ -1184,9 +1256,102 @@ const TopicPage = () => {
     },
   ];
 
+  const renderPayloadIssues = (issues: MessagePayloadIssue[]) => {
+    if (issues.length === 0) {
+      return <Text type="secondary">未发现阻止发送的问题</Text>;
+    }
+    return (
+      <Space direction="vertical" size={6} style={{ width: '100%' }}>
+        {issues.map((item, index) => (
+          <Flex
+            key={`${item.code}-${item.names?.join(',') ?? index}`}
+            align="flex-start"
+            gap={8}
+            wrap="nowrap"
+          >
+            <Tag color={PAYLOAD_ISSUE_COLOR[item.severity]} style={{ marginTop: 1 }}>
+              {item.severity === 'error' ? '阻止' : item.severity === 'warning' ? '关注' : '提示'}
+            </Tag>
+            <div style={{ minWidth: 0 }}>
+              <Text strong>{item.title}</Text>
+              <Text type="secondary" style={{ display: 'block' }}>
+                {item.description}
+              </Text>
+            </div>
+          </Flex>
+        ))}
+      </Space>
+    );
+  };
+
+  const renderSendPayloadPreview = () => {
+    const statusMeta = PAYLOAD_STATUS_META[sendPayloadPreview.status];
+    const propertyPreview = sendPayloadPreview.propertyEntries.slice(0, 6);
+    const hiddenPropertyCount = sendPayloadPreview.propertyEntries.length - propertyPreview.length;
+
+    return (
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Alert
+          showIcon
+          type={statusMeta.alertType}
+          message={
+            <Flex gap={8} align="center" wrap>
+              <span>发送前预检</span>
+              <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
+              <Tag>{BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat]}</Tag>
+            </Flex>
+          }
+          description={
+            sendPayloadPreview.blockingIssues.length > 0
+              ? `发现 ${sendPayloadPreview.blockingIssues.length} 个阻止发送的问题。`
+              : '将按下方摘要发送到 RocketMQ，发送前可继续调整 Body、Tag、Key 和自定义属性。'
+          }
+        />
+
+        <Flex gap={8} wrap>
+          <Tag>Body {formatBytes(sendPayloadPreview.summary.bodyBytes)}</Tag>
+          <Tag>属性 {sendPayloadPreview.summary.propertyCount}</Tag>
+          <Tag>属性大小 {formatBytes(sendPayloadPreview.summary.propertyBytes)}</Tag>
+          <Tag color={sendPayloadPreview.normalized.tag ? 'blue' : undefined}>
+            Tag {sendPayloadPreview.normalized.tag || '-'}
+          </Tag>
+          <Tag color={sendPayloadPreview.normalized.key ? 'blue' : undefined}>
+            Key {sendPayloadPreview.normalized.key || '-'}
+          </Tag>
+        </Flex>
+
+        <Descriptions bordered size="small" column={1}>
+          <Descriptions.Item label="Topic">
+            <Text code>{sendPayloadPreview.normalized.topic || sendTopic?.name || '-'}</Text>
+          </Descriptions.Item>
+          <Descriptions.Item label="Body 类型">
+            {BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat]} /{' '}
+            {formatBytes(sendPayloadPreview.summary.bodyBytes)}
+          </Descriptions.Item>
+          <Descriptions.Item label="自定义属性">
+            {propertyPreview.length === 0 ? (
+              <Text type="secondary">无</Text>
+            ) : (
+              <Space size={[4, 4]} wrap>
+                {propertyPreview.map((entry) => (
+                  <Tag key={entry.key} color={entry.reserved ? 'warning' : undefined}>
+                    {entry.key}={entry.value || '""'}
+                  </Tag>
+                ))}
+                {hiddenPropertyCount > 0 && <Tag>+{hiddenPropertyCount}</Tag>}
+              </Space>
+            )}
+          </Descriptions.Item>
+        </Descriptions>
+
+        {renderPayloadIssues(sendPayloadPreview.issues)}
+      </Space>
+    );
+  };
+
   // ─── Send message modal submit ────────────────────────────────
   const handleSend = async () => {
-    let values;
+    let values: SendMessageFormValues;
     try {
       values = await sendForm.validateFields();
     } catch {
@@ -1195,27 +1360,28 @@ const TopicPage = () => {
     }
     setSending(true);
     try {
-      // Build properties: batch-paste text mode or key-value form rows
-      let props: Record<string, string> = {};
-      if (propsMode === 'text') {
-        const parsed = parseMessageProperties(values.propsText || '');
-        if (parsed.errors.length > 0) {
-          message.error(`消息属性格式错误：${parsed.errors.join('；')}`);
-          return;
-        }
-        props = parsed.properties;
-      } else if (values.properties && Array.isArray(values.properties)) {
-        values.properties.forEach((p: { key?: string; value?: string }) => {
-          if (p.key) props[p.key] = p.value || '';
-        });
+      const payloadPreview = analyzeMessagePayloadPreview({
+        topic: values.topic,
+        tag: values.tag,
+        key: values.key,
+        body: values.body,
+        propsMode,
+        propsText: values.propsText,
+        properties: values.properties,
+      });
+      if (payloadPreview.blockingIssues.length > 0) {
+        message.error(
+          `发送前预检未通过：${payloadPreview.blockingIssues.map((item) => item.title).join('；')}`,
+        );
+        return;
       }
       const result = await sendTopicMessage({
-        topic: values.topic,
+        topic: payloadPreview.normalized.topic,
         instanceId: selectedInstanceId || undefined,
-        tag: values.tag || undefined,
-        key: values.key || undefined,
-        body: values.body,
-        properties: props,
+        tag: payloadPreview.normalized.tag,
+        key: payloadPreview.normalized.key,
+        body: payloadPreview.normalized.body,
+        properties: payloadPreview.properties,
       });
       // Keep the modal open for consecutive sends
       message.success(`消息发送成功！MsgId: ${result.msgId}`);
@@ -1787,6 +1953,11 @@ const TopicPage = () => {
               )}
             </Form.List>
           )}
+
+          <Divider style={{ margin: '20px 0 16px' }} orientation="left" plain>
+            发送前预检
+          </Divider>
+          {renderSendPayloadPreview()}
         </Form>
       </Modal>
 
