@@ -31,6 +31,8 @@ import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -225,5 +227,31 @@ class SystemAlertControllerTest {
                 .andExpect(jsonPath("$.data.cleared").value(3));
 
         verify(alertService).clearAcknowledged();
+    }
+
+    @Test
+    void summaryShouldForwardAllFiltersTest() throws Exception {
+        when(alertService.summarizeAlerts(eq("error"), eq(AlertDomain.CLUSTER), eq("instance-a"),
+                eq("FIRING"), eq("topic"), eq("orders"), any(LocalDateTime.class),
+                any(LocalDateTime.class), eq(false)))
+                .thenReturn(SystemAlertSummaryVO.builder().total(21).unacknowledged(13).build());
+
+        mockMvc.perform(get("/api/system-alerts/summary")
+                        .param("level", "error")
+                        .param("domain", "CLUSTER")
+                        .param("instanceId", "instance-a")
+                        .param("transition", "FIRING")
+                        .param("labelKey", "topic")
+                        .param("labelValue", "orders")
+                        .param("from", "2026-09-01T00:00:00")
+                        .param("to", "2026-09-05T00:00:00")
+                        .param("notificationSuppressed", "false"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(21))
+                .andExpect(jsonPath("$.data.unacknowledged").value(13));
+
+        verify(alertService).summarizeAlerts(eq("error"), eq(AlertDomain.CLUSTER), eq("instance-a"),
+                eq("FIRING"), eq("topic"), eq("orders"), any(LocalDateTime.class),
+                any(LocalDateTime.class), eq(false));
     }
 }

@@ -1118,6 +1118,29 @@ class AlertServiceTest {
     }
 
     @Test
+    void summarizeAlertsShouldValidateAndDelegateFiltersTest() {
+        SystemAlertSummaryVO summary = SystemAlertSummaryVO.builder()
+                .total(21).unacknowledged(13).build();
+        when(alertRepository.summarizeAlerts(any(SystemAlertQuery.class))).thenReturn(summary);
+
+        SystemAlertSummaryVO result = alertService.summarizeAlerts("error", AlertDomain.CLUSTER,
+                "instance-a", "FIRING", "topic", "orders",
+                LocalDateTime.of(2026, 9, 1, 0, 0), LocalDateTime.of(2026, 9, 5, 0, 0), false);
+
+        assertThat(result).isSameAs(summary);
+        verify(alertRepository).summarizeAlerts(argThat(query ->
+                "error".equals(query.level())
+                        && query.domain() == AlertDomain.CLUSTER
+                        && "instance-a".equals(query.instanceId())
+                        && "FIRING".equals(query.transition())
+                        && "topic".equals(query.labelKey())
+                        && "orders".equals(query.labelValue())
+                        && query.from().equals(LocalDateTime.of(2026, 9, 1, 0, 0))
+                        && query.to().equals(LocalDateTime.of(2026, 9, 5, 0, 0))
+                        && Boolean.FALSE.equals(query.notificationSuppressed())));
+    }
+
+    @Test
     void relatedAlertsShouldIncludeTheExplicitSuppressionCauseOutsideTheDisplayWindowTest() {
         SystemAlertVO source = SystemAlertVO.builder().id(1L).domain(AlertDomain.BUSINESS)
                 .instanceId("local").suppressionCauseAlertId(12L)
