@@ -175,4 +175,29 @@ class LiteTopicControllerTest {
 
         verifyNoInteractions(liteTopicService);
     }
+
+    @Test
+    void listLiteTopicsShouldAllowMissingFilters() throws Exception {
+        when(liteTopicService.listLiteTopics(null, null)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/liteTopic/list"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        verify(liteTopicService).listLiteTopics(null, null);
+    }
+
+    @Test
+    void getQuotaShouldAllowMissingNamespace() throws Exception {
+        when(liteTopicService.getQuota(null)).thenReturn(LiteTopicQuotaVO.builder()
+                .currentTopicCount(0)
+                .build());
+
+        mockMvc.perform(get("/api/liteTopic/quota"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentTopicCount").value(0));
+
+        verify(liteTopicService).getQuota(null);
+    }
 }
