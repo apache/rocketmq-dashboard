@@ -68,7 +68,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
 
         PageResult<AuditRecordVO> result = repository.findPage(
-                "orders", "DELETE_TOPIC", "TOPIC", "prod-cn", null, null, "FAILED", 2, 25);
+                "orders", "admin", "DELETE_TOPIC", "TOPIC", "prod-cn", null, null, "FAILED", 2, 25);
 
         ArgumentCaptor<IPage<RmqOperationAudit>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -82,23 +82,25 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(record.getClusterId()).isEqualTo("prod-cn");
         assertThat(record.getErrorMessage()).isEqualTo("denied");
         assertThat(queryCaptor.getValue().getSqlSegment())
-                .contains("operation", "resource_type", "cluster_id", "result", "gmt_create", "id");
+                .contains("operator", "operation", "resource_type", "cluster_id", "result",
+                        "gmt_create", "id");
     }
 
     @Test
     void findFilterOptionsPreservesPersistedValuesAndCachesTheResultTest() {
         when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
-                        "cluster_id", "prod-cn", "result", "SUCCESS"),
+                        "cluster_id", "prod-cn", "result", "SUCCESS", "operator", "admin"),
                 Map.of("operation", " CREATE_TOPIC ", "resource_type", "GROUP",
-                        "cluster_id", "prod-sh", "result", "FAILED"),
+                        "cluster_id", "prod-sh", "result", "FAILED", "operator", "ops-user"),
                 Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
-                        "cluster_id", "", "result", "PARTIAL")));
+                        "cluster_id", "", "result", "PARTIAL", "operator", "admin")));
 
         AuditFilterOptionsVO options = repository.findFilterOptions();
         AuditFilterOptionsVO cachedOptions = repository.findFilterOptions();
 
         assertThat(options.getOperationTypes()).containsExactly(" CREATE_TOPIC ", "DELETE_TOPIC");
+        assertThat(options.getOperators()).containsExactly("admin", "ops-user");
         assertThat(options.getResourceTypes()).containsExactly("GROUP", "TOPIC");
         assertThat(options.getClusterIds()).containsExactly("prod-cn", "prod-sh");
         assertThat(options.getResults()).containsExactly("FAILED", "PARTIAL", "SUCCESS");
@@ -108,7 +110,7 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue()).getSqlSelect())
                 .contains("operation", "resource_type", "cluster_id", "result");
         assertThat(queryCaptor.getValue().getSqlSegment())
-                .contains("GROUP BY operation,resource_type,cluster_id,result");
+                .contains("GROUP BY operation,resource_type,cluster_id,result,operator");
     }
 
     @Test
@@ -274,7 +276,7 @@ class MybatisPlusAuditRepositoryTest {
 
         LocalDateTime startDate = LocalDateTime.of(2026, 8, 1, 0, 0);
         LocalDateTime endDate = LocalDateTime.of(2026, 8, 31, 23, 59);
-        repository.summarize("orders", "DELETE_TOPIC", "TOPIC", "prod-cn",
+        repository.summarize("orders", "admin", "DELETE_TOPIC", "TOPIC", "prod-cn",
                 startDate, endDate, "SUCCESS");
 
         List<Wrapper<RmqOperationAudit>> queries = new java.util.ArrayList<>();
