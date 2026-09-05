@@ -1201,6 +1201,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'deliveries.timeRange': { zh: '投递时间范围', en: 'Delivery time range' },
   'deliveries.startTime': { zh: '投递开始时间', en: 'Delivery start time' },
   'deliveries.endTime': { zh: '投递结束时间', en: 'Delivery end time' },
+  'deliveries.exportFailed': {
+    zh: '导出告警投递记录失败，请稍后重试',
+    en: 'Failed to export alert deliveries. Please try again later.',
+  },
   'deliveries.loadFailed': {
     zh: '告警投递记录加载失败，请稍后重试',
     en: 'Failed to load alert deliveries. Please try again later.',
