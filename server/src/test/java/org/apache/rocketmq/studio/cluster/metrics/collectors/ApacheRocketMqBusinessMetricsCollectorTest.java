@@ -142,4 +142,25 @@ class ApacheRocketMqBusinessMetricsCollectorTest {
     private static InstanceVO apacheInstance() {
         return InstanceVO.builder().name("local").endpoint("localhost:9876").vendor(InstanceVendor.APACHE).build();
     }
+
+    @Test
+    void supportsApacheAndVendorLessInstancesWithAName() {
+        ApacheRocketMqBusinessMetricsCollector collector =
+                new ApacheRocketMqBusinessMetricsCollector(mock(InstanceProviderRegistry.class));
+
+        assertThat(collector.supports(apacheInstance())).isTrue();
+        assertThat(collector.supports(InstanceVO.builder().name("local").endpoint("localhost:9876").build()))
+                .isTrue();
+        assertThat(collector.supports(InstanceVO.builder().name("cloud").endpoint("x")
+                .vendor(InstanceVendor.TENCENT).build())).isFalse();
+        assertThat(collector.supports(InstanceVO.builder().vendor(InstanceVendor.APACHE).build())).isFalse();
+        assertThat(collector.supports(null)).isFalse();
+    }
+
+    @Test
+    void exposesTheBusinessMetricKeys() {
+        assertThat(new ApacheRocketMqBusinessMetricsCollector(mock(InstanceProviderRegistry.class)).metricKeys())
+                .containsExactlyInAnyOrder("consumer.lag.total", "consumer.lag.max_queue",
+                        "consumer.delay.seconds", "topic.backlog.total");
+    }
 }
