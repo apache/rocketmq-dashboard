@@ -2542,6 +2542,21 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Topic create flow ───
+  'topic.createAction': { zh: '创建', en: 'Create' },
+  'topic.createFailed': { zh: '创建 Topic 失败，请稍后重试', en: 'Failed to create the Topic, please retry later' },
+  'topic.nameMaxLength': { zh: '名称不能超过 {count} 个字符', en: 'Name must not exceed {count} characters' },
+  'topic.namePattern': { zh: '仅支持字母、数字、下划线、短横线、% 和 |', en: 'Only letters, digits, underscores, hyphens, % and | are supported' },
+  'topic.selectInstanceFirst': { zh: '请先选择实例', en: 'Select an instance first' },
+  'topic.typeDelay': { zh: '延迟消息', en: 'Delay Message' },
+  'topic.typeDescDelay': { zh: '消息在指定的延迟时间或定时后才投递给消费者。', en: 'The message is delivered to consumers after a scheduled delay or at the set time.' },
+  'topic.typeDescFifo': { zh: '严格按照消息发送顺序消费，适用于顺序敏感的业务。', en: 'Messages are consumed strictly in send order; suitable for order-sensitive flows.' },
+  'topic.typeDescLite': { zh: '轻量级主题，资源开销更低，适用于大规模轻量消息场景。', en: 'A lightweight topic with lower resource overhead; suitable for large-scale light-message scenarios.' },
+  'topic.typeDescNormal': { zh: '适用于无特殊顺序要求的常规消息收发场景。', en: 'For regular messaging without special ordering requirements.' },
+  'topic.typeDescTransaction': { zh: '支持分布式事务，保证本地事务与消息发送的最终一致性。', en: 'Supports distributed transactions and guarantees eventual consistency between the local transaction and the message send.' },
+  'topic.typeFifo': { zh: '顺序消息', en: 'Order Message' },
+  'topic.typeNormal': { zh: '普通消息', en: 'Normal Message' },
+  'topic.typeTransaction': { zh: '事务消息', en: 'Transaction Message' },
   // ─── BrokerCluster ───
 };
 
