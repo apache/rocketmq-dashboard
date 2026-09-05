@@ -362,6 +362,13 @@ export async function listAlertDeliveriesPage(params: NotificationDeliveryQuery 
   return res.data.data;
 }
 
+export async function exportAlertDeliveries(
+  params: Omit<NotificationDeliveryQuery, 'page' | 'pageSize'>,
+) {
+  const res = await client.get<{ data: string }>('/system-alerts/deliveries/export', { params });
+  return res.data.data;
+}
+
 export async function listAlertSilences() {
   const res = await client.get<{ data: AlertSilence[] }>('/alert-silences');
   return res.data.data;

@@ -442,6 +442,15 @@ export async function listAlertDeliveriesPage(
   return opsApi.listAlertDeliveriesPage(params);
 }
 
+export async function exportAlertDeliveries(
+  params: Omit<NotificationDeliveryQuery, 'page' | 'pageSize'>,
+): Promise<string> {
+  if (isMockMode()) {
+    return '\uFEFFdeliveryId,alertId,alertTitle,alertDomain,transition,instanceId,channel,status,attempts,createdAt,deliveredAt,nextRetryAt,lastError\r\n';
+  }
+  return opsApi.exportAlertDeliveries(params);
+}
+
 export async function listAlertSilences(): Promise<AlertSilence[]> {
   if (isMockMode()) return alertSilencesState.map((silence) => ({ ...silence }));
   return opsApi.listAlertSilences();

@@ -143,6 +143,21 @@ class SystemAlertControllerTest {
     }
 
     @Test
+    void exportDeliveriesShouldForwardFiltersTest() throws Exception {
+        when(notificationOutboxService.exportDeliveries("dingtalk", "FAILED", "local"))
+                .thenReturn("\uFEFFdeliveryId\r\n");
+
+        mockMvc.perform(get("/api/system-alerts/deliveries/export")
+                        .param("channel", "dingtalk")
+                        .param("status", "FAILED")
+                        .param("instanceId", "local"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value("\uFEFFdeliveryId\r\n"));
+
+        verify(notificationOutboxService).exportDeliveries("dingtalk", "FAILED", "local");
+    }
+
+    @Test
     void retryFailedDeliveriesShouldReturnPartialResultTest() throws Exception {
         NotificationDeliveryBulkRetryResult result = new NotificationDeliveryBulkRetryResult(
                 List.of(8L), Map.of(9L, "Delivery is not failed"));

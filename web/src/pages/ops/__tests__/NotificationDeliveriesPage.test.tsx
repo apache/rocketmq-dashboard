@@ -10,13 +10,18 @@ import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listInstances } from '../../../services/instanceService';
-import { listAlertDeliveriesPage, retryAlertDelivery } from '../../../services/opsService';
+import {
+  exportAlertDeliveries,
+  listAlertDeliveriesPage,
+  retryAlertDelivery,
+} from '../../../services/opsService';
 import NotificationDeliveriesPage from '../notificationDeliveries';
 
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../services/opsService', () => ({
+  exportAlertDeliveries: vi.fn(),
   listAlertDeliveriesPage: vi.fn(),
   retryAlertDeliveries: vi.fn(),
   retryAlertDelivery: vi.fn(),
@@ -168,5 +173,22 @@ describe('NotificationDeliveriesPage', () => {
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
     );
+  });
+
+  it('exports deliveries using the current filters', async () => {
+    vi.mocked(exportAlertDeliveries).mockResolvedValue('\uFEFFdeliveryId\r\n');
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    await waitFor(() => expect(exportAlertDeliveries).toHaveBeenCalledWith({}));
   });
 });
