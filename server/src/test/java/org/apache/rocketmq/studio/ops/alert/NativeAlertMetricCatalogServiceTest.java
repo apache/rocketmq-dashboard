@@ -7,6 +7,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.junit.jupiter.api.Test;
@@ -58,5 +59,55 @@ class NativeAlertMetricCatalogServiceTest {
 
         assertThat(nativeRule.getMetric()).isEqualTo("broker.disk.usage_ratio");
         assertThat(customRule.getMetric()).isEqualTo("custom.metric");
+    }
+
+    @Test
+    void listShouldRejectBlankAndMissingInstanceIdsTest() {
+        NativeAlertMetricCatalogService service =
+                new NativeAlertMetricCatalogService(mock(InstanceRepository.class));
+
+        assertThatThrownBy(() -> service.list(null, AlertDomain.CLUSTER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("instanceId is required");
+        assertThatThrownBy(() -> service.list(" ", AlertDomain.CLUSTER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("instanceId is required");
+    }
+
+    @Test
+    void listShouldReportAnUnknownInstanceAs404Test() {
+        InstanceRepository repository = mock(InstanceRepository.class);
+        when(repository.findByIdentifier("missing")).thenReturn(Optional.empty());
+        NativeAlertMetricCatalogService service = new NativeAlertMetricCatalogService(repository);
+
+        assertThatThrownBy(() -> service.list("missing", AlertDomain.CLUSTER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Instance not found: missing");
+    }
+
+    @Test
+    void listShouldServeTheSameBusinessMetricsForTencentTest() {
+        InstanceRepository repository = mock(InstanceRepository.class);
+        when(repository.findByIdentifier("tencent")).thenReturn(Optional.of(InstanceVO.builder()
+                .name("tencent").vendor(InstanceVendor.TENCENT).build()));
+        NativeAlertMetricCatalogService service = new NativeAlertMetricCatalogService(repository);
+
+        assertThat(service.list("tencent", AlertDomain.BUSINESS))
+                .extracting(NativeAlertMetricInfo::key)
+                .containsExactly("consumer.lag.total", "consumer.lag.max_queue", "topic.backlog.total");
+    }
+
+    @Test
+    void validateShouldIgnoreNullAndNonNativeMetricsTest() {
+        NativeAlertMetricCatalogService service =
+                new NativeAlertMetricCatalogService(mock(InstanceRepository.class));
+
+        service.validate(null);
+        service.validate(AlertRuleVO.builder().build());
+
+        AlertRuleVO custom = AlertRuleVO.builder().domain(AlertDomain.CLUSTER)
+                .instanceId("apache").metric(" custom.metric ").build();
+        service.validate(custom);
+        assertThat(custom.getMetric()).isEqualTo("custom.metric");
     }
 }
