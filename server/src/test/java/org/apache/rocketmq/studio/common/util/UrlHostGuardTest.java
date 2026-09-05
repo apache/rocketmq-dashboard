@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.net.InetAddress;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class UrlHostGuardTest {
 
@@ -62,5 +63,40 @@ class UrlHostGuardTest {
     @Test
     void isAllowedHostShouldRejectIpv6UlaLiteralEvenWhenLoopbackIsAllowed() {
         assertThat(UrlHostGuard.isAllowedHost("fd00:ec2::254", true)).isFalse();
+    }
+
+    @Test
+    void checkShouldAcceptHttpHttpsAndRejectOtherSchemes() {
+        UrlHostGuard.check("http://93.184.216.34/metrics", false);
+        UrlHostGuard.check("https://93.184.216.34/metrics", false);
+
+        assertThatThrownBy(() -> UrlHostGuard.check("ftp://93.184.216.34/metrics", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must start with http");
+    }
+
+    @Test
+    void checkShouldRejectMissingBlankAndHostlessUrls() {
+        assertThatThrownBy(() -> UrlHostGuard.check(null, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("URL is required");
+        assertThatThrownBy(() -> UrlHostGuard.check("   ", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("URL is required");
+        assertThatThrownBy(() -> UrlHostGuard.check("http://", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("URL is not a valid URI");
+    }
+
+    @Test
+    void checkShouldGateLoopbackAndMetadataAddresses() {
+        assertThatThrownBy(() -> UrlHostGuard.check("http://127.0.0.1:11434", false))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> UrlHostGuard.check("http://169.254.169.254/latest", true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("metadata");
+
+        UrlHostGuard.check("http://127.0.0.1:11434", true);
+        UrlHostGuard.check("https://93.184.216.34///", false);
     }
 }
