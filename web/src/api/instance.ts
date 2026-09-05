@@ -32,6 +32,8 @@ export interface Instance {
   id: number;
   name: string;
   remark: string | null;
+  /** Optional English display copy for demo (mock-mode) instance remarks. */
+  enRemark?: string | null;
   type: InstanceType;
   endpoint: string;
   vendor?: InstanceVendor;
