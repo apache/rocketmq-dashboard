@@ -143,4 +143,22 @@ class ProducerControllerTest {
 
         verifyNoInteractions(producerConnectionService);
     }
+
+    @Test
+    void listProducerGroupsShouldRejectAMissingInstanceId() throws Exception {
+        mockMvc.perform(get("/api/producer/groups").param("topic", "order-topic"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void listProducerGroupsShouldForwardOptionalDefaults() throws Exception {
+        when(producerConnectionService.listProducerGroups("instance-1", null, null, null))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/producer/groups").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        verify(producerConnectionService).listProducerGroups("instance-1", null, null, null);
+    }
 }
