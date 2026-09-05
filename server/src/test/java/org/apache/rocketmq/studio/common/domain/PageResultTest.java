@@ -44,4 +44,24 @@ class PageResultTest {
         assertThatThrownBy(() -> result.getItems().add("mutated"))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
+
+    @Test
+    void ofShouldCarryTotalAndPagingFields() {
+        PageResult<String> result = PageResult.of(List.of("a", "b"), 42, 3, 25);
+
+        assertThat(result.getItems()).containsExactly("a", "b");
+        assertThat(result.getTotal()).isEqualTo(42);
+        assertThat(result.getPage()).isEqualTo(3);
+        assertThat(result.getSize()).isEqualTo(25);
+    }
+
+    @Test
+    void emptyShouldReturnZeroTotalWithCarriedPaging() {
+        PageResult<String> result = PageResult.empty(5, 50);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isZero();
+        assertThat(result.getPage()).isEqualTo(5);
+        assertThat(result.getSize()).isEqualTo(50);
+    }
 }
