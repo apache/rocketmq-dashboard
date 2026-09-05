@@ -155,7 +155,7 @@ const displayMetadata = (value: string | null | undefined) => value || '-';
    ClientsPage
    ═══════════════════════════════════════════ */
 const ClientsPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { token } = theme.useToken();
   const [connections, setConnections] = useState<ClientConnection[]>([]);
   const [registryClusters, setRegistryClusters] = useState<ClusterInfo[]>([]);
@@ -299,8 +299,8 @@ const ClientsPage = () => {
   }, [clusterConnections]);
 
   const clientDiagnostics = useMemo(
-    () => analyzeClientConnections(clusterConnections),
-    [clusterConnections],
+    () => analyzeClientConnections(clusterConnections, lang),
+    [clusterConnections, lang],
   );
 
   const diagnosticProgressStatus =
