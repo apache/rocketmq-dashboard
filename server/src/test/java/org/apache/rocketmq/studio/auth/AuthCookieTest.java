@@ -66,4 +66,44 @@ class AuthCookieTest {
         assertThat(AuthCookie.authorization(nonBearerRequest, properties))
                 .isEqualTo("Bearer cookie-token");
     }
+
+    @Test
+    void returnsNullWhenNeitherHeaderNorCookieIsPresent() {
+        AuthProperties properties = new AuthProperties();
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        assertThat(AuthCookie.authorization(request, properties)).isNull();
+    }
+
+    @Test
+    void passesThroughNonBearerHeadersWithoutACookie() {
+        AuthProperties properties = new AuthProperties();
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Basic credentials");
+
+        assertThat(AuthCookie.authorization(request, properties)).isEqualTo("Basic credentials");
+    }
+
+    @Test
+    void honorsACustomCookieNameAndClearsWithZeroMaxAge() {
+        AuthProperties properties = new AuthProperties();
+        properties.setSessionCookieName("custom_session");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AuthCookie.write(response, properties, "token", java.time.Duration.ofMinutes(5));
+        assertThat(response.getHeader("Set-Cookie")).contains("custom_session=token");
+
+        MockHttpServletResponse cleared = new MockHttpServletResponse();
+        AuthCookie.clear(cleared, properties);
+        assertThat(cleared.getHeader("Set-Cookie")).contains("custom_session=").contains("Max-Age=0");
+    }
+
+    @Test
+    void bearerSessionDeliveryHeaderIsCaseInsensitive() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        assertThat(AuthCookie.requestsBearerToken(request)).isFalse();
+
+        request.addHeader(AuthCookie.SESSION_DELIVERY_HEADER, "BEARER");
+        assertThat(AuthCookie.requestsBearerToken(request)).isTrue();
+    }
 }
