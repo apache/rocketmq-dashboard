@@ -2542,6 +2542,25 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Message query history drawer ───
+  'queryHistory.loadFailed': { zh: '查询历史加载失败', en: 'Failed to load query history' },
+  'queryHistory.type': { zh: '类型', en: 'Type' },
+  'queryHistory.resultCount': { zh: '结果数', en: 'Results' },
+  'queryHistory.operator': { zh: '操作者', en: 'Operator' },
+  'queryHistory.queryTime': { zh: '查询时间', en: 'Query Time' },
+  'queryHistory.traceTopic': { zh: '轨迹 Topic', en: 'Trace Topic' },
+  'queryHistory.defaultTopic': { zh: '默认', en: 'default' },
+  'queryHistory.traceNodes': { zh: '轨迹节点', en: 'Trace Nodes' },
+  'queryHistory.consumers': { zh: '消费者', en: 'Consumers' },
+  'queryHistory.drawerTitle': { zh: '服务端查询历史', en: 'Server Query History' },
+  'queryHistory.messageQueries': { zh: '消息查询', en: 'Message Queries' },
+  'queryHistory.traceQueries': { zh: '轨迹查询', en: 'Trace Queries' },
+  'queryHistory.latestQuery': { zh: '最近查询', en: 'Latest Query' },
+  'queryHistory.searchPlaceholder': { zh: '搜索 Topic、轨迹 Topic、Message ID、Key 或操作者', en: 'Search Topic, trace Topic, Message ID, Key or operator' },
+  'queryHistory.loadFailedAlert': { zh: '查询历史加载失败', en: 'Failed to load query history' },
+  'queryHistory.retry': { zh: '重试', en: 'Retry' },
+  'queryHistory.tabMessages': { zh: '消息查询', en: 'Message Queries' },
+  'queryHistory.tabTraces': { zh: '轨迹查询', en: 'Trace Queries' },
   // ─── BrokerCluster ───
 };
 
