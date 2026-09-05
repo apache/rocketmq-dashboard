@@ -67,4 +67,15 @@ describe('aliyunCatalog API', () => {
 
     expect(instances[0].instanceId).toBe('rmq-cn-xxx');
   });
+
+  it('includes the search term when listing instances', async () => {
+    mock.onGet('/cloud/aliyun/instances').reply((config) => {
+      expect(config.params).toEqual({ credentialId: 9, regionId: 'cn-hangzhou', search: 'prod' });
+      return [200, { code: 200, data: [] }];
+    });
+
+    const instances = await listAliyunInstances(9, 'cn-hangzhou', 'prod');
+
+    expect(instances).toEqual([]);
+  });
 });
