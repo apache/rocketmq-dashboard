@@ -216,6 +216,22 @@ class SystemAlertControllerTest {
     }
 
     @Test
+    void listDeliveriesShouldReturnDeliveriesForAnAlertTest() throws Exception {
+        NotificationDeliveryVO delivery = NotificationDeliveryVO.builder()
+                .id(1L)
+                .channel("dingtalk")
+                .build();
+        when(notificationOutboxService.listDeliveries(3L)).thenReturn(List.of(delivery));
+
+        mockMvc.perform(get("/api/system-alerts/3/deliveries"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].channel").value("dingtalk"));
+
+        verify(notificationOutboxService).listDeliveries(3L);
+    }
+
+    @Test
     void clearAcknowledgedShouldReturnClearedCountTest() throws Exception {
         when(alertService.clearAcknowledged()).thenReturn(3);
 
