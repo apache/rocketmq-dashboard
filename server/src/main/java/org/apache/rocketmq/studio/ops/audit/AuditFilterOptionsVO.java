@@ -28,6 +28,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AuditFilterOptionsVO {
+    private List<String> operators;
     private List<String> operationTypes;
     private List<String> resourceTypes;
     private List<String> clusterIds;

@@ -53,14 +53,14 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     private volatile CachedFilterOptions cachedFilterOptions;
 
     @Override
-    public PageResult<AuditRecordVO> findPage(String search, String operationType,
+public PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
                                               String resourceType, String target, String clusterId,
                                               boolean clusterIdMissing,
                                               LocalDateTime startDate, LocalDateTime endDate,
                                               String result, int page, int pageSize) {
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<>();
-        applyFilters(query, search, operationType, resourceType, target, clusterId, clusterIdMissing,
-                startDate, endDate, result);
+        applyFilters(query, search, operator, operationType, resourceType, target, clusterId,
+                clusterIdMissing, startDate, endDate, result);
         query.orderByDesc("gmt_create", "id");
         Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
                 new Page<>(page, pageSize), query);
@@ -91,9 +91,10 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     private AuditFilterOptionsVO loadFilterOptions() {
         List<Map<String, Object>> values = auditMapper.selectMaps(
                 new QueryWrapper<RmqOperationAudit>()
-                        .select("operation", "resource_type", "cluster_id", "result")
-                        .groupBy("operation", "resource_type", "cluster_id", "result"));
+                        .select("operation", "resource_type", "cluster_id", "result", "operator")
+                        .groupBy("operation", "resource_type", "cluster_id", "result", "operator"));
         return AuditFilterOptionsVO.builder()
+                .operators(findDistinctValues(values, "operator"))
                 .operationTypes(findDistinctValues(values, "operation"))
                 .resourceTypes(findDistinctValues(values, "resource_type"))
                 .clusterIds(findDistinctValues(values, "cluster_id"))
@@ -102,11 +103,12 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     }
 
     @Override
-    public AuditSummaryVO summarize(String search, String operationType, String resourceType,
-                                    String clusterId, LocalDateTime startDate, LocalDateTime endDate,
+    public AuditSummaryVO summarize(String search, String operator, String operationType,
+                                    String resourceType, String clusterId,
+                                    LocalDateTime startDate, LocalDateTime endDate,
                                     String result) {
         Consumer<QueryWrapper<RmqOperationAudit>> filters = query -> applyFilters(query, search,
-                operationType, resourceType, null, clusterId, false, startDate, endDate, result);
+operator, operationType, resourceType, null, clusterId, false, startDate, endDate, result);
 
         // One GROUP BY result query computes total / SUCCESS / FAILED / PARTIAL in a single
         // round trip instead of four separate COUNT(*) statements. Note that when the caller
@@ -192,13 +194,14 @@ public class MybatisPlusAuditRepository implements AuditRepository {
      * hotspot queries so a card can never disagree with the rows it describes.
      */
     private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
-                              String operationType, String resourceType, String target,
+String operator, String operationType, String resourceType, String target,
                               String clusterId, boolean clusterIdMissing,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
         query.and(StringUtils.hasText(search), w -> w
                         .like("operator", search)
                         .or().like("resource_name", search)
                         .or().like("detail", search))
+                .eq(StringUtils.hasText(operator), "operator", operator)
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(target), "resource_name", target)
