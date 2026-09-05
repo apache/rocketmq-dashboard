@@ -61,10 +61,16 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             + "<if test='channel != null and channel != \"\"'> AND o.channel = #{channel}</if>"
             + "<if test='status != null and status != \"\"'> AND o.status = #{status}</if>"
             + "<if test='instanceId != null and instanceId != \"\"'> AND a.instance_id = #{instanceId}</if>"
+            + "<if test='search != null and search != \"\"'> AND (a.title LIKE CONCAT('%', #{search}, '%') "
+            + "OR o.last_error LIKE CONCAT('%', #{search}, '%'))</if>"
+            + "<if test='from != null'> AND o.gmt_create &gt;= #{from}</if>"
+            + "<if test='to != null'> AND o.gmt_create &lt;= #{to}</if>"
             + "</where> ORDER BY o.id DESC LIMIT #{limit} OFFSET #{offset}"
             + "</script>")
     List<NotificationDeliveryPageVO> findPage(@Param("channel") String channel, @Param("status") String status,
-            @Param("instanceId") String instanceId, @Param("limit") int limit, @Param("offset") long offset);
+            @Param("instanceId") String instanceId, @Param("search") String search,
+            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+            @Param("limit") int limit, @Param("offset") long offset);
 
     @Select("<script>"
             + "SELECT COUNT(*) FROM rmq_alert_notification_outbox o "
@@ -73,8 +79,13 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             + "<if test='channel != null and channel != \"\"'> AND o.channel = #{channel}</if>"
             + "<if test='status != null and status != \"\"'> AND o.status = #{status}</if>"
             + "<if test='instanceId != null and instanceId != \"\"'> AND a.instance_id = #{instanceId}</if>"
+            + "<if test='search != null and search != \"\"'> AND (a.title LIKE CONCAT('%', #{search}, '%') "
+            + "OR o.last_error LIKE CONCAT('%', #{search}, '%'))</if>"
+            + "<if test='from != null'> AND o.gmt_create &gt;= #{from}</if>"
+            + "<if test='to != null'> AND o.gmt_create &lt;= #{to}</if>"
             + "</where>"
             + "</script>")
     long countPage(@Param("channel") String channel, @Param("status") String status,
-            @Param("instanceId") String instanceId);
+            @Param("instanceId") String instanceId, @Param("search") String search,
+            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

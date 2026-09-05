@@ -31,6 +31,8 @@ import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
 
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -118,7 +120,8 @@ class SystemAlertControllerTest {
                 .channel("dingtalk").status(NotificationOutboxStatus.DELIVERED).attemptCount(0)
                 .alertTitle("Disk usage high").instanceId("local")
                 .messageContent("[info] Disk usage high").build();
-        when(notificationOutboxService.listDeliveries("dingtalk", "DELIVERED", "local", 2, 10))
+        when(notificationOutboxService.listDeliveries(eq("dingtalk"), eq("DELIVERED"), eq("local"),
+                isNull(), isNull(), isNull(), eq(2), eq(10)))
                 .thenReturn(PageResult.of(List.of(delivery), 11, 2, 10));
 
         mockMvc.perform(get("/api/system-alerts/deliveries/page").param("channel", "dingtalk")
@@ -130,7 +133,8 @@ class SystemAlertControllerTest {
                 .andExpect(jsonPath("$.data.items[0].alertTitle").value("Disk usage high"))
                 .andExpect(jsonPath("$.data.items[0].messageContent").value("[info] Disk usage high"));
 
-        verify(notificationOutboxService).listDeliveries("dingtalk", "DELIVERED", "local", 2, 10);
+        verify(notificationOutboxService).listDeliveries(eq("dingtalk"), eq("DELIVERED"), eq("local"),
+                isNull(), isNull(), isNull(), eq(2), eq(10));
     }
 
     @Test
