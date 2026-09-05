@@ -66,6 +66,16 @@ class ClusterListToolHandlerTest {
     }
 
     @Test
+    void emptyClusterListReturnsEmptyRowsTest() {
+        when(clusterResolver.scanWithBrokerVersions()).thenReturn(List.of());
+
+        ListOutput<ClusterListItem> output = handler.execute(
+                new ClusterListInput(null), context("instance-a"));
+
+        assertThat(output.items()).isEmpty();
+    }
+
+    @Test
     void filtersClustersByStatusTest() {
         ManagedCluster healthy = new ManagedCluster("rmq-healthy", "instance-a", List.of(),
                 List.of(new ManagedBroker("broker-h", 0L, "10.0.0.1:10911", true, "V5_5_0")));
