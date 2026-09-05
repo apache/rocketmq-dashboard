@@ -88,4 +88,27 @@ class AlertRuleEvaluatorTest {
         return new MetricSample("broker.disk.usage_ratio", AlertDomain.CLUSTER, "local", null, null, value,
                 availability, Instant.now());
     }
+
+    @Test
+    void numericLessThanOperatorMatchesWhenBelowThresholdTest() {
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
+                .operator("<").threshold(0.1).enabled(true).build();
+
+        AlertEvaluationResult result = evaluator.evaluate(rule,
+                sample(MetricAvailability.AVAILABLE, 0.05));
+
+        assertThat(result.matches()).isTrue();
+        assertThat(result.conditionMet()).isTrue();
+        assertThat(result.currentValue()).isEqualTo(0.05);
+    }
+
+    @Test
+    void doesNotEvaluateSamplesForOtherMetricKeysTest() {
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
+                .operator(">=").threshold(0.85).enabled(true).build();
+        MetricSample other = new MetricSample("broker.jvm.heap.usage_ratio", AlertDomain.CLUSTER,
+                "local", null, null, 0.9, MetricAvailability.AVAILABLE, Instant.now());
+
+        assertThat(evaluator.evaluate(rule, other).matches()).isFalse();
+    }
 }
