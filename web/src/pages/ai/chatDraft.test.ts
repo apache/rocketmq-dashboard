@@ -48,6 +48,43 @@ describe('AI chat draft navigation state', () => {
     });
   });
 
+  it('preserves supported engines and drops unsupported ones', () => {
+    expect(getChatDraft({ prompt: 'hi', engine: 'qoder' })).toEqual({
+      prompt: 'hi',
+      engine: 'qoder',
+    });
+    expect(getChatDraft({ prompt: 'hi', engine: 'claude-code' })).toEqual({
+      prompt: 'hi',
+      engine: 'claude-code',
+    });
+    expect(getChatDraft({ prompt: 'hi', engine: 'mistral' })).toEqual({ prompt: 'hi' });
+    expect(getChatDraft({ prompt: 'hi', engine: 7 })).toEqual({ prompt: 'hi' });
+  });
+
+  it('preserves enhance, new-conversation and conversation-id flags', () => {
+    expect(
+      getChatDraft({
+        prompt: 'hi',
+        enhance: true,
+        newConversation: true,
+        conversationId: 'c-1',
+      }),
+    ).toEqual({
+      prompt: 'hi',
+      enhance: true,
+      newConversation: true,
+      conversationId: 'c-1',
+    });
+    expect(
+      getChatDraft({
+        prompt: 'hi',
+        enhance: false,
+        newConversation: false,
+        conversationId: '  ',
+      }),
+    ).toEqual({ prompt: 'hi' });
+  });
+
   it('only opens history for the explicit history route intent', () => {
     expect(shouldOpenChatHistory({ historyIntent: 'open' })).toBe(true);
     expect(shouldOpenChatHistory({ historyIntent: 'closed' })).toBe(false);
