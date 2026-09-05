@@ -2542,6 +2542,19 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Audit page ───
+  'audit.loadFailed': { zh: '审计日志加载失败，请稍后重试', en: 'Failed to load audit logs, please retry later' },
+  'audit.overviewLoadFailed': { zh: '审计概览加载失败，请稍后重试', en: 'Failed to load the audit overview, please retry later' },
+  'audit.cleanupFailed': { zh: '清理审计日志失败，请稍后重试', en: 'Failed to clean up audit logs, please retry later' },
+  'audit.exportFailed': { zh: '导出审计日志失败，请稍后重试', en: 'Failed to export audit logs, please retry later' },
+  'audit.retentionDaysSuffix': { zh: '天之前的日志', en: 'days old or older' },
+  'audit.noData': { zh: '暂无数据', en: 'No data' },
+  'audit.matchingRecords': { zh: '匹配记录', en: 'Matching Records' },
+  'audit.successRate': { zh: '成功率', en: 'Success Rate' },
+  'audit.failedPartial': { zh: '失败 / 部分成功', en: 'Failed / Partially Successful' },
+  'audit.uniqueOperators': { zh: '操作人数', en: 'Unique Operators' },
+  'audit.topOperations': { zh: '高频操作', en: 'Top Operations' },
+  'audit.resourceTypeDistribution': { zh: '资源类型分布', en: 'By Resource Type' },
   // ─── BrokerCluster ───
 };
 
