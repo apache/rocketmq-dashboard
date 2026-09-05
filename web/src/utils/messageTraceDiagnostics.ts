@@ -104,6 +104,7 @@ export interface TraceDiagnosticOptions {
   slowGapMs?: number;
   slowEndToEndMs?: number;
   criticalEndToEndMs?: number;
+  lang?: 'zh' | 'en';
 }
 
 const DEFAULT_OPTIONS: Required<TraceDiagnosticOptions> = {
@@ -118,6 +119,12 @@ const STATUS_TEXT: Record<TraceDiagnosticStatus, string> = {
   healthy: '轨迹健康',
   warning: '需要关注',
   critical: '投递异常',
+};
+
+const STATUS_TEXT_EN: Record<TraceDiagnosticStatus, string> = {
+  healthy: 'Trace healthy',
+  warning: 'Attention needed',
+  critical: 'Delivery abnormal',
 };
 
 const STATUS_COLOR: Record<TraceDiagnosticStatus, 'success' | 'warning' | 'error'> = {
@@ -157,6 +164,24 @@ const ISSUE_RECOMMENDATIONS: Record<TraceIssueCode, string> = {
   UNKNOWN_CONSUMER_DELIVERY: '未知消费状态需要回查服务端返回值，避免把未识别状态误判为成功。',
   RETRIED_CONSUMER_DELIVERY: '存在重试时，检查消费耗时、异常类型和重试次数是否符合预期。',
   INVALID_CONSUME_TIME: '消费时间不可解析时，检查 trace 数据生成端是否返回了完整时间字段。',
+};
+
+const ISSUE_RECOMMENDATIONS_EN: Record<TraceIssueCode, string> = {
+  NO_TRACE_NODES: 'Confirm that message tracing is enabled and check whether a custom trace Topic is needed.',
+  FAILED_TRACE_NODE: 'Check the producer, Broker or consumer logs for the failed phase and confirm the failure code and stack trace.',
+  WAITING_TRACE_NODE: 'For waiting or in-progress phases, confirm the clients are online and the backlog is still advancing.',
+  INVALID_TRACE_TIMESTAMP: 'Check the clocks of producers, Brokers and consumers to avoid clock drift affecting trace judgment.',
+  TRACE_TIMESTAMP_REGRESSION: 'When trace timestamps regress, verify NTP sync and cross-region time sources on every node.',
+  INVALID_TRACE_COST: 'Ignore anomalous cost values before judging the bottleneck and verify the server trace fields are complete.',
+  SLOW_TRACE_NODE: 'Break down the slowest phase and separate send, store and consume processing time.',
+  SLOW_TRACE_GAP: 'When the gap between adjacent phases is large, check Broker pulls, client long polling and consumer thread pool queuing.',
+  SLOW_END_TO_END_TRACE: 'When end-to-end latency is high, combine Topic queue distribution, Consumer Group progress and client load.',
+  MISSING_CONSUMER_STATUS: 'When consume status is missing, use direct consume or Consumer Group progress to confirm message reachability.',
+  FAILED_CONSUMER_DELIVERY: 'For failed consumer groups, check consume errors, retry Topics and business idempotency.',
+  PENDING_CONSUMER_DELIVERY: 'For waiting consumer groups, confirm clients are online, subscriptions match and there is no obvious backlog.',
+  UNKNOWN_CONSUMER_DELIVERY: 'Re-check the server return value for unknown consume states instead of treating them as success.',
+  RETRIED_CONSUMER_DELIVERY: 'When retries exist, check consume latency, error types and retry counts.',
+  INVALID_CONSUME_TIME: 'When consume time cannot be parsed, check that the trace producer returns complete time fields.',
 };
 
 const parseTimestamp = (value: number | string): number | null => {
@@ -214,6 +239,7 @@ const severityForLatency = (
 const collectPhaseIssues = (
   phase: TraceDiagnosticPhase,
   options: Required<TraceDiagnosticOptions>,
+  lang: 'zh' | 'en' = 'zh',
 ): TraceDiagnosticIssue[] => {
   const issues: TraceDiagnosticIssue[] = [];
 
@@ -222,8 +248,8 @@ const collectPhaseIssues = (
       buildIssue(
         'FAILED_TRACE_NODE',
         'critical',
-        '轨迹阶段失败',
-        `${phase.title} 阶段返回失败状态。`,
+        (lang === 'en' ? 'Trace phase failed' : '轨迹阶段失败'),
+        (lang === 'en' ? `Phase ${phase.title} returned a failed status.` : `${phase.title} 阶段返回失败状态。`),
         phase.key,
       ),
     );
@@ -232,8 +258,8 @@ const collectPhaseIssues = (
       buildIssue(
         'WAITING_TRACE_NODE',
         'warning',
-        '轨迹阶段未完成',
-        `${phase.title} 阶段仍处于等待或处理中状态。`,
+        (lang === 'en' ? 'Trace phase incomplete' : '轨迹阶段未完成'),
+        (lang === 'en' ? `Phase ${phase.title} is still waiting or in progress.` : `${phase.title} 阶段仍处于等待或处理中状态。`),
         phase.key,
       ),
     );
@@ -244,8 +270,8 @@ const collectPhaseIssues = (
       buildIssue(
         'INVALID_TRACE_TIMESTAMP',
         'warning',
-        '轨迹时间不可用',
-        `${phase.title} 阶段没有可解析的时间戳。`,
+        (lang === 'en' ? 'Trace timestamp unavailable' : '轨迹时间不可用'),
+        (lang === 'en' ? `Phase ${phase.title} has no parseable timestamp.` : `${phase.title} 阶段没有可解析的时间戳。`),
         phase.key,
       ),
     );
@@ -256,8 +282,8 @@ const collectPhaseIssues = (
       buildIssue(
         'INVALID_TRACE_COST',
         'warning',
-        '阶段耗时不可用',
-        `${phase.title} 阶段返回了无效耗时。`,
+        (lang === 'en' ? 'Phase cost unavailable' : '阶段耗时不可用'),
+        (lang === 'en' ? `Phase ${phase.title} returned an invalid cost.` : `${phase.title} 阶段返回了无效耗时。`),
         phase.key,
       ),
     );
@@ -266,8 +292,8 @@ const collectPhaseIssues = (
       buildIssue(
         'SLOW_TRACE_NODE',
         severityForLatency(phase.costTimeMs, options.slowNodeCostMs, options.criticalNodeCostMs),
-        '阶段耗时偏高',
-        `${phase.title} 阶段耗时 ${phase.costTimeMs} ms。`,
+        (lang === 'en' ? 'Phase cost is high' : '阶段耗时偏高'),
+        (lang === 'en' ? `Phase ${phase.title} took ${phase.costTimeMs} ms.` : `${phase.title} 阶段耗时 ${phase.costTimeMs} ms。`),
         phase.key,
       ),
     );
@@ -278,8 +304,8 @@ const collectPhaseIssues = (
       buildIssue(
         'SLOW_TRACE_GAP',
         'warning',
-        '相邻阶段间隔偏高',
-        `${phase.title} 与上一阶段相隔 ${phase.latencyFromPreviousMs} ms。`,
+        (lang === 'en' ? 'Gap to the previous phase is high' : '相邻阶段间隔偏高'),
+        (lang === 'en' ? `Phase ${phase.title} is ${phase.latencyFromPreviousMs} ms after the previous phase.` : `${phase.title} 与上一阶段相隔 ${phase.latencyFromPreviousMs} ms。`),
         phase.key,
       ),
     );
@@ -314,7 +340,10 @@ const mapPhases = (nodes: TraceNode[]): TraceDiagnosticPhase[] => {
   });
 };
 
-const collectTimelineIssues = (phases: TraceDiagnosticPhase[]): TraceDiagnosticIssue[] => {
+const collectTimelineIssues = (
+  phases: TraceDiagnosticPhase[],
+  lang: 'zh' | 'en' = 'zh',
+): TraceDiagnosticIssue[] => {
   const issues: TraceDiagnosticIssue[] = [];
 
   phases.forEach((phase) => {
@@ -323,8 +352,8 @@ const collectTimelineIssues = (phases: TraceDiagnosticPhase[]): TraceDiagnosticI
         buildIssue(
           'TRACE_TIMESTAMP_REGRESSION',
           'warning',
-          '轨迹时间发生回退',
-          `${phase.title} 比上一阶段早 ${Math.abs(phase.latencyFromPreviousMs)} ms。`,
+          (lang === 'en' ? 'Trace timestamps regressed' : '轨迹时间发生回退'),
+          (lang === 'en' ? `Phase ${phase.title} is ${Math.abs(phase.latencyFromPreviousMs)} ms before the previous phase.` : `${phase.title} 比上一阶段早 ${Math.abs(phase.latencyFromPreviousMs)} ms。`),
           phase.key,
         ),
       );
@@ -366,6 +395,7 @@ const mapDeliveries = (
 
 const collectDeliveryIssues = (
   deliveries: ConsumerDeliveryDiagnostic[],
+  lang: 'zh' | 'en' = 'zh',
 ): TraceDiagnosticIssue[] => {
   const issues: TraceDiagnosticIssue[] = [];
 
@@ -375,8 +405,8 @@ const collectDeliveryIssues = (
         buildIssue(
           'FAILED_CONSUMER_DELIVERY',
           'critical',
-          '消费投递失败',
-          `${delivery.group} 返回失败消费状态。`,
+          (lang === 'en' ? 'Consumer delivery failed' : '消费投递失败'),
+          (lang === 'en' ? `Delivery of ${delivery.group} returned a failed consume status.` : `${delivery.group} 返回失败消费状态。`),
           delivery.key,
         ),
       );
@@ -385,8 +415,8 @@ const collectDeliveryIssues = (
         buildIssue(
           'PENDING_CONSUMER_DELIVERY',
           'warning',
-          '消费投递等待中',
-          `${delivery.group} 尚未完成消费。`,
+          (lang === 'en' ? 'Consumer delivery pending' : '消费投递等待中'),
+          (lang === 'en' ? `${delivery.group} has not finished consuming.` : `${delivery.group} 尚未完成消费。`),
           delivery.key,
         ),
       );
@@ -395,8 +425,8 @@ const collectDeliveryIssues = (
         buildIssue(
           'UNKNOWN_CONSUMER_DELIVERY',
           'warning',
-          '消费状态未知',
-          `${delivery.group} 返回未识别状态 ${delivery.deliveryStatus}。`,
+          (lang === 'en' ? 'Consume status unknown' : '消费状态未知'),
+          (lang === 'en' ? `${delivery.group} returned an unrecognized status ${delivery.deliveryStatus}.` : `${delivery.group} 返回未识别状态 ${delivery.deliveryStatus}。`),
           delivery.key,
         ),
       );
@@ -407,8 +437,8 @@ const collectDeliveryIssues = (
         buildIssue(
           'RETRIED_CONSUMER_DELIVERY',
           'warning',
-          '消费发生重试',
-          `${delivery.group} 已重试 ${delivery.retryCount} 次。`,
+          (lang === 'en' ? 'Consume retried' : '消费发生重试'),
+          (lang === 'en' ? `${delivery.group} has retried ${delivery.retryCount} times.` : `${delivery.group} 已重试 ${delivery.retryCount} 次。`),
           delivery.key,
         ),
       );
@@ -419,8 +449,8 @@ const collectDeliveryIssues = (
         buildIssue(
           'INVALID_CONSUME_TIME',
           'warning',
-          '消费时间不可用',
-          `${delivery.group} 没有可解析的消费时间。`,
+          (lang === 'en' ? 'Consume time unavailable' : '消费时间不可用'),
+          (lang === 'en' ? `${delivery.group} has no parseable consume time.` : `${delivery.group} 没有可解析的消费时间。`),
           delivery.key,
         ),
       );
@@ -501,12 +531,13 @@ const buildSummary = (
 const collectSummaryIssues = (
   summary: TraceDiagnosticSummary,
   options: Required<TraceDiagnosticOptions>,
+  lang: 'zh' | 'en' = 'zh',
 ): TraceDiagnosticIssue[] => {
   const issues: TraceDiagnosticIssue[] = [];
 
   if (summary.nodeCount === 0) {
     issues.push(
-      buildIssue('NO_TRACE_NODES', 'warning', '缺少轨迹节点', '当前消息没有返回可展示的轨迹阶段。'),
+      buildIssue('NO_TRACE_NODES', 'warning', (lang === 'en' ? 'Missing trace nodes' : '缺少轨迹节点'), (lang === 'en' ? 'The message returned no displayable trace phases.' : '当前消息没有返回可展示的轨迹阶段。')),
     );
   }
 
@@ -515,8 +546,8 @@ const collectSummaryIssues = (
       buildIssue(
         'MISSING_CONSUMER_STATUS',
         'warning',
-        '缺少消费状态',
-        '轨迹中没有返回任何消费组的投递状态。',
+        (lang === 'en' ? 'Missing consume status' : '缺少消费状态'),
+        (lang === 'en' ? 'No consumer group delivery status was returned in the trace.' : '轨迹中没有返回任何消费组的投递状态。'),
       ),
     );
   }
@@ -530,8 +561,8 @@ const collectSummaryIssues = (
           options.slowEndToEndMs,
           options.criticalEndToEndMs,
         ),
-        '端到端轨迹耗时偏高',
-        `首尾轨迹阶段相隔 ${summary.endToEndLatencyMs} ms。`,
+        (lang === 'en' ? 'End-to-end trace latency is high' : '端到端轨迹耗时偏高'),
+        (lang === 'en' ? `First and last trace phases are ${summary.endToEndLatencyMs} ms apart.` : `首尾轨迹阶段相隔 ${summary.endToEndLatencyMs} ms。`),
       ),
     );
   }
@@ -539,9 +570,13 @@ const collectSummaryIssues = (
   return issues;
 };
 
-const buildRecommendations = (issues: TraceDiagnosticIssue[]): string[] => {
+const buildRecommendations = (
+  issues: TraceDiagnosticIssue[],
+  lang: 'zh' | 'en' = 'zh',
+): string[] => {
   const codes = new Set(issues.map((issue) => issue.code));
-  const recommendations = [...codes].map((code) => ISSUE_RECOMMENDATIONS[code]);
+  const map = lang === 'en' ? ISSUE_RECOMMENDATIONS_EN : ISSUE_RECOMMENDATIONS;
+  const recommendations = [...codes].map((code) => map[code]);
   return recommendations.filter((item, index) => recommendations.indexOf(item) === index);
 };
 
@@ -549,6 +584,7 @@ export function analyzeMessageTrace(
   trace: TraceRecord | null | undefined,
   options: TraceDiagnosticOptions = {},
 ): MessageTraceDiagnostics {
+  const lang = options.lang ?? 'zh';
   const normalizedOptions = { ...DEFAULT_OPTIONS, ...options };
   const phases = mapPhases(trace?.nodes ?? []);
   const traceStartMs =
@@ -556,22 +592,22 @@ export function analyzeMessageTrace(
   const deliveries = mapDeliveries(trace?.consumerStatus ?? [], traceStartMs);
   const summary = buildSummary(phases, deliveries);
   const issues = [
-    ...collectSummaryIssues(summary, normalizedOptions),
-    ...phases.flatMap((phase) => collectPhaseIssues(phase, normalizedOptions)),
-    ...collectTimelineIssues(phases),
-    ...collectDeliveryIssues(deliveries),
+    ...collectSummaryIssues(summary, normalizedOptions, lang),
+    ...phases.flatMap((phase) => collectPhaseIssues(phase, normalizedOptions, lang)),
+    ...collectTimelineIssues(phases, lang),
+    ...collectDeliveryIssues(deliveries, lang),
   ];
   const status = maxStatus(issues);
 
   return {
     status,
-    statusText: STATUS_TEXT[status],
+    statusText: lang === 'en' ? STATUS_TEXT_EN[status] : STATUS_TEXT[status],
     statusColor: STATUS_COLOR[status],
     score: calculateScore(issues),
     summary,
     phases,
     deliveries,
     issues,
-    recommendations: buildRecommendations(issues),
+    recommendations: buildRecommendations(issues, lang),
   };
 }
