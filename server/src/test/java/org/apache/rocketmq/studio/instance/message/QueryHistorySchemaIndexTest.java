@@ -76,6 +76,44 @@ class QueryHistorySchemaIndexTest {
         }
     }
 
+    @Test
+    void migrationIsIdempotentWhenIndexesAlreadyExistTest() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:query-history-schema-index-existing;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE");
+        dataSource.setUser("sa");
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE rmq_instance_message ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                    + "gmt_create DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                    + "query_type VARCHAR(32) NOT NULL, "
+                    + "cluster_id VARCHAR(255), "
+                    + "queried_by VARCHAR(128), result_snapshot CLOB)");
+            statement.execute("CREATE TABLE rmq_instance_trace ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                    + "gmt_create DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                    + "cluster_id VARCHAR(255), "
+                    + "queried_by VARCHAR(128))");
+            statement.execute("CREATE INDEX idx_message_query_owner_lookup ON rmq_instance_message "
+                    + "(queried_by, cluster_id, gmt_create, id)");
+            statement.execute("CREATE INDEX idx_message_query_owner_type_lookup ON rmq_instance_message "
+                    + "(queried_by, cluster_id, query_type, gmt_create, id)");
+            statement.execute("CREATE INDEX idx_trace_query_owner_lookup ON rmq_instance_trace "
+                    + "(queried_by, cluster_id, gmt_create, id)");
+        }
+
+        QueryHistorySchemaMigration migration = new QueryHistorySchemaMigration(dataSource);
+        migration.run(new DefaultApplicationArguments());
+        migration.run(new DefaultApplicationArguments());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThat(indexColumns(connection, "rmq_instance_message", "idx_message_query_owner_lookup"))
+                    .containsExactly("queried_by", "cluster_id", "gmt_create", "id");
+            assertThat(indexColumns(connection, "rmq_instance_trace", "idx_trace_query_owner_lookup"))
+                    .containsExactly("queried_by", "cluster_id", "gmt_create", "id");
+        }
+    }
+
     private static boolean hasColumn(Connection connection, String tableName, String columnName) throws Exception {
         try (ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, columnName)) {
             return columns.next();
