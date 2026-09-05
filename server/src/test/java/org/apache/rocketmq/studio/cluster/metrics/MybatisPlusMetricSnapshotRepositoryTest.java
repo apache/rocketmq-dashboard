@@ -68,4 +68,57 @@ class MybatisPlusMetricSnapshotRepositoryTest {
         QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
         assertThat(query.getSqlSegment()).contains("cluster_id IS NULL");
     }
+
+    @Test
+    void saveAllShouldPersistSerializedLabelsAndStableHash() {
+        MetricSample sample = new MetricSample("consumer.lag.total", AlertDomain.BUSINESS,
+                "local", "cluster-a", Map.of("consumerGroup", "orders"), 12D,
+                MetricAvailability.AVAILABLE, Instant.parse("2026-08-23T10:00:00Z"));
+        when(mapper.insert(any(RmqMetricSnapshot.class))).thenReturn(1);
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+
+        repository.saveAll(List.of(sample));
+
+        ArgumentCaptor<RmqMetricSnapshot> captor = ArgumentCaptor.forClass(RmqMetricSnapshot.class);
+        verify(mapper).insert(captor.capture());
+        RmqMetricSnapshot entity = captor.getValue();
+        assertThat(entity.getMetricKey()).isEqualTo("consumer.lag.total");
+        assertThat(entity.getInstanceId()).isEqualTo("local");
+        assertThat(entity.getClusterId()).isEqualTo("cluster-a");
+        assertThat(entity.getAvailability()).isEqualTo("AVAILABLE");
+        assertThat(entity.getLabelsJson()).contains("consumerGroup").contains("orders");
+        assertThat(entity.getLabelsHash()).hasSize(64);
+    }
+
+    @Test
+    void deleteBeforeShouldRemoveOlderSnapshotsAndReturnCount() {
+        when(mapper.delete(any(Wrapper.class))).thenReturn(2);
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+
+        int deleted = repository.deleteBefore(Instant.parse("2026-08-23T10:00:00Z"));
+
+        assertThat(deleted).isEqualTo(2);
+        ArgumentCaptor<Wrapper<RmqMetricSnapshot>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(mapper).delete(queryCaptor.capture());
+        QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("collected_at <");
+    }
+
+    @Test
+    void clusterScopedQueryShouldMatchTheClusterIdColumn() {
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+        MetricSample scope = new MetricSample("broker.availability", AlertDomain.CLUSTER,
+                "local", "cluster-a", Map.of(), 1D, MetricAvailability.AVAILABLE, Instant.now());
+
+        repository.findRecent(scope, Instant.EPOCH);
+
+        ArgumentCaptor<Wrapper<RmqMetricSnapshot>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(mapper).selectList(queryCaptor.capture());
+        QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("cluster_id =");
+    }
 }
