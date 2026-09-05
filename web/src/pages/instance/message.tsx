@@ -121,6 +121,32 @@ const TOPIC_TAG_COLORS: Record<string, string> = {
   'inventory-sync': 'green',
 };
 
+/*
+ * Demo trace steps store their status line in zh (e.g. "CommitLog 写入成功").
+ * Translate the closed set of zh phrases to English when rendering in en mode;
+ * identifiers, hosts and durations inside the line are already ASCII.
+ */
+const TRACE_DESC_EN: Array<[string, string]> = [
+  ['首次超时，重试成功', 'first attempt timed out, retry succeeded'],
+  ['首次失败，重试成功', 'first attempt failed, retry succeeded'],
+  ['CommitLog 写入成功', 'CommitLog write succeeded'],
+  ['消费失败 (余额不足)', 'consume failed (insufficient balance)'],
+  ['消费成功 (退款处理)', 'consume succeeded (refund processing)'],
+  ['消费成功', 'consume succeeded'],
+  ['消费失败', 'consume failed'],
+  ['推送成功', 'push succeeded'],
+  ['发送成功', 'send succeeded'],
+  ['发送中', 'sending'],
+  ['同步成功', 'sync succeeded'],
+  ['告警已触发', 'alert triggered'],
+];
+
+const toEnglishTraceDescription = (desc: string): string =>
+  TRACE_DESC_EN.reduce(
+    (text, [zh, en]) => (text.includes(zh) ? text.split(zh).join(en) : text),
+    desc,
+  );
+
 /* ─── Default date range: now - 2 days 00:00:00 → now ─── */
 const getDefaultRange = (): [Dayjs, Dayjs] => [dayjs().subtract(2, 'day').startOf('day'), dayjs()];
 
@@ -345,7 +371,7 @@ const MessagePageContent = ({
   selectInstance,
   instanceOptions,
 }: InstanceFilterProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
   const [topicError, setTopicError] = useState<string | null>(null);
   const [topicLoading, setTopicLoading] = useState(false);
@@ -994,7 +1020,9 @@ const MessagePageContent = ({
                       <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
                         {formatTimeMs(node.timestamp)}
                       </div>
-                      <div style={{ marginTop: 2 }}>{node.description}</div>
+                      <div style={{ marginTop: 2 }}>
+                        {lang === 'en' ? toEnglishTraceDescription(node.description) : node.description}
+                      </div>
                       <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
                     </div>
                   ),
