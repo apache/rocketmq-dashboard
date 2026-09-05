@@ -57,6 +57,28 @@ class DataSourceDTOTest {
         assertThat(request.toDataSourceVO().getInstanceIds()).isNull();
     }
 
+    @Test
+    void shouldCanonicalizeSupportedProviderTypesToDisplayNames() {
+        assertThat(canonicalType("thanos")).isEqualTo("Thanos");
+        assertThat(canonicalType("mimir")).isEqualTo("Mimir");
+        assertThat(canonicalType("arms")).isEqualTo("ARMS");
+        assertThat(canonicalType("cortex")).isEqualTo("Cortex");
+    }
+
+    @Test
+    void shouldTrimAuthModeInOutput() {
+        DataSourceDTO request = validDataSource();
+        request.setAuth("  bearer token  ");
+
+        assertThat(request.toDataSourceVO().getAuth()).isEqualTo("bearer token");
+    }
+
+    private String canonicalType(String rawType) {
+        DataSourceDTO request = validDataSource();
+        request.setType(rawType);
+        return request.toDataSourceVO().getType();
+    }
+
     private DataSourceDTO validDataSource() {
         DataSourceDTO request = new DataSourceDTO();
         request.setName("Production metrics");
