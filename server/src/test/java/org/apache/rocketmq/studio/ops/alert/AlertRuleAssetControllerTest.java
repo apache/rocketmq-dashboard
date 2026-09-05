@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -77,5 +78,18 @@ class AlertRuleAssetControllerTest {
                 .andExpect(header().string("Content-Type", "application/x-yaml"))
                 .andExpect(header().string("Content-Disposition",
                         "form-data; name=\"attachment\"; filename=\"rocketmq-broker-down.yaml\""));
+    }
+
+    @Test
+    void unknownAssetIsNotFoundForViewAndExport() throws Exception {
+        org.apache.rocketmq.studio.common.exception.BusinessException missing =
+                new org.apache.rocketmq.studio.common.exception.BusinessException(
+                        404, "Alert rule asset not found: ghost");
+        doThrow(missing).when(alertRuleAssetService).getAssetYaml("ghost");
+
+        mockMvc.perform(get("/api/alert-rules/assets/ghost"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/alert-rules/assets/ghost/export"))
+                .andExpect(status().isNotFound());
     }
 }
