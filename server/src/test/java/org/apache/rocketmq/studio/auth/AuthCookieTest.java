@@ -66,4 +66,62 @@ class AuthCookieTest {
         assertThat(AuthCookie.authorization(nonBearerRequest, properties))
                 .isEqualTo("Bearer cookie-token");
     }
+
+    @Test
+    void clearShouldExpireCookieWithZeroMaxAge() {
+        AuthProperties properties = new AuthProperties();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AuthCookie.clear(response, properties);
+
+        String setCookie = response.getHeader("Set-Cookie");
+        assertThat(setCookie).startsWith("rmq_studio_session=;");
+        assertThat(setCookie).contains("Max-Age=0");
+        assertThat(setCookie).contains("HttpOnly");
+        assertThat(setCookie).contains("Path=/");
+    }
+
+    @Test
+    void ignoresCookiesNotMatchingConfiguredCookieName() {
+        AuthProperties properties = new AuthProperties();
+        properties.setSessionCookieName("studio_session");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setCookies(new Cookie("rmq_studio_session", "legacy-token"));
+        request.addHeader("Authorization", "Basic credentials");
+
+        assertThat(AuthCookie.authorization(request, properties))
+                .isEqualTo("Basic credentials");
+
+        MockHttpServletRequest customNamed = new MockHttpServletRequest();
+        customNamed.setCookies(new Cookie("rmq_studio_session", "legacy-token"),
+                new Cookie("studio_session", "custom-token"));
+
+        assertThat(AuthCookie.authorization(customNamed, properties))
+                .isEqualTo("Bearer custom-token");
+    }
+
+    @Test
+    void skipsBlankCookieValuesWhileScanning() {
+        AuthProperties properties = new AuthProperties();
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setCookies(new Cookie("rmq_studio_session", "   "),
+                new Cookie("rmq_studio_session", "real-token"));
+
+        assertThat(AuthCookie.authorization(request, properties))
+                .isEqualTo("Bearer real-token");
+    }
+
+    @Test
+    void writeShouldHonorConfiguredSameSiteAndInsecureMode() {
+        AuthProperties properties = new AuthProperties();
+        properties.setSessionCookieSameSite("Lax");
+        properties.setSessionCookieSecure(false);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AuthCookie.write(response, properties, "token", Duration.ofMinutes(5));
+
+        String setCookie = response.getHeader("Set-Cookie");
+        assertThat(setCookie).contains("SameSite=Lax");
+        assertThat(setCookie).doesNotContain("Secure");
+    }
 }
