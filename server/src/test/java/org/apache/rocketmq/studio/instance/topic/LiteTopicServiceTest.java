@@ -79,4 +79,17 @@ class LiteTopicServiceTest {
     void getCapabilityShouldReportUnsupportedByDefault() {
         assertThat(liteTopicService.getCapability().isSupported()).isFalse();
     }
+
+    @Test
+    void extendTTLShouldRejectNullAndNegativeInputs() {
+        assertThatThrownBy(() -> liteTopicService.extendTTL(null, 1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topicPattern is required");
+        assertThatThrownBy(() -> liteTopicService.extendTTL("chat/{sessionId}", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("newTTL must be positive");
+        assertThatThrownBy(() -> liteTopicService.extendTTL("chat/{sessionId}", -1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("newTTL must be positive");
+    }
 }
