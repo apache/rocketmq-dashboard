@@ -2542,6 +2542,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Home dashboard ───
+  'dashboard.loadFailed': { zh: '仪表盘加载失败', en: 'Failed to load the dashboard' },
+  'dashboard.loadFailedDesc': { zh: '无法获取集群概览，请检查网络连接后重试。', en: 'Could not fetch the cluster overview. Check the network connection and retry.' },
+  'dashboard.retry': { zh: '重试', en: 'Retry' },
   // ─── BrokerCluster ───
 };
 
