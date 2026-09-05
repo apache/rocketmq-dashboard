@@ -20,6 +20,7 @@ import java.util.List;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -96,5 +97,28 @@ class QueryHistoryControllerTest {
         verify(queryHistoryService).listMessageQueries("instance-a", "TOPIC", null, 1, 20);
         verify(queryHistoryService).listTraceQueries("instance-a", null, 1, 20);
         verify(queryHistoryService).summarize(null);
+    }
+
+    @Test
+    void deletesSingleMessageHistoryRecord() throws Exception {
+        mockMvc.perform(delete("/api/query-history/messages/17"))
+                .andExpect(status().isOk());
+
+        verify(queryHistoryService).deleteMessageQuery(17L);
+    }
+
+    @Test
+    void clearsHistoryForNormalizedCluster() throws Exception {
+        when(queryHistoryService.clearHistory("instance-a"))
+                .thenReturn(QueryHistoryDeleteResultVO.builder()
+                        .messageQueries(3).traceQueries(2).build());
+
+        mockMvc.perform(delete("/api/query-history").param("clusterId", " instance-a "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.messageQueries").value(3))
+                .andExpect(jsonPath("$.data.traceQueries").value(2))
+                .andExpect(jsonPath("$.data.total").value(5));
+
+        verify(queryHistoryService).clearHistory("instance-a");
     }
 }

@@ -12,12 +12,17 @@ import MessageQueryHistoryDrawer from '../MessageQueryHistoryDrawer';
 import { LangProvider } from '../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../i18n/languagePreference';
 import {
+  clearQueryHistory,
+  deleteMessageQueryHistory,
   getQueryHistorySummary,
   listMessageQueryHistory,
   listTraceQueryHistory,
 } from '../../api/messageHistory';
 
 vi.mock('../../api/messageHistory', () => ({
+  clearQueryHistory: vi.fn(),
+  deleteMessageQueryHistory: vi.fn(),
+  deleteTraceQueryHistory: vi.fn(),
   getQueryHistorySummary: vi.fn(),
   listMessageQueryHistory: vi.fn(),
   listTraceQueryHistory: vi.fn(),
@@ -41,6 +46,12 @@ describe('MessageQueryHistoryDrawer', () => {
     vi.clearAllMocks();
     localStorage.clear();
     vi.mocked(getQueryHistorySummary).mockResolvedValue({ messageQueries: 4, traceQueries: 2 });
+    vi.mocked(clearQueryHistory).mockResolvedValue({
+      messageQueries: 0,
+      traceQueries: 0,
+      total: 0,
+    });
+    vi.mocked(deleteMessageQueryHistory).mockResolvedValue(undefined);
     vi.mocked(listMessageQueryHistory).mockResolvedValue({
       items: [
         {
@@ -137,5 +148,22 @@ describe('MessageQueryHistoryDrawer', () => {
       screen.getByPlaceholderText('Search Topic, trace Topic, Message ID, Key or operator'),
     ).toBeInTheDocument();
     expect(screen.queryByText('服务端查询历史')).not.toBeInTheDocument();
+  });
+
+  it('deletes one message history record and reloads the current scope', async () => {
+    const user = userEvent.setup();
+    render(
+      <App>
+        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '删除' }));
+    expect(await screen.findByText('删除这条查询历史？')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-popconfirm-buttons .ant-btn-primary')!);
+
+    await waitFor(() => expect(deleteMessageQueryHistory).toHaveBeenCalledWith(1));
+    expect(getQueryHistorySummary).toHaveBeenCalledTimes(2);
   });
 });
