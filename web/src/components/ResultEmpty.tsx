@@ -16,14 +16,16 @@
  */
 
 import { Result } from 'antd';
+import { useLang } from '../i18n/LangContext';
 
 interface ResultEmptyProps {
   title?: string;
   subTitle?: string;
 }
 
-const ResultEmpty = ({ title = '暂无数据', subTitle }: ResultEmptyProps) => (
-  <Result status="info" title={title} subTitle={subTitle} />
-);
+const ResultEmpty = ({ title, subTitle }: ResultEmptyProps) => {
+  const { t } = useLang();
+  return <Result status="info" title={title ?? t('resultEmpty.title')} subTitle={subTitle} />;
+};
 
 export default ResultEmpty;
