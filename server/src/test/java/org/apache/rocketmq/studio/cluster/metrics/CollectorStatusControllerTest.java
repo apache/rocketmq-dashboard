@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class CollectorStatusControllerTest {
     @Test
@@ -31,5 +32,34 @@ class CollectorStatusControllerTest {
         CollectorStatusVO status = new CollectorStatusController(properties, List.of(), List.of()).status().getData();
 
         assertThat(status.collectionInterval()).isEqualTo("PT1M");
+    }
+
+    @Test
+    void reportsRegisteredCollectorCounts() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionInterval("PT1M");
+        List<ClusterMetricsCollector> clusterCollectors = List.of(
+                mock(ClusterMetricsCollector.class), mock(ClusterMetricsCollector.class));
+        List<BusinessMetricsCollector> businessCollectors = List.of(
+                mock(BusinessMetricsCollector.class), mock(BusinessMetricsCollector.class),
+                mock(BusinessMetricsCollector.class));
+
+        CollectorStatusVO status = new CollectorStatusController(properties,
+                clusterCollectors, businessCollectors).status().getData();
+
+        assertThat(status.collectionInterval()).isEqualTo("PT1M");
+        assertThat(status.clusterCollectorCount()).isEqualTo(2);
+        assertThat(status.businessCollectorCount()).isEqualTo(3);
+    }
+
+    @Test
+    void reportsZeroCollectorsWhenNoneAreRegistered() {
+        AlertingProperties properties = new AlertingProperties();
+
+        CollectorStatusVO status = new CollectorStatusController(properties, List.of(), List.of()).status().getData();
+
+        assertThat(status.collectionInterval()).isEqualTo("PT30S");
+        assertThat(status.clusterCollectorCount()).isZero();
+        assertThat(status.businessCollectorCount()).isZero();
     }
 }
