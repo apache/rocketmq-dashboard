@@ -8,6 +8,7 @@ import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import client from './client';
 import {
+  getMessageQueryResults,
   getQueryHistorySummary,
   listMessageQueryHistory,
   listTraceQueryHistory,
@@ -53,5 +54,17 @@ describe('message query history API', () => {
       total: 1,
     });
     await expect(getQueryHistorySummary('instance-a')).resolves.toMatchObject({ traceQueries: 1 });
+  });
+
+  it('loads the stored result snapshot for a history record', async () => {
+    mock.onGet('/query-history/messages/9/results').reply(200, {
+      code: 200,
+      data: [{ msgId: 'msg-1', topic: 'orders', size: 42 }],
+    });
+
+    const results = await getMessageQueryResults(9);
+
+    expect(results[0].msgId).toBe('msg-1');
+    expect(mock.history.get[0].url).toBe('/query-history/messages/9/results');
   });
 });
