@@ -34,4 +34,23 @@ describe('MiniBar', () => {
 
     expect(getBarHeights()).toEqual(['0px', '4px', '20px']);
   });
+
+  it('renders a placeholder when the data series is empty', () => {
+    render(<MiniBar data={[]} height={20} label="Empty trend" />);
+
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.queryByRole('img')).toBeNull();
+  });
+
+  it('scales bar heights within the chart height', () => {
+    render(<MiniBar data={[1, 5]} height={100} label="Throughput trend" />);
+
+    expect(getBarHeights()).toEqual(['20px', '100px']);
+  });
+
+  it('exposes the label through the image role', () => {
+    render(<MiniBar data={[1, 2, 3]} height={20} label="Custom label" />);
+
+    expect(screen.getByRole('img').getAttribute('aria-label')).toBe('Custom label');
+  });
 });
