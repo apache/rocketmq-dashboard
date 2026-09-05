@@ -125,6 +125,17 @@ const lagColor = (lag: number): string => {
  * Shows at most 3 units: days → hours → minutes → seconds.
  * e.g. 82500 → "22小时55分钟", 3725 → "1小时2分钟5秒"
  */
+const CONSISTENCY_DISPLAY: Record<string, string> = {
+  一致: 'Consistent',
+  不一致: 'Inconsistent',
+};
+
+const FILTER_MODE_DISPLAY: Record<string, string> = {
+  全量: 'Full',
+  'Tag 过滤': 'Tag filter',
+  'SQL92 过滤': 'SQL92 filter',
+};
+
 const formatDelay = (totalSeconds: number): string => {
   if (totalSeconds <= 0) return '0秒';
 
@@ -229,7 +240,7 @@ const ConsumerPageContent = ({
   instanceOptions,
   instancesLoading,
 }: ConsumerPageContentProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -979,7 +990,7 @@ const ConsumerPageContent = ({
             isConsistentValue(value) ? 'green' : isInconsistentValue(value) ? 'orange' : 'default'
           }
         >
-          {value}
+          {lang === 'en' ? (CONSISTENCY_DISPLAY[value] ?? value) : value}
         </Tag>
       ),
     },
@@ -994,7 +1005,8 @@ const ConsumerPageContent = ({
           'Tag 过滤': 'blue',
           'SQL92 过滤': 'purple',
         };
-        return <Tag color={colorMap[mode] || 'default'}>{mode}</Tag>;
+        const display = lang === 'en' ? (FILTER_MODE_DISPLAY[mode] ?? mode) : mode;
+        return <Tag color={colorMap[mode] || 'default'}>{display}</Tag>;
       },
     },
     {
