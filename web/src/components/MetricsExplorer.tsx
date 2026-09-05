@@ -732,7 +732,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
         <Flex gap={8} wrap="wrap" align="center" style={{ maxWidth: '100%' }}>
           <Select
-            aria-label="数据源"
+            aria-label={lang === 'zh' ? '数据源' : 'Data source'}
             value={dataSourceKey}
             loading={dataSourcesLoading}
             onChange={handleDataSourceChange}

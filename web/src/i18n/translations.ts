@@ -2542,6 +2542,12 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Shared components ───
+  'miniBar.noTrend': { zh: '暂无趋势数据', en: 'No trend data' },
+  'miniBar.trendLabel': { zh: '趋势数据：{data}', en: 'Trend data: {data}' },
+  'instanceSelect.placeholder': { zh: '选择实例', en: 'Select instance' },
+  'instanceSelect.notFound': { zh: '暂无匹配实例', en: 'No matching instance' },
+  'resultEmpty.title': { zh: '暂无数据', en: 'No data' },
   // ─── BrokerCluster ───
 };
 
