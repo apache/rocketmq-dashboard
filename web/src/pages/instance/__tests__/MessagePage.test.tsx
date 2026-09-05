@@ -70,6 +70,7 @@ const createMessage = (msgId: string): MessageRecord => ({
   bornHost: '127.0.0.1:1000',
   storeHost: '127.0.0.1:10911',
   properties: {},
+  propertiesTruncated: false,
   size: 2,
 });
 

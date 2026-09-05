@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -47,6 +48,9 @@ export const formatTimeMs = (value: number | string) => {
   if (!Number.isFinite(ts)) return '-';
   return new Date(ts).toLocaleString('zh-CN', { hour12: false });
 };
+
+const messageProperties = (message: MessageRecord | null) =>
+  Object.entries(message?.properties ?? {});
 
 export interface PulledEntry {
   key: string;
@@ -364,6 +368,34 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                           {entry.message.bornHost || '-'}
                         </Descriptions.Item>
                       </Descriptions>
+                      {messageProperties(entry.message).length > 0 && (
+                        <Card size="small" title="Properties" style={{ marginTop: 12 }}>
+                          {entry.message.propertiesTruncated && (
+                            <Alert
+                              showIcon
+                              type="warning"
+                              message="服务端已截断消息属性"
+                              style={{ marginBottom: 8 }}
+                            />
+                          )}
+                          <Descriptions
+                            column={1}
+                            size="small"
+                            items={messageProperties(entry.message).map(([name, value]) => ({
+                              key: name,
+                              label: <span style={{ fontFamily: 'monospace' }}>{name}</span>,
+                              children: (
+                                <Paragraph
+                                  copyable
+                                  style={{ marginBottom: 0, fontFamily: 'monospace' }}
+                                >
+                                  {value}
+                                </Paragraph>
+                              ),
+                            }))}
+                          />
+                        </Card>
+                      )}
                       {entry.message.body && (
                         <Card size="small" title="Body" style={{ marginTop: 12 }}>
                           <pre
