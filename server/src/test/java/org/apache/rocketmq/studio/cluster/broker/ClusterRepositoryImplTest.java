@@ -82,4 +82,18 @@ class ClusterRepositoryImplTest {
         assertThat(repository.findById("cluster-001").orElseThrow().getConfig().getFileReservedTime())
                 .isEqualTo(24);
     }
+
+    @Test
+    void findByIdShouldBeEmptyForUnknownIds() {
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl(true);
+
+        assertThat(repository.findById("no-such-cluster")).isEmpty();
+    }
+
+    @Test
+    void findByIdShouldBeEmptyWhenDemoDataIsDisabled() {
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl(false);
+
+        assertThat(repository.findById("cluster-001")).isEmpty();
+    }
 }
