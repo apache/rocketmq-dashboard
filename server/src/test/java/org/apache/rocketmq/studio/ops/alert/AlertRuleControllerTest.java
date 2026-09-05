@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -118,6 +119,25 @@ class AlertRuleControllerTest {
                 .andExpect(jsonPath("$.data.items[0].id").value(1));
 
         verify(alertService).listRules(AlertDomain.BUSINESS, "lag", true, 2, 10);
+    }
+
+    @Test
+    void businessRuleSummaryEndpointShouldForwardFiltersTest() throws Exception {
+        when(alertService.summarizeRules(eq(AlertDomain.BUSINESS), eq("lag"), eq(true),
+                any(LocalDateTime.class)))
+                .thenReturn(AlertRuleSummaryVO.builder()
+                        .total(12).enabled(7).triggeredSince(3).build());
+
+        mockMvc.perform(get("/api/business-alert-rules/summary")
+                        .param("search", "lag")
+                        .param("enabled", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(12))
+                .andExpect(jsonPath("$.data.enabled").value(7))
+                .andExpect(jsonPath("$.data.triggeredSince").value(3));
+
+        verify(alertService).summarizeRules(eq(AlertDomain.BUSINESS), eq("lag"), eq(true),
+                any(LocalDateTime.class));
     }
 
     @Test

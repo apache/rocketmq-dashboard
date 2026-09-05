@@ -186,11 +186,32 @@ class MybatisPlusAlertRepositoryTest {
         when(ruleMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
         PageResult<AlertRuleVO> result = repository.findRulesPage(
-                new AlertRuleQuery(AlertDomain.BUSINESS, "lag", true, 2, 10));
+                new AlertRuleQuery(AlertDomain.BUSINESS, "lag", true, 2, 10, null));
 
         assertThat(result.getItems()).extracting(AlertRuleVO::getId).containsExactly(1L);
         assertThat(result.getTotal()).isEqualTo(11);
         verify(ruleMapper).selectPage(any(Page.class), argThat(MybatisPlusAlertRepositoryTest::hasBusinessRulePageFilters));
+    }
+
+    @Test
+    void summarizeRulesShouldAggregateResultSetWideCountsTest() {
+        Map<String, Object> row = Map.of(
+                "total_count", 12L,
+                "enabled_count", 7L,
+                "triggered_count", 3L);
+        when(ruleMapper.selectMaps(any())).thenReturn(List.of(row));
+
+        AlertRuleSummaryVO summary = repository.summarizeRules(new AlertRuleQuery(
+                AlertDomain.BUSINESS, "lag", true, 1, 1, "2026-09-05T00:00"));
+
+        assertThat(summary.getTotal()).isEqualTo(12);
+        assertThat(summary.getEnabled()).isEqualTo(7);
+        assertThat(summary.getTriggeredSince()).isEqualTo(3);
+        ArgumentCaptor<Wrapper<RmqAlertRule>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectMaps(captor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) captor.getValue();
+        assertThat(query.getSqlSelect()).contains("total_count", "enabled_count", "triggered_count");
+        assertThat(query.getSqlSelect()).contains("last_triggered >=");
     }
 
     @Test

@@ -101,6 +101,48 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
+    public AlertRuleSummaryVO summarizeRules(AlertRuleQuery query) {
+        QueryWrapper<RmqAlertRule> conditions = ruleSummaryConditions(query);
+        List<Map<String, Object>> rows = ruleMapper.selectMaps(conditions);
+        Map<String, Object> row = rows.isEmpty() ? Map.of() : rows.get(0);
+        return AlertRuleSummaryVO.builder()
+                .total(asLong(row, "total_count"))
+                .enabled(asLong(row, "enabled_count"))
+                .triggeredSince(asLong(row, "triggered_count"))
+                .build();
+    }
+
+    private QueryWrapper<RmqAlertRule> ruleSummaryConditions(AlertRuleQuery query) {
+        QueryWrapper<RmqAlertRule> conditions = new QueryWrapper<RmqAlertRule>()
+                .select(
+                        "COUNT(*) AS total_count",
+                        "COALESCE(SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END), 0) AS enabled_count",
+                        "COALESCE(SUM(CASE WHEN last_triggered IS NOT NULL "
+                                + "AND last_triggered >= '" + query.triggeredSince() + "' THEN 1 ELSE 0 END), 0) "
+                                + "AS triggered_count")
+                .eq(query.enabled() != null, "enabled", query.enabled())
+                .and(StringUtils.hasText(query.search()), wrapper -> wrapper
+                        .like("name", query.search().trim())
+                        .or()
+                        .like("metric", query.search().trim()));
+        if (query.domain() == AlertDomain.BUSINESS) {
+            // Rules created before alert domains were introduced are business rules.
+            conditions.and(wrapper -> wrapper.isNull("domain").or().eq("domain", AlertDomain.BUSINESS.name()));
+        } else {
+            conditions.eq("domain", query.domain().name());
+        }
+        return conditions;
+    }
+
+    private static long asLong(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return value == null ? 0L : Long.parseLong(value.toString());
+    }
+
+    @Override
     public Optional<AlertRuleVO> findRuleById(Long id) {
         if (id == null) {
             return Optional.empty();

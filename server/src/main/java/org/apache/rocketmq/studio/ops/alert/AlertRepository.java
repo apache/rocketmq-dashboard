@@ -28,6 +28,8 @@ public interface AlertRepository {
 
     PageResult<AlertRuleVO> findRulesPage(AlertRuleQuery query);
 
+    AlertRuleSummaryVO summarizeRules(AlertRuleQuery query);
+
     Optional<AlertRuleVO> findRuleById(Long id);
 
     List<AlertRuleVO> findRulesByIds(List<Long> ids);
