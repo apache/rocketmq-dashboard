@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
 
 import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
 import org.springframework.context.annotation.Import;
+import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -518,4 +519,62 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
 
         verifyNoInteractions(metadataService);
     }
+    @Test
+    void refreshConsumerGroupShouldDelegateAndReturnRefreshedGroupTest() throws Exception {
+        ConsumerGroupVO refreshed = new ConsumerGroupVO();
+        refreshed.setName("cg-orders");
+        refreshed.setConsumeType(ConsumeType.CLUSTERING);
+        when(metadataService.refreshConsumerGroup("inst-1", "cg-orders")).thenReturn(refreshed);
+
+        mockMvc.perform(get("/api/groups/cg-orders/refresh")
+                        .param("instanceId", "inst-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.name").value("cg-orders"))
+                .andExpect(jsonPath("$.data.consumeType").value("CLUSTERING"));
+
+        verify(metadataService).refreshConsumerGroup("inst-1", "cg-orders");
+    }
+
+    @Test
+    void groupProgressShouldReturnQueueLagRowsTest() throws Exception {
+        QueueProgressVO progress = QueueProgressVO.builder()
+                .topic("orders")
+                .broker("broker-a")
+                .queueId(0)
+                .brokerOffset(100L)
+                .consumerOffset(90L)
+                .diffTotal(10L)
+                .build();
+        when(metadataService.getGroupProgress("inst-1", "cg-orders"))
+                .thenReturn(List.of(progress));
+
+        mockMvc.perform(get("/api/groups/cg-orders/progress")
+                        .param("instanceId", "inst-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].topic").value("orders"))
+                .andExpect(jsonPath("$.data[0].diffTotal").value(10));
+
+        verify(metadataService).getGroupProgress("inst-1", "cg-orders");
+    }
+
+    @Test
+    void groupSubscriptionsShouldReturnEntriesTest() throws Exception {
+        SubscriptionEntryVO entry = SubscriptionEntryVO.builder()
+                .topic("orders")
+                .expression("*")
+                .type("TAG")
+                .build();
+        when(metadataService.getGroupSubscriptions("inst-1", "cg-orders"))
+                .thenReturn(List.of(entry));
+
+        mockMvc.perform(get("/api/groups/cg-orders/subscriptions")
+                        .param("instanceId", "inst-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].topic").value("orders"))
+                .andExpect(jsonPath("$.data[0].expression").value("*"));
+
+        verify(metadataService).getGroupSubscriptions("inst-1", "cg-orders");
+    }
+
 }
