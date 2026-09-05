@@ -30,6 +30,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -153,4 +154,33 @@ class ClusterAlertRuleControllerTest {
 
         verify(alertService).toggleRule(AlertDomain.CLUSTER, 7L, false);
     }
+    @Test
+    void updateRuleShouldForceClusterDomainAndReturnUpdatedTest() throws Exception {
+        AlertRuleVO updated = AlertRuleVO.builder().id(3L).name("Disk high")
+                .domain(AlertDomain.CLUSTER).build();
+        when(alertService.updateRule(eq(AlertDomain.CLUSTER), any(AlertRuleVO.class))).thenReturn(updated);
+
+        mockMvc.perform(post("/api/cluster-alert-rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":3,\"name\":\"Disk high\",\"operator\":\">\",\"threshold\":0.9}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(3))
+                .andExpect(jsonPath("$.data.domain").value("CLUSTER"));
+
+        verify(alertService).updateRule(eq(AlertDomain.CLUSTER), any(AlertRuleVO.class));
+    }
+
+    @Test
+    void importRulesShouldAcceptAbsentBody() throws Exception {
+        when(transferService.importRules(eq(AlertDomain.CLUSTER), isNull())).thenReturn(List.of());
+
+        mockMvc.perform(post("/api/cluster-alert-rules/import"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        verify(transferService).importRules(eq(AlertDomain.CLUSTER), isNull());
+    }
+
 }
