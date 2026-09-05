@@ -31,6 +31,8 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.CMResult;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -40,6 +42,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
+import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExtImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -776,6 +779,44 @@ class RocketMQMessageProviderTest {
         assertThat(pulledOffsets).allMatch(offset -> offset >= expectedFirstOffset);
     }
 
+    @Test
+    void getQueueOffsetsListsReadQueuesWhenReadCountExceedsWriteCount() throws Exception {
+        // Shrinking first lowers writeQueueNums while reads keep draining the tail
+        // queues, so queues in [writeQueueNums, readQueueNums) still hold browsable
+        // messages and must appear in the browser (fetchSubscribeMessageQueues, used
+        // by queryByTopic, enumerates the same read queues).
+        when(adminExt.examineTopicRouteInfo("TopicA"))
+                .thenReturn(routeWithQueueCounts("broker-a", 2, 4));
+        when(adminExt.minOffset(any(MessageQueue.class))).thenAnswer(invocation ->
+                invocation.<MessageQueue>getArgument(0).getQueueId() * 10L);
+        when(adminExt.maxOffset(any(MessageQueue.class))).thenAnswer(invocation ->
+                invocation.<MessageQueue>getArgument(0).getQueueId() * 10L + 5L);
+
+        List<QueueOffsetVO> offsets = provider.getQueueOffsets("instance-a", "TopicA");
+
+        assertThat(offsets).extracting(QueueOffsetVO::getBrokerName)
+                .containsOnly("broker-a");
+        assertThat(offsets).extracting(QueueOffsetVO::getQueueId)
+                .containsExactly(0, 1, 2, 3);
+        assertThat(offsets).extracting(QueueOffsetVO::getMinOffset)
+                .containsExactly(0L, 10L, 20L, 30L);
+        assertThat(offsets).extracting(QueueOffsetVO::getMaxOffset)
+                .containsExactly(5L, 15L, 25L, 35L);
+    }
+
+    @Test
+    void getQueueOffsetsSkipsWriteOnlyQueuesWhenWriteCountExceedsReadCount() throws Exception {
+        // The broker's PullMessageProcessor rejects queueId >= readQueueNums with
+        // SYSTEM_ERROR, so write-only queues cannot be browsed and must not be listed.
+        when(adminExt.examineTopicRouteInfo("TopicA"))
+                .thenReturn(routeWithQueueCounts("broker-a", 4, 2));
+
+        List<QueueOffsetVO> offsets = provider.getQueueOffsets("instance-a", "TopicA");
+
+        assertThat(offsets).extracting(QueueOffsetVO::getQueueId)
+                .containsExactly(0, 1);
+    }
+
     private MQClientAPIImpl mockOffsetLookupClient() {
         DefaultMQAdminExtImpl adminExtImpl = mock(DefaultMQAdminExtImpl.class);
         MQClientInstance clientInstance = mock(MQClientInstance.class);
@@ -786,6 +827,17 @@ class RocketMQMessageProviderTest {
         return clientApi;
     }
 
+
+    private static TopicRouteData routeWithQueueCounts(
+            String brokerName, int writeQueueNums, int readQueueNums) {
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName(brokerName);
+        queueData.setWriteQueueNums(writeQueueNums);
+        queueData.setReadQueueNums(readQueueNums);
+        TopicRouteData route = new TopicRouteData();
+        route.setQueueDatas(List.of(queueData));
+        return route;
+    }
 
     private static ClusterInfo clusterInfoWithBrokerAddresses(String... brokerAddresses) {
         ClusterInfo clusterInfo = new ClusterInfo();
