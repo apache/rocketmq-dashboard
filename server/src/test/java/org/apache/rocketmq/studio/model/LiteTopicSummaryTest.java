@@ -52,4 +52,41 @@ class LiteTopicSummaryTest {
         assertThat(summary.getConsumerDensity()).isZero();
         assertThat(summary.isEmptyAggregation()).isTrue();
     }
+
+    @Test
+    void ttlStatusShouldReturnUnknownWithoutLastActiveTime() {
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setAverageTTL(10_000L);
+
+        assertThat(summary.getTTLStatus()).isEqualTo("UNKNOWN");
+    }
+
+    @Test
+    void consumerDensityShouldComputeRatio() {
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setTopicCount(5);
+        summary.setConsumerCount(10);
+
+        assertThat(summary.getConsumerDensity()).isEqualTo(2.0);
+    }
+
+    @Test
+    void isEmptyAggregationShouldConsiderBacklogAndConsumers() {
+        LiteTopicSummary empty = new LiteTopicSummary();
+        empty.setTopicCount(5);
+        empty.setConsumerCount(0);
+        empty.setTotalBacklog(0L);
+        assertThat(empty.isEmptyAggregation()).isTrue();
+
+        LiteTopicSummary withConsumers = new LiteTopicSummary();
+        withConsumers.setTopicCount(5);
+        withConsumers.setConsumerCount(3);
+        withConsumers.setTotalBacklog(0L);
+        assertThat(withConsumers.isEmptyAggregation()).isFalse();
+
+        LiteTopicSummary withBacklog = new LiteTopicSummary();
+        withBacklog.setTopicCount(5);
+        withBacklog.setTotalBacklog(120L);
+        assertThat(withBacklog.isEmptyAggregation()).isFalse();
+    }
 }
