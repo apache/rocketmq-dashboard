@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.provider.credential;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.junit.jupiter.api.Test;
 
@@ -38,5 +40,60 @@ class CreateCloudCredentialDTOTest {
         }
 
         assertThat(vendor).isEqualTo(InstanceVendor.ALIYUN);
+    }
+
+    @Test
+    void parseVendorShouldNormalizeAndReturnNullForUnknown() {
+        assertThat(CreateCloudCredentialDTO.parseVendor(" tencent ")).isEqualTo(InstanceVendor.TENCENT);
+        assertThat(CreateCloudCredentialDTO.parseVendor("aliyun")).isEqualTo(InstanceVendor.ALIYUN);
+        assertThat(CreateCloudCredentialDTO.parseVendor("aws")).isNull();
+        assertThat(CreateCloudCredentialDTO.parseVendor(null)).isNull();
+        assertThat(CreateCloudCredentialDTO.parseVendor("  ")).isNull();
+    }
+
+    @Test
+    void toStringShouldNotExposeCredentialSecrets() {
+        CreateCloudCredentialDTO request = new CreateCloudCredentialDTO();
+        request.setName("prod-aliyun");
+        request.setVendor("ALIYUN");
+        request.setAccessKey("access-key-secret");
+        request.setSecretKey("secret-key-secret");
+
+        String value = request.toString();
+
+        assertThat(value).contains("name=prod-aliyun");
+        assertThat(value).doesNotContain("access-key-secret");
+        assertThat(value).doesNotContain("secret-key-secret");
+    }
+
+    @Test
+    void validationShouldRequireAllCredentialFields() {
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+        CreateCloudCredentialDTO request = new CreateCloudCredentialDTO();
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .contains("credential name is required",
+                        "credential vendor is required",
+                        "credential accessKey is required",
+                        "credential secretKey is required");
+    }
+
+    @Test
+    void toCloudCredentialVOShouldCopyFieldsAndParseVendor() {
+        CreateCloudCredentialDTO request = new CreateCloudCredentialDTO();
+        request.setName("prod-tencent");
+        request.setVendor(" tencent ");
+        request.setAccessKey("ak-123");
+        request.setSecretKey("sk-456");
+        request.setRemark("production read-only");
+
+        CloudCredentialVO vo = request.toCloudCredentialVO();
+
+        assertThat(vo.getName()).isEqualTo("prod-tencent");
+        assertThat(vo.getVendor()).isEqualTo(InstanceVendor.TENCENT);
+        assertThat(vo.getAccessKey()).isEqualTo("ak-123");
+        assertThat(vo.getSecretKey()).isEqualTo("sk-456");
+        assertThat(vo.getRemark()).isEqualTo("production read-only");
     }
 }
