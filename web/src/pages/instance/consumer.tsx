@@ -1229,7 +1229,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '堆积量',
+      title: t('consumer.progressBacklog'),
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       width: 120,
@@ -1238,7 +1238,7 @@ const ConsumerPageContent = ({
         if (!isLagAvailable(diff)) {
           return (
             <Text type="secondary" style={{ fontWeight: 600 }}>
-              {UNAVAILABLE_LAG_LABEL}
+              {t('groupMgmt.lagUnavailable')}
             </Text>
           );
         }
@@ -1944,19 +1944,19 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <ArrowsClockwise size={14} />
-                    <span>消费进度</span>
+                    <span>{t('consumer.tabProgress')}</span>
                   </Space>
                 ),
                 children: (
                   <div>
                     {progressTopicOptions.length > 0 && (
                       <Flex align="center" gap={8} style={{ marginBottom: 12 }}>
-                        <Text type="secondary">Topic 筛选:</Text>
+                        <Text type="secondary">{t('consumer.topicFilterLabel')}</Text>
                         <Select
                           size="small"
                           style={{ minWidth: 240 }}
                           allowClear
-                          placeholder="全部 Topic"
+                          placeholder={t('consumer.allTopics')}
                           value={
                             progressTopic && progressTopicOptions.includes(progressTopic)
                               ? progressTopic
@@ -1981,18 +1981,18 @@ const ConsumerPageContent = ({
                     >
                       <Space size={24}>
                         <Space size={4}>
-                          <Text type="secondary">总 Broker 数:</Text>
+                          <Text type="secondary">{t('consumer.totalBrokersLabel')}</Text>
                           <Text strong>{new Set(visibleProgress.map((q) => q.broker)).size}</Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">总 Queue 数:</Text>
+                          <Text type="secondary">{t('consumer.totalQueuesLabel')}</Text>
                           <Text strong>{visibleProgress.length}</Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">总堆积:</Text>
+                          <Text type="secondary">{t('consumer.totalLagLabel')}</Text>
                           {hasUnknownProgressLag ? (
                             <Text strong style={{ color: UNKNOWN_LAG_COLOR }}>
-                              {UNAVAILABLE_LAG_LABEL}
+                              {t('groupMgmt.lagUnavailable')}
                             </Text>
                           ) : (
                             <Text
@@ -2015,7 +2015,7 @@ const ConsumerPageContent = ({
                       pagination={false}
                       size="small"
                       scroll={{ x: tableScrollX(queueColumns), y: 380 }}
-                      locale={{ emptyText: '消费组不在线，暂无队列进度数据' }}
+                      locale={{ emptyText: t('consumer.noProgressData') }}
                     />
                   </div>
                 ),
@@ -2026,27 +2026,27 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <SlidersHorizontal size={14} />
-                    <span>配置</span>
+                    <span>{t('consumer.tabConfig')}</span>
                   </Space>
                 ),
                 disabled: isCloudInstance,
                 children: (
                   <Spin spinning={settingsLoading}>
                     <Form form={settingsForm} layout="vertical" style={{ maxWidth: 480 }}>
-                      <Form.Item label="Group 名称">
+                      <Form.Item label={t('consumer.name')}>
                         <Text strong>{selectedGroup.name}</Text>
                       </Form.Item>
                       <Form.Item
-                        label="重试队列数"
+                        label={t('consumer.retryQueueNums')}
                         name="retryQueueNums"
-                        rules={[{ required: true, message: '请输入重试队列数' }]}
+                        rules={[{ required: true, message: t('consumer.retryQueueNumsRequired') }]}
                       >
                         <InputNumber min={1} max={128} style={{ width: '100%' }} />
                       </Form.Item>
                       <Form.Item
-                        label="最大重试次数"
+                        label={t('consumer.maxRetry')}
                         name="retryMaxTimes"
-                        rules={[{ required: true, message: '请输入最大重试次数' }]}
+                        rules={[{ required: true, message: t('consumer.maxRetryRequired') }]}
                       >
                         <InputNumber min={1} max={128} style={{ width: '100%' }} />
                       </Form.Item>
@@ -2056,7 +2056,7 @@ const ConsumerPageContent = ({
                           loading={settingsSubmitting}
                           onClick={() => void saveSettings()}
                         >
-                          保存
+                          {t('common.save')}
                         </Button>
                       </Form.Item>
                     </Form>
@@ -2075,7 +2075,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <ListBullets size={18} color="#1677ff" />
-            <span>消费者线程栈</span>
+            <span>{t('consumer.threadStacks')}</span>
           </Space>
         }
         open={stackModalOpen}
@@ -2100,16 +2100,18 @@ const ConsumerPageContent = ({
                 {selectedStack?.clientId ?? selectedStackClient?.clientId ?? '-'}
               </Text>
             </Descriptions.Item>
-            <Descriptions.Item label="采集时间">
+            <Descriptions.Item label={t('consumer.capturedAt')}>
               {selectedStack?.capturedAt ? formatDateTime(selectedStack.capturedAt) : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="线程数">{selectedStack?.threadCount ?? 0}</Descriptions.Item>
+            <Descriptions.Item label={t('consumer.threadCount')}>
+              {selectedStack?.threadCount ?? 0}
+            </Descriptions.Item>
           </Descriptions>
 
           {stackLoading ? (
             <Table
               loading
-              columns={[{ title: '线程', dataIndex: 'threadName', key: 'threadName' }]}
+              columns={[{ title: t('consumer.threadCol'), dataIndex: 'threadName', key: 'threadName' }]}
               dataSource={[]}
               pagination={false}
               size="small"
@@ -2148,14 +2150,10 @@ const ConsumerPageContent = ({
             <Alert
               type="info"
               showIcon
-              message="暂不支持采集该客户端的线程栈"
+              message={t('consumer.stackUnsupported')}
               description={
                 <>
-                  <div>
-                    经 Proxy 接入的客户端（gRPC、经 Proxy 的 Remoting）只在 Proxy 侧保持连接，Broker
-                    看不到它们；而 Proxy 目前未开放线程栈采集接口，因此这类客户端暂时无法采集。 直连
-                    Broker 的客户端可正常查看。
-                  </div>
+                  <div>{t('consumer.stackUnsupportedDesc')}</div>
                   {stackError && (
                     <div style={{ marginTop: 8, color: 'rgba(0,0,0,0.45)' }}>{stackError}</div>
                   )}
