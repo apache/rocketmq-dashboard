@@ -20,6 +20,7 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponseBody;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,5 +33,42 @@ class AliyunConvertersMessageKeysTest {
                 .build();
 
         assertThat(AliyunConverters.toMessageRecord(data).getKey()).isEqualTo("key-a key-b");
+    }
+
+    @Test
+    void toMessageRecordShouldDecodeBase64Utf8Body() {
+        ListMessagesResponseBody.List data = ListMessagesResponseBody.List.builder()
+                .body("aGVsbG8=")
+                .build();
+
+        var record = AliyunConverters.toMessageRecord(data);
+
+        assertThat(record.getBody()).isEqualTo("hello");
+        assertThat(record.getBodyEncoding()).isEqualTo("UTF-8");
+    }
+
+    @Test
+    void toMessageRecordShouldKeepPlainTextBodyAsText() {
+        ListMessagesResponseBody.List data = ListMessagesResponseBody.List.builder()
+                .body("not-base64!!!")
+                .build();
+
+        var record = AliyunConverters.toMessageRecord(data);
+
+        assertThat(record.getBody()).isEqualTo("not-base64!!!");
+        assertThat(record.getBodyEncoding()).isEqualTo("TEXT");
+    }
+
+    @Test
+    void toMessageRecordShouldReturnNullKeyWhenMessageKeysMissing() {
+        ListMessagesResponseBody.List nullKeys = ListMessagesResponseBody.List.builder()
+                .messageKeys(null)
+                .build();
+        ListMessagesResponseBody.List emptyKeys = ListMessagesResponseBody.List.builder()
+                .messageKeys(Collections.emptyList())
+                .build();
+
+        assertThat(AliyunConverters.toMessageRecord(nullKeys).getKey()).isNull();
+        assertThat(AliyunConverters.toMessageRecord(emptyKeys).getKey()).isNull();
     }
 }
