@@ -181,9 +181,13 @@ public class AuthInterceptor implements HandlerInterceptor {
                 || path.equals("/api/auth/status")
                 || path.equals("/livez")
                 || path.equals("/readyz")
-                || path.startsWith("/api-docs")
-                || path.startsWith("/swagger-ui")
-                || path.startsWith("/actuator/health");
+                || isPathOrDescendant(path, "/api-docs")
+                || isPathOrDescendant(path, "/swagger-ui")
+                || isPathOrDescendant(path, "/actuator/health");
+    }
+
+    private boolean isPathOrDescendant(String path, String root) {
+        return path.equals(root) || path.startsWith(root + "/");
     }
 
     private String normalizePath(String path) {

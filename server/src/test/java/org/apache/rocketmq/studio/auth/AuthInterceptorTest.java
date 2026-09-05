@@ -245,6 +245,45 @@ class AuthInterceptorTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api-docs",
+        "/api-docs/openapi.json",
+        "/swagger-ui",
+        "/swagger-ui/index.html",
+        "/actuator/health",
+        "/actuator/health/readiness"
+    })
+    void shouldAllowDocumentedPublicPathTreesWhenLoginIsEnabled(String path) throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthInterceptor interceptor = interceptor(properties, authService(properties), settingsRepository());
+
+        boolean allowed = interceptor.preHandle(new MockHttpServletRequest("GET", path),
+                new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).as(path).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api-docs-private",
+        "/swagger-ui-admin",
+        "/actuator/healthcheck"
+    })
+    void shouldProtectPathsThatOnlyShareAPublicPrefix(String path) throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthInterceptor interceptor = interceptor(properties, authService(properties), settingsRepository());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = interceptor.preHandle(new MockHttpServletRequest("GET", path),
+                response, new Object());
+
+        assertThat(allowed).as(path).isFalse();
+        assertThat(response.getStatus()).as(path).isEqualTo(401);
+    }
+
     private AuthService authService(AuthProperties properties) {
         return new AuthService(properties, settingsRepositoryWithTimeout(30));
     }
