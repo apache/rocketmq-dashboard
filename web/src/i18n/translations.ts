@@ -2542,6 +2542,8 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Studio BrokerCluster ───
+  'brokerCluster.selectInstance': { zh: '选择实例', en: 'Select instance' },
   // ─── BrokerCluster ───
 };
 
