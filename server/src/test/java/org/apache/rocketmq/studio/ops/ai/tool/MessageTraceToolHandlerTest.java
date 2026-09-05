@@ -83,4 +83,48 @@ class MessageTraceToolHandlerTest {
 
         verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
     }
+
+    @Test
+    void handlerNameShouldBeRmqMessageTrace() {
+        assertThat(handler.name()).isEqualTo("rmq.message.trace");
+    }
+
+    @Test
+    void blankNodeAndStatusFieldsProjectAsBlankStrings() {
+        TraceRecordVO trace = TraceRecordVO.builder()
+                .nodes(List.of(TraceNodeVO.builder().timestamp(1000L).costTime(5L).build()))
+                .consumerStatus(List.of(ConsumerStatusVO.builder()
+                        .consumeTime(2000L)
+                        .retryCount(0)
+                        .build()))
+                .build();
+        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-1"), eq("TopicA")))
+                .thenReturn(trace);
+
+        Map<?, ?> row = (Map<?, ?>) handler.execute(Map.of(
+                "cluster", "instance-a", "msgId", "msg-1", "topic", "TopicA"));
+
+        Map<?, ?> node = (Map<?, ?>) ((List<?>) row.get("nodes")).get(0);
+        assertThat(node.get("title")).isEqualTo("");
+        assertThat(node.get("status")).isEqualTo("");
+        assertThat(node.get("description")).isEqualTo("");
+        Map<?, ?> status = (Map<?, ?>) ((List<?>) row.get("consumerStatus")).get(0);
+        assertThat(status.get("group")).isEqualTo("");
+        assertThat(status.get("deliveryStatus")).isEqualTo("");
+    }
+
+    @Test
+    void traceWithoutNodesOrStatusesProjectsEmptyCollections() {
+        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-1"), eq("TopicA")))
+                .thenReturn(TraceRecordVO.builder()
+                        .nodes(List.of())
+                        .consumerStatus(List.of())
+                        .build());
+
+        Map<?, ?> row = (Map<?, ?>) handler.execute(Map.of(
+                "cluster", "instance-a", "msgId", "msg-1", "topic", "TopicA"));
+
+        assertThat((List<?>) row.get("nodes")).isEmpty();
+        assertThat((List<?>) row.get("consumerStatus")).isEmpty();
+    }
 }
