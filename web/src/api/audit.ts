@@ -21,6 +21,7 @@ import type { AuditQuery } from './ops';
 export type AuditFilter = Omit<AuditQuery, 'page' | 'pageSize'>;
 
 export interface AuditFilterOptions {
+  operators: string[];
   operationTypes: string[];
   resourceTypes: string[];
   clusterIds: string[];
