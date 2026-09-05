@@ -17,6 +17,7 @@
 
 import { Card, Col, Empty, Flex, Progress, Row, Skeleton, Statistic, Tag, Typography } from 'antd';
 import type { AuditSummary, AuditSummaryBucket } from '../../api/audit';
+import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
 
@@ -26,7 +27,8 @@ interface Props {
 }
 
 const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: number }) => {
-  if (!items.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />;
+  const { t } = useLang();
+  if (!items.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('audit.noData')} />;
   return (
     <Flex vertical gap={10}>
       {items.slice(0, 5).map((item) => (
@@ -49,6 +51,7 @@ const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: numb
 };
 
 const AuditSummaryCards = ({ summary, loading }: Props) => {
+  const { t } = useLang();
   // Show the placeholder while any fetch is in flight so a filter change does
   // not keep painting a stale summary until the refreshed aggregate arrives.
   if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
@@ -67,13 +70,13 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
     <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
       <Col xs={12} lg={6}>
         <Card size="small">
-          <Statistic title="匹配记录" value={data.total} />
+          <Statistic title={t('audit.matchingRecords')} value={data.total} />
         </Card>
       </Col>
       <Col xs={12} lg={6}>
         <Card size="small">
           <Statistic
-            title="成功率"
+            title={t('audit.successRate')}
             value={successRate}
             suffix="%"
             valueStyle={{ color: '#52c41a' }}
@@ -83,7 +86,7 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
       <Col xs={12} lg={6}>
         <Card size="small">
           <Statistic
-            title="失败 / 部分成功"
+            title={t('audit.failedPartial')}
             value={`${data.failed} / ${data.partial}`}
             valueStyle={{ color: data.failed ? '#cf1322' : undefined }}
           />
@@ -91,16 +94,16 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
       </Col>
       <Col xs={12} lg={6}>
         <Card size="small">
-          <Statistic title="操作人数" value={data.uniqueOperators} />
+          <Statistic title={t('audit.uniqueOperators')} value={data.uniqueOperators} />
         </Card>
       </Col>
       <Col xs={24} lg={12}>
-        <Card size="small" title="高频操作">
+        <Card size="small" title={t('audit.topOperations')}>
           <BucketList items={data.byOperation} total={data.total} />
         </Card>
       </Col>
       <Col xs={24} lg={12}>
-        <Card size="small" title="资源类型分布">
+        <Card size="small" title={t('audit.resourceTypeDistribution')}>
           <BucketList items={data.byResourceType} total={data.total} />
         </Card>
       </Col>
