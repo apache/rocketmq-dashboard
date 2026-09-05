@@ -92,6 +92,43 @@ class ClusterServiceRegistryTest {
     }
 
     @Test
+    void listRegistryClustersShouldProjectEveryClusterFoundAtOneEntryTest() {
+        when(registryService.list()).thenReturn(List.of(
+                NameserverRegistryVO.builder()
+                        .id(1L)
+                        .name("rocketmq1")
+                        .namesrvAddr("rocketmq1-nameserver:9876")
+                        .build()));
+        when(clusterProvider.discoverClustersAt("rocketmq1-nameserver:9876")).thenReturn(List.of(
+                ClusterVO.builder().id("DefaultCluster").name("DefaultCluster").build(),
+                ClusterVO.builder().id("BackupCluster").name("BackupCluster").build()));
+
+        List<ClusterVO> result = clusterService.listRegistryClusters();
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(ClusterVO::getNsClusterName)
+                .containsExactly("DefaultCluster", "BackupCluster");
+        assertThat(result).extracting(ClusterVO::getName)
+                .containsOnly("rocketmq1");
+        assertThat(result).extracting(ClusterVO::getEndpoint)
+                .containsOnly("rocketmq1-nameserver:9876");
+    }
+
+    @Test
+    void listRegistryClustersShouldSkipEntryWhenDiscoveryReturnsEmptyTest() {
+        when(registryService.list()).thenReturn(List.of(
+                NameserverRegistryVO.builder()
+                        .id(1L)
+                        .name("rocketmq1")
+                        .namesrvAddr("rocketmq1-nameserver:9876")
+                        .build()));
+        when(clusterProvider.discoverClustersAt("rocketmq1-nameserver:9876"))
+                .thenReturn(List.of());
+
+        assertThat(clusterService.listRegistryClusters()).isEmpty();
+    }
+
+    @Test
     void listRegistryClustersShouldSkipEntriesWithoutAddressTest() {
         when(registryService.list()).thenReturn(List.of(
                 NameserverRegistryVO.builder().id(1L).name("no-addr").namesrvAddr(" ").build()));
