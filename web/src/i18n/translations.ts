@@ -2542,6 +2542,26 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Topic list page ───
+  'topic.accessMode': { zh: '接入模式', en: 'Access Mode' },
+  'topic.currentInstance': { zh: '当前实例', en: 'Current Instance' },
+  'topic.endpointLabel': { zh: '接入点', en: 'Endpoint' },
+  'topic.vendorLabel': { zh: '厂商', en: 'Vendor' },
+  'topic.vendorAliyun': { zh: '阿里云', en: 'Aliyun' },
+  'topic.vendorTencent': { zh: '腾讯云', en: 'Tencent Cloud' },
+  'topic.cloudService': { zh: '云服务', en: 'Cloud' },
+  'topic.accessDescCloud': { zh: '接入点为云厂商托管实例的接入地址，由云实例目录解析得出。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。', en: 'The endpoint is the access address of the vendor-managed instance, resolved from the cloud instance catalog. If clients cannot resolve this address, configure DNS or map it in the client hosts file.' },
+  'topic.accessDescLocal': { zh: '接入点为与 Broker 同进程部署的 Proxy 地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。', en: 'The endpoint is the Proxy address deployed alongside the Broker. If clients cannot resolve this address, configure DNS or map it in the client hosts file.' },
+  'topic.accessDescCluster': { zh: '接入点为独立 Proxy 集群的 SLB 内网地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。', en: 'The endpoint is the internal SLB address of the standalone Proxy cluster. If clients cannot resolve this address, configure DNS or map it in the client hosts file.' },
+  'topic.accessDescDirect': { zh: '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。', en: 'The endpoint is the NameServer SLB address (usually the NameServer Service address in K8s); Direct-mode clients discover Brokers through it. If clients cannot resolve this address, configure DNS or map it in the client hosts file.' },
+  'topic.batchDeleteContent': { zh: '确定要删除选中的 {count} 个 Topic 吗？此操作不可撤销。', en: 'Are you sure you want to delete the {count} selected Topics? This cannot be undone.' },
+  'topic.batchDeleteFailed': { zh: '批量删除 Topic 失败，请稍后重试', en: 'Batch delete Topics failed, please retry later' },
+  'topic.batchDeleteFailedCount': { zh: '{count} 个 Topic 删除失败，请稍后重试', en: 'Failed to delete {count} Topics, please retry later' },
+  'topic.batchDeletePartial': { zh: '已删除 {deleted} 个 Topic，{failed} 个删除失败', en: '{deleted} Topics deleted, {failed} failed to delete' },
+  'topic.deleteFailed': { zh: '删除 Topic 失败，请稍后重试', en: 'Failed to delete the Topic, please retry later' },
+  'topic.exportDone': { zh: 'Topic 导出完成', en: 'Topic export complete' },
+  'topic.exportFailed': { zh: '导出 Topic 失败，请稍后重试', en: 'Failed to export Topics, please retry later' },
+  'topic.syncData': { zh: '同步数据', en: 'Sync Data' },
   // ─── BrokerCluster ───
 };
 
