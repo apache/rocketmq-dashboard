@@ -10,6 +10,8 @@ export interface MessageRecord {
   queueId: number | null;
   queueOffset: number | null;
   body: string;
+  /** Optional English sample body for demo (mock-mode) messages. */
+  enBody?: string | null;
   storeTime: number | string;
   bornHost: string;
   storeHost: string;
