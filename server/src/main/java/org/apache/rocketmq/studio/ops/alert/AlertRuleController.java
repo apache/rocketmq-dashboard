@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping({"/api/alert-rules", "/api/business-alert-rules"})
@@ -64,6 +65,17 @@ public class AlertRuleController {
             return Result.ok(alertService.listRules(search, enabled, page, pageSize));
         }
         return Result.ok(alertService.listRules(AlertDomain.BUSINESS, search, enabled, page, pageSize));
+    }
+
+    @GetMapping("/summary")
+    public Result<AlertRuleSummaryVO> summarizeRules(
+            HttpServletRequest request,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean enabled) {
+        AlertDomain domain = request.getRequestURI().endsWith("/api/alert-rules/summary")
+                ? AlertDomain.CLUSTER
+                : AlertDomain.BUSINESS;
+        return Result.ok(alertService.summarizeRules(domain, search, enabled, LocalDateTime.now().minusDays(1)));
     }
 
     @GetMapping("/runtime")
