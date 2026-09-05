@@ -21,9 +21,12 @@ import client from './client';
 import {
   createDataSource,
   deleteDataSource,
+  getGeneralSettings,
   listAllDataSources,
   listDataSources,
+  saveGeneralSettings,
   testDataSource,
+  testNotification,
   updateDataSource,
 } from './settings';
 import type { DataSource } from './settings';
@@ -111,5 +114,49 @@ describe('data sources API', () => {
     await expect(
       testDataSource({ type: source.type, url: source.url, auth: source.auth }),
     ).resolves.toEqual({ success: true, message: 'Connection successful' });
+  });
+
+  it('loads the general settings', async () => {
+    mock.onGet('/settings/general').reply(200, { code: 200, data: { apiKeyConfigured: true } });
+
+    await expect(getGeneralSettings()).resolves.toEqual({ apiKeyConfigured: true });
+  });
+
+  it('strips read-only configured flags when saving general settings', async () => {
+    mock.onPost('/settings/general/save').reply((config) => {
+      const payload = JSON.parse(config.data);
+      expect(payload.apiKeyConfigured).toBeUndefined();
+      expect(payload.dingtalkWebhookConfigured).toBeUndefined();
+      expect(payload.smsWebhookConfigured).toBeUndefined();
+      expect(payload.apiKey).toBe('sk-live');
+      return [200, { code: 200 }];
+    });
+
+    await saveGeneralSettings({
+      apiKey: 'sk-live',
+      apiKeyConfigured: true,
+      dingtalkWebhookConfigured: false,
+      smsWebhookConfigured: true,
+    } as Parameters<typeof saveGeneralSettings>[0]);
+  });
+
+  it('drops a blank api key when saving general settings', async () => {
+    mock.onPost('/settings/general/save').reply((config) => {
+      const payload = JSON.parse(config.data);
+      expect(payload.apiKey).toBeUndefined();
+      return [200, { code: 200 }];
+    });
+
+    await saveGeneralSettings({ apiKey: '   ' } as Parameters<typeof saveGeneralSettings>[0]);
+  });
+
+  it('tests a notification channel through the query parameter', async () => {
+    mock.onPost('/settings/general/test-notification').reply((config) => {
+      expect(config.params).toEqual({ channel: 'dingtalk' });
+      return [200, { code: 200 }];
+    });
+
+    await testNotification('dingtalk');
+    expect(mock.history.post).toHaveLength(1);
   });
 });
