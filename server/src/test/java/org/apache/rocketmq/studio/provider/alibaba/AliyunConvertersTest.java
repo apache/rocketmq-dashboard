@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponseBody;
+import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,5 +35,41 @@ class AliyunConvertersTest {
 
         assertThat(result.getTopicCount()).isEqualTo(Integer.MAX_VALUE);
         assertThat(result.getGroupCount()).isZero();
+    }
+
+    @Test
+    void toInstanceOptionShouldCarryAllDetailFields() {
+        ListInstancesResponseBody.List data = ListInstancesResponseBody.List.builder()
+                .instanceId("rmq-cn-xxx")
+                .instanceName("prod-mq")
+                .status("RUNNING")
+                .regionId("cn-hangzhou")
+                .remark("prod instance")
+                .topicCount(10L)
+                .groupCount(5L)
+                .build();
+
+        CloudInstanceOptionVO vo = AliyunConverters.toInstanceOptionVO(data);
+
+        assertThat(vo.getInstanceId()).isEqualTo("rmq-cn-xxx");
+        assertThat(vo.getInstanceName()).isEqualTo("prod-mq");
+        assertThat(vo.getStatus()).isEqualTo("RUNNING");
+        assertThat(vo.getRegionId()).isEqualTo("cn-hangzhou");
+        assertThat(vo.getRemark()).isEqualTo("prod instance");
+        assertThat(vo.getTopicCount()).isEqualTo(10);
+        assertThat(vo.getGroupCount()).isEqualTo(5);
+    }
+
+    @Test
+    void toInstanceOptionShouldKeepNullCountsNull() {
+        ListInstancesResponseBody.List data = ListInstancesResponseBody.List.builder()
+                .instanceId("rmq-cn-xxx")
+                .build();
+
+        CloudInstanceOptionVO vo = AliyunConverters.toInstanceOptionVO(data);
+
+        assertThat(vo.getInstanceId()).isEqualTo("rmq-cn-xxx");
+        assertThat(vo.getTopicCount()).isNull();
+        assertThat(vo.getGroupCount()).isNull();
     }
 }
