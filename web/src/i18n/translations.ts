@@ -2542,6 +2542,50 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── K8s Certificates ───
+  'certs.pageSubtitle': { zh: '共 {count} 个证书', en: '{count} certificates' },
+  'certs.localOnlyTitle': {
+    zh: '当前证书记录仅保存为 Studio 本地元数据',
+    en: 'Certificate records are Studio-local metadata only',
+  },
+  'certs.localOnlyDesc': {
+    zh: '创建、续期和删除操作尚不会应用到 Kubernetes 集群或 cert-manager。请在集群侧管理实际证书，直到 Kubernetes Provider 接入完成。',
+    en: 'Create, renew and delete operations are not applied to the Kubernetes cluster or cert-manager yet. Manage the actual certificates on the cluster side until the Kubernetes Provider is wired in.',
+  },
+  'certs.searchPlaceholder': { zh: '搜索 k8s ID 或集群', en: 'Search k8s ID or cluster' },
+  'certs.addButton': { zh: '新增证书', en: 'New Certificate' },
+  'certs.issuer': { zh: '签发者', en: 'Issuer' },
+  'certs.notAfter': { zh: '到期时间', en: 'Expiry' },
+  'certs.daysRemaining': { zh: '剩余天数', en: 'Days Remaining' },
+  'certs.statusValid': { zh: '有效', en: 'Valid' },
+  'certs.statusExpiring': { zh: '即将过期', en: 'Expiring Soon' },
+  'certs.statusExpired': { zh: '已过期', en: 'Expired' },
+  'certs.deleteConfirmTitle': {
+    zh: '确定要删除证书「{name}」吗？',
+    en: 'Delete certificate "{name}"?',
+  },
+  'certs.deletedToast': { zh: '证书「{name}」已删除', en: 'Certificate "{name}" deleted' },
+  'certs.addedToast': { zh: '证书「{name}」已添加', en: 'Certificate "{name}" added' },
+  'certs.createModalTitle': { zh: '新增证书', en: 'Add Certificate' },
+  'certs.addAction': { zh: '添加', en: 'Add' },
+  'certs.k8sIdRequired': { zh: '请输入 k8s ID', en: 'Enter the k8s ID' },
+  'certs.k8sIdPlaceholder': { zh: '例如：kubernetes-daily', en: 'e.g. kubernetes-daily' },
+  'certs.clusterRequired': { zh: '请输入集群名称', en: 'Enter the cluster name' },
+  'certs.clusterPlaceholder': {
+    zh: '例如：kubernetes（120.26.99.191:6443）',
+    en: 'e.g. kubernetes (120.26.99.191:6443)',
+  },
+  'certs.certPemLabel': { zh: '证书内容（PEM）', en: 'Certificate Content (PEM)' },
+  'certs.certPemExtra': {
+    zh: '粘贴 PEM 格式证书，签发者、有效期与 SAN 将自动解析；留空时有效期按一年占位',
+    en: 'Paste the PEM certificate; issuer, validity and SAN are parsed automatically. When left empty, validity defaults to one year.',
+  },
+  'certs.keyPemLabel': { zh: '私钥内容（PEM）', en: 'Private Key Content (PEM)' },
+  'certs.keyPemExtra': {
+    zh: '仅保存，不会在页面展示或返回',
+    en: 'Stored only; never shown on the page or returned',
+  },
+  'certs.requestFailed': { zh: '请求失败，请稍后重试', en: 'Request failed, please retry later' },
   // ─── BrokerCluster ───
 };
 
