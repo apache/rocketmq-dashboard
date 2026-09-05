@@ -49,4 +49,16 @@ class QoderAgentProviderTest {
         assertThat(provider.buildCommand(config, null, null))
                 .containsExactly("qodercli", "-p", "");
     }
+
+    @Test
+    void buildCommandWithoutModelKeepsPromptOnly() {
+        assertThat(provider.buildCommand(null, "hello", null))
+                .containsExactly("qodercli", "-p", "hello");
+    }
+
+    @Test
+    void advertisesTheQoderEngineAndNoChildEnvironment() {
+        assertThat(provider.engine()).isEqualTo("qoder");
+        assertThat(provider.childEnv(null)).isEmpty();
+    }
 }
