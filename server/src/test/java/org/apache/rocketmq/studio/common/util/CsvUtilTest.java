@@ -35,4 +35,25 @@ class CsvUtilTest {
         assertThat(CsvUtil.toCell("=SUM(A1)")).isEqualTo("\"'=SUM(A1)\"");
         assertThat(CsvUtil.toCell("+cmd")).isEqualTo("\"'+cmd\"");
     }
+
+    @Test
+    void toCellShouldPrefixRemainingFormulaCharacters() {
+        assertThat(CsvUtil.toCell("@sum(A1)")).isEqualTo("\"'@sum(A1)\"");
+        assertThat(CsvUtil.toCell("-123")).isEqualTo("\"'-123\"");
+        assertThat(CsvUtil.toCell("\tindented")).isEqualTo("\"'\tindented\"");
+    }
+
+    @Test
+    void toCellShouldHandleNullAndEmptyValues() {
+        assertThat(CsvUtil.toCell(null)).isEqualTo("\"\"");
+        assertThat(CsvUtil.toCell("")).isEqualTo("\"\"");
+    }
+
+    @Test
+    void appendRowShouldJoinMultipleCellsWithCommas() {
+        StringBuilder csv = new StringBuilder();
+        CsvUtil.appendRow(csv, "a", 2, null, "d");
+
+        assertThat(csv.toString()).isEqualTo("\"a\",\"2\",\"\",\"d\"\r\n");
+    }
 }
