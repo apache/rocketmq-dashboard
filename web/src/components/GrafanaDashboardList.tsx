@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
+import { ArrowClockwise, DownloadSimple, Eye, Graph } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import {
   getGrafanaDashboard,
@@ -28,6 +28,7 @@ import {
 } from '../services/grafanaService';
 import type { GrafanaDashboardInfo } from '../api/metrics';
 import { downloadBlob } from '../utils/download';
+import GrafanaDependencyDrawer from './GrafanaDependencyDrawer';
 
 const { Paragraph, Text } = Typography;
 
@@ -49,6 +50,7 @@ export const GrafanaDashboardList: React.FC = () => {
   const exportingAllRef = useRef(false);
   const [exportingUids, setExportingUids] = useState<Set<string>>(() => new Set());
   const [exportingAll, setExportingAll] = useState(false);
+  const [manifestOpen, setManifestOpen] = useState(false);
 
   const tagOptions = useMemo(
     () =>
@@ -242,6 +244,13 @@ export const GrafanaDashboardList: React.FC = () => {
         >
           {t('grafana.exportAll')}
         </Button>
+        <Button
+          icon={<Graph size={16} />}
+          disabled={loading || dashboards.length === 0}
+          onClick={() => setManifestOpen(true)}
+        >
+          {t('grafana.manifestAction')}
+        </Button>
       </Space>
 
       {loadError && (
@@ -298,6 +307,11 @@ export const GrafanaDashboardList: React.FC = () => {
           </Paragraph>
         )}
       </Modal>
+      <GrafanaDependencyDrawer
+        open={manifestOpen}
+        dashboards={dashboards}
+        onClose={() => setManifestOpen(false)}
+      />
     </div>
   );
 };

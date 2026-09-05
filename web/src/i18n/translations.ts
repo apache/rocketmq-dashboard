@@ -1852,6 +1852,42 @@ const translations: Record<string, Record<Lang, string>> = {
   'grafana.exportAll': { zh: '导出全部', en: 'Export all' },
   'grafana.exportAllDone': { zh: '全部看板已导出', en: 'All dashboards exported' },
   'grafana.exportAllFailed': { zh: '导出全部看板失败', en: 'Failed to export dashboards' },
+  'grafana.manifestAction': { zh: '依赖清单', en: 'Dependency manifest' },
+  'grafana.manifestTitle': {
+    zh: 'Grafana Dashboard 依赖清单',
+    en: 'Grafana dashboard dependency manifest',
+  },
+  'grafana.manifestDescription': {
+    zh: '按需读取 Dashboard JSON，汇总迁移与升级所需的面板、数据源、变量和高级功能依赖。',
+    en: 'Loads dashboard JSON on demand and inventories panels, data sources, variables, and advanced features needed for migration or upgrades.',
+  },
+  'grafana.manifestLoad': { zh: '加载依赖', en: 'Load dependencies' },
+  'grafana.manifestLoadFailed': {
+    zh: 'Dashboard 依赖加载失败',
+    en: 'Failed to load dashboard dependencies',
+  },
+  'grafana.manifestEmpty': {
+    zh: '尚未读取 Dashboard 内容。点击加载后将以每批 4 个的上限获取详情。',
+    en: 'Dashboard content has not been loaded. Details are fetched in batches of four.',
+  },
+  'grafana.manifestDashboards': { zh: 'Dashboard 数', en: 'Dashboards' },
+  'grafana.manifestPanels': { zh: '面板数', en: 'Panels' },
+  'grafana.manifestDataSources': { zh: '数据源引用', en: 'Data sources' },
+  'grafana.manifestVariables': { zh: '模板变量', en: 'Variables' },
+  'grafana.manifestTargets': { zh: '查询 Target', en: 'Query targets' },
+  'grafana.manifestSchema': { zh: 'Schema', en: 'Schema' },
+  'grafana.manifestPanelTypes': { zh: '面板类型', en: 'Panel types' },
+  'grafana.manifestIssues': { zh: '可移植性提示', en: 'Portability notes' },
+  'grafana.manifestReady': { zh: '结构完整', en: 'Structurally ready' },
+  'grafana.manifestSearch': {
+    zh: '搜索 Dashboard、数据源或变量',
+    en: 'Search dashboards, data sources, or variables',
+  },
+  'grafana.manifestIssuesOnly': { zh: '仅看有提示项', en: 'Notes only' },
+  'grafana.manifestFiltered': {
+    zh: '显示 {visible} / {total}',
+    en: 'Showing {visible} of {total}',
+  },
   // ─── Alert rule templates ───
   'alertAssets.title': { zh: '业务告警', en: 'Business Alerts' },
   'alertAssets.name': { zh: '名称', en: 'Name' },
