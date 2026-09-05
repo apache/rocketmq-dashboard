@@ -89,6 +89,13 @@ public class MybatisPlusAclRepository implements AclRepository {
         if (ruleMapper.updateById(entity) == 0) {
             return Optional.empty();
         }
+        if (rule.getActions() != null && entity.getActions() == null) {
+            // MyBatis-Plus omits null entity fields from updateById. Assign this column
+            // explicitly so clearing the actions does not silently retain its old value.
+            ruleMapper.update(null, new UpdateWrapper<RmqAclRule>()
+                    .eq("id", entity.getId())
+                    .set("actions", null));
+        }
         rule.setGmtCreate(existing.getGmtCreate());
         return Optional.of(rule);
     }
@@ -153,6 +160,13 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setGmtCreate(existing.getGmtCreate());
         if (userMapper.updateById(entity) == 0) {
             return Optional.empty();
+        }
+        if (user.getClusters() != null && entity.getClusters() == null) {
+            // MyBatis-Plus omits null entity fields from updateById. Assign this column
+            // explicitly so clearing the cluster bindings does not silently retain its old value.
+            userMapper.update(null, new UpdateWrapper<RmqAclUser>()
+                    .eq("id", entity.getId())
+                    .set("clusters", null));
         }
         user.setGmtCreate(existing.getGmtCreate());
         return Optional.of(user);
