@@ -64,6 +64,7 @@ export interface ConsumerGroupHealthDiagnostics {
 }
 
 export interface ConsumerGroupHealthOptions {
+  lang?: 'zh' | 'en';
   now?: Date | string | number;
   staleHeartbeatSeconds?: number;
   highLagThreshold?: number;
@@ -84,6 +85,12 @@ const STATUS_TEXT: Record<ConsumerGroupHealthStatus, string> = {
   healthy: '消费组健康',
   warning: '需要关注',
   critical: '消费风险',
+};
+
+const STATUS_TEXT_EN: Record<ConsumerGroupHealthStatus, string> = {
+  healthy: 'Consumer group healthy',
+  warning: 'Attention needed',
+  critical: 'Consumption risk',
 };
 
 const STATUS_COLOR: Record<ConsumerGroupHealthStatus, 'success' | 'warning' | 'error'> = {
@@ -179,14 +186,21 @@ const healthScore = (issues: ConsumerGroupHealthIssue[]): number => {
   return Math.max(0, Math.min(100, Math.round(100 - penalties)));
 };
 
-const subscriptionIssues = (subscriptions: SubscriptionEntry[]): ConsumerGroupHealthIssue[] => {
+const subscriptionIssues = (
+  subscriptions: SubscriptionEntry[],
+  lang: 'zh' | 'en' = 'zh',
+): ConsumerGroupHealthIssue[] => {
+  const pick = (zh: string, en: string): string => (lang === 'en' ? en : zh);
   if (subscriptions.length === 0) {
     return [
       issue(
         'NO_SUBSCRIPTION_DATA',
         'warning',
-        '暂无订阅明细',
-        '无法从当前结果判断客户端订阅表达式是否一致。',
+        pick('暂无订阅明细', 'No subscription details'),
+        pick(
+          '无法从当前结果判断客户端订阅表达式是否一致。',
+          'Subscription expression consistency cannot be judged from the current result.',
+        ),
       ),
     ];
   }
@@ -198,8 +212,10 @@ const subscriptionIssues = (subscriptions: SubscriptionEntry[]): ConsumerGroupHe
         issue(
           'SUBSCRIPTION_INCONSISTENT',
           'critical',
-          '订阅表达式不一致',
-          `${subscription.topic} 的订阅表达式在客户端之间不一致，可能导致消息遗漏或重复消费。`,
+          pick('订阅表达式不一致', 'Inconsistent subscription expressions'),
+          lang === 'en'
+            ? `Subscription expressions of ${subscription.topic} differ across clients, which may drop or duplicate messages.`
+            : `${subscription.topic} 的订阅表达式在客户端之间不一致，可能导致消息遗漏或重复消费。`,
           subscription.topic,
         ),
       );
@@ -208,8 +224,10 @@ const subscriptionIssues = (subscriptions: SubscriptionEntry[]): ConsumerGroupHe
         issue(
           'SUBSCRIPTION_UNKNOWN',
           'warning',
-          '订阅一致性未知',
-          `${subscription.topic} 的一致性状态未知，建议重新检查客户端订阅。`,
+          pick('订阅一致性未知', 'Subscription consistency unknown'),
+          lang === 'en'
+            ? `Consistency of ${subscription.topic} is unknown; re-check the client subscriptions.`
+            : `${subscription.topic} 的一致性状态未知，建议重新检查客户端订阅。`,
           subscription.topic,
         ),
       );
@@ -228,7 +246,9 @@ const progressIssues = (
       'skewWarningRatio' | 'skewCriticalRatio' | 'highLagThreshold' | 'criticalLagThreshold'
     >
   >,
+  lang: 'zh' | 'en' = 'zh',
 ): ConsumerGroupHealthIssue[] => {
+  const pick = (zh: string, en: string): string => (lang === 'en' ? en : zh);
   if (progress.length === 0) return [];
 
   const issues: ConsumerGroupHealthIssue[] = [];
@@ -240,8 +260,10 @@ const progressIssues = (
       issue(
         'UNKNOWN_QUEUE_LAG',
         'warning',
-        '部分 Queue 堆积不可用',
-        `${unknownQueueCount} 个 Queue 无法计算堆积，当前总堆积只包含可用数据。`,
+        pick('部分 Queue 堆积不可用', 'Some Queue lags are unavailable'),
+        lang === 'en'
+          ? `${unknownQueueCount} Queues cannot compute lag; the total lag only includes available data.`
+          : `${unknownQueueCount} 个 Queue 无法计算堆积，当前总堆积只包含可用数据。`,
       ),
     );
   }
@@ -250,8 +272,10 @@ const progressIssues = (
       issue(
         'QUEUE_LAG_SKEW',
         'critical',
-        'Queue 堆积分布严重倾斜',
-        `最大/最小 Queue 堆积约为 ${skew}:1，可能存在单队列热点或消费者分配不均。`,
+        pick('Queue 堆积分布严重倾斜', 'Queue lags are severely skewed'),
+        lang === 'en'
+          ? `Max/min Queue lag ratio is about ${skew}:1; there may be a single-queue hotspot or uneven consumer assignment.`
+          : `最大/最小 Queue 堆积约为 ${skew}:1，可能存在单队列热点或消费者分配不均。`,
       ),
     );
   } else if (skew >= options.skewWarningRatio) {
@@ -259,8 +283,10 @@ const progressIssues = (
       issue(
         'QUEUE_LAG_SKEW',
         'warning',
-        'Queue 堆积分布不均',
-        `最大/最小 Queue 堆积约为 ${skew}:1，建议观察是否持续扩大。`,
+        pick('Queue 堆积分布不均', 'Queue lags are unevenly distributed'),
+        lang === 'en'
+          ? `Max/min Queue lag ratio is about ${skew}:1; watch whether it keeps growing.`
+          : `最大/最小 Queue 堆积约为 ${skew}:1，建议观察是否持续扩大。`,
       ),
     );
   }
@@ -269,8 +295,10 @@ const progressIssues = (
       issue(
         'HIGH_GROUP_LAG',
         'critical',
-        'Group 总堆积过高',
-        `Group 当前已知堆积达到 ${totalLag.toLocaleString()} 条。`,
+        pick('Group 总堆积过高', 'Group lag is too high'),
+        lang === 'en'
+          ? `Known lag of the Group has reached ${totalLag.toLocaleString()} messages.`
+          : `Group 当前已知堆积达到 ${totalLag.toLocaleString()} 条。`,
       ),
     );
   } else if (totalLag >= options.highLagThreshold) {
@@ -278,8 +306,10 @@ const progressIssues = (
       issue(
         'HIGH_GROUP_LAG',
         'warning',
-        'Group 总堆积偏高',
-        `Group 当前已知堆积达到 ${totalLag.toLocaleString()} 条。`,
+        pick('Group 总堆积偏高', 'Group lag is high'),
+        lang === 'en'
+          ? `Known lag of the Group has reached ${totalLag.toLocaleString()} messages.`
+          : `Group 当前已知堆积达到 ${totalLag.toLocaleString()} 条。`,
       ),
     );
   }
@@ -296,15 +326,20 @@ const runtimeIssues = (
       'staleHeartbeatSeconds' | 'highDelaySeconds' | 'criticalDelaySeconds'
     >
   >,
+  lang: 'zh' | 'en' = 'zh',
 ): ConsumerGroupHealthIssue[] => {
+  const pick = (zh: string, en: string): string => (lang === 'en' ? en : zh);
   const issues: ConsumerGroupHealthIssue[] = [];
   if ((group.onlineInstances ?? 0) === 0 && (lag ?? 0) > 0) {
     issues.push(
       issue(
         'NO_ACTIVE_CLIENTS_WITH_LAG',
         'critical',
-        '有堆积但无在线客户端',
-        '消费组存在未消费消息，但当前没有在线客户端处理这些消息。',
+        pick('有堆积但无在线客户端', 'Lag exists but no online clients'),
+        pick(
+          '消费组存在未消费消息，但当前没有在线客户端处理这些消息。',
+          'The Group has unconsumed messages but no online clients are processing them.',
+        ),
       ),
     );
   }
@@ -316,8 +351,10 @@ const runtimeIssues = (
         issue(
           'STALE_HEARTBEAT',
           'warning',
-          '客户端心跳过期',
-          `${client.clientId} 的最后心跳已超过 ${options.staleHeartbeatSeconds} 秒。`,
+          pick('客户端心跳过期', 'Client heartbeat expired'),
+          lang === 'en'
+            ? `Last heartbeat of ${client.clientId} exceeded ${options.staleHeartbeatSeconds} seconds ago.`
+            : `${client.clientId} 的最后心跳已超过 ${options.staleHeartbeatSeconds} 秒。`,
           client.clientId,
         ),
       );
@@ -330,8 +367,10 @@ const runtimeIssues = (
       issue(
         'HIGH_CONSUME_DELAY',
         'critical',
-        '消费延迟过高',
-        `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，业务可能已经感知延迟。`,
+        pick('消费延迟过高', 'Consume delay is too high'),
+        lang === 'en'
+          ? `Consume delay of the Group is about ${delaySeconds.toLocaleString()} seconds; the business may already perceive it.`
+          : `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，业务可能已经感知延迟。`,
       ),
     );
   } else if (delaySeconds >= options.highDelaySeconds) {
@@ -339,31 +378,37 @@ const runtimeIssues = (
       issue(
         'HIGH_CONSUME_DELAY',
         'warning',
-        '消费延迟偏高',
-        `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，建议继续观察趋势。`,
+        pick('消费延迟偏高', 'Consume delay is high'),
+        lang === 'en'
+          ? `Consume delay of the Group is about ${delaySeconds.toLocaleString()} seconds; keep watching the trend.`
+          : `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，建议继续观察趋势。`,
       ),
     );
   }
   return issues;
 };
 
-const recommendations = (issues: ConsumerGroupHealthIssue[]): string[] => {
+const recommendations = (
+  issues: ConsumerGroupHealthIssue[],
+  lang: 'zh' | 'en' = 'zh',
+): string[] => {
   const codes = new Set(issues.map((item) => item.code));
+  const pick = (zh: string, en: string): string => (lang === 'en' ? en : zh);
   const result: string[] = [];
   if (codes.has('NO_ACTIVE_CLIENTS_WITH_LAG') || codes.has('STALE_HEARTBEAT')) {
-    result.push('先确认消费者进程、Proxy/Broker 网络连通性和客户端心跳是否恢复。');
+    result.push(pick('先确认消费者进程、Proxy/Broker 网络连通性和客户端心跳是否恢复。', 'First confirm the consumer process, Proxy/Broker network connectivity and client heartbeats have recovered.'));
   }
   if (codes.has('SUBSCRIPTION_INCONSISTENT') || codes.has('SUBSCRIPTION_UNKNOWN')) {
-    result.push('统一同一 Group 内所有客户端的订阅表达式，避免灰度期间同时运行不同过滤条件。');
+    result.push(pick('统一同一 Group 内所有客户端的订阅表达式，避免灰度期间同时运行不同过滤条件。', 'Unify the subscription expressions of all clients in the Group to avoid running different filter conditions during gray releases.'));
   }
   if (codes.has('QUEUE_LAG_SKEW')) {
-    result.push('检查热点 Queue 的分配、消费者线程池和单分区顺序消费阻塞情况。');
+    result.push(pick('检查热点 Queue 的分配、消费者线程池和单分区顺序消费阻塞情况。', 'Check hotspot Queue assignment, the consumer thread pool and blocked ordered consumption on single partitions.'));
   }
   if (codes.has('HIGH_GROUP_LAG') || codes.has('HIGH_CONSUME_DELAY')) {
-    result.push('结合消费 TPS、业务耗时和重试堆积判断是否需要扩容消费者或限流生产端。');
+    result.push(pick('结合消费 TPS、业务耗时和重试堆积判断是否需要扩容消费者或限流生产端。', 'Combine consume TPS, business latency and retry backlog to decide whether to scale consumers or throttle producers.'));
   }
   if (codes.has('UNKNOWN_QUEUE_LAG')) {
-    result.push('当堆积不可用时，优先确认 Proxy 指标采集和 Broker offset 查询权限。');
+    result.push(pick('当堆积不可用时，优先确认 Proxy 指标采集和 Broker offset 查询权限。', 'When lag is unavailable, first verify Proxy metric collection and Broker offset query permissions.'));
   }
   return result;
 };
@@ -374,6 +419,7 @@ export const analyzeConsumerGroupHealth = (
   progress: QueueProgress[],
   options: ConsumerGroupHealthOptions = {},
 ): ConsumerGroupHealthDiagnostics => {
+  const lang = options.lang ?? 'zh';
   const normalizedOptions = {
     staleHeartbeatSeconds: options.staleHeartbeatSeconds ?? DEFAULT_STALE_HEARTBEAT_SECONDS,
     highLagThreshold: options.highLagThreshold ?? DEFAULT_HIGH_LAG_THRESHOLD,
@@ -394,15 +440,15 @@ export const analyzeConsumerGroupHealth = (
     .map((client) => heartbeatAgeSeconds(client.lastHeartbeat, now))
     .filter((age): age is number => age !== null);
   const issues = [
-    ...subscriptionIssues(subscriptions),
-    ...progressIssues(progress, knownQueueLags, unknownQueueCount, normalizedOptions),
-    ...runtimeIssues(group, summaryReportedLag, now, normalizedOptions),
+    ...subscriptionIssues(subscriptions, lang),
+    ...progressIssues(progress, knownQueueLags, unknownQueueCount, normalizedOptions, lang),
+    ...runtimeIssues(group, summaryReportedLag, now, normalizedOptions, lang),
   ];
   const status = maxStatus(issues);
 
   return {
     status,
-    statusText: STATUS_TEXT[status],
+    statusText: lang === 'en' ? STATUS_TEXT_EN[status] : STATUS_TEXT[status],
     statusColor: STATUS_COLOR[status],
     summary: {
       healthScore: healthScore(issues),
@@ -418,6 +464,6 @@ export const analyzeConsumerGroupHealth = (
       staleClientCount: issues.filter((item) => item.code === 'STALE_HEARTBEAT').length,
     },
     issues,
-    recommendations: recommendations(issues),
+    recommendations: recommendations(issues, lang),
   };
 };
