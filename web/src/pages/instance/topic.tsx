@@ -166,6 +166,12 @@ type SendMessageFormValues = {
   properties?: MessagePropertyInput[];
 };
 
+// Demo consume-mode labels shown in the topic consumer panel (mock data is zh).
+const CONSUME_MODE_DISPLAY: Record<string, string> = {
+  '集群消费': 'Clustering',
+  '广播消费': 'Broadcasting',
+};
+
 const visibleTopics = (
   topics: Topic[],
   selectedInstanceId: string | undefined,
@@ -335,7 +341,7 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -886,7 +892,7 @@ const TopicPage = () => {
   // ─── Consumer table columns ───────────────────────────────────
   const consumerColumns: TableColumnsType<ConsumerGroupInfo> = [
     {
-      title: '消费者组',
+      title: t('topic.consumerGroup'),
       dataIndex: 'group',
       key: 'group',
       render: (group: string) =>
@@ -905,25 +911,33 @@ const TopicPage = () => {
         ),
     },
     {
-      title: '消费模式',
+      title: t('topic.consumeMode'),
       dataIndex: 'messageModel',
       key: 'messageModel',
-      render: (m: string) => <Tag color={m === '广播消费' ? 'orange' : 'blue'}>{m}</Tag>,
+      render: (m: string) => (
+        <Tag color={m === '广播消费' ? 'orange' : 'blue'}>
+          {lang === 'en' ? (CONSUME_MODE_DISPLAY[m] ?? m) : m}
+        </Tag>
+      ),
     },
     {
-      title: '消费 TPS',
+      title: t('topic.consumeTps'),
       dataIndex: 'consumeTps',
       key: 'consumeTps',
       render: (n: number, record) =>
-        record.metricsAvailable === false ? <Text type="secondary">不可用</Text> : formatNumber(n),
+        record.metricsAvailable === false ? (
+          <Text type="secondary">{t('topic.unavailable')}</Text>
+        ) : (
+          formatNumber(n)
+        ),
     },
     {
-      title: '堆积量',
+      title: t('topic.backlog'),
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       render: (n: number, record) =>
         record.metricsAvailable === false ? (
-          <Text type="secondary">不可用</Text>
+          <Text type="secondary">{t('topic.unavailable')}</Text>
         ) : (
           <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>
         ),
