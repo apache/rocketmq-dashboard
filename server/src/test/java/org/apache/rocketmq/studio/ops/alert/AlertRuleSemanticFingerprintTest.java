@@ -77,4 +77,66 @@ class AlertRuleSemanticFingerprintTest {
                 .isEqualTo(AlertRuleSemanticFingerprint.of(fraction))
                 .isNotEqualTo(AlertRuleSemanticFingerprint.of(rawValue));
     }
+
+    @Test
+    void operatorAndConsecutiveSamplesAreSemanticallySignificantTest() {
+        AlertRuleVO base = AlertRuleVO.builder()
+                .domain(AlertDomain.BUSINESS).instanceId("local").metric("consumer.lag.total")
+                .operator(">=").threshold(1000).duration("5m").consumerGroup("group-a").build();
+        AlertRuleVO differentOperator = AlertRuleVO.builder()
+                .domain(AlertDomain.BUSINESS).instanceId("local").metric("consumer.lag.total")
+                .operator(">").threshold(1000).duration("5m").consumerGroup("group-a").build();
+        AlertRuleVO moreSamples = AlertRuleVO.builder()
+                .domain(AlertDomain.BUSINESS).instanceId("local").metric("consumer.lag.total")
+                .operator(">=").threshold(1000).duration("5m").consumerGroup("group-a")
+                .consecutiveSamples(3).build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(differentOperator))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(base));
+        assertThat(AlertRuleSemanticFingerprint.of(moreSamples))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(base));
+    }
+
+    @Test
+    void nonPositiveWindowAndSamplesClampToTheirDefaultsTest() {
+        AlertRuleVO base = AlertRuleVO.builder()
+                .domain(AlertDomain.BUSINESS).instanceId("local").metric("consumer.lag.total")
+                .operator(">=").threshold(1000).duration("5m").consumerGroup("group-a").build();
+        AlertRuleVO clamped = AlertRuleVO.builder()
+                .domain(AlertDomain.BUSINESS).instanceId("local").metric("consumer.lag.total")
+                .operator(">=").threshold(1000).duration("5m").consumerGroup("group-a")
+                .windowSeconds(-10).consecutiveSamples(0).build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(clamped))
+                .isEqualTo(AlertRuleSemanticFingerprint.of(base));
+    }
+
+    @Test
+    void thresholdUnitIsIgnoredForNonRatioMetricsTest() {
+        AlertRuleVO percentage = AlertRuleVO.builder()
+                .domain(AlertDomain.CLUSTER)
+                .metric("broker.cpu.usage")
+                .operator(">=")
+                .threshold(85)
+                .thresholdUnit("%")
+                .build();
+        AlertRuleVO raw = AlertRuleVO.builder()
+                .domain(AlertDomain.CLUSTER)
+                .metric("broker.cpu.usage")
+                .operator(">=")
+                .threshold(85)
+                .thresholdUnit(null)
+                .build();
+        AlertRuleVO fraction = AlertRuleVO.builder()
+                .domain(AlertDomain.CLUSTER)
+                .metric("broker.cpu.usage")
+                .operator(">=")
+                .threshold(0.85)
+                .thresholdUnit(null)
+                .build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(percentage))
+                .isEqualTo(AlertRuleSemanticFingerprint.of(raw))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(fraction));
+    }
 }
