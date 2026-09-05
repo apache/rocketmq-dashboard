@@ -38,4 +38,57 @@ class LiteTopicSessionTest {
 
         assertThat(session.getConsumptionProgress()).isEqualTo(40.0);
     }
+
+    @Test
+    void activeConsumptionRequiresActiveStatusAndPositiveRate() {
+        LiteTopicSession session = new LiteTopicSession();
+
+        session.setStatus("ACTIVE");
+        session.setConsumptionRate(5.0);
+        assertThat(session.hasActiveConsumption()).isTrue();
+
+        session.setConsumptionRate(0.0);
+        assertThat(session.hasActiveConsumption()).isFalse();
+
+        session.setConsumptionRate(null);
+        assertThat(session.hasActiveConsumption()).isFalse();
+
+        session.setStatus("EXPIRED");
+        session.setConsumptionRate(5.0);
+        assertThat(session.hasActiveConsumption()).isFalse();
+    }
+
+    @Test
+    void expirationComesFromStatusOrTtlRemaining() {
+        LiteTopicSession session = new LiteTopicSession();
+
+        session.setStatus("EXPIRED");
+        assertThat(session.isExpired()).isTrue();
+
+        session.setStatus("ACTIVE");
+        session.setTtlRemaining(0L);
+        assertThat(session.isExpired()).isTrue();
+
+        session.setTtlRemaining(-5L);
+        assertThat(session.isExpired()).isTrue();
+
+        session.setTtlRemaining(10L);
+        assertThat(session.isExpired()).isFalse();
+
+        session.setTtlRemaining(null);
+        assertThat(session.isExpired()).isFalse();
+    }
+
+    @Test
+    void progressHandlesNullOrZeroTotals() {
+        LiteTopicSession session = new LiteTopicSession();
+
+        assertThat(session.getConsumptionProgress()).isZero();
+
+        session.setConsumedMessages(4L);
+        assertThat(session.getConsumptionProgress()).isZero();
+
+        session.setTotalMessages(0L);
+        assertThat(session.getConsumptionProgress()).isZero();
+    }
 }
