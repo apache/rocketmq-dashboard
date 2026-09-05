@@ -19,6 +19,12 @@ package org.apache.rocketmq.studio.provider.alibaba;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponseBody;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Base64;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AliyunConvertersTest {
@@ -34,5 +40,45 @@ class AliyunConvertersTest {
 
         assertThat(result.getTopicCount()).isEqualTo(Integer.MAX_VALUE);
         assertThat(result.getGroupCount()).isZero();
+    }
+
+    @Test
+    void parseDateTimeShouldParseShanghaiFormatAndRejectMalformed() {
+        assertThat(AliyunConverters.parseDateTime("2026-08-23 10:00:00"))
+                .isEqualTo(LocalDateTime.of(2026, 8, 23, 10, 0, 0));
+        assertThat(AliyunConverters.parseDateTime(null)).isNull();
+        assertThat(AliyunConverters.parseDateTime("  ")).isNull();
+        assertThat(AliyunConverters.parseDateTime("2026/08/23 10:00:00")).isNull();
+    }
+
+    @Test
+    void parseTimeMillisShouldConvertUsingShanghaiZone() {
+        long expected = LocalDateTime.of(2026, 8, 23, 10, 0, 0)
+                .atZone(ZoneId.of("Asia/Shanghai"))
+                .toInstant()
+                .toEpochMilli();
+        assertThat(AliyunConverters.parseTimeMillis("2026-08-23 10:00:00")).isEqualTo(expected);
+        assertThat(AliyunConverters.parseTimeMillis(null)).isZero();
+        assertThat(AliyunConverters.parseTimeMillis("not-a-time")).isZero();
+    }
+
+    @Test
+    void formatTimeMillisShouldRenderShanghaiClock() {
+        long utcTwoAm = Instant.parse("2026-08-23T02:00:00Z").toEpochMilli();
+
+        assertThat(AliyunConverters.formatTimeMillis(utcTwoAm)).isEqualTo("2026-08-23 10:00:00");
+    }
+
+    @Test
+    void tryBase64DecodeShouldDecodeUtf8AndRejectOthers() {
+        String encoded = Base64.getEncoder().encodeToString("hello".getBytes(StandardCharsets.UTF_8));
+
+        assertThat(AliyunConverters.tryBase64Decode(encoded)).isEqualTo("hello");
+        assertThat(AliyunConverters.tryBase64Decode(null)).isNull();
+        assertThat(AliyunConverters.tryBase64Decode("   ")).isNull();
+        assertThat(AliyunConverters.tryBase64Decode("not-base64!!!")).isNull();
+        // Valid base64 whose payload is not valid UTF-8 must also degrade to null.
+        String invalidUtf8 = Base64.getEncoder().encodeToString(new byte[]{(byte) 0xC3, (byte) 0x28});
+        assertThat(AliyunConverters.tryBase64Decode(invalidUtf8)).isNull();
     }
 }
