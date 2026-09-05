@@ -2542,6 +2542,87 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Dead Letter Queue page ───
+  'dlq.loadFailed': { zh: '死信队列加载失败，请稍后重试', en: 'Failed to load the dead letter queue, please retry later' },
+  'dlq.retrySubmitFailed': { zh: '提交重投任务失败，请稍后重试', en: 'Failed to submit the resend task, please retry later' },
+  'dlq.exportFailed': { zh: '导出死信消息失败，请稍后重试', en: 'Failed to export dead letter messages, please retry later' },
+  'dlq.detailLoadFailed': { zh: '死信消息明细加载失败，请稍后重试', en: 'Failed to load dead letter message details, please retry later' },
+  'dlq.resendFailed': { zh: '重发死信消息失败，请稍后重试', en: 'Failed to resend dead letter messages, please retry later' },
+  'dlq.enterTargetTopic': { zh: '请输入目标 Topic', en: 'Enter a target Topic' },
+  'dlq.rescanIncomplete': {
+    zh: '重投扫描不完整：{count} 个队列无法扫描，已重投 {resent} 条',
+    en: 'Resend scan incomplete: {count} queues could not be scanned, {resent} messages resent',
+  },
+  'dlq.retryPartial': {
+    zh: '重投部分完成：成功 {succeeded}，失败 {failed}',
+    en: 'Resend partially completed: {succeeded} succeeded, {failed} failed',
+  },
+  'dlq.retryComplete': {
+    zh: '重投完成：{group} → {topic}（{count} 条）',
+    en: 'Resend complete: {group} → {topic} ({count} messages)',
+  },
+  'dlq.exportIncomplete': {
+    zh: '导出可能不完整：{count} 个队列无法扫描，导出上限 {limit} 条',
+    en: 'Export may be incomplete: {count} queues could not be scanned, export cap {limit} messages',
+  },
+  'dlq.exportDone': {
+    zh: '已导出 {group} 的死信消息（{bytes} 字节）',
+    en: 'Exported dead letter messages of {group} ({bytes} bytes)',
+  },
+  'dlq.exportSelectedDone': {
+    zh: '已导出选中的 {count} 条死信消息（{bytes} 字节）',
+    en: 'Exported {count} selected dead letter messages ({bytes} bytes)',
+  },
+  'dlq.exportAllDone': {
+    zh: '已导出全部死信消息（{bytes} 字节）',
+    en: 'Exported all dead letter messages ({bytes} bytes)',
+  },
+  'dlq.resendFailedToast': {
+    zh: '重发失败：成功 {succeeded}，失败 {failed}',
+    en: 'Resend failed: {succeeded} succeeded, {failed} failed',
+  },
+  'dlq.resendPartial': {
+    zh: '重发部分完成：成功 {succeeded}，失败 {failed}',
+    en: 'Resend partially completed: {succeeded} succeeded, {failed} failed',
+  },
+  'dlq.resendComplete': { zh: '重发完成：成功 {count} 条', en: 'Resend complete: {count} messages resent' },
+  'dlq.groupName': { zh: 'Group 名称', en: 'Group Name' },
+  'dlq.deadCount': { zh: '死信数量', en: 'Dead Letter Count' },
+  'dlq.unavailable': { zh: '不可用', en: 'Unavailable' },
+  'dlq.lastEnqueue': { zh: '最近入队时间', en: 'Last Enqueue Time' },
+  'dlq.messageDetails': { zh: '消息明细', en: 'Message Details' },
+  'dlq.resendMessages': { zh: '重投消息', en: 'Resend Messages' },
+  'dlq.export': { zh: '导出', en: 'Export' },
+  'dlq.enqueueTime': { zh: '入队时间', en: 'Enqueue Time' },
+  'dlq.resend': { zh: '重发', en: 'Resend' },
+  'dlq.subtitle': {
+    zh: '管理消费失败进入死信队列的消息',
+    en: 'Manage messages routed to the dead letter queue after consumption failures',
+  },
+  'dlq.searchPlaceholder': { zh: '搜索 Group 名称或 DLQ Topic', en: 'Search group name or DLQ Topic' },
+  'dlq.exportRange': { zh: '导出时间范围', en: 'Export Time Range' },
+  'dlq.groupsTotal': { zh: '共 {count} 个 Group', en: '{count} Groups total' },
+  'dlq.retryTitle': { zh: '重投死信消息', en: 'Resend Dead Letter Messages' },
+  'dlq.confirmRetry': { zh: '确认重投', en: 'Confirm Resend' },
+  'dlq.retryNotice': {
+    zh: '⚠️ 重投操作将把死信消息重新发送到指定 Topic，请确认目标 Topic 正确。',
+    en: '⚠️ Resend will re-deliver the dead letter messages to the specified Topic. Make sure the target Topic is correct.',
+  },
+  'dlq.sourceGroup': { zh: '源 Group', en: 'Source Group' },
+  'dlq.messages': { zh: '{count} 条', en: '{count} messages' },
+  'dlq.retryRange': { zh: '重投时间范围', en: 'Resend Time Range' },
+  'dlq.targetTopic': { zh: '目标 Topic', en: 'Target Topic' },
+  'dlq.targetTopicPlaceholder': { zh: '输入目标 Topic 名称', en: 'Enter the target Topic name' },
+  'dlq.detailTitle': { zh: 'DLQ 消息明细 · {group}', en: 'DLQ Message Details · {group}' },
+  'dlq.detailTitleShort': { zh: 'DLQ 消息明细', en: 'DLQ Message Details' },
+  'dlq.exportSelected': { zh: '导出选中 ({count})', en: 'Export Selected ({count})' },
+  'dlq.exportAll': { zh: '导出全部', en: 'Export All' },
+  'dlq.detailRangeNotice': {
+    zh: '明细按「导出时间范围」查询（{from} ~ {to}）。勾选后可单条或批量重发、导出 Excel。',
+    en: 'Details are queried by the export time range ({from} ~ {to}). Select rows to resend individually or in batch, or export to Excel.',
+  },
+  'dlq.messagesTotal': { zh: '共 {count} 条消息', en: '{count} messages total' },
+  'dlq.batchResend': { zh: '批量重发选中 ({count})', en: 'Batch Resend Selected ({count})' },
   // ─── BrokerCluster ───
 };
 
