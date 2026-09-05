@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertNotificationOutbox;
@@ -63,6 +64,9 @@ import jakarta.mail.internet.InternetAddress;
 public class NotificationOutboxService {
     private static final int MAX_ATTEMPTS = 5;
     private static final int BATCH_SIZE = 20;
+    private static final int MAX_EXPORT_DELIVERIES = 10_000;
+    private static final String EXPORT_CSV_HEADER = "deliveryId,alertId,alertTitle,alertDomain,transition,"
+            + "instanceId,channel,status,attempts,createdAt,deliveredAt,nextRetryAt,lastError\r\n";
     private static final Duration DEFAULT_CLAIM_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration DEFAULT_CLAIM_RENEWAL_INTERVAL = Duration.ofSeconds(20);
     private static final int DEFAULT_HEARTBEAT_THREADS = 2;
@@ -220,6 +224,32 @@ public class NotificationOutboxService {
         }
         return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId, safePageSize,
                 (long) (safePage - 1) * safePageSize), total, safePage, safePageSize);
+    }
+
+    public String exportDeliveries(String channel, String status, String instanceId) {
+        String normalizedChannel = normalizeFilter(channel);
+        String normalizedStatus = normalizeStatus(status);
+        String normalizedInstanceId = normalizeTrim(instanceId);
+        List<NotificationDeliveryPageVO> rows = mapper.findExportPage(
+                normalizedChannel, normalizedStatus, normalizedInstanceId, MAX_EXPORT_DELIVERIES);
+        StringBuilder csv = new StringBuilder("\uFEFF").append(EXPORT_CSV_HEADER);
+        for (NotificationDeliveryPageVO row : rows) {
+            CsvUtil.appendRow(csv,
+                    row.getId(),
+                    row.getAlertId(),
+                    row.getAlertTitle(),
+                    row.getAlertDomain(),
+                    row.getTransition(),
+                    row.getInstanceId(),
+                    row.getChannel(),
+                    row.getStatus(),
+                    row.getAttemptCount(),
+                    row.getCreatedAt(),
+                    row.getDeliveredAt(),
+                    row.getNextAttemptAt(),
+                    row.getLastError());
+        }
+        return csv.toString();
     }
 
     public void retryFailedDelivery(Long deliveryId) {
