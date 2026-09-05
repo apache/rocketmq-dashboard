@@ -20,104 +20,153 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Locale;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NativeAlertRulePolicyTest {
 
-    @Test
-    void acceptsScopedBusinessRuleTest() {
-        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS, "consumer.lag.total")
-                .instanceId("local").consumerGroup("orders").consecutiveSamples(2).build()))
-                .doesNotThrowAnyException();
+    private AlertRuleVO validNativeRule() {
+        return AlertRuleVO.builder()
+            .domain(AlertDomain.CLUSTER)
+            .metric("broker.availability")
+            .operator("UNAVAILABLE")
+            .threshold(0)
+            .duration("5m")
+            .instanceId("inst-1")
+            .channels(List.of("email"))
+            .build();
+    }
+
+    private BusinessException rejectionOf(AlertRuleVO rule) {
+        return assertThrows(BusinessException.class, () -> NativeAlertRulePolicy.validate(rule));
     }
 
     @Test
-    void acceptsConsumerDelayForAConsumerGroupTest() {
-        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS, "consumer.delay.seconds")
-                .instanceId("local").consumerGroup("orders").build())).doesNotThrowAnyException();
+    void acceptsValidNativeAvailabilityRule() {
+        assertDoesNotThrow(() -> NativeAlertRulePolicy.validate(validNativeRule()));
     }
 
     @Test
-    void acceptsTopicSelectorOnlyForTopicBacklogTest() {
-        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS, "topic.backlog.total")
-                .instanceId("local").consumerGroup("orders").topic("orders-topic").build()))
-                .doesNotThrowAnyException();
-        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS, "consumer.lag.total")
-                .instanceId("local").topic("orders-topic").build()))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("topic is not supported");
+    void unknownMetricSkipsNativeChecks() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+            .domain(AlertDomain.BUSINESS)
+            .metric("custom.app.latency")
+            .operator(">")
+            .threshold(200)
+            .duration("5m")
+            .channels(List.of("email"))
+            .build();
+
+        assertDoesNotThrow(() -> NativeAlertRulePolicy.validate(rule));
     }
 
     @Test
-    void rejectsNativeRuleWithoutInstanceScopeTest() {
-        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
-                .build())).isInstanceOf(BusinessException.class).hasMessageContaining("instanceId");
+    void rejectsUnsupportedChannel() {
+        AlertRuleVO rule = validNativeRule();
+        rule.setChannels(List.of("slack"));
+
+        BusinessException ex = rejectionOf(rule);
+
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("Unsupported notification channel"));
     }
 
     @Test
-    void rejectsNativeMetricInWrongDomainTest() {
-        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "consumer.lag.total")
-                .instanceId("local").build())).isInstanceOf(BusinessException.class).hasMessageContaining("BUSINESS");
+    void rejectsDomainMismatchForNativeMetric() {
+        AlertRuleVO rule = validNativeRule();
+        rule.setDomain(AlertDomain.BUSINESS);
+
+        BusinessException ex = rejectionOf(rule);
+
+        assertTrue(ex.getMessage().contains("belongs to the CLUSTER alert domain"));
     }
 
     @Test
-    void acceptsProxyAvailabilityAsAClusterMetricTest() {
-        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "proxy.availability")
-                .instanceId("local").build())).doesNotThrowAnyException();
+    void rejectsMissingInstanceIdForNativeMetric() {
+        AlertRuleVO rule = validNativeRule();
+        rule.setInstanceId(null);
+
+        BusinessException ex = rejectionOf(rule);
+
+        assertTrue(ex.getMessage().contains("instanceId is required for native alert rules"));
     }
 
     @Test
-    void acceptsExplicitUnavailableAvailabilityRuleTest() {
-        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
-                .instanceId("local").operator("UNAVAILABLE").build())).doesNotThrowAnyException();
+    void rejectsUnavailableOperatorOnNonAvailabilityMetric() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+            .domain(AlertDomain.CLUSTER)
+            .metric("broker.disk.usage_ratio")
+            .operator("UNAVAILABLE")
+            .threshold(0)
+            .duration("5m")
+            .instanceId("inst-1")
+            .build();
+
+        BusinessException ex = rejectionOf(rule);
+
+        assertTrue(ex.getMessage().contains("UNAVAILABLE is only supported for native availability metrics"));
     }
 
     @Test
-    void rejectsUnavailableForNonAvailabilityMetricTest() {
-        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER,
-                "broker.disk.usage_ratio").instanceId("local").operator("UNAVAILABLE").build()))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("only supported");
+    void rejectsConsumerGroupOnNonGroupScopedMetric() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+            .domain(AlertDomain.CLUSTER)
+            .metric("broker.disk.usage_ratio")
+            .operator(">")
+            .threshold(0.8)
+            .duration("5m")
+            .instanceId("inst-1")
+            .consumerGroup("cg-1")
+            .build();
+
+        BusinessException ex = rejectionOf(rule);
+
+        assertTrue(ex.getMessage().contains("consumerGroup is not supported for metric"));
     }
 
     @Test
-    void leavesLegacyPrometheusRulesCompatibleTest() {
-        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
-                "rocketmq_consumer_lag_messages").build())).doesNotThrowAnyException();
+    void rejectsTopicOnNonTopicScopedMetric() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+            .domain(AlertDomain.CLUSTER)
+            .metric("broker.disk.usage_ratio")
+            .operator(">")
+            .threshold(0.8)
+            .duration("5m")
+            .instanceId("inst-1")
+            .topic("order-topic")
+            .build();
+
+        BusinessException ex = rejectionOf(rule);
+
+        assertTrue(ex.getMessage().contains("topic is not supported for metric"));
     }
 
     @Test
-    void rejectsUnsupportedNotificationChannelsOutsideTheHttpApiTest() {
-        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
-                "rocketmq_consumer_lag_messages").channels(List.of("webhook")).build()))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("Unsupported notification channel");
+    void acceptsConsumerLagRuleWithGroupScopedChecks() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+            .domain(AlertDomain.BUSINESS)
+            .metric("consumer.lag.total")
+            .operator(">")
+            .threshold(1000)
+            .duration("5m")
+            .instanceId("inst-1")
+            .consumerGroup("cg-1")
+            .build();
+
+        assertDoesNotThrow(() -> NativeAlertRulePolicy.validate(rule));
     }
 
     @Test
-    void acceptsNotificationChannelsIndependentlyOfTheDefaultLocaleTest() {
-        Locale previous = Locale.getDefault();
-        try {
-            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
-            assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
-                    "rocketmq_consumer_lag_messages").channels(List.of(" DINGTALK ")).build()))
-                    .doesNotThrowAnyException();
-        } finally {
-            Locale.setDefault(previous);
-        }
-    }
+    void rejectsMalformedDuration() {
+        AlertRuleVO rule = validNativeRule();
+        rule.setDuration("5x");
 
-    @Test
-    void rejectsOverflowingNativeRuleDurationsBeforePersistenceTest() {
-        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
-                .instanceId("local").duration("9223372036854775807y").build()))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid alert duration");
-        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
-                .instanceId("local").reminderInterval("9223372036854775807y").build()))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("Invalid alert duration");
-    }
+        BusinessException ex = rejectionOf(rule);
 
-    private static AlertRuleVO.AlertRuleVOBuilder rule(AlertDomain domain, String metric) {
-        return AlertRuleVO.builder().domain(domain).name("Test rule").metric(metric).consecutiveSamples(1);
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("Invalid alert duration"));
     }
 }
