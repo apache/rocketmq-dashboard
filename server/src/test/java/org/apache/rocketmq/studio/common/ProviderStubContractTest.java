@@ -26,6 +26,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.util.List;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,6 +64,16 @@ class ProviderStubContractTest {
                         (Runnable) () -> message.queryMessages("i", "t", null, null, null, null, null)),
                 Arguments.of("MessageProviderStub.getMessageTrace",
                         (Runnable) () -> message.getMessageTrace("i", "m", "t")),
+                Arguments.of("MessageProviderStub.getQueueOffsets",
+                        (Runnable) () -> message.getQueueOffsets("i", "t")),
+                Arguments.of("MessageProviderStub.pullMessageAtOffset",
+                        (Runnable) () -> message.pullMessageAtOffset("i", "t", "broker-a", 0, 10L)),
+                Arguments.of("DLQProviderStub.listMessages",
+                        (Runnable) () -> dlq.listMessages("i", "g", 1L, 2L, 1, 20)),
+                Arguments.of("DLQProviderStub.resendMessages(selected)",
+                        (Runnable) () -> dlq.resendMessages("i", "g", List.of("m-1", "m-2"), "t")),
+                Arguments.of("DLQProviderStub.exportExcel",
+                        (Runnable) () -> dlq.exportExcel("i", "g", 1L, 2L, List.of("m-1"))),
                 Arguments.of("ConsumerDiagnosticsProviderStub.getConsumerStack",
                         (Runnable) () -> diagnostics.getConsumerStack("i", "g", "c")),
                 Arguments.of("DashboardProviderStub.getDashboardData",
