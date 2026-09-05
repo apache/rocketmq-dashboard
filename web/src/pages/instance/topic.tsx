@@ -139,18 +139,22 @@ const TYPE_OPTIONS = [
 
 // Topic 类型选项（描述参考阿里云 RocketMQ 消息类型语义），创建弹窗用 Segmented 展示
 const TOPIC_TYPE_CARDS = [
-  { value: 'NORMAL', label: '普通消息', desc: '适用于无特殊顺序要求的常规消息收发场景。' },
-  { value: 'FIFO', label: '顺序消息', desc: '严格按照消息发送顺序消费，适用于顺序敏感的业务。' },
-  { value: 'DELAY', label: '延迟消息', desc: '消息在指定的延迟时间或定时后才投递给消费者。' },
+  {
+    value: 'NORMAL',
+    labelKey: 'topic.typeNormal',
+    descKey: 'topic.typeDescNormal',
+  },
+  { value: 'FIFO', labelKey: 'topic.typeFifo', descKey: 'topic.typeDescFifo' },
+  { value: 'DELAY', labelKey: 'topic.typeDelay', descKey: 'topic.typeDescDelay' },
   {
     value: 'TRANSACTION',
-    label: '事务消息',
-    desc: '支持分布式事务，保证本地事务与消息发送的最终一致性。',
+    labelKey: 'topic.typeTransaction',
+    descKey: 'topic.typeDescTransaction',
   },
   {
     value: 'LITE',
-    label: 'LiteTopic',
-    desc: '轻量级主题，资源开销更低，适用于大规模轻量消息场景。',
+    labelKey: 'topic.lite',
+    descKey: 'topic.typeDescLite',
   },
 ];
 
@@ -1123,7 +1127,7 @@ const TopicPage = () => {
   const handleCreate = async () => {
     if (createInFlightRef.current) return;
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     createInFlightRef.current = true;
@@ -1135,12 +1139,12 @@ const TopicPage = () => {
         instanceId: selectedInstanceId,
       });
       setTopics((previous) => [created, ...previous]);
-      message.success(`Topic「${created.name}」创建成功`);
+      message.success(t('topic.createSuccess', { name: created.name }));
       setModalOpen(false);
       form.resetFields();
     } catch (error) {
       if (!(error && typeof error === 'object' && 'errorFields' in error)) {
-        message.error('创建 Topic 失败，请稍后重试');
+        message.error(t('topic.createFailed'));
       }
     } finally {
       createInFlightRef.current = false;
@@ -1666,7 +1670,7 @@ const TopicPage = () => {
 
       {/* ── Create Topic Modal ────────────────────────────────── */}
       <Modal
-        title="创建 Topic"
+        title={t('topic.createTopic')}
         open={modalOpen}
         onCancel={() => {
           setModalOpen(false);
@@ -1674,8 +1678,8 @@ const TopicPage = () => {
         }}
         onOk={handleCreate}
         confirmLoading={creating}
-        okText="创建"
-        cancelText="取消"
+        okText={t('topic.createAction')}
+        cancelText={t('common.cancel')}
         width={560}
         destroyOnHidden
       >
@@ -1691,32 +1695,38 @@ const TopicPage = () => {
           style={{ marginTop: 16 }}
         >
           <Form.Item
-            label="Topic 名称"
+            label={t('topic.name')}
             name="name"
             rules={[
-              { required: true, message: '请输入 Topic 名称' },
+              { required: true, message: t('topic.topicNameRequired') },
               {
                 pattern: RESOURCE_NAME_PATTERN,
-                message: '仅支持字母、数字、下划线、短横线、% 和 |',
+                message: t('topic.namePattern'),
               },
               {
                 max: RESOURCE_NAME_MAX_LENGTH.topic,
-                message: `名称不能超过 ${RESOURCE_NAME_MAX_LENGTH.topic} 个字符`,
+                message: t('topic.nameMaxLength', {
+                  count: String(RESOURCE_NAME_MAX_LENGTH.topic),
+                }),
               },
             ]}
           >
-            <Input placeholder="请输入 Topic 名称" />
+            <Input placeholder={t('topic.topicNamePlaceholder')} />
           </Form.Item>
 
           <Form.Item
-            label="类型"
+            label={t('topic.type')}
             name="type"
             rules={[{ required: true }]}
-            extra={TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.desc}
+            extra={
+              TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.descKey
+                ? t(TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)!.descKey)
+                : undefined
+            }
           >
             <Segmented
               options={TOPIC_TYPE_CARDS.filter((c) => !isCloudInstance || c.value !== 'LITE').map(
-                ({ value, label }) => ({ value, label }),
+                ({ value, labelKey }) => ({ value, label: t(labelKey) }),
               )}
             />
           </Form.Item>
@@ -1725,20 +1735,20 @@ const TopicPage = () => {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label="写队列数"
+                  label={t('topic.writeQueues')}
                   name="writeQueues"
                   rules={[{ required: true }]}
-                  extra="每个 Broker 节点 8 个队列"
+                  extra={t('topic.queueExtra')}
                 >
                   <InputNumber min={1} max={256} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
-                  label="读队列数"
+                  label={t('topic.readQueues')}
                   name="readQueues"
                   rules={[{ required: true }]}
-                  extra="每个 Broker 节点 8 个队列"
+                  extra={t('topic.queueExtra')}
                 >
                   <InputNumber min={1} max={256} style={{ width: '100%' }} />
                 </Form.Item>
@@ -1747,17 +1757,17 @@ const TopicPage = () => {
           )}
 
           {!isCloudInstance && (
-            <Form.Item label="权限" name="perm" rules={[{ required: true }]}>
+            <Form.Item label={t('topic.perm')} name="perm" rules={[{ required: true }]}>
               <Radio.Group>
-                <Radio.Button value="RW">读写</Radio.Button>
-                <Radio.Button value="RO">只读</Radio.Button>
-                <Radio.Button value="WO">只写</Radio.Button>
+                <Radio.Button value="RW">{t('topic.permRW')}</Radio.Button>
+                <Radio.Button value="RO">{t('topic.permRO')}</Radio.Button>
+                <Radio.Button value="WO">{t('topic.permWO')}</Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}
 
-          <Form.Item label="备注" name="remark">
-            <Input.TextArea rows={3} placeholder="可选，描述 Topic 用途" />
+          <Form.Item label={t('topic.remark')} name="remark">
+            <Input.TextArea rows={3} placeholder={t('topic.remarkPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>
