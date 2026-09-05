@@ -2542,6 +2542,16 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Home page ───
+  'home.welcomeSuffix': { zh: '，欢迎', en: ', welcome' },
+  'home.selectModel': { zh: '选择模型', en: 'Select model' },
+  'home.noModels': { zh: '未配置模型', en: 'No configured models' },
+  'home.engineTitle': { zh: '执行引擎', en: 'Agent engine' },
+  'home.enhanceTooltip': {
+    zh: '开启后，提交前用 LLM 把提问改写为结构化 prompt',
+    en: 'When enabled, rewrite your prompt with an LLM before sending',
+  },
+  'home.version': { zh: '当前版本', en: 'Version' },
   // ─── BrokerCluster ───
 };
 
