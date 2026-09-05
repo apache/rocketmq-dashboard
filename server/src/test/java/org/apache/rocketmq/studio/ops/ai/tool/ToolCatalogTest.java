@@ -116,6 +116,45 @@ class ToolCatalogTest {
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
+    @Test
+    void unreadableCatalogResourceFailsFast() {
+        Resource missing = new ClassPathResource("tool-catalog/rmq-tools.missing.yaml");
+
+        assertThatThrownBy(() -> ToolCatalog.load(missing, canonicalSchema()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unable to load RocketMQ tool catalog")
+                .hasCauseInstanceOf(java.io.IOException.class);
+    }
+
+    @Test
+    void digestShouldBeTheSha256OfTheExactCatalogBytes() throws Exception {
+        ToolCatalog catalog = ToolCatalog.load(canonicalCatalog(), canonicalSchema());
+        byte[] bytes = canonicalCatalog().getContentAsByteArray();
+
+        assertThat(catalog.getDigest()).isEqualTo(sha256Hex(bytes));
+    }
+
+    @Test
+    void digestShouldChangeWhenCatalogContentChanges() {
+        String original = """
+                version: 1.0.0
+                minimumClientVersion: 1.0.0
+                tools:
+                %s
+                """.formatted(tool("rmq.cluster.list", false));
+        String modified = original.replace("Test tool.", "Test tool. revised.");
+
+        ToolCatalog first = ToolCatalog.load(utf8Resource(original), canonicalSchema());
+        ToolCatalog second = ToolCatalog.load(utf8Resource(modified), canonicalSchema());
+
+        assertThat(second.getDigest()).isNotEqualTo(first.getDigest());
+    }
+
+    private static String sha256Hex(byte[] bytes) throws Exception {
+        return java.util.HexFormat.of().formatHex(
+                java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+    }
+
     private static Resource canonicalCatalog() {
         return new ClassPathResource("tool-catalog/rmq-tools.yaml");
     }
