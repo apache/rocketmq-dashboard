@@ -561,6 +561,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'deliveries.allChannels': { zh: '全部通道', en: 'All channels' },
   'deliveries.allStatuses': { zh: '全部状态', en: 'All statuses' },
   'deliveries.allInstances': { zh: '全部实例', en: 'All instances' },
+  'deliveries.exportFailed': {
+    zh: '导出告警投递记录失败，请稍后重试',
+    en: 'Failed to export alert deliveries. Please try again later.',
+  },
   'deliveries.loadFailed': {
     zh: '告警投递记录加载失败，请稍后重试',
     en: 'Failed to load alert deliveries. Please try again later.',
