@@ -103,4 +103,49 @@ class ApacheRocketMqClusterMetricsCollectorTest {
     private static InstanceVO apacheInstance() {
         return InstanceVO.builder().name("local").endpoint("localhost:9876").vendor(InstanceVendor.APACHE).build();
     }
+
+    @Test
+    void reportsOnlyNameserverAvailabilityWhenTopologyIsEmptyTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        InstanceVO instance = apacheInstance();
+        ClusterInfo topology = new ClusterInfo();
+        topology.setBrokerAddrTable(new HashMap<>());
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+        when(resolver.execute(eq(instance), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(admin));
+
+        List<MetricSample> samples = new ApacheRocketMqClusterMetricsCollector(resolver).collect(instance);
+
+        assertThat(samples).extracting(MetricSample::metricKey)
+                .containsExactly("nameserver.availability");
+        assertThat(samples.get(0).availability()).isEqualTo(MetricAvailability.AVAILABLE);
+    }
+
+    @Test
+    void marksBrokerUnavailableWhenItsAddressIsMissingTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        InstanceVO instance = apacheInstance();
+        ClusterInfo topology = new ClusterInfo();
+        topology.setBrokerAddrTable(Map.of("broker-a",
+                new BrokerData("cluster-a", "broker-a", new HashMap<>())));
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+        when(resolver.execute(eq(instance), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(admin));
+
+        List<MetricSample> samples = new ApacheRocketMqClusterMetricsCollector(resolver).collect(instance);
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("broker.availability"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.labels()).containsEntry("brokerName", "broker-a");
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("nameserver.availability"))
+                .singleElement().extracting(MetricSample::availability)
+                .isEqualTo(MetricAvailability.AVAILABLE);
+    }
 }
