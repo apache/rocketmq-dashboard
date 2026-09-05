@@ -142,6 +142,7 @@ const AclPageContent = ({
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
   const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
+  const [userRefreshKey, setUserRefreshKey] = useState(0);
   const [ruleTotal, setRuleTotal] = useState(0);
   const [rulePage, setRulePage] = useState(1);
   const [rulePageSize, setRulePageSize] = useState(20);
@@ -251,6 +252,7 @@ const AclPageContent = ({
     userPage,
     userPageSize,
     userKeyword,
+    userRefreshKey,
   ]);
 
   /* ─── Rule helpers ─── */
@@ -417,13 +419,15 @@ const AclPageContent = ({
         setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? normalized : u)));
         message.success(t('acl.userUpdated'));
       } else {
-        const created = await createAclUser({
+        await createAclUser({
           username: values.username,
           admin: values.admin ?? false,
           clusters: values.clusters ?? [],
           instanceId: selectedInstanceId,
         });
-        setUsers((prev) => [normalizeUser(created), ...prev]);
+        // Reload the authoritative server page so the pagination total and page count
+        // stay consistent with the created row (same refresh pattern as the rules tab).
+        setUserRefreshKey((prev) => prev + 1);
         message.success(t('acl.userAdded'));
       }
       setUserModalOpen(false);
@@ -438,7 +442,9 @@ const AclPageContent = ({
   const handleDeleteUser = async (id: AclEntityId) => {
     try {
       await deleteAclUser(id, selectedInstanceId);
-      setUsers((prev) => prev.filter((u) => u.id !== id));
+      // Reload the authoritative server page so the pagination total follows the delete
+      // and an emptied last page falls back to the previous one (same as the rules tab).
+      setUserRefreshKey((prev) => prev + 1);
       message.success(t('acl.userDeleted'));
     } catch {
       message.error(t('common.operationFailed'));
