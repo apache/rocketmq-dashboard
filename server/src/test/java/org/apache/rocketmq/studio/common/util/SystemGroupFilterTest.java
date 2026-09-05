@@ -45,4 +45,19 @@ class SystemGroupFilterTest {
         assertThat(SystemGroupFilter.isSystem("FILTERSRV_CONSUMER_filter")).isFalse();
         assertThat(SystemGroupFilter.isSystem("SELF_TEST_GROUP")).isFalse();
     }
+
+    @Test
+    void shouldTreatWhitespaceOnlyGroupAsNonSystem() {
+        assertThat(SystemGroupFilter.isSystem("   ")).isFalse();
+    }
+
+    @Test
+    void shouldMatchSystemGroupPrefixVariants() {
+        assertThat(SystemGroupFilter.isSystem("CID_HOUSEKEEPING_01")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("CID_SYS_rmq_trans")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("CID_ONSAPI_other")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("rmq_sys_TRACE_DATA_2")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("%RETRY%monitor-extra")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("x%RETRY%not-a-retry-group")).isFalse();
+    }
 }
