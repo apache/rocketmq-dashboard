@@ -154,8 +154,12 @@ const TOPIC_TYPE_CARDS = [
   },
 ];
 
-// ─── Perm label ───────────────────────────────────────────────────
-const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
+// ─── Perm label keys (resolved through the translator) ───────────
+const PERM_LABEL: Record<string, string> = {
+  RW: 'topic.permRW',
+  RO: 'topic.permRO',
+  WO: 'topic.permWO',
+};
 
 type SendMessageFormValues = {
   topic: string;
@@ -290,11 +294,11 @@ const RANDOM_BODY_GENERATORS = [
 
 const ROUTE_STATUS_META: Record<
   RouteDiagnosticStatus,
-  { color: string; label: string; icon: React.ReactNode }
+  { color: string; labelKey: string; icon: React.ReactNode }
 > = {
-  healthy: { color: 'success', label: '健康', icon: <CheckCircleOutlined /> },
-  warning: { color: 'warning', label: '关注', icon: <WarningOutlined /> },
-  critical: { color: 'error', label: '异常', icon: <ExclamationCircleOutlined /> },
+  healthy: { color: 'success', labelKey: 'topic.routeHealthy', icon: <CheckCircleOutlined /> },
+  warning: { color: 'warning', labelKey: 'topic.routeWarning', icon: <WarningOutlined /> },
+  critical: { color: 'error', labelKey: 'topic.routeCritical', icon: <ExclamationCircleOutlined /> },
 };
 
 const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
@@ -776,13 +780,13 @@ const TopicPage = () => {
     const meta = ROUTE_STATUS_META[status];
     return (
       <Tag color={meta.color} icon={meta.icon}>
-        {meta.label}
+        {t(meta.labelKey)}
       </Tag>
     );
   };
 
   const renderRouteIssueTags = (issues: RouteDiagnosticIssue[]) => {
-    if (issues.length === 0) return <Text type="secondary">无</Text>;
+    if (issues.length === 0) return <Text type="secondary">{t('topic.noIssues')}</Text>;
     return (
       <Space size={[4, 4]} wrap>
         {issues.slice(0, 3).map((item) => (
@@ -810,7 +814,7 @@ const TopicPage = () => {
       ),
     },
     {
-      title: '地址拓扑',
+      title: t('topic.addressTopology'),
       key: 'brokerAddr',
       width: 260,
       render: (_: unknown, record) => (
@@ -831,28 +835,32 @@ const TopicPage = () => {
                 </Tag>
               ))
             ) : (
-              <Tag color="warning">地址未知</Tag>
+              <Tag color="warning">{t('topic.addressUnknown')}</Tag>
             )}
           </Space>
         </Space>
       ),
     },
     {
-      title: '队列分布',
+      title: t('topic.queueDistribution'),
       key: 'queues',
       width: 220,
       render: (_: unknown, record) => (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <div>
             <Flex justify="space-between">
-              <Text>写队列 {record.writeQueues}</Text>
+              <Text>
+                {t('topic.writeQueue')} {record.writeQueues}
+              </Text>
               <Text type="secondary">{formatPercent(record.writeShare)}</Text>
             </Flex>
             <Progress percent={record.writeShare} showInfo={false} size="small" />
           </div>
           <div>
             <Flex justify="space-between">
-              <Text>读队列 {record.readQueues}</Text>
+              <Text>
+                {t('topic.readQueue')} {record.readQueues}
+              </Text>
               <Text type="secondary">{formatPercent(record.readShare)}</Text>
             </Flex>
             <Progress percent={record.readShare} showInfo={false} size="small" />
@@ -861,22 +869,22 @@ const TopicPage = () => {
       ),
     },
     {
-      title: '权限',
+      title: t('topic.perm'),
       dataIndex: 'perm',
       key: 'perm',
       width: 130,
       render: (_: string, record) => (
         <Space direction="vertical" size={4}>
-          <Tag>{PERM_LABEL[record.perm] || record.perm}</Tag>
+          <Tag>{PERM_LABEL[record.perm] ? t(PERM_LABEL[record.perm]) : record.perm}</Tag>
           <Space size={4}>
-            <Tag color={record.readable ? 'success' : 'error'}>读</Tag>
-            <Tag color={record.writable ? 'success' : 'error'}>写</Tag>
+            <Tag color={record.readable ? 'success' : 'error'}>{t('topic.accessRead')}</Tag>
+            <Tag color={record.writable ? 'success' : 'error'}>{t('topic.accessWrite')}</Tag>
           </Space>
         </Space>
       ),
     },
     {
-      title: '诊断',
+      title: t('topic.diagnostics'),
       key: 'diagnostics',
       width: 220,
       render: (_: unknown, record) => renderRouteIssueTags(record.issues),
@@ -966,13 +974,13 @@ const TopicPage = () => {
         style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 12 }}
       >
         <Text strong style={{ display: 'block', marginBottom: 8 }}>
-          诊断项
+          {t('topic.routeIssues')}
         </Text>
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           {issues.map((item) => (
             <Flex key={item.id} align="flex-start" gap={8}>
               <Tag color={ISSUE_SEVERITY_COLOR[item.severity]} style={{ marginTop: 1 }}>
-                {item.severity === 'critical' ? '异常' : '关注'}
+                {item.severity === 'critical' ? t('topic.routeCritical') : t('topic.routeWarning')}
               </Tag>
               <div>
                 <Text strong>
@@ -993,7 +1001,7 @@ const TopicPage = () => {
     if (recommendations.length === 0) return null;
     return (
       <InfoBanner
-        title="建议处理"
+        title={t('topic.recommendedAction')}
         description={
           <Space direction="vertical" size={2}>
             {recommendations.map((item) => (
@@ -1015,18 +1023,22 @@ const TopicPage = () => {
     return (
       <>
         <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-          路由信息
+          {t('topic.routeInfo')}
         </Text>
         {!detailLoading && (
           <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 12 }}>
             <Alert
               type={diagnostics.statusColor}
               showIcon
-              message={`路由诊断：${diagnostics.statusText}`}
+              message={t('topic.routeDiagMessage', { status: diagnostics.statusText })}
               description={
                 diagnostics.status === 'healthy'
-                  ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
-                  : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
+                  ? t('topic.routeHealthySummary', {
+                      brokers: String(summary.brokerCount),
+                      write: String(summary.totalWriteQueues),
+                      read: String(summary.totalReadQueues),
+                    })
+                  : t('topic.routeIssueSummary', { count: String(diagnostics.issues.length) })
               }
               action={
                 routes.length === 0 ? (
@@ -1036,33 +1048,36 @@ const TopicPage = () => {
                     loading={rebuilding}
                     onClick={() => void rebuildTopic(topic)}
                   >
-                    在 Broker 上重建
+                    {t('topic.rebuildButton')}
                   </Button>
                 ) : undefined
               }
             />
             <Row gutter={[12, 12]}>
               {renderRouteMetric(
-                'Broker 数',
+                t('topic.routeBrokerCount'),
                 summary.brokerCount,
-                `${summary.addressCount} 个地址`,
+                t('topic.routeAddressCount', { count: String(summary.addressCount) }),
               )}
               {renderRouteMetric(
-                '可写 Broker',
+                t('topic.routeWritableBrokers'),
                 summary.writableBrokerCount,
-                `${summary.totalWriteQueues} 个写队列`,
+                t('topic.routeWriteQueueCount', { count: String(summary.totalWriteQueues) }),
               )}
               {renderRouteMetric(
-                '可读 Broker',
+                t('topic.routeReadableBrokers'),
                 summary.readableBrokerCount,
-                `${summary.totalReadQueues} 个读队列`,
+                t('topic.routeReadQueueCount', { count: String(summary.totalReadQueues) }),
               )}
               {renderRouteMetric(
-                'Replica 数',
+                t('topic.routeReplicaCount'),
                 summary.replicaCount,
                 summary.writeSkew.gap > 0 || summary.readSkew.gap > 0
-                  ? `队列差距 写 ${summary.writeSkew.gap} / 读 ${summary.readSkew.gap}`
-                  : '队列均衡',
+                  ? t('topic.routeQueueSkew', {
+                      write: String(summary.writeSkew.gap),
+                      read: String(summary.readSkew.gap),
+                    })
+                  : t('topic.routeQueueBalanced'),
               )}
             </Row>
             {renderRouteIssues(diagnostics.issues)}
@@ -1090,29 +1105,33 @@ const TopicPage = () => {
 
     return (
       <Descriptions bordered column={2} size="small" styles={{ label: { fontWeight: 500 } }}>
-        <Descriptions.Item label="Topic 名称" span={2}>
+        <Descriptions.Item label={t('topic.name')} span={2}>
           {topic.name}
         </Descriptions.Item>
-        <Descriptions.Item label="类型">
+        <Descriptions.Item label={t('topic.type')}>
           <Tag color={typeInfo?.color}>
             {typeInfo?.labelKey ? t(typeInfo.labelKey) : topic.type}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="集群" span={2}>
+        <Descriptions.Item label={t('topic.cluster')} span={2}>
           <Space>
             <Text>{topic.clusterId}</Text>
             {clusterType && <Tag color={clusterType.color}>{t(clusterType.labelKey)}</Tag>}
           </Space>
         </Descriptions.Item>
-        <Descriptions.Item label="写队列数">{topic.writeQueues}</Descriptions.Item>
-        <Descriptions.Item label="读队列数">{topic.readQueues}</Descriptions.Item>
-        <Descriptions.Item label="权限">
-          <Tag>{PERM_LABEL[topic.perm]}</Tag>
+        <Descriptions.Item label={t('topic.writeQueues')}>{topic.writeQueues}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.readQueues')}>{topic.readQueues}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.perm')}>
+          <Tag>{t(PERM_LABEL[topic.perm])}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="今日消息量">{formatNumber(topic.messageCount)}</Descriptions.Item>
-        <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
-        <Descriptions.Item label="消费者组数">{topic.consumerGroupCount}</Descriptions.Item>
-        <Descriptions.Item label="创建时间" span={2}>
+        <Descriptions.Item label={t('topic.messageCount')}>
+          {formatNumber(topic.messageCount)}
+        </Descriptions.Item>
+        <Descriptions.Item label={t('topic.tps')}>{formatNumber(topic.tps)}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.consumerGroupCount')}>
+          {topic.consumerGroupCount}
+        </Descriptions.Item>
+        <Descriptions.Item label={t('topic.createdAt')} span={2}>
           {formatDateTime(topic.gmtCreate)}
         </Descriptions.Item>
       </Descriptions>
