@@ -165,6 +165,29 @@ class ClusterControllerTest {
     }
 
     @Test
+    void listClustersShouldForwardTheSelectedInstance() throws Exception {
+        when(clusterService.listClusters("instance-1")).thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/api/clusters").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+
+        verify(clusterService).listClusters("instance-1");
+    }
+
+    @Test
+    void getClusterShouldForwardTheSelectedInstance() throws Exception {
+        ClusterVO cluster = buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy);
+        when(clusterService.getCluster("cluster-1", "instance-1")).thenReturn(cluster);
+
+        mockMvc.perform(get("/api/clusters/cluster-1").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value("cluster-1"));
+
+        verify(clusterService).getCluster("cluster-1", "instance-1");
+    }
+
+    @Test
     void getClusterShouldReturnClusterDetail() throws Exception {
         ClusterVO cluster = buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy);
         cluster.setConfig(ClusterConfigVO.builder()
