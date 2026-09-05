@@ -253,7 +253,7 @@ const ConsumerPageContent = ({
   instanceOptions,
   instancesLoading,
 }: ConsumerPageContentProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -715,7 +715,7 @@ const ConsumerPageContent = ({
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('consumer.selectInstanceFirst'));
       return;
     }
     setImportFilename(file.name);
@@ -728,7 +728,7 @@ const ConsumerPageContent = ({
       setImportErrors(validation.errors);
     } catch (error) {
       setImportRows([]);
-      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+      setImportErrors([error instanceof Error ? error.message : t('consumer.csvParseFailed')]);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
@@ -736,7 +736,7 @@ const ConsumerPageContent = ({
 
   const handleImportConsumerGroups = async () => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('consumer.selectInstanceFirst'));
       return;
     }
     const targetIndexes = importRows
@@ -761,16 +761,16 @@ const ConsumerPageContent = ({
           ? {
               ...nextRows[index],
               status: 'failed',
-              message: failure.message || '创建失败',
+              message: failure.message || t('consumer.rowCreateFailed'),
             }
-          : { ...nextRows[index], status: 'success', message: '已创建' };
+          : { ...nextRows[index], status: 'success', message: t('consumer.rowCreated') };
       });
     } catch (error) {
       for (const { index } of targetIndexes) {
         nextRows[index] = {
           ...nextRows[index],
           status: 'failed',
-          message: error instanceof Error ? error.message : '创建失败',
+          message: error instanceof Error ? error.message : t('consumer.rowCreateFailed'),
         };
       }
     } finally {
@@ -789,34 +789,44 @@ const ConsumerPageContent = ({
     const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
     if (failedCount === 0) {
       if (invalidCount > 0) {
-        message.warning(`已导入 ${createdGroups.length} 个 Group，${invalidCount} 行无效已跳过`);
+        message.warning(
+          t('consumer.importWithInvalid', {
+            imported: String(createdGroups.length),
+            invalid: String(invalidCount),
+          }),
+        );
       } else {
-        message.success(`已导入 ${createdGroups.length} 个 Group`);
+        message.success(t('consumer.imported', { count: String(createdGroups.length) }));
       }
     } else if (createdGroups.length > 0) {
-      message.warning(`已导入 ${createdGroups.length} 个 Group，${failedCount} 个失败`);
+      message.warning(
+        t('consumer.importPartialFailed', {
+          imported: String(createdGroups.length),
+          failed: String(failedCount),
+        }),
+      );
     } else {
-      message.error(`${failedCount} 个 Group 导入失败`);
+      message.error(t('consumer.importFailed', { count: String(failedCount) }));
     }
   };
 
   const consumerGroupImportColumns: ColumnsType<ResourceImportRow<Partial<ConsumerGroup>>> = [
-    { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
-    { title: 'Group 名称', dataIndex: 'name', key: 'name' },
+    { title: t('consumer.lineNumber'), dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
+    { title: t('consumer.name'), dataIndex: 'name', key: 'name' },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (status: ResourceImportRow<Partial<ConsumerGroup>>['status']) => {
-        if (status === 'success') return <Tag color="success">成功</Tag>;
-        if (status === 'failed') return <Tag color="error">失败</Tag>;
-        if (status === 'invalid') return <Tag color="warning">无效</Tag>;
-        return <Tag>待导入</Tag>;
+        if (status === 'success') return <Tag color="success">{t('consumer.importSuccess')}</Tag>;
+        if (status === 'failed') return <Tag color="error">{t('consumer.importFailedShort')}</Tag>;
+        if (status === 'invalid') return <Tag color="warning">{t('consumer.importInvalid')}</Tag>;
+        return <Tag>{t('consumer.importPending')}</Tag>;
       },
     },
     {
-      title: '说明',
+      title: t('consumer.description'),
       dataIndex: 'message',
       key: 'message',
       render: (text?: string) => text || '-',
@@ -1465,7 +1475,7 @@ const ConsumerPageContent = ({
             disabled={!hasSelectedInstance}
             onClick={() => setCreateModalOpen(true)}
           >
-            创建 Group
+            {t('consumer.createGroupLabel')}
           </Button>
           <Tooltip title="开启后每 2 秒自动刷新列表">
             <Button
@@ -2173,7 +2183,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <Plus size={18} weight="bold" color="#1677ff" />
-            <span>创建 Group</span>
+            <span>{t('consumer.createGroupLabel')}</span>
           </Space>
         }
         open={createModalOpen}
@@ -2187,14 +2197,14 @@ const ConsumerPageContent = ({
             .validateFields()
             .then((values) => {
               if (!selectedInstanceId) {
-                message.error('请先选择实例');
+                message.error(t('consumer.selectInstanceFirst'));
                 return;
               }
               Modal.confirm({
-                title: '确认创建',
-                content: `将创建消费组 "${values.name}"`,
-                okText: '确认创建',
-                cancelText: '取消',
+                title: t('consumer.confirmCreate'),
+                content: t('consumer.confirmCreateContent', { name: values.name }),
+                okText: t('consumer.confirmCreate'),
+                cancelText: t('common.cancel'),
                 onOk: async () => {
                   setSubmitting(true);
                   try {
@@ -2212,7 +2222,7 @@ const ConsumerPageContent = ({
                       created,
                       ...prev.filter((group) => group.name !== created.name),
                     ]);
-                    message.success(`消费组 ${values.name} 创建成功`);
+                    message.success(t('consumer.createdToast', { name: values.name }));
                     setCreateModalOpen(false);
                     form.resetFields();
                     setDataTypeValue(undefined);
@@ -2228,8 +2238,8 @@ const ConsumerPageContent = ({
             .catch(() => {});
         }}
         confirmLoading={submitting}
-        okText="创建"
-        cancelText="取消"
+        okText={t('consumer.createButton')}
+        cancelText={t('common.cancel')}
         width={560}
         destroyOnHidden
       >
@@ -2244,25 +2254,27 @@ const ConsumerPageContent = ({
           }}
         >
           <Form.Item
-            label="Group 名称"
+            label={t('consumer.name')}
             name="name"
             rules={[
-              { required: true, message: '请输入 Group 名称' },
+              { required: true, message: t('consumer.nameRequired') },
               {
                 pattern: RESOURCE_NAME_PATTERN,
-                message: '仅支持字母、数字、下划线、短横线、% 和 |',
+                message: t('consumer.namePattern'),
               },
               {
                 max: RESOURCE_NAME_MAX_LENGTH.group,
-                message: `名称不能超过 ${RESOURCE_NAME_MAX_LENGTH.group} 个字符`,
+                message: t('consumer.nameMaxLength', {
+                  count: String(RESOURCE_NAME_MAX_LENGTH.group),
+                }),
               },
             ]}
           >
-            <Input placeholder="例：cg-order-notify" />
+            <Input placeholder={t('consumer.namePlaceholder')} />
           </Form.Item>
 
           {!isCloudInstance && (
-            <Form.Item label="订阅模式" name="subscriptionMode">
+            <Form.Item label={t('consumer.subMode')} name="subscriptionMode">
               <Radio.Group>
                 <Radio.Button value="Push">Push</Radio.Button>
                 <Radio.Button value="Pop">Pop</Radio.Button>
@@ -2271,42 +2283,48 @@ const ConsumerPageContent = ({
           )}
 
           {!isCloudInstance && (
-            <Form.Item label="消费类型" name="consumeType">
+            <Form.Item label={t('consumer.consumeTypeLabel')} name="consumeType">
               <Radio.Group>
-                <Radio.Button value="CLUSTERING">集群消费</Radio.Button>
-                <Radio.Button value="BROADCASTING">广播消费</Radio.Button>
+                <Radio.Button value="CLUSTERING">{t('consumer.consumeClustering')}</Radio.Button>
+                <Radio.Button value="BROADCASTING">
+                  {t('consumer.consumeBroadcasting')}
+                </Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}
 
-          <Form.Item label="最大重试次数" name="retryMaxTimes">
+          <Form.Item label={t('consumer.maxRetry')} name="retryMaxTimes">
             <InputNumber min={0} max={128} style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="订阅组类型" name="dataType">
+          <Form.Item label={t('consumer.subGroupType')} name="dataType">
             <Select
-              placeholder="选择消息类型"
+              placeholder={t('consumer.dataTypePlaceholder')}
               options={[
-                { value: 'NORMAL', label: '普通消息' },
-                { value: 'FIFO', label: '顺序消息' },
-                { value: 'DELAY', label: '延迟消息' },
-                { value: 'TRANSACTION', label: '事务消息' },
+                { value: 'NORMAL', label: t('consumer.dataTypeNormal') },
+                { value: 'FIFO', label: t('consumer.dataTypeOrder') },
+                { value: 'DELAY', label: t('consumer.dataTypeDelay') },
+                { value: 'TRANSACTION', label: t('consumer.dataTypeTransaction') },
               ]}
               onChange={(val) => setDataTypeValue(val)}
             />
           </Form.Item>
 
           {dataTypeValue === 'FIFO' && (
-            <Form.Item label="顺序类型" name="deliveryOrderType" initialValue="PARTITON_ORDER">
+            <Form.Item
+              label={t('consumer.orderTypeLabel')}
+              name="deliveryOrderType"
+              initialValue="PARTITON_ORDER"
+            >
               <Select
                 options={[
                   {
                     value: 'PARTITON_ORDER',
-                    label: '分区顺序',
+                    label: t('consumer.orderTypePartition'),
                   },
                   {
                     value: 'MESSAGES_ORDER',
-                    label: '全局顺序',
+                    label: t('consumer.orderTypeGlobal'),
                   },
                 ]}
               />
@@ -2319,14 +2337,22 @@ const ConsumerPageContent = ({
          Import Group Modal
          ═══════════════════════════════════════════ */}
       <Modal
-        title={`导入 Group${importFilename ? `：${importFilename}` : ''}`}
+        title={
+          importFilename
+            ? t('consumer.importTitleWithFile', { file: importFilename })
+            : t('consumer.importTitle')
+        }
         open={importModalOpen}
         onCancel={() => {
           if (!importing) setImportModalOpen(false);
         }}
         onOk={() => void handleImportConsumerGroups()}
-        okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
-        cancelText="关闭"
+        okText={
+          importRows.some((row) => row.status === 'failed')
+            ? t('consumer.retryFailedItems')
+            : t('consumer.startImport')
+        }
+        cancelText={t('consumer.close')}
         confirmLoading={importing}
         okButtonProps={{
           disabled:
@@ -2342,24 +2368,24 @@ const ConsumerPageContent = ({
             <Alert
               type="error"
               showIcon
-              message="CSV 无法导入"
-              description={importErrors.join('；')}
+              message={t('consumer.csvNotImportable')}
+              description={importErrors.join(lang === 'en' ? '; ' : '；')}
             />
           ) : importRows.some((row) => row.status === 'invalid') ? (
             <Alert
               type="warning"
               showIcon
-              message={`检测到 ${
-                importRows.filter((row) => row.status === 'invalid').length
-              } 行无效，将跳过这些行`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('consumer.invalidRowsNotice', {
+                count: String(importRows.filter((row) => row.status === 'invalid').length),
+              })}
+              description={t('consumer.importColumnsNote')}
             />
           ) : (
             <Alert
               type="info"
               showIcon
-              message={`检测到 ${importRows.length} 个 Group，将通过后端批量导入`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('consumer.importPlanNotice', { count: String(importRows.length) })}
+              description={t('consumer.importColumnsNote')}
             />
           )}
           <Table<ResourceImportRow<Partial<ConsumerGroup>>>
