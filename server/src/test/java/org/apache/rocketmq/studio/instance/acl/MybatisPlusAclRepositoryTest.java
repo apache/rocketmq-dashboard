@@ -210,6 +210,78 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void replaceUserShouldExplicitlyClearClusterBindingsWhenListIsEmpty() {
+        RmqAclUser existing = new RmqAclUser();
+        existing.setId(1L);
+        existing.setClusters("cluster-a,cluster-b");
+        existing.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(userMapper.selectById(1L)).thenReturn(existing);
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+        when(userMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        AclUserVO replacement = AclUserVO.builder()
+                .id(1L)
+                .username("svc-a")
+                .accessKey("access-key")
+                .secretKey("secret-key")
+                .clusters(List.of())
+                .build();
+
+        assertThat(repository.replaceUser(replacement)).isPresent();
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet()).contains("clusters");
+        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(null);
+    }
+
+    @Test
+    void replaceUserShouldKeepClusterBindingsWhenNoneProvided() {
+        RmqAclUser existing = new RmqAclUser();
+        existing.setId(1L);
+        existing.setClusters("cluster-a");
+        existing.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(userMapper.selectById(1L)).thenReturn(existing);
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+
+        AclUserVO replacement = AclUserVO.builder()
+                .id(1L)
+                .username("renamed")
+                .build();
+
+        assertThat(repository.replaceUser(replacement)).isPresent();
+
+        verify(userMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void replaceRuleShouldExplicitlyClearActionsWhenListIsEmpty() {
+        RmqAclRule existing = new RmqAclRule();
+        existing.setId(1L);
+        existing.setActions("PUB,SUB");
+        existing.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(ruleMapper.selectById(1L)).thenReturn(existing);
+        when(ruleMapper.updateById(any(RmqAclRule.class))).thenReturn(1);
+        when(ruleMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        AclRuleVO replacement = AclRuleVO.builder()
+                .id(1L)
+                .principal("svc-a")
+                .resource("orders")
+                .actions(List.of())
+                .build();
+
+        assertThat(repository.replaceRule(replacement)).isPresent();
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(ruleMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet()).contains("actions");
+        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(null);
+    }
+
+    @Test
     void upsertShouldAssignUniqueRuleIdPerPermission() {
         when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
