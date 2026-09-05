@@ -40,4 +40,17 @@ class DataSourceTestDTOTest {
         assertThat(value).doesNotContain("plain-password");
         assertThat(value).doesNotContain("plain-token");
     }
+
+    @Test
+    void missingUrlAndTypeAreRejected() {
+        jakarta.validation.Validator validator =
+                jakarta.validation.Validation.buildDefaultValidatorFactory().getValidator();
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+            .username("prometheus-user")
+            .build();
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .contains("url is required", "type is required");
+    }
 }
