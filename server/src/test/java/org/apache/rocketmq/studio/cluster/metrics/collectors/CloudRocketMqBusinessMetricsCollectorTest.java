@@ -67,4 +67,65 @@ class CloudRocketMqBusinessMetricsCollectorTest {
         assertThat(new CloudRocketMqBusinessMetricsCollector(mock(InstanceProviderRegistry.class)).collect(instance))
                 .isEmpty();
     }
+
+    @Test
+    void groupLevelFailureDegradesToUnavailableMetrics() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceVO instance = InstanceVO.builder().name("aliyun").vendor(InstanceVendor.ALIYUN).build();
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        when(registry.byInstanceId("aliyun")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("aliyun", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("aliyun", "orders"))
+                .thenThrow(new IllegalStateException("lag api down"));
+
+        List<MetricSample> samples = new CloudRocketMqBusinessMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).hasSize(3).allSatisfy(sample -> {
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+            assertThat(sample.value()).isNull();
+            assertThat(sample.labels()).containsEntry("consumerGroup", "orders");
+        });
+    }
+
+    @Test
+    void negativeLagsAreClampedToZeroBeforeAggregation() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceVO instance = InstanceVO.builder().name("aliyun").vendor(InstanceVendor.ALIYUN).build();
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        when(registry.byInstanceId("aliyun")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("aliyun", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("aliyun", "orders")).thenReturn(List.of(
+                QueueProgressVO.builder().topic("orders-topic").diffTotal(-5).build(),
+                QueueProgressVO.builder().topic("orders-topic").diffTotal(-7).build()));
+
+        List<MetricSample> samples = new CloudRocketMqBusinessMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("consumer.lag.total"))
+                .singleElement().extracting(MetricSample::value).isEqualTo(0D);
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("consumer.lag.max_queue"))
+                .singleElement().extracting(MetricSample::value).isEqualTo(0D);
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("topic.backlog.total"))
+                .singleElement().extracting(MetricSample::value).isEqualTo(0D);
+    }
+
+    @Test
+    void blankGroupNamesAreSkippedWithoutProgressCalls() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceVO instance = InstanceVO.builder().name("aliyun").vendor(InstanceVendor.ALIYUN).build();
+        ConsumerGroupVO blank = new ConsumerGroupVO();
+        blank.setName("   ");
+        when(registry.byInstanceId("aliyun")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("aliyun", null)).thenReturn(List.of(blank));
+
+        List<MetricSample> samples = new CloudRocketMqBusinessMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).isEmpty();
+        org.mockito.Mockito.verify(provider, org.mockito.Mockito.never())
+                .getGroupProgress(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
 }
