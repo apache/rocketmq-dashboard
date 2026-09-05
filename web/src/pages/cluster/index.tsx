@@ -50,6 +50,7 @@ import {
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import NameserverRegistryReconciliationDrawer from '../../components/NameserverRegistryReconciliationDrawer';
 import { useLang } from '../../i18n/LangContext';
 import { countClusterComponents } from './clusterStats';
 import type {
@@ -137,6 +138,7 @@ const ClusterPage = () => {
   const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
   const [configSubmitting, setConfigSubmitting] = useState(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
+  const [registryReconciliationOpen, setRegistryReconciliationOpen] = useState(false);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsConfigDiffState, setNsConfigDiffState] = useState<{
     open: boolean;
@@ -1454,9 +1456,14 @@ const ClusterPage = () => {
               style={{ width: 240 }}
             />
           </Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openNsCreateModal}>
-            {t('cluster.createNameServer')}
-          </Button>
+          <Space>
+            <Button onClick={() => setRegistryReconciliationOpen(true)}>
+              {t('cluster.registryReconcileAction')}
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openNsCreateModal}>
+              {t('cluster.createNameServer')}
+            </Button>
+          </Space>
         </Flex>
         <Card styles={{ body: { padding: 0 } }}>
           <Table
@@ -1468,6 +1475,13 @@ const ClusterPage = () => {
             scroll={{ x: tableScrollX(registryColumns) }}
           />
         </Card>
+        <NameserverRegistryReconciliationDrawer
+          open={registryReconciliationOpen}
+          loading={registryLoading}
+          registry={nsRegistry}
+          clusters={registryClusters}
+          onClose={() => setRegistryReconciliationOpen(false)}
+        />
       </div>
     );
   }
