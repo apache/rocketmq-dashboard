@@ -82,4 +82,22 @@ class ClusterRepositoryImplTest {
         assertThat(repository.findById("cluster-001").orElseThrow().getConfig().getFileReservedTime())
                 .isEqualTo(24);
     }
+
+    @Test
+    void findByIdShouldBeEmptyForAnUnknownCluster() {
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl(true);
+
+        assertThat(repository.findById("missing-cluster")).isEmpty();
+    }
+
+    @Test
+    void updateConfigShouldBeANoOpForAnUnknownCluster() {
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl(true);
+        ClusterConfigVO config = ClusterConfigVO.builder().fileReservedTime(24).build();
+
+        repository.updateConfig("missing-cluster", config);
+
+        assertThat(repository.findAll()).hasSize(2);
+        assertThat(repository.findById("missing-cluster")).isEmpty();
+    }
 }
