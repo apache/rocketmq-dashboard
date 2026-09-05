@@ -16,17 +16,24 @@
  */
 package org.apache.rocketmq.studio.provider.credential;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CloudCredentialController.class)
@@ -50,5 +57,47 @@ class CloudCredentialControllerTest {
         mockMvc.perform(get("/api/cloud-credentials/1/credentials"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+    }
+
+    @Test
+    void listCredentialsShouldPassFiltersAndDefaults() throws Exception {
+        when(credentialService.listMasked(InstanceVendor.ALIYUN, "prod", 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        mockMvc.perform(get("/api/cloud-credentials")
+                        .param("vendor", "ALIYUN")
+                        .param("search", "prod"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.items").isEmpty());
+
+        verify(credentialService).listMasked(InstanceVendor.ALIYUN, "prod", 1, 20);
+    }
+
+    @Test
+    void createCredentialShouldRejectMissingBody() throws Exception {
+        mockMvc.perform(post("/api/cloud-credentials/create")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    void createCredentialShouldDelegateWithParsedVendor() throws Exception {
+        CloudCredentialVO created = new CloudCredentialVO();
+        created.setId(5L);
+        created.setName("prod-tencent");
+        created.setVendor(InstanceVendor.TENCENT);
+        when(credentialService.create(any(CloudCredentialVO.class))).thenReturn(created);
+
+        mockMvc.perform(post("/api/cloud-credentials/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"prod-tencent\",\"vendor\":\"tencent\","
+                                + "\"accessKey\":\"ak-1\",\"secretKey\":\"sk-1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(5))
+                .andExpect(jsonPath("$.data.name").value("prod-tencent"));
+
+        verify(credentialService).create(any(CloudCredentialVO.class));
     }
 }
