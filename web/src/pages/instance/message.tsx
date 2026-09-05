@@ -81,11 +81,13 @@ import {
   type MessageTraceDiagnostics,
   type TraceDiagnosticStatus,
 } from '../../utils/messageTraceDiagnostics';
+import { BoundedPromiseCache } from '../../utils/boundedPromiseCache';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
 const DEFAULT_QUERY_ERROR = '消息查询失败，请稍后重试';
 const DEFAULT_TRACE_ERROR = '消息轨迹加载失败，请稍后重试';
+const TRACE_CACHE_MAX_ENTRIES = 32;
 
 /* ─── Constants ─── */
 
@@ -411,7 +413,9 @@ const MessagePageContent = ({
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
-  const traceCacheRef = useRef(new Map<string, Promise<TraceRecord | null>>());
+  const traceCacheRef = useRef(
+    new BoundedPromiseCache<string, TraceRecord | null>(TRACE_CACHE_MAX_ENTRIES),
+  );
   const traceDiagnostics = useMemo(() => analyzeMessageTrace(traceData), [traceData]);
 
   useEffect(
