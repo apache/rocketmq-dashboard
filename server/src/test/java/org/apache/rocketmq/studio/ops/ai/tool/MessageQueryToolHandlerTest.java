@@ -130,4 +130,36 @@ class MessageQueryToolHandlerTest {
                 .queryMessages(eq("instance-a"), any(), any(), any(), any(),
                         eq(123456789L), any());
     }
+
+    @Test
+    void reportsItsToolName() {
+        assertThat(handler.name()).isEqualTo("rmq.message.query");
+    }
+
+    @Test
+    void parsesStringTimestampsAndProjectsNullTextAsBlank() {
+        MessageRecordVO message = MessageRecordVO.builder()
+                .msgId("msg-2")
+                .storeTime(1000L)
+                .bodyTruncated(false)
+                .size(3)
+                .build();
+        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(message));
+
+        List<?> rows = (List<?>) handler.execute(Map.of(
+                "cluster", "instance-a", "topic", "TopicA", "startTime", "1500"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> row = (Map<String, Object>) rows.get(0);
+        assertThat(row.get("topic")).isEqualTo("");
+        assertThat(row.get("tag")).isEqualTo("");
+        assertThat(row.get("key")).isEqualTo("");
+        assertThat(row.get("bornHost")).isEqualTo("");
+        assertThat(row.get("storeHost")).isEqualTo("");
+        assertThat(row.get("body")).isEqualTo("");
+        assertThat(row.get("msgId")).isEqualTo("msg-2");
+        verify(messageService).queryMessages(eq("instance-a"), eq("TopicA"), any(), any(), any(),
+                eq(1500L), any());
+    }
 }
