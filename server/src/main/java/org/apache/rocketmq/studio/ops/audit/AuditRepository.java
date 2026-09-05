@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 
 public interface AuditRepository {
-    PageResult<AuditRecordVO> findPage(String search, String operationType,
+PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
                                        String resourceType, String target, String clusterId,
                                        boolean clusterIdMissing,
                                        LocalDateTime startDate, LocalDateTime endDate,
@@ -28,7 +28,7 @@ public interface AuditRepository {
 
     AuditFilterOptionsVO findFilterOptions();
 
-    AuditSummaryVO summarize(String search, String operationType, String resourceType,
+    AuditSummaryVO summarize(String search, String operator, String operationType, String resourceType,
                              String clusterId, LocalDateTime startDate, LocalDateTime endDate,
                              String result);
 

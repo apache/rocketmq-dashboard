@@ -41,6 +41,7 @@ public class AuditController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String operator,
             @RequestParam(required = false) String operationType,
             @RequestParam(required = false) String resourceType,
             @RequestParam(required = false) String target,
@@ -49,7 +50,7 @@ public class AuditController {
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
-        return Result.ok(auditService.queryLogs(page, pageSize, search, operationType,
+return Result.ok(auditService.queryLogs(page, pageSize, search, operator, operationType,
                 resourceType, target, clusterId, clusterIdMissing, startDate, endDate, result));
     }
 
@@ -61,19 +62,21 @@ public class AuditController {
     @GetMapping("/summary")
     public Result<AuditSummaryVO> summarize(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String operator,
             @RequestParam(required = false) String operationType,
             @RequestParam(required = false) String resourceType,
             @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
-        return Result.ok(auditService.summarize(search, operationType, resourceType,
+        return Result.ok(auditService.summarize(search, operator, operationType, resourceType,
                 clusterId, startDate, endDate, result));
     }
 
     @GetMapping("/export")
     public Result<String> exportLogs(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String operator,
             @RequestParam(required = false) String operationType,
             @RequestParam(required = false) String resourceType,
             @RequestParam(required = false) String target,
@@ -82,7 +85,7 @@ public class AuditController {
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
-        return Result.ok(auditService.exportLogs(search, operationType, resourceType,
+return Result.ok(auditService.exportLogs(search, operator, operationType, resourceType,
                 target, clusterId, clusterIdMissing, startDate, endDate, result));
     }
 

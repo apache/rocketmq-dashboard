@@ -70,6 +70,7 @@ describe('Audit page', () => {
 
   beforeEach(() => {
     vi.mocked(opsService.getAuditFilterOptions).mockResolvedValue({
+      operators: ['admin', 'operator-a'],
       operationTypes: ['ADD_PROXY_ADDRESS', 'CREATE_TOPIC', 'RESET_OFFSET'],
       resourceTypes: ['CONSUMER_GROUP', 'PROXY', 'TOPIC'],
       clusterIds: ['prod-cn', 'prod-sh'],
@@ -141,6 +142,7 @@ describe('Audit page', () => {
     await waitFor(() =>
       expect(opsService.exportAuditLogs).toHaveBeenCalledWith({
         search: 'topic-a',
+        operator: undefined,
         operationType: undefined,
         resourceType: undefined,
         clusterId: undefined,
@@ -274,6 +276,7 @@ describe('Audit page', () => {
         page: 1,
         pageSize: 20,
         search: undefined,
+        operator: undefined,
         operationType: 'CREATE_TOPIC',
         resourceType: 'CONSUMER_GROUP',
         clusterId: 'prod-sh',
@@ -281,6 +284,34 @@ describe('Audit page', () => {
         endDate: undefined,
         result: undefined,
       }),
+    );
+  });
+
+  it('applies the selected operator as an exact backend filter', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '操作人' }));
+    await user.click(
+      await screen.findByText('operator-a', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(opsService.getAuditSummary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+    await waitFor(() =>
+      expect(opsService.exportAuditLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ operator: 'operator-a' }),
+      ),
     );
   });
 
@@ -337,6 +368,7 @@ describe('Audit page', () => {
 
     await act(async () => {
       staleOptions.resolve({
+        operators: ['STALE_OPERATOR'],
         operationTypes: ['STALE_OPERATION'],
         resourceTypes: [],
         clusterIds: [],
