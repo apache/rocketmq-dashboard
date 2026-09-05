@@ -312,6 +312,38 @@ class QueryHistoryServiceTest {
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
 
+    @Test
+    void buildResultSnapshotShouldReturnNullForNullOrEmptyResults() {
+        assertThat(service.buildResultSnapshot(null)).isNull();
+        assertThat(service.buildResultSnapshot(List.of())).isNull();
+    }
+
+    @Test
+    void getMessageQueryResultsShouldReturnEmptyForMissingOrBlankSnapshot() {
+        RmqMessageQuery noSnapshot = new RmqMessageQuery();
+        noSnapshot.setId(5L);
+        noSnapshot.setResultSnapshot(null);
+        when(messageQueryMapper.selectById(5L)).thenReturn(noSnapshot);
+
+        assertThat(service.getMessageQueryResults(5L)).isEmpty();
+
+        RmqMessageQuery blankSnapshot = new RmqMessageQuery();
+        blankSnapshot.setId(6L);
+        blankSnapshot.setResultSnapshot("  ");
+        when(messageQueryMapper.selectById(6L)).thenReturn(blankSnapshot);
+
+        assertThat(service.getMessageQueryResults(6L)).isEmpty();
+    }
+
+    @Test
+    void getMessageQueryResultsShouldRejectUnknownRecord() {
+        when(messageQueryMapper.selectById(999L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.getMessageQueryResults(999L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+    }
+
     private static RmqMessageQuery messageQuery(Long id) {
         RmqMessageQuery query = new RmqMessageQuery();
         query.setId(id);
