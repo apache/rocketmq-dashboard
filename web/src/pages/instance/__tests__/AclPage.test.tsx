@@ -597,6 +597,55 @@ describe('ACL page', () => {
     });
   });
 
+  it('reloads the server user page after creating an ACL user', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.createAclUser).mockResolvedValue({
+      id: 13,
+      username: 'orders-service',
+      accessKey: 'acce****3456',
+      secretKey: 'secr****7654',
+      admin: false,
+      clusters: ['cluster-a', 'cluster-b'],
+      gmtCreate: '2026-08-01T00:00:00Z',
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
+    await user.click(within(userPanel).getByRole('button', { name: /添加用户/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.type(
+      within(dialog).getByPlaceholderText('例：user-order-service'),
+      'orders-service',
+    );
+    const clusterInput = within(dialog).getByRole('combobox');
+    await user.type(clusterInput, 'cluster-a,cluster-b,');
+    await user.click(within(dialog).getByRole('button', { name: /添\s*加/ }));
+
+    await waitFor(() => expect(aclService.createAclUser).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(aclService.pageAclUsers).toHaveBeenCalledTimes(2));
+  });
+
+  it('reloads the server user page after deleting one ACL user', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(aclService.deleteAclUser).mockResolvedValue(undefined);
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
+    const row = await within(userPanel).findByRole('row', { name: /remote-admin/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() => expect(aclService.deleteAclUser).toHaveBeenCalledWith(11, undefined));
+    await waitFor(() => expect(aclService.pageAclUsers).toHaveBeenCalledTimes(2));
+    confirmSpy.mockRestore();
+  });
+
   it('replaces the cluster scope of an existing user', async () => {
     const user = userEvent.setup();
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
