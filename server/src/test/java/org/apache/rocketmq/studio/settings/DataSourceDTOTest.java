@@ -64,4 +64,34 @@ class DataSourceDTOTest {
         request.setUrl("https://metrics.example.test");
         return request;
     }
+
+    @Test
+    void shouldRejectUnsupportedTypeAuthAndMissingCoreFields() {
+        DataSourceDTO request = validDataSource();
+        request.setType("influxdb");
+        request.setAuth("api-key");
+        request.setName(" ");
+        request.setUrl("");
+
+        try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
+            var messages = validatorFactory.getValidator().validate(request).stream()
+                    .map(violation -> violation.getMessage()).toList();
+            assertThat(messages)
+                    .contains("Unsupported metrics data source type",
+                            "Unsupported metrics data source authentication",
+                            "name is required", "url is required");
+        }
+    }
+
+    @Test
+    void toDataSourceVONormalizesAuthAndDefaultsUnknownType() {
+        DataSourceDTO request = validDataSource();
+        request.setType("future-backend");
+        request.setAuth(" bearer token ");
+
+        DataSourceVO dataSource = request.toDataSourceVO();
+
+        assertThat(dataSource.getType()).isEqualTo("Prometheus");
+        assertThat(dataSource.getAuth()).isEqualTo("bearer token");
+    }
 }
