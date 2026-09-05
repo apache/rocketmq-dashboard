@@ -2542,6 +2542,9 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Studio Ops ───
+  'ops.runtimeConfigUnavailable': { zh: '运行时配置不可用', en: 'Runtime configuration is unavailable' },
+  'ops.runtimeConfigUnavailableFallback': { zh: '当前集群不支持读取或更新 Ops 配置。', en: 'This cluster does not support reading or updating Ops configuration.' },
   // ─── BrokerCluster ───
 };
 
