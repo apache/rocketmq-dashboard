@@ -79,4 +79,25 @@ class OperationAuditServiceTest {
                 "cluster-a", "result=SUCCESS", "SUCCESS", null))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    void recordShouldMapEveryFieldAndStampBothTimestamps() {
+        OperationAuditService service = new OperationAuditService(auditMapper);
+
+        service.record("DELETE", "GROUP", "cg-orders", "cluster-a",
+                "removed consumer group", "SUCCESS", "no-error");
+
+        ArgumentCaptor<RmqOperationAudit> captor = ArgumentCaptor.forClass(RmqOperationAudit.class);
+        verify(auditMapper).insert(captor.capture());
+        RmqOperationAudit audit = captor.getValue();
+        assertThat(audit.getOperation()).isEqualTo("DELETE");
+        assertThat(audit.getResourceType()).isEqualTo("GROUP");
+        assertThat(audit.getResourceName()).isEqualTo("cg-orders");
+        assertThat(audit.getClusterId()).isEqualTo("cluster-a");
+        assertThat(audit.getDetail()).isEqualTo("removed consumer group");
+        assertThat(audit.getResult()).isEqualTo("SUCCESS");
+        assertThat(audit.getErrorMessage()).isEqualTo("no-error");
+        assertThat(audit.getGmtCreate()).isNotNull();
+        assertThat(audit.getGmtCreate()).isEqualTo(audit.getGmtModified());
+    }
 }
