@@ -27,6 +27,8 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
@@ -409,6 +411,31 @@ class RocketMQMetadataProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to get routes for topic TopicA: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getTopicRoutesShouldReturnEmptyListWhenTopicHasNoBrokerRoute() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.TOPIC_NOT_EXIST,
+                "Not found topic route info in name server for topic: TopicA"));
+
+        assertThat(newLiveProvider(admin).getTopicRoutes(null, "TopicA")).isEmpty();
+    }
+
+    @Test
+    void getTopicConsumersShouldReturnEmptyPageWhenTopicHasNoBrokerRoute() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.TOPIC_NOT_EXIST,
+                "Not found topic route info in name server for topic: TopicA"));
+
+        TopicConsumerPageVO page = newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20);
+
+        assertThat(page.getItems()).isEmpty();
+        assertThat(page.getTotal()).isZero();
+        assertThat(page.getPage()).isEqualTo(1);
+        assertThat(page.getPageSize()).isEqualTo(20);
     }
 
     @Test
