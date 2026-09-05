@@ -710,4 +710,33 @@ describe('MessagePage async request ownership', () => {
     expect(screen.getAllByText('message-b trace')).not.toHaveLength(0);
     expect(screen.queryByText('message-a stale trace')).not.toBeInTheDocument();
   });
+
+  it('keeps the trace tab responsive when an empty trace query supersedes an in-flight load', async () => {
+    const pendingTrace = createDeferred<TraceRecord | null>();
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockReturnValue(pendingTrace.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(within(dialog).getByText('正在加载轨迹数据…')).toBeInTheDocument();
+
+    await user.clear(within(dialog).getByPlaceholderText('消息 ID（默认当前消息）'));
+    await user.click(within(dialog).getByRole('button', { name: /查询轨迹/ }));
+
+    expect(within(dialog).getByText('请输入 Message ID')).toBeInTheDocument();
+    expect(within(dialog).queryByText('正在加载轨迹数据…')).not.toBeInTheDocument();
+
+    await act(async () => {
+      pendingTrace.resolve(createTrace('message-a trace'));
+    });
+
+    expect(within(dialog).getByText('请输入 Message ID')).toBeInTheDocument();
+    expect(screen.queryByText('message-a trace')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('正在加载轨迹数据…')).not.toBeInTheDocument();
+  });
 });
