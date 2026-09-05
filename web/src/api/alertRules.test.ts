@@ -21,7 +21,11 @@ import client from './client';
 import {
   createAlertRule,
   deleteAlertRule,
+  exportAlertRulesTransfer,
+  importAlertRulesTransfer,
   listAlertRules,
+  listAlertRuleRuntime,
+  listAlertRulesPage,
   toggleAlertRule,
   updateAlertRule,
 } from './ops';
@@ -86,5 +90,36 @@ describe('alert rules API', () => {
     });
 
     await expect(deleteAlertRule(rule.id)).resolves.toBeUndefined();
+  });
+
+  it('pages rules and loads their runtime state', async () => {
+    mock.onGet('/cluster-alert-rules/page').reply((config) => {
+      expect(config.params).toEqual({ search: 'disk', page: 2, pageSize: 20 });
+      return [
+        200,
+        { code: 200, data: { items: [rule], total: 1, page: 2, size: 20 } },
+      ];
+    });
+    mock.onGet('/cluster-alert-rules/runtime').reply(200, {
+      code: 200,
+      data: [{ id: rule.id, status: 'FIRING' }],
+    });
+
+    await expect(
+      listAlertRulesPage('CLUSTER', { search: 'disk', page: 2, pageSize: 20 }),
+    ).resolves.toMatchObject({ total: 1 });
+    await expect(listAlertRuleRuntime()).resolves.toEqual([{ id: rule.id, status: 'FIRING' }]);
+  });
+
+  it('exports and imports the transfer document', async () => {
+    const transfer = { version: 1, domain: 'CLUSTER', rules: [] };
+    mock.onGet('/cluster-alert-rules/transfer').reply(200, { code: 200, data: transfer });
+    mock.onPost('/cluster-alert-rules/import').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(transfer);
+      return [200, { code: 200, data: [] }];
+    });
+
+    await expect(exportAlertRulesTransfer()).resolves.toEqual(transfer);
+    await expect(importAlertRulesTransfer(transfer)).resolves.toEqual([]);
   });
 });
