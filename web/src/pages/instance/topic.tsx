@@ -104,22 +104,26 @@ import {
 
 const { Text } = Typography;
 
-const INSTANCE_ACCESS_LABEL: Record<Instance['type'], string> = {
-  CLOUD: '云服务',
-  PROXY_LOCAL: 'Proxy Local',
-  PROXY_CLUSTER: 'Proxy Cluster',
-  DIRECT: 'Direct',
+const INSTANCE_ACCESS_LABEL: Record<Instance['type'], { text?: string; labelKey?: string }> = {
+  CLOUD: { labelKey: 'topic.cloudService' },
+  PROXY_LOCAL: { text: 'Proxy Local' },
+  PROXY_CLUSTER: { text: 'Proxy Cluster' },
+  DIRECT: { text: 'Direct' },
 };
 
 const INSTANCE_ACCESS_DESCRIPTION: Record<Instance['type'], string> = {
-  CLOUD:
-    '接入点为云厂商托管实例的接入地址，由云实例目录解析得出。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  PROXY_LOCAL:
-    '接入点为与 Broker 同进程部署的 Proxy 地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  PROXY_CLUSTER:
-    '接入点为独立 Proxy 集群的 SLB 内网地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  DIRECT:
-    '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  CLOUD: 'topic.accessDescCloud',
+  PROXY_LOCAL: 'topic.accessDescLocal',
+  PROXY_CLUSTER: 'topic.accessDescCluster',
+  DIRECT: 'topic.accessDescDirect',
+};
+
+const instanceAccessLabel = (
+  type: Instance['type'],
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string => {
+  const meta = INSTANCE_ACCESS_LABEL[type];
+  return meta.labelKey ? t(meta.labelKey) : (meta.text ?? type);
 };
 
 // ─── Cluster name lookup ───────────────────────────────────────────
@@ -129,12 +133,12 @@ const CLUSTER_NAME_MAP: Record<string, { name: string; type: string }> = {
 };
 
 const TYPE_OPTIONS = [
-  { label: '全部', value: '' },
-  { label: '普通', value: 'NORMAL' },
-  { label: '顺序', value: 'FIFO' },
-  { label: '延迟', value: 'DELAY' },
-  { label: '事务', value: 'TRANSACTION' },
-  { label: 'LiteTopic', value: 'LITE' },
+  { labelKey: 'common.all', value: '' },
+  { labelKey: 'topic.normal', value: 'NORMAL' },
+  { labelKey: 'topic.fifo', value: 'FIFO' },
+  { labelKey: 'topic.delay', value: 'DELAY' },
+  { labelKey: 'topic.transaction', value: 'TRANSACTION' },
+  { labelKey: 'topic.lite', value: 'LITE' },
 ];
 
 // Topic 类型选项（描述参考阿里云 RocketMQ 消息类型语义），创建弹窗用 Segmented 展示
@@ -636,18 +640,18 @@ const TopicPage = () => {
       setSendModalOpen(true);
     } else if (key === 'delete') {
       modal.confirm({
-        title: '确认删除',
-        content: `确定要删除 Topic「${topic.name}」吗？此操作不可撤销。`,
-        okText: '删除',
+        title: t('topic.confirmDelete'),
+        content: t('topic.deleteContent', { name: topic.name }),
+        okText: t('topic.delete'),
         okType: 'danger',
-        cancelText: '取消',
+        cancelText: t('common.cancel'),
         onOk: async () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
             await reloadTopicPageAfterDelete();
-            message.success(`Topic「${topic.name}」已删除`);
+            message.success(t('topic.deleted', { name: topic.name }));
           } catch {
-            message.error('删除 Topic 失败，请稍后重试');
+            message.error(t('topic.deleteFailed'));
           }
         },
       });
@@ -664,10 +668,10 @@ const TopicPage = () => {
     })
       .then((csv) => {
         downloadCsv(`rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-        message.success('Topic 导出完成');
+        message.success(t('topic.exportDone'));
       })
       .catch(() => {
-        message.error('导出 Topic 失败，请稍后重试');
+        message.error(t('topic.exportFailed'));
       })
       .finally(() => setExporting(false));
   };
@@ -675,7 +679,7 @@ const TopicPage = () => {
   // ─── Table columns ────────────────────────────────────────────
   const columns: TableColumnsType<Topic> = [
     {
-      title: 'Topic 名称',
+      title: t('topic.name'),
       dataIndex: 'name',
       key: 'name',
       width: 220,
@@ -687,7 +691,7 @@ const TopicPage = () => {
       ),
     },
     {
-      title: '备注',
+      title: t('topic.remark'),
       dataIndex: 'remark',
       key: 'remark',
       width: 200,
@@ -703,7 +707,7 @@ const TopicPage = () => {
       ),
     },
     {
-      title: '类型',
+      title: t('topic.type'),
       dataIndex: 'type',
       key: 'type',
       width: 100,
@@ -714,13 +718,13 @@ const TopicPage = () => {
       },
     },
     {
-      title: '状态',
+      title: t('topic.status'),
       key: 'status',
       width: 90,
-      render: () => <Tag color="green">服务中</Tag>,
+      render: () => <Tag color="green">{t('topic.serving')}</Tag>,
     },
     {
-      title: '创建时间',
+      title: t('topic.createdAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 170,
@@ -728,7 +732,7 @@ const TopicPage = () => {
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
-      title: '修改时间',
+      title: t('topic.updatedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 170,
@@ -736,7 +740,7 @@ const TopicPage = () => {
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
-      title: '操作',
+      title: t('topic.action'),
       key: 'action',
       width: 200,
       render: (_: unknown, record: Topic) => (
@@ -747,7 +751,7 @@ const TopicPage = () => {
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => handleAction('detail', record)}
           >
-            详情
+            {t('topic.detail')}
           </Button>
           {!isCloudInstance && (
             <Button
@@ -756,7 +760,7 @@ const TopicPage = () => {
               style={{ borderColor: '#52c41a', color: '#52c41a' }}
               onClick={() => handleAction('send', record)}
             >
-              发送
+              {t('topic.send')}
             </Button>
           )}
           <Button
@@ -765,7 +769,7 @@ const TopicPage = () => {
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             onClick={() => handleAction('delete', record)}
           >
-            删除
+            {t('topic.delete')}
           </Button>
         </Flex>
       ),
@@ -1400,41 +1404,44 @@ const TopicPage = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <PageHeader title={t('topic.title')} subtitle={`共 ${totalTopics} 个 Topic`} />
+      <PageHeader
+        title={t('topic.title')}
+        subtitle={t('topic.totalCount', { count: String(totalTopics) })}
+      />
 
       {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (
         <InfoBanner>
           <Flex align="center" wrap="wrap" gap="8px 28px" style={{ fontSize: 14 }}>
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>当前实例</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.currentInstance')}</span>
               <span>{selectedInstance.name}</span>
             </span>
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入模式</span>
-              <span>{INSTANCE_ACCESS_LABEL[selectedInstance.type]}</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.accessMode')}</span>
+              <span>{instanceAccessLabel(selectedInstance.type, t)}</span>
             </span>
             {selectedInstance.vendor === 'ALIYUN' && (
               <span>
-                <span style={{ color: '#8c8c8c', marginRight: 6 }}>厂商</span>
-                <span>阿里云</span>
+                <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.vendorLabel')}</span>
+                <span>{t('topic.vendorAliyun')}</span>
               </span>
             )}
             {selectedInstance.vendor === 'TENCENT' && (
               <span>
-                <span style={{ color: '#8c8c8c', marginRight: 6 }}>厂商</span>
-                <span>腾讯云</span>
+                <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.vendorLabel')}</span>
+                <span>{t('topic.vendorTencent')}</span>
               </span>
             )}
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入点</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.endpointLabel')}</span>
               <Text code copyable style={{ fontSize: 16 }}>
                 {selectedInstance.endpoint}
               </Text>
             </span>
           </Flex>
           <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.6, color: '#8c8c8c' }}>
-            {INSTANCE_ACCESS_DESCRIPTION[selectedInstance.type]}
+            {t(INSTANCE_ACCESS_DESCRIPTION[selectedInstance.type])}
           </div>
         </InfoBanner>
       )}
@@ -1458,7 +1465,7 @@ const TopicPage = () => {
             style={{ width: 220 }}
           />
           <Input.Search
-            placeholder="搜索 Topic 名称"
+            placeholder={t('topic.searchPlaceholder')}
             allowClear
             style={{ width: 260 }}
             onSearch={(value) => {
@@ -1473,13 +1480,16 @@ const TopicPage = () => {
             }}
           />
           <Select
-            placeholder="类型筛选"
+            placeholder={t('topic.typeFilter')}
             value={typeFilter}
             onChange={(value) => {
               setTypeFilter(value);
               resetTablePage();
             }}
-            options={TYPE_OPTIONS}
+            options={TYPE_OPTIONS.map((option) => ({
+              value: option.value,
+              label: t(option.labelKey),
+            }))}
             style={{ width: 140 }}
           />
         </Space>
@@ -1490,11 +1500,13 @@ const TopicPage = () => {
               icon={<DeleteOutlined />}
               onClick={() => {
                 Modal.confirm({
-                  title: '确认批量删除',
-                  content: `确定要删除选中的 ${selectedRowKeys.length} 个 Topic 吗？此操作不可撤销。`,
-                  okText: '删除',
+                  title: t('topic.confirmBatchDelete'),
+                  content: t('topic.batchDeleteContent', {
+                    count: String(selectedRowKeys.length),
+                  }),
+                  okText: t('topic.delete'),
                   okType: 'danger',
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     try {
                       const names = selectedRowKeys.map(String);
@@ -1506,22 +1518,27 @@ const TopicPage = () => {
                       setSelectedRowKeys(failed);
 
                       if (failed.length === 0) {
-                        message.success(`已删除 ${deleted.length} 个 Topic`);
+                        message.success(t('topic.batchDeleted', { count: String(deleted.length) }));
                       } else if (deleted.length > 0) {
                         message.warning(
-                          `已删除 ${deleted.length} 个 Topic，${failed.length} 个删除失败`,
+                          t('topic.batchDeletePartial', {
+                            deleted: String(deleted.length),
+                            failed: String(failed.length),
+                          }),
                         );
                       } else {
-                        message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
+                        message.error(
+                          t('topic.batchDeleteFailedCount', { count: String(failed.length) }),
+                        );
                       }
                     } catch {
-                      message.error('批量删除 Topic 失败，请稍后重试');
+                      message.error(t('topic.batchDeleteFailed'));
                     }
                   },
                 });
               }}
             >
-              删除 ({selectedRowKeys.length})
+              {t('topic.delete')} ({selectedRowKeys.length})
             </Button>
           )}
           <input
@@ -1540,10 +1557,10 @@ const TopicPage = () => {
             disabled={!hasSelectedInstance || importing}
             onClick={() => importInputRef.current?.click()}
           >
-            导入
+            {t('common.import')}
           </Button>
           <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
-            导出
+            {t('common.export')}
           </Button>
           <Button
             icon={<DiffOutlined />}
@@ -1558,7 +1575,7 @@ const TopicPage = () => {
               disabled={!hasSelectedInstance || topics.length === 0}
               onClick={() => void openSyncModal()}
             >
-              同步数据
+              {t('topic.syncData')}
             </Button>
           )}
           <Button
@@ -1567,7 +1584,7 @@ const TopicPage = () => {
             disabled={!hasSelectedInstance}
             onClick={() => setModalOpen(true)}
           >
-            创建 Topic
+            {t('topic.createTopic')}
           </Button>
         </Space>
       </Flex>
@@ -1588,7 +1605,7 @@ const TopicPage = () => {
             pageSize: tablePageSize,
             total: totalTopics,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (total) => t('topic.showTotal', { total: String(total) }),
             onChange: (page, pageSize) => {
               setTablePage(page);
               setTablePageSize(pageSize);
