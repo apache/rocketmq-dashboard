@@ -335,7 +335,7 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -1157,8 +1157,8 @@ const TopicPage = () => {
     setImporting(false);
     setImportModalOpen(true);
     try {
-      const records = parseCsvTable(await file.text());
-      const validation = validateTopicCsvImport(records, selectedInstanceId || undefined);
+      const records = parseCsvTable(await file.text(), lang);
+      const validation = validateTopicCsvImport(records, selectedInstanceId || undefined, lang);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
