@@ -1462,7 +1462,9 @@ const TopicPage = () => {
             allowClear
             style={{ width: 260 }}
             onSearch={(value) => {
-              setSearchText(value);
+              // Store the trimmed term so the client-side row filter matches what the
+              // server query used; padded input would otherwise filter out every row.
+              setSearchText(value.trim());
               resetTablePage();
             }}
             onChange={(e) => {
