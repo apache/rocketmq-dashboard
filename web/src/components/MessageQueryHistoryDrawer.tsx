@@ -25,6 +25,7 @@ interface Props {
   onSelectTrace?: (record: TraceQueryHistory) => void;
 }
 
+
 const PAGE_SIZE = 20;
 const formatTime = (value?: string) => {
   if (!value) return '-';
