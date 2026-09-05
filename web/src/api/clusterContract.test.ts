@@ -18,7 +18,13 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getCluster, listClusters } from './cluster';
+import {
+  getCluster,
+  listClusters,
+  listNameserverRegistry,
+  restartBroker,
+  testClusterConnection,
+} from './cluster';
 import type { ClusterInfo } from './cluster';
 
 const mock = new MockAdapter(client);
@@ -85,5 +91,41 @@ describe('cluster API contract', () => {
 
     await expect(listClusters()).resolves.toEqual([cluster]);
     await expect(getCluster(cluster.id)).resolves.toEqual(cluster);
+  });
+
+  it('tests a connection against the submitted nameserver address', async () => {
+    mock.onPost('/clusters/test-connection').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ namesrvAddr: '127.0.0.1:9876' });
+      return [
+        200,
+        { code: 200, data: { connected: true, clusterName: 'cluster-a', brokerCount: 1 } },
+      ];
+    });
+
+    await expect(testClusterConnection('127.0.0.1:9876')).resolves.toMatchObject({
+      connected: true,
+    });
+  });
+
+  it('restarts a broker through its scoped path', async () => {
+    mock.onPost('/clusters/cluster-a/brokers/broker-a/restart').reply(200, {
+      code: 200,
+      data: { success: true, message: 'restarting' },
+    });
+
+    await expect(restartBroker('cluster-a', 'broker-a')).resolves.toMatchObject({
+      success: true,
+    });
+  });
+
+  it('lists the nameserver registry entries', async () => {
+    mock.onGet('/nameservers').reply(200, {
+      code: 200,
+      data: [{ id: 1, name: 'ns-1', namesrvAddr: '10.0.0.20:9876' }],
+    });
+
+    await expect(listNameserverRegistry()).resolves.toEqual([
+      { id: 1, name: 'ns-1', namesrvAddr: '10.0.0.20:9876' },
+    ]);
   });
 });
