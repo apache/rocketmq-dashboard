@@ -38,4 +38,29 @@ class RmqSettingsTest {
         assertThat(text).doesNotContain("json");
         assertThat(text).doesNotContain("sk-secret");
     }
+
+    @Test
+    void dataEqualityCoversKeyJsonAndTimestampsTest() {
+        LocalDateTime created = LocalDateTime.of(2026, 8, 1, 9, 0);
+        RmqSettings first = new RmqSettings();
+        first.setId(1L);
+        first.setSettingsKey("llm.openai");
+        first.setJson("{\"apiKey\":\"sk-secret\"}");
+        first.setGmtCreate(created);
+
+        RmqSettings same = new RmqSettings();
+        same.setId(1L);
+        same.setSettingsKey("llm.openai");
+        same.setJson("{\"apiKey\":\"sk-secret\"}");
+        same.setGmtCreate(created);
+
+        RmqSettings differentJson = new RmqSettings();
+        differentJson.setId(1L);
+        differentJson.setSettingsKey("llm.openai");
+        differentJson.setJson("{\"apiKey\":\"sk-other\"}");
+        differentJson.setGmtCreate(created);
+
+        assertThat(first).isEqualTo(same).hasSameHashCodeAs(same);
+        assertThat(first).isNotEqualTo(differentJson);
+    }
 }
