@@ -124,7 +124,7 @@ const AclPageContent = ({
   instanceOptions,
   instances,
 }: AclPageContentProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const hasSelectedInstance = Boolean(selectedInstanceId);
   const selectedInstance = instances.find((instance) => instance.name === selectedInstanceId);
   const tencentRoleMode = selectedInstance?.vendor === 'TENCENT';
@@ -954,7 +954,7 @@ const AclPageContent = ({
     },
   ];
 
-  const aclRiskDiagnostics = clusterConfig ? analyzeAclRisk(clusterConfig) : null;
+  const aclRiskDiagnostics = clusterConfig ? analyzeAclRisk(clusterConfig, lang) : null;
 
   const aclRiskProgressStatus =
     aclRiskDiagnostics?.status === 'critical'
