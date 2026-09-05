@@ -189,6 +189,13 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
             return result;
         } catch (Exception e) {
+            if (hasResponseCode(e, ResponseCode.NO_MESSAGE)) {
+                // MQAdminImpl.queryMessage throws MQClientException(NO_MESSAGE) instead of
+                // returning an empty QueryResult when the key matches nothing: the query
+                // completed, so the correct response is an empty list, not a gateway error.
+                log.info("queryMessage(topic={}, key={}) matched nothing", topic, key);
+                return Collections.emptyList();
+            }
             log.warn("queryMessage(topic={}, key={}) failed: {}", topic, key, e.getMessage());
             throw new BusinessException(502, "Failed to query messages by key: " + e.getMessage());
         }
@@ -438,11 +445,12 @@ public class RocketMQMessageProvider implements MessageProvider {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            if (isTraceTopicAbsent(e)) {
-                // The cluster has no trace topic route (trace dispatch disabled): the RPC
-                // succeeded but there is no business data, so return an empty trace instead
-                // of surfacing an error (exception-grading convention).
-                log.info("Trace topic not available on this cluster (msgId={}), returning empty trace", msgId);
+            if (hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
+                // The cluster has no trace topic route (trace dispatch disabled) or the
+                // message simply has no trace records: the RPC succeeded but there is no
+                // business data, so return an empty trace instead of surfacing an error
+                // (exception-grading convention).
+                log.info("No trace data available for msgId={} ({}), returning empty trace", msgId, e.getMessage());
                 return emptyTrace();
             }
             log.warn("Trace query for msgId={} failed: {}", msgId, e.getMessage());
@@ -455,12 +463,15 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .build();
     }
 
-    private static boolean isTraceTopicAbsent(Throwable error) {
+    private static boolean hasResponseCode(Throwable error, int... responseCodes) {
         Throwable cause = error;
         while (cause != null) {
-            if (cause instanceof MQClientException clientException
-                    && clientException.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
-                return true;
+            if (cause instanceof MQClientException clientException) {
+                for (int responseCode : responseCodes) {
+                    if (clientException.getResponseCode() == responseCode) {
+                        return true;
+                    }
+                }
             }
             cause = cause.getCause() == cause ? null : cause.getCause();
         }
@@ -496,6 +507,10 @@ public class RocketMQMessageProvider implements MessageProvider {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
+            if (hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
+                log.info("No trace data available for key={} ({}), returning empty trace", key, e.getMessage());
+                return emptyTrace();
+            }
             log.warn("Trace query by key={} failed: {}", key, e.getMessage());
             throw new BusinessException(502, "Failed to query message trace by key: " + e.getMessage());
         }

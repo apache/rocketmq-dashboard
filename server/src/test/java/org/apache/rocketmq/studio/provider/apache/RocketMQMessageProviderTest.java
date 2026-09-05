@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
@@ -27,6 +28,7 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.CMResult;
@@ -208,6 +210,18 @@ class RocketMQMessageProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query messages by key: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void queryByKeyReturnsEmptyListWhenClientReportsNoMessage() throws Exception {
+        // MQAdminImpl.queryMessage throws MQClientException(NO_MESSAGE) instead of
+        // returning an empty QueryResult when the key matches nothing.
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L)).isEmpty();
     }
 
     @Test
@@ -626,6 +640,32 @@ class RocketMQMessageProviderTest {
                 .hasMessage("Failed to query message trace: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
 
+    }
+
+    @Test
+    void getMessageTraceReturnsEmptyTraceWhenClientReportsNoMessage() throws Exception {
+        // A message without trace data (trace disabled on the producer or expired) is a
+        // completed query with no records, not a remote failure.
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
+
+        assertThat(record.getNodes()).isEmpty();
+        assertThat(record.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
+    void getMessageTraceByKeyReturnsEmptyTraceWhenClientReportsNoMessage() throws Exception {
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        TraceRecordVO record = provider.getMessageTraceByKey("instance-a", "key-1", "orders", null);
+
+        assertThat(record.getNodes()).isEmpty();
+        assertThat(record.getConsumerStatus()).isEmpty();
     }
 
     @Test
