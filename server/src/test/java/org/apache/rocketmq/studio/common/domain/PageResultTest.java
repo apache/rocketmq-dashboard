@@ -44,4 +44,24 @@ class PageResultTest {
         assertThatThrownBy(() -> result.getItems().add("mutated"))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
+
+    @Test
+    void emptyFactoryBuildsAnEmptyPageWithTheRequestedWindowTest() {
+        PageResult<String> result = PageResult.empty(3, 50);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isZero();
+        assertThat(result.getPage()).isEqualTo(3);
+        assertThat(result.getSize()).isEqualTo(50);
+    }
+
+    @Test
+    void ofCarriesTheWindowAndKeepsItemOrderTest() {
+        PageResult<String> result = PageResult.of(List.of("first", "second"), 42L, 2, 10);
+
+        assertThat(result.getItems()).containsExactly("first", "second");
+        assertThat(result.getTotal()).isEqualTo(42L);
+        assertThat(result.getPage()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(10);
+    }
 }
