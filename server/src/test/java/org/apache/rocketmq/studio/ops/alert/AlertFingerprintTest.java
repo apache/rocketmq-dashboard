@@ -46,4 +46,25 @@ class AlertFingerprintTest {
         assertThat(AlertFingerprint.of(7L, "local", embeddedLabel))
                 .isNotEqualTo(AlertFingerprint.of(7L, "local", separateLabels));
     }
+
+    @Test
+    void nullInstanceAndNullLabelsAreHandledDeterministically() {
+        assertThat(AlertFingerprint.of(7L, null, null))
+                .isEqualTo(AlertFingerprint.of(7L, null, Map.of()))
+                .hasSize(64);
+    }
+
+    @Test
+    void ruleIdParticipatesInTheFingerprint() {
+        Map<String, String> labels = Map.of("broker", "a");
+
+        assertThat(AlertFingerprint.of(7L, "local", labels))
+                .isNotEqualTo(AlertFingerprint.of(8L, "local", labels));
+    }
+
+    @Test
+    void backslashesInLabelsArePartOfTheIdentity() {
+        assertThat(AlertFingerprint.of(7L, "local", Map.of("a", "b\\c")))
+                .isNotEqualTo(AlertFingerprint.of(7L, "local", Map.of("a", "bc")));
+    }
 }
