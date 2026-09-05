@@ -110,6 +110,34 @@ class AlertSilenceScheduleTest {
                 .isEqualTo(at("2026-03-09T07:30:00"));
     }
 
+    @Test
+    void weeklyWindowWithoutSelectedWeekdaysNeverActivatesTest() {
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.WEEKLY, "UTC", null,
+                "2026-09-01T10:00:00", "2026-09-01T11:00:00", "2026-10-01T00:00:00");
+
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-09-08T10:30:00"))).isNull();
+    }
+
+    @Test
+    void recurrenceDefaultsToOnceWhenFieldIsNullTest() {
+        AlertSilenceVO silence = AlertSilenceVO.builder()
+                .startsAt(at("2026-09-01T01:00:00"))
+                .endsAt(at("2026-09-01T02:00:00"))
+                .build();
+
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-09-01T01:30:00")))
+                .isEqualTo(at("2026-09-01T02:00:00"));
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-09-01T02:00:00"))).isNull();
+    }
+
+    @Test
+    void windowDoesNotActivateOnceRecurrenceUntilHasPassedTest() {
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.DAILY, "UTC", Set.of(),
+                "2026-09-01T10:00:00", "2026-09-01T11:00:00", "2026-09-03T11:00:00");
+
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-09-04T10:30:00"))).isNull();
+    }
+
     private static AlertSilenceVO once(String start, String end) {
         return AlertSilenceVO.builder().startsAt(at(start)).endsAt(at(end))
                 .recurrence(AlertSilenceRecurrence.ONCE).recurrenceDays(Set.of()).build();
