@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -43,13 +43,7 @@ const ClusterInspectionModal = ({ open, onClose }) => {
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (open) {
-      runClusterInspection();
-    }
-  }, [open]);
-
-  const runClusterInspection = async () => {
+  const runClusterInspection = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -60,7 +54,13 @@ const ClusterInspectionModal = ({ open, onClose }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      runClusterInspection();
+    }
+  }, [open, runClusterInspection]);
 
   const getSeverityChip = (severity) => {
     switch (severity) {
