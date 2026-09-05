@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -43,13 +43,7 @@ const TopicGovernanceModal = ({ open, onClose }) => {
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (open) {
-      fetchGovernanceAudit();
-    }
-  }, [open]);
-
-  const fetchGovernanceAudit = async () => {
+  const fetchGovernanceAudit = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -60,7 +54,13 @@ const TopicGovernanceModal = ({ open, onClose }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      fetchGovernanceAudit();
+    }
+  }, [open, fetchGovernanceAudit]);
 
   const getAnomalyChip = (type) => {
     switch (type) {
