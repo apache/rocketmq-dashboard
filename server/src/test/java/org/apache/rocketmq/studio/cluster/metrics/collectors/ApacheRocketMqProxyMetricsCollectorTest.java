@@ -96,4 +96,49 @@ class ApacheRocketMqProxyMetricsCollectorTest {
             assertThat(sample.labels()).containsEntry("proxyAddr", "unknown");
         });
     }
+
+    @Test
+    void supportsApacheAndVendorLessInstancesWithNameAndEndpoint() {
+        ApacheRocketMqProxyMetricsCollector collector = new ApacheRocketMqProxyMetricsCollector(
+                mock(ClusterService.class), mock(ProxyHealthProbe.class));
+
+        assertThat(collector.supports(InstanceVO.builder().name("local").endpoint("localhost:9876")
+                .vendor(InstanceVendor.APACHE).build())).isTrue();
+        assertThat(collector.supports(InstanceVO.builder().name("local").endpoint("localhost:9876").build()))
+                .isTrue();
+        assertThat(collector.supports(InstanceVO.builder().name("cloud").endpoint("x")
+                .vendor(InstanceVendor.ALIYUN).build())).isFalse();
+        assertThat(collector.supports(InstanceVO.builder().name("local")
+                .vendor(InstanceVendor.APACHE).build())).isFalse();
+        assertThat(collector.supports(null)).isFalse();
+    }
+
+    @Test
+    void exposesTheProxyAvailabilityMetricKey() {
+        assertThat(new ApacheRocketMqProxyMetricsCollector(mock(ClusterService.class),
+                mock(ProxyHealthProbe.class)).metricKeys()).containsExactly("proxy.availability");
+    }
+
+    @Test
+    void collectsAcrossClustersAndSkipsClustersWithoutProxiesTest() {
+        ClusterService clusterService = mock(ClusterService.class);
+        ProxyHealthProbe probe = mock(ProxyHealthProbe.class);
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876")
+                .vendor(InstanceVendor.APACHE).build();
+        when(clusterService.listClusters("local")).thenReturn(List.of(
+                ClusterVO.builder().id("empty-cluster").build(),
+                ClusterVO.builder().id("cluster-a")
+                        .proxies(List.of(ProxyVO.builder().addr("proxy-a:8080").grpcPort(8081).build()))
+                        .build()));
+        when(probe.probe("proxy-a", 8081, 2_000)).thenReturn(ProxyHealthProbe.ProbeResult.reachable(3));
+
+        List<MetricSample> samples = new ApacheRocketMqProxyMetricsCollector(clusterService, probe)
+                .collect(instance);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.clusterId()).isEqualTo("cluster-a");
+            assertThat(sample.value()).isEqualTo(1D);
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+        });
+    }
 }
