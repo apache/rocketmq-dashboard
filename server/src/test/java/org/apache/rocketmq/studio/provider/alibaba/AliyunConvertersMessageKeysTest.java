@@ -33,4 +33,26 @@ class AliyunConvertersMessageKeysTest {
 
         assertThat(AliyunConverters.toMessageRecord(data).getKey()).isEqualTo("key-a key-b");
     }
+
+    @Test
+    void toMessageRecordShouldHandleSingleAndAllBlankKeys() {
+        ListMessagesResponseBody.List single = ListMessagesResponseBody.List.builder()
+                .messageKeys(java.util.Collections.singletonList("key-a"))
+                .build();
+        assertThat(AliyunConverters.toMessageRecord(single).getKey()).isEqualTo("key-a");
+
+        ListMessagesResponseBody.List allBlank = ListMessagesResponseBody.List.builder()
+                .messageKeys(Arrays.asList(null, " ", null))
+                .build();
+        assertThat(AliyunConverters.toMessageRecord(allBlank).getKey()).isNull();
+    }
+
+    @Test
+    void toMessageRecordShouldKeepInternalSpacesInsideKeys() {
+        ListMessagesResponseBody.List data = ListMessagesResponseBody.List.builder()
+                .messageKeys(Arrays.asList("k a", "key-b"))
+                .build();
+
+        assertThat(AliyunConverters.toMessageRecord(data).getKey()).isEqualTo("k a key-b");
+    }
 }
