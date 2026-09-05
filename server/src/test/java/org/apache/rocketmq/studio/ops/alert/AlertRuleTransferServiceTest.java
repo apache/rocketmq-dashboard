@@ -135,4 +135,53 @@ class AlertRuleTransferServiceTest {
         request.setEnabled(true);
         return request;
     }
+
+    @Test
+    void rejectsNullWrongVersionAndEmptyEnvelopesTest() {
+        BusinessException nullError = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, null));
+        assertEquals("Alert rule import document is required", nullError.getMessage());
+
+        AlertRuleTransferDTO wrongVersion = transfer(AlertDomain.CLUSTER, request("Rule"));
+        wrongVersion.setVersion(AlertRuleTransferDTO.VERSION + 1);
+        BusinessException versionError = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, wrongVersion));
+        assertEquals("Unsupported alert rule import version", versionError.getMessage());
+
+        AlertRuleTransferDTO empty = transfer(AlertDomain.CLUSTER);
+        BusinessException emptyError = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, empty));
+        assertEquals("Alert rule import must contain between 1 and 200 rules", emptyError.getMessage());
+    }
+
+    @Test
+    void rejectsEnvelopesOverTheImportBudgetTest() {
+        List<AlertRuleRequestDTO> many = new java.util.ArrayList<>();
+        for (int index = 0; index < 201; index++) {
+            many.add(request("Rule-" + index));
+        }
+        AlertRuleTransferDTO oversized = new AlertRuleTransferDTO();
+        oversized.setVersion(AlertRuleTransferDTO.VERSION);
+        oversized.setDomain(AlertDomain.CLUSTER);
+        oversized.setRules(many);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, oversized));
+        assertEquals("Alert rule import must contain between 1 and 200 rules", error.getMessage());
+    }
+
+    @Test
+    void trimsRuleMetricsBeforeCatalogValidationTest() {
+        AlertRuleRequestDTO request = request("Trim me");
+        request.setMetric("  broker.disk.usage  ");
+        when(alertService.createRule(eq(AlertDomain.CLUSTER), any(AlertRuleVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+
+        transferService.importRules(AlertDomain.CLUSTER,
+                transfer(AlertDomain.CLUSTER, request));
+
+        ArgumentCaptor<AlertRuleVO> captor = ArgumentCaptor.forClass(AlertRuleVO.class);
+        verify(metricCatalogService).validate(captor.capture());
+        assertEquals("broker.disk.usage", captor.getValue().getMetric());
+    }
 }
