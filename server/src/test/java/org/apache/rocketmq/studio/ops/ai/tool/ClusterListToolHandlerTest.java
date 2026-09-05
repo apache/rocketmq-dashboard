@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -78,5 +79,54 @@ class ClusterListToolHandlerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> row = rows.get(0);
         assertThat(row.get("version")).isEqualTo("V5_3_1");
+    }
+
+    @Test
+    void reportsItsToolName() {
+        ClusterService clusterService = mock(ClusterService.class);
+        assertThat(new ClusterListToolHandler(clusterService).name()).isEqualTo("rmq.cluster.list");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void projectsEveryClusterInInputOrder() {
+        ClusterVO first = ClusterVO.builder().name("A").type(ClusterType.V4_DIRECT)
+                .status(ClusterStatus.healthy).build();
+        first.setId("cluster-a");
+        ClusterVO second = ClusterVO.builder().name("B").type(ClusterType.V5_PROXY_LOCAL)
+                .status(ClusterStatus.warning).build();
+        second.setId("cluster-b");
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.listClusters()).thenReturn(List.of(first, second));
+
+        Object output = new ClusterListToolHandler(clusterService).execute(Map.of());
+
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) output;
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).get("id")).isEqualTo("cluster-a");
+        assertThat(rows.get(1).get("id")).isEqualTo("cluster-b");
+        assertThat(rows.get(1).get("type")).isEqualTo("V5_PROXY_LOCAL");
+        assertThat(rows.get(1).get("status")).isEqualTo("warning");
+    }
+
+    @Test
+    void rejectsClustersMissingTypeOrStatus() {
+        ClusterService clusterService = mock(ClusterService.class);
+        ClusterVO noType = ClusterVO.builder().name("X").status(ClusterStatus.healthy).build();
+        noType.setId("no-type");
+        when(clusterService.listClusters()).thenReturn(List.of(noType));
+        ClusterListToolHandler handler = new ClusterListToolHandler(clusterService);
+
+        assertThatThrownBy(() -> handler.execute(Map.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("type")
+                .hasMessageContaining("no-type");
+
+        ClusterVO noStatus = ClusterVO.builder().name("Y").type(ClusterType.V4_DIRECT).build();
+        noStatus.setId("no-status");
+        when(clusterService.listClusters()).thenReturn(List.of(noStatus));
+        assertThatThrownBy(() -> handler.execute(Map.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("status");
     }
 }
