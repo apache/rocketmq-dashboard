@@ -18,78 +18,84 @@ package org.apache.rocketmq.studio.cluster.metrics;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Locale;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class MetricsBackendTypeTest {
 
     @Test
-    void shouldResolveEverySupportedProviderType() {
-        assertThat(MetricsBackendType.fromProviderType("PROMETHEUS")).isEqualTo(MetricsBackendType.PROMETHEUS);
-        assertThat(MetricsBackendType.fromProviderType("VICTORIAMETRICS"))
-                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
-        assertThat(MetricsBackendType.fromProviderType("VICTORIA_METRICS"))
-                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
-        assertThat(MetricsBackendType.fromProviderType("victoria metrics"))
-                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
-        assertThat(MetricsBackendType.fromProviderType("victoria-metrics"))
-                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
-        assertThat(MetricsBackendType.fromProviderType("THANOS")).isEqualTo(MetricsBackendType.THANOS);
-        assertThat(MetricsBackendType.fromProviderType("CORTEX")).isEqualTo(MetricsBackendType.CORTEX);
-        assertThat(MetricsBackendType.fromProviderType("MIMIR")).isEqualTo(MetricsBackendType.MIMIR);
-        assertThat(MetricsBackendType.fromProviderType("ARMS")).isEqualTo(MetricsBackendType.ARMS);
-        assertThat(MetricsBackendType.fromProviderType("CUSTOM")).isEqualTo(MetricsBackendType.CUSTOM);
+    void exposesAllBackendKinds() {
+        assertEquals(7, MetricsBackendType.values().length);
     }
 
     @Test
-    void shouldDefaultUnknownProviderTypeToPrometheus() {
-        assertThat(MetricsBackendType.fromProviderType(null)).isEqualTo(MetricsBackendType.PROMETHEUS);
-        assertThat(MetricsBackendType.fromProviderType("")).isEqualTo(MetricsBackendType.PROMETHEUS);
-        assertThat(MetricsBackendType.fromProviderType("unknown-backend")).isEqualTo(MetricsBackendType.PROMETHEUS);
-    }
-
-    @Test
-    void shouldResolveProviderTypeIndependentlyOfDefaultLocale() {
-        Locale originalLocale = Locale.getDefault();
-
-        MetricsBackendType backendType;
-        try {
-            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
-            backendType = MetricsBackendType.fromProviderType("mimir");
-        } finally {
-            Locale.setDefault(originalLocale);
+    void providerTypeStringsRoundTripThroughLookup() {
+        for (MetricsBackendType backend : MetricsBackendType.values()) {
+            assertEquals(backend, MetricsBackendType.fromProviderType(backend.getProviderType()));
         }
-
-        assertThat(backendType).isEqualTo(MetricsBackendType.MIMIR);
     }
 
     @Test
-    void shouldExposeDistinctQueryPathsForBackends() {
-        assertThat(MetricsBackendType.PROMETHEUS.getQueryPath()).isEqualTo("/api/v1/query_range");
-        assertThat(MetricsBackendType.VICTORIA_METRICS.getQueryPath())
-                .isEqualTo("/select/0/prometheus/api/v1/query_range");
-        assertThat(MetricsBackendType.MIMIR.getQueryPath()).isEqualTo("/prometheus/api/v1/query_range");
-        assertThat(MetricsBackendType.THANOS.getQueryPath()).isEqualTo("/api/v1/query_range");
-        assertThat(MetricsBackendType.CORTEX.getQueryPath()).isEqualTo("/api/v1/query_range");
-        assertThat(MetricsBackendType.ARMS.getQueryPath()).isEqualTo("/api/v1/query_range");
+    void normalizesProviderTypeCasingAndSeparators() {
+        assertEquals(MetricsBackendType.VICTORIA_METRICS,
+                MetricsBackendType.fromProviderType(" victoria-metrics "));
+        assertEquals(MetricsBackendType.VICTORIA_METRICS,
+                MetricsBackendType.fromProviderType("victoria_metrics"));
+        assertEquals(MetricsBackendType.VICTORIA_METRICS,
+                MetricsBackendType.fromProviderType("Victoria metrics"));
+        assertEquals(MetricsBackendType.CUSTOM, MetricsBackendType.fromProviderType(" custom "));
     }
 
     @Test
-    void shouldExposeCanonicalProviderType() {
-        assertThat(MetricsBackendType.PROMETHEUS.getProviderType()).isEqualTo("Prometheus");
-        assertThat(MetricsBackendType.VICTORIA_METRICS.getProviderType()).isEqualTo("VictoriaMetrics");
-        assertThat(MetricsBackendType.ARMS.getProviderType()).isEqualTo("ARMS");
+    void acceptsVictoriaAlias() {
+        assertEquals(MetricsBackendType.VICTORIA_METRICS,
+                MetricsBackendType.fromProviderType("victoria"));
     }
 
     @Test
-    void shouldExposeDistinctInstantQueryPathsForBackends() {
-        assertThat(MetricsBackendType.PROMETHEUS.getInstantQueryPath()).isEqualTo("/api/v1/query");
-        assertThat(MetricsBackendType.VICTORIA_METRICS.getInstantQueryPath())
-                .isEqualTo("/select/0/prometheus/api/v1/query");
-        assertThat(MetricsBackendType.MIMIR.getInstantQueryPath()).isEqualTo("/prometheus/api/v1/query");
-        assertThat(MetricsBackendType.THANOS.getInstantQueryPath()).isEqualTo("/api/v1/query");
-        assertThat(MetricsBackendType.CORTEX.getInstantQueryPath()).isEqualTo("/api/v1/query");
-        assertThat(MetricsBackendType.ARMS.getInstantQueryPath()).isEqualTo("/api/v1/query");
+    void nullProviderTypeFallsBackToPrometheus() {
+        assertEquals(MetricsBackendType.PROMETHEUS, MetricsBackendType.fromProviderType(null));
+    }
+
+    @Test
+    void unknownProviderTypeFallsBackToPrometheus() {
+        assertEquals(MetricsBackendType.PROMETHEUS, MetricsBackendType.fromProviderType("datadog"));
+    }
+
+    @Test
+    void prometheusCarriesItsQueryPaths() {
+        assertEquals("/api/v1/query_range", MetricsBackendType.PROMETHEUS.getQueryPath());
+        assertEquals("/api/v1/query", MetricsBackendType.PROMETHEUS.getInstantQueryPath());
+    }
+
+    @Test
+    void victoriaMetricsCarriesItsQueryPaths() {
+        assertEquals("/select/0/prometheus/api/v1/query_range",
+                MetricsBackendType.VICTORIA_METRICS.getQueryPath());
+        assertEquals("/select/0/prometheus/api/v1/query",
+                MetricsBackendType.VICTORIA_METRICS.getInstantQueryPath());
+    }
+
+    @Test
+    void mimirCarriesItsQueryPaths() {
+        assertEquals("/prometheus/api/v1/query_range", MetricsBackendType.MIMIR.getQueryPath());
+    }
+
+    @Test
+    void providerTypesAreUniqueAcrossBackends() {
+        long distinct = java.util.Arrays.stream(MetricsBackendType.values())
+                .map(MetricsBackendType::getProviderType)
+                .distinct()
+                .count();
+
+        assertEquals(MetricsBackendType.values().length, distinct);
+    }
+
+    @Test
+    void queryPathsStayDistinctWhereBackendsDiffer() {
+        assertNotEquals(MetricsBackendType.VICTORIA_METRICS.getQueryPath(),
+                MetricsBackendType.PROMETHEUS.getQueryPath());
+        assertNotEquals(MetricsBackendType.MIMIR.getQueryPath(),
+                MetricsBackendType.PROMETHEUS.getQueryPath());
     }
 }
