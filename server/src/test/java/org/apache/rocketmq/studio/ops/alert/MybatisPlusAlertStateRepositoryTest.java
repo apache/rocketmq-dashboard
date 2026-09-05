@@ -141,4 +141,26 @@ class MybatisPlusAlertStateRepositoryTest {
         alert.setLabelsJson(labelsJson);
         return alert;
     }
+
+    @Test
+    void findReturnsEmptyWhenNoStateRowExistsTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        when(mapper.selectOne(any())).thenReturn(null);
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper,
+                mock(RmqSystemAlertMapper.class));
+
+        assertThat(repository.find(new AlertStateKey(4L, "fingerprint"))).isEmpty();
+    }
+
+    @Test
+    void acknowledgeReportsFalseWhenNoFiringRowIsUpdatedTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        Instant firedAt = Instant.parse("2026-08-22T12:00:00Z");
+        when(mapper.acknowledgeFiring(eq(4L), eq("fingerprint"),
+                eq(LocalDateTime.ofInstant(firedAt, ZoneOffset.UTC)), any())).thenReturn(0);
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper,
+                mock(RmqSystemAlertMapper.class));
+
+        assertThat(repository.acknowledge(new AlertStateKey(4L, "fingerprint"), firedAt)).isFalse();
+    }
 }
