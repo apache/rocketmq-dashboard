@@ -2542,6 +2542,19 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Message Queue Browser ───
+  'queueBrowser.loadFailed': { zh: '加载队列信息失败', en: 'Failed to load queue information' },
+  'queueBrowser.pullFailed': { zh: '拉取消息失败', en: 'Failed to pull the message' },
+  'queueBrowser.selectTopic': { zh: '选择 Topic', en: 'Select Topic' },
+  'queueBrowser.loadQueues': { zh: '加载队列', en: 'Load Queues' },
+  'queueBrowser.emptyHint': { zh: '选择 Topic 并点击「加载队列」，按队列浏览消息', en: 'Select a Topic and click "Load Queues" to browse messages by queue' },
+  'queueBrowser.offsetRange': { zh: 'Offset 范围', en: 'Offset Range' },
+  'queueBrowser.view': { zh: '查看', en: 'View' },
+  'queueBrowser.queueTotal': { zh: '共 {count} 个队列，总消息量 {messages} 条', en: '{count} queues, {messages} messages total' },
+  'queueBrowser.detailHint': { zh: '点击左侧「查看」，消息详情将显示在这里', en: 'Click "View" on the left and the message details will appear here' },
+  'queueBrowser.storeTime': { zh: '存储时间', en: 'Store Time' },
+  'queueBrowser.size': { zh: '大小', en: 'Size' },
+  'queueBrowser.noMessage': { zh: '该 offset 处无消息', en: 'No message at this offset' },
   // ─── BrokerCluster ───
 };
 
