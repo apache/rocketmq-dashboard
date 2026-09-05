@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -35,6 +36,7 @@ import java.util.List;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -98,4 +100,55 @@ class StudioUserControllerTest {
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(20));
     }
+    @Test
+    void createReturnsCreatedUser() throws Exception {
+        RmqStudioUser created = new RmqStudioUser();
+        created.setId(8L);
+        created.setUsername("new-operator");
+        created.setAdmin(true);
+        created.setEnabled(true);
+        created.setGmtCreate(LocalDateTime.parse("2026-08-22T09:00:00"));
+        when(authService.createUser("new-operator", "secretpass123", true))
+                .thenReturn(created);
+
+        mockMvc.perform(post("/api/studio-users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"new-operator\",\"password\":\"secretpass123\",\"admin\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(8))
+                .andExpect(jsonPath("$.data.username").value("new-operator"))
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
+
+        verify(authService).createUser("new-operator", "secretpass123", true);
+    }
+
+    @Test
+    void updateStatusTogglesUserEnabled() throws Exception {
+        RmqStudioUser updated = new RmqStudioUser();
+        updated.setId(7L);
+        updated.setUsername("operator");
+        updated.setAdmin(false);
+        updated.setEnabled(false);
+        updated.setGmtCreate(LocalDateTime.parse("2026-08-22T08:00:00"));
+        when(authService.setUserEnabled(7L, false)).thenReturn(updated);
+
+        mockMvc.perform(post("/api/studio-users/7/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        verify(authService).setUserEnabled(7L, false);
+    }
+
+    @Test
+    void resetPasswordDelegatesToAuthService() throws Exception {
+        mockMvc.perform(post("/api/studio-users/7/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\":\"abcdefgh123\"}"))
+                .andExpect(status().isOk());
+
+        verify(authService).changePassword(7L, null, "abcdefgh123", false);
+    }
+
 }
