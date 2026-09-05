@@ -2542,6 +2542,9 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Client connections page ───
+  'clients.loadFailed': { zh: '客户端连接加载失败，请稍后重试', en: 'Failed to load client connections, please retry later' },
+  'clients.retry': { zh: '重试', en: 'Retry' },
   // ─── BrokerCluster ───
 };
 
