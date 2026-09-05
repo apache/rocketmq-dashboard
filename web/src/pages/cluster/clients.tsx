@@ -54,7 +54,7 @@ import {
 import { matchesClientSearch } from './clientsSearch';
 
 const { Text } = Typography;
-const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
+// DEFAULT_LOAD_ERROR removed; the page passes a localized fallback below
 
 /* ─── Helpers ─── */
 
@@ -137,7 +137,7 @@ type ApiErrorLike = {
   };
 };
 
-function getLoadErrorMessage(error: unknown): string {
+function getLoadErrorMessage(error: unknown, fallback: string): string {
   const apiError = error as ApiErrorLike;
   const responseMessage = apiError.response?.data?.message;
   if (typeof responseMessage === 'string' && responseMessage.trim()) {
@@ -146,7 +146,7 @@ function getLoadErrorMessage(error: unknown): string {
   if (typeof apiError.message === 'string' && apiError.message.trim()) {
     return apiError.message;
   }
-  return DEFAULT_LOAD_ERROR;
+  return fallback;
 }
 
 const displayMetadata = (value: string | null | undefined) => value || '-';
@@ -219,12 +219,12 @@ const ClientsPage = () => {
         setRegistryClusters([]);
         setSelectedEndpoint(undefined);
         setConnections([]);
-        setLoadError(getLoadErrorMessage(error));
+        setLoadError(getLoadErrorMessage(error, t('clients.loadFailed')));
       })
       .finally(() => {
         if (registryRequestRef.current === requestId) setLoading(false);
       });
-  }, [registryLoadKey]);
+  }, [registryLoadKey, t]);
 
   useEffect(() => {
     const requestId = ++connectionRequestRef.current;
@@ -251,7 +251,7 @@ const ClientsPage = () => {
           setConnections([]);
           setClusterFilter('ALL');
           setSelectedConnection(null);
-          setLoadError(getLoadErrorMessage(error));
+          setLoadError(getLoadErrorMessage(error, t('clients.loadFailed')));
         }
       })
       .finally(() => {
@@ -682,7 +682,7 @@ const ClientsPage = () => {
                 setConnectionLoadKey((key) => key + 1);
               }}
             >
-              重试
+              {t('clients.retry')}
             </Button>
           }
         />
