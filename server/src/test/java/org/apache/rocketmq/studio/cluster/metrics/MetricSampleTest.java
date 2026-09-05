@@ -20,7 +20,9 @@ import org.apache.rocketmq.studio.ops.alert.AlertDomain;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.HashMap;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MetricSampleTest {
@@ -39,5 +41,71 @@ class MetricSampleTest {
                 null, null, MetricAvailability.AVAILABLE, Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Available metric samples require a value");
+    }
+
+    @Test
+    void blankMetricKeyAndInstanceIdAreRejectedTest() {
+        assertThatThrownBy(() -> new MetricSample("  ", AlertDomain.CLUSTER, "local", null,
+                null, 1D, MetricAvailability.AVAILABLE, Instant.now()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("metricKey is required");
+        assertThatThrownBy(() -> new MetricSample("broker.availability", AlertDomain.CLUSTER, null, null,
+                null, 1D, MetricAvailability.AVAILABLE, Instant.now()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("instanceId is required");
+    }
+
+    @Test
+    void nullDomainAvailabilityAndClockAreRejectedTest() {
+        assertThatThrownBy(() -> new MetricSample("broker.availability", null, "local", null,
+                null, 1D, MetricAvailability.AVAILABLE, Instant.now()))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                null, 1D, null, Instant.now()))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                null, 1D, MetricAvailability.AVAILABLE, null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void nullLabelsAreNormalizedToAnEmptyMapTest() {
+        MetricSample sample = new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                null, 1D, MetricAvailability.AVAILABLE, Instant.now());
+
+        assertThat(sample.labels()).isEmpty();
+    }
+
+    @Test
+    void labelsAreCopiedDefensivelyTest() {
+        HashMap<String, String> labels = new HashMap<>();
+        labels.put("brokerName", "broker-a");
+        MetricSample sample = new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                labels, 1D, MetricAvailability.AVAILABLE, Instant.now());
+
+        labels.put("brokerName", "broker-b");
+        labels.put("extra", "late");
+
+        assertThat(sample.labels())
+                .containsExactly(java.util.Map.entry("brokerName", "broker-a"));
+    }
+
+    @Test
+    void availableSampleCannotCarryAnUnavailableReasonTest() {
+        assertThatThrownBy(() -> new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                null, 1D, MetricAvailability.AVAILABLE, Instant.now(), "probe failed"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Available metric samples cannot have an unavailable reason");
+    }
+
+    @Test
+    void unavailableSampleWithoutAValueConstructsWithOptionalReasonTest() {
+        MetricSample plain = new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                null, null, MetricAvailability.UNAVAILABLE, Instant.now());
+        MetricSample withReason = new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null,
+                null, null, MetricAvailability.UNAVAILABLE, Instant.now(), "probe failed");
+
+        assertThat(plain.unavailableReason()).isNull();
+        assertThat(withReason.unavailableReason()).isEqualTo("probe failed");
     }
 }
