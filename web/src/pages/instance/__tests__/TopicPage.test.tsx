@@ -219,6 +219,51 @@ describe('TopicPage', () => {
     expect(screen.getByText(/与 Broker 同进程部署的 Proxy 地址/)).toBeInTheDocument();
   });
 
+  it('reloads the authoritative server page after creating a topic', async () => {
+    const existingTopic = { ...buildTopics(1)[0], name: 'topic-b' };
+    const createdTopic = {
+      ...buildTopics(1)[0],
+      name: 'topic-a',
+      clusterId: 'server-cluster',
+      remark: 'create response',
+      gmtCreate: '2026-01-02T00:00:00Z',
+      gmtModified: '2026-01-02T00:00:00Z',
+    };
+    const serverCreatedTopic = { ...createdTopic, remark: 'server page response' };
+    topicServiceMocks.listTopicsPage
+      .mockResolvedValueOnce({ items: [existingTopic], total: 1, page: 1, size: 20 })
+      .mockResolvedValueOnce({
+        items: [serverCreatedTopic, existingTopic],
+        total: 2,
+        page: 1,
+        size: 20,
+      });
+    topicServiceMocks.createTopic.mockResolvedValue(createdTopic);
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    expect(await screen.findByText('共 1 个 Topic')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'topic-a');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(2));
+    expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith({
+      instanceId: 'instance-proxy-1',
+      type: undefined,
+      search: undefined,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(screen.getByText('共 2 个 Topic')).toBeInTheDocument();
+    expect(within(getTableBody()).getByText('topic-a')).toBeInTheDocument();
+    expect(within(getTableBody()).getByText('topic-b')).toBeInTheDocument();
+    expect(within(getTableBody()).getByText('server page response')).toBeInTheDocument();
+    expect(within(getTableBody()).queryByText('create response')).not.toBeInTheDocument();
+  });
+
   it('ignores duplicate Topic creates while the first request is pending', async () => {
     topicServiceMocks.createTopic.mockImplementation(() => new Promise(() => {}));
     const user = userEvent.setup();

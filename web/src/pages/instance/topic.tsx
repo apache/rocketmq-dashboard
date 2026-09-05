@@ -453,7 +453,7 @@ const TopicPage = () => {
     [selectedInstanceId, typeFilter, searchText],
   );
 
-  const reloadTopicPageAfterDelete = useCallback(async () => {
+  const reloadTopicPage = useCallback(async () => {
     await loadTopicPage(tablePage, tablePageSize);
   }, [loadTopicPage, tablePage, tablePageSize]);
 
@@ -644,7 +644,7 @@ const TopicPage = () => {
         onOk: async () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
-            await reloadTopicPageAfterDelete();
+            await reloadTopicPage();
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
             message.error('删除 Topic 失败，请稍后重试');
@@ -1134,7 +1134,7 @@ const TopicPage = () => {
         ...values,
         instanceId: selectedInstanceId,
       });
-      setTopics((previous) => [created, ...previous]);
+      await reloadTopicPage();
       message.success(`Topic「${created.name}」创建成功`);
       setModalOpen(false);
       form.resetFields();
@@ -1502,7 +1502,7 @@ const TopicPage = () => {
                         names,
                         selectedInstanceId || undefined,
                       );
-                      if (deleted.length > 0) await reloadTopicPageAfterDelete();
+                      if (deleted.length > 0) await reloadTopicPage();
                       setSelectedRowKeys(failed);
 
                       if (failed.length === 0) {
