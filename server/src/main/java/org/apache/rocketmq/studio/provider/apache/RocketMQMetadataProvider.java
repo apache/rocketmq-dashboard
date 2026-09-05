@@ -18,10 +18,12 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -440,6 +442,15 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 }
             }
             return routes;
+        } catch (MQClientException e) {
+            if (isTopicRouteAbsent(e)) {
+                // A record created in the metadata database without a broker route is a
+                // normal "not synced yet" state — surface an empty route list, not a 502.
+                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                return Collections.emptyList();
+            }
+            log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
+            throw new BusinessException(502, "Failed to get routes for topic " + name + ": " + e.getMessage());
         } catch (Exception e) {
             log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get routes for topic " + name + ": " + e.getMessage());
@@ -567,10 +578,32 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     .page(page)
                     .pageSize(pageSize)
                     .build();
+        } catch (MQClientException e) {
+            if (isTopicRouteAbsent(e)) {
+                // Same as routes: a metadata record without a broker route is a normal
+                // "not synced yet" state, so the consumer page comes back empty.
+                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                return TopicConsumerPageVO.builder()
+                        .items(List.of())
+                        .total(0)
+                        .page(page)
+                        .pageSize(pageSize)
+                        .build();
+            }
+            log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
+            throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
         } catch (Exception e) {
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
         }
+    }
+
+    private boolean isTopicRouteAbsent(MQClientException e) {
+        if (e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
+            return true;
+        }
+        String message = e.getErrorMessage() == null ? e.getMessage() : e.getErrorMessage();
+        return message != null && message.contains("Not found topic route info");
     }
 
     private boolean isSystemConsumerGroup(String group) {
