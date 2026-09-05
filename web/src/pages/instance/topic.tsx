@@ -299,7 +299,7 @@ const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -611,15 +611,18 @@ const TopicPage = () => {
       key: 'remark',
       width: 200,
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
-      render: (remark: string) => (
-        <Text
-          type="secondary"
-          style={{ fontSize: 14, display: 'block' }}
-          ellipsis={{ tooltip: remark }}
-        >
-          {remark}
-        </Text>
-      ),
+      render: (remark: string, record: Topic) => {
+        const display = lang === 'en' ? (record.enRemark ?? remark) : remark;
+        return (
+          <Text
+            type="secondary"
+            style={{ fontSize: 14, display: 'block' }}
+            ellipsis={{ tooltip: display }}
+          >
+            {display}
+          </Text>
+        );
+      },
     },
     {
       title: '类型',
