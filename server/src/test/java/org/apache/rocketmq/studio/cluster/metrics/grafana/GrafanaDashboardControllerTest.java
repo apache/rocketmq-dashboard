@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -96,5 +97,19 @@ class GrafanaDashboardControllerTest {
                 .andExpect(header().string("Content-Disposition",
                         "attachment; filename=\"rocketmq-grafana-dashboards.zip\""))
                 .andExpect(content().bytes(archive));
+    }
+
+    @Test
+    void unknownDashboardIsNotFoundForModelAndExport() throws Exception {
+        org.apache.rocketmq.studio.common.exception.BusinessException missing =
+                new org.apache.rocketmq.studio.common.exception.BusinessException(
+                        404, "Grafana dashboard not found: ghost");
+        doThrow(missing).when(grafanaDashboardService).getDashboard("ghost");
+        doThrow(missing).when(grafanaDashboardService).getDashboardJson("ghost");
+
+        mockMvc.perform(get("/api/metrics/grafana/dashboards/ghost"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/metrics/grafana/dashboards/ghost/export"))
+                .andExpect(status().isNotFound());
     }
 }
