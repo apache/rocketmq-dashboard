@@ -132,7 +132,10 @@ public class QueryHistoryService {
      * Retrieves the stored result snapshot for a given history record.
      */
     public List<MessageRecordVO> getMessageQueryResults(long id) {
-        RmqMessageQuery query = messageQueryMapper.selectById(id);
+        String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
+        RmqMessageQuery query = messageQueryMapper.selectOne(new QueryWrapper<RmqMessageQuery>()
+                .eq("id", id)
+                .eq("queried_by", queriedBy));
         if (query == null) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Query history record not found");
         }

@@ -17,9 +17,11 @@
 package org.apache.rocketmq.studio.instance.message;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
@@ -239,6 +241,46 @@ class QueryHistoryServiceTest {
         ArgumentCaptor<Wrapper<RmqMessageQuery>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(messageQueryMapper).selectPage(any(Page.class), queryCaptor.capture());
         assertThat(queryCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
+    }
+
+    @Test
+    void loadsResultSnapshotOnlyForTheAuthenticatedOperator() {
+        AuthenticatedUserContext.setUsername("alice");
+        RmqMessageQuery entity = new RmqMessageQuery();
+        entity.setId(9L);
+        entity.setQueriedBy("alice");
+        entity.setResultSnapshot("[{\"msgId\":\"msg-9\",\"topic\":\"orders\"}]");
+        when(messageQueryMapper.selectOne(any())).thenReturn(entity);
+
+        List<MessageRecordVO> results = service.getMessageQueryResults(9L);
+
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.getMsgId()).isEqualTo("msg-9");
+            assertThat(result.getTopic()).isEqualTo("orders");
+        });
+        ArgumentCaptor<QueryWrapper<RmqMessageQuery>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(messageQueryMapper).selectOne(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getCustomSqlSegment())
+                .contains("id", "queried_by");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains(9L, "alice");
+    }
+
+    @Test
+    void hidesResultSnapshotOwnedByAnotherOperator() {
+        AuthenticatedUserContext.setUsername("bob");
+        when(messageQueryMapper.selectOne(any())).thenReturn(null);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.getMessageQueryResults(9L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Query history record not found");
+
+        ArgumentCaptor<QueryWrapper<RmqMessageQuery>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(messageQueryMapper).selectOne(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getCustomSqlSegment())
+                .contains("id", "queried_by");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains(9L, "bob");
     }
 
     @Test
