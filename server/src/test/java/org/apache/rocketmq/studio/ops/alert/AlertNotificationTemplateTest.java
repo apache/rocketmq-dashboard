@@ -51,4 +51,31 @@ class AlertNotificationTemplateTest {
         assertThat(AlertNotificationTemplate.render("${title}", alert, null))
                 .isEqualTo("${description}");
     }
+
+    @Test
+    void expandsEveryRemainingDocumentedTokenTest() {
+        AlertRuleVO rule = AlertRuleVO.builder().name("Orders rate").metric("orders.total")
+                .thresholdUnit("%").build();
+        SystemAlertVO alert = SystemAlertVO.builder().level(AlertLevel.warning)
+                .title("Orders rate")
+                .description("orders above threshold")
+                .transition("FIRING")
+                .instanceId("local")
+                .currentValue(0.5)
+                .time(LocalDateTime.of(2026, 8, 23, 9, 30))
+                .build();
+
+        String rendered = AlertNotificationTemplate.render(
+                "${title}|${description}|${metric}|${instanceId}|${level}|${time}|${value}", alert, rule);
+
+        assertThat(rendered).isEqualTo(
+                "Orders rate|orders above threshold|orders.total|local|warning|2026-08-23T09:30|0.5");
+    }
+
+    @Test
+    void emptiesMissingTimesAndValuesTest() {
+        SystemAlertVO alert = SystemAlertVO.builder().title("x").build();
+
+        assertThat(AlertNotificationTemplate.render("${time}|${value}", alert, null)).isEqualTo("|");
+    }
 }
