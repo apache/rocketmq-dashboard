@@ -21,8 +21,12 @@ import client from './client';
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  getQueueOffsets,
+  listDLQMessages,
+  pullMessageAtOffset,
   queryMessagePage,
   queryMessages,
+  resendDLQSelected,
 } from './message';
 
 const mock = new MockAdapter(client);
@@ -187,6 +191,64 @@ describe('message API', () => {
     await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual(
       trace,
     );
+  });
+
+  it('loads queue offsets and pulls a message at an offset', async () => {
+    mock.onGet('/messages/queues').reply((config) => {
+      expect(config.params).toEqual({ instanceId: 'instance-1', topic: 'orders' });
+      return [200, { code: 200, data: [{ brokerName: 'broker-a', queueId: 3 }] }];
+    });
+    mock.onGet('/messages/queue-message').reply((config) => {
+      expect(config.params).toEqual({
+        instanceId: 'instance-1',
+        topic: 'orders',
+        brokerName: 'broker-a',
+        queueId: 3,
+        offset: 99,
+      });
+      return [200, { code: 200, data: { msgId: 'msg-1' } }];
+    });
+
+    await expect(getQueueOffsets({ instanceId: 'instance-1', topic: 'orders' })).resolves.toEqual([
+      { brokerName: 'broker-a', queueId: 3 },
+    ]);
+    await expect(
+      pullMessageAtOffset({
+        instanceId: 'instance-1',
+        topic: 'orders',
+        brokerName: 'broker-a',
+        queueId: 3,
+        offset: 99,
+      }),
+    ).resolves.toEqual({ msgId: 'msg-1' });
+  });
+
+  it('lists DLQ messages and resends a selected batch', async () => {
+    mock.onGet('/dlq/cg-orders/messages').reply((config) => {
+      expect(config.params).toEqual({ instanceId: 'instance-1' });
+      return [
+        200,
+        {
+          code: 200,
+          data: { items: [{ msgId: 'msg-1' }], total: 1, page: 1, size: 20 },
+        },
+      ];
+    });
+    mock.onPost('/dlq/resend-selected').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        instanceId: 'instance-1',
+        groupName: 'cg-orders',
+        msgIds: ['msg-1'],
+      });
+      return [200, { code: 200, data: { succeeded: 1, failed: [] } }];
+    });
+
+    await expect(
+      listDLQMessages({ instanceId: 'instance-1', groupName: 'cg-orders' }),
+    ).resolves.toMatchObject({ total: 1 });
+    await expect(
+      resendDLQSelected({ instanceId: 'instance-1', groupName: 'cg-orders', msgIds: ['msg-1'] }),
+    ).resolves.toEqual({ succeeded: 1, failed: [] });
   });
 
   it('posts direct consumption to the message API', async () => {
