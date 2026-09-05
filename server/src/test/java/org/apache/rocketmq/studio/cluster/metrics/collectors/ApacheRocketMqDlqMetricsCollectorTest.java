@@ -87,4 +87,24 @@ class ApacheRocketMqDlqMetricsCollectorTest {
     private static InstanceVO apacheInstance() {
         return InstanceVO.builder().name("local").endpoint("localhost:9876").vendor(InstanceVendor.APACHE).build();
     }
+
+    @Test
+    void supportsApacheAndVendorLessInstancesWithAName() {
+        ApacheRocketMqDlqMetricsCollector collector =
+                new ApacheRocketMqDlqMetricsCollector(mock(DLQProvider.class));
+
+        assertThat(collector.supports(apacheInstance())).isTrue();
+        assertThat(collector.supports(InstanceVO.builder().name("local").endpoint("localhost:9876").build()))
+                .isTrue();
+        assertThat(collector.supports(InstanceVO.builder().name("cloud").endpoint("x")
+                .vendor(InstanceVendor.TENCENT).build())).isFalse();
+        assertThat(collector.supports(InstanceVO.builder().vendor(InstanceVendor.APACHE).build())).isFalse();
+        assertThat(collector.supports(null)).isFalse();
+    }
+
+    @Test
+    void exposesTheDlqMetricKey() {
+        assertThat(new ApacheRocketMqDlqMetricsCollector(mock(DLQProvider.class)).metricKeys())
+                .containsExactly("dlq.message.count");
+    }
 }
