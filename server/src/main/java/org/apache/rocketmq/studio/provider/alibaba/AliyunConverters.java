@@ -212,8 +212,23 @@ final class AliyunConverters {
                 .topic(data.getTopicName())
                 .expression(data.getFilterExpression())
                 .type(data.getFilterExpressionType())
+                .filterMode(filterMode(data.getFilterExpressionType()))
                 .consistency(data.getConsistency() == null ? null : String.valueOf(data.getConsistency()))
                 .build();
+    }
+
+    /**
+     * Mirrors the filter-mode mapping used by the Apache provider so subscription tables
+     * render the same values across instance types ({@code SQL92} is normalized to {@code SQL}).
+     */
+    static String filterMode(String expressionType) {
+        if ("SQL92".equals(expressionType)) {
+            return "SQL";
+        }
+        if ("CLASS_FILTER".equals(expressionType)) {
+            return "CLASS_FILTER";
+        }
+        return "TAG";
     }
 
     static MessageRecordVO toMessageRecord(ListMessagesResponseBody.List data) {
