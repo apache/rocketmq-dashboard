@@ -31,6 +31,7 @@ import java.util.Set;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -108,4 +109,27 @@ class AlertSilenceControllerTest {
                         && request.getRecurrenceDays().equals(Set.of(1, 3, 5))
                         && "Asia/Shanghai".equals(request.getTimeZone())));
     }
+    @Test
+    void listPageShouldUseBoundedDefaultsTest() throws Exception {
+        when(silenceService.listPage(1, 20)).thenReturn(PageResult.empty(1, 20));
+
+        mockMvc.perform(get("/api/alert-silences/page"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(20));
+
+        verify(silenceService).listPage(1, 20);
+    }
+
+    @Test
+    void createShouldRejectNullBodyTest() throws Exception {
+        mockMvc.perform(post("/api/alert-silences")
+                        .contentType("application/json"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(silenceService);
+    }
+
 }
