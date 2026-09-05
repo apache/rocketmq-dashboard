@@ -526,7 +526,10 @@ const MessagePageContent = ({
   };
 
   const handleDownload = (record: MessageRecord) => {
-    const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
+    const blob = new Blob(
+      [formatBody(lang === 'en' ? (record.enBody ?? record.body) : record.body)],
+      { type: 'application/json' },
+    );
     downloadBlob(blob, `${record.msgId}.json`);
     message.success('消息下载成功');
   };
@@ -739,7 +742,7 @@ const MessagePageContent = ({
               marginBottom: 0,
             }}
           >
-            {formatBody(selectedMsg.body)}
+            {formatBody(lang === 'en' ? (selectedMsg.enBody ?? selectedMsg.body) : selectedMsg.body)}
           </Paragraph>
         </>
       ),
