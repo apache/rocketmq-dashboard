@@ -15,17 +15,28 @@
  * limitations under the License.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const { isMockMode } = vi.hoisted(() => ({ isMockMode: vi.fn() }));
+
+vi.mock('./dataMode', () => ({ isMockMode }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
+vi.mock('../api/metrics', () => ({
+  getDashboard: vi.fn(),
+}));
 
+import * as metricsApi from '../api/metrics';
 import { getDashboard } from './dashboardService';
 
-describe('dashboardService mock dashboard', () => {
-  it('returns defensive copies for overview stats and cluster throughput', async () => {
+describe('dashboardService', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns defensive copies for overview stats and cluster throughput in mock mode', async () => {
+    isMockMode.mockReturnValue(true);
     const dashboard = await getDashboard();
     const originalTotalClusters = dashboard.stats.totalClusters;
     const originalClusterName = dashboard.clusters[0].name;
@@ -44,5 +55,30 @@ describe('dashboardService mock dashboard', () => {
     expect(fresh.clusters).not.toBe(dashboard.clusters);
     expect(fresh.clusters[0]).not.toBe(dashboard.clusters[0]);
     expect(fresh.clusters[0].throughput).not.toBe(dashboard.clusters[0].throughput);
+    expect(metricsApi.getDashboard).not.toHaveBeenCalled();
+  });
+
+  it('delegates to the metrics API with the selected instance when mock mode is off', async () => {
+    isMockMode.mockReturnValue(false);
+    const apiDashboard = {
+      stats: { totalClusters: 2 },
+      clusters: [],
+    };
+    vi.mocked(metricsApi.getDashboard).mockResolvedValue(apiDashboard);
+
+    await expect(getDashboard('instance-prod')).resolves.toBe(apiDashboard);
+    expect(metricsApi.getDashboard).toHaveBeenCalledWith('instance-prod');
+  });
+
+  it('delegates without an instance when none is selected', async () => {
+    isMockMode.mockReturnValue(false);
+    const apiDashboard = {
+      stats: { totalClusters: 1 },
+      clusters: [],
+    };
+    vi.mocked(metricsApi.getDashboard).mockResolvedValue(apiDashboard);
+
+    await expect(getDashboard()).resolves.toBe(apiDashboard);
+    expect(metricsApi.getDashboard).toHaveBeenCalledWith(undefined);
   });
 });
