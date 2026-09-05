@@ -29,4 +29,19 @@ class AlertRuleTransferDTOTest {
                 .extracting(violation -> violation.getMessage())
                 .contains("rule must not be null");
     }
+
+    @Test
+    void rejectsMissingVersionDomainAndEmptyRulesTest() {
+        AlertRuleTransferDTO transfer = new AlertRuleTransferDTO();
+        transfer.setRules(Collections.emptyList());
+
+        assertThat(validator.validate(transfer))
+                .extracting(violation -> violation.getMessage())
+                .contains("version is required", "domain is required", "rules must not be empty");
+    }
+
+    @Test
+    void declaresTheCurrentTransferVersionTest() {
+        assertThat(AlertRuleTransferDTO.VERSION).isEqualTo(1);
+    }
 }
