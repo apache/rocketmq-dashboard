@@ -79,6 +79,48 @@ class ProducerConnectionSummaryVOTest {
                 .containsExactly("UNKNOWN");
     }
 
+    @Test
+    void fromShouldHandleANullConnectionList() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(null);
+
+        assertThat(summary.getTotalConnections()).isZero();
+        assertThat(summary.getUniqueClientCount()).isZero();
+        assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.UNAVAILABLE);
+        assertThat(summary.getWarnings()).containsExactly(ProducerConnectionSummaryVO.NO_CONNECTIONS);
+    }
+
+    @Test
+    void fromShouldTreatTheLiteralNullStringAsMissingMetadata() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(List.of(
+                connection("null", "10.0.0.1:38888", "Java", "5.1.0")));
+
+        assertThat(summary.getTotalConnections()).isEqualTo(1);
+        assertThat(summary.getUniqueClientCount()).isZero();
+        assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.WARNING);
+        assertThat(summary.getWarnings()).containsExactly(
+                ProducerConnectionSummaryVO.INCOMPLETE_CLIENT_METADATA);
+    }
+
+    @Test
+    void distributionShouldTrimValuesAndSortByCountThenName() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(List.of(
+                connection("producer-a", "10.0.0.1:38888", " Go ", "5.2.0"),
+                connection("producer-b", "10.0.0.2:38888", "Go", "5.1.0"),
+                connection("producer-c", "10.0.0.3:38888", "Java", "5.1.0")));
+
+        // " Go " and "Go" merge into one dimension; counts order Go(2) before Java(1),
+        // and the two single-version entries order alphabetically on a count tie.
+        assertThat(summary.getLanguages())
+                .extracting(ProducerConnectionSummaryItemVO::getValue)
+                .containsExactly("Go", "Java");
+        assertThat(summary.getLanguages())
+                .extracting(ProducerConnectionSummaryItemVO::getCount)
+                .containsExactly(2L, 1L);
+        assertThat(summary.getVersions())
+                .extracting(ProducerConnectionSummaryItemVO::getValue)
+                .containsExactly("5.1.0", "5.2.0");
+    }
+
     private ProducerConnectionVO connection(String clientId, String address, String language, String version) {
         return ProducerConnectionVO.builder()
                 .clientId(clientId)
