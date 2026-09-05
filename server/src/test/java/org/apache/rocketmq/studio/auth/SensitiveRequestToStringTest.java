@@ -66,4 +66,22 @@ class SensitiveRequestToStringTest {
                 .contains("instanceId=instance-1")
                 .doesNotContain("metrics-password", "metrics-bearer-token");
     }
+
+    @Test
+    void studioUserDtoRedactsPlainAndResetPasswords() {
+        CreateStudioUserDTO create = new CreateStudioUserDTO();
+        create.setUsername("alice");
+        create.setPassword("plain-create-password");
+
+        ResetPasswordDTO reset = new ResetPasswordDTO();
+        reset.setNewPassword("plain-reset-password");
+
+        assertThat(create.toString())
+                .contains("username=alice")
+                .doesNotContain("plain-create-password")
+                .doesNotContain("password");
+        assertThat(reset.toString())
+                .doesNotContain("plain-reset-password")
+                .doesNotContain("password");
+    }
 }
