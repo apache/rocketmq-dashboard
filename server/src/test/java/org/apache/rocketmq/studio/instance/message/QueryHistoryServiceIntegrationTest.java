@@ -72,4 +72,25 @@ class QueryHistoryServiceIntegrationTest {
                     .eq("queried_by", longUsername));
         }
     }
+
+    @Test
+    void queryHistoryRoundTripsTheStoredRecordIdTest() {
+        String marker = "roundtrip-" + System.nanoTime();
+        try {
+            AuthenticatedUserContext.setUser("tester", true);
+            queryHistoryService.recordMessageQuery("qh-cluster-2", "TOPIC", marker,
+                    null, null, null, null, null, 0, null);
+
+            PageResult<MessageQueryHistoryVO> history =
+                    queryHistoryService.listMessageQueries("qh-cluster-2", null, null, 1, 20);
+            assertThat(history.getItems()).anySatisfy(item -> {
+                assertThat(item.getTopic()).isEqualTo(marker);
+                assertThat(item.getResultCount()).isZero();
+                assertThat(queryHistoryService.getMessageQueryResults(item.getId())).isEmpty();
+            });
+        } finally {
+            AuthenticatedUserContext.clear();
+            messageQueryMapper.delete(new QueryWrapper<RmqMessageQuery>().eq("topic", marker));
+        }
+    }
 }
