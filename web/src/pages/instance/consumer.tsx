@@ -499,7 +499,7 @@ const ConsumerPageContent = ({
       }
     } catch {
       if (requestId === settingsRequestIdRef.current) {
-        message.error('加载消费组配置失败，请稍后重试');
+        message.error(t('consumer.configLoadFailed'));
       }
     } finally {
       if (requestId === settingsRequestIdRef.current) {
@@ -541,9 +541,9 @@ const ConsumerPageContent = ({
           ? { ...current, retryMaxTimes: saved.retryMaxTimes }
           : current,
       );
-      message.success('消费组配置已保存');
+      message.success(t('consumer.configSaved'));
     } catch {
-      message.error('保存消费组配置失败，请稍后重试');
+      message.error(t('consumer.configSaveFailed'));
     } finally {
       setSettingsSubmitting(false);
     }
@@ -828,19 +828,19 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   const columns: ColumnsType<ConsumerGroup> = [
     {
-      title: 'Group 名称',
+      title: t('consumer.name'),
       dataIndex: 'name',
       key: 'name',
       width: 190,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Tooltip title="点击复制名称">
+        <Tooltip title={t('consumer.clickToCopy')}>
           <Text
             strong
             style={{ fontSize: 14, cursor: 'pointer' }}
             onClick={() => {
-              const done = () => message.success(`已复制：${name}`);
-              const failed = () => message.error('复制失败，请手动复制');
+              const done = () => message.success(t('consumer.copied', { name }));
+              const failed = () => message.error(t('consumer.copyFailed'));
               if (navigator.clipboard?.writeText) {
                 navigator.clipboard.writeText(name).then(done, failed);
               } else {
@@ -870,7 +870,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '订阅组类型',
+      title: t('consumer.subType'),
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 100,
@@ -881,7 +881,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '订阅模式',
+      title: t('consumer.subMode'),
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
@@ -889,7 +889,7 @@ const ConsumerPageContent = ({
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
     {
-      title: '在线客户端',
+      title: t('consumer.onlineClients'),
       dataIndex: 'onlineInstances',
       key: 'onlineInstances',
       width: 100,
@@ -897,7 +897,7 @@ const ConsumerPageContent = ({
       sorter: (a, b) => (a.onlineInstances ?? 0) - (b.onlineInstances ?? 0),
     },
     {
-      title: '总堆积量',
+      title: t('consumer.totalLag'),
       dataIndex: 'totalLag',
       key: 'totalLag',
       width: 96,
@@ -907,11 +907,11 @@ const ConsumerPageContent = ({
         isLagAvailable(lag) ? (
           lag.toLocaleString()
         ) : (
-          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+          <Text type="secondary">{t('groupMgmt.lagUnavailable')}</Text>
         ),
     },
     {
-      title: '消费延迟',
+      title: t('consumer.delay'),
       dataIndex: 'delaySeconds',
       key: 'delaySeconds',
       width: 100,
@@ -920,7 +920,7 @@ const ConsumerPageContent = ({
       render: (seconds: number) => formatDelay(seconds ?? 0),
     },
     {
-      title: '创建时间',
+      title: t('consumer.createdAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 156,
@@ -932,7 +932,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '修改时间',
+      title: t('consumer.updatedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 156,
@@ -944,7 +944,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '操作',
+      title: t('consumer.action'),
       key: 'actions',
       width: 232,
       render: (_: unknown, record: ConsumerGroup) => (
@@ -958,7 +958,7 @@ const ConsumerPageContent = ({
               openModal(record);
             }}
           >
-            详情
+            {t('consumer.detail')}
           </Button>
           <Button
             size="small"
@@ -1096,7 +1096,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '协议',
+      title: t('consumer.protocol'),
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
@@ -1106,7 +1106,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '地址',
+      title: t('consumer.address'),
       dataIndex: 'address',
       key: 'address',
       width: 150,
@@ -1117,7 +1117,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '最后心跳',
+      title: t('consumer.lastHeartbeat'),
       dataIndex: 'lastHeartbeat',
       key: 'lastHeartbeat',
       width: 150,
@@ -1128,7 +1128,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '诊断',
+      title: t('consumer.instanceDiagnostics'),
       key: 'diagnostics',
       width: 90,
       render: (_: unknown, record: ConsumerInstance) => (
@@ -1137,7 +1137,7 @@ const ConsumerPageContent = ({
           icon={<ListBullets size={14} />}
           onClick={() => void openStackModal(record)}
         >
-          线程栈
+          {t('consumer.threadStackButton')}
         </Button>
       ),
     },
@@ -1178,7 +1178,7 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   const queueColumns: ColumnsType<QueueProgress> = [
     {
-      title: 'Topic 主题',
+      title: t('consumer.subTopic'),
       dataIndex: 'topic',
       key: 'topic',
       width: 280,

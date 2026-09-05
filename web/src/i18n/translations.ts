@@ -2542,6 +2542,18 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Consumer list / instance columns ───
+  'consumer.address': { zh: '地址', en: 'Address' },
+  'consumer.clickToCopy': { zh: '点击复制名称', en: 'Click to copy the name' },
+  'consumer.configLoadFailed': { zh: '加载消费组配置失败，请稍后重试', en: 'Failed to load the consumer group settings, please retry later' },
+  'consumer.configSaveFailed': { zh: '保存消费组配置失败，请稍后重试', en: 'Failed to save the consumer group settings, please retry later' },
+  'consumer.configSaved': { zh: '消费组配置已保存', en: 'Consumer group settings saved' },
+  'consumer.copied': { zh: '已复制：{name}', en: 'Copied: {name}' },
+  'consumer.copyFailed': { zh: '复制失败，请手动复制', en: 'Copy failed, please copy manually' },
+  'consumer.instanceDiagnostics': { zh: '诊断', en: 'Diagnostics' },
+  'consumer.lastHeartbeat': { zh: '最后心跳', en: 'Last Heartbeat' },
+  'consumer.protocol': { zh: '协议', en: 'Protocol' },
+  'consumer.threadStackButton': { zh: '线程栈', en: 'Thread Stack' },
   // ─── BrokerCluster ───
 };
 
