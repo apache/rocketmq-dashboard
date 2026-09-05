@@ -132,6 +132,58 @@ class ClaudeCodeAgentProviderTest {
         verify(process).destroyForcibly();
     }
 
+    @Test
+    void anthropicBaseShouldPreferTheConfiguredGlobalBaseUrl() {
+        LlmProperties properties = new LlmProperties();
+        properties.setAnthropicBaseUrl("  https://llm.example/apps/anthropic  ");
+        ClaudeCodeAgentProvider provider = new ClaudeCodeAgentProvider(
+                properties, new CliProcessEnvironment(List.of()));
+        LlmConfigVO config = LlmConfigVO.builder()
+                .apiBase("https://api.example.com/compatible-mode/v1")
+                .build();
+
+        assertThat(provider.anthropicBase(config))
+                .isEqualTo("https://llm.example/apps/anthropic");
+    }
+
+    @Test
+    void anthropicBaseShouldReturnNullWhenNothingIsConfigured() {
+        ClaudeCodeAgentProvider provider = new ClaudeCodeAgentProvider(
+                new LlmProperties(), new CliProcessEnvironment(List.of()));
+        LlmConfigVO config = LlmConfigVO.builder().build();
+
+        assertThat(provider.anthropicBase(config)).isNull();
+    }
+
+    @Test
+    void anthropicBaseShouldRewriteTheCompatibleModeSuffixToAnthropicApps() {
+        ClaudeCodeAgentProvider provider = new ClaudeCodeAgentProvider(
+                new LlmProperties(), new CliProcessEnvironment(List.of()));
+        LlmConfigVO config = LlmConfigVO.builder()
+                .apiBase("https://api.anthropic.com/compatible-mode/v1/")
+                .build();
+
+        assertThat(provider.anthropicBase(config))
+                .isEqualTo("https://api.anthropic.com/apps/anthropic");
+    }
+
+    @Test
+    void anthropicBaseShouldTrimSlashesAndLeaveOtherBasesUnchanged() {
+        ClaudeCodeAgentProvider provider = new ClaudeCodeAgentProvider(
+                new LlmProperties(), new CliProcessEnvironment(List.of()));
+        LlmConfigVO plain = LlmConfigVO.builder()
+                .apiBase("https://gateway.example///")
+                .build();
+        LlmConfigVO alreadyAnthropic = LlmConfigVO.builder()
+                .apiBase("https://api.anthropic.com/apps/anthropic")
+                .build();
+
+        assertThat(provider.anthropicBase(plain))
+                .isEqualTo("https://gateway.example");
+        assertThat(provider.anthropicBase(alreadyAnthropic))
+                .isEqualTo("https://api.anthropic.com/apps/anthropic");
+    }
+
     private static final class RecordingEnvironment extends CliProcessEnvironment {
         private final List<Map<String, String>> childEnvironments = new ArrayList<>();
 
