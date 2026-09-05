@@ -6,6 +6,7 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertState;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
@@ -121,6 +122,58 @@ class MybatisPlusAlertStateRepositoryTest {
                 .containsExactly("orders", "payments");
         verify(alertMapper, times(1)).selectList(any());
         verify(alertMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void deleteByRuleIdShouldRemoveStatesForThatRuleTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        when(mapper.delete(any(Wrapper.class))).thenReturn(2);
+        MybatisPlusAlertStateRepository repository =
+                new MybatisPlusAlertStateRepository(mapper, mock(RmqSystemAlertMapper.class));
+
+        repository.deleteByRuleId(7L);
+
+        org.mockito.ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.Wrapper<RmqAlertState>> captor =
+                org.mockito.ArgumentCaptor.forClass(
+                        com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).delete(captor.capture());
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<RmqAlertState> query =
+                (com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<RmqAlertState>) captor.getValue();
+        assertThat(query.getSqlSegment()).contains("rule_id");
+    }
+
+    @Test
+    void deleteByRuleIdShouldIgnoreANullRuleIdTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        MybatisPlusAlertStateRepository repository =
+                new MybatisPlusAlertStateRepository(mapper, mock(RmqSystemAlertMapper.class));
+
+        repository.deleteByRuleId(null);
+
+        verify(mapper, never()).delete(any());
+    }
+
+    @Test
+    void findRuntimeByRuleIdsShouldComputeTheNextReminderTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        RmqAlertState state = activeState(7L, "fp-1", AlertStateStatus.FIRING);
+        state.setLastNotifiedAt(LocalDateTime.of(2026, 8, 21, 12, 0));
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(state));
+        MybatisPlusAlertStateRepository repository =
+                new MybatisPlusAlertStateRepository(mapper, mock(RmqSystemAlertMapper.class));
+        AlertRuleVO rule = AlertRuleVO.builder().id(7L).reminderInterval("30m").build();
+
+        List<AlertRuleRuntimeVO> runtime = repository.findRuntimeByRuleIds(List.of(rule));
+
+        assertThat(runtime).singleElement().satisfies(row -> {
+            assertThat(row.getRuleId()).isEqualTo(7L);
+            assertThat(row.getFingerprint()).isEqualTo("fp-1");
+            assertThat(row.getStatus()).isEqualTo(AlertStateStatus.FIRING);
+            assertThat(row.getConsecutiveHits()).isEqualTo(1);
+            assertThat(row.getCurrentValue()).isEqualTo(30D);
+            assertThat(row.getLastNotifiedAt()).isEqualTo(LocalDateTime.of(2026, 8, 21, 12, 0));
+            assertThat(row.getNextReminderAt()).isEqualTo(LocalDateTime.of(2026, 8, 21, 12, 30));
+        });
     }
 
     private static RmqAlertState activeState(Long ruleId, String fingerprint, AlertStateStatus status) {
