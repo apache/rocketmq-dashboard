@@ -11,6 +11,7 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -58,6 +59,24 @@ public class QueryHistoryController {
     @GetMapping("/messages/{id}/results")
     public Result<List<MessageRecordVO>> messageQueryResults(@PathVariable long id) {
         return Result.ok(queryHistoryService.getMessageQueryResults(id));
+    }
+
+    @DeleteMapping("/messages/{id}")
+    public Result<Void> deleteMessageQuery(@PathVariable long id) {
+        queryHistoryService.deleteMessageQuery(id);
+        return Result.ok(null);
+    }
+
+    @DeleteMapping("/traces/{id}")
+    public Result<Void> deleteTraceQuery(@PathVariable long id) {
+        queryHistoryService.deleteTraceQuery(id);
+        return Result.ok(null);
+    }
+
+    @DeleteMapping
+    public Result<QueryHistoryDeleteResultVO> clearHistory(
+            @RequestParam(required = false) String clusterId) {
+        return Result.ok(queryHistoryService.clearHistory(normalizeFilter(clusterId)));
     }
 
     private void validatePage(int page, int pageSize) {

@@ -267,6 +267,38 @@ class QueryHistoryServiceTest {
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
 
+    @Test
+    void deletesOnlyCurrentOperatorsMessageHistory() {
+        AuthenticatedUserContext.setUsername("alice");
+        when(messageQueryMapper.delete(any(Wrapper.class))).thenReturn(1);
+
+        service.deleteMessageQuery(17L);
+
+        ArgumentCaptor<Wrapper<RmqMessageQuery>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(messageQueryMapper).delete(captor.capture());
+        assertThat(captor.getValue().getCustomSqlSegment()).contains("id", "queried_by");
+        verify(traceQueryMapper, never()).delete(any(Wrapper.class));
+    }
+
+    @Test
+    void clearsBothHistoryTablesWithinClusterAndOperatorScope() {
+        AuthenticatedUserContext.setUsername("alice");
+        when(messageQueryMapper.delete(any(Wrapper.class))).thenReturn(4);
+        when(traceQueryMapper.delete(any(Wrapper.class))).thenReturn(2);
+
+        QueryHistoryDeleteResultVO result = service.clearHistory("cluster-a");
+
+        assertThat(result.getMessageQueries()).isEqualTo(4);
+        assertThat(result.getTraceQueries()).isEqualTo(2);
+        assertThat(result.total()).isEqualTo(6);
+        ArgumentCaptor<Wrapper<RmqMessageQuery>> messageCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        ArgumentCaptor<Wrapper<RmqTraceQuery>> traceCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(messageQueryMapper).delete(messageCaptor.capture());
+        verify(traceQueryMapper).delete(traceCaptor.capture());
+        assertThat(messageCaptor.getValue().getCustomSqlSegment()).contains("queried_by", "cluster_id");
+        assertThat(traceCaptor.getValue().getCustomSqlSegment()).contains("queried_by", "cluster_id");
+    }
+
     private static RmqMessageQuery messageQuery(Long id) {
         RmqMessageQuery query = new RmqMessageQuery();
         query.setId(id);

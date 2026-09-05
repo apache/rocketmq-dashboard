@@ -244,6 +244,53 @@ public class QueryHistoryService {
                 .build();
     }
 
+    /**
+     * Deletes one message-query record only when it belongs to the current operator.
+     * Returning a not-found result for another operator's record avoids exposing ownership.
+     */
+    public void deleteMessageQuery(long id) {
+        String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
+        int deleted = messageQueryMapper.delete(new QueryWrapper<RmqMessageQuery>()
+                .eq("id", id)
+                .eq("queried_by", queriedBy));
+        if (deleted == 0) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(
+                    404, "Message query history record not found");
+        }
+    }
+
+    /** Deletes one trace-query record only when it belongs to the current operator. */
+    public void deleteTraceQuery(long id) {
+        String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
+        int deleted = traceQueryMapper.delete(new QueryWrapper<RmqTraceQuery>()
+                .eq("id", id)
+                .eq("queried_by", queriedBy));
+        if (deleted == 0) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(
+                    404, "Trace query history record not found");
+        }
+    }
+
+    /**
+     * Clears both history streams for the current operator and optional cluster scope.
+     * The delete predicates deliberately include the authenticated operator in both tables.
+     */
+    public QueryHistoryDeleteResultVO clearHistory(String clusterId) {
+        String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
+        QueryWrapper<RmqMessageQuery> messageFilter = new QueryWrapper<RmqMessageQuery>()
+                .eq("queried_by", queriedBy)
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId);
+        QueryWrapper<RmqTraceQuery> traceFilter = new QueryWrapper<RmqTraceQuery>()
+                .eq("queried_by", queriedBy)
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId);
+        int messageQueries = messageQueryMapper.delete(messageFilter);
+        int traceQueries = traceQueryMapper.delete(traceFilter);
+        return QueryHistoryDeleteResultVO.builder()
+                .messageQueries(messageQueries)
+                .traceQueries(traceQueries)
+                .build();
+    }
+
     @Scheduled(fixedDelayString = "${studio.query-history.cleanup-interval:PT24H}")
     public void purgeExpiredQueries() {
         int retentionDays = properties.getRetentionDays();
