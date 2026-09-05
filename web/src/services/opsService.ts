@@ -28,6 +28,7 @@ import type {
   AlertSilenceQuery,
   AlertSilence,
   CreateAlertSilence,
+  SystemAlertSummary,
 } from '../api/ops';
 import { mockAlertRules } from '../mock/alerts';
 import { mockAuditRecords } from '../mock/audit';
@@ -377,6 +378,18 @@ export async function listSystemAlertsPage(
     total: filtered.length,
     page,
     size: pageSize,
+  };
+}
+
+export async function getSystemAlertSummary(
+  params: SystemAlertQuery = {},
+): Promise<SystemAlertSummary> {
+  if (!isMockMode()) return opsApi.fetchSystemAlertSummary(params);
+
+  const page = await listSystemAlertsPage({ ...params, page: 1, pageSize: 100 });
+  return {
+    total: page.total,
+    unacknowledged: page.items.filter((alert) => !alert.acknowledged).length,
   };
 }
 

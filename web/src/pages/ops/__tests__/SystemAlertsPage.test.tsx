@@ -23,6 +23,7 @@ import {
   listAlertSilences,
   listAlertSilencesPage,
   listSystemAlertsPage,
+  getSystemAlertSummary,
 } from '../../../services/opsService';
 import SystemAlertsPage from '../systemAlerts';
 
@@ -30,6 +31,7 @@ vi.mock('../../../services/opsService', () => ({
   acknowledgeAlert: vi.fn(),
   clearAcknowledgedAlerts: vi.fn(),
   listSystemAlertsPage: vi.fn(),
+  getSystemAlertSummary: vi.fn(),
   getCollectorStatus: vi.fn().mockResolvedValue({ collectionInterval: 'PT30S' }),
   listAlertDeliveries: vi.fn().mockResolvedValue([]),
   listRelatedSystemAlerts: vi.fn().mockResolvedValue([]),
@@ -97,8 +99,33 @@ describe('SystemAlertsPage', () => {
       page: 1,
       size: 20,
     });
+    vi.mocked(getSystemAlertSummary).mockResolvedValue({
+      total: 4,
+      unacknowledged: 3,
+    });
     vi.mocked(listAlertSilences).mockResolvedValue([]);
     vi.mocked(listAlertSilencesPage).mockResolvedValue({ items: [], total: 0, page: 1, size: 10 });
+  });
+
+  it('renders the result-set-wide unacknowledged count', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderPage();
+
+    await screen.findByText('Broker unavailable');
+    await waitFor(() =>
+      expect(getSystemAlertSummary).toHaveBeenCalledWith({
+        level: undefined,
+        domain: undefined,
+        transition: undefined,
+        notificationSuppressed: undefined,
+        instanceId: undefined,
+        labelKey: undefined,
+        labelValue: undefined,
+        from: undefined,
+        to: undefined,
+      }),
+    );
+    expect(screen.getByText(/3 unacknowledged/i)).toBeInTheDocument();
   });
 
   it('finishes an export when a later page is empty after the result set shrinks', async () => {

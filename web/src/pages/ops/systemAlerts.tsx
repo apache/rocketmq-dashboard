@@ -43,6 +43,7 @@ import {
   listRelatedSystemAlerts,
   retryAlertDelivery,
   listSystemAlertsPage,
+  getSystemAlertSummary,
   createAlertSilence,
   deleteAlertSilence,
   listAlertSilencesPage,
@@ -54,6 +55,7 @@ import type {
   NotificationDelivery,
   PageResult,
   SystemAlert,
+  SystemAlertSummary,
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
@@ -144,6 +146,7 @@ const SystemAlertsPage = () => {
   };
 
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [alertSummary, setAlertSummary] = useState<SystemAlertSummary | null>(null);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [domainFilter, setDomainFilter] = useState<string>('all');
   const [transitionFilter, setTransitionFilter] = useState<string>('all');
@@ -220,6 +223,15 @@ const SystemAlertsPage = () => {
         if (!cancelled) setCollectorStatus(status);
       })
       .catch(() => undefined);
+    void getSystemAlertSummary({
+      ...currentQuery(),
+    })
+      .then((summary) => {
+        if (!cancelled) setAlertSummary(summary);
+      })
+      .catch(() => {
+        if (!cancelled) setAlertSummary(null);
+      });
 
     return () => {
       cancelled = true;
@@ -237,7 +249,7 @@ const SystemAlertsPage = () => {
     transitionFilter,
   ]);
 
-  const unackCount = alerts.filter((a) => !a.acknowledged).length;
+  const unackCount = alertSummary?.unacknowledged ?? alerts.filter((a) => !a.acknowledged).length;
 
   const handleAck = async (id: number) => {
     setAcknowledgingIds((current) => new Set(current).add(id));
