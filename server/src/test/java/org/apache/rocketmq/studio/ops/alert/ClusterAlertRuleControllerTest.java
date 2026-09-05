@@ -153,4 +153,43 @@ class ClusterAlertRuleControllerTest {
 
         verify(alertService).toggleRule(AlertDomain.CLUSTER, 7L, false);
     }
+    @Test
+    void deleteRuleShouldDelegateWithClusterDomain() throws Exception {
+        mockMvc.perform(post("/api/cluster-alert-rules/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":5}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(alertService).deleteRule(AlertDomain.CLUSTER, 5L);
+    }
+
+    @Test
+    void bulkToggleShouldDelegateWithClusterDomain() throws Exception {
+        when(alertService.bulkToggleRules(AlertDomain.CLUSTER, List.of(1L, 2L), false))
+                .thenReturn(AlertRuleBulkResultVO.builder().succeededIds(List.of(1L, 2L)).build());
+
+        mockMvc.perform(post("/api/cluster-alert-rules/bulk-toggle")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[1,2],\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.succeededIds[0]").value(1));
+
+        verify(alertService).bulkToggleRules(AlertDomain.CLUSTER, List.of(1L, 2L), false);
+    }
+
+    @Test
+    void bulkDeleteShouldDelegateWithClusterDomain() throws Exception {
+        when(alertService.bulkDeleteRules(AlertDomain.CLUSTER, List.of(1L, 2L)))
+                .thenReturn(AlertRuleBulkResultVO.builder().succeededIds(List.of(1L, 2L)).build());
+
+        mockMvc.perform(post("/api/cluster-alert-rules/bulk-delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[1,2]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.succeededIds.length()").value(2));
+
+        verify(alertService).bulkDeleteRules(AlertDomain.CLUSTER, List.of(1L, 2L));
+    }
+
 }
