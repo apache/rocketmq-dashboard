@@ -163,6 +163,7 @@ const ClientsPage = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
+  const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registryLoadKey, setRegistryLoadKey] = useState(0);
@@ -231,7 +232,11 @@ const ClientsPage = () => {
       if (connectionRequestRef.current === requestId) setLoading(true);
     });
 
-    void listConnections({ namesrvAddr: selectedEndpoint })
+    void listConnections({
+      namesrvAddr: selectedEndpoint,
+      clusterId: clusterFilter === 'ALL' ? undefined : clusterFilter,
+      type: typeFilter === 'ALL' ? undefined : typeFilter,
+    })
       .then((nextConnections) => {
         if (connectionRequestRef.current === requestId) {
           setConnections(nextConnections);
@@ -249,7 +254,7 @@ const ClientsPage = () => {
       .finally(() => {
         if (connectionRequestRef.current === requestId) setLoading(false);
       });
-  }, [connectionLoadKey, selectedEndpoint, selectedCluster]);
+  }, [connectionLoadKey, clusterFilter, selectedEndpoint, selectedCluster, typeFilter]);
 
   useEffect(
     () => () => {
@@ -262,21 +267,18 @@ const ClientsPage = () => {
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {
     const clusterNames = [
-      ...new Set(connections.map((connection) => connection.clusterName)),
+      ...new Set([
+        ...registryClusters.map((cluster) => cluster.nsClusterName).filter(Boolean),
+        ...connections.map((connection) => connection.clusterName).filter(Boolean),
+      ]),
     ].sort();
     return [
       { value: 'ALL', label: t('clients.allClusters') },
       ...clusterNames.map((name) => ({ value: name, label: name })),
     ];
-  }, [connections, t]);
+  }, [connections, registryClusters, t]);
 
-  const clusterConnections = useMemo(
-    () =>
-      clusterFilter === 'ALL'
-        ? connections
-        : connections.filter((connection) => connection.clusterName === clusterFilter),
-    [connections, clusterFilter],
-  );
+  const clusterConnections = useMemo(() => connections, [connections]);
 
   const connectionStats = useMemo(() => {
     const instances = Array.from(
@@ -706,6 +708,20 @@ const ClientsPage = () => {
             }}
             style={{ width: 180 }}
             options={clusterOptions}
+          />
+          <Select
+            aria-label={t('common.type')}
+            value={typeFilter}
+            onChange={(value) => {
+              setTypeFilter(value);
+              setCurrentPage(1);
+            }}
+            style={{ width: 140 }}
+            options={[
+              { value: 'ALL', label: t('common.all') },
+              { value: 'Producer', label: typeConfig.Producer?.label ?? 'Producer' },
+              { value: 'Consumer', label: typeConfig.Consumer?.label ?? 'Consumer' },
+            ]}
           />
           <Input.Search
             placeholder={t('clients.searchPlaceholder')}
