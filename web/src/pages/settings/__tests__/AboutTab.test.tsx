@@ -48,4 +48,31 @@ describe('AboutTab', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('2024-01-15 14:30:00')).not.toBeInTheDocument();
   });
+
+  it('renders the static project metadata rows', () => {
+    render(<AboutTab />);
+
+    expect(screen.getByText('0.1.0')).toBeInTheDocument();
+    expect(screen.getByText('4.x / 5.x')).toBeInTheDocument();
+    expect(screen.getByText('React 18 + Ant Design 5')).toBeInTheDocument();
+    expect(screen.getByText('Spring Boot 3 + RocketMQ MCP Server')).toBeInTheDocument();
+    expect(screen.getByText('Apache 2.0')).toBeInTheDocument();
+  });
+
+  it('renders the community links with their destinations', () => {
+    render(<AboutTab />);
+
+    expect(screen.getByRole('link', { name: /GitHub/ })).toHaveAttribute(
+      'href',
+      'https://github.com/apache/rocketmq',
+    );
+    expect(screen.getByRole('link', { name: /文档中心/ })).toHaveAttribute(
+      'href',
+      'https://rocketmq.apache.org/docs/',
+    );
+    expect(screen.getByRole('link', { name: /RocketMQ 社区/ })).toHaveAttribute(
+      'href',
+      'https://rocketmq.apache.org/',
+    );
+  });
 });
