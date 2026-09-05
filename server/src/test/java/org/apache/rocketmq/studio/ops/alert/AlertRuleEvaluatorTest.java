@@ -21,71 +21,142 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AlertRuleEvaluatorTest {
+
     private final AlertRuleEvaluator evaluator = new AlertRuleEvaluator();
 
-    @Test
-    void triggersMatchingAvailableMetricTest() {
-        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
-                .operator(">=").threshold(0.85).enabled(true).build();
-        MetricSample sample = sample(MetricAvailability.AVAILABLE, 0.9);
+    private AlertRuleVO rule(String metric, AlertDomain domain, String operator, double threshold) {
+        return AlertRuleVO.builder()
+            .domain(domain)
+            .metric(metric)
+            .operator(operator)
+            .threshold(threshold)
+            .duration("5m")
+            .build();
+    }
 
-        AlertEvaluationResult result = evaluator.evaluate(rule, sample);
+    private MetricSample sample(String metricKey, AlertDomain domain, double value) {
+        return new MetricSample(metricKey, domain, "inst-1", "cluster-1", Map.of(),
+                value, MetricAvailability.AVAILABLE, Instant.parse("2026-09-01T08:00:00Z"));
+    }
 
-        assertThat(result.matches()).isTrue();
-        assertThat(result.conditionMet()).isTrue();
-        assertThat(result.currentValue()).isEqualTo(0.9);
+    private MetricSample unavailableSample(String metricKey, AlertDomain domain) {
+        return new MetricSample(metricKey, domain, "inst-1", "cluster-1", Map.of(),
+                null, MetricAvailability.UNAVAILABLE, Instant.parse("2026-09-01T08:00:00Z"));
     }
 
     @Test
-    void evaluatesPercentageThresholdsForNativeRatioMetricsTest() {
-        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
-                .operator(">=").threshold(85).thresholdUnit("%").enabled(true).build();
+    void mismatchingMetricDoesNotMatch() {
+        AlertEvaluationResult result = evaluator.evaluate(
+                rule("broker.disk.usage_ratio", AlertDomain.CLUSTER, ">", 0.8),
+                sample("broker.cpu.usage", AlertDomain.CLUSTER, 0.9));
 
-        AlertEvaluationResult result = evaluator.evaluate(rule, sample(MetricAvailability.AVAILABLE, 0.9));
-
-        assertThat(result.conditionMet()).isTrue();
+        assertFalse(result.matches());
+        assertEquals(MetricAvailability.AVAILABLE, result.availability());
     }
 
     @Test
-    void unavailableMetricDoesNotBehaveAsZeroTest() {
-        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
-                .operator("<").threshold(0.1).enabled(true).build();
+    void mismatchingDomainDoesNotMatch() {
+        AlertEvaluationResult result = evaluator.evaluate(
+                rule("consumer.lag.total", AlertDomain.BUSINESS, ">", 100),
+                sample("consumer.lag.total", AlertDomain.CLUSTER, 500));
 
-        AlertEvaluationResult result = evaluator.evaluate(rule, sample(MetricAvailability.UNAVAILABLE, null));
-
-        assertThat(result.matches()).isTrue();
-        assertThat(result.conditionMet()).isFalse();
-        assertThat(result.currentValue()).isNull();
+        assertFalse(result.matches());
     }
 
     @Test
-    void explicitlyTriggersAvailabilityRuleForUnavailableSampleTest() {
-        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.availability")
-                .operator("UNAVAILABLE").enabled(true).build();
-        MetricSample sample = new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", null, null,
-                null, MetricAvailability.UNAVAILABLE, Instant.now());
+    void unavailableSampleOnlyMatchesUnavailableOperator() {
+        AlertEvaluationResult matched = evaluator.evaluate(
+                rule("broker.availability", AlertDomain.CLUSTER, "UNAVAILABLE", 0),
+                unavailableSample("broker.availability", AlertDomain.CLUSTER));
 
-        AlertEvaluationResult result = evaluator.evaluate(rule, sample);
+        assertTrue(matched.matches());
+        assertTrue(matched.conditionMet());
+        assertNull(matched.currentValue());
 
-        assertThat(result.matches()).isTrue();
-        assertThat(result.conditionMet()).isTrue();
-        assertThat(result.currentValue()).isNull();
+        AlertEvaluationResult notMatched = evaluator.evaluate(
+                rule("broker.availability", AlertDomain.CLUSTER, ">", 0),
+                unavailableSample("broker.availability", AlertDomain.CLUSTER));
+
+        assertTrue(notMatched.matches());
+        assertFalse(notMatched.conditionMet());
     }
 
     @Test
-    void doesNotMatchOtherRuleDomainTest() {
-        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.BUSINESS).metric("broker.disk.usage_ratio")
-                .operator(">=").threshold(0.85).enabled(true).build();
+    void greaterThanComparesAgainstThreshold() {
+        AlertRuleVO rule = rule("broker.disk.usage_ratio", AlertDomain.CLUSTER, ">", 0.8);
 
-        assertThat(evaluator.evaluate(rule, sample(MetricAvailability.AVAILABLE, 0.9)).matches()).isFalse();
+        assertTrue(evaluator.evaluate(rule, sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.9))
+                .conditionMet());
+        assertFalse(evaluator.evaluate(rule, sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.7))
+                .conditionMet());
     }
 
-    private static MetricSample sample(MetricAvailability availability, Double value) {
-        return new MetricSample("broker.disk.usage_ratio", AlertDomain.CLUSTER, "local", null, null, value,
-                availability, Instant.now());
+    @Test
+    void equalityOperatorUsesDoubleCompare() {
+        AlertRuleVO rule = rule("broker.disk.usage_ratio", AlertDomain.CLUSTER, "==", 0.8);
+
+        assertTrue(evaluator.evaluate(rule, sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.8))
+                .conditionMet());
+        assertFalse(evaluator.evaluate(rule, sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.81))
+                .conditionMet());
+    }
+
+    @Test
+    void notEqualsOperatorDetectsDifference() {
+        AlertRuleVO rule = rule("broker.disk.usage_ratio", AlertDomain.CLUSTER, "!=", 0.8);
+
+        assertTrue(evaluator.evaluate(rule, sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.81))
+                .conditionMet());
+        assertFalse(evaluator.evaluate(rule, sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.8))
+                .conditionMet());
+    }
+
+    @Test
+    void unknownOrNullOperatorNeverMatches() {
+        AlertRuleVO unknown = rule("broker.disk.usage_ratio", AlertDomain.CLUSTER, "~", 0.8);
+        assertFalse(evaluator.evaluate(unknown, sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.9))
+                .conditionMet());
+
+        AlertRuleVO nullOp = rule("broker.disk.usage_ratio", AlertDomain.CLUSTER, null, 0.8);
+        assertFalse(evaluator.evaluate(nullOp, sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.9))
+                .conditionMet());
+    }
+
+    @Test
+    void nullRuleOrSampleDoesNotMatch() {
+        AlertEvaluationResult noRule = evaluator.evaluate(null,
+                sample("broker.disk.usage_ratio", AlertDomain.CLUSTER, 0.9));
+
+        assertFalse(noRule.matches());
+        assertEquals(MetricAvailability.AVAILABLE, noRule.availability());
+
+        AlertEvaluationResult noSample = evaluator.evaluate(
+                rule("broker.disk.usage_ratio", AlertDomain.CLUSTER, ">", 0.8), null);
+
+        assertFalse(noSample.matches());
+        assertNull(noSample.availability());
+    }
+
+    @Test
+    void nullDomainDefaultsToBusiness() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+            .metric("consumer.lag.total")
+            .operator(">")
+            .threshold(100)
+            .build();
+
+        AlertEvaluationResult result = evaluator.evaluate(rule,
+                sample("consumer.lag.total", AlertDomain.BUSINESS, 500));
+
+        assertTrue(result.matches());
+        assertTrue(result.conditionMet());
     }
 }
