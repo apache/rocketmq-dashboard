@@ -2542,6 +2542,20 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Consumer group list ───
+  'consumer.autoRefresh': { zh: '自动刷新', en: 'Auto Refresh' },
+  'consumer.autoRefreshEvery2s': { zh: '每 2s 自动刷新', en: 'Auto refresh every 2s' },
+  'consumer.autoRefreshTooltip': { zh: '开启后每 2 秒自动刷新列表', en: 'Auto-refreshes the list every 2 seconds when enabled' },
+  'consumer.batchDeleteContent': { zh: '确定要删除选中的 {count} 个 Group 吗？', en: 'Are you sure you want to delete the {count} selected Groups?' },
+  'consumer.batchDeletePartial': { zh: '已删除 {deleted} 个，失败 {failed} 个：{names}', en: '{deleted} deleted, {failed} failed: {names}' },
+  'consumer.batchDeleted': { zh: '已删除 {count} 个 Group', en: '{count} Groups deleted' },
+  'consumer.confirmBatchDelete': { zh: '确认批量删除', en: 'Confirm Batch Delete' },
+  'consumer.confirmDeleteGroup': { zh: '确认删除消费组 "{name}"？', en: 'Delete consumer group "{name}"?' },
+  'consumer.deleteGroupContent': { zh: '删除后该消费组的所有配置和消费进度将被清除，此操作不可恢复。', en: 'All configurations and consumption progress of this consumer group will be cleared. This cannot be undone.' },
+  'consumer.exportDone': { zh: 'Group 导出完成', en: 'Group export complete' },
+  'consumer.exportFailed': { zh: '导出 Group 失败，请稍后重试', en: 'Failed to export Groups, please retry later' },
+  'consumer.listSubtitle': { zh: '管理消费者组订阅关系与消费进度，共 {count} 个 Group', en: 'Manage consumer group subscriptions and consumption progress; {count} Groups total' },
+  'consumer.listTotal': { zh: '共 {count} 个 Group', en: '{count} Groups total' },
   // ─── BrokerCluster ───
 };
 
