@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -269,4 +270,62 @@ class K8sCertControllerTest {
         cert.setId(id);
         return cert;
     }
+    @Test
+    void updateCertShouldReturnUpdatedCert() throws Exception {
+        K8sCertVO updatedCert = buildCert(3L, "renewed-tls", CertType.TLS, CertStatus.valid);
+        when(k8sCertService.updateCert(any(UpdateCertDTO.class))).thenReturn(updatedCert);
+
+        UpdateCertDTO command = UpdateCertDTO.builder()
+                .id(3L)
+                .k8sId("renewed-tls")
+                .type("TLS")
+                .build();
+
+        mockMvc.perform(post("/api/k8s-certs/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(3))
+                .andExpect(jsonPath("$.data.k8sId").value("renewed-tls"));
+
+        verify(k8sCertService).updateCert(any(UpdateCertDTO.class));
+    }
+
+    @Test
+    void renewCertShouldReturnRenewedCert() throws Exception {
+        K8sCertVO renewedCert = buildCert(3L, "renewed-tls", CertType.TLS, CertStatus.valid);
+        renewedCert.setNotAfter(LocalDateTime.of(2027, 1, 1, 0, 0));
+        when(k8sCertService.renewCert(any(RenewCertDTO.class))).thenReturn(renewedCert);
+
+        RenewCertDTO command = RenewCertDTO.builder()
+                .id(3L)
+                .build();
+
+        mockMvc.perform(post("/api/k8s-certs/renew")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(3));
+
+        verify(k8sCertService).renewCert(any(RenewCertDTO.class));
+    }
+
+    @Test
+    void deleteCertShouldReturnSuccess() throws Exception {
+        DeleteCertDTO command = DeleteCertDTO.builder()
+                .id(3L)
+                .build();
+
+        mockMvc.perform(post("/api/k8s-certs/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"));
+
+        verify(k8sCertService).deleteCert(any(DeleteCertDTO.class));
+    }
+
 }
