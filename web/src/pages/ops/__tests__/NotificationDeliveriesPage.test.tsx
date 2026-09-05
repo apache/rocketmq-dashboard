@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listInstances } from '../../../services/instanceService';
-import { listAlertDeliveriesPage, retryAlertDelivery } from '../../../services/opsService';
+import { listAlertDeliveriesPage, retryAlertDeliveries, retryAlertDelivery } from '../../../services/opsService';
 import NotificationDeliveriesPage from '../notificationDeliveries';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -168,5 +168,22 @@ describe('NotificationDeliveriesPage', () => {
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
     );
+  });
+
+  it('retries all failed records of the current page', async () => {
+    const user = userEvent.setup();
+    vi.mocked(retryAlertDeliveries).mockResolvedValue({ success: 1, failed: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: '重试当前页失败记录' }));
+
+    await waitFor(() => expect(retryAlertDeliveries).toHaveBeenCalledWith([7]));
   });
 });
