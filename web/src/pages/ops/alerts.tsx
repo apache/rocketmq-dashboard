@@ -152,7 +152,7 @@ interface AlertsPageProps {
 }
 
 const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { token } = theme.useToken();
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [totalRules, setTotalRules] = useState(0);
@@ -627,6 +627,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       title: t('alerts.ruleName'),
       dataIndex: 'name',
       sorter: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
+      render: (name: string, record: AlertRule) =>
+        lang === 'en' ? (record.enName ?? name) : name,
     },
     {
       title: t('alerts.metric'),
@@ -643,6 +645,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       title: t('alerts.duration'),
       dataIndex: 'duration',
       sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
+      render: (value: string, record: AlertRule) =>
+        lang === 'en' ? (record.enDuration ?? value) : value,
     },
     {
       title: t('alerts.reminderInterval'),
