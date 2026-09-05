@@ -645,6 +645,7 @@ const MessagePageContent = ({
     traceGenerationRef.current = requestGeneration;
     const value = traceQueryValue.trim();
     if (!value) {
+      setTraceLoading(false);
       setTraceError(traceQueryMode === 'key' ? '请输入 Message Key' : '请输入 Message ID');
       return;
     }
