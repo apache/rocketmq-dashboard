@@ -40,6 +40,7 @@ import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.common.topic.TopicValidator;
@@ -688,7 +689,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     .topic(sd.getTopic())
                     .expression(sd.getSubString())
                     .type(sd.getExpressionType())
-                    .filterMode(filterMode(sd.getExpressionType()))
+                    .filterMode(SubscriptionFilterModes.fromExpressionType(sd.getExpressionType()))
                     // The broker/proxy expose the group's merged subscription set only; with at
                     // least one client connected that merged view is the consistent observable
                     // state. Without connections the consistency status stays unknown (null).
@@ -760,15 +761,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
      */
     private long resolveDiff(long brokerOffset, long consumerOffset) {
         return ConsumerLagResolver.resolve(brokerOffset - consumerOffset, proxyStatsProvider);
-    }
-    private String filterMode(String expressionType) {
-        if ("SQL92".equals(expressionType)) {
-            return "SQL";
-        }
-        if ("CLASS_FILTER".equals(expressionType)) {
-            return "CLASS_FILTER";
-        }
-        return "TAG";
     }
 
     private boolean isSystemTopic(String topicName, Set<String> brokerNames) {
