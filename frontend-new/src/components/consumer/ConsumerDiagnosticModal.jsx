@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -43,13 +43,7 @@ const ConsumerDiagnosticModal = ({ open, onClose, consumerGroup, topic }) => {
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (open && consumerGroup) {
-      fetchDiagnosticReport();
-    }
-  }, [open, consumerGroup, topic]);
-
-  const fetchDiagnosticReport = async () => {
+  const fetchDiagnosticReport = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -63,7 +57,13 @@ const ConsumerDiagnosticModal = ({ open, onClose, consumerGroup, topic }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [consumerGroup, topic]);
+
+  useEffect(() => {
+    if (open && consumerGroup) {
+      fetchDiagnosticReport();
+    }
+  }, [open, consumerGroup, fetchDiagnosticReport]);
 
   const getSkewChipColor = (level) => {
     switch (level) {
