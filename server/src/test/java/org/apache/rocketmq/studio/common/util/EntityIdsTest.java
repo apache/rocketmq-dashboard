@@ -39,4 +39,34 @@ class EntityIdsTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("positive numeric value");
     }
+
+    @Test
+    void rejectsBlankAndNullIdentifiersTest() {
+        for (String blank : new String[] {null, "", "   "}) {
+            assertThatThrownBy(() -> EntityIds.parseId(blank))
+                    .as("blank id %s", blank)
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            error -> assertThat(error.getCode()).isEqualTo(400))
+                    .hasMessageContaining("id is required");
+        }
+    }
+
+    @Test
+    void rejectsNonNumericIdentifiersTest() {
+        for (String invalid : new String[] {"abc", "42.0", "42abc", "0x2A",
+            "99999999999999999999"}) {
+            assertThatThrownBy(() -> EntityIds.parseId(invalid))
+                    .as("invalid id %s", invalid)
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("numeric value")
+                    .hasMessageContaining(invalid);
+        }
+    }
+
+    @Test
+    void acceptsSignedAndZeroPaddedIdentifiersTest() {
+        assertThat(EntityIds.parseId("+7")).isEqualTo(7L);
+        assertThat(EntityIds.parseId(" 007 ")).isEqualTo(7L);
+        assertThat(EntityIds.parseId("2147483648")).isEqualTo(2147483648L);
+    }
 }
