@@ -228,4 +228,34 @@ class AuthControllerTest {
 
         verify(authService).logout(eq("Bearer token-1"));
     }
+    @Test
+    void changePasswordShouldDelegateForAuthenticatedUser() throws Exception {
+        when(authService.getAuthenticatedUser(null))
+                .thenReturn(Optional.of(LoginVO.UserInfo.builder()
+                        .userId(7L)
+                        .username("operator")
+                        .admin(false)
+                        .build()));
+
+        mockMvc.perform(post("/api/auth/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"old-pass-123\",\"newPassword\":\"new-pass-456\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"));
+
+        verify(authService).changePassword(7L, "old-pass-123", "new-pass-456", true);
+    }
+
+    @Test
+    void changePasswordShouldRejectUnauthenticatedRequest() throws Exception {
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/auth/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"old-pass-123\",\"newPassword\":\"new-pass-456\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Unauthorized"));
+    }
+
 }
