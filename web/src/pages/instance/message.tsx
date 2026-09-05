@@ -73,6 +73,12 @@ import { tableScrollX } from '../../utils/table';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
+const TRACE_TITLE_EN: Record<string, string> = {
+  'Producer 发送': 'Producer send',
+  'Broker 存储': 'Broker store',
+  'Consumer 消费': 'Consumer consume',
+};
+
 const DEFAULT_QUERY_ERROR = '消息查询失败，请稍后重试';
 const DEFAULT_TRACE_ERROR = '消息轨迹加载失败，请稍后重试';
 
@@ -214,7 +220,7 @@ const MessagePageContent = ({
   selectInstance,
   instanceOptions,
 }: InstanceFilterProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
   const [topicError, setTopicError] = useState<string | null>(null);
   const [topicLoading, setTopicLoading] = useState(false);
@@ -794,7 +800,10 @@ const MessagePageContent = ({
               direction="vertical"
               size="small"
               items={traceData.nodes.map((node) => ({
-                title: node.title,
+                title:
+                  lang === 'en' && node.title
+                    ? (TRACE_TITLE_EN[node.title] ?? node.title)
+                    : node.title,
                 description: (
                   <div style={{ fontSize: 14 }}>
                     <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
