@@ -335,7 +335,7 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -401,15 +401,18 @@ const TopicPage = () => {
 
   const sendPayloadPreview = useMemo(
     () =>
-      analyzeMessagePayloadPreview({
-        topic: sendTopic?.name,
-        tag: sendTagValue,
-        key: sendKeyValue,
-        body: sendBodyValue,
-        propsMode,
-        propsText: sendPropsTextValue,
-        properties: sendPropertiesValue,
-      }),
+      analyzeMessagePayloadPreview(
+        {
+          topic: sendTopic?.name,
+          tag: sendTagValue,
+          key: sendKeyValue,
+          body: sendBodyValue,
+          propsMode,
+          propsText: sendPropsTextValue,
+          properties: sendPropertiesValue,
+        },
+        { lang },
+      ),
     [
       propsMode,
       sendBodyValue,
@@ -418,6 +421,7 @@ const TopicPage = () => {
       sendPropsTextValue,
       sendTagValue,
       sendTopic?.name,
+      lang,
     ],
   );
 
@@ -1362,15 +1366,18 @@ const TopicPage = () => {
     }
     setSending(true);
     try {
-      const payloadPreview = analyzeMessagePayloadPreview({
-        topic: values.topic,
-        tag: values.tag,
-        key: values.key,
-        body: values.body,
-        propsMode,
-        propsText: values.propsText,
-        properties: values.properties,
-      });
+      const payloadPreview = analyzeMessagePayloadPreview(
+        {
+          topic: values.topic,
+          tag: values.tag,
+          key: values.key,
+          body: values.body,
+          propsMode,
+          propsText: values.propsText,
+          properties: values.properties,
+        },
+        { lang },
+      );
       if (payloadPreview.blockingIssues.length > 0) {
         message.error(
           `发送前预检未通过：${payloadPreview.blockingIssues.map((item) => item.title).join('；')}`,
