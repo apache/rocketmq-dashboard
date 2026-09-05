@@ -104,6 +104,7 @@ const createMessage = (msgId: string): MessageRecord => ({
   bornHost: '127.0.0.1:1000',
   storeHost: '127.0.0.1:10911',
   properties: {},
+  propertiesTruncated: false,
   size: 2,
 });
 
@@ -314,6 +315,28 @@ describe('MessagePage async request ownership', () => {
     expect(
       await within(dialog).findByText('Message query provider is not configured'),
     ).toBeInTheDocument();
+  });
+
+  it('shows backend message properties and truncation in the detail modal', async () => {
+    const message = createMessage('message-with-properties');
+    message.properties = { traceId: 'trace-001', orderType: 'vip' };
+    message.propertiesTruncated = true;
+    serviceMocks.queryMessages.mockResolvedValue([message]);
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-with-properties/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(within(dialog).getByText('消息属性')).toBeInTheDocument();
+    expect(within(dialog).getByText('traceId')).toBeInTheDocument();
+    expect(within(dialog).getByText('trace-001')).toBeInTheDocument();
+    expect(within(dialog).getByText('orderType')).toBeInTheDocument();
+    expect(within(dialog).getByText('vip')).toBeInTheDocument();
+    expect(within(dialog).getByText('服务端已截断消息属性')).toBeInTheDocument();
   });
 
   it('loads a message trace lazily and reuses it for the same message', async () => {

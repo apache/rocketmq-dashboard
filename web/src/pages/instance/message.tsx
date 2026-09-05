@@ -147,6 +147,9 @@ const formatBody = (body: string): string => {
   }
 };
 
+const messageProperties = (record: MessageRecord | null) =>
+  Object.entries(record?.properties ?? {});
+
 const formatDurationMs = (value: number | null): string => {
   if (value == null) return '-';
   if (value >= 60000) return `${(value / 60000).toFixed(1)} min`;
@@ -917,6 +920,37 @@ const MessagePageContent = ({
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
             消息体
           </Typography.Title>
+          {messageProperties(selectedMsg).length > 0 && (
+            <>
+              <Typography.Title level={5} style={{ marginBottom: 8, marginTop: 24 }}>
+                消息属性
+              </Typography.Title>
+              {selectedMsg.propertiesTruncated && (
+                <Alert
+                  showIcon
+                  type="warning"
+                  message="服务端已截断消息属性"
+                  description="属性数量或属性值超过服务端展示上限，此处仅显示截断后的内容。"
+                  style={{ marginBottom: 12 }}
+                />
+              )}
+              <Descriptions
+                bordered
+                size="small"
+                column={1}
+                style={{ marginBottom: 24 }}
+                items={messageProperties(selectedMsg).map(([name, value]) => ({
+                  key: name,
+                  label: <span style={{ fontFamily: 'monospace' }}>{name}</span>,
+                  children: (
+                    <Paragraph copyable style={{ marginBottom: 0, fontFamily: 'monospace' }}>
+                      {value}
+                    </Paragraph>
+                  ),
+                }))}
+              />
+            </>
+          )}
           <Paragraph
             copyable
             style={{
