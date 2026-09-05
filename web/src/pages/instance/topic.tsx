@@ -335,7 +335,7 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -1009,7 +1009,7 @@ const TopicPage = () => {
 
   const renderRouteSection = (topic: Topic) => {
     const routes = getRoutes(topic.name);
-    const diagnostics = analyzeTopicRoutes(routes);
+    const diagnostics = analyzeTopicRoutes(routes, lang);
     const summary = diagnostics.summary;
 
     return (
