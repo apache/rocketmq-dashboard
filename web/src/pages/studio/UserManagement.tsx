@@ -63,6 +63,7 @@ import useAuthStore from '../../stores/authStore';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { formatDelay } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import UserStatusBatchDrawer from '../../components/UserStatusBatchDrawer';
 
 interface CreateFormValues {
   username: string;
@@ -131,6 +132,8 @@ const UserManagementPage = () => {
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [batchDrawerOpen, setBatchDrawerOpen] = useState(false);
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
@@ -596,6 +599,12 @@ const UserManagementPage = () => {
                 { label: '已禁用', value: 'disabled' },
               ]}
             />
+            <Button
+              disabled={selectedUserIds.length === 0}
+              onClick={() => setBatchDrawerOpen(true)}
+            >
+              批量管理 ({selectedUserIds.length})
+            </Button>
           </Flex>
           <Table
             rowKey="id"
@@ -604,6 +613,12 @@ const UserManagementPage = () => {
             dataSource={users}
             tableLayout="fixed"
             scroll={{ x: tableScrollX(columns) }}
+            rowSelection={{
+              selectedRowKeys: selectedUserIds,
+              preserveSelectedRowKeys: true,
+              onChange: (keys) => setSelectedUserIds(keys.map(Number)),
+              getCheckboxProps: (record) => ({ disabled: record.id === userId }),
+            }}
             pagination={{
               current: page,
               pageSize,
@@ -738,6 +753,16 @@ const UserManagementPage = () => {
           </Form.Item>
         </Form>
       </Modal>
+      <UserStatusBatchDrawer
+        open={batchDrawerOpen}
+        selectedUsers={users.filter((user) => selectedUserIds.includes(user.id))}
+        currentUserId={userId}
+        onClose={() => setBatchDrawerOpen(false)}
+        onCompleted={async () => {
+          await loadUsers();
+          setSelectedUserIds([]);
+        }}
+      />
 
       <Modal
         title={
