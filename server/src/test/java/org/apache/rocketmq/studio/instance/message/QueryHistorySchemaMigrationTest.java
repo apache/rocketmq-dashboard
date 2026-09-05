@@ -79,4 +79,32 @@ class QueryHistorySchemaMigrationTest {
             assertThat(tables.next()).isFalse();
         }
     }
+
+    @Test
+    void keepsExistingRowsWhenTraceTopicColumnAlreadyPresent() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:trace-history-schema-existing;MODE=MySQL;"
+                + "DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE");
+        dataSource.setUser("sa");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE rmq_instance_trace ("
+                    + "id BIGINT PRIMARY KEY, msg_id VARCHAR(128) NOT NULL, topic VARCHAR(255), "
+                    + "trace_topic VARCHAR(255), node_count INT, consumer_count INT, cluster_id VARCHAR(255), "
+                    + "queried_by VARCHAR(128), gmt_create TIMESTAMP, gmt_modified TIMESTAMP)");
+            statement.execute("INSERT INTO rmq_instance_trace (id, msg_id, topic, trace_topic) "
+                    + "VALUES (1, 'msg-1', 'orders', 'CUSTOM_TRACE')");
+        }
+
+        QueryHistorySchemaMigration migration = new QueryHistorySchemaMigration(dataSource);
+        migration.run(new DefaultApplicationArguments());
+        migration.run(new DefaultApplicationArguments());
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+                ResultSet rows = statement.executeQuery("SELECT msg_id, trace_topic FROM rmq_instance_trace")) {
+            rows.next();
+            assertThat(rows.getString("msg_id")).isEqualTo("msg-1");
+            assertThat(rows.getString("trace_topic")).isEqualTo("CUSTOM_TRACE");
+            assertThat(rows.next()).isFalse();
+        }
+    }
 }
