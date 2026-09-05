@@ -27,9 +27,9 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.time.LocalDateTime;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -226,4 +226,49 @@ class SystemAlertControllerTest {
 
         verify(alertService).clearAcknowledged();
     }
+    @Test
+    void deliveriesPageShouldForwardFiltersAndPaging() throws Exception {
+        when(notificationOutboxService.listDeliveries("email", "FAILED", "inst-1", 2, 20))
+                .thenReturn(PageResult.empty(2, 20));
+
+        mockMvc.perform(get("/api/system-alerts/deliveries/page")
+                        .param("channel", "email")
+                        .param("status", "FAILED")
+                        .param("instanceId", "inst-1")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.page").value(2));
+
+        verify(notificationOutboxService).listDeliveries("email", "FAILED", "inst-1", 2, 20);
+    }
+
+    @Test
+    void bulkRetryShouldDelegateDeliveryIds() throws Exception {
+        when(notificationOutboxService.retryFailedDeliveries(List.of(1L, 2L)))
+                .thenReturn(new NotificationDeliveryBulkRetryResult(List.of(1L), Map.of(2L, "still failing")));
+
+        mockMvc.perform(post("/api/system-alerts/deliveries/retry")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[1,2]"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.succeededIds[0]").value(1));
+
+        verify(notificationOutboxService).retryFailedDeliveries(List.of(1L, 2L));
+    }
+
+    @Test
+    void clearAcknowledgedShouldReturnClearedCount() throws Exception {
+        when(alertService.clearAcknowledged()).thenReturn(3);
+
+        mockMvc.perform(post("/api/system-alerts/clear-acknowledged"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.cleared").value(3));
+
+        verify(alertService).clearAcknowledged();
+    }
+
 }
