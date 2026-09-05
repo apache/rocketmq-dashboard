@@ -2542,6 +2542,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Settings About ───
+  'about.version': { zh: '版本', en: 'Version' },
+  'about.buildCommit': { zh: '构建提交', en: 'Build Commit' },
+  'about.buildTime': { zh: '构建时间', en: 'Build Time' },
+  'about.rocketmqSupport': { zh: 'RocketMQ 支持版本', en: 'RocketMQ Support' },
+  'about.frontend': { zh: '前端框架', en: 'Frontend' },
+  'about.backend': { zh: '后端框架', en: 'Backend' },
+  'about.linksTitle': { zh: '相关链接', en: 'Related Links' },
   // ─── BrokerCluster ───
 };
 
