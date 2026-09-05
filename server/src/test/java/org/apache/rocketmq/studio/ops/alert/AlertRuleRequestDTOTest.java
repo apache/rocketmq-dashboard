@@ -67,4 +67,49 @@ class AlertRuleRequestDTOTest {
 
         assertThat(request.toAlertRuleVO().getMetric()).isEqualTo("consumer.lag.total");
     }
+
+    @Test
+    void rejectsInvalidEnumsAndOutOfRangeValuesTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName(" ");
+        request.setOperator("like");
+        request.setDuration("abc");
+        request.setAggregation("custom");
+        request.setSeverity("fatal");
+        request.setWindowSeconds(-1);
+        request.setConsecutiveSamples(0);
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .contains("name is required", "operator is invalid", "duration is invalid",
+                        "aggregation is invalid", "severity is invalid",
+                        "windowSeconds must not be negative",
+                        "consecutiveSamples must be at least 1");
+    }
+
+    @Test
+    void fillsSensibleDefaultsForMissingOptionalFieldsTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+
+        AlertRuleVO vo = request.toAlertRuleVO();
+
+        assertThat(vo.getAggregation()).isEqualTo("LAST");
+        assertThat(vo.getWindowSeconds()).isZero();
+        assertThat(vo.getConsecutiveSamples()).isEqualTo(1);
+        assertThat(vo.getReminderInterval()).isEqualTo("30m");
+        assertThat(vo.getMetric()).isNull();
+    }
+
+    @Test
+    void acceptsCaseInsensitiveEnumsAndValidCompositeDurationTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setOperator(">=");
+        request.setDuration("2h30m");
+        request.setAggregation("max");
+        request.setSeverity("WARNING");
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
 }
