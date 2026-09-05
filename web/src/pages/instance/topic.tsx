@@ -62,6 +62,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import TopicConfigComparisonDrawer from '../../components/TopicConfigComparisonDrawer';
+import TopicQueuePortfolioDrawer from '../../components/TopicQueuePortfolioDrawer';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -73,6 +74,7 @@ import {
   getTopicConsumerPage,
   getTopicRoutes,
   importTopics,
+  listAllTopics,
   listTopicsPage,
   sendTopicMessage,
 } from '../../services/topicService';
@@ -393,11 +395,37 @@ const TopicPage = () => {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [comparisonOpen, setComparisonOpen] = useState(false);
+  const [queuePortfolioOpen, setQueuePortfolioOpen] = useState(false);
+  const [queuePortfolioLoading, setQueuePortfolioLoading] = useState(false);
+  const [queuePortfolioTopics, setQueuePortfolioTopics] = useState<Topic[]>([]);
 
   const topicRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
   const consumersRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
+  const queuePortfolioRequestRef = useRef(0);
+
+  const openQueuePortfolio = useCallback(async () => {
+    if (!selectedInstanceId) return;
+    const requestId = ++queuePortfolioRequestRef.current;
+    setQueuePortfolioOpen(true);
+    setQueuePortfolioLoading(true);
+    try {
+      const allTopics = await listAllTopics({
+        instanceId: selectedInstanceId,
+        type: typeFilter || undefined,
+        search: searchText.trim() || undefined,
+      });
+      if (queuePortfolioRequestRef.current === requestId) setQueuePortfolioTopics(allTopics);
+    } catch {
+      if (queuePortfolioRequestRef.current === requestId) {
+        setQueuePortfolioTopics([]);
+        message.error(t('topicPortfolio.loadFailed'));
+      }
+    } finally {
+      if (queuePortfolioRequestRef.current === requestId) setQueuePortfolioLoading(false);
+    }
+  }, [searchText, selectedInstanceId, t, typeFilter]);
 
   const sendPayloadPreview = useMemo(
     () =>
@@ -1552,6 +1580,9 @@ const TopicPage = () => {
           >
             {t('topicCompare.open')}
           </Button>
+          <Button disabled={!hasSelectedInstance} onClick={() => void openQueuePortfolio()}>
+            {t('topicPortfolio.open')}
+          </Button>
           {!isCloudInstance && (
             <Button
               icon={<SyncOutlined />}
@@ -1611,6 +1642,13 @@ const TopicPage = () => {
           onClose={() => setComparisonOpen(false)}
         />
       )}
+
+      <TopicQueuePortfolioDrawer
+        open={queuePortfolioOpen}
+        loading={queuePortfolioLoading}
+        topics={queuePortfolioTopics}
+        onClose={() => setQueuePortfolioOpen(false)}
+      />
 
       {/* ── Detail Modal ──────────────────────────────────────── */}
       <Modal
