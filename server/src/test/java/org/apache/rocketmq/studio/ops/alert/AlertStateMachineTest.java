@@ -115,6 +115,78 @@ class AlertStateMachineTest {
                 .hasMessage("reminderInterval must not be negative");
     }
 
+    @Test
+    void rejectsNonPositiveRequiredSamplesTest() {
+        assertThatThrownBy(() -> stateMachine.advance(null, met(), 0, now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("requiredConsecutiveSamples must be positive");
+    }
+
+    @Test
+    void rejectsNullAndNegativeRequiredDurationTest() {
+        assertThatThrownBy(() -> stateMachine.advance(null, met(), 1, (Duration) null, now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("requiredDuration must not be negative");
+        assertThatThrownBy(() -> stateMachine.advance(null, met(), 1, Duration.ofSeconds(-1), now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("requiredDuration must not be negative");
+    }
+
+    @Test
+    void nonMatchingSampleLeavesFiringStateUntouchedTest() {
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 2, 0.9, now, now, now, null);
+        AlertEvaluationResult nonMatching = new AlertEvaluationResult(false, false, null,
+                MetricAvailability.UNAVAILABLE);
+
+        AlertStateUpdate update = stateMachine.advance(firing, nonMatching, 2, now.plusSeconds(30));
+
+        assertThat(update.transition()).isEqualTo(AlertStateTransition.NONE);
+        assertThat(update.state()).isEqualTo(firing);
+    }
+
+    @Test
+    void okStateStaysOkWhenSampleClearsTest() {
+        AlertStateUpdate update = stateMachine.advance(null, clear(), 2, now.plusSeconds(30));
+
+        assertThat(update.transition()).isEqualTo(AlertStateTransition.NONE);
+        assertThat(update.state().status()).isEqualTo(AlertStateStatus.OK);
+        assertThat(update.state().consecutiveHits()).isZero();
+    }
+
+    @Test
+    void ackedStateTransitionsToResolvedWhenSampleClearsTest() {
+        AlertRuleState acked = new AlertRuleState(AlertStateStatus.ACKED, 1, 0.9, now, now, now, null);
+
+        AlertStateUpdate update = stateMachine.advance(acked, clear(), 2, now.plusSeconds(30));
+
+        assertThat(update.transition()).isEqualTo(AlertStateTransition.RESOLVED);
+        assertThat(update.state().status()).isEqualTo(AlertStateStatus.RESOLVED);
+        assertThat(update.state().resolvedAt()).isEqualTo(now.plusSeconds(30));
+    }
+
+    @Test
+    void acknowledgedStateKeepsStatusWhenSamplesStillMatchTest() {
+        AlertRuleState acked = new AlertRuleState(AlertStateStatus.ACKED, 1, 0.9, now, now, now, null);
+
+        AlertStateUpdate update = stateMachine.advance(acked, met(), 1, Duration.ZERO,
+                Duration.ofMinutes(30), now.plusSeconds(60 * 60));
+
+        assertThat(update.transition()).isEqualTo(AlertStateTransition.NONE);
+        assertThat(update.state().status()).isEqualTo(AlertStateStatus.ACKED);
+    }
+
+    @Test
+    void resolvedStateCanFireAgainOnNewBreachTest() {
+        AlertRuleState resolved = new AlertRuleState(AlertStateStatus.RESOLVED, 0, 0.5, null,
+                now.minusSeconds(60), now.minusSeconds(60), now);
+
+        AlertStateUpdate update = stateMachine.advance(resolved, met(), 1, now.plusSeconds(30));
+
+        assertThat(update.transition()).isEqualTo(AlertStateTransition.FIRING);
+        assertThat(update.state().status()).isEqualTo(AlertStateStatus.FIRING);
+        assertThat(update.state().firedAt()).isEqualTo(now.plusSeconds(30));
+    }
+
     private static AlertEvaluationResult met() {
         return new AlertEvaluationResult(true, true, 0.9, MetricAvailability.AVAILABLE);
     }
