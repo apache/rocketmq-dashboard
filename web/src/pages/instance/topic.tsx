@@ -280,12 +280,12 @@ const randomMetricsBody = () =>
   );
 
 const RANDOM_BODY_GENERATORS = [
-  { label: '订单事件', fn: randomOrderBody },
-  { label: '用户行为', fn: randomUserEventBody },
-  { label: '支付回调', fn: randomPaymentBody },
-  { label: '库存变更', fn: randomInventoryBody },
-  { label: '通知消息', fn: randomNotificationBody },
-  { label: '监控指标', fn: randomMetricsBody },
+  { labelKey: 'topic.bodyOrder', fn: randomOrderBody },
+  { labelKey: 'topic.bodyUserEvent', fn: randomUserEventBody },
+  { labelKey: 'topic.bodyPayment', fn: randomPaymentBody },
+  { labelKey: 'topic.bodyInventory', fn: randomInventoryBody },
+  { labelKey: 'topic.bodyNotification', fn: randomNotificationBody },
+  { labelKey: 'topic.bodyMetrics', fn: randomMetricsBody },
 ];
 
 const ROUTE_STATUS_META: Record<
@@ -310,21 +310,29 @@ const formatBytes = (bytes: number): string => {
   return `${bytes} B`;
 };
 
-const BODY_FORMAT_LABEL: Record<MessageBodyFormat, string> = {
-  empty: '空 Body',
-  'json-object': 'JSON Object',
-  'json-array': 'JSON Array',
-  'json-scalar': 'JSON 标量',
-  'plain-text': '文本',
+const BODY_FORMAT_META: Record<MessageBodyFormat, { text?: string; labelKey?: string }> = {
+  empty: { labelKey: 'topic.bodyFormatEmpty' },
+  'json-object': { text: 'JSON Object' },
+  'json-array': { text: 'JSON Array' },
+  'json-scalar': { labelKey: 'topic.bodyFormatJsonScalar' },
+  'plain-text': { labelKey: 'topic.bodyFormatPlainText' },
+};
+
+const bodyFormatLabel = (
+  format: MessageBodyFormat,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string => {
+  const meta = BODY_FORMAT_META[format];
+  return meta.labelKey ? t(meta.labelKey) : (meta.text ?? format);
 };
 
 const PAYLOAD_STATUS_META: Record<
   MessagePayloadPreviewStatus,
-  { label: string; color: string; alertType: 'success' | 'warning' | 'error' }
+  { labelKey: string; color: string; alertType: 'success' | 'warning' | 'error' }
 > = {
-  ready: { label: '可以发送', color: 'success', alertType: 'success' },
-  warning: { label: '建议检查', color: 'warning', alertType: 'warning' },
-  error: { label: '阻止发送', color: 'error', alertType: 'error' },
+  ready: { labelKey: 'topic.payloadReady', color: 'success', alertType: 'success' },
+  warning: { labelKey: 'topic.payloadWarning', color: 'warning', alertType: 'warning' },
+  error: { labelKey: 'topic.payloadError', color: 'error', alertType: 'error' },
 };
 
 const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
@@ -335,7 +343,7 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -1260,7 +1268,7 @@ const TopicPage = () => {
 
   const renderPayloadIssues = (issues: MessagePayloadIssue[]) => {
     if (issues.length === 0) {
-      return <Text type="secondary">未发现阻止发送的问题</Text>;
+      return <Text type="secondary">{t('topic.noPayloadIssues')}</Text>;
     }
     return (
       <Space direction="vertical" size={6} style={{ width: '100%' }}>
@@ -1272,7 +1280,11 @@ const TopicPage = () => {
             wrap="nowrap"
           >
             <Tag color={PAYLOAD_ISSUE_COLOR[item.severity]} style={{ marginTop: 1 }}>
-              {item.severity === 'error' ? '阻止' : item.severity === 'warning' ? '关注' : '提示'}
+              {item.severity === 'error'
+                ? t('topic.severityError')
+                : item.severity === 'warning'
+                  ? t('topic.severityWarning')
+                  : t('topic.severityInfo')}
             </Tag>
             <div style={{ minWidth: 0 }}>
               <Text strong>{item.title}</Text>
@@ -1298,22 +1310,28 @@ const TopicPage = () => {
           type={statusMeta.alertType}
           message={
             <Flex gap={8} align="center" wrap>
-              <span>发送前预检</span>
-              <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
-              <Tag>{BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat]}</Tag>
+              <span>{t('topic.preflight')}</span>
+              <Tag color={statusMeta.color}>{t(statusMeta.labelKey)}</Tag>
+              <Tag>{bodyFormatLabel(sendPayloadPreview.summary.bodyFormat, t)}</Tag>
             </Flex>
           }
           description={
             sendPayloadPreview.blockingIssues.length > 0
-              ? `发现 ${sendPayloadPreview.blockingIssues.length} 个阻止发送的问题。`
-              : '将按下方摘要发送到 RocketMQ，发送前可继续调整 Body、Tag、Key 和自定义属性。'
+              ? t('topic.preflightBlocked', {
+                  count: String(sendPayloadPreview.blockingIssues.length),
+                })
+              : t('topic.preflightReadyDesc')
           }
         />
 
         <Flex gap={8} wrap>
           <Tag>Body {formatBytes(sendPayloadPreview.summary.bodyBytes)}</Tag>
-          <Tag>属性 {sendPayloadPreview.summary.propertyCount}</Tag>
-          <Tag>属性大小 {formatBytes(sendPayloadPreview.summary.propertyBytes)}</Tag>
+          <Tag>
+            {t('topic.properties')} {sendPayloadPreview.summary.propertyCount}
+          </Tag>
+          <Tag>
+            {t('topic.propertySize')} {formatBytes(sendPayloadPreview.summary.propertyBytes)}
+          </Tag>
           <Tag color={sendPayloadPreview.normalized.tag ? 'blue' : undefined}>
             Tag {sendPayloadPreview.normalized.tag || '-'}
           </Tag>
@@ -1326,13 +1344,13 @@ const TopicPage = () => {
           <Descriptions.Item label="Topic">
             <Text code>{sendPayloadPreview.normalized.topic || sendTopic?.name || '-'}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Body 类型">
-            {BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat]} /{' '}
+          <Descriptions.Item label={t('topic.bodyTypeLabel')}>
+            {bodyFormatLabel(sendPayloadPreview.summary.bodyFormat, t)} /{' '}
             {formatBytes(sendPayloadPreview.summary.bodyBytes)}
           </Descriptions.Item>
-          <Descriptions.Item label="自定义属性">
+          <Descriptions.Item label={t('topic.customProperties')}>
             {propertyPreview.length === 0 ? (
-              <Text type="secondary">无</Text>
+              <Text type="secondary">{t('topic.none')}</Text>
             ) : (
               <Space size={[4, 4]} wrap>
                 {propertyPreview.map((entry) => (
@@ -1373,7 +1391,11 @@ const TopicPage = () => {
       });
       if (payloadPreview.blockingIssues.length > 0) {
         message.error(
-          `发送前预检未通过：${payloadPreview.blockingIssues.map((item) => item.title).join('；')}`,
+          t('topic.preflightFailed', {
+            titles: payloadPreview.blockingIssues
+              .map((item) => item.title)
+              .join(lang === 'en' ? '; ' : '；'),
+          }),
         );
         return;
       }
@@ -1386,9 +1408,9 @@ const TopicPage = () => {
         properties: payloadPreview.properties,
       });
       // Keep the modal open for consecutive sends
-      message.success(`消息发送成功！MsgId: ${result.msgId}`);
+      message.success(t('topic.sendSuccess', { id: result.msgId }));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '消息发送失败，请稍后重试');
+      message.error(error instanceof Error ? error.message : t('topic.sendFailed'));
     } finally {
       setSending(false);
     }
@@ -1822,7 +1844,7 @@ const TopicPage = () => {
         title={
           <Space>
             <SendOutlined />
-            <span>发送消息到 {sendTopic?.name}</span>
+            <span>{t('topic.sendMsg', { name: sendTopic?.name })}</span>
           </Space>
         }
         open={sendModalOpen}
@@ -1831,8 +1853,8 @@ const TopicPage = () => {
           sendForm.resetFields();
         }}
         onOk={handleSend}
-        okText="发送"
-        cancelText="取消"
+        okText={t('topic.send')}
+        cancelText={t('common.cancel')}
         confirmLoading={sending}
         width={640}
         destroyOnHidden
@@ -1850,48 +1872,48 @@ const TopicPage = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="Tag" name="tag">
-                <Input placeholder="可选，消息标签" />
+                <Input placeholder={t('topic.tagPlaceholder')} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item label="Key" name="key">
-                <Input placeholder="可选，消息 Key（用于查询）" />
+                <Input placeholder={t('topic.keyPlaceholder')} />
               </Form.Item>
             </Col>
           </Row>
 
           <Form.Item
-            label="消息体 Body"
+            label={t('topic.bodyLabel')}
             name="body"
-            rules={[{ required: true, message: '请输入消息体' }]}
+            rules={[{ required: true, message: t('topic.bodyRequired') }]}
           >
             <Input.TextArea
               rows={8}
-              placeholder="JSON 格式消息体"
+              placeholder={t('topic.bodyPlaceholder')}
               style={{ fontFamily: 'monospace', fontSize: 14 }}
             />
           </Form.Item>
           <Flex gap={12} style={{ marginTop: -8, marginBottom: 16 }}>
             <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
-              快速填入:
+              {t('topic.quickFill')}
             </Text>
             <Space size={4} wrap>
               {RANDOM_BODY_GENERATORS.map((gen) => (
                 <Button
-                  key={gen.label}
+                  key={gen.labelKey}
                   type="text"
                   size="small"
                   onClick={() => sendForm.setFieldValue('body', gen.fn())}
                   style={{ fontSize: 14, color: '#8c8c8c', height: 22, padding: '0 6px' }}
                 >
-                  {gen.label}
+                  {t(gen.labelKey)}
                 </Button>
               ))}
             </Space>
           </Flex>
 
           <Divider style={{ margin: '8px 0 16px' }} orientation="left" plain>
-            自定义属性（可选）
+            {t('topic.customProps')}
           </Divider>
 
           <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
@@ -1900,13 +1922,13 @@ const TopicPage = () => {
               value={propsMode}
               onChange={(value) => setPropsMode(value as 'form' | 'text')}
               options={[
-                { label: '逐条录入', value: 'form' },
-                { label: '批量粘贴', value: 'text' },
+                { label: t('topic.propsFormMode'), value: 'form' },
+                { label: t('topic.propsTextMode'), value: 'text' },
               ]}
             />
             {propsMode === 'text' && (
               <Text type="secondary" style={{ fontSize: 14 }}>
-                支持 key=value，每行填写一个属性；属性值可以包含逗号
+                {t('topic.propsTextHint')}
               </Text>
             )}
           </Flex>
@@ -1927,12 +1949,12 @@ const TopicPage = () => {
                     <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
                       <Col span={10}>
                         <Form.Item {...rest} name={[name, 'key']} style={{ marginBottom: 0 }}>
-                          <Input placeholder="属性名" />
+                          <Input placeholder={t('topic.propName')} />
                         </Form.Item>
                       </Col>
                       <Col span={10}>
                         <Form.Item {...rest} name={[name, 'value']} style={{ marginBottom: 0 }}>
-                          <Input placeholder="属性值" />
+                          <Input placeholder={t('topic.propValue')} />
                         </Form.Item>
                       </Col>
                       <Col span={4}>
@@ -1944,7 +1966,7 @@ const TopicPage = () => {
                     </Row>
                   ))}
                   <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
-                    添加属性
+                    {t('topic.addProp')}
                   </Button>
                 </>
               )}
@@ -1952,7 +1974,7 @@ const TopicPage = () => {
           )}
 
           <Divider style={{ margin: '20px 0 16px' }} orientation="left" plain>
-            发送前预检
+            {t('topic.preflight')}
           </Divider>
           {renderSendPayloadPreview()}
         </Form>
