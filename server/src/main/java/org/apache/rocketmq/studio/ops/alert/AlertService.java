@@ -495,6 +495,21 @@ public class AlertService {
                 from, to, page, pageSize, notificationSuppressed));
     }
 
+    public SystemAlertSummaryVO summarizeAlerts(String level, AlertDomain domain, String instanceId,
+            String transition, String labelKey, String labelValue, LocalDateTime from, LocalDateTime to,
+            Boolean notificationSuppressed) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(400, "from must not be after to");
+        }
+        if (hasText(labelKey) != hasText(labelValue)) {
+            throw new BusinessException(400, "labelKey and labelValue must be provided together");
+        }
+        return alertRepository.summarizeAlerts(new SystemAlertQuery(level, domain, instanceId, transition,
+                hasText(labelKey) ? labelKey.trim() : null,
+                hasText(labelValue) ? labelValue.trim() : null,
+                from, to, 1, 1, notificationSuppressed));
+    }
+
     public List<SystemAlertVO> findRelatedAlerts(Long id) {
         if (id == null) {
             throw new BusinessException(400, "System alert ID is required");

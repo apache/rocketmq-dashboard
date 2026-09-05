@@ -48,6 +48,8 @@ public interface AlertRepository {
 
     PageResult<SystemAlertVO> findAlertsPage(SystemAlertQuery query);
 
+    SystemAlertSummaryVO summarizeAlerts(SystemAlertQuery query);
+
     SystemAlertVO saveAlert(SystemAlertVO alert);
 
     boolean acknowledgeAlert(SystemAlertVO alert);

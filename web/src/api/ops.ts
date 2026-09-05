@@ -189,6 +189,11 @@ export interface PageResult<T> {
   size: number;
 }
 
+export interface SystemAlertSummary {
+  total: number;
+  unacknowledged: number;
+}
+
 export interface AuditQuery {
   page?: number;
   pageSize?: number;
@@ -314,6 +319,14 @@ export async function listSystemAlerts(params?: SystemAlertQuery) {
 export async function listSystemAlertsPage(params: SystemAlertQuery = {}) {
   const res = await client.get<{ data: PageResult<SystemAlert> }>('/system-alerts/page', {
     params,
+  });
+  return res.data.data;
+}
+
+export async function fetchSystemAlertSummary(params: SystemAlertQuery = {}) {
+  const filters = { ...params, page: undefined, pageSize: undefined };
+  const res = await client.get<{ data: SystemAlertSummary }>('/system-alerts/summary', {
+    params: Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined)),
   });
   return res.data.data;
 }
