@@ -570,6 +570,18 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '重新投递失败，请稍后重试',
     en: 'Redelivery failed. Please try again later.',
   },
+  'deliveries.retryFiltered': {
+    zh: '重试匹配的失败记录',
+    en: 'Retry matching failures',
+  },
+  'deliveries.filteredRetryQueued': {
+    zh: '已将 {succeeded} 条匹配失败记录加入重试队列{failed}',
+    en: 'Added {succeeded} matching failed records to the retry queue{failed}',
+  },
+  'deliveries.filteredRetryFailed': {
+    zh: '重试匹配失败记录失败，请稍后重试',
+    en: 'Failed to retry matching deliveries. Please try again later.',
+  },
   'deliveries.bulkRetryQueued': {
     zh: '已将 {succeeded} 条记录加入重试队列{failed}',
     en: 'Added {succeeded} records to the retry queue{failed}',

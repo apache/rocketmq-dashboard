@@ -77,4 +77,13 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             + "</script>")
     long countPage(@Param("channel") String channel, @Param("status") String status,
             @Param("instanceId") String instanceId);
+
+    @Select("SELECT o.id FROM rmq_alert_notification_outbox o "
+            + "JOIN rmq_system_alert a ON a.id = o.alert_id "
+            + "WHERE o.status = 'FAILED' "
+            + "AND (#{channel} IS NULL OR o.channel = #{channel}) "
+            + "AND (#{instanceId} IS NULL OR a.instance_id = #{instanceId}) "
+            + "ORDER BY o.id LIMIT #{limit}")
+    List<Long> findFailedDeliveryIds(@Param("channel") String channel,
+            @Param("instanceId") String instanceId, @Param("limit") int limit);
 }

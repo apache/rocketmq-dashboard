@@ -433,6 +433,15 @@ export async function retryAlertDeliveries(
   return opsApi.retryAlertDeliveries(ids);
 }
 
+export async function retryFilteredAlertDeliveries(params: {
+  channel?: string;
+  instanceId?: string;
+  limit?: number;
+}): Promise<NotificationDeliveryBulkRetryResult> {
+  if (isMockMode()) return { succeededIds: [], failures: {} };
+  return opsApi.retryFilteredAlertDeliveries(params);
+}
+
 export async function listAlertDeliveriesPage(
   params: NotificationDeliveryQuery = {},
 ): Promise<PageResult<NotificationDeliveryRecord>> {

@@ -29,6 +29,7 @@ import {
   listAlertDeliveriesPage,
   retryAlertDeliveries,
   retryAlertDelivery,
+  retryFilteredAlertDeliveries,
 } from '../../services/opsService';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
@@ -58,6 +59,7 @@ const NotificationDeliveriesPage = () => {
   const retryingIdsInFlight = useRef(new Set<number>());
   const retryingVisibleInFlight = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [retryingFiltered, setRetryingFiltered] = useState(false);
 
   const refresh = () => {
     setLoading(true);
@@ -111,6 +113,30 @@ const NotificationDeliveriesPage = () => {
     } finally {
       retryingVisibleInFlight.current = false;
       setRetryingVisible(false);
+    }
+  };
+
+  const retryFilteredFailures = async () => {
+    if (retryingFiltered || retryingVisible) return;
+    setRetryingFiltered(true);
+    try {
+      const result = await retryFilteredAlertDeliveries({
+        channel,
+        instanceId,
+        limit: 100,
+      });
+      const failed = Object.keys(result.failures).length;
+      message.success(
+        t('deliveries.filteredRetryQueued', {
+          succeeded: result.succeededIds.length,
+          failed: failed ? t('deliveries.bulkRetryFailures', { count: failed }) : '',
+        }),
+      );
+      refresh();
+    } catch {
+      message.error(t('deliveries.filteredRetryFailed'));
+    } finally {
+      setRetryingFiltered(false);
     }
   };
 
@@ -239,6 +265,9 @@ const NotificationDeliveriesPage = () => {
               onClick={() => void retryVisibleFailures()}
             >
               {t('deliveries.retryCurrentPage')}
+            </Button>
+            <Button danger loading={retryingFiltered} onClick={() => void retryFilteredFailures()}>
+              {t('deliveries.retryFiltered')}
             </Button>
             <Select
               allowClear
