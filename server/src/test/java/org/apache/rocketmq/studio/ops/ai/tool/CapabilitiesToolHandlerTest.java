@@ -57,4 +57,33 @@ class CapabilitiesToolHandlerTest {
         assertThat(result.get("version")).isEqualTo("");
         assertThat(result.get("capabilities")).isEqualTo(List.of("REMOTING"));
     }
+
+    @Test
+    void reportsItsToolName() {
+        CapabilitiesToolHandler handler = new CapabilitiesToolHandler(
+                mock(ClusterService.class), mock(CapabilityResolver.class));
+
+        assertThat(handler.name()).isEqualTo("rmq.capabilities");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void handlesMissingTypeAndBlankVersionFields() {
+        ClusterVO cluster = ClusterVO.builder().name("DefaultCluster").build();
+        cluster.setId("DefaultCluster");
+
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.getCluster("DefaultCluster")).thenReturn(cluster);
+        CapabilityResolver capabilityResolver = mock(CapabilityResolver.class);
+        when(capabilityResolver.resolve(cluster)).thenReturn(List.of("ACL_V2", "GRPC"));
+
+        Object output = new CapabilitiesToolHandler(clusterService, capabilityResolver)
+                .execute(Map.of("cluster", "DefaultCluster"));
+
+        Map<String, Object> result = (Map<String, Object>) output;
+        assertThat(result.get("cluster")).isEqualTo("DefaultCluster");
+        assertThat(result.get("type")).isEqualTo("");
+        assertThat(result.get("version")).isEqualTo("");
+        assertThat(result.get("capabilities")).isEqualTo(List.of("ACL_V2", "GRPC"));
+    }
 }
