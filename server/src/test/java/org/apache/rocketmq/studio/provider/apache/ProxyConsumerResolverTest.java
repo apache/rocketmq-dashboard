@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.remoting.netty.NettyRemotingClient;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
@@ -33,7 +34,13 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -133,5 +140,75 @@ class ProxyConsumerResolverTest {
 
         // 192.0.2.1 (TEST-NET) is unreachable, so the remoting query must degrade to null
         assertThat(resolver.resolveConsumerConnection("instance-a", "cg-orders")).isNull();
+    }
+
+    @Test
+    void resolveConsumerConnectionShouldReturnNullWhenProxyQueryTimesOutTest() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        HashSet<Connection> connections = new HashSet<>();
+        Connection proxyA = new Connection();
+        proxyA.setClientId("proxy-a");
+        proxyA.setClientAddr("10.0.4.66:10911");
+        connections.add(proxyA);
+        syncer.setConnectionSet(connections);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic")).thenReturn(syncer);
+        NettyRemotingClient remotingClient = mock(NettyRemotingClient.class);
+        when(remotingClient.invokeSync(anyString(), any(), anyLong()))
+                .thenThrow(new IllegalStateException("connect timeout"));
+        resolver.setRemotingClientForTest(remotingClient);
+
+        assertThat(resolver.resolveConsumerConnection("instance-a", "cg-orders")).isNull();
+        verify(remotingClient).invokeSync(eq("10.0.4.66:8080"), any(), anyLong());
+    }
+
+    @Test
+    void resolveConsumerConnectionShouldTryNextProxyAfterAnEmptyResponseTest() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        HashSet<Connection> connections = new HashSet<>();
+        Connection proxyA = new Connection();
+        proxyA.setClientId("proxy-a");
+        proxyA.setClientAddr("10.0.4.66:10911");
+        Connection proxyB = new Connection();
+        proxyB.setClientId("proxy-b");
+        proxyB.setClientAddr("10.0.3.110:10911");
+        connections.add(proxyA);
+        connections.add(proxyB);
+        syncer.setConnectionSet(connections);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic")).thenReturn(syncer);
+        NettyRemotingClient remotingClient = mock(NettyRemotingClient.class);
+        when(remotingClient.invokeSync(anyString(), any(), anyLong())).thenReturn(null);
+        resolver.setRemotingClientForTest(remotingClient);
+
+        assertThat(resolver.resolveConsumerConnection("instance-a", "cg-orders")).isNull();
+        verify(remotingClient, times(2)).invokeSync(anyString(), any(), anyLong());
+    }
+
+    @Test
+    void discoverProxyAddressesShouldRetainAddressesWithoutPortTest() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        HashSet<Connection> connections = new HashSet<>();
+        Connection proxyA = new Connection();
+        proxyA.setClientId("proxy-a");
+        proxyA.setClientAddr("10.0.4.66");
+        connections.add(proxyA);
+        syncer.setConnectionSet(connections);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic")).thenReturn(syncer);
+
+        assertThat(resolver.discoverProxyAddresses("instance-a"))
+                .containsExactly("10.0.4.66:8080");
+    }
+
+    @Test
+    void discoverProxyAddressesShouldSkipBlankClientAddressesTest() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        HashSet<Connection> connections = new HashSet<>();
+        Connection proxyA = new Connection();
+        proxyA.setClientId("proxy-a");
+        proxyA.setClientAddr("  ");
+        connections.add(proxyA);
+        syncer.setConnectionSet(connections);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic")).thenReturn(syncer);
+
+        assertThat(resolver.discoverProxyAddresses("instance-a")).isEmpty();
     }
 }
