@@ -423,7 +423,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const [dataSourceKey, setDataSourceKey] = useState('');
   const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
   const [pendingDataSource, setPendingDataSource] = useState<DataSource | null>(null);
-  const requestId = useRef(0);
+  // Profile panels and the custom query panel are independent state domains, so each
+  // flow tracks its own request generation: sharing one counter would let the two
+  // bumpers in the same synchronous handler (e.g. the refresh action) invalidate
+  // each other's in-flight results and leave every panel stuck on its spinner.
+  const panelRequestIdRef = useRef(0);
+  const customRequestIdRef = useRef(0);
   // Keeps the latest data source readable from the stable callbacks so switching
   // the source uses the new key instead of a stale closure value.
   const dataSourceKeyRef = useRef(dataSourceKey);
@@ -483,7 +488,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const loadAll = useCallback(
     async (profile: MetricProfile | undefined, range: RangeOption) => {
       if (!profile) return;
-      const currentRequest = ++requestId.current;
+      const currentRequest = ++panelRequestIdRef.current;
       const loadingPatch = Object.fromEntries(
         profile.metrics.map((metric) => [metric.semanticMetric, { loading: true } as PanelState]),
       );
@@ -492,14 +497,14 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         profile.metrics.map(async (metric) => {
           try {
             const result = await runQuery(metric.promql, range);
-            if (currentRequest === requestId.current) {
+            if (currentRequest === panelRequestIdRef.current) {
               setPanels((previous) => ({
                 ...previous,
                 [metric.semanticMetric]: { loading: false, data: result },
               }));
             }
           } catch (error) {
-            if (currentRequest === requestId.current) {
+            if (currentRequest === panelRequestIdRef.current) {
               setPanels((previous) => ({
                 ...previous,
                 [metric.semanticMetric]: {
@@ -535,7 +540,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       });
     return () => {
       cancelled = true;
-      requestId.current += 1;
+      panelRequestIdRef.current += 1;
+      customRequestIdRef.current += 1;
     };
   }, [loadAll]);
 
@@ -557,16 +563,16 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     async (promql: string, range: RangeOption) => {
       const trimmed = promql.trim();
       if (!trimmed) return;
-      const currentRequest = ++requestId.current;
+      const currentRequest = ++customRequestIdRef.current;
       setCustomPanel({ loading: true });
       setAppliedCustomPromql(trimmed);
       try {
         const result = await runQuery(trimmed, range);
-        if (currentRequest === requestId.current) {
+        if (currentRequest === customRequestIdRef.current) {
           setCustomPanel({ loading: false, data: result });
         }
       } catch (error) {
-        if (currentRequest === requestId.current) {
+        if (currentRequest === customRequestIdRef.current) {
           setCustomPanel({
             loading: false,
             error: getQueryErrorMessage(error, queryErrorFallback),

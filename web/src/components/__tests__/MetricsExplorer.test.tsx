@@ -285,6 +285,23 @@ describe('MetricsExplorer', () => {
     expect(await screen.findAllByText('cluster=prod / node_id=broker-a')).not.toHaveLength(0);
   });
 
+  it('reloads profile panels when refresh also reruns the applied custom query', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: /查\s*询/ }));
+    await screen.findAllByText('cluster=prod / node_id=broker-a');
+
+    await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+
+    expect(
+      await screen.findByRole('img', { name: 'Message In TPS time series' }, { timeout: 3000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('42 messages/s')).toBeInTheDocument();
+  });
+
   it('queries the first metric when the version profile changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
