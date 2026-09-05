@@ -883,14 +883,19 @@ public class RocketMQAdminClientImpl implements AdminClient {
             throw new BusinessException(400, "topic is required for offset reset");
         }
         try {
+            // resetOffsetNew applies the searched offset even when it is ahead of the
+            // current offset (the preview offers "skip unconsumed messages") and falls
+            // back to direct offset writes when the group is offline; the non-forcing
+            // resetOffsetByTimestamp silently capped forward targets to the current
+            // offset and failed with CONSUMER_NOT_ONLINE for offline groups.
             if (StringUtils.hasText(instanceId)) {
                 runtimeAdminClientResolver.execute(instanceId, admin -> {
-                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    admin.resetOffsetNew(name, topic, timestamp);
                     return null;
                 });
             } else {
                 adminFactory.execute(namesrvAddr(), null, admin -> {
-                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    admin.resetOffsetNew(name, topic, timestamp);
                     return null;
                 });
             }
