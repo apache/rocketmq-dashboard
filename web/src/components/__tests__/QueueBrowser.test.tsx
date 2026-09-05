@@ -17,10 +17,12 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { App } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { formatTimeMs, useQueueBrowser } from '../QueueBrowser';
+import { formatTimeMs, QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
+import { getQueueBacklog } from '../../utils/queueBrowserBacklog';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
@@ -90,6 +92,23 @@ function QueueBrowserProbe({ instanceId = 'instance-a' }: { instanceId?: string 
   );
 }
 
+function QueueBrowserViewProbe({ instanceId = 'instance-a' }: { instanceId?: string }) {
+  const state = useQueueBrowser(instanceId);
+  return (
+    <App>
+      <div>
+        <button type="button" onClick={() => state.setTopic('topic-a')}>
+          topic-a
+        </button>
+        <button type="button" onClick={() => void state.loadQueues()}>
+          load
+        </button>
+        <QueueBrowserResults state={state} />
+      </div>
+    </App>
+  );
+}
+
 describe('formatTimeMs', () => {
   it('preserves the Unix epoch timestamp', () => {
     expect(formatTimeMs(0)).not.toBe('-');
@@ -101,6 +120,17 @@ describe('formatTimeMs', () => {
       expect(formatTimeMs(value)).toBe('-');
     },
   );
+});
+
+describe('getQueueBacklog', () => {
+  it('returns the number of messages available in the queue', () => {
+    expect(getQueueBacklog({ minOffset: 4, maxOffset: 10 })).toBe(6);
+  });
+
+  it('does not return a negative backlog for invalid offset ranges', () => {
+    expect(getQueueBacklog({ minOffset: 10, maxOffset: 4 })).toBe(0);
+    expect(getQueueBacklog({ minOffset: 5, maxOffset: 5 })).toBe(0);
+  });
 });
 
 describe('QueueBrowser request ownership', () => {
@@ -214,5 +244,78 @@ describe('QueueBrowser request ownership', () => {
 
     expect(getQueueOffsets).toHaveBeenCalledTimes(1);
     await act(async () => queues.resolve([queue('broker-a')]));
+  });
+});
+
+describe('QueueBrowserResults navigation', () => {
+  const queues: QueueOffset[] = [
+    { brokerName: 'broker-a', queueId: 0, minOffset: 0, maxOffset: 12 },
+    { brokerName: 'broker-a', queueId: 1, minOffset: 4, maxOffset: 4 },
+    { brokerName: 'broker-b', queueId: 2, minOffset: 1, maxOffset: 20 },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  beforeAll(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation(() => ({
+        matches: false,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  });
+
+  const renderLoaded = async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue(queues);
+    const user = userEvent.setup();
+    render(<QueueBrowserViewProbe />);
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await screen.findByText('broker-b');
+    return user;
+  };
+
+  it('filters queues by broker or queue id while keeping topic-wide totals', async () => {
+    const user = await renderLoaded();
+
+    await user.type(screen.getByPlaceholderText('搜索 Broker 或 Queue'), 'broker-b');
+
+    expect(screen.getByText('broker-b')).toBeInTheDocument();
+    expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
+    expect(screen.getByTestId('queue-browser-summary')).toHaveTextContent(
+      '显示 1 / 3 个队列，Topic 总消息量 31 条',
+    );
+  });
+
+  it('hides empty queues and shows the displayed count separately', async () => {
+    const user = await renderLoaded();
+
+    await user.click(screen.getByRole('button', { name: '仅显示非空队列' }));
+
+    expect(screen.getByText('broker-a')).toBeInTheDocument();
+    expect(screen.getByText('broker-b')).toBeInTheDocument();
+    expect(screen.queryByText('broker-a-1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('queue-browser-summary')).toHaveTextContent(
+      '显示 2 / 3 个队列，Topic 总消息量 31 条',
+    );
+  });
+
+  it('shows backlog and supports sorting by backlog', async () => {
+    const user = await renderLoaded();
+
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getAllByText('19').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('0').length).toBeGreaterThan(0);
+    await user.click(screen.getByText('积压量'));
+
+    const brokers = await screen.findAllByText(/broker-[ab]/);
+    expect(brokers.map((item) => item.textContent)).toEqual(['broker-a', 'broker-a', 'broker-b']);
   });
 });
