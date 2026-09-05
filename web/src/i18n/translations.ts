@@ -1854,6 +1854,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'grafana.exportAllFailed': { zh: '导出全部看板失败', en: 'Failed to export dashboards' },
   // ─── Alert rule templates ───
   'alertAssets.title': { zh: '业务告警', en: 'Business Alerts' },
+  'alertAssets.subtitle': { zh: '可复用的业务告警规则模板资产', en: 'Reusable business alert rule templates' },
   'alertAssets.name': { zh: '名称', en: 'Name' },
   'alertAssets.group': { zh: '规则组', en: 'Group' },
   'alertAssets.ruleCount': { zh: '规则数', en: 'Rules' },
