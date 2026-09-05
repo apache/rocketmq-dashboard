@@ -2542,6 +2542,25 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  // ─── Consumer detail progress / config / stack ───
+  'consumer.allTopics': { zh: '全部 Topic', en: 'All Topics' },
+  'consumer.capturedAt': { zh: '采集时间', en: 'Captured At' },
+  'consumer.maxRetryRequired': { zh: '请输入最大重试次数', en: 'Enter the maximum retry count' },
+  'consumer.noProgressData': { zh: '消费组不在线，暂无队列进度数据', en: 'Consumer group is offline; no queue progress data' },
+  'consumer.progressBacklog': { zh: '堆积量', en: 'Backlog' },
+  'consumer.retryQueueNums': { zh: '重试队列数', en: 'Retry Queue Count' },
+  'consumer.retryQueueNumsRequired': { zh: '请输入重试队列数', en: 'Enter the retry queue count' },
+  'consumer.stackUnsupported': { zh: '暂不支持采集该客户端的线程栈', en: 'Thread stack capture is not supported for this client' },
+  'consumer.stackUnsupportedDesc': { zh: '经 Proxy 接入的客户端（gRPC、经 Proxy 的 Remoting）只在 Proxy 侧保持连接，Broker 看不到它们；而 Proxy 目前未开放线程栈采集接口，因此这类客户端暂时无法采集。直连 Broker 的客户端可正常查看。', en: 'Clients connected through the Proxy (gRPC, and Remoting via the Proxy) only keep their connection on the Proxy side, so the Broker cannot see them; since the Proxy does not expose a thread-stack capture endpoint yet, these clients cannot be captured for now. Clients that connect directly to the Broker can be viewed normally.' },
+  'consumer.tabConfig': { zh: '配置', en: 'Configuration' },
+  'consumer.tabProgress': { zh: '消费进度', en: 'Consumption Progress' },
+  'consumer.threadCol': { zh: '线程', en: 'Thread' },
+  'consumer.threadCount': { zh: '线程数', en: 'Threads' },
+  'consumer.threadStacks': { zh: '消费者线程栈', en: 'Consumer Thread Stacks' },
+  'consumer.topicFilterLabel': { zh: 'Topic 筛选:', en: 'Topic filter:' },
+  'consumer.totalBrokersLabel': { zh: '总 Broker 数:', en: 'Total Brokers:' },
+  'consumer.totalLagLabel': { zh: '总堆积:', en: 'Total lag:' },
+  'consumer.totalQueuesLabel': { zh: '总 Queue 数:', en: 'Total Queues:' },
   // ─── BrokerCluster ───
 };
 
