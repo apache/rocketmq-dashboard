@@ -35,4 +35,11 @@ describe('language preference', () => {
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
     expect(getInitialLanguage()).toBe('en');
   });
+
+  it('round-trips the Chinese preference as well', () => {
+    persistLanguage('zh');
+
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('zh');
+    expect(getInitialLanguage()).toBe('zh');
+  });
 });
