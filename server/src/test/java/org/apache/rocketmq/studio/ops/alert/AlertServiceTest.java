@@ -144,6 +144,22 @@ class AlertServiceTest {
     }
 
     @Test
+    void summarizeRulesShouldDelegateNormalizedFiltersTest() {
+        AlertRuleSummaryVO summary = AlertRuleSummaryVO.builder()
+                .total(12).enabled(7).triggeredSince(3).build();
+        when(alertRepository.summarizeRules(any(AlertRuleQuery.class))).thenReturn(summary);
+
+        AlertRuleSummaryVO result = alertService.summarizeRules(
+                AlertDomain.BUSINESS, " lag ", true, LocalDateTime.of(2026, 9, 5, 0, 0));
+
+        assertThat(result).isSameAs(summary);
+        verify(alertRepository).summarizeRules(argThat(query -> query.domain() == AlertDomain.BUSINESS
+                && "lag".equals(query.search())
+                && Boolean.TRUE.equals(query.enabled())
+                && "2026-09-05T00:00".equals(query.triggeredSince())));
+    }
+
+    @Test
     void listRulesPageShouldRejectInvalidPageBoundsTest() {
         assertThatThrownBy(() -> alertService.listRules(AlertDomain.BUSINESS, null, null, 0, 20))
                 .isInstanceOf(BusinessException.class)

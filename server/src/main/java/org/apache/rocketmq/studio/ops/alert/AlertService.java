@@ -82,7 +82,15 @@ public class AlertService {
             throw new BusinessException(400, "Invalid page or pageSize");
         }
         return alertRepository.findRulesPage(new AlertRuleQuery(domain,
-                hasText(search) ? search.trim() : null, enabled, page, pageSize));
+                hasText(search) ? search.trim() : null, enabled, page, pageSize, null));
+    }
+
+    public AlertRuleSummaryVO summarizeRules(AlertDomain domain, String search, Boolean enabled,
+            LocalDateTime triggeredSince) {
+        requireDomain(domain);
+        return alertRepository.summarizeRules(new AlertRuleQuery(domain,
+                hasText(search) ? search.trim() : null, enabled, 1, 1,
+                triggeredSince == null ? null : triggeredSince.toString()));
     }
 
     public List<AlertRuleRuntimeVO> listRuleRuntime(AlertDomain domain) {

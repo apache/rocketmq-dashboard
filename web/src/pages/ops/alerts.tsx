@@ -46,6 +46,7 @@ import type {
   AlertRuleDomain,
   AlertRuleTestResult,
   AlertRuleRuntime,
+  AlertRuleSummary,
   NativeAlertMetricInfo,
 } from '../../api/ops';
 import type { AlertRuleTransfer } from '../../api/ops';
@@ -55,6 +56,7 @@ import {
   bulkToggleAlertRules,
   deleteAlertRule,
   exportAlertRulesTransfer,
+  getAlertRuleSummary,
   importAlertRulesTransfer,
   listAlertRulesPage,
   listAlertRuleRuntime,
@@ -156,6 +158,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const { token } = theme.useToken();
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [totalRules, setTotalRules] = useState(0);
+  const [ruleSummary, setRuleSummary] = useState<AlertRuleSummary | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -366,6 +369,16 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     void listAlertRuleRuntime(domain)
       .then(setRuntime)
       .catch(() => undefined);
+    void getAlertRuleSummary(domain, {
+      search: search || undefined,
+      enabled: enabledFilter,
+    })
+      .then((summary) => {
+        if (!cancelled) setRuleSummary(summary);
+      })
+      .catch(() => {
+        if (!cancelled) setRuleSummary(null);
+      });
 
     return () => {
       cancelled = true;
@@ -378,7 +391,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       .catch(() => message.error(t('alerts.instanceLoadFailed')));
   }, []);
 
-  const enabledCount = rules.filter((r) => r.enabled).length;
+  const enabledCount = ruleSummary?.enabled ?? rules.filter((r) => r.enabled).length;
   const selectedCount = selectedRuleIds.length;
   const hasSelectedRules = selectedCount > 0;
   const isBulkRunning = bulkAction !== null;
@@ -389,6 +402,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const triggered24h = rules.filter(
     (r) => r.lastTriggered && new Date(r.lastTriggered).getTime() > dayAgo,
   ).length;
+  const triggeredCount = ruleSummary?.triggeredSince ?? triggered24h;
 
   const openCreateModal = () => {
     setEditingRule(null);
@@ -871,15 +885,15 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               <span style={{ fontSize: 18, fontWeight: 600, color: '#3b82f6' }}>{totalRules}</span>
             </Flex>
             <Flex align="center" gap={4}>
-              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.enabledOnPage')}</span>
+              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.enabled')}</span>
               <span style={{ fontSize: 18, fontWeight: 600, color: '#14b8a6' }}>
                 {enabledCount}
               </span>
             </Flex>
             <Flex align="center" gap={4}>
-              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.triggered24hOnPage')}</span>
+              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.triggered24h')}</span>
               <span style={{ fontSize: 18, fontWeight: 600, color: '#8b5cf6' }}>
-                {triggered24h}
+                {triggeredCount}
               </span>
             </Flex>
             <Button
