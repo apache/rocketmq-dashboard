@@ -102,6 +102,12 @@ const STATUS_TEXT: Record<RouteDiagnosticStatus, string> = {
   critical: '不可用',
 };
 
+const STATUS_TEXT_EN: Record<RouteDiagnosticStatus, string> = {
+  healthy: 'Route healthy',
+  warning: 'Attention needed',
+  critical: 'Unavailable',
+};
+
 const STATUS_COLOR: Record<RouteDiagnosticStatus, 'success' | 'warning' | 'error'> = {
   healthy: 'success',
   warning: 'warning',
@@ -209,6 +215,7 @@ const collectAddressDuplicates = (routes: BrokerRoute[]): Set<string> => {
 const distributionIssues = (
   route: BrokerRoute,
   duplicateAddresses: Set<string>,
+  lang: 'zh' | 'en' = 'zh',
 ): RouteDiagnosticIssue[] => {
   const brokerName = route.brokerName || 'unknown';
   const writeQueues = queueCount(route.writeQueues);
@@ -224,8 +231,8 @@ const distributionIssues = (
       issue(
         'MISSING_BROKER_ADDRESS',
         'critical',
-        'Broker 地址缺失',
-        'NameServer 返回了队列元数据，但没有返回可用于定位 Broker 的地址。',
+        (lang === 'en' ? 'Missing Broker address' : 'Broker 地址缺失'),
+        (lang === 'en' ? 'NameServer returned queue metadata but no address to locate the Broker.' : 'NameServer 返回了队列元数据，但没有返回可用于定位 Broker 的地址。'),
         brokerName,
       ),
     );
@@ -236,8 +243,8 @@ const distributionIssues = (
       issue(
         'MISSING_MASTER_ADDRESS',
         'warning',
-        'Master 地址缺失',
-        '该 Broker 只返回了非 master 地址，Topic 写入链路需要确认 master 是否在线。',
+        (lang === 'en' ? 'Missing Master address' : 'Master 地址缺失'),
+        (lang === 'en' ? 'This Broker only returned a non-master address; confirm the master is online for the write path.' : '该 Broker 只返回了非 master 地址，Topic 写入链路需要确认 master 是否在线。'),
         brokerName,
       ),
     );
@@ -248,8 +255,8 @@ const distributionIssues = (
       issue(
         'WRITE_QUEUE_UNAVAILABLE',
         'critical',
-        '写队列不可用',
-        '该 Broker 没有可写队列，生产者不会把消息写到这个 Broker。',
+        (lang === 'en' ? 'Write queues unavailable' : '写队列不可用'),
+        (lang === 'en' ? 'This Broker has no writable queues, so producers will not send messages to it.' : '该 Broker 没有可写队列，生产者不会把消息写到这个 Broker。'),
         brokerName,
       ),
     );
@@ -260,8 +267,8 @@ const distributionIssues = (
       issue(
         'READ_QUEUE_UNAVAILABLE',
         'critical',
-        '读队列不可用',
-        '该 Broker 没有可读队列，消费者不会从这个 Broker 拉取消息。',
+        (lang === 'en' ? 'Read queues unavailable' : '读队列不可用'),
+        (lang === 'en' ? 'This Broker has no readable queues, so consumers will not pull messages from it.' : '该 Broker 没有可读队列，消费者不会从这个 Broker 拉取消息。'),
         brokerName,
       ),
     );
@@ -272,8 +279,8 @@ const distributionIssues = (
       issue(
         'PERMISSION_NOT_WRITABLE',
         'warning',
-        '权限不允许写入',
-        'Topic 权限缺少写权限，生产者发送可能失败或被路由到其他 Broker。',
+        (lang === 'en' ? 'Write permission missing' : '权限不允许写入'),
+        (lang === 'en' ? 'The Topic lacks write permission; producers may fail or be routed to other Brokers.' : 'Topic 权限缺少写权限，生产者发送可能失败或被路由到其他 Broker。'),
         brokerName,
       ),
     );
@@ -284,8 +291,8 @@ const distributionIssues = (
       issue(
         'PERMISSION_NOT_READABLE',
         'warning',
-        '权限不允许读取',
-        'Topic 权限缺少读权限，消费者订阅后可能无法正常消费。',
+        (lang === 'en' ? 'Read permission missing' : '权限不允许读取'),
+        (lang === 'en' ? 'The Topic lacks read permission; consumers may not consume normally after subscribing.' : 'Topic 权限缺少读权限，消费者订阅后可能无法正常消费。'),
         brokerName,
       ),
     );
@@ -296,8 +303,8 @@ const distributionIssues = (
       issue(
         'READ_WRITE_QUEUE_MISMATCH',
         'warning',
-        '读写队列不一致',
-        '该 Broker 的读队列数和写队列数不同，扩缩容或迁移后需要确认配置是否符合预期。',
+        (lang === 'en' ? 'Write/read queue counts differ' : '读写队列不一致'),
+        (lang === 'en' ? 'Read and write queue counts differ on this Broker; confirm the configuration after scaling or migration.' : '该 Broker 的读队列数和写队列数不同，扩缩容或迁移后需要确认配置是否符合预期。'),
         brokerName,
       ),
     );
@@ -308,8 +315,8 @@ const distributionIssues = (
       issue(
         'DUPLICATE_BROKER_ADDRESS',
         'warning',
-        'Broker 地址重复',
-        '多个 BrokerName 返回了相同地址，请确认 NameServer 注册信息是否过期。',
+        (lang === 'en' ? 'Duplicate Broker address' : 'Broker 地址重复'),
+        (lang === 'en' ? 'Multiple BrokerNames returned the same address; confirm the NameServer registration is not stale.' : '多个 BrokerName 返回了相同地址，请确认 NameServer 注册信息是否过期。'),
         brokerName,
       ),
     );
@@ -318,55 +325,61 @@ const distributionIssues = (
   return issues;
 };
 
-const buildRecommendations = (issues: RouteDiagnosticIssue[]): string[] => {
+const buildRecommendations = (
+  issues: RouteDiagnosticIssue[],
+  lang: 'zh' | 'en' = 'zh',
+): string[] => {
   const actions: string[] = [];
   const codes = new Set(issues.map((item) => item.code));
 
   if (codes.has('NO_ROUTE')) {
-    actions.push('确认 Topic 已在目标 Broker 上创建；必要时使用“在 Broker 上重建”。');
+    actions.push(lang === 'en' ? 'Confirm the Topic was created on the target Broker; use "Rebuild on Broker" if needed.' : '确认 Topic 已在目标 Broker 上创建；必要时使用“在 Broker 上重建”。');
   }
   if (codes.has('MISSING_BROKER_ADDRESS') || codes.has('MISSING_MASTER_ADDRESS')) {
-    actions.push('检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。');
+    actions.push(lang === 'en' ? 'Check that the Broker still registers with NameServer and the master node is reachable.' : '检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。');
   }
   if (codes.has('NO_WRITABLE_ROUTE') || codes.has('PERMISSION_NOT_WRITABLE')) {
-    actions.push('确认 Topic 权限包含写权限，避免生产者发送失败。');
+    actions.push(lang === 'en' ? 'Make sure the Topic permission includes write access to avoid producer failures.' : '确认 Topic 权限包含写权限，避免生产者发送失败。');
   }
   if (codes.has('NO_READABLE_ROUTE') || codes.has('PERMISSION_NOT_READABLE')) {
-    actions.push('确认 Topic 权限包含读权限，避免消费者订阅后无可读队列。');
+    actions.push(lang === 'en' ? 'Make sure the Topic permission includes read access so consumers always have readable queues.' : '确认 Topic 权限包含读权限，避免消费者订阅后无可读队列。');
   }
   if (
     codes.has('WRITE_QUEUE_UNAVAILABLE') ||
     codes.has('READ_QUEUE_UNAVAILABLE') ||
     codes.has('READ_WRITE_QUEUE_MISMATCH')
   ) {
-    actions.push('对比各 Broker 上的 TopicConfig，统一读写队列数后再观察客户端路由。');
+    actions.push(lang === 'en' ? 'Compare TopicConfig across Brokers, unify write/read queue counts, then watch client routing.' : '对比各 Broker 上的 TopicConfig，统一读写队列数后再观察客户端路由。');
   }
   if (codes.has('WRITE_QUEUE_SKEW') || codes.has('READ_QUEUE_SKEW')) {
-    actions.push('评估是否需要扩容、迁移或重新分配队列，降低单 Broker 负载集中风险。');
+    actions.push(lang === 'en' ? 'Assess whether to scale, migrate or rebalance queues to reduce concentrated load on single Brokers.' : '评估是否需要扩容、迁移或重新分配队列，降低单 Broker 负载集中风险。');
   }
   if (codes.has('SINGLE_BROKER_ROUTE')) {
-    actions.push('确认该 Topic 是否预期只部署在单 Broker；生产业务建议准备冗余路由。');
+    actions.push(lang === 'en' ? 'Confirm whether this Topic is expected on a single Broker; production recommends redundant routes.' : '确认该 Topic 是否预期只部署在单 Broker；生产业务建议准备冗余路由。');
   }
   if (codes.has('DUPLICATE_BROKER_ADDRESS')) {
-    actions.push('清理过期 Broker 注册信息，避免客户端拿到重复或错误地址。');
+    actions.push(lang === 'en' ? 'Clean up stale Broker registrations so clients do not receive duplicate or wrong addresses.' : '清理过期 Broker 注册信息，避免客户端拿到重复或错误地址。');
   }
 
   return actions;
 };
 
-export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics => {
+export const analyzeTopicRoutes = (
+  routes: BrokerRoute[],
+  lang: 'zh' | 'en' = 'zh',
+): TopicRouteDiagnostics => {
   if (routes.length === 0) {
     const issues = [
       issue(
         'NO_ROUTE',
         'critical',
-        'Broker 上没有 Topic 路由',
-        '元数据中存在 Topic 记录，但当前实例没有返回任何 Broker 路由。',
+        (lang === 'en' ? 'No Broker route for the Topic' : 'Broker 上没有 Topic 路由'),
+        (lang === 'en' ? 'The Topic exists in metadata but the instance returned no Broker routes.' : '元数据中存在 Topic 记录，但当前实例没有返回任何 Broker 路由。'),
       ),
     ];
     return {
       status: 'critical',
-      statusText: STATUS_TEXT.critical,
+      statusText: lang === 'en' ? STATUS_TEXT_EN.critical : STATUS_TEXT.critical,
       statusColor: STATUS_COLOR.critical,
       summary: {
         brokerCount: 0,
@@ -381,7 +394,7 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       },
       distributions: [],
       issues,
-      recommendations: buildRecommendations(issues),
+      recommendations: buildRecommendations(issues, lang),
     };
   }
 
@@ -395,7 +408,7 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
 
   const distributions = routes.map<RouteDistribution>((route, index) => {
     const brokerIds = routeBrokerIds(route);
-    const routeIssues = distributionIssues(route, duplicateAddresses);
+    const routeIssues = distributionIssues(route, duplicateAddresses, lang);
 
     return {
       key: `${route.brokerName || 'broker'}-${index}`,
@@ -423,8 +436,8 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'WRITE_QUEUE_SKEW',
         'warning',
-        '写队列分布不均',
-        '不同 Broker 的写队列数差距较大，生产流量可能无法均匀分摊。',
+        (lang === 'en' ? 'Write queues are unevenly distributed' : '写队列分布不均'),
+        (lang === 'en' ? 'Write queue counts vary widely across Brokers; production traffic may not spread evenly.' : '不同 Broker 的写队列数差距较大，生产流量可能无法均匀分摊。'),
       ),
     );
   }
@@ -433,8 +446,8 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'READ_QUEUE_SKEW',
         'warning',
-        '读队列分布不均',
-        '不同 Broker 的读队列数差距较大，消费者负载可能无法均匀分摊。',
+        (lang === 'en' ? 'Read queues are unevenly distributed' : '读队列分布不均'),
+        (lang === 'en' ? 'Read queue counts vary widely across Brokers; consumer load may not spread evenly.' : '不同 Broker 的读队列数差距较大，消费者负载可能无法均匀分摊。'),
       ),
     );
   }
@@ -450,8 +463,8 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'NO_WRITABLE_ROUTE',
         'critical',
-        '没有可写路由',
-        '所有 Broker 都缺少写权限或写队列，生产者无法向该 Topic 发送消息。',
+        (lang === 'en' ? 'No writable route' : '没有可写路由'),
+        (lang === 'en' ? 'All Brokers lack write permission or writable queues; producers cannot send messages to this Topic.' : '所有 Broker 都缺少写权限或写队列，生产者无法向该 Topic 发送消息。'),
       ),
     );
   }
@@ -461,8 +474,8 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'NO_READABLE_ROUTE',
         'critical',
-        '没有可读路由',
-        '所有 Broker 都缺少读权限或读队列，消费者无法从该 Topic 拉取消息。',
+        (lang === 'en' ? 'No readable route' : '没有可读路由'),
+        (lang === 'en' ? 'All Brokers lack read permission or readable queues; consumers cannot pull messages from this Topic.' : '所有 Broker 都缺少读权限或读队列，消费者无法从该 Topic 拉取消息。'),
       ),
     );
   }
@@ -472,8 +485,8 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       issue(
         'SINGLE_BROKER_ROUTE',
         'warning',
-        '单 Broker 路由',
-        '该 Topic 只返回一个 Broker 路由，生产业务需要确认是否符合容灾预期。',
+        (lang === 'en' ? 'Single Broker route' : '单 Broker 路由'),
+        (lang === 'en' ? 'Only one Broker route was returned for this Topic; confirm it meets the disaster-recovery expectations.' : '该 Topic 只返回一个 Broker 路由，生产业务需要确认是否符合容灾预期。'),
       ),
     );
   }
@@ -483,7 +496,7 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
 
   return {
     status,
-    statusText: STATUS_TEXT[status],
+    statusText: lang === 'en' ? STATUS_TEXT_EN[status] : STATUS_TEXT[status],
     statusColor: STATUS_COLOR[status],
     summary: {
       brokerCount: routes.length,
