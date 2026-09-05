@@ -55,4 +55,23 @@ describe('dataModeStore', () => {
 
     expect(store.getState().useMock).toBe(persistedValue);
   });
+
+  it('toggle flips the mode both ways', async () => {
+    const store = await loadStore('false');
+
+    store.getState().toggle();
+    expect(store.getState().useMock).toBe(true);
+
+    store.getState().toggle();
+    expect(store.getState().useMock).toBe(false);
+  });
+
+  it('persists the toggled mode for the next session', async () => {
+    const store = await loadStore('false');
+
+    store.getState().toggle();
+
+    const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+    expect(persisted.state?.useMock).toBe(true);
+  });
 });
