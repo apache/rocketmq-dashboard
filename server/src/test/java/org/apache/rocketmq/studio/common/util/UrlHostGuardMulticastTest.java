@@ -27,4 +27,24 @@ class UrlHostGuardMulticastTest {
         assertThat(UrlHostGuard.isAllowedHost("224.0.0.1", false)).isFalse();
         assertThat(UrlHostGuard.isAllowedHost("ff02::1", false)).isFalse();
     }
+
+    @Test
+    void isAllowedHostShouldRejectLinkLocalAndAnyLocalAddresses() {
+        assertThat(UrlHostGuard.isAllowedHost("169.254.169.254", false)).isFalse();
+        assertThat(UrlHostGuard.isAllowedHost("0.0.0.0", false)).isFalse();
+    }
+
+    @Test
+    void isAllowedHostShouldAllowPrivateSiteLocalRanges() {
+        assertThat(UrlHostGuard.isAllowedHost("10.0.0.1", false)).isTrue();
+        assertThat(UrlHostGuard.isAllowedHost("192.168.1.10", false)).isTrue();
+        assertThat(UrlHostGuard.isAllowedHost("172.16.0.5", false)).isTrue();
+    }
+
+    @Test
+    void isAllowedHostShouldAdmitLoopbackOnlyWhenConfigured() {
+        assertThat(UrlHostGuard.isAllowedHost("127.0.0.1", true)).isTrue();
+        assertThat(UrlHostGuard.isAllowedHost("127.0.0.1", false)).isFalse();
+        assertThat(UrlHostGuard.isAllowedHost("::1", true)).isTrue();
+    }
 }
