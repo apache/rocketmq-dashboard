@@ -549,9 +549,9 @@ const TopicPage = () => {
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
-      message.success(`Topic「${topic.name}」已在 Broker 上重建`);
+      message.success(t('topic.rebuilt', { name: topic.name }));
     } catch {
-      message.error('重建 Topic 失败，请检查 Broker 状态后重试');
+      message.error(t('topic.rebuildFailed'));
     } finally {
       setRebuilding(false);
     }
@@ -581,7 +581,7 @@ const TopicPage = () => {
       );
       const checked = results.filter((r) => r.routes !== null);
       if (checked.length < results.length) {
-        message.error('部分 Topic 路由校验失败，请稍后重试');
+        message.error(t('topic.routeCheckPartialFailed'));
       }
       setRoutesByTopic((previous) => {
         const next = { ...previous };
@@ -612,9 +612,9 @@ const TopicPage = () => {
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
       setSyncedTopics((previous) => new Set(previous).add(topic.name));
-      message.success(`Topic「${topic.name}」已同步到 Broker`);
+      message.success(t('topic.syncedToBroker', { name: topic.name }));
     } catch {
-      message.error(`同步 Topic「${topic.name}」失败，请检查 Broker 状态后重试`);
+      message.error(t('topic.syncToBrokerFailed', { name: topic.name }));
     } finally {
       setSyncingKeys((previous) => {
         const next = new Set(previous);
@@ -1150,7 +1150,7 @@ const TopicPage = () => {
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     setImportFilename(file.name);
@@ -1163,7 +1163,7 @@ const TopicPage = () => {
       setImportErrors(validation.errors);
     } catch (error) {
       setImportRows([]);
-      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+      setImportErrors([error instanceof Error ? error.message : t('topic.csvParseFailed')]);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
@@ -1171,7 +1171,7 @@ const TopicPage = () => {
 
   const handleImportTopics = async () => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     const targetIndexes = importRows
@@ -1196,16 +1196,16 @@ const TopicPage = () => {
           ? {
               ...nextRows[index],
               status: 'failed',
-              message: failure.message || '创建失败',
+              message: failure.message || t('topic.rowCreateFailed'),
             }
-          : { ...nextRows[index], status: 'success', message: '已创建' };
+          : { ...nextRows[index], status: 'success', message: t('topic.rowCreated') };
       });
     } catch (error) {
       for (const { index } of targetIndexes) {
         nextRows[index] = {
           ...nextRows[index],
           status: 'failed',
-          message: error instanceof Error ? error.message : '创建失败',
+          message: error instanceof Error ? error.message : t('topic.rowCreateFailed'),
         };
       }
     } finally {
@@ -1224,34 +1224,44 @@ const TopicPage = () => {
     const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
     if (failedCount === 0) {
       if (invalidCount > 0) {
-        message.warning(`已导入 ${createdTopics.length} 个 Topic，${invalidCount} 行无效已跳过`);
+        message.warning(
+          t('topic.importWithInvalid', {
+            imported: String(createdTopics.length),
+            invalid: String(invalidCount),
+          }),
+        );
       } else {
-        message.success(`已导入 ${createdTopics.length} 个 Topic`);
+        message.success(t('topic.imported', { count: String(createdTopics.length) }));
       }
     } else if (createdTopics.length > 0) {
-      message.warning(`已导入 ${createdTopics.length} 个 Topic，${failedCount} 个失败`);
+      message.warning(
+        t('topic.importPartialFailed', {
+          imported: String(createdTopics.length),
+          failed: String(failedCount),
+        }),
+      );
     } else {
-      message.error(`${failedCount} 个 Topic 导入失败`);
+      message.error(t('topic.importFailed', { count: String(failedCount) }));
     }
   };
 
   const topicImportColumns: TableColumnsType<ResourceImportRow<Partial<Topic>>> = [
-    { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
-    { title: 'Topic 名称', dataIndex: 'name', key: 'name' },
+    { title: t('topic.lineNumber'), dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
+    { title: t('topic.name'), dataIndex: 'name', key: 'name' },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (status: ResourceImportRow<Partial<Topic>>['status']) => {
-        if (status === 'success') return <Tag color="success">成功</Tag>;
-        if (status === 'failed') return <Tag color="error">失败</Tag>;
-        if (status === 'invalid') return <Tag color="warning">无效</Tag>;
-        return <Tag>待导入</Tag>;
+        if (status === 'success') return <Tag color="success">{t('topic.importSuccess')}</Tag>;
+        if (status === 'failed') return <Tag color="error">{t('topic.importFailedShort')}</Tag>;
+        if (status === 'invalid') return <Tag color="warning">{t('topic.importInvalid')}</Tag>;
+        return <Tag>{t('topic.importPending')}</Tag>;
       },
     },
     {
-      title: '说明',
+      title: t('topic.description'),
       dataIndex: 'message',
       key: 'message',
       render: (text?: string) => text || '-',
@@ -1764,14 +1774,22 @@ const TopicPage = () => {
 
       {/* ── Import Topic Modal ────────────────────────────────── */}
       <Modal
-        title={`导入 Topic${importFilename ? `：${importFilename}` : ''}`}
+        title={
+          importFilename
+            ? t('topic.importTitleWithFile', { file: importFilename })
+            : t('topic.importTitle')
+        }
         open={importModalOpen}
         onCancel={() => {
           if (!importing) setImportModalOpen(false);
         }}
         onOk={() => void handleImportTopics()}
-        okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
-        cancelText="关闭"
+        okText={
+          importRows.some((row) => row.status === 'failed')
+            ? t('topic.retryFailedItems')
+            : t('topic.startImport')
+        }
+        cancelText={t('topic.close')}
         confirmLoading={importing}
         okButtonProps={{
           disabled:
@@ -1787,24 +1805,24 @@ const TopicPage = () => {
             <Alert
               type="error"
               showIcon
-              message="CSV 无法导入"
+              message={t('topic.csvNotImportable')}
               description={importErrors.join('；')}
             />
           ) : importRows.some((row) => row.status === 'invalid') ? (
             <Alert
               type="warning"
               showIcon
-              message={`检测到 ${
-                importRows.filter((row) => row.status === 'invalid').length
-              } 行无效，将跳过这些行`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('topic.invalidRowsNotice', {
+                count: String(importRows.filter((row) => row.status === 'invalid').length),
+              })}
+              description={t('topic.importColumnsNote')}
             />
           ) : (
             <Alert
               type="info"
               showIcon
-              message={`检测到 ${importRows.length} 个 Topic，将通过后端批量导入`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('topic.importPlanNotice', { count: String(importRows.length) })}
+              description={t('topic.importColumnsNote')}
             />
           )}
           <Table<ResourceImportRow<Partial<Topic>>>
@@ -1959,28 +1977,27 @@ const TopicPage = () => {
       </Modal>
 
       <Modal
-        title="同步数据"
+        title={t('topic.syncData')}
         open={syncModalOpen}
         onCancel={() => setSyncModalOpen(false)}
-        footer={<Button onClick={() => setSyncModalOpen(false)}>关闭</Button>}
+        footer={<Button onClick={() => setSyncModalOpen(false)}>{t('topic.close')}</Button>}
         width={680}
         destroyOnHidden
       >
         {syncChecking ? (
           <Flex justify="center" align="center" style={{ padding: 48 }}>
-            <Spin tip="正在校验 Topic 路由…">
+            <Spin tip={t('topic.syncChecking')}>
               <div style={{ width: 200 }} />
             </Spin>
           </Flex>
         ) : syncMissing.length === 0 ? (
           <div style={{ padding: '16px 0' }}>
-            <Text type="secondary">所有 Topic 在 Broker 上均有路由，无需同步。</Text>
+            <Text type="secondary">{t('topic.syncAllUpToDate')}</Text>
           </div>
         ) : (
           <>
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              以下 {syncMissing.length} 个 Topic 在 Broker 上找不到路由，可同步写入对应集群的
-              Broker（按元数据记录的队列数重建）。
+              {t('topic.syncIntro', { count: String(syncMissing.length) })}
             </Text>
             <Table<Topic>
               dataSource={syncMissing}
@@ -1990,25 +2007,25 @@ const TopicPage = () => {
               columns={[
                 { title: 'Topic', dataIndex: 'name', key: 'name' },
                 {
-                  title: '写/读队列数',
+                  title: t('topic.syncQueueColumns'),
                   key: 'queues',
                   width: 110,
                   render: (_: unknown, topic: Topic) =>
                     `${topic.writeQueues ?? '-'} / ${topic.readQueues ?? '-'}`,
                 },
                 {
-                  title: '状态',
+                  title: t('common.status'),
                   key: 'status',
                   width: 100,
                   render: (_: unknown, topic: Topic) =>
                     syncedTopics.has(topic.name) ? (
-                      <Tag color="green">已同步</Tag>
+                      <Tag color="green">{t('topic.syncSynced')}</Tag>
                     ) : (
-                      <Tag color="orange">缺失路由</Tag>
+                      <Tag color="orange">{t('topic.syncMissingRoute')}</Tag>
                     ),
                 },
                 {
-                  title: '操作',
+                  title: t('common.actions'),
                   key: 'action',
                   width: 90,
                   render: (_: unknown, topic: Topic) => (
@@ -2019,7 +2036,7 @@ const TopicPage = () => {
                       disabled={syncedTopics.has(topic.name)}
                       onClick={() => void syncTopicToBroker(topic)}
                     >
-                      同步
+                      {t('topic.syncAction')}
                     </Button>
                   ),
                 },
