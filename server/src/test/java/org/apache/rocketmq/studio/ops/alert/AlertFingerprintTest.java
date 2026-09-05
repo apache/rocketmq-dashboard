@@ -46,4 +46,34 @@ class AlertFingerprintTest {
         assertThat(AlertFingerprint.of(7L, "local", embeddedLabel))
                 .isNotEqualTo(AlertFingerprint.of(7L, "local", separateLabels));
     }
+
+    @Test
+    void ruleIdAndInstanceIdChangeTheFingerprintTest() {
+        Map<String, String> labels = Map.of("broker", "a");
+
+        assertThat(AlertFingerprint.of(7L, "local", labels))
+                .isNotEqualTo(AlertFingerprint.of(8L, "local", labels));
+        assertThat(AlertFingerprint.of(7L, "local", labels))
+                .isNotEqualTo(AlertFingerprint.of(7L, "remote", labels));
+    }
+
+    @Test
+    void nullInstanceAndLabelsAreToleratedAndDeterministicTest() {
+        String first = AlertFingerprint.of(7L, null, null);
+        String second = AlertFingerprint.of(7L, null, null);
+
+        assertThat(first).hasSize(64);
+        assertThat(second).isEqualTo(first);
+    }
+
+    @Test
+    void backslashInValuesCannotCollideWithEscapedSeparatorsTest() {
+        // Without backslash escaping, "b\\c" would read the same as an escaped newline
+        // boundary; escaping keeps the two label sets distinct.
+        Map<String, String> backslashValue = Map.of("a", "b\\c");
+        Map<String, String> newlineValue = Map.of("a", "b", "c", "d");
+
+        assertThat(AlertFingerprint.of(7L, "local", backslashValue))
+                .isNotEqualTo(AlertFingerprint.of(7L, "local", newlineValue));
+    }
 }
