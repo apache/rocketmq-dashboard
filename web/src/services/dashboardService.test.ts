@@ -16,11 +16,15 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import * as metricsApi from '../api/metrics';
+import type { DashboardData } from '../api/metrics';
+import { isMockMode } from './dataMode';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+vi.mock('./dataMode', () => ({ isMockMode: vi.fn(() => true) }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
+vi.mock('../api/metrics', () => ({ getDashboard: vi.fn() }));
 
 import { getDashboard } from './dashboardService';
 
@@ -44,5 +48,20 @@ describe('dashboardService mock dashboard', () => {
     expect(fresh.clusters).not.toBe(dashboard.clusters);
     expect(fresh.clusters[0]).not.toBe(dashboard.clusters[0]);
     expect(fresh.clusters[0].throughput).not.toBe(dashboard.clusters[0].throughput);
+  });
+
+  it('delegates to the metrics API when mock mode is off', async () => {
+    vi.mocked(isMockMode).mockReturnValue(false);
+    const dashboard: DashboardData = {
+      stats: { totalClusters: 1 } as DashboardData['stats'],
+      clusters: [
+        { id: 'c-1', name: 'production', throughput: [10, 20] } as DashboardData['clusters'][number],
+      ],
+    };
+    vi.mocked(metricsApi.getDashboard).mockResolvedValue(dashboard);
+
+    await expect(getDashboard('instance-1')).resolves.toBe(dashboard);
+
+    expect(metricsApi.getDashboard).toHaveBeenCalledWith('instance-1');
   });
 });
