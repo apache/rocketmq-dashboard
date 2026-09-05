@@ -466,9 +466,9 @@ const ConsumerPageContent = ({
         subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
       });
       downloadCsv(`rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-      message.success('Group 导出完成');
+      message.success(t('consumer.exportDone'));
     } catch {
-      message.error('导出 Group 失败，请稍后重试');
+      message.error(t('consumer.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -983,21 +983,21 @@ const ConsumerPageContent = ({
             onClick={(e) => {
               e.stopPropagation();
               Modal.confirm({
-                title: `确认删除消费组 "${record.name}"？`,
-                content: '删除后该消费组的所有配置和消费进度将被清除，此操作不可恢复。',
-                okText: '删除',
+                title: t('consumer.confirmDeleteGroup', { name: record.name }),
+                content: t('consumer.deleteGroupContent'),
+                okText: t('common.delete'),
                 okButtonProps: { danger: true },
-                cancelText: '取消',
+                cancelText: t('common.cancel'),
                 onOk: async () => {
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
                   await reloadConsumerGroupPageAfterDelete();
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
-                  message.success(`消费组 ${record.name} 已删除`);
+                  message.success(t('consumer.deleted', { name: record.name }));
                 },
               });
             }}
           >
-            删除
+            {t('common.delete')}
           </Button>
         </Flex>
       ),
@@ -1365,7 +1365,7 @@ const ConsumerPageContent = ({
       {/* ─── Header ─── */}
       <PageHeader
         title={t('group.title')}
-        subtitle={`管理消费者组订阅关系与消费进度，共 ${totalGroups} 个 Group`}
+        subtitle={t('consumer.listSubtitle', { count: String(totalGroups) })}
       />
 
       {/* ─── Filter Bar ─── */}
@@ -1378,7 +1378,7 @@ const ConsumerPageContent = ({
             style={{ width: 220 }}
           />
           <Input.Search
-            placeholder="搜索 Group 名称或 Topic"
+            placeholder={t('consumer.searchPlaceholder')}
             allowClear
             value={search}
             onChange={(e) => {
@@ -1397,7 +1397,7 @@ const ConsumerPageContent = ({
             onChange={setModeFilter}
             style={{ width: 140 }}
             options={[
-              { value: 'ALL', label: '全部模式' },
+              { value: 'ALL', label: t('consumer.allModes') },
               { value: 'Push', label: 'Push' },
               { value: 'Pop', label: 'Pop' },
             ]}
@@ -1410,11 +1410,13 @@ const ConsumerPageContent = ({
               icon={<DeleteOutlined />}
               onClick={() => {
                 Modal.confirm({
-                  title: '确认批量删除',
-                  content: `确定要删除选中的 ${selectedRowKeys.length} 个 Group 吗？`,
-                  okText: '删除',
+                  title: t('consumer.confirmBatchDelete'),
+                  content: t('consumer.batchDeleteContent', {
+                    count: String(selectedRowKeys.length),
+                  }),
+                  okText: t('common.delete'),
                   okButtonProps: { danger: true },
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
                     const { deleted, failed } = await batchDeleteConsumerGroups(
@@ -1424,18 +1426,22 @@ const ConsumerPageContent = ({
                     if (deleted.length > 0) await reloadConsumerGroupPageAfterDelete();
                     if (failed.length > 0) {
                       message.warning(
-                        `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
+                        t('consumer.batchDeletePartial', {
+                          deleted: String(deleted.length),
+                          failed: String(failed.length),
+                          names: failed.join(', '),
+                        }),
                       );
                       setSelectedRowKeys(failed);
                     } else {
-                      message.success(`已删除 ${deleted.length} 个 Group`);
+                      message.success(t('consumer.batchDeleted', { count: String(deleted.length) }));
                       setSelectedRowKeys([]);
                     }
                   },
                 });
               }}
             >
-              删除 ({selectedRowKeys.length})
+              {t('common.delete')} ({selectedRowKeys.length})
             </Button>
           )}
           <input
@@ -1454,10 +1460,10 @@ const ConsumerPageContent = ({
             disabled={!hasSelectedInstance || importing}
             onClick={() => importInputRef.current?.click()}
           >
-            导入
+            {t('common.import')}
           </Button>
           <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
-            导出
+            {t('common.export')}
           </Button>
           <Button
             type="primary"
@@ -1467,7 +1473,7 @@ const ConsumerPageContent = ({
           >
             创建 Group
           </Button>
-          <Tooltip title="开启后每 2 秒自动刷新列表">
+          <Tooltip title={t('consumer.autoRefreshTooltip')}>
             <Button
               icon={<SyncOutlined spin={autoRefresh} />}
               type={autoRefresh ? 'primary' : 'default'}
@@ -1479,7 +1485,7 @@ const ConsumerPageContent = ({
                 if (next) triggerRefresh(true);
               }}
             >
-              自动刷新
+              {t('consumer.autoRefresh')}
             </Button>
           </Tooltip>
         </Space>
@@ -1501,7 +1507,7 @@ const ConsumerPageContent = ({
             pageSize,
             total: totalGroups,
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 个 Group`,
+            showTotal: (total) => t('consumer.listTotal', { count: String(total) }),
             pageSizeOptions: [10, 20, 50, 100],
             onChange: (nextPage, nextPageSize) => {
               setPage(nextPage);
@@ -1546,7 +1552,8 @@ const ConsumerPageContent = ({
                 <span style={{ fontWeight: 600 }}>{selectedGroup.name}</span>
               </Space>
               <Text type="secondary" style={{ fontSize: 14, fontWeight: 400, marginRight: 28 }}>
-                <SyncOutlined style={{ marginRight: 4 }} />每 2s 自动刷新
+                <SyncOutlined style={{ marginRight: 4 }} />
+                {t('consumer.autoRefreshEvery2s')}
               </Text>
             </Flex>
           ) : (
