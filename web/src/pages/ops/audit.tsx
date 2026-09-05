@@ -62,6 +62,7 @@ import AuditSummaryCards from './AuditSummaryCards';
 import AuditRiskInsights from './AuditRiskInsights';
 
 const emptyFilterOptions: AuditFilterOptions = {
+  operators: [],
   operationTypes: [],
   resourceTypes: [],
   clusterIds: [],
@@ -70,6 +71,7 @@ const emptyFilterOptions: AuditFilterOptions = {
 
 const buildAuditFilter = (
   searchText: string,
+  selectedOperator: string | undefined,
   selectedType: string | undefined,
   selectedResourceType: string | undefined,
   selectedClusterId: string | undefined,
@@ -77,6 +79,7 @@ const buildAuditFilter = (
   resultFilter: string,
 ): AuditFilter => ({
   search: searchText || undefined,
+  operator: selectedOperator,
   operationType: selectedType,
   resourceType: selectedResourceType,
   clusterId: selectedClusterId,
@@ -95,6 +98,7 @@ const AuditPage: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
+  const [selectedOperator, setSelectedOperator] = useState<string | undefined>(undefined);
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
   const [selectedResourceType, setSelectedResourceType] = useState<string | undefined>(undefined);
   const [selectedClusterId, setSelectedClusterId] = useState<string | undefined>(undefined);
@@ -141,6 +145,7 @@ const AuditPage: React.FC = () => {
       pageSize,
       ...buildAuditFilter(
         debouncedSearchText,
+        selectedOperator,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -169,6 +174,7 @@ const AuditPage: React.FC = () => {
     page,
     pageSize,
     debouncedSearchText,
+    selectedOperator,
     selectedType,
     selectedResourceType,
     selectedClusterId,
@@ -189,6 +195,7 @@ const AuditPage: React.FC = () => {
     () =>
       buildAuditFilter(
         debouncedSearchText,
+        selectedOperator,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -197,6 +204,7 @@ const AuditPage: React.FC = () => {
       ),
     [
       debouncedSearchText,
+      selectedOperator,
       selectedType,
       selectedResourceType,
       selectedClusterId,
@@ -399,6 +407,18 @@ const AuditPage: React.FC = () => {
             }}
             style={{ width: 240 }}
             allowClear
+          />
+          <Select
+            aria-label={t('audit.operator')}
+            placeholder={t('audit.operator')}
+            allowClear
+            style={{ width: 150 }}
+            value={selectedOperator}
+            onChange={(value) => {
+              setPage(1);
+              setSelectedOperator(value);
+            }}
+            options={filterOptions.operators.map((value) => ({ label: value, value }))}
           />
           <Select
             aria-label={t('audit.opType')}
