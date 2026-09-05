@@ -189,6 +189,12 @@ export interface PageResult<T> {
   size: number;
 }
 
+export interface AlertRuleSummary {
+  total: number;
+  enabled: number;
+  triggeredSince: number;
+}
+
 export interface AuditQuery {
   page?: number;
   pageSize?: number;
@@ -221,6 +227,16 @@ export async function listAlertRulesPage(
   query: AlertRuleQuery = {},
 ) {
   const res = await client.get<{ data: PageResult<AlertRule> }>(`${alertRulePath(domain)}/page`, {
+    params: query,
+  });
+  return res.data.data;
+}
+
+export async function fetchAlertRuleSummary(
+  domain: AlertRuleDomain = 'CLUSTER',
+  query: AlertRuleQuery = {},
+) {
+  const res = await client.get<{ data: AlertRuleSummary }>(`${alertRulePath(domain)}/summary`, {
     params: query,
   });
   return res.data.data;
