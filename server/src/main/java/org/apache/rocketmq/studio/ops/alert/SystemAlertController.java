@@ -91,6 +91,14 @@ public class SystemAlertController {
                 search, from, to, page, pageSize));
     }
 
+    @GetMapping("/deliveries/export")
+    public Result<String> exportDeliveries(
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(notificationOutboxService.exportDeliveries(channel, status, instanceId));
+    }
+
     @PostMapping("/deliveries/{deliveryId}/retry")
     public Result<Void> retryFailedDelivery(@PathVariable Long deliveryId) {
         notificationOutboxService.retryFailedDelivery(deliveryId);
