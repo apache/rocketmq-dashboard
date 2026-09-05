@@ -283,6 +283,39 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void resetOffsetShouldApplyPreviewedTargetsAndSupportOfflineGroups() throws Exception {
+        // resetOffsetNew is the API the classic console uses: it forces the broker to
+        // apply the searched offset even when the target is ahead of the current offset
+        // (the preview explicitly offers "skip unconsumed messages"), and it falls back
+        // to direct offset writes when the group is offline instead of failing with
+        // CONSUMER_NOT_ONLINE.
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+        long timestamp = 1784246400000L;
+
+        adminClient.resetOffset("instance-a", "cg-orders", timestamp, "orders");
+
+        verify(selectedAdmin).resetOffsetNew("cg-orders", "orders", timestamp);
+        verify(selectedAdmin, never()).resetOffsetByTimestamp(
+                anyString(), anyString(), anyString(), anyLong(), anyBoolean());
+    }
+
+    @Test
+    void resetOffsetWithoutInstanceShouldUseForceAndOfflineFallbackSemantics() throws Exception {
+        long timestamp = 1784246400000L;
+
+        adminClient.resetOffset(null, "cg-orders", timestamp, "orders");
+
+        verify(adminExt).resetOffsetNew("cg-orders", "orders", timestamp);
+        verify(adminExt, never()).resetOffsetByTimestamp(
+                anyString(), anyString(), anyString(), anyLong(), anyBoolean());
+    }
+
+    @Test
     void previewResetOffsetShouldComputeQueueImpactWithoutMutatingBrokerOffsets() throws Exception {
         long timestamp = 1784246400000L;
         ConsumeStats stats = new ConsumeStats();
