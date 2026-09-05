@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
+import com.tencentcloudapi.common.exception.TencentCloudSDKException;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.junit.jupiter.api.Test;
 
@@ -77,6 +79,67 @@ class TencentClientFactoryTest {
         assertThat(invalidationThread.isAlive()).isFalse();
         assertThat(factory.client(credentialId, "ap-shanghai")).isNotSameAs(firstClient);
         assertThat(factory.creationCount).hasValue(2);
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldMapAuthFailuresToInvalidCredentialStatus() {
+        TencentCloudSDKException ex = new TencentCloudSDKException(
+                "signature expired", "req-1", "AuthFailure.SignatureFailure");
+
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(ex);
+
+        assertThat(mapped.getCode()).isEqualTo(422);
+        assertThat(mapped.getMessage()).isEqualTo("Cloud credential is invalid");
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldMapUnauthorizedAndDeniedToForbidden() {
+        TencentCloudSDKException unauthorized = new TencentCloudSDKException(
+                "no permission", "req-1", "UnauthorizedOperation");
+
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(unauthorized);
+
+        assertThat(mapped.getCode()).isEqualTo(403);
+        assertThat(mapped.getMessage()).isEqualTo("no permission");
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldFallBackForDeniedWithBlankMessage() {
+        TencentCloudSDKException denied = new TencentCloudSDKException(
+                "  ", "req-1", "AccessDenied");
+
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(denied);
+
+        assertThat(mapped.getCode()).isEqualTo(403);
+        assertThat(mapped.getMessage()).isEqualTo("Tencent Cloud OpenAPI access denied");
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldMapNotFoundTo404() {
+        TencentCloudSDKException missing = new TencentCloudSDKException(
+                "topic does not exist", "req-1", "ResourceNotFound.Topic");
+
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(missing);
+
+        assertThat(mapped.getCode()).isEqualTo(404);
+        assertThat(mapped.getMessage()).isEqualTo("topic does not exist");
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldFallBackTo502ForUnknownErrors() {
+        TencentCloudSDKException internal = new TencentCloudSDKException(
+                "backend failure", "req-1", "InternalError");
+
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(internal);
+
+        assertThat(mapped.getCode()).isEqualTo(502);
+        assertThat(mapped.getMessage()).startsWith("Tencent Cloud OpenAPI error:");
+    }
+
+    @Test
+    void cacheKeyShouldCombineCredentialIdAndRegion() {
+        assertThat(TencentClientFactory.cacheKey(7L, "ap-shanghai"))
+                .isEqualTo("7#ap-shanghai");
     }
 
     private static void awaitBlockedOrTerminated(Thread thread) {
