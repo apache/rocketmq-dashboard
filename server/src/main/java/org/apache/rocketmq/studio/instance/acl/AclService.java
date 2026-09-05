@@ -264,7 +264,8 @@ public class AclService {
                     "whiteRemoteAddress is not a valid plain ACL address expression: "
                             + config.getWhiteRemoteAddress());
         }
-        log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
+        log.info("Creating/updating plain access config (admin={}, whitelistConfigured={})",
+                config.isAdmin(), StringUtils.hasText(config.getWhiteRemoteAddress()));
         PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
         String auditDetail = "admin=" + saved.isAdmin()
                 + ", whiteRemoteAddressConfigured="
