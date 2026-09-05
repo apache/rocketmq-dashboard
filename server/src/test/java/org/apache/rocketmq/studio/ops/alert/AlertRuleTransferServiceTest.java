@@ -116,6 +116,101 @@ class AlertRuleTransferServiceTest {
         assertEquals("Broker unavailable", imported.get(0).getName());
     }
 
+    @Test
+    void rejectsNullImportDocumentTest() {
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, null));
+
+        assertEquals(400, error.getCode());
+        assertEquals("Alert rule import document is required", error.getMessage());
+        verifyNoInteractions(alertService, metricCatalogService);
+    }
+
+    @Test
+    void rejectsUnsupportedImportVersionTest() {
+        AlertRuleTransferDTO transfer = transfer(AlertDomain.CLUSTER, request("Broker unavailable"));
+        transfer.setVersion(AlertRuleTransferDTO.VERSION + 1);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, transfer));
+
+        assertEquals(400, error.getCode());
+        assertEquals("Unsupported alert rule import version", error.getMessage());
+        verifyNoInteractions(alertService, metricCatalogService);
+    }
+
+    @Test
+    void rejectsEmptyAndOversizedRuleListsTest() {
+        BusinessException empty = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER,
+                        transfer(AlertDomain.CLUSTER)));
+        assertEquals(400, empty.getCode());
+        assertEquals("Alert rule import must contain between 1 and 200 rules", empty.getMessage());
+
+        AlertRuleRequestDTO[] many = java.util.stream.IntStream.range(0, 201)
+                .mapToObj(index -> request("Rule " + index))
+                .toArray(AlertRuleRequestDTO[]::new);
+        BusinessException oversized = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER,
+                        transfer(AlertDomain.CLUSTER, many)));
+        assertEquals(400, oversized.getCode());
+        assertEquals("Alert rule import must contain between 1 and 200 rules", oversized.getMessage());
+        verifyNoInteractions(alertService, metricCatalogService);
+    }
+
+    @Test
+    void exportCarriesEveryPortableRuleFieldTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .id(7L)
+                .domain(AlertDomain.CLUSTER)
+                .name("Broker unavailable")
+                .metric("broker.up")
+                .operator("==")
+                .threshold(0)
+                .thresholdUnit("%")
+                .duration("1m")
+                .aggregation("MAX")
+                .windowSeconds(60)
+                .channels(List.of("dingtalk", "email"))
+                .enabled(false)
+                .description("Broker went offline")
+                .brokerName("broker-a")
+                .clusterName("DefaultCluster")
+                .severity("P1")
+                .instanceId("instance-1")
+                .consumerGroup("cg-orders")
+                .topic("orders")
+                .consecutiveSamples(3)
+                .reminderInterval("10m")
+                .notificationTemplate("${title}")
+                .build();
+        when(alertService.listRules(AlertDomain.CLUSTER)).thenReturn(List.of(rule));
+
+        AlertRuleRequestDTO request = transferService.exportRules(AlertDomain.CLUSTER)
+                .getRules().get(0);
+
+        assertEquals("Broker unavailable", request.getName());
+        assertEquals("broker.up", request.getMetric());
+        assertEquals("==", request.getOperator());
+        assertEquals(0, request.getThreshold());
+        assertEquals("%", request.getThresholdUnit());
+        assertEquals("1m", request.getDuration());
+        assertEquals("MAX", request.getAggregation());
+        assertEquals(60, request.getWindowSeconds());
+        assertEquals(List.of("dingtalk", "email"), request.getChannels());
+        assertEquals(false, request.isEnabled());
+        assertEquals("Broker went offline", request.getDescription());
+        assertEquals("broker-a", request.getBrokerName());
+        assertEquals("DefaultCluster", request.getClusterName());
+        assertEquals("P1", request.getSeverity());
+        assertEquals("instance-1", request.getInstanceId());
+        assertEquals("cg-orders", request.getConsumerGroup());
+        assertEquals("orders", request.getTopic());
+        assertEquals(3, request.getConsecutiveSamples());
+        assertEquals("10m", request.getReminderInterval());
+        assertEquals("${title}", request.getNotificationTemplate());
+    }
+
     private static AlertRuleTransferDTO transfer(AlertDomain domain, AlertRuleRequestDTO... rules) {
         AlertRuleTransferDTO transfer = new AlertRuleTransferDTO();
         transfer.setVersion(AlertRuleTransferDTO.VERSION);
