@@ -21,6 +21,7 @@ import client from './client';
 import {
   createInstance,
   deleteInstance,
+  exportInstancesCsv,
   getInstanceCapabilities,
   importCloudInstances,
   listInstances,
@@ -134,5 +135,17 @@ describe('instance API', () => {
     expect(supportsApacheRuntime({})).toBe(true);
     expect(supportsApacheRuntime({ vendor: 'ALIYUN' })).toBe(false);
     expect(supportsApacheRuntime({ vendor: 'TENCENT' })).toBe(false);
+  });
+
+  it('returns the backend CSV export with trimmed filters', async () => {
+    mock.onGet('/instances/export').reply(200, {
+      code: 200,
+      data: 'Name,Type,Vendor,Endpoint\r\n"orders","PROXY_CLUSTER"\r\n',
+    });
+
+    await expect(exportInstancesCsv({ type: 'CLOUD', search: '  prod  ' })).resolves.toContain(
+      'orders',
+    );
+    expect(mock.history.get[0].params).toEqual({ type: 'CLOUD', search: 'prod' });
   });
 });

@@ -1702,4 +1702,43 @@ class InstanceServiceTest {
         detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", endpoint)));
         return detail;
     }
+
+    @Test
+    void exportInstancesShouldRenderFilteredCsvTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("prod-cloud")
+                .type(InstanceType.CLOUD)
+                .vendor(InstanceVendor.ALIYUN)
+                .endpoint("ros-cn-hangzhou.aliyuncs.com:8080")
+                .regionId("cn-hangzhou")
+                .build();
+        instance.setId(1L);
+        instance.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        instance.setGmtModified(LocalDateTime.of(2026, 1, 2, 0, 0));
+        when(instanceRepository.findByTypeAndSearch(InstanceType.CLOUD, "prod")).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenReturn(12);
+        when(instanceProvider.countGroups("1")).thenReturn(4);
+        when(regionNames.resolve("cn-hangzhou")).thenReturn("Hangzhou (CN)");
+
+        String csv = instanceService.exportInstancesCsv(InstanceType.CLOUD, "prod");
+
+        assertThat(csv).startsWith("\uFEFFName,Type,Vendor,Endpoint,Region Id,Region Name,"
+                + "Topic Count,Consumer Group Count,Resource Counts Available,Created,Modified\r\n");
+        assertThat(csv).contains("\"prod-cloud\",\"CLOUD\",\"ALIYUN\",\"ros-cn-hangzhou.aliyuncs.com:8080\","
+                + "\"cn-hangzhou\",\"Hangzhou (CN)\",\"12\",\"4\",\"true\"");
+        assertThat(csv).doesNotContain("credentialId");
+        assertThat(csv).doesNotContain("adminCredentialRef");
+    }
+
+    @Test
+    void exportInstancesShouldNormalizeSearchAndReportEmptyResultTest() {
+        when(instanceRepository.findByTypeAndSearch(InstanceType.CLOUD, "prod")).thenReturn(List.of());
+
+        String csv = instanceService.exportInstancesCsv(InstanceType.CLOUD, " prod ");
+
+        assertThat(csv).startsWith("\uFEFFName,Type,Vendor,Endpoint");
+        assertThat(csv.split("\r\n", -1)).hasSize(2);
+        verify(instanceRepository).findByTypeAndSearch(InstanceType.CLOUD, "prod");
+    }
 }

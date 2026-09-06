@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.RegionNames;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
@@ -74,6 +75,9 @@ public class InstanceService {
     private static final int MAX_BATCH_FAILURE_MESSAGE_LENGTH = 500;
     static final int MAX_CLOUD_IMPORT_FAILURE_DETAILS = 100;
     static final int MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH = 500;
+    private static final String EXPORT_CSV_HEADER =
+            "Name,Type,Vendor,Endpoint,Region Id,Region Name,"
+                    + "Topic Count,Consumer Group Count,Resource Counts Available,Created,Modified\r\n";
 
     private final InstanceResourceCountRunner countRunner = new InstanceResourceCountRunner(
             COUNT_PARALLELISM, COUNT_QUEUE_CAPACITY, COUNT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -107,6 +111,23 @@ public class InstanceService {
                 .thenComparing(instance -> instance.getRegionId() == null ? "" : instance.getRegionId())
                 .thenComparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER));
         return sorted;
+    }
+
+    /**
+     * Renders the instance inventory matching the current type/search filters as CSV, using the
+     * same filtered, sorted, and count-filled view as the list API. Only non-sensitive fields are
+     * exported; credential references are intentionally omitted.
+     */
+    public String exportInstancesCsv(InstanceType type, String search) {
+        StringBuilder csv = new StringBuilder("\uFEFF").append(EXPORT_CSV_HEADER);
+        for (InstanceVO instance : listInstances(type, search)) {
+            CsvUtil.appendRow(csv, instance.getName(), instance.getType(), instance.getVendor(),
+                    instance.getEndpoint(), instance.getRegionId(), instance.getRegionName(),
+                    instance.getTopicCount(), instance.getConsumerGroupCount(),
+                    instance.isResourceCountsAvailable(), instance.getGmtCreate(),
+                    instance.getGmtModified());
+        }
+        return csv.toString();
     }
 
     /**

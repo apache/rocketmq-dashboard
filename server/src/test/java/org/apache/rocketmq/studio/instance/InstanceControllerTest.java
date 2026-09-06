@@ -281,4 +281,26 @@ class InstanceControllerTest {
         instance.setGmtModified(LocalDateTime.of(2026, 1, 1, 0, 0));
         return instance;
     }
+
+    @Test
+    void exportInstancesShouldReturnCsvEnvelope() throws Exception {
+        when(instanceService.exportInstancesCsv(isNull(), isNull())).thenReturn("Name,Type\r\n");
+
+        mockMvc.perform(get("/api/instances/export"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").value("Name,Type\r\n"));
+    }
+
+    @Test
+    void exportInstancesShouldPassTypeAndSearchFilters() throws Exception {
+        when(instanceService.exportInstancesCsv(InstanceType.CLOUD, "prod")).thenReturn("csv");
+
+        mockMvc.perform(get("/api/instances/export")
+                        .param("type", "CLOUD")
+                        .param("search", "prod"))
+                .andExpect(status().isOk());
+
+        verify(instanceService).exportInstancesCsv(InstanceType.CLOUD, "prod");
+    }
 }

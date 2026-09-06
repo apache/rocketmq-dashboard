@@ -96,6 +96,16 @@ export async function listInstances(query: InstanceQuery = {}) {
   return res.data.data;
 }
 
+export async function exportInstancesCsv(query: InstanceQuery = {}): Promise<string> {
+  const search = query.search?.trim();
+  const params = {
+    ...(query.type ? { type: query.type } : {}),
+    ...(search ? { search } : {}),
+  };
+  const res = await client.get<{ data: string }>('/instances/export', { params });
+  return res.data.data;
+}
+
 export async function getInstanceCapabilities(instanceId: string) {
   const res = await client.get<{ data: InstanceCapabilities }>(
     `/instances/${encodeURIComponent(instanceId)}/capabilities`,

@@ -8,7 +8,22 @@ import type {
   UpdateInstanceRequest,
   InstanceCapabilities,
 } from '../api/instance';
+import { buildCsv, type CsvColumn } from '../utils/download';
 import { mockInstances } from '../mock/instances';
+
+const INSTANCE_EXPORT_COLUMNS: CsvColumn<Instance>[] = [
+  { header: 'Name', value: (instance) => instance.name },
+  { header: 'Type', value: (instance) => instance.type },
+  { header: 'Vendor', value: (instance) => instance.vendor },
+  { header: 'Endpoint', value: (instance) => instance.endpoint },
+  { header: 'Region Id', value: (instance) => instance.regionId },
+  { header: 'Region Name', value: (instance) => instance.regionName },
+  { header: 'Topic Count', value: (instance) => instance.topicCount },
+  { header: 'Consumer Group Count', value: (instance) => instance.consumerGroupCount },
+  { header: 'Resource Counts Available', value: (instance) => instance.resourceCountsAvailable },
+  { header: 'Created', value: (instance) => instance.gmtCreate },
+  { header: 'Modified', value: (instance) => instance.gmtModified },
+];
 
 // Compile-time switch: mock or real API
 
@@ -67,6 +82,13 @@ async function fetchInstances(query: InstanceQuery, mockMode: boolean): Promise<
       .map(copyInstance);
   }
   return instanceApi.listInstances(query);
+}
+
+export async function exportInstancesCsv(query: InstanceQuery = {}): Promise<string> {
+  if (isMockMode()) {
+    return buildCsv(INSTANCE_EXPORT_COLUMNS, await listInstances(query));
+  }
+  return instanceApi.exportInstancesCsv(query);
 }
 
 export async function getInstanceCapabilities(instanceId: string): Promise<InstanceCapabilities> {

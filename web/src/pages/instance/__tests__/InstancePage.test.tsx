@@ -27,6 +27,7 @@ import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCre
 import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as instanceService from '../../../services/instanceService';
+import { downloadBlob } from '../../../utils/download';
 import InstancePage from '../index';
 
 vi.mock('../../../api/aliyunCatalog', () => ({
@@ -47,9 +48,14 @@ vi.mock('../../../services/instanceService', () => ({
   createInstance: vi.fn(),
   deleteInstance: vi.fn(),
   deleteInstancesBatch: vi.fn(),
+  exportInstancesCsv: vi.fn(),
   importCloudInstances: vi.fn(),
   listInstances: vi.fn(),
   updateInstance: vi.fn(),
+}));
+
+vi.mock('../../../utils/download', () => ({
+  downloadBlob: vi.fn(),
 }));
 
 const cloudCredentialPage = (items: CloudCredential[]): CloudCredentialPage => ({
@@ -990,5 +996,41 @@ describe('InstancePage', () => {
     await waitFor(() => expect(screen.queryByText('refresh-selected')).not.toBeInTheDocument());
     expect(deleteButton).toBeDisabled();
     confirmSpy.mockRestore();
+  });
+
+  it('downloads the instance inventory CSV with the applied filters', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([instance(1, 'proxy-1')]);
+    vi.mocked(instanceService.exportInstancesCsv).mockResolvedValue('Name,Type\r\n');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('proxy-1');
+
+    await user.type(screen.getByPlaceholderText('搜索实例 ID 或地址'), 'prod');
+    await waitFor(() =>
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ search: 'prod' }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    await waitFor(() =>
+      expect(instanceService.exportInstancesCsv).toHaveBeenCalledWith({ search: 'prod' }),
+    );
+    expect(downloadBlob).toHaveBeenCalledTimes(1);
+    const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0];
+    expect((blob as Blob).type).toBe('text/csv;charset=utf-8');
+    expect(filename).toMatch(/^rocketmq-instances-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  it('reports an export failure instead of downloading a file', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([instance(1, 'proxy-1')]);
+    vi.mocked(instanceService.exportInstancesCsv).mockRejectedValue(new Error('boom'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('proxy-1');
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(await screen.findByText('导出实例列表失败，请稍后重试')).toBeInTheDocument();
+    expect(downloadBlob).not.toHaveBeenCalled();
   });
 });

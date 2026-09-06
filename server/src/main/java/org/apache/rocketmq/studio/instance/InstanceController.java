@@ -47,6 +47,13 @@ public class InstanceController {
         return Result.ok(instanceService.listInstances(type, search));
     }
 
+    @GetMapping("/export")
+    public Result<String> exportInstances(
+            @RequestParam(required = false) InstanceType type,
+            @RequestParam(required = false) String search) {
+        return Result.ok(instanceService.exportInstancesCsv(type, search));
+    }
+
     @GetMapping("/{instanceId}/capabilities")
     public Result<InstanceCapabilitiesVO> getCapabilities(@PathVariable String instanceId) {
         return Result.ok(instanceCapabilityService.getCapabilities(

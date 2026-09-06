@@ -35,7 +35,12 @@ import {
 } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
-import { EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import {
+  EditOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  QuestionCircleOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
@@ -49,10 +54,12 @@ import {
 import { listTencentInstances, listTencentRegions } from '../../api/tencentCatalog';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { downloadBlob } from '../../utils/download';
 import {
   createInstance,
   deleteInstance,
   deleteInstancesBatch,
+  exportInstancesCsv,
   importCloudInstances,
   listInstances,
   updateInstance,
@@ -129,6 +136,7 @@ const InstancePage = () => {
   const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
@@ -423,6 +431,21 @@ const InstancePage = () => {
     }
   };
 
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const csv = await exportInstancesCsv(listQueryRef.current);
+      downloadBlob(
+        new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+        `rocketmq-instances-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+    } catch {
+      message.error('导出实例列表失败，请稍后重试');
+    } finally {
+      setExporting(false);
+    }
+  }, []);
+
   const handleBatchDelete = () => {
     const selectedNames = new Set(selectedRowKeys.map(String));
     const selected = instances.filter((instance) => selectedNames.has(instance.name));
@@ -679,6 +702,13 @@ const InstancePage = () => {
           />
         </Space>
         <Space size={12}>
+          <Button
+            icon={<DownloadOutlined />}
+            loading={exporting}
+            onClick={() => void handleExport()}
+          >
+            导出
+          </Button>
           <Button
             danger
             icon={<DeleteOutlined />}
