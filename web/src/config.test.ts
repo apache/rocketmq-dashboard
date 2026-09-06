@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { API_BASE_URL } from './config';
 
 describe('config API base url', () => {
@@ -31,5 +31,13 @@ describe('config API base url', () => {
 
   it('strips a single trailing slash', () => {
     expect(API_BASE_URL.endsWith('/')).toBe(false);
+  });
+
+  it('honors a configured API base url without a trailing slash', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://metrics.example.test/');
+    vi.resetModules();
+    const fresh = await import('./config');
+    expect(fresh.API_BASE_URL).toBe('https://metrics.example.test');
+    vi.unstubAllEnvs();
   });
 });
