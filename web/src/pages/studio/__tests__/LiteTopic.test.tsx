@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -565,5 +565,28 @@ describe('LiteTopic Page', () => {
     expect(screen.queryByText('old-*')).not.toBeInTheDocument();
     expect(screen.queryByText('90 / 100')).not.toBeInTheDocument();
     expect(await screen.findByText('获取配额信息失败')).toBeInTheDocument();
+  });
+
+  it('submits TTL extension once when confirm is clicked twice in the same render', async () => {
+    const deferred = createDeferred<void>();
+    apiMocks.extendLiteTopicTTL.mockReturnValue(deferred.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '延长 TTL' }));
+    const dialog = await screen.findByRole('dialog');
+    const ttlInput = within(dialog).getByRole('spinbutton');
+    await user.clear(ttlInput);
+    await user.type(ttlInput, '3600');
+
+    const confirmButton = within(dialog).getByRole('button', { name: /确\s*认/ });
+    act(() => {
+      fireEvent.click(confirmButton);
+      fireEvent.click(confirmButton);
+    });
+
+    expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledTimes(1);
+    deferred.resolve(undefined);
+    expect(await screen.findByText('TTL 延长成功')).toBeInTheDocument();
   });
 });
