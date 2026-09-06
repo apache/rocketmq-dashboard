@@ -144,6 +144,26 @@ export const getRecentAiChatConversations = (
     )
     .slice(0, limit);
 
+export const searchAiChatConversations = (
+  conversations: AiChatConversation[],
+  searchTerm: string,
+  limit = 20,
+): RecentAiChatConversation[] => {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const recent = getRecentAiChatConversations(conversations, limit);
+  if (!normalizedSearch) return recent;
+  return recent.filter((conversation) =>
+    [
+      conversation.prompt,
+      ...conversation.messages.flatMap((message) => [
+        message.text,
+        message.summary,
+        message.thinking,
+      ]),
+    ].some((value) => value?.toLowerCase().includes(normalizedSearch)),
+  );
+};
+
 const restoreHistory = (
   history?: Partial<AiChatHistory> & { messages?: AiChatMessage[]; conversationId?: string | null },
 ): AiChatHistory => {

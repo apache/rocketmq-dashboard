@@ -60,7 +60,8 @@ import { useEngineStore, type AgentEngine } from '../../stores/engineStore';
 import InfoBanner from '../../components/InfoBanner';
 import useAuthStore from '../../stores/authStore';
 import {
-  getRecentAiChatConversations,
+  MAX_AI_CHAT_CONVERSATIONS,
+  searchAiChatConversations,
   flushAiChatHistoryPersistence,
   type AiChatDataMode,
   useAiChatHistoryStore,
@@ -463,6 +464,7 @@ const AiPage = () => {
   const startConversation = useAiChatHistoryStore((state) => state.startConversation);
   const selectConversation = useAiChatHistoryStore((state) => state.selectConversation);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [settingsHintDismissed, setSettingsHintDismissed] = useState(false);
@@ -774,7 +776,11 @@ const AiPage = () => {
     textareaRef.current?.focus();
   }, []);
 
-  const recentConversations = getRecentAiChatConversations(history.conversations);
+  const recentConversations = searchAiChatConversations(
+    history.conversations,
+    historySearch,
+    MAX_AI_CHAT_CONVERSATIONS,
+  );
 
   const handleConversationSelect = (conversationId: string) => {
     abortControllerRef.current?.abort();
@@ -1160,6 +1166,13 @@ const AiPage = () => {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
       >
+        <Input.Search
+          allowClear
+          value={historySearch}
+          onChange={(event) => setHistorySearch(event.target.value)}
+          placeholder="搜索对话内容"
+          style={{ marginBottom: 12 }}
+        />
         {recentConversations.length === 0 ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('ai.history.empty')} />
         ) : (
