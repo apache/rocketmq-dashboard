@@ -814,6 +814,36 @@ describe('Consumer page', () => {
     expect(screen.getByRole('button', { name: '确认重置' })).toBeDisabled();
   });
 
+  it('supports skipping accumulation by resetting to the latest offsets', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /重置位点/ }));
+    const topicSelect = screen.getByRole('combobox', { name: '目标 Topic' });
+    await user.click(topicSelect);
+    const option = await waitFor(() => {
+      const element = screen
+        .getAllByText('remote-topic')
+        .find((candidate) => candidate.classList.contains('ant-select-item-option-content'));
+      if (!element) throw new Error('Missing target Topic option');
+      return element;
+    });
+    await user.click(option);
+
+    const beforeSkip = Date.now();
+    await user.click(screen.getByRole('button', { name: /跳过积压/ }));
+    await user.click(screen.getByRole('button', { name: /预览影响/ }));
+
+    await waitFor(() => {
+      const calls = vi.mocked(consumerService.previewConsumerOffsetReset).mock.calls;
+      const request = calls[calls.length - 1]?.[0];
+      expect(request?.timestamp).toBeGreaterThanOrEqual(beforeSkip);
+      expect(request?.timestamp).toBeLessThanOrEqual(Date.now());
+    });
+    expect(await screen.findByText('将回放 10 条消息')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '确认重置' })).toBeEnabled());
+  });
+
   it('blocks reset confirmation when the preview has failed queues', async () => {
     vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
       instanceId: 'instance-1',

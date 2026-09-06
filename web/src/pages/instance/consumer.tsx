@@ -2468,6 +2468,15 @@ const ConsumerPageContent = ({
                 <Button
                   size="small"
                   onClick={() => {
+                    setResetTime(dayjs());
+                    clearResetPreview();
+                  }}
+                >
+                  跳过积压（重置到最新）
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
                     setResetTime(dayjs().subtract(1, 'hour'));
                     clearResetPreview();
                   }}
