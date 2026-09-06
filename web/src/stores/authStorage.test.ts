@@ -70,4 +70,37 @@ describe('auth session storage', () => {
     expect(localStorage.getItem(USER_ID_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_ADMIN_STORAGE_KEY)).toBeNull();
   });
+
+  it('removes the stored user id when persisting a null id', () => {
+    localStorage.setItem(USER_ID_STORAGE_KEY, '7');
+    persistAuthSession('studio-admin', null, true);
+
+    expect(readAuthSession()).toEqual({ user: 'studio-admin', userId: null, admin: true });
+    expect(localStorage.getItem(USER_ID_STORAGE_KEY)).toBeNull();
+  });
+
+  it('persists and restores a numeric zero user id', () => {
+    persistAuthSession('system', 0, false);
+
+    expect(readAuthSession()).toEqual({ user: 'system', userId: 0, admin: false });
+    expect(localStorage.getItem(USER_ADMIN_STORAGE_KEY)).toBe('false');
+  });
+
+  it('only treats the literal true flag as admin', () => {
+    localStorage.setItem(USER_STORAGE_KEY, 'studio-admin');
+    localStorage.setItem(USER_ADMIN_STORAGE_KEY, 'false');
+    expect(readAuthSession().admin).toBe(false);
+
+    localStorage.setItem(USER_ADMIN_STORAGE_KEY, 'yes');
+    expect(readAuthSession().admin).toBe(false);
+  });
+
+  it('returns an empty session when nothing is stored', () => {
+    expect(readAuthSession()).toEqual({ user: null, userId: null, admin: null });
+  });
+
+  it('clears an already empty session without throwing', () => {
+    expect(() => clearAuthSession()).not.toThrow();
+    expect(readAuthSession()).toEqual({ user: null, userId: null, admin: null });
+  });
 });
