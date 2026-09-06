@@ -56,4 +56,38 @@ describe('zonedLocalDateTimeToUtc', () => {
   it('rejects unknown IANA time zones', () => {
     expect(() => zonedLocalDateTimeToUtc('2026-09-07T09:00', 'Mars/Olympus')).toThrow();
   });
+
+  it('converts a southern-hemisphere summer wall clock with DST active', () => {
+    expect(zonedLocalDateTimeToUtc('2026-01-15T09:30', 'Australia/Sydney')).toBe(
+      '2026-01-14T22:30:00.000Z',
+    );
+  });
+
+  it('converts a southern-hemisphere winter wall clock with standard time', () => {
+    expect(zonedLocalDateTimeToUtc('2026-06-15T09:30', 'Australia/Sydney')).toBe(
+      '2026-06-14T23:30:00.000Z',
+    );
+  });
+
+  it('honors a half-hour offset like Asia/Kolkata', () => {
+    expect(zonedLocalDateTimeToUtc('2026-09-07T09:00', 'Asia/Kolkata')).toBe(
+      '2026-09-07T03:30:00.000Z',
+    );
+  });
+
+  it('uses standard time before the spring transition', () => {
+    expect(zonedLocalDateTimeToUtc('2026-03-08T01:30', 'America/New_York')).toBe(
+      '2026-03-08T06:30:00.000Z',
+    );
+  });
+
+  it('resolves an ambiguous fall-back wall clock to the pre-transition instant', () => {
+    expect(zonedLocalDateTimeToUtc('2026-11-01T01:30', 'America/New_York')).toBe(
+      '2026-11-01T05:30:00.000Z',
+    );
+  });
+
+  it('converts a UTC midnight boundary without a date shift', () => {
+    expect(zonedLocalDateTimeToUtc('2026-09-07T00:00', 'UTC')).toBe('2026-09-07T00:00:00.000Z');
+  });
 });
