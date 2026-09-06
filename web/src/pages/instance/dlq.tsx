@@ -858,6 +858,48 @@ const DLQPage = () => {
               size="small"
               loading={detailLoading}
               dataSource={detailMessages}
+              expandable={{
+                expandedRowRender: (record) =>
+                  record.properties && Object.keys(record.properties).length > 0 ? (
+                    <div style={{ padding: '4px 0' }}>
+                      {record.propertiesTruncated && (
+                        <Text
+                          type="warning"
+                          style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
+                        >
+                          属性过多或单值过长，服务端已截断展示
+                        </Text>
+                      )}
+                      <Table
+                        size="small"
+                        pagination={false}
+                        rowKey={(p) => p.key}
+                        dataSource={Object.entries(record.properties).map(([key, value]) => ({
+                          key,
+                          value,
+                        }))}
+                        columns={[
+                          {
+                            title: '属性',
+                            dataIndex: 'key',
+                            key: 'key',
+                            width: 200,
+                            ellipsis: true,
+                          },
+                          { title: '值', dataIndex: 'value', key: 'value', ellipsis: true },
+                        ]}
+                        locale={{ emptyText: '无属性' }}
+                      />
+                    </div>
+                  ) : (
+                    <Text
+                      type="secondary"
+                      style={{ padding: '4px 0', display: 'block', fontSize: 14 }}
+                    >
+                      该消息无用户属性
+                    </Text>
+                  ),
+              }}
               rowSelection={{
                 selectedRowKeys: detailSelectedMsgIds,
                 onChange: (keys) => setDetailSelectedMsgIds(keys.map(String)),

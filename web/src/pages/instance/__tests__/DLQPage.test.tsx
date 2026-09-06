@@ -259,6 +259,42 @@ describe('DLQ page', () => {
     );
   });
 
+  it('shows user properties in the DLQ message drawer', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-1',
+          topic: 'orders',
+          queueId: 0,
+          offset: 7,
+          storeTime: 1_700_000_000_000,
+          keys: 'key-1',
+          body: 'payload',
+          bodyBase64: null,
+          properties: { traceId: 'abc-123', region: 'cn-east-1' },
+          propertiesTruncated: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    } satisfies DLQMessagePage);
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+
+    const keyCell = await screen.findByText('key-1');
+    const row = keyCell.closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /expand/i }));
+
+    expect(await screen.findByText('traceId')).toBeInTheDocument();
+    expect(screen.getByText('abc-123')).toBeInTheDocument();
+    expect(screen.getByText('region')).toBeInTheDocument();
+    expect(screen.getByText('cn-east-1')).toBeInTheDocument();
+  });
+
   it('exports the dead-letter messages of a group as Excel', async () => {
     vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
       blob: new Blob(['xlsx-bytes'], {

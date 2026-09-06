@@ -30,6 +30,7 @@ import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
@@ -57,7 +58,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -82,8 +82,6 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int TOPIC_PULL_BATCH_SIZE = 32;
     private static final int MAX_BODY_DISPLAY_BYTES = 64 * 1024;
     private static final int MAX_BINARY_BODY_DISPLAY_BYTES = 48 * 1024;
-    private static final int MAX_PROPERTIES = 64;
-    private static final int MAX_PROPERTY_VALUE_CHARS = 1024;
     private static final long VIEW_MESSAGE_TIMEOUT_MILLIS = 3000L;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
@@ -703,7 +701,7 @@ public class RocketMQMessageProvider implements MessageProvider {
         byte[] body = messageExt.getBody();
         DisplayBody displayBody = displayBody(body);
         Map<String, String> properties = messageExt.getProperties();
-        Map<String, String> displayProperties = limitProperties(properties);
+        Map<String, String> displayProperties = MessagePropertyDisplay.limitProperties(properties);
         return MessageRecordVO.builder()
                 .msgId(messageExt.getMsgId())
                 .topic(messageExt.getTopic())
@@ -720,7 +718,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .storeHost(String.valueOf(messageExt.getStoreHost()))
                 .properties(displayProperties)
                 .propertiesTruncated(properties != null && (displayProperties.size() < properties.size()
-                        || hasOversizedProperty(properties)))
+                        || MessagePropertyDisplay.hasOversizedProperty(properties)))
                 .size(messageExt.getStoreSize())
                 .build();
     }
@@ -751,30 +749,6 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private boolean isUtf8ContinuationByte(byte value) {
         return (value & 0xC0) == 0x80;
-    }
-
-    private Map<String, String> limitProperties(Map<String, String> properties) {
-        if (properties == null || properties.isEmpty()) {
-            return Collections.emptyMap();
-        }
-        Map<String, String> limited = new LinkedHashMap<>();
-        properties.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey(Comparator.nullsLast(String::compareTo)))
-                .limit(MAX_PROPERTIES)
-                .forEach(entry -> limited.put(entry.getKey(), abbreviate(entry.getValue(), MAX_PROPERTY_VALUE_CHARS)));
-        return limited;
-    }
-
-    private boolean hasOversizedProperty(Map<String, String> properties) {
-        return properties != null && properties.values().stream()
-                .anyMatch(value -> value != null && value.length() > MAX_PROPERTY_VALUE_CHARS);
-    }
-
-    private String abbreviate(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength) + "...";
     }
 
     private record DisplayBody(String value, String encoding, boolean truncated) {

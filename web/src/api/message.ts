@@ -117,6 +117,8 @@ export interface DLQMessage {
   keys: string | null;
   body: string | null;
   bodyBase64: string | null;
+  properties?: Record<string, string>;
+  propertiesTruncated?: boolean;
 }
 
 export interface DLQMessagePage {
