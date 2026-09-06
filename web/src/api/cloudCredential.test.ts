@@ -113,4 +113,62 @@ describe('cloudCredential API', () => {
     await deleteCloudCredential(1);
     expect(JSON.parse(mock.history.post[1].data)).toEqual({ id: '1' });
   });
+
+  it('defaults to the first page of twenty when no filters are given', async () => {
+    mock.onGet('/cloud-credentials').reply((config) => {
+      expect(config.params).toEqual({ vendor: undefined, search: undefined, page: 1, pageSize: 20 });
+      return [200, { code: 200, data: { items: [], total: 0, page: 1, size: 20 } }];
+    });
+
+    await expect(listCloudCredentials()).resolves.toMatchObject({ page: 1, total: 0 });
+  });
+
+  it('forwards vendor, search and pagination filters', async () => {
+    mock.onGet('/cloud-credentials').reply((config) => {
+      expect(config.params).toEqual({
+        vendor: 'TENCENT',
+        search: 'prod',
+        page: 3,
+        pageSize: 50,
+      });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            items: [
+              {
+                id: 2,
+                name: 'tencent-prod',
+                vendor: 'TENCENT',
+                accessKey: 'AKID****0002',
+                gmtCreate: '2026-08-18T00:00:00',
+              },
+            ],
+            total: 1,
+            page: 3,
+            size: 50,
+          },
+        },
+      ];
+    });
+
+    const result = await listCloudCredentials('TENCENT', 'prod', 3, 50);
+    expect(result.items[0].vendor).toBe('TENCENT');
+    expect(result.page).toBe(3);
+  });
+
+  it('returns an empty page when no credentials match', async () => {
+    mock.onGet('/cloud-credentials').reply(200, {
+      code: 200,
+      data: { items: [], total: 0, page: 1, size: 20 },
+    });
+
+    await expect(listCloudCredentials('AWS', 'nothing')).resolves.toEqual({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+    });
+  });
 });
