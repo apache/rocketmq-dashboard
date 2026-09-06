@@ -89,4 +89,24 @@ describe('grafanaService', () => {
     expect(result.filename).toBe('rocketmq-grafana-dashboards.zip');
     expect(result.blob.type).toBe('application/zip');
   });
+
+  it('delegates single dashboard reads and exports to the api in real mode', async () => {
+    isMockModeMock.isMockMode = () => false;
+    const getSpy = vi
+      .spyOn(grafanaApi, 'getGrafanaDashboard')
+      .mockResolvedValue({ uid: 'rocketmq-overview', title: 'Overview' });
+    const exportSpy = vi
+      .spyOn(grafanaApi, 'exportGrafanaDashboard')
+      .mockResolvedValue(new Blob(['model'], { type: 'application/json' }));
+
+    await expect(getGrafanaDashboard('rocketmq-overview')).resolves.toEqual({
+      uid: 'rocketmq-overview',
+      title: 'Overview',
+    });
+    const blob = await exportGrafanaDashboard('rocketmq-overview');
+
+    expect(getSpy).toHaveBeenCalledWith('rocketmq-overview');
+    expect(exportSpy).toHaveBeenCalledWith('rocketmq-overview');
+    expect(blob).toBeInstanceOf(Blob);
+  });
 });
