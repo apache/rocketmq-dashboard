@@ -92,4 +92,17 @@ class MetricsBackendTypeTest {
         assertThat(MetricsBackendType.CORTEX.getInstantQueryPath()).isEqualTo("/api/v1/query");
         assertThat(MetricsBackendType.ARMS.getInstantQueryPath()).isEqualTo("/api/v1/query");
     }
+    @Test
+    void shouldAcceptBareAliasesAndResolveCanonicalNamesForEveryBackend() {
+        assertThat(MetricsBackendType.fromProviderType("victoria"))
+                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
+        assertThat(MetricsBackendType.fromProviderType("Victoria"))
+                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
+
+        assertThat(MetricsBackendType.THANOS.getProviderType()).isEqualTo("Thanos");
+        assertThat(MetricsBackendType.CORTEX.getProviderType()).isEqualTo("Cortex");
+        assertThat(MetricsBackendType.MIMIR.getProviderType()).isEqualTo("Mimir");
+        assertThat(MetricsBackendType.CUSTOM.getProviderType()).isEqualTo("Custom");
+        assertThat(MetricsBackendType.PROMETHEUS.getProviderType()).isEqualTo("Prometheus");
+    }
 }
