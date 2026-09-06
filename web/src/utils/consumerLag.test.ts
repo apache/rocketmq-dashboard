@@ -36,10 +36,41 @@ describe('consumer lag helpers', () => {
     expect(formatLag(undefined, 'unavailable')).toBe('unavailable');
   });
 
+  it('uses the sentinel string as the default unavailable label', () => {
+    expect(formatLag(UNKNOWN_LAG)).toBe('-1');
+    expect(formatLag(null)).toBe('-1');
+    expect(formatLag(undefined)).toBe('-1');
+  });
+
+  it('reports negative lags with the unavailable label', () => {
+    expect(isLagAvailable(-5)).toBe(false);
+    expect(formatLag(-5, 'N/A')).toBe('N/A');
+    expect(formatLag(Number.NEGATIVE_INFINITY, 'N/A')).toBe('N/A');
+  });
+
+  it('keeps the numeric rendering consistent with toLocaleString', () => {
+    expect(formatLag(0)).toBe('0');
+    expect(formatLag(1234567)).toBe((1234567).toLocaleString());
+    expect(formatLag(1_000_000_000)).toBe((1_000_000_000).toLocaleString());
+  });
+
+  it('treats non-finite lags as unavailable everywhere', () => {
+    expect(isLagAvailable(Number.POSITIVE_INFINITY)).toBe(false);
+    expect(isLagAvailable(Number.NaN)).toBe(false);
+    expect(formatLag(Number.POSITIVE_INFINITY, 'N/A')).toBe('N/A');
+    expect(lagSortValue(Number.POSITIVE_INFINITY)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(lagSortValue(Number.NaN)).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
   it('sorts unknown lags after every known lag', () => {
     expect(lagSortValue(0)).toBe(0);
     expect(lagSortValue(999999999)).toBe(999999999);
     expect(lagSortValue(UNKNOWN_LAG)).toBe(Number.MAX_SAFE_INTEGER);
     expect(lagSortValue(null)).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it('keeps zero available as the smallest possible lag', () => {
+    expect(lagSortValue(0)).toBeLessThan(lagSortValue(1));
+    expect(formatLag(0)).toBe('0');
   });
 });
