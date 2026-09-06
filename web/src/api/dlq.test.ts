@@ -19,7 +19,14 @@ import MockAdapter from 'axios-mock-adapter';
 import type { InternalAxiosRequestConfig } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { exportDLQExcel, exportDLQMessages, listDLQGroups, resendDLQ } from './message';
+import {
+  exportDLQExcel,
+  exportDLQMessages,
+  listDLQGroups,
+  listDLQMessages,
+  resendDLQ,
+  resendDLQSelected,
+} from './message';
 import type { DLQGroup } from './message';
 
 const mock = new MockAdapter(client);
@@ -175,5 +182,59 @@ describe('DLQ API', () => {
 
     await expect(blob.text()).resolves.toBe('xlsx');
     expect(meta).toEqual({ truncated: true, failedQueueCount: 2, limit: 5000 });
+  });
+
+  it('pages the dead-letter messages of one group with an encoded group name', async () => {
+    const messages = {
+      items: [{ msgId: 'msg-1' }, { msgId: 'msg-2' }],
+      total: 2,
+      page: 1,
+      size: 20,
+    };
+    // The group name appears URL-encoded in the path while the raw name stays a query param.
+    mock.onGet('/dlq/cg%2Forder%20consumer/messages').reply((config) => {
+      expect(config.params).toMatchObject({
+        instanceId: 'instance-1',
+        groupName: 'cg/order consumer',
+        startTime: 1784246400000,
+        endTime: 1784332800000,
+        page: 2,
+        pageSize: 50,
+      });
+      return [200, { code: 200, data: messages }];
+    });
+
+    await expect(
+      listDLQMessages({
+        instanceId: 'instance-1',
+        groupName: 'cg/order consumer',
+        startTime: 1784246400000,
+        endTime: 1784332800000,
+        page: 2,
+        pageSize: 50,
+      }),
+    ).resolves.toEqual(messages);
+  });
+
+  it('resends only the selected message ids to the target topic', async () => {
+    const result = { matched: 2, resent: 2, failed: 0, outcome: 'SUCCESS' };
+    mock.onPost('/dlq/resend-selected').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        instanceId: 'instance-1',
+        groupName: group.groupName,
+        msgIds: ['msg-1', 'msg-2'],
+        targetTopic: 'orders-retry',
+      });
+      return [200, { code: 200, data: result }];
+    });
+
+    await expect(
+      resendDLQSelected({
+        instanceId: 'instance-1',
+        groupName: group.groupName,
+        msgIds: ['msg-1', 'msg-2'],
+        targetTopic: 'orders-retry',
+      }),
+    ).resolves.toEqual(result);
   });
 });
