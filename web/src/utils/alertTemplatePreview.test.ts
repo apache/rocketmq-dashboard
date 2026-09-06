@@ -177,4 +177,49 @@ describe('alert template preview', () => {
     expect(preview.rendered).toContain('Broker disk usage');
     expect(preview.rendered).toContain('broker=broker-a');
   });
+
+  it('formats Date and numeric time context as ISO strings', () => {
+    const fromDate = previewAlertNotificationTemplate('At ${time} alert fired', {
+      time: new Date('2026-09-03T10:00:00.000Z'),
+    });
+    const fromMillis = previewAlertNotificationTemplate('At ${time} alert fired', {
+      time: new Date('2026-09-03T10:00:00.000Z').getTime(),
+    });
+
+    expect(fromDate.rendered).toContain('2026-09-03T10:00:00.000Z');
+    expect(fromMillis.rendered).toBe(fromDate.rendered);
+  });
+
+  it('trims whitespace inside placeholders before matching variables', () => {
+    const preview = previewAlertNotificationTemplate('[${ level }] ${ ruleName } fired', {
+      level: 'CRITICAL',
+      ruleName: 'Broker down',
+    });
+
+    expect(preview.status).toBe('ready');
+    expect(preview.usedVariables).toEqual(['level', 'ruleName']);
+    expect(preview.unknownVariables).toEqual([]);
+    expect(preview.rendered).toBe('[CRITICAL] Broker down fired');
+  });
+
+  it('reports context variables that the template never uses', () => {
+    const preview = previewAlertNotificationTemplate('${title} only', {
+      title: 'Disk usage firing',
+      description: 'detailed description',
+    });
+
+    expect(preview.rendered).toContain('Disk usage firing');
+    expect(preview.unusedContextVariables).toContain('description');
+    expect(preview.unusedContextVariables).not.toContain('title');
+  });
+
+  it('deduplicates variables that appear more than once', () => {
+    const preview = previewAlertNotificationTemplate(
+      '${level}: ${title} (${level})',
+      { level: 'CRITICAL', title: 'Broker down' },
+    );
+
+    expect(preview.usedVariables).toEqual(['level', 'title']);
+    expect(preview.rendered).toBe('CRITICAL: Broker down (CRITICAL)');
+  });
 });
