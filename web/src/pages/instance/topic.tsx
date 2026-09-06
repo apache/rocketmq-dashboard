@@ -480,9 +480,10 @@ const TopicPage = () => {
   }, [selectedInstanceId, tablePage, tablePageSize, instancesLoading, loadTopicPage]);
 
   // ─── Filtered data ─────────────────────────────────────────────
+  const trimmedSearchText = searchText.trim();
   const filteredTopics = useMemo(
-    () => visibleTopics(topics, selectedInstanceId, searchText, typeFilter),
-    [topics, selectedInstanceId, searchText, typeFilter],
+    () => visibleTopics(topics, selectedInstanceId, trimmedSearchText, typeFilter),
+    [topics, selectedInstanceId, trimmedSearchText, typeFilter],
   );
 
   const maxTablePage = Math.max(1, Math.ceil(totalTopics / tablePageSize));

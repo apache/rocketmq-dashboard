@@ -292,6 +292,34 @@ describe('TopicPage', () => {
     clickSpy.mockRestore();
   });
 
+  it('keeps matching rows when the search term has leading or trailing spaces', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([
+      {
+        ...buildTopics(1)[0],
+        name: 'orders-topic',
+      },
+      {
+        ...buildTopics(1)[0],
+        name: 'users-topic',
+      },
+    ]);
+    renderWithProviders();
+
+    expect(await screen.findByText('orders-topic')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('搜索 Topic 名称'), ' orders ');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'orders' }),
+      ),
+    );
+    expect(await screen.findByText('orders-topic')).toBeInTheDocument();
+    expect(screen.queryByText('users-topic')).not.toBeInTheDocument();
+  });
+
   it('keeps the current table page after opening and closing topic details', async () => {
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([
