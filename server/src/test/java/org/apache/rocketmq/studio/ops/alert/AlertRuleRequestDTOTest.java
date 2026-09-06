@@ -67,4 +67,68 @@ class AlertRuleRequestDTOTest {
 
         assertThat(request.toAlertRuleVO().getMetric()).isEqualTo("consumer.lag.total");
     }
+
+    @Test
+    void nameShouldBeRequiredTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .containsExactlyInAnyOrder("name is required");
+    }
+
+    @Test
+    void operatorAggregationAndSeverityShouldRejectInvalidValuesTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setOperator("between");
+        request.setAggregation("MEDIAN");
+        request.setSeverity("fatal");
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .containsExactlyInAnyOrder("operator is invalid", "aggregation is invalid",
+                        "severity is invalid");
+    }
+
+    @Test
+    void durationReminderAndTemplateShouldBeValidatedTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setDuration("5 minutes");
+        request.setReminderInterval("every hour");
+        request.setNotificationTemplate("x".repeat(4001));
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .containsExactlyInAnyOrder("duration is invalid", "reminderInterval is invalid",
+                        "notificationTemplate must not exceed 4000 characters");
+    }
+
+    @Test
+    void windowAndConsecutiveSamplesShouldRejectNonPositiveValuesTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setWindowSeconds(-5);
+        request.setConsecutiveSamples(0);
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .containsExactlyInAnyOrder("windowSeconds must not be negative",
+                        "consecutiveSamples must be at least 1");
+    }
+
+    @Test
+    void toAlertRuleVOShouldFillOperationalDefaultsTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+
+        AlertRuleVO vo = request.toAlertRuleVO();
+
+        assertThat(vo.getAggregation()).isEqualTo("LAST");
+        assertThat(vo.getWindowSeconds()).isZero();
+        assertThat(vo.getConsecutiveSamples()).isEqualTo(1);
+        assertThat(vo.getReminderInterval()).isEqualTo("30m");
+        assertThat(vo.getChannels()).isNull();
+    }
 }
