@@ -63,4 +63,35 @@ describe('parseMessageProperties', () => {
     expect(result.properties['__proto__']).toBe('first');
     expect(result.errors).toEqual(['属性名“__proto__”重复']);
   });
+
+  it('skips blank and whitespace-only lines', () => {
+    const result = parseMessageProperties('traceId=abc\n   \n\n\t\nregion=hangzhou');
+
+    expect(result.properties).toEqual({ traceId: 'abc', region: 'hangzhou' });
+    expect(result.errors).toEqual([]);
+  });
+
+  it('trims surrounding whitespace from keys and values', () => {
+    const result = parseMessageProperties('  traceId  =  abc  \n  region=  hangzhou ');
+
+    expect(result.properties).toEqual({ traceId: 'abc', region: 'hangzhou' });
+    expect(result.errors).toEqual([]);
+  });
+
+  it('reports lines without an equals sign as format errors', () => {
+    const result = parseMessageProperties('traceId=abc\nnot-a-pair\n=value-only');
+
+    expect(result.properties).toEqual({ traceId: 'abc' });
+    expect(result.errors).toEqual([
+      '“not-a-pair”应使用 key=value 格式',
+      '“=value-only”应使用 key=value 格式',
+    ]);
+  });
+
+  it('keeps an empty value when the equals sign ends the line', () => {
+    const result = parseMessageProperties('traceId=\nregion=hangzhou');
+
+    expect(result.properties).toEqual({ traceId: '', region: 'hangzhou' });
+    expect(result.errors).toEqual([]);
+  });
 });
