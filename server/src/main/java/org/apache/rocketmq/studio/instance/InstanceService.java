@@ -121,6 +121,36 @@ public class InstanceService {
         return sorted;
     }
 
+    public InstancePageVO listInstancesPage(InstanceType type, String vendor, String search,
+            int page, int pageSize) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "page must be at least 1 and pageSize must be between 1 and 100");
+        }
+        InstanceVendor vendorFilter = normalizeVendor(vendor);
+        List<InstanceVO> instances = listInstances(type, search).stream()
+                .filter(instance -> vendorFilter == null || instance.getVendor() == vendorFilter)
+                .toList();
+        int from = Math.min((page - 1) * pageSize, instances.size());
+        int to = Math.min(from + pageSize, instances.size());
+        return InstancePageVO.builder()
+                .items(instances.subList(from, to))
+                .total(instances.size())
+                .page(page)
+                .size(pageSize)
+                .build();
+    }
+
+    private static InstanceVendor normalizeVendor(String vendor) {
+        if (!StringUtils.hasText(vendor)) {
+            return null;
+        }
+        try {
+            return InstanceVendor.valueOf(vendor.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(400, "Unknown instance vendor: " + vendor);
+        }
+    }
+
     /**
      * Fans out per-instance resource counts on a bounded executor. Cloud vendors resolve counts
      * through remote OpenAPIs, so a slow instance only degrades its own row (counts marked

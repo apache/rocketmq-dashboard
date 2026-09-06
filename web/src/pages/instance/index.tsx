@@ -54,7 +54,7 @@ import {
   deleteInstance,
   deleteInstancesBatch,
   importCloudInstances,
-  listInstances,
+  listInstancesPage,
   updateInstance,
 } from '../../services/instanceService';
 import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOptions';
@@ -129,6 +129,10 @@ const InstancePage = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<InstanceTypeFilter>('ALL');
+  const [vendorFilter, setVendorFilter] = useState<InstanceVendor | 'ALL'>('ALL');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [vendor, setVendor] = useState<InstanceVendor>(DEFAULT_VENDOR);
   const [addForm] = Form.useForm();
@@ -163,10 +167,11 @@ const InstancePage = () => {
 
     setLoading(true);
     try {
-      const nextInstances = await listInstances(query);
+      const result = await listInstancesPage(query, page, pageSize);
       if (requestId === requestIdRef.current) {
-        setInstances(nextInstances);
-        const availableNames = new Set(nextInstances.map((instance) => instance.name));
+        setInstances(result.items);
+        setTotal(result.total);
+        const availableNames = new Set(result.items.map((instance) => instance.name));
         setSelectedRowKeys((keys) => keys.filter((key) => availableNames.has(String(key))));
       }
     } catch {
@@ -178,11 +183,12 @@ const InstancePage = () => {
         setLoading(false);
       }
     }
-  }, [t]);
+  }, [t, page, pageSize]);
 
   useEffect(() => {
     listQueryRef.current = {
       ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
+      ...(vendorFilter === 'ALL' ? {} : { vendor: vendorFilter }),
       ...(debouncedSearch ? { search: debouncedSearch } : {}),
     };
     const timer = window.setTimeout(() => void loadInstances(), 0);
@@ -191,7 +197,7 @@ const InstancePage = () => {
       window.clearTimeout(timer);
       requestIdRef.current += 1;
     };
-  }, [debouncedSearch, loadInstances, typeFilter]);
+  }, [debouncedSearch, loadInstances, typeFilter, vendorFilter]);
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
 
@@ -704,7 +710,7 @@ const InstancePage = () => {
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('instance.title')}</h2>
         <div style={{ marginTop: 6, fontSize: 14, color: '#9CA3AF' }}>
-          {t('instance.managementSubtitle', { count: instances.length })}
+          {t('instance.managementSubtitle', { count: total })}
         </div>
       </div>
 
@@ -727,7 +733,10 @@ const InstancePage = () => {
           />
           <Select<InstanceTypeFilter>
             value={typeFilter}
-            onChange={setTypeFilter}
+            onChange={(value) => {
+              setPage(1);
+              setTypeFilter(value);
+            }}
             style={{ width: 140 }}
             options={[
               { value: 'ALL', label: t('instance.allTypes') },
@@ -735,6 +744,20 @@ const InstancePage = () => {
               { value: 'PROXY_LOCAL', label: t('instance.proxyLocalMode') },
               { value: 'PROXY_CLUSTER', label: t('instance.proxyClusterMode') },
               { value: 'DIRECT', label: t('instance.directMode') },
+            ]}
+          />
+          <Select<InstanceVendor | 'ALL'>
+            value={vendorFilter}
+            onChange={(value) => {
+              setPage(1);
+              setVendorFilter(value);
+            }}
+            style={{ width: 140 }}
+            options={[
+              { value: 'ALL', label: '全部供应商' },
+              { value: 'APACHE', label: 'Apache' },
+              { value: 'ALIYUN', label: 'Aliyun' },
+              { value: 'TENCENT', label: 'Tencent' },
             ]}
           />
         </Space>
@@ -769,7 +792,19 @@ const InstancePage = () => {
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys),
           }}
-          pagination={false}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50', '100'],
+            showTotal: (count) => `共 ${count} 个实例`,
+            onChange: (nextPage, nextPageSize) => {
+              setLoading(true);
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
+          }}
           size="small"
           tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
