@@ -27,6 +27,7 @@ import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCre
 import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as instanceService from '../../../services/instanceService';
+import { downloadCsv } from '../../../utils/download';
 import InstancePage from '../index';
 
 vi.mock('../../../api/aliyunCatalog', () => ({
@@ -51,6 +52,12 @@ vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn(),
   updateInstance: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return { ...actual, downloadCsv: vi.fn() };
+});
 
 const cloudCredentialPage = (items: CloudCredential[]): CloudCredentialPage => ({
   items,
@@ -158,6 +165,18 @@ describe('InstancePage', () => {
     await waitFor(() =>
       expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
     );
+  });
+
+  it('exports the currently filtered instance inventory', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    await waitFor(() => expect(downloadCsv).toHaveBeenCalledTimes(1));
+    expect(instanceService.listInstances).toHaveBeenCalledWith({});
+    expect(screen.getByText(/已导出 2 个实例/)).toBeInTheDocument();
   });
 
   it('keeps unavailable resource counts after available values in both sort directions', async () => {
