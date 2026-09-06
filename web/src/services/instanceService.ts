@@ -7,6 +7,7 @@ import type {
   InstanceVendor,
   UpdateInstanceRequest,
   InstanceCapabilities,
+  InstancePage,
 } from '../api/instance';
 import { mockInstances } from '../mock/instances';
 
@@ -50,6 +51,33 @@ export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
   const request = fetchInstances(query, mockMode).finally(() => inflightListRequests.delete(key));
   inflightListRequests.set(key, request);
   return request.then((items) => items.map(copyInstance));
+}
+
+export function listInstancesPage(
+  query: InstanceQuery = {},
+  page = 1,
+  pageSize = 20,
+): Promise<InstancePage> {
+  const mockMode = isMockMode();
+  if (mockMode) {
+    return fetchInstancePage(query, page, pageSize);
+  }
+  return instanceApi.listInstancesPage(query, page, pageSize);
+}
+
+async function fetchInstancePage(
+  query: InstanceQuery,
+  page: number,
+  pageSize: number,
+): Promise<InstancePage> {
+  const items = await fetchInstances(query, true);
+  const start = (page - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    total: items.length,
+    page,
+    size: pageSize,
+  };
 }
 
 async function fetchInstances(query: InstanceQuery, mockMode: boolean): Promise<Instance[]> {
