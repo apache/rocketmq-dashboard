@@ -112,4 +112,89 @@ describe('data sources API', () => {
       testDataSource({ type: source.type, url: source.url, auth: source.auth }),
     ).resolves.toEqual({ success: true, message: 'Connection successful' });
   });
+
+  it('forwards credentials when testing an authenticated data source', async () => {
+    mock.onPost('/settings/datasources/test').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'basic',
+        username: 'ops',
+        password: 'secret',
+      });
+      return [200, { code: 200, data: { success: true, message: 'OK' } }];
+    });
+
+    await expect(
+      testDataSource({
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'basic',
+        username: 'ops',
+        password: 'secret',
+      }),
+    ).resolves.toEqual({ success: true, message: 'OK' });
+  });
+
+  it('forwards bearer tokens when testing a token-authenticated data source', async () => {
+    mock.onPost('/settings/datasources/test').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'bearer',
+        bearerToken: 'tok-123',
+      });
+      return [200, { code: 200, data: { success: true, message: 'OK' } }];
+    });
+
+    await expect(
+      testDataSource({
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'bearer',
+        bearerToken: 'tok-123',
+      }),
+    ).resolves.toEqual({ success: true, message: 'OK' });
+  });
+
+  it('stops paginating early when the last page comes back short', async () => {
+    mock.onGet('/settings/datasources/page').reply((config) => {
+      expect(config.params.pageSize).toBe(100);
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            items: config.params.page === 1 ? [source] : [],
+            total: 1,
+            page: config.params.page,
+            size: 100,
+          },
+        },
+      ];
+    });
+
+    await expect(listAllDataSources()).resolves.toHaveLength(1);
+  });
+
+  it('throws when the export would exceed the maximum page count', async () => {
+    mock.onGet('/settings/datasources/page').reply((config) => {
+      const page = config.params.page as number;
+      if (page > 100) throw new Error('unexpected page request');
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            items: [source],
+            total: 10_000,
+            page,
+            size: 100,
+          },
+        },
+      ];
+    });
+
+    await expect(listAllDataSources()).rejects.toThrow('exceeded');
+  });
 });
