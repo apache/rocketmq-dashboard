@@ -14,6 +14,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AiChatConversation } from './aiChatHistoryStore';
 
 const STORAGE_KEY = 'rocketmq-studio-ai-chat-history';
 
@@ -201,5 +202,58 @@ describe('aiChatHistoryStore', () => {
     ]);
 
     expect(recent).toEqual([expect.objectContaining({ id: 'prompt', prompt: 'Inspect lag' })]);
+  });
+
+  it('searches conversations by first user prompt case-insensitively and keeps ordering', async () => {
+    const { searchAiChatConversations } = await import('./aiChatHistoryStore');
+    const conversations: AiChatConversation[] = [
+      {
+        id: 'newest',
+        messages: [{ id: 'm1', role: 'user', text: 'Inspect consumer lag' }],
+        updatedAt: 3,
+      },
+      {
+        id: 'middle',
+        messages: [{ id: 'm2', role: 'user', text: 'Explain DLQ ordering' }],
+        updatedAt: 2,
+      },
+      {
+        id: 'oldest',
+        messages: [{ id: 'm3', role: 'user', text: 'Create a topic' }],
+        updatedAt: 1,
+      },
+    ];
+
+    expect(searchAiChatConversations(conversations, '  LAG  ').map((item) => item.id)).toEqual([
+      'newest',
+    ]);
+    expect(searchAiChatConversations(conversations, 'dlq').map((item) => item.id)).toEqual([
+      'middle',
+    ]);
+    expect(searchAiChatConversations(conversations, '   ').map((item) => item.id)).toEqual([]);
+  });
+
+  it('searches message text beyond the first prompt and reports unmatched queries', async () => {
+    const { searchAiChatConversations } = await import('./aiChatHistoryStore');
+    const conversations: AiChatConversation[] = [
+      {
+        id: 'mixed',
+        messages: [
+          { id: 'm1', role: 'user', text: 'Diagnose broker pressure' },
+          { id: 'm2', role: 'ai', text: 'The lag stems from slow consumers' },
+        ],
+        updatedAt: 3,
+      },
+      {
+        id: 'other',
+        messages: [{ id: 'm3', role: 'user', text: 'Create a topic' }],
+        updatedAt: 2,
+      },
+    ];
+
+    expect(
+      searchAiChatConversations(conversations, 'SLOW CONSUMERS').map((item) => item.id),
+    ).toEqual(['mixed']);
+    expect(searchAiChatConversations(conversations, 'nonexistent')).toEqual([]);
   });
 });

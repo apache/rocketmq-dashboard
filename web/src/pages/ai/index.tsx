@@ -45,6 +45,7 @@ import {
   ArrowUp,
   CaretDown,
   ClockCounterClockwise,
+  MagnifyingGlass,
   SlidersHorizontal,
   Sparkle,
   Stop,
@@ -61,6 +62,7 @@ import InfoBanner from '../../components/InfoBanner';
 import useAuthStore from '../../stores/authStore';
 import {
   getRecentAiChatConversations,
+  searchAiChatConversations,
   flushAiChatHistoryPersistence,
   type AiChatDataMode,
   useAiChatHistoryStore,
@@ -463,6 +465,7 @@ const AiPage = () => {
   const startConversation = useAiChatHistoryStore((state) => state.startConversation);
   const selectConversation = useAiChatHistoryStore((state) => state.selectConversation);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [settingsHintDismissed, setSettingsHintDismissed] = useState(false);
@@ -775,6 +778,19 @@ const AiPage = () => {
   }, []);
 
   const recentConversations = getRecentAiChatConversations(history.conversations);
+  const historySearching = historySearch.trim().length > 0;
+  const historyEntries = (
+    historySearching
+      ? searchAiChatConversations(history.conversations, historySearch)
+      : recentConversations
+  ).map((conversation) => ({
+    id: conversation.id,
+    updatedAt: conversation.updatedAt,
+    label:
+      conversation.messages.find((item) => item.role === 'user' && item.text?.trim())?.text ??
+      conversation.messages[0]?.text ??
+      '',
+  }));
 
   const handleConversationSelect = (conversationId: string) => {
     abortControllerRef.current?.abort();
@@ -1160,17 +1176,28 @@ const AiPage = () => {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
       >
-        {recentConversations.length === 0 ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('ai.history.empty')} />
+        <Input
+          allowClear
+          placeholder={t('ai.history.searchPlaceholder')}
+          prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
+          value={historySearch}
+          onChange={(event) => setHistorySearch(event.target.value)}
+          style={{ marginBottom: 12 }}
+        />
+        {historyEntries.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t(historySearching ? 'ai.history.searchEmpty' : 'ai.history.empty')}
+          />
         ) : (
           <div className="flex flex-col gap-2">
-            {recentConversations.map((conversation) => (
+            {historyEntries.map((entry) => (
               <button
-                key={conversation.id}
+                key={entry.id}
                 type="button"
-                onClick={() => handleConversationSelect(conversation.id)}
+                onClick={() => handleConversationSelect(entry.id)}
                 className={`w-full rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                  conversation.id === history.activeConversationId
+                  entry.id === history.activeConversationId
                     ? 'border-blue-400 bg-blue-50 text-blue-700'
                     : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50'
                 }`}
@@ -1185,7 +1212,7 @@ const AiPage = () => {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {conversation.prompt}
+                    {entry.label}
                   </span>
                   <span
                     style={{
@@ -1196,7 +1223,7 @@ const AiPage = () => {
                       lineHeight: 1.5,
                     }}
                   >
-                    {formatRelativeTime(conversation.updatedAt, lang, t)}
+                    {formatRelativeTime(entry.updatedAt, lang, t)}
                   </span>
                 </span>
               </button>

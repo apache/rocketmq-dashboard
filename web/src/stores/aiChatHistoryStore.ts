@@ -144,6 +144,17 @@ export const getRecentAiChatConversations = (
     )
     .slice(0, limit);
 
+export const searchAiChatConversations = (
+  conversations: AiChatConversation[],
+  query: string,
+): AiChatConversation[] => {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  return conversations.filter((conversation) =>
+    conversation.messages.some((item) => item.text && item.text.toLowerCase().includes(needle)),
+  );
+};
+
 const restoreHistory = (
   history?: Partial<AiChatHistory> & { messages?: AiChatMessage[]; conversationId?: string | null },
 ): AiChatHistory => {

@@ -959,6 +959,11 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'ai.history.title': { zh: 'AI 对话历史', en: 'AI conversation history' },
   'ai.history.empty': { zh: '当前模式暂无对话记录', en: 'No conversations in this mode' },
+  'ai.history.searchPlaceholder': { zh: '搜索对话记录', en: 'Search conversations' },
+  'ai.history.searchEmpty': {
+    zh: '没有匹配的对话记录',
+    en: 'No conversations match your search',
+  },
   'ai.history.justNow': { zh: '刚刚', en: 'Just now' },
   'ai.history.minutesAgo': { zh: '{count} 分钟前', en: '{count} min ago' },
   'ai.responseStopped': { zh: '回答已停止。', en: 'Response stopped.' },

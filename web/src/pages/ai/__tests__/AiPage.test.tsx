@@ -536,4 +536,77 @@ describe('AiPage tool runner', () => {
     expect(await screen.findByText('工具参数必须是有效的 JSON 对象')).toBeInTheDocument();
     expect(executeTool).not.toHaveBeenCalled();
   });
+
+  it('searches the history drawer across stored conversations beyond the recent list', async () => {
+    const now = Date.now();
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: Array.from({ length: 9 }, (_, index) => ({
+            id: `conversation-${index}`,
+            messages: [
+              {
+                id: `message-${index}`,
+                role: 'user' as const,
+                text:
+                  index === 8 ? 'Oldest diagnostic conversation' : `Recent conversation ${index}`,
+              },
+            ],
+            updatedAt: now - index * 60_000,
+          })),
+          activeConversationId: 'conversation-0',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'AI 对话历史' }));
+    const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
+    expect(
+      within(historyDrawer).getAllByRole('button', { name: /^Recent conversation/ }),
+    ).toHaveLength(8);
+    expect(
+      within(historyDrawer).queryByText('Oldest diagnostic conversation'),
+    ).not.toBeInTheDocument();
+
+    await user.type(
+      within(historyDrawer).getByPlaceholderText('搜索对话记录'),
+      'oldest diagnostic',
+    );
+
+    expect(
+      await within(historyDrawer).findByText('Oldest diagnostic conversation'),
+    ).toBeInTheDocument();
+    expect(within(historyDrawer).queryByText(/^Recent conversation/)).not.toBeInTheDocument();
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
+  it('shows an explicit empty state when no stored conversation matches the search', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'active',
+              messages: [{ id: 'active-message', role: 'user', text: 'Active conversation' }],
+              updatedAt: Date.now(),
+            },
+          ],
+          activeConversationId: 'active',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'AI 对话历史' }));
+    const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
+    await user.type(within(historyDrawer).getByPlaceholderText('搜索对话记录'), 'does-not-match');
+
+    expect(await within(historyDrawer).findByText('没有匹配的对话记录')).toBeInTheDocument();
+    expect(within(historyDrawer).queryByText('当前模式暂无对话记录')).not.toBeInTheDocument();
+  });
 });
