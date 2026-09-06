@@ -15,9 +15,11 @@
  * limitations under the License.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as connApi from '../api/connections';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const isMockModeMock = vi.hoisted(() => ({ isMockMode: () => true as boolean }));
+vi.mock('./dataMode', () => isMockModeMock);
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
@@ -25,6 +27,14 @@ vi.mock('../config', () => ({
 import { listConnections } from './connectionsService';
 
 describe('connectionsService mock connections', () => {
+  beforeEach(() => {
+    isMockModeMock.isMockMode = () => true;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('isolates client inventories by the required NameServer address', async () => {
     const production = await listConnections({ namesrvAddr: '10.101.2.1:9876' });
     const preproduction = await listConnections({ namesrvAddr: '10.102.5.1:9876' });
@@ -94,5 +104,100 @@ describe('connectionsService mock connections', () => {
     expect(padded.every((connection) => connection.clusterName === 'ns-prod')).toBe(true);
     expect(padded.every((connection) => connection.type === 'Consumer')).toBe(true);
     expect(blank).not.toHaveLength(0);
+  });
+
+  it('accepts a padded NameServer address before resolving the owning cluster', async () => {
+    const padded = await listConnections({ namesrvAddr: '  10.102.5.1:9876  ' });
+
+    expect(padded).not.toHaveLength(0);
+    expect(padded.every((connection) => connection.clusterName === 'ns-pre')).toBe(true);
+  });
+
+  it('narrows the preproduction inventory when a Producer type filter is supplied', async () => {
+    const producers = await listConnections({
+      namesrvAddr: '10.102.5.1:9876',
+      type: 'Producer',
+    });
+
+    expect(producers).not.toHaveLength(0);
+    expect(producers.every((connection) => connection.clusterName === 'ns-pre')).toBe(true);
+    expect(producers.every((connection) => connection.type === 'Producer')).toBe(true);
+    expect(producers.map((connection) => connection.groupOrTopic)).toEqual(
+      expect.arrayContaining(['metrics-raw', 'binlog-event']),
+    );
+  });
+
+  it('does not mistake a protocol value for a connection type', async () => {
+    const remotingProducers = await listConnections({
+      namesrvAddr: '10.101.2.1:9876',
+      type: 'Remoting',
+    });
+
+    expect(remotingProducers).toEqual([]);
+    const actual = await listConnections({
+      namesrvAddr: '10.101.2.1:9876',
+      type: 'Producer',
+    });
+    expect(actual.some((connection) => connection.protocol === 'Remoting')).toBe(true);
+  });
+
+  it('delegates to the api in real mode when mock data mode is disabled', async () => {
+    isMockModeMock.isMockMode = () => false;
+    const remoteConnection: connApi.ClientConnection = {
+      clientId: 'remote-0@10.200.1.1:6000',
+      type: 'Consumer',
+      groupOrTopic: 'cg-remote-sync',
+      protocol: 'gRPC',
+      address: '10.200.1.1:6000',
+      language: 'Java',
+      version: '5.0.7',
+      connectedAt: '2026-07-02 09:00:00',
+      clusterName: 'ns-prod',
+    };
+    const listSpy = vi
+      .spyOn(connApi, 'listConnections')
+      .mockResolvedValue([remoteConnection]);
+
+    const result = await listConnections({ namesrvAddr: '10.101.2.1:9876' });
+
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(result).toEqual([remoteConnection]);
+  });
+
+  it('forwards the caller query verbatim to the api in real mode', async () => {
+    isMockModeMock.isMockMode = () => false;
+    const params: connApi.ClientConnectionQuery = {
+      namesrvAddr: '10.101.2.1:9876',
+      clusterId: 'ns-prod',
+      type: 'Producer',
+    };
+    const listSpy = vi.spyOn(connApi, 'listConnections').mockResolvedValue([]);
+
+    await listConnections(params);
+
+    expect(listSpy).toHaveBeenCalledWith(params);
+  });
+
+  it('surfaces api results for a NameServer the mock inventory has never seen', async () => {
+    isMockModeMock.isMockMode = () => false;
+    const remoteConnection: connApi.ClientConnection = {
+      clientId: 'isolated-0@10.210.9.9:7000',
+      type: 'Consumer',
+      groupOrTopic: 'cg-isolated',
+      protocol: 'gRPC',
+      address: '10.210.9.9:7000',
+      language: 'Go',
+      version: '5.0.3',
+      connectedAt: '2026-07-02 10:00:00',
+      clusterName: 'ns-edge',
+    };
+    const listSpy = vi
+      .spyOn(connApi, 'listConnections')
+      .mockResolvedValue([remoteConnection]);
+
+    const result = await listConnections({ namesrvAddr: '10.103.9.1:9876' });
+
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(result).toEqual([remoteConnection]);
   });
 });
