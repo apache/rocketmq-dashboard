@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { buildLlmFailureResult } from '../llmFailureResult';
-import { fallbackModelOptions } from '../llmModelOptions';
+import { FALLBACK_MODELS, fallbackModelOptions } from '../llmModelOptions';
 
 describe('LlmSettingsPage', () => {
   it('keeps structured LLM failure details for display', () => {
@@ -48,6 +48,25 @@ describe('LlmSettingsPage', () => {
     });
   });
 
+  it('falls back to the default message when the backend error text is empty', () => {
+    expect(
+      buildLlmFailureResult(
+        {
+          status: 1,
+          errMsg: '',
+          code: 'llm.provider.timeout',
+          hint: 'Retry in a moment',
+        },
+        'Connection test failed',
+      ),
+    ).toEqual({
+      success: false,
+      msg: 'Connection test failed',
+      code: 'llm.provider.timeout',
+      hint: 'Retry in a moment',
+    });
+  });
+
   it('keeps provider fallback models available before config is saved', () => {
     expect(fallbackModelOptions('openai')).toEqual([
       { value: 'gpt-5.6-sol', label: 'gpt-5.6-sol' },
@@ -60,5 +79,17 @@ describe('LlmSettingsPage', () => {
     expect(fallbackModelOptions('custom', 'custom-model')).toEqual([
       { value: 'custom-model', label: 'custom-model' },
     ]);
+  });
+
+  it('returns no options for an unknown provider without a current model', () => {
+    expect(fallbackModelOptions('custom')).toEqual([]);
+  });
+
+  it('exposes every provider catalog entry as options', () => {
+    for (const [provider, models] of Object.entries(FALLBACK_MODELS)) {
+      const options = fallbackModelOptions(provider);
+      expect(options.map((option) => option.value)).toEqual(models);
+      expect(options.every((option) => option.value === option.label)).toBe(true);
+    }
   });
 });
