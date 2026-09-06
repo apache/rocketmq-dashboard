@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditConstants.ResourceType;
 import org.apache.rocketmq.studio.audit.OperationAuditConstants.Result;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -454,12 +455,16 @@ public class MetadataService {
         for (ConsumerGroupVO group : groups) {
             CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
                     toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
-                    group.getOnlineInstances(), group.getTotalLag(), group.getDelaySeconds(),
+                    group.getOnlineInstances(), lagText(group.getTotalLag()), group.getDelaySeconds(),
                     group.getSubscriptionDataType(), group.getDeliveryOrderType(), group.getRetryMaxTimes(),
                     String.join(";", group.getSubscribedTopics() == null ? List.of() : group.getSubscribedTopics()),
                     group.getGmtCreate(), group.getGmtModified());
         }
         return csv.toString();
+    }
+
+    private static String lagText(long totalLag) {
+        return totalLag == ConsumerLagResolver.UNKNOWN ? "unknown" : String.valueOf(totalLag);
     }
 
     private String toText(Object value) {

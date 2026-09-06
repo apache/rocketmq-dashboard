@@ -330,18 +330,23 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 return;
             }
             long totalLag = 0;
+            boolean lagUnknown = false;
             long newestConsumedTimestamp = 0;
             for (OffsetWrapper wrapper : stats.getOffsetTable().values()) {
-                long diff = wrapper.getBrokerOffset() - wrapper.getConsumerOffset();
-                if (diff > 0) {
-                    totalLag += diff;
+                long queueDiff = resolveDiff(wrapper.getBrokerOffset(), wrapper.getConsumerOffset());
+                if (queueDiff == ConsumerLagResolver.UNKNOWN) {
+                    // a queue with the -1 sentinel (5.0 gRPC consumers) must not be summed
+                    // away as zero lag; report the whole total as unknown instead
+                    lagUnknown = true;
+                } else {
+                    totalLag += queueDiff;
                 }
                 long lastTimestamp = wrapper.getLastTimestamp();
                 if (lastTimestamp > newestConsumedTimestamp) {
                     newestConsumedTimestamp = lastTimestamp;
                 }
             }
-            vo.setTotalLag(totalLag);
+            vo.setTotalLag(lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag);
             if (newestConsumedTimestamp > 0) {
                 long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 vo.setDelaySeconds((int) Math.max(delaySeconds, 0));

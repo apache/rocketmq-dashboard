@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -126,6 +127,27 @@ class ApacheRocketMqBusinessMetricsCollectorTest {
             assertThat(sample.labels()).containsEntry("consumerGroup", "orders");
             assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_STATS_UNAVAILABLE");
         });
+    }
+
+    @Test
+    void reportsUnavailableTotalLagWhenSentinelUnknownTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO orders = group("orders", "cluster-a", ConsumerLagResolver.UNKNOWN);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(orders));
+        when(provider.getGroupProgress("local", "orders")).thenReturn(List.of(QueueProgressVO.builder()
+                .topic("orders-topic").diffTotal(17).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqBusinessMetricsCollector(registry).collect(apacheInstance());
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.CONSUMER_LAG_TOTAL))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_LAG_UNKNOWN");
+                });
     }
 
     private static ConsumerGroupVO group(String name, String clusterId, long lag) {
