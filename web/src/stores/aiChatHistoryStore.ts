@@ -60,6 +60,7 @@ interface AiChatHistoryState {
     conversationId: string,
     messages: AiChatMessage[] | ((messages: AiChatMessage[]) => AiChatMessage[]),
   ) => void;
+  deleteConversation: (mode: AiChatDataMode, conversationId: string) => void;
   clearHistories: () => void;
 }
 
@@ -276,6 +277,23 @@ export const useAiChatHistoryStore = create<AiChatHistoryState>()(
             histories: {
               ...state.histories,
               [mode]: nextHistory,
+            },
+          };
+        }),
+      deleteConversation: (mode, conversationId) =>
+        set((state) => {
+          const history = state.histories[mode];
+          const conversations = history.conversations.filter((item) => item.id !== conversationId);
+          return {
+            histories: {
+              ...state.histories,
+              [mode]: {
+                conversations,
+                activeConversationId:
+                  history.activeConversationId === conversationId
+                    ? (conversations[0]?.id ?? null)
+                    : history.activeConversationId,
+              },
             },
           };
         }),

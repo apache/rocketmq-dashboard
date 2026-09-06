@@ -536,4 +536,92 @@ describe('AiPage tool runner', () => {
     expect(await screen.findByText('工具参数必须是有效的 JSON 对象')).toBeInTheDocument();
     expect(executeTool).not.toHaveBeenCalled();
   });
+
+  it('deletes a previous conversation from the history drawer without touching the active one', async () => {
+    const now = Date.now();
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'active',
+              messages: [{ id: 'active-message', role: 'user', text: 'Active conversation' }],
+              updatedAt: now,
+            },
+            {
+              id: 'previous',
+              messages: [{ id: 'previous-message', role: 'user', text: 'Previous conversation' }],
+              updatedAt: now - 5 * 60_000,
+            },
+          ],
+          activeConversationId: 'active',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'AI 对话历史' }));
+    const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
+    const previousRowDelete = within(historyDrawer)
+      .getAllByRole('button', { name: /删除对话/ })
+      .find((button) => button.closest('div')?.textContent?.includes('Previous conversation'))!;
+    await user.click(previousRowDelete);
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() =>
+      expect(
+        useAiChatHistoryStore
+          .getState()
+          .histories.real.conversations.map((conversation) => conversation.id),
+      ).toEqual(['active']),
+    );
+    expect(useAiChatHistoryStore.getState().histories.real.activeConversationId).toBe('active');
+    expect(within(historyDrawer).queryByText('Previous conversation')).not.toBeInTheDocument();
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
+  it('selects the next remaining conversation after deleting the active one', async () => {
+    const now = Date.now();
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'active',
+              messages: [{ id: 'active-message', role: 'user', text: 'Active conversation' }],
+              updatedAt: now,
+            },
+            {
+              id: 'previous',
+              messages: [{ id: 'previous-message', role: 'user', text: 'Previous conversation' }],
+              updatedAt: now - 5 * 60_000,
+            },
+          ],
+          activeConversationId: 'active',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'AI 对话历史' }));
+    const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
+    const activeRowDelete = within(historyDrawer)
+      .getAllByRole('button', { name: /删除对话/ })
+      .find((button) => button.closest('div')?.textContent?.includes('Active conversation'))!;
+    await user.click(activeRowDelete);
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() =>
+      expect(useAiChatHistoryStore.getState().histories.real.activeConversationId).toBe('previous'),
+    );
+    expect(within(historyDrawer).queryByText('Active conversation')).not.toBeInTheDocument();
+    expect(
+      within(historyDrawer).getByRole('button', { name: /^Previous conversation/ }),
+    ).toBeInTheDocument();
+    expect(chatStream).not.toHaveBeenCalled();
+  });
 });

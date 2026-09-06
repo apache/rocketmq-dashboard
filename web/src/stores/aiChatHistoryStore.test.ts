@@ -202,4 +202,51 @@ describe('aiChatHistoryStore', () => {
 
     expect(recent).toEqual([expect.objectContaining({ id: 'prompt', prompt: 'Inspect lag' })]);
   });
+
+  it('deletes one conversation and keeps the other mode untouched', async () => {
+    vi.useFakeTimers();
+    const store = await loadStore();
+    const { flushAiChatHistoryPersistence } = await import('./aiChatHistoryStore');
+    store.getState().startConversation('real', 'real-1');
+    store.getState().setMessages('real', 'real-1', [{ id: 'r1', role: 'user', text: 'First' }]);
+    store.getState().startConversation('real', 'real-2');
+    store.getState().setMessages('real', 'real-2', [{ id: 'r2', role: 'user', text: 'Second' }]);
+    store.getState().startConversation('mock', 'mock-1');
+    store.getState().setMessages('mock', 'mock-1', [{ id: 'm1', role: 'user', text: 'Mock' }]);
+
+    store.getState().deleteConversation('real', 'real-2');
+    flushAiChatHistoryPersistence();
+
+    expect(store.getState().histories.real.conversations.map((item) => item.id)).toEqual([
+      'real-1',
+    ]);
+    expect(store.getState().histories.mock.conversations).toHaveLength(1);
+    expect(sessionStorage.getItem(STORAGE_KEY)).not.toContain('Second');
+  });
+
+  it('selects the next remaining conversation when the active one is deleted', async () => {
+    const store = await loadStore();
+    store.getState().startConversation('real', 'real-1');
+    store.getState().startConversation('real', 'real-2');
+
+    expect(store.getState().histories.real.activeConversationId).toBe('real-2');
+    store.getState().deleteConversation('real', 'real-2');
+
+    expect(store.getState().histories.real.activeConversationId).toBe('real-1');
+
+    store.getState().deleteConversation('real', 'real-1');
+
+    expect(store.getState().histories.real.conversations).toEqual([]);
+    expect(store.getState().histories.real.activeConversationId).toBeNull();
+  });
+
+  it('keeps the active selection when a non-active conversation is deleted', async () => {
+    const store = await loadStore();
+    store.getState().startConversation('real', 'real-1');
+    store.getState().startConversation('real', 'real-2');
+
+    store.getState().deleteConversation('real', 'real-1');
+
+    expect(store.getState().histories.real.activeConversationId).toBe('real-2');
+  });
 });
