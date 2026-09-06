@@ -1409,6 +1409,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '云凭据加载失败，请稍后重试',
     en: 'Failed to load cloud credentials. Please try again later.',
   },
+  'settings.credentialExportFailed': {
+    zh: '导出云凭据失败，请稍后重试',
+    en: 'Failed to export cloud credentials. Please try again later.',
+  },
   'settings.credentialUpdated': { zh: '云凭据已更新', en: 'Cloud credential updated' },
   'settings.credentialAdded': { zh: '云凭据已添加', en: 'Cloud credential added' },
   'settings.credentialSaveFailed': {
