@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.cluster.metrics.MetricProfileService;
+import org.apache.rocketmq.studio.cluster.metrics.SemanticMetric;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
@@ -46,6 +48,11 @@ public class AlertService {
 
     private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
     private static final Pattern METRIC_NAME_PATTERN = Pattern.compile("^[a-zA-Z_:][a-zA-Z0-9_:]*$");
+    // Native Studio metric names that have a rocketmq-exporter equivalent, mapped to the semantic
+    // metric whose profile-specific prometheus name MetricProfileService resolves at export time
+    // (so a 4.x deployment exports rocketmq_message_accumulation, not a hardcoded 5.x name).
+    private static final Map<String, String> NATIVE_METRIC_SEMANTIC = Map.of(
+            "consumer.lag.total", SemanticMetric.CONSUMER_LAG_MESSAGES.getKey());
     private static final Pattern DURATION_PATTERN = Pattern.compile(
             "^" + AlertRuleRequestDTO.PROMETHEUS_DURATION_REGEXP + "$");
 
@@ -53,6 +60,7 @@ public class AlertService {
     private final AlertStateRepository alertStateRepository;
     private final AlertRuleAssetService alertRuleAssetService;
     private final OperationAuditService operationAuditService;
+    private final MetricProfileService metricProfileService;
 
 
     public List<AlertRuleVO> listRules() {
@@ -94,37 +102,56 @@ public class AlertService {
                 .filter(AlertRuleVO::isEnabled)
                 .filter(rule -> resolveDomain(rule) == AlertDomain.BUSINESS)
                 .toList();
-        List<PrometheusAlertRule> prometheusRules = rules.isEmpty()
-                ? defaultPrometheusRules()
-                : rules.stream().map(this::toPrometheusRule).toList();
+        List<PrometheusAlertRule> prometheusRules = new ArrayList<>();
+        List<String> skippedRuleNotes = new ArrayList<>();
+        if (rules.isEmpty()) {
+            prometheusRules.addAll(defaultPrometheusRules());
+        } else {
+            for (AlertRuleVO rule : rules) {
+                if (isUnexportableNativeMetric(rule.getMetric())) {
+                    skippedRuleNotes.add("Skipped \"" + sanitizeCommentText(rule.getName()) + "\": native metric '"
+                            + rule.getMetric().trim() + "' has no equivalent in the rocketmq-exporter metric set");
+                    continue;
+                }
+                prometheusRules.add(toPrometheusRule(rule));
+            }
+        }
 
         StringBuilder yaml = new StringBuilder();
-        yaml.append("groups:\n");
-        int index = 1;
-        // Prometheus requires each group name to be unique, so rules sharing a group must be
-        // emitted under a single "  - name:" block instead of one block per rule.
-        Map<String, List<PrometheusAlertRule>> rulesByGroup = new LinkedHashMap<>();
-        for (PrometheusAlertRule rule : prometheusRules) {
-            rulesByGroup.computeIfAbsent(rule.group(), key -> new ArrayList<>()).add(rule);
-        }
-        for (Map.Entry<String, List<PrometheusAlertRule>> group : rulesByGroup.entrySet()) {
-            yaml.append("  - name: ").append(group.getKey()).append('\n');
-            yaml.append("    rules:\n");
-            Set<String> usedAlertNames = new HashSet<>();
-            for (PrometheusAlertRule rule : group.getValue()) {
-                String uniqueAlertName = ensureUniqueAlertName(rule.alert(), usedAlertNames);
-                yaml.append("      # Rule ").append(index++).append(": ").append(uniqueAlertName).append('\n');
-                yaml.append("      - alert: ").append(uniqueAlertName).append('\n');
-                yaml.append("        expr: ").append(rule.expr()).append('\n');
-                yaml.append("        for: ").append(rule.duration()).append('\n');
-                yaml.append("        labels:\n");
-                yaml.append("          severity: ").append(rule.severity()).append('\n');
-                yaml.append("          team: ").append(rule.team()).append('\n');
-                yaml.append("        annotations:\n");
-                yaml.append("          summary: \"").append(escapeDoubleQuotedValue(rule.summary())).append("\"\n");
-                yaml.append("          description: \"").append(escapeDoubleQuotedValue(rule.description()))
-                        .append("\"\n");
+        if (prometheusRules.isEmpty()) {
+            // keep the file loadable when every enabled business rule uses a native-only metric
+            yaml.append("groups: []\n");
+        } else {
+            yaml.append("groups:\n");
+            int index = 1;
+            // Prometheus requires each group name to be unique, so rules sharing a group must be
+            // emitted under a single "  - name:" block instead of one block per rule.
+            Map<String, List<PrometheusAlertRule>> rulesByGroup = new LinkedHashMap<>();
+            for (PrometheusAlertRule rule : prometheusRules) {
+                rulesByGroup.computeIfAbsent(rule.group(), key -> new ArrayList<>()).add(rule);
             }
+            for (Map.Entry<String, List<PrometheusAlertRule>> group : rulesByGroup.entrySet()) {
+                yaml.append("  - name: ").append(group.getKey()).append('\n');
+                yaml.append("    rules:\n");
+                Set<String> usedAlertNames = new HashSet<>();
+                for (PrometheusAlertRule rule : group.getValue()) {
+                    String uniqueAlertName = ensureUniqueAlertName(rule.alert(), usedAlertNames);
+                    yaml.append("      # Rule ").append(index++).append(": ").append(uniqueAlertName).append('\n');
+                    yaml.append("      - alert: ").append(uniqueAlertName).append('\n');
+                    yaml.append("        expr: ").append(rule.expr()).append('\n');
+                    yaml.append("        for: ").append(rule.duration()).append('\n');
+                    yaml.append("        labels:\n");
+                    yaml.append("          severity: ").append(rule.severity()).append('\n');
+                    yaml.append("          team: ").append(rule.team()).append('\n');
+                    yaml.append("        annotations:\n");
+                    yaml.append("          summary: \"").append(escapeDoubleQuotedValue(rule.summary())).append("\"\n");
+                    yaml.append("          description: \"").append(escapeDoubleQuotedValue(rule.description()))
+                            .append("\"\n");
+                }
+            }
+        }
+        for (String note : skippedRuleNotes) {
+            yaml.append("# ").append(note).append('\n');
         }
         return yaml.toString();
     }
@@ -636,7 +663,30 @@ public class AlertService {
 
     private String validateMetric(String metric) {
         String normalized = hasText(metric) ? metric.trim() : "rocketmq_consumer_lag_messages";
+        String semantic = NATIVE_METRIC_SEMANTIC.get(normalized);
+        if (semantic != null) {
+            // Resolve the exporter name from the active metric profile instead of a hardcoded 5.x
+            // name, so a 4.x deployment exports rocketmq_message_accumulation for consumer lag.
+            return metricProfileService.resolveCurrentPrometheusMetric(semantic)
+                    .orElse("rocketmq_consumer_lag_messages");
+        }
         return METRIC_NAME_PATTERN.matcher(normalized).matches() ? normalized : "rocketmq_consumer_lag_messages";
+    }
+
+    private boolean isUnexportableNativeMetric(String metric) {
+        if (!hasText(metric)) {
+            return false;
+        }
+        String normalized = metric.trim();
+        if (!NativeAlertRulePolicy.isNativeMetric(normalized)) {
+            return false;
+        }
+        String semantic = NATIVE_METRIC_SEMANTIC.get(normalized);
+        return semantic == null || metricProfileService.resolveCurrentPrometheusMetric(semantic).isEmpty();
+    }
+
+    private String sanitizeCommentText(String value) {
+        return value == null ? "" : value.replaceAll("[\\r\\n]", " ");
     }
 
     private String validateOperator(String operator) {
