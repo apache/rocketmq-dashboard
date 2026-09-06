@@ -129,10 +129,14 @@ public class QueryHistoryService {
     }
 
     /**
-     * Retrieves the stored result snapshot for a given history record.
+     * Retrieves the stored result snapshot for a given history record. Reads are scoped to
+     * the authenticated owner, like every other query-history read, so a record id alone
+     * does not expose another user's stored snapshot (404 for missing *or* foreign rows).
      */
     public List<MessageRecordVO> getMessageQueryResults(long id) {
-        RmqMessageQuery query = messageQueryMapper.selectById(id);
+        RmqMessageQuery query = messageQueryMapper.selectOne(new QueryWrapper<RmqMessageQuery>()
+                .eq("id", id)
+                .eq("queried_by", AuthenticatedUserContext.currentUsernameOrSystem()));
         if (query == null) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Query history record not found");
         }

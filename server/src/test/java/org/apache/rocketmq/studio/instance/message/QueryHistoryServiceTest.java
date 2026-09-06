@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
@@ -36,6 +37,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -265,6 +267,42 @@ class QueryHistoryServiceTest {
         verify(traceQueryMapper).selectCount(traceCountCaptor.capture());
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
+    }
+
+    @Test
+    void getMessageQueryResultsHidesRecordsOwnedByOtherUsers() {
+        AuthenticatedUserContext.setUsername("alice");
+        RmqMessageQuery foreign = messageQuery(7L);
+        foreign.setQueriedBy("bob");
+        foreign.setResultSnapshot("[{\"msgId\":\"m-1\",\"topic\":\"orders\"}]");
+        // The current implementation reads the row by id only; the scoped read filters it
+        // out in the database, which the selectOne stub mimics (no row passes the filter).
+        when(messageQueryMapper.selectById(7L)).thenReturn(foreign);
+        when(messageQueryMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        assertThatThrownBy(() -> service.getMessageQueryResults(7L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Query history record not found")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void getMessageQueryResultsScopesTheReadToTheAuthenticatedOwner() {
+        AuthenticatedUserContext.setUsername("alice");
+        RmqMessageQuery owned = messageQuery(11L);
+        owned.setQueriedBy("alice");
+        owned.setResultSnapshot("[{\"msgId\":\"m-1\",\"topic\":\"orders\"}]");
+        when(messageQueryMapper.selectOne(any(Wrapper.class))).thenReturn(owned);
+
+        List<MessageRecordVO> results = service.getMessageQueryResults(11L);
+
+        assertThat(results).singleElement().satisfies(record -> {
+            assertThat(record.getMsgId()).isEqualTo("m-1");
+            assertThat(record.getTopic()).isEqualTo("orders");
+        });
+        ArgumentCaptor<Wrapper<RmqMessageQuery>> wrapperCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(messageQueryMapper).selectOne(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
 
     private static RmqMessageQuery messageQuery(Long id) {
