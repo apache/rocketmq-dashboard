@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getAuthStatus, login, logout } from './auth';
+import { changePassword, getAuthStatus, login, logout } from './auth';
 
 const mock = new MockAdapter(client);
 
@@ -85,5 +85,31 @@ describe('Auth API', () => {
     mock.onPost('/auth/logout').reply(500);
 
     await expect(logout()).rejects.toThrow();
+  });
+
+  it('status should report an unauthenticated session without a user', async () => {
+    const authStatus = { loginRequired: true, authenticated: false };
+    mock.onGet('/auth/status').reply(200, { code: 200, data: authStatus });
+
+    await expect(getAuthStatus()).resolves.toEqual(authStatus);
+    await expect(getAuthStatus()).resolves.not.toHaveProperty('user');
+  });
+
+  it('change password should post the current and new credentials', async () => {
+    mock.onPost('/auth/password').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        currentPassword: 'old-secret',
+        newPassword: 'new-secret',
+      });
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(changePassword('old-secret', 'new-secret')).resolves.toBeUndefined();
+  });
+
+  it('change password should surface a wrong-current-password failure', async () => {
+    mock.onPost('/auth/password').reply(400, { message: 'Current password is incorrect' });
+
+    await expect(changePassword('wrong', 'new-secret')).rejects.toThrow();
   });
 });
