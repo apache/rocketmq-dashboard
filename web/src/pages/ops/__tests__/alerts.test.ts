@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { attachThresholdUnit } from '../alertRulePayload';
+import { attachThresholdUnit, normalizeDuration, normalizeMetric } from '../alertRulePayload';
 
 describe('attachThresholdUnit', () => {
   it('derives the threshold unit from the selected metric', () => {
@@ -50,5 +50,73 @@ describe('attachThresholdUnit', () => {
         thresholdUnit: '%',
       },
     );
+  });
+
+  it('keeps an unknown metric and resolves its unit to an empty string', () => {
+    expect(attachThresholdUnit({ metric: 'rocketmq_custom_metric', threshold: 7 })).toEqual({
+      metric: 'rocketmq_custom_metric',
+      threshold: 7,
+      thresholdUnit: '',
+    });
+  });
+
+  it('attaches the unit for every known metric family', () => {
+    expect(attachThresholdUnit({ metric: 'rocketmq_disk_use_ratio', threshold: 80 }).thresholdUnit).toBe('%');
+    expect(attachThresholdUnit({ metric: 'rocketmq_tps', threshold: 10 }).thresholdUnit).toBe('TPS');
+    expect(
+      attachThresholdUnit({ metric: 'rocketmq_proxy_connections', threshold: 3 }).thresholdUnit,
+    ).toBe('个');
+  });
+
+  it('normalizes a legacy metric but leaves a legacy duration untouched', () => {
+    expect(
+      attachThresholdUnit({ metric: 'TPS 异常', duration: '10分钟', threshold: 50 }),
+    ).toEqual({
+      metric: 'rocketmq_tps',
+      duration: '10分钟',
+      threshold: 50,
+      thresholdUnit: 'TPS',
+    });
+  });
+
+  it('normalizes every known legacy duration label', () => {
+    expect(attachThresholdUnit({ metric: '消费堆积量', duration: '1分钟', threshold: 1 })).toEqual({
+      metric: 'rocketmq_consumer_lag_messages',
+      duration: '1m',
+      threshold: 1,
+      thresholdUnit: '条',
+    });
+    expect(attachThresholdUnit({ metric: '消费堆积量', duration: '15分钟', threshold: 1 })).toEqual({
+      metric: 'rocketmq_consumer_lag_messages',
+      duration: '15m',
+      threshold: 1,
+      thresholdUnit: '条',
+    });
+    expect(attachThresholdUnit({ metric: '消费堆积量', duration: '30分钟', threshold: 1 })).toEqual({
+      metric: 'rocketmq_consumer_lag_messages',
+      duration: '30m',
+      threshold: 1,
+      thresholdUnit: '条',
+    });
+  });
+
+  it('omits the duration field when the payload carries none', () => {
+    const payload = attachThresholdUnit({ metric: 'rocketmq_broker_offline', threshold: 2 });
+    expect(payload).not.toHaveProperty('duration');
+  });
+});
+
+describe('normalizeMetric and normalizeDuration', () => {
+  it('passes non-legacy values through unchanged', () => {
+    expect(normalizeMetric('rocketmq_unknown_metric')).toBe('rocketmq_unknown_metric');
+    expect(normalizeDuration('9分钟')).toBe('9分钟');
+    expect(normalizeDuration('')).toBe('');
+  });
+
+  it('maps every legacy metric label to its backend key', () => {
+    expect(normalizeMetric('消费堆积量')).toBe('rocketmq_consumer_lag_messages');
+    expect(normalizeMetric('磁盘使用率')).toBe('rocketmq_disk_use_ratio');
+    expect(normalizeMetric('Broker 离线')).toBe('rocketmq_broker_offline');
+    expect(normalizeMetric('Proxy 连接数')).toBe('rocketmq_proxy_connections');
   });
 });
