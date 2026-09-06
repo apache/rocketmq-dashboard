@@ -74,6 +74,23 @@ class RocketMQClusterProviderTest {
     }
 
     @Test
+    void discoverClustersShouldReadLegacy4xBrokerOutboundTpsKey() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        KVTable runtime = runtimeStats("  12.7   10.0  9.0", null);
+        runtime.getTable().put("getTransferedTps", "34.2 30.0 29.0");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters).hasSize(1);
+        assertThat(clusters.get(0).getBrokers().get(0).getTpsIn()).isEqualTo(10);
+        assertThat(clusters.get(0).getBrokers().get(0).getTpsOut()).isEqualTo(30);
+    }
+
+    @Test
     void discoverClustersShouldConvertDiskRatioToPercentage() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = newProvider(adminExt);
