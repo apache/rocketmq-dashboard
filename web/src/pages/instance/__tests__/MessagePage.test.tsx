@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -317,5 +317,43 @@ describe('Message page query history', () => {
     await user.click(screen.getAllByRole('combobox')[1]);
 
     expect(screen.queryByText('order-create')).not.toBeInTheDocument();
+  });
+
+  it('paginates against the committed query instead of live form inputs', async () => {
+    messageServiceMocks.queryMessages.mockResolvedValue(
+      Array.from({ length: 60 }, (_, index) => createMessage(`m-${index}`)),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    await waitFor(() => {
+      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith(
+        expect.objectContaining({ topic: 'order-create' }),
+      );
+    });
+
+    // Edit the form without re-running the query.
+    await user.click(screen.getAllByRole('combobox')[1]);
+    const visibleOption = (await screen.findAllByText('payment-callback'))
+      .map((element) => element.closest('.ant-select-item-option'))
+      .find(
+        (element): element is HTMLElement =>
+          element instanceof HTMLElement &&
+          element.closest('.ant-select-dropdown:not(.ant-select-dropdown-hidden)') !== null,
+      );
+    if (!visibleOption) throw new Error('Visible topic option not found');
+    fireEvent.click(visibleOption);
+
+    const secondPage = document.querySelector('.ant-pagination-item-2') as HTMLElement | null;
+    if (!secondPage) throw new Error('Pagination page 2 not found');
+    await user.click(secondPage);
+    await waitFor(() => {
+      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith(
+        expect.objectContaining({ topic: 'order-create' }),
+      );
+    });
   });
 });
