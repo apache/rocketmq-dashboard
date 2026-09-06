@@ -16,11 +16,33 @@
  */
 package org.apache.rocketmq.studio.settings;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DataSourceTestDTOTest {
+
+    private static ValidatorFactory validatorFactory;
+    private static Validator validator;
+
+    @BeforeAll
+    static void setUpValidator() {
+        validatorFactory = Validation.buildDefaultValidatorFactory();
+        validator = validatorFactory.getValidator();
+    }
+
+    @AfterAll
+    static void closeValidator() {
+        validatorFactory.close();
+    }
 
     @Test
     void toStringShouldNotExposeCredentials() {
@@ -36,8 +58,38 @@ class DataSourceTestDTOTest {
         String value = request.toString();
 
         assertThat(value).contains("url=http://prometheus:9090");
+        assertThat(value).contains("type=prometheus");
+        assertThat(value).contains("auth=bearer token");
         assertThat(value).contains("username=prometheus-user");
         assertThat(value).doesNotContain("plain-password");
         assertThat(value).doesNotContain("plain-token");
+    }
+
+    @Test
+    void shouldRejectMissingUrlAndType() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder().build();
+
+        Set<String> messages = validator.validate(request).stream()
+                .map(violation -> violation.getMessage())
+                .collect(Collectors.toSet());
+
+        assertThat(messages).contains("url is required", "type is required");
+    }
+
+    @Test
+    void shouldAcceptBasicAuthCredentialsWithoutBearerToken() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("http://prometheus:9090")
+                .type("prometheus")
+                .auth("basic auth")
+                .username("ops")
+                .password("pw")
+                .build();
+
+        String value = request.toString();
+
+        assertThat(value).contains("username=ops");
+        assertThat(value).doesNotContain("pw");
+        assertThat(value).doesNotContain("bearerToken");
     }
 }
