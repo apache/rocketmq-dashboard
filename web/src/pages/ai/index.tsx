@@ -37,6 +37,7 @@ import {
   Alert,
   Input,
   Modal,
+  Popconfirm,
   Space,
   theme,
   message,
@@ -49,6 +50,7 @@ import {
   Sparkle,
   Stop,
 } from '@phosphor-icons/react';
+import { Trash } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
 import { AiStreamError, chatStream, executeTool, listTools, type McpTool } from '../../api/ai';
@@ -462,6 +464,7 @@ const AiPage = () => {
   const updateMessages = useAiChatHistoryStore((state) => state.setMessages);
   const startConversation = useAiChatHistoryStore((state) => state.startConversation);
   const selectConversation = useAiChatHistoryStore((state) => state.selectConversation);
+  const deleteConversation = useAiChatHistoryStore((state) => state.deleteConversation);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -784,6 +787,15 @@ const AiPage = () => {
     selectConversation(chatMode, conversationId);
     conversationIdRef.current = conversationId;
     setHistoryOpen(false);
+  };
+
+  const handleConversationDelete = (conversationId: string) => {
+    deleteConversation(chatMode, conversationId);
+    if (conversationIdRef.current === conversationId) {
+      const nextActiveId =
+        useAiChatHistoryStore.getState().histories[chatMode].activeConversationId;
+      conversationIdRef.current = nextActiveId;
+    }
   };
 
   const selectTool = useCallback(
@@ -1165,41 +1177,67 @@ const AiPage = () => {
         ) : (
           <div className="flex flex-col gap-2">
             {recentConversations.map((conversation) => (
-              <button
+              <div
                 key={conversation.id}
-                type="button"
-                onClick={() => handleConversationSelect(conversation.id)}
-                className={`w-full rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                className={`flex w-full items-center gap-1 rounded-md border px-3 py-2 text-sm transition-colors ${
                   conversation.id === history.activeConversationId
                     ? 'border-blue-400 bg-blue-50 text-blue-700'
                     : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50'
                 }`}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {conversation.prompt}
+                <button
+                  type="button"
+                  onClick={() => handleConversationSelect(conversation.id)}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        textAlign: 'left',
+                      }}
+                    >
+                      {conversation.prompt}
+                    </span>
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        color: token.colorTextSecondary,
+                        fontSize: 14,
+                        fontWeight: 500,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {formatRelativeTime(conversation.updatedAt, lang, t)}
+                    </span>
                   </span>
-                  <span
-                    style={{
-                      flexShrink: 0,
-                      color: token.colorTextSecondary,
-                      fontSize: 14,
-                      fontWeight: 500,
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {formatRelativeTime(conversation.updatedAt, lang, t)}
-                  </span>
-                </span>
-              </button>
+                </button>
+                <Popconfirm
+                  title="删除这条对话？"
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => handleConversationDelete(conversation.id)}
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<Trash size={16} />}
+                    aria-label="删除对话"
+                  />
+                </Popconfirm>
+              </div>
             ))}
           </div>
         )}
