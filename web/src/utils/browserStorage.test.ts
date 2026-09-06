@@ -15,15 +15,43 @@
  * limitations under the License.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readLocalStorage, removeLocalStorage, writeLocalStorage } from './browserStorage';
 
 describe('browserStorage', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
   it('reads, writes and removes available storage', () => {
     expect(writeLocalStorage('key', 'value')).toBe(true);
     expect(readLocalStorage('key')).toBe('value');
     expect(removeLocalStorage('key')).toBe(true);
     expect(readLocalStorage('key')).toBeNull();
+  });
+
+  it('round-trips an empty string value as stored, not as absent', () => {
+    expect(writeLocalStorage('flag', '')).toBe(true);
+    expect(readLocalStorage('flag')).toBe('');
+    expect(writeLocalStorage('flag', 'false')).toBe(true);
+    expect(readLocalStorage('flag')).toBe('false');
+  });
+
+  it('keeps keys isolated from each other', () => {
+    writeLocalStorage('alpha', 'first');
+    writeLocalStorage('beta', 'second');
+    expect(readLocalStorage('alpha')).toBe('first');
+    expect(readLocalStorage('beta')).toBe('second');
+    removeLocalStorage('alpha');
+    expect(readLocalStorage('alpha')).toBeNull();
+    expect(readLocalStorage('beta')).toBe('second');
+  });
+
+  it('removing an absent key is a successful no-op', () => {
+    expect(removeLocalStorage('never-written')).toBe(true);
+    expect(removeLocalStorage('never-written')).toBe(true);
   });
 
   it('returns safe fallbacks when storage operations throw', () => {
@@ -36,6 +64,34 @@ describe('browserStorage', () => {
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
       throw new DOMException('blocked', 'SecurityError');
     });
+
+    expect(readLocalStorage('key')).toBeNull();
+    expect(writeLocalStorage('key', 'value')).toBe(false);
+    expect(removeLocalStorage('key')).toBe(false);
+  });
+
+  it('isolates a failing read from subsequent writes and removes', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+
+    expect(readLocalStorage('key')).toBeNull();
+    expect(writeLocalStorage('key', 'value')).toBe(true);
+    expect(removeLocalStorage('key')).toBe(true);
+  });
+
+  it('treats a quota failure on write as a failed write without masking reads', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+
+    expect(writeLocalStorage('key', 'value')).toBe(false);
+    expect(readLocalStorage('key')).toBeNull();
+    expect(removeLocalStorage('key')).toBe(true);
+  });
+
+  it('falls back safely when the storage global is unavailable', () => {
+    vi.stubGlobal('localStorage', undefined);
 
     expect(readLocalStorage('key')).toBeNull();
     expect(writeLocalStorage('key', 'value')).toBe(false);
