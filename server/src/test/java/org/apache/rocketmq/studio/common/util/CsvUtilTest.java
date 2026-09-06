@@ -35,4 +35,23 @@ class CsvUtilTest {
         assertThat(CsvUtil.toCell("=SUM(A1)")).isEqualTo("\"'=SUM(A1)\"");
         assertThat(CsvUtil.toCell("+cmd")).isEqualTo("\"'+cmd\"");
     }
+
+    @Test
+    void toCellShouldNeutralizeEveryLeadingFormulaCharacterTest() {
+        assertThat(CsvUtil.toCell("-5")).isEqualTo("\"'-5\"");
+        assertThat(CsvUtil.toCell("@at")).isEqualTo("\"'@at\"");
+        assertThat(CsvUtil.toCell("\tindent")).isEqualTo("\"'\tindent\"");
+        assertThat(CsvUtil.toCell("\r\npayload")).isEqualTo("\"'\r\npayload\"");
+    }
+
+    @Test
+    void appendRowShouldJoinCellsAndWriteBareCrlfForEmptyRowsTest() {
+        StringBuilder row = new StringBuilder();
+        CsvUtil.appendRow(row, "a", "b", "c");
+        assertThat(row.toString()).isEqualTo("\"a\",\"b\",\"c\"\r\n");
+
+        StringBuilder empty = new StringBuilder();
+        CsvUtil.appendRow(empty);
+        assertThat(empty.toString()).isEqualTo(CsvUtil.CRLF);
+    }
 }
