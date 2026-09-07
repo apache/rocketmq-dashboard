@@ -92,6 +92,12 @@ const LocationProbe = () => {
   );
 };
 
+const clockText = (timestamp: number) => {
+  const d = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `最近更新 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -259,5 +265,54 @@ describe('DashboardPage', () => {
     expect(
       screen.queryByText('cloud-instance', { selector: '.ant-select-item-option-content' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows the last successful dashboard load time and updates it on refresh', async () => {
+    const user = userEvent.setup();
+    let now = 1_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('instance-a-cluster'));
+      renderWithProviders(<DashboardPage />);
+
+      await screen.findByText('instance-a-cluster');
+      expect(screen.getByText(clockText(now))).toBeInTheDocument();
+
+      now = 2_000;
+      const refreshButton = await screen.findByRole('button', { name: /Refresh/ });
+      await user.click(refreshButton);
+
+      await waitFor(() => {
+        expect(screen.getByText(clockText(now))).toBeInTheDocument();
+      });
+      expect(screen.queryByText(clockText(1_000))).not.toBeInTheDocument();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('keeps the previous load time when a refresh fails', async () => {
+    const user = userEvent.setup();
+    let now = 1_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      vi.mocked(dashboardService.getDashboard)
+        .mockResolvedValueOnce(dashboard('instance-a-cluster'))
+        .mockRejectedValueOnce(new Error('dashboard unavailable'));
+      renderWithProviders(<DashboardPage />);
+
+      await screen.findByText('instance-a-cluster');
+      expect(screen.getByText(clockText(now))).toBeInTheDocument();
+
+      now = 2_000;
+      const refreshButton = await screen.findByRole('button', { name: /Refresh/ });
+      await user.click(refreshButton);
+
+      expect(await screen.findByText('仪表盘加载失败')).toBeInTheDocument();
+      expect(screen.getByText(clockText(1_000))).toBeInTheDocument();
+      expect(screen.queryByText(clockText(2_000))).not.toBeInTheDocument();
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });
