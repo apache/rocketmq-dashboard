@@ -104,7 +104,7 @@ function compareResourceCounts(
    InstancePage
    ═══════════════════════════════════════════ */
 const InstancePage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -503,18 +503,21 @@ const InstancePage = () => {
       ellipsis: { showTitle: false },
       onHeaderCell: () => ({ style: { textAlign: 'left' } }),
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
-      render: (remark: string | null) =>
-        remark ? (
-          <Tooltip title={remark}>
+      render: (remark: string | null, record: Instance) => {
+        const display =
+          lang === 'en' ? (record.enRemark ?? remark) : remark;
+        return display ? (
+          <Tooltip title={display}>
             <Text type="secondary" style={{ fontSize: 14 }}>
-              {remark}
+              {display}
             </Text>
           </Tooltip>
         ) : (
           <Text type="secondary" style={{ fontSize: 14 }}>
             -
           </Text>
-        ),
+        );
+      },
     },
     {
       title: '厂商',
