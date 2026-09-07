@@ -36,6 +36,7 @@ import {
 import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import { DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
@@ -49,6 +50,7 @@ import {
 import { listTencentInstances, listTencentRegions } from '../../api/tencentCatalog';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import {
   createInstance,
   deleteInstance,
@@ -81,6 +83,21 @@ function describeApiError(error: unknown, fallback: string): string {
 }
 
 type InstanceTypeFilter = 'ALL' | Instance['type'];
+
+const INSTANCE_EXPORT_COLUMNS: CsvColumn<Instance>[] = [
+  { header: 'Instance ID', value: (instance) => instance.name },
+  { header: 'Vendor', value: (instance) => instance.vendor ?? 'APACHE' },
+  { header: 'Type', value: (instance) => instance.type },
+  { header: 'Endpoint', value: (instance) => instance.endpoint },
+  { header: 'Region ID', value: (instance) => instance.regionId ?? '' },
+  { header: 'Region Name', value: (instance) => instance.regionName ?? '' },
+  { header: 'Topic Count', value: (instance) => instance.topicCount },
+  { header: 'Consumer Group Count', value: (instance) => instance.consumerGroupCount },
+  { header: 'Counts Available', value: (instance) => instance.resourceCountsAvailable ?? true },
+  { header: 'Remark', value: (instance) => instance.remark ?? '' },
+  { header: 'Created At', value: (instance) => instance.gmtCreate },
+  { header: 'Modified At', value: (instance) => instance.gmtModified },
+];
 
 function compareResourceCounts(
   left: Instance,
@@ -129,6 +146,7 @@ const InstancePage = () => {
   const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
@@ -462,6 +480,23 @@ const InstancePage = () => {
     });
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const query = listQueryRef.current;
+      const exportedInstances = await listInstances(query);
+      downloadCsv(
+        `rocketmq-instances-${new Date().toISOString().slice(0, 10)}.csv`,
+        buildCsv(INSTANCE_EXPORT_COLUMNS, exportedInstances),
+      );
+      message.success(`已导出 ${exportedInstances.length} 个实例`);
+    } catch (error) {
+      message.error(describeApiError(error, '导出实例列表失败，请稍后重试'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const columns: ColumnsType<Instance> = [
     {
       title: '地域',
@@ -679,6 +714,13 @@ const InstancePage = () => {
           />
         </Space>
         <Space size={12}>
+          <Button
+            icon={<DownloadOutlined />}
+            loading={exporting}
+            onClick={() => void handleExport()}
+          >
+            导出
+          </Button>
           <Button
             danger
             icon={<DeleteOutlined />}
