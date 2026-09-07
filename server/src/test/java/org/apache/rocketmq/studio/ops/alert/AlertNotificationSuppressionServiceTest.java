@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AlertNotificationSuppressionServiceTest {
@@ -128,6 +129,46 @@ class AlertNotificationSuppressionServiceTest {
         assertThat(result).contains(cause);
         verify(repository, times(2)).findAlertsPage(any());
         verify(repository).findAlertsPage(org.mockito.ArgumentMatchers.argThat(query -> query.page() == 2));
+    }
+
+    @Test
+    void ignoresNonBusinessDomainEventsWithoutQueryingRepository() {
+        AlertRepository repository = mock(AlertRepository.class);
+
+        assertThat(new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(event(1L, AlertDomain.CLUSTER, "FIRING", "broker-1",
+                        LocalDateTime.now())))
+                .isEmpty();
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void ignoresBusinessEventsWithoutTimestampWithoutQueryingRepository() {
+        AlertRepository repository = mock(AlertRepository.class);
+        SystemAlertVO noTime = SystemAlertVO.builder().id(1L).domain(AlertDomain.BUSINESS)
+                .transition("FIRING").instanceId("local").title("no-time").build();
+
+        assertThat(new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(noTime))
+                .isEmpty();
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void picksTheMostRecentFiringAcrossMatchingIncidents() {
+        AlertRepository repository = mock(AlertRepository.class);
+        LocalDateTime now = LocalDateTime.now();
+        SystemAlertVO older = event(1L, AlertDomain.CLUSTER, "FIRING", "broker-1", now.minusMinutes(20));
+        older.setFingerprint("incident-a");
+        SystemAlertVO newer = event(2L, AlertDomain.CLUSTER, "FIRING", "broker-1", now.minusMinutes(2));
+        newer.setFingerprint("incident-b");
+        when(repository.findAlertsPage(any())).thenReturn(PageResult.of(List.of(older, newer), 2, 1, 100));
+
+        SystemAlertVO result = new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(event(3L, AlertDomain.BUSINESS, "FIRING", "broker-1", now))
+                .orElseThrow();
+
+        assertThat(result.getId()).isEqualTo(2L);
     }
 
     private static SystemAlertVO event(Long id, AlertDomain domain, String transition, String brokerName,
