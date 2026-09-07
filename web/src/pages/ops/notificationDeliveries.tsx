@@ -41,6 +41,12 @@ const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   FAILED: 'error',
 };
 
+const formatClock = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 const NotificationDeliveriesPage = () => {
   const { t } = useLang();
   const [items, setItems] = useState<NotificationDeliveryRecord[]>([]);
@@ -58,6 +64,7 @@ const NotificationDeliveriesPage = () => {
   const retryingIdsInFlight = useRef(new Set<number>());
   const retryingVisibleInFlight = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   const refresh = () => {
     setLoading(true);
@@ -127,6 +134,7 @@ const NotificationDeliveriesPage = () => {
         if (cancelled) return;
         setItems(result.items);
         setTotal(result.total);
+        setLastUpdated(Date.now());
       })
       .catch(() => {
         if (!cancelled) message.error(t('deliveries.loadFailed'));
@@ -229,7 +237,17 @@ const NotificationDeliveriesPage = () => {
   return (
     <>
       <div style={{ padding: 24 }}>
-        <PageHeader title={t('deliveries.title')} subtitle={t('deliveries.subtitle')} />
+        <PageHeader
+          title={t('deliveries.title')}
+          subtitle={t('deliveries.subtitle')}
+          extra={
+            lastUpdated !== null && (
+              <Typography.Text type="secondary" style={{ fontSize: 14 }}>
+                {t('common.lastUpdated')} {formatClock(lastUpdated)}
+              </Typography.Text>
+            )
+          }
+        />
         <Card bodyStyle={{ padding: 20 }}>
           <Flex gap={12} wrap="wrap" style={{ marginBottom: 20 }}>
             <Button
