@@ -504,6 +504,49 @@ class RocketMQClientProviderTest {
         });
     }
 
+    @Test
+    void consumerScanTreatsOfflineGroupsAsEmptyInsteadOf502() throws Exception {
+        SubscriptionGroupWrapper wrapper = subscriptionGroups("group-a", "group-b");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
+        when(adminExt.examineConsumerConnectionInfo(anyString())).thenThrow(new MQClientException(
+                206, "Not found the consumer group connection"));
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", null);
+
+        assertThat(connections).isEmpty();
+    }
+
+    @Test
+    void consumerScanReturnsOfflineGroupResultsWhenAnotherGroupFails() throws Exception {
+        SubscriptionGroupWrapper wrapper = subscriptionGroups("group-a", "group-b");
+        ConsumerConnection consumerConnection = new ConsumerConnection();
+        consumerConnection.setConnectionSet(new HashSet<>(List.of(connection("consumer-client", "10.0.0.2:1000"))));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
+        when(adminExt.examineConsumerConnectionInfo("group-a")).thenThrow(new MQClientException(
+                206, "Not found the consumer group connection"));
+        when(adminExt.examineConsumerConnectionInfo("group-b")).thenReturn(consumerConnection);
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
+
+        assertThat(connections).singleElement().satisfies(connection -> {
+            assertThat(connection.getClientId()).isEqualTo("consumer-client");
+            assertThat(connection.getGroupOrTopic()).isEqualTo("group-b");
+        });
+    }
+
+    @Test
+    void producerQueryWithExplicitOfflineGroupReturnsEmptyInsteadOf502() throws Exception {
+        when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA")).thenThrow(
+                new MQClientException("Not found the producer group connection", null));
+
+        List<ClientConnectionVO> connections =
+                provider.findProducerConnections("instance-a", "TopicA", "pg-order");
+
+        assertThat(connections).isEmpty();
+    }
+
     private static SubscriptionGroupWrapper subscriptionGroups(String... names) {
         SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
         ConcurrentHashMap<String, SubscriptionGroupConfig> groups = new ConcurrentHashMap<>();
