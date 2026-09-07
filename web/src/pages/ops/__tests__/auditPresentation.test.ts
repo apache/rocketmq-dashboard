@@ -161,3 +161,11 @@ describe('audit presentation helpers', () => {
     expect(isControlPlaneAuditRecord({ operationType: 'SEND_MESSAGE' })).toBe(false);
   });
 });
+
+describe('audit presentation empty values', () => {
+  it('treats blank codes and details as empty presentation values', () => {
+    expect(normalizeAuditCode('  ')).toBe('');
+    expect(formatAuditCode(undefined)).toBe('-');
+    expect(parseAuditDetail('  ')).toEqual([]);
+  });
+});
