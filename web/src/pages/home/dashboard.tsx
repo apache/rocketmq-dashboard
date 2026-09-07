@@ -66,6 +66,12 @@ const formatTrafficTrendDelta = (value: number | null) => {
   return ` ${sign}${formatTrafficPercent(value)}`;
 };
 
+const formatClockTime = (timestamp: number) => {
+  const d = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useLang();
@@ -75,6 +81,7 @@ const DashboardPage = () => {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const dashboardRequestIdRef = useRef(0);
   const clusterPagePath = selectedInstanceId
     ? `/cluster?instanceId=${encodeURIComponent(selectedInstanceId)}`
@@ -89,6 +96,7 @@ const DashboardPage = () => {
       if (requestId === dashboardRequestIdRef.current) {
         setDashboard(nextDashboard);
         setDashboardInstanceId(selectedInstanceId);
+        setLastUpdatedAt(Date.now());
       }
     } catch {
       if (requestId === dashboardRequestIdRef.current) {
@@ -144,6 +152,11 @@ const DashboardPage = () => {
           <Button onClick={() => void loadDashboard()} loading={loading}>
             {t('common.refresh')}
           </Button>
+          {lastUpdatedAt !== null && (
+            <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
+              {`${t('dashboard.lastUpdated')} ${formatClockTime(lastUpdatedAt)}`}
+            </Text>
+          )}
         </Space>
       }
     />

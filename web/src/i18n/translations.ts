@@ -91,6 +91,7 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },
   'dashboard.subtitle': { zh: 'RocketMQ 集群运行概览', en: 'RocketMQ Cluster Overview' },
+  'dashboard.lastUpdated': { zh: '最近更新', en: 'Last updated' },
   'dashboard.clusters': { zh: '集群数', en: 'Clusters' },
   'dashboard.topics': { zh: 'Topic 数', en: 'Topics' },
   'dashboard.tpsIn': { zh: 'TPS In', en: 'TPS In' },
