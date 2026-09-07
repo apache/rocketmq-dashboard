@@ -47,5 +47,22 @@ describe('AiMessage', () => {
     expect(screen.getByText('QPS/TPS')).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
     expect(screen.getByText('mqadmin clusterList')).toBeInTheDocument();
+    expect(screen.getByText('mqadmin clusterList').closest('pre')).toBeInTheDocument();
+  });
+
+  it('normalizes common malformed Markdown markers from model responses', () => {
+    render(
+      <AiMessage
+        msg={{
+          id: 'ai-2',
+          role: 'ai',
+          summary: ['##结论', '-第一项', '', '```bashmqadmin clusterList', '```'].join('\n'),
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '结论', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('listitem')).toHaveTextContent('第一项');
+    expect(screen.getByText('mqadmin clusterList').closest('pre')).toBeInTheDocument();
   });
 });

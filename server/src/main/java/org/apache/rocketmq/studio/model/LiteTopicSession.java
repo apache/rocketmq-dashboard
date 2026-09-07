@@ -72,7 +72,7 @@ public class LiteTopicSession {
     }
 
     public double getConsumptionProgress() {
-        if (totalMessages == null || totalMessages == 0) {
+        if (totalMessages == null || totalMessages == 0 || consumedMessages == null) {
             return 0.0;
         }
         return (double) consumedMessages / totalMessages * 100.0;

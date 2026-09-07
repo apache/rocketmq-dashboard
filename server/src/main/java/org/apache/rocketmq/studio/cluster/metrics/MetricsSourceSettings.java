@@ -40,6 +40,8 @@ public class MetricsSourceSettings {
     private final Duration connectTimeout = Duration.ofSeconds(3);
     @Builder.Default
     private final Duration readTimeout = Duration.ofSeconds(10);
+    @Builder.Default
+    private final String authType = "none";
     private final String username;
     private final String password;
     private final String bearerToken;

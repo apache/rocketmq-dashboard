@@ -16,33 +16,26 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Table,
-  Button,
-  Tag,
-  Tabs,
-  Card,
-  Space,
-  Switch,
-  Progress,
-  Tooltip,
-  Spin,
-  App,
-  Modal,
-} from 'antd';
+import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Select } from 'antd';
 import {
   ArrowClockwise,
-  ArrowsClockwise,
   Cloud,
   ChartBar,
+  DownloadSimple,
   PlugsConnected,
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
-import { listClusters, restartBroker } from '../../services/clusterService';
+import { listClusters } from '../../services/clusterService';
+import { isMockMode } from '../../services/dataMode';
 import type { ClusterInfo } from '../../api/cluster';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
+import { listInstances } from '../../services/instanceService';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
+type ClusterTabKey = 'nameserver' | 'broker' | 'proxy';
 
 const REFRESH_INTERVAL_MS = 2000;
 
@@ -80,6 +73,36 @@ interface ProxyRecord {
   connections: number;
 }
 
+const BROKER_EXPORT_COLUMNS: CsvColumn<BrokerRecord>[] = [
+  { header: 'Cluster', value: (broker) => broker.k8sCluster },
+  { header: 'Broker Name', value: (broker) => broker.brokerName },
+  { header: 'Status', value: (broker) => broker.status },
+  { header: 'Version', value: (broker) => broker.version },
+  { header: 'Disk Usage', value: (broker) => broker.diskUsage },
+  { header: 'Address', value: (broker) => broker.address },
+  { header: 'TPS In', value: (broker) => broker.tpsIn },
+  { header: 'TPS Out', value: (broker) => broker.tpsOut },
+];
+
+const NAMESERVER_EXPORT_COLUMNS: CsvColumn<NameServerRecord>[] = [
+  { header: 'Cluster', value: (nameServer) => nameServer.k8sCluster },
+  { header: 'NameServer Name', value: (nameServer) => nameServer.name },
+  { header: 'Status', value: (nameServer) => nameServer.status },
+  { header: 'Version', value: (nameServer) => nameServer.version },
+  { header: 'Address', value: (nameServer) => nameServer.address },
+  { header: 'Connections', value: (nameServer) => nameServer.connections },
+];
+
+const PROXY_EXPORT_COLUMNS: CsvColumn<ProxyRecord>[] = [
+  { header: 'Cluster', value: (proxy) => proxy.k8sCluster },
+  { header: 'Proxy Name', value: (proxy) => proxy.name },
+  { header: 'Status', value: (proxy) => proxy.status },
+  { header: 'Version', value: (proxy) => proxy.version },
+  { header: 'HTTP Address', value: (proxy) => proxy.address },
+  { header: 'gRPC Address', value: (proxy) => proxy.grpcPort },
+  { header: 'Connections', value: (proxy) => proxy.connections },
+];
+
 // ─── Helpers ────────────────────────────────────────────────────
 const normalizeStatus = (status: string): NodeStatus => {
   const value = (status || '').toLowerCase();
@@ -112,7 +135,7 @@ function mapClusters(clusters: ClusterInfo[]): {
   clusters.forEach((cluster) => {
     const clusterLabel = cluster.nsClusterName || cluster.name || cluster.id;
 
-    cluster.brokers.forEach((broker, index) => {
+    (cluster.brokers ?? []).forEach((broker, index) => {
       brokers.push({
         key: `${cluster.id}-broker-${broker.addr || index}`,
         clusterId: cluster.id,
@@ -127,7 +150,7 @@ function mapClusters(clusters: ClusterInfo[]): {
       });
     });
 
-    cluster.nameServers.forEach((nameServer, index) => {
+    (cluster.nameServers ?? []).forEach((nameServer, index) => {
       nameServers.push({
         key: `${cluster.id}-ns-${nameServer.addr || index}`,
         k8sCluster: clusterLabel,
@@ -139,7 +162,7 @@ function mapClusters(clusters: ClusterInfo[]): {
       });
     });
 
-    cluster.proxies.forEach((proxy, index) => {
+    (cluster.proxies ?? []).forEach((proxy, index) => {
       const host = hostOf(proxy.addr);
       proxies.push({
         key: `${cluster.id}-proxy-${proxy.addr || index}`,
@@ -160,69 +183,81 @@ function mapClusters(clusters: ClusterInfo[]): {
 // ─── Component ──────────────────────────────────────────────────
 const BrokerClusterPage = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [activeTab, setActiveTab] = useState('broker');
+  const [activeTab, setActiveTab] = useState<ClusterTabKey>('broker');
   const [loading, setLoading] = useState(false);
   const [brokerData, setBrokerData] = useState<BrokerRecord[]>([]);
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+  const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
   const { message } = App.useApp();
 
+  const clearData = useCallback(() => {
+    setBrokerData([]);
+    setNameServerData([]);
+    setProxyData([]);
+  }, []);
+
   const loadData = useCallback(async () => {
+    if (!selectedInstanceId && !isMockMode()) {
+      clearData();
+      return;
+    }
     const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
-      const clusters = await listClusters();
-      if (requestId !== loadRequestId.current) return;
+      const clusters = await listClusters(selectedInstanceId);
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
       const mapped = mapClusters(clusters);
       setBrokerData(mapped.brokers);
       setNameServerData(mapped.nameServers);
       setProxyData(mapped.proxies);
     } catch {
-      if (requestId !== loadRequestId.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
+      clearData();
       message.error(t('common.refreshFailed'));
     } finally {
-      if (requestId === loadRequestId.current) {
+      if (mountedRef.current && requestId === loadRequestId.current) {
         setLoading(false);
       }
     }
-  }, [message, t]);
-
-  const handleRestartBroker = async (broker: BrokerRecord) => {
-    try {
-      const result = await restartBroker(broker.clusterId, broker.brokerName);
-      if (!result.success) {
-        message.error(result.message || t('common.failure'));
-        return;
-      }
-      await loadData();
-      message.success(
-        result.message || t('cluster.restartBrokerSubmitted', { name: broker.brokerName }),
-      );
-    } catch {
-      message.error(t('common.failure'));
-    }
-  };
+  }, [clearData, message, selectedInstanceId, t]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadData();
+    let active = true;
+    void listInstances()
+      .then((nextInstances) => {
+        if (!active) return;
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        setInstances(apacheInstances);
+        setSelectedInstanceId(apacheInstances[0]?.name);
+      })
+      .catch(() => {
+        if (!active) return;
+        clearData();
+        message.error(t('common.fetchDataFailed'));
+      });
+    return () => {
+      active = false;
+    };
+  }, [clearData, message, t]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const requestId = loadRequestId.current;
+    void Promise.resolve().then(() => {
+      loadData();
     });
     return () => {
-      window.clearTimeout(timeoutId);
-      ++loadRequestId.current;
+      loadRequestId.current = requestId + 1;
+      mountedRef.current = false;
     };
   }, [loadData]);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const intervalId = window.setInterval(() => {
-      void loadData();
-    }, REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [autoRefresh, loadData]);
+  useVisiblePolling(autoRefresh, REFRESH_INTERVAL_MS, loadData);
 
   const renderStatus = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {
@@ -258,10 +293,36 @@ const BrokerClusterPage = () => {
           style={{ width: 80, margin: 0 }}
           strokeColor={color}
         />
-        <span style={{ fontSize: 12, color, fontWeight: 500 }}>{percent}%</span>
+        <span style={{ fontSize: 14, color, fontWeight: 500 }}>{percent}%</span>
       </div>
     );
   };
+
+  function handleExport() {
+    const today = new Date().toISOString().slice(0, 10);
+    if (activeTab === 'nameserver') {
+      downloadCsv(
+        `rocketmq-nameserver-topology-${today}.csv`,
+        buildCsv(NAMESERVER_EXPORT_COLUMNS, nameServerData),
+      );
+      return;
+    }
+    if (activeTab === 'proxy') {
+      downloadCsv(
+        `rocketmq-proxy-topology-${today}.csv`,
+        buildCsv(PROXY_EXPORT_COLUMNS, proxyData),
+      );
+      return;
+    }
+    downloadCsv(
+      `rocketmq-broker-topology-${today}.csv`,
+      buildCsv(BROKER_EXPORT_COLUMNS, brokerData),
+    );
+  }
+  const exportDisabled =
+    (activeTab === 'nameserver' && nameServerData.length === 0) ||
+    (activeTab === 'proxy' && proxyData.length === 0) ||
+    (activeTab === 'broker' && brokerData.length === 0);
 
   const brokerColumns = [
     {
@@ -297,7 +358,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -324,30 +385,6 @@ const BrokerClusterPage = () => {
         <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>
       ),
       sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsOut ?? -1) - (b.tpsOut ?? -1),
-    },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      render: (_: unknown, record: BrokerRecord) => (
-        <Tooltip title={t('brokerCluster.restart')}>
-          <Button
-            type="link"
-            size="small"
-            icon={<ArrowsClockwise size={14} />}
-            onClick={() => {
-              Modal.confirm({
-                title: t('cluster.confirmRestart'),
-                content: t('cluster.restartBrokerConfirm', { name: record.brokerName }),
-                okText: t('common.confirm'),
-                cancelText: t('common.cancel'),
-                onOk: () => handleRestartBroker(record),
-              });
-            }}
-          >
-            {t('brokerCluster.restart')}
-          </Button>
-        </Tooltip>
-      ),
     },
   ];
 
@@ -378,7 +415,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -423,7 +460,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -440,7 +477,7 @@ const BrokerClusterPage = () => {
       render: (text: string) => (
         <code
           style={{
-            fontSize: 12,
+            fontSize: 14,
             background: '#f5f5f5',
             padding: '2px 6px',
             borderRadius: 4,
@@ -481,6 +518,22 @@ const BrokerClusterPage = () => {
           {t('brokerCluster.title')}
         </h2>
         <Space size="middle">
+          <Select
+            aria-label="选择实例"
+            value={selectedInstanceId}
+            onChange={setSelectedInstanceId}
+            placeholder="选择实例"
+            style={{ minWidth: 180 }}
+            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
+          />
+          <Button
+            icon={<DownloadSimple size={14} />}
+            size="small"
+            disabled={exportDisabled}
+            onClick={handleExport}
+          >
+            {t('common.export')}
+          </Button>
           <Switch
             checked={autoRefresh}
             onChange={setAutoRefresh}
@@ -495,10 +548,13 @@ const BrokerClusterPage = () => {
       </div>
 
       <Spin spinning={loading} tip={t('common.loading')}>
-        <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+        <Card
+          variant="borderless"
+          style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
+        >
           <Tabs
             activeKey={activeTab}
-            onChange={setActiveTab}
+            onChange={(key) => setActiveTab(key as ClusterTabKey)}
             items={[
               {
                 key: 'nameserver',

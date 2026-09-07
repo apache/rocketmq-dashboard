@@ -28,11 +28,15 @@ import java.time.LocalDateTime;
 @TableName("rmq_settings")
 public class RmqSettings {
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
+    private String settingsKey;
 
     @ToString.Exclude
     private String json;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtCreate;
+
+    private LocalDateTime gmtModified;
 }

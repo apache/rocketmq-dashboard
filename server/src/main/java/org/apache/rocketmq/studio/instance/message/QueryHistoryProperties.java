@@ -31,4 +31,14 @@ public class QueryHistoryProperties {
      * Number of days query records are retained. A non-positive value disables cleanup.
      */
     private int retentionDays = 90;
+
+    /**
+     * Maximum expired records deleted per database statement.
+     */
+    private int cleanupBatchSize = 500;
+
+    /**
+     * Maximum delete batches performed by one scheduled cleanup pass.
+     */
+    private int cleanupMaxBatches = 20;
 }

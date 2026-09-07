@@ -46,10 +46,19 @@ public class CapabilitiesToolHandler implements ToolHandler {
         List<String> capabilities = capabilityResolver.resolve(cluster);
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("cluster", cluster.getId());
-        result.put("type", cluster.getType().name());
-        result.put("version", cluster.getVersion());
+        result.put("cluster", blankIfNull(cluster.getId()));
+        result.put("type", cluster.getType() == null ? "" : cluster.getType().name());
+        result.put("version", blankIfNull(cluster.getVersion()));
         result.put("capabilities", capabilities);
         return result;
+    }
+
+    /**
+     * The output schema declares cluster/type/version as required strings; providers that
+     * do not populate them (notably the Apache runtime provider, which reports no cluster
+     * version) must not emit nulls or schema validation turns the tool call into a 500.
+     */
+    private static String blankIfNull(String value) {
+        return value == null ? "" : value;
     }
 }

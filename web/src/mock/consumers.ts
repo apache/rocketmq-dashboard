@@ -39,8 +39,8 @@ export interface ConsumerGroup {
   subscriptionDataType: 'NORMAL' | 'FIFO' | 'DELAY' | 'TRANSACTION';
   deliveryOrderType?: 'PARTITON_ORDER' | 'MESSAGES_ORDER';
   retryMaxTimes: number;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
   delaySeconds: number;
   instances: ConsumerInstance[];
 }
@@ -76,8 +76,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['order-create', 'order-status-change', 'payment-callback'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
-    createdAt: '2026-03-15 10:30:00',
-    updatedAt: '2026-06-28 15:20:00',
+    gmtCreate: '2026-03-15 10:30:00',
+    gmtModified: '2026-06-28 15:20:00',
     delaySeconds: 245,
     instances: [
       {
@@ -142,8 +142,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['payment-callback', 'refund-event'],
     subscriptionDataType: 'TRANSACTION',
     retryMaxTimes: 8,
-    createdAt: '2026-02-20 14:15:00',
-    updatedAt: '2026-06-15 10:45:00',
+    gmtCreate: '2026-02-20 14:15:00',
+    gmtModified: '2026-06-15 10:45:00',
     delaySeconds: 50,
     instances: [
       {
@@ -192,8 +192,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['user-activity-log', 'user-profile-change'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
-    createdAt: '2026-01-10 09:00:00',
-    updatedAt: '2026-05-20 16:30:00',
+    gmtCreate: '2026-01-10 09:00:00',
+    gmtModified: '2026-05-20 16:30:00',
     delaySeconds: 3725,
     instances: [
       {
@@ -235,8 +235,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscriptionDataType: 'FIFO',
     deliveryOrderType: 'PARTITON_ORDER',
     retryMaxTimes: 3,
-    createdAt: '2026-04-05 11:20:00',
-    updatedAt: '2026-06-30 08:10:00',
+    gmtCreate: '2026-04-05 11:20:00',
+    gmtModified: '2026-06-30 08:10:00',
     delaySeconds: 720,
     instances: [
       {
@@ -269,8 +269,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['app-log', 'access-log', 'error-log'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 5,
-    createdAt: '2026-05-12 16:00:00',
-    updatedAt: '2026-07-01 12:00:00',
+    gmtCreate: '2026-05-12 16:00:00',
+    gmtModified: '2026-07-01 12:00:00',
     delaySeconds: 1850,
     instances: [
       {
@@ -351,8 +351,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['notification-push', 'sms-gateway'],
     subscriptionDataType: 'DELAY',
     retryMaxTimes: 8,
-    createdAt: '2026-03-28 08:45:00',
-    updatedAt: '2026-06-22 14:30:00',
+    gmtCreate: '2026-03-28 08:45:00',
+    gmtModified: '2026-06-22 14:30:00',
     delaySeconds: 8,
     instances: [
       {
@@ -393,8 +393,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['ai-task-dispatch', 'model-inference-request'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 3,
-    createdAt: '2026-06-01 13:30:00',
-    updatedAt: '2026-07-01 09:15:00',
+    gmtCreate: '2026-06-01 13:30:00',
+    gmtModified: '2026-07-01 09:15:00',
     delaySeconds: 4800,
     instances: [
       {
@@ -443,8 +443,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['metrics-raw', 'trace-span'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
-    createdAt: '2026-02-08 07:00:00',
-    updatedAt: '2026-06-10 11:45:00',
+    gmtCreate: '2026-02-08 07:00:00',
+    gmtModified: '2026-06-10 11:45:00',
     delaySeconds: 82500,
     instances: [
       {
@@ -477,8 +477,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscribedTopics: ['transaction-event', 'login-event', 'payment-callback'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 8,
-    createdAt: '2025-11-20 10:00:00',
-    updatedAt: '2026-06-05 17:20:00',
+    gmtCreate: '2025-11-20 10:00:00',
+    gmtModified: '2026-06-05 17:20:00',
     delaySeconds: 1520,
     instances: [
       {
@@ -536,8 +536,8 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     subscriptionDataType: 'FIFO',
     deliveryOrderType: 'PARTITON_ORDER',
     retryMaxTimes: 5,
-    createdAt: '2025-09-15 08:30:00',
-    updatedAt: '2026-06-28 20:00:00',
+    gmtCreate: '2025-09-15 08:30:00',
+    gmtModified: '2026-06-28 20:00:00',
     delaySeconds: 12600,
     instances: [
       {

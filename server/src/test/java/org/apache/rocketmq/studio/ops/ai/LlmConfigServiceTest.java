@@ -24,19 +24,29 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class LlmConfigServiceTest {
 
     private SettingsService settingsService;
     private OpenAiCompatibleLlmClient llmClient;
+    private AgentProviderRegistry agentProviders;
     private LlmConfigService llmConfigService;
 
     @BeforeEach
@@ -55,7 +65,9 @@ class LlmConfigServiceTest {
                 .baseUrl("https://api.openai.com/v1")
                 .build());
         llmClient = mock(OpenAiCompatibleLlmClient.class);
-        llmConfigService = new LlmConfigService(settingsService, llmClient, new LlmProperties());
+        agentProviders = mock(AgentProviderRegistry.class);
+        llmConfigService = new LlmConfigService(
+                settingsService, llmClient, agentProviders, new LlmProperties());
     }
 
     @Test
@@ -74,7 +86,7 @@ class LlmConfigServiceTest {
     void envTokenShouldOverrideApiKeyAtRuntimeButNeverBePersisted() {
         LlmProperties properties = new LlmProperties();
         properties.setToken("env-token");
-        LlmConfigService service = new LlmConfigService(settingsService, llmClient, properties);
+        LlmConfigService service = new LlmConfigService(settingsService, llmClient, agentProviders, properties);
 
         LlmConfigVO config = service.getConfig();
         assertThat(config.getApiKey()).isEqualTo("env-token");
@@ -175,7 +187,41 @@ class LlmConfigServiceTest {
         assertThat(saved.getApiKey()).isEqualTo("sk-deepseek");
         assertThat(saved.getModel()).isEqualTo("deepseek-chat");
         assertThat(saved.getBaseUrl()).isEqualTo("https://api.deepseek.com/v1");
+        assertThat(saved.getMaxTokens()).isEqualTo(8192);
+        assertThat(saved.getTemperature()).isEqualTo(0.2);
+        when(settingsService.getGeneralSettings()).thenReturn(saved);
         assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("deepseek");
+        assertThat(llmConfigService.getConfig().getMaxTokens()).isEqualTo(8192);
+        assertThat(llmConfigService.getConfig().getTemperature()).isEqualTo(0.2);
+    }
+
+    @Test
+    void saveConfigShouldPersistProviderSpecificFieldsAcrossServiceRestart() {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("azure")
+                .apiKey("azure-key")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .maxTokens(4096)
+                .temperature(0.7)
+                .enabled(true)
+                .deploymentName("production-gpt")
+                .apiVersion("2024-06-01")
+                .awsRegion("eu-west-1")
+                .build());
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        GeneralSettingsVO persisted = captor.getValue();
+        assertThat(persisted.getDeploymentName()).isEqualTo("production-gpt");
+        assertThat(persisted.getApiVersion()).isEqualTo("2024-06-01");
+        assertThat(persisted.getAwsRegion()).isEqualTo("eu-west-1");
+
+        when(settingsService.getGeneralSettings()).thenReturn(persisted);
+        LlmConfigVO reloaded = new LlmConfigService(settingsService, llmClient, agentProviders, new LlmProperties()).getConfig();
+        assertThat(reloaded.getDeploymentName()).isEqualTo("production-gpt");
+        assertThat(reloaded.getApiVersion()).isEqualTo("2024-06-01");
+        assertThat(reloaded.getAwsRegion()).isEqualTo("eu-west-1");
     }
 
     @Test
@@ -200,6 +246,36 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void getConfigShouldReflectGeneralSettingsSavedAfterLlmConfigurationTest() {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("deepseek")
+                .apiKey("sk-deepseek")
+                .apiBase("https://api.deepseek.com/v1")
+                .model("deepseek-chat")
+                .maxTokens(8192)
+                .temperature(0.2)
+                .enabled(true)
+                .build());
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .llmProvider("ollama")
+                .llmEngine("http")
+                .apiKey("")
+                .model("llama3")
+                .baseUrl("http://localhost:11434/v1")
+                .maxTokens(4096)
+                .temperature(0.7)
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.getProvider()).isEqualTo("ollama");
+        assertThat(config.getEngine()).isEqualTo("http");
+        assertThat(config.getModel()).isEqualTo("llama3");
+        assertThat(config.getMaxTokens()).isEqualTo(4096);
+        assertThat(config.getTemperature()).isEqualTo(0.7);
+    }
+
+    @Test
     void saveConfigShouldPreserveStoredApiKeyWhenApiKeyIsOmitted() {
         LlmConfigVO config = LlmConfigVO.builder()
                 .provider("deepseek")
@@ -215,6 +291,26 @@ class LlmConfigServiceTest {
         ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
         verify(settingsService).saveGeneralSettings(captor.capture());
         assertThat(captor.getValue().getApiKey()).isEqualTo("sk-test");
+    }
+
+    @Test
+    void saveConfigShouldClearStoredApiKeyWhenRequested() {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("deepseek")
+                .clearApiKey(true)
+                .apiBase("https://api.deepseek.com/v1")
+                .model("deepseek-chat")
+                .maxTokens(8192)
+                .temperature(0.2)
+                .enabled(true)
+                .build());
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        assertThat(captor.getValue().getApiKey()).isBlank();
+        when(settingsService.getGeneralSettings()).thenReturn(captor.getValue());
+        assertThat(llmConfigService.getConfig().getApiKey()).isBlank();
+        assertThat(llmConfigService.getConfig().isApiKeyConfigured()).isFalse();
     }
 
     @Test
@@ -255,7 +351,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectMissingRequiredApiKey() {
+    void configShouldRejectMissingRequiredApiKeyTest() {
         when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
                 .theme("dark")
                 .compact(true)
@@ -283,25 +379,55 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldAllowOllamaWithoutApiKey() {
+    void configShouldAllowOllamaWithoutApiKeyTest() {
+        when(llmClient.supports(any())).thenReturn(true);
+
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("ollama")
+                .engine("http")
                 .apiBase("http://localhost:11434/v1")
                 .model("llama3")
                 .build());
 
         assertThat(result.getStatus()).isZero();
         assertThat(result.getMsg()).isEqualTo("Connection successful");
+        assertThat(result.getModels()).isEmpty();
     }
 
     @Test
-    void testConfigShouldProbeProviderModelsWithStoredApiKey() {
+    void configShouldRejectHttpProvidersUnsupportedByRuntimeGatewayTest() {
+        LlmOperationResultVO azure = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("azure")
+                .engine("http")
+                .apiKey("azure-key")
+                .apiBase("https://example.openai.azure.com")
+                .deploymentName("production-gpt")
+                .model("gpt-4o")
+                .build());
+        LlmOperationResultVO bedrock = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("bedrock")
+                .engine("http")
+                .apiKey("bedrock-key")
+                .apiBase("https://bedrock-runtime.us-east-1.amazonaws.com")
+                .model("anthropic.claude-3-sonnet")
+                .build());
+
+        assertThat(azure.getStatus()).isEqualTo(1);
+        assertThat(azure.getCode()).isEqualTo("llm.config.unsupported_provider");
+        assertThat(bedrock.getStatus()).isEqualTo(1);
+        assertThat(bedrock.getCode()).isEqualTo("llm.config.unsupported_provider");
+        verify(llmClient, never()).listModels(any());
+    }
+
+    @Test
+    void configShouldProbeProviderModelsWithStoredApiKeyTest() {
         when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
         when(llmClient.listModels(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(
                 new LlmModelItemVO("gpt-4o", "GPT-4o")));
 
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
+                .engine("http")
                 .apiBase("https://api.openai.com/v1")
                 .model("gpt-4o")
                 .maxTokens(2048)
@@ -316,7 +442,32 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldReturnProviderProbeFailure() {
+    void configShouldPreferEnvironmentTokenOverStoredApiKeyTest() {
+        LlmProperties properties = new LlmProperties();
+        properties.setToken("env-token");
+        LlmConfigService service = new LlmConfigService(settingsService, llmClient, agentProviders, properties);
+        when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(llmClient.listModels(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(
+                new LlmModelItemVO("gpt-4o", "GPT-4o")));
+
+        LlmOperationResultVO result = service.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .engine(LlmConfigVO.ENGINE_HTTP)
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isZero();
+        ArgumentCaptor<LlmConfigVO> captor = ArgumentCaptor.forClass(LlmConfigVO.class);
+        verify(llmClient).listModels(captor.capture());
+        assertThat(captor.getValue().getApiKey()).isEqualTo("env-token");
+        verify(settingsService, never()).getGeneralSettings();
+    }
+
+    @Test
+    void configShouldReturnProviderProbeFailureTest() {
         when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
         when(llmClient.listModels(org.mockito.ArgumentMatchers.any())).thenThrow(new LlmGatewayException(
                 401,
@@ -326,6 +477,7 @@ class LlmConfigServiceTest {
 
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
+                .engine("http")
                 .apiKey("sk-bad")
                 .apiBase("https://api.openai.com/v1")
                 .model("gpt-4o")
@@ -340,7 +492,50 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectInvalidApiBase() {
+    void configShouldNotProbeHttpModelsForCliEngineTest() {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(agentProviders.forEngine("claude-code")).thenReturn(provider);
+        when(provider.available()).thenReturn(true);
+
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .engine("claude-code")
+                .apiBase("https://api.openai.com/v1")
+                .model("claude-sonnet-4")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isZero();
+        assertThat(result.getMsg()).isEqualTo("CLI is available");
+        verify(agentProviders).forEngine("claude-code");
+        verifyNoInteractions(llmClient);
+    }
+
+    @Test
+    void configShouldReportMissingCliEngineTest() {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(agentProviders.forEngine("qoder")).thenReturn(provider);
+        when(provider.available()).thenReturn(false);
+
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .engine("qoder")
+                .apiBase("https://api.openai.com/v1")
+                .model("qoder-model")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(1);
+        assertThat(result.getCode()).isEqualTo("llm.provider.cli_missing");
+        assertThat(result.getErrMsg()).contains("qoder");
+        assertThat(result.getHint()).contains("Install").contains("HTTP engine");
+        verifyNoInteractions(llmClient);
+    }
+
+    @Test
+    void configShouldRejectInvalidApiBaseTest() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
                 .apiKey("sk-test")
@@ -356,7 +551,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectOutOfRangeMaxTokens() {
+    void configShouldRejectOutOfRangeMaxTokensTest() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
                 .apiKey("sk-test")
@@ -372,7 +567,7 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void testConfigShouldRejectOutOfRangeTemperature() {
+    void configShouldRejectOutOfRangeTemperatureTest() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
                 .apiKey("sk-test")
@@ -389,6 +584,13 @@ class LlmConfigServiceTest {
 
     @Test
     void listModelsShouldUseSavedProvider() {
+        AtomicReference<GeneralSettingsVO> persisted = new AtomicReference<>(settingsService.getGeneralSettings());
+        when(settingsService.getGeneralSettings()).thenAnswer(invocation -> persisted.get());
+        doAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return null;
+        }).when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
+
         llmConfigService.saveConfig(LlmConfigVO.builder()
                 .provider("tongyi")
                 .apiKey("dashscope-key")
@@ -429,10 +631,57 @@ class LlmConfigServiceTest {
         LlmModelsResultVO result = llmConfigService.listModels();
 
         assertThat(result.getStatus()).isZero();
-        assertThat(result.getData()).extracting("id").contains("gpt-4o", "gpt-4");
+        assertThat(result.getData()).extracting("id").contains("gpt-5.6-sol", "gpt-5.6-luna");
         assertThat(result.getSource()).isEqualTo(LlmModelsResultVO.SOURCE_FALLBACK);
         assertThat(result.getWarningCode()).isEqualTo("llm.provider.io_error");
         assertThat(result.getWarning()).contains("Failed to list LLM provider models");
         assertThat(result.getHint()).contains("provider endpoint");
+    }
+
+    @Test
+    void listModelsShouldNotBlockConcurrentConfigReadsOrWrites() throws Exception {
+        AtomicReference<GeneralSettingsVO> persisted = new AtomicReference<>(settingsService.getGeneralSettings());
+        when(settingsService.getGeneralSettings()).thenAnswer(invocation -> persisted.get());
+        doAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return null;
+        }).when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
+
+        CountDownLatch listingStarted = new CountDownLatch(1);
+        CountDownLatch releaseListing = new CountDownLatch(1);
+        when(llmClient.supports(any())).thenReturn(true);
+        when(llmClient.listModels(any())).thenAnswer(invocation -> {
+            LlmConfigVO requestedConfig = invocation.getArgument(0);
+            assertThat(requestedConfig.getProvider()).isEqualTo("openai");
+            listingStarted.countDown();
+            assertThat(releaseListing.await(5, TimeUnit.SECONDS)).isTrue();
+            return List.of(new LlmModelItemVO("provider-model", "Provider Model"));
+        });
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<LlmModelsResultVO> listing = executor.submit(llmConfigService::listModels);
+            assertThat(listingStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<LlmConfigVO> configRead = executor.submit(llmConfigService::getConfig);
+
+            try {
+                assertThat(configRead.get(500, TimeUnit.MILLISECONDS).getProvider()).isEqualTo("openai");
+                Future<?> configWrite = executor.submit(() -> llmConfigService.saveConfig(LlmConfigVO.builder()
+                        .provider("deepseek")
+                        .apiKey("sk-deepseek")
+                        .apiBase("https://api.deepseek.com/v1")
+                        .model("deepseek-chat")
+                        .maxTokens(8192)
+                        .temperature(0.2)
+                        .enabled(true)
+                        .build()));
+                configWrite.get(500, TimeUnit.MILLISECONDS);
+                assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("deepseek");
+                assertThat(listing.isDone()).isFalse();
+            } finally {
+                releaseListing.countDown();
+            }
+            assertThat(listing.get(5, TimeUnit.SECONDS).getSource())
+                    .isEqualTo(LlmModelsResultVO.SOURCE_PROVIDER);
+        }
     }
 }

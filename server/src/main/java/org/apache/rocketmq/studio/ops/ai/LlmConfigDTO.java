@@ -17,13 +17,16 @@
 package org.apache.rocketmq.studio.ops.ai;
 
 import lombok.Data;
+import lombok.ToString;
 
 @Data
 public class LlmConfigDTO {
 
     private String provider;
     private String engine;
+    @ToString.Exclude
     private String apiKey;
+    private boolean clearApiKey;
     private String apiBase;
     private String model;
     private int maxTokens;
@@ -38,6 +41,7 @@ public class LlmConfigDTO {
                 .provider(provider)
                 .engine(engine)
                 .apiKey(apiKey)
+                .clearApiKey(clearApiKey)
                 .apiBase(apiBase)
                 .model(model)
                 .maxTokens(maxTokens)

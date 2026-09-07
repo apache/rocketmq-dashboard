@@ -29,4 +29,5 @@ import lombok.NoArgsConstructor;
 public class AuthStatusVO {
     private boolean loginRequired;
     private boolean authenticated;
+    private LoginVO.UserInfo user;
 }

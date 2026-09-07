@@ -16,11 +16,18 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 
 import java.util.List;
 
 public interface ClientProvider {
     List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type);
+
+    default List<ClientConnectionVO> findConnectionsAt(String namesrvAddr, String clusterId, String type) {
+        throw new BusinessException(501, "Client connection provider does not support nameserver lookup");
+    }
+
+    List<String> findProducerGroups(String instanceId, String topic, String query, int limit);
 
     List<ClientConnectionVO> findProducerConnections(String instanceId, String topic, String producerGroup);
 }

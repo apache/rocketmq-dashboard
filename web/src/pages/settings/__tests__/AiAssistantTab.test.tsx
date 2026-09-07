@@ -1,0 +1,266 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { App } from 'antd';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
+import { AiAssistantTab } from '../AiAssistantTab';
+
+const llmApiMocks = vi.hoisted(() => ({
+  getLlmConfig: vi.fn(),
+  saveLlmConfig: vi.fn(),
+  testLlmConnection: vi.fn(),
+  getLlmModels: vi.fn(),
+}));
+
+vi.mock('../../../api/llm', () => llmApiMocks);
+
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
+
+const renderPage = () =>
+  render(
+    <App>
+      <LangProvider>
+        <AiAssistantTab />
+      </LangProvider>
+    </App>,
+  );
+
+describe('AiAssistantTab', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    llmApiMocks.getLlmConfig.mockResolvedValue({
+      provider: 'tongyi',
+      apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen3.8-max',
+      maxTokens: 4096,
+      temperature: 0.7,
+      enabled: true,
+      apiKeyConfigured: true,
+    });
+    llmApiMocks.getLlmModels.mockResolvedValue({
+      status: 0,
+      data: [{ id: 'qwen3.8-max' }, { id: 'qwen-max' }],
+    });
+    llmApiMocks.saveLlmConfig.mockResolvedValue({ status: 0 });
+    llmApiMocks.testLlmConnection.mockResolvedValue({ status: 0, msg: 'ok' });
+  });
+
+  it('loads the saved config and shows the configured-key badge', async () => {
+    renderPage();
+
+    expect(await screen.findByText('密钥已配置')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('qwen3.8-max')).toBeInTheDocument();
+  });
+
+  it('renders assistant configuration labels in English when English is selected', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderPage();
+
+    expect(await screen.findByText('Execution engine and model')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Test connection' })).toBeInTheDocument();
+  });
+
+  it('saves without sending an apiKey when the input stays empty', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    const payload = llmApiMocks.saveLlmConfig.mock.calls[0][0];
+    expect(payload).toMatchObject({ provider: 'tongyi', model: 'qwen3.8-max' });
+    expect(payload.apiKey).toBeUndefined();
+  });
+
+  it('clears the stored API key after confirmation', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.click(screen.getByRole('button', { name: /清除密钥/ }));
+
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    expect(llmApiMocks.saveLlmConfig.mock.calls[0][0]).toMatchObject({
+      clearApiKey: true,
+      provider: 'tongyi',
+    });
+    expect(llmApiMocks.saveLlmConfig.mock.calls[0][0].apiKey).toBeUndefined();
+    expect(await screen.findByText('LLM API Key 已清除')).toBeInTheDocument();
+    expect(screen.queryByText('密钥已配置')).not.toBeInTheDocument();
+  });
+
+  it('submits the Azure deployment fields required by the backend', async () => {
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    await waitFor(() => expect(llmApiMocks.getLlmConfig).toHaveBeenCalledTimes(1));
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(
+      await screen.findByText('Azure OpenAI', { selector: '.ant-select-item-option-content' }),
+    );
+
+    const apiBase = await screen.findByLabelText('API Base URL');
+    await user.type(apiBase, 'https://example.openai.azure.com/openai');
+    await user.type(screen.getByLabelText('Azure Deployment Name'), 'production-gpt');
+    expect(screen.getByLabelText('Azure API Version')).toHaveValue('2024-02-15-preview');
+    const saveButton = container.querySelector('.ant-btn-primary');
+    expect(saveButton).not.toBeNull();
+    await user.click(saveButton as HTMLButtonElement);
+
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    expect(llmApiMocks.saveLlmConfig.mock.calls[0][0]).toMatchObject({
+      provider: 'azure',
+      apiBase: 'https://example.openai.azure.com/openai',
+      deploymentName: 'production-gpt',
+      apiVersion: '2024-02-15-preview',
+    });
+    expect(llmApiMocks.saveLlmConfig.mock.calls[0][0].awsRegion).toBeUndefined();
+  });
+
+  it('refreshes the remote model list after saving an API key', async () => {
+    const user = userEvent.setup();
+    llmApiMocks.getLlmModels
+      .mockResolvedValueOnce({ status: 0, data: [{ id: 'qwen3.8-max' }] })
+      .mockResolvedValueOnce({
+        status: 0,
+        data: [{ id: 'qwen3.8-max' }, { id: 'qwen-plus-latest' }],
+      });
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.type(screen.getByLabelText('API Key'), 'sk-new-key');
+    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(llmApiMocks.getLlmModels).toHaveBeenCalledTimes(2));
+    const modelBox = screen.getAllByRole('combobox')[2];
+    await user.click(modelBox);
+    await user.clear(modelBox);
+    expect(
+      await screen.findByText('qwen-plus-latest', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+  });
+
+  it('ignores a saved model refresh after the provider changes', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    let resolveModels!: (result: { status: number; data: { id: string }[] }) => void;
+    const user = userEvent.setup();
+    llmApiMocks.getLlmModels
+      .mockResolvedValueOnce({ status: 0, data: [{ id: 'qwen3.8-max' }] })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveModels = resolve;
+          }),
+      );
+    renderPage();
+
+    await screen.findByText('API key configured');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(llmApiMocks.getLlmModels).toHaveBeenCalledTimes(2));
+
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(
+      await screen.findByText('OpenAI', { selector: '.ant-select-item-option-content' }),
+    );
+    await act(async () =>
+      resolveModels({ status: 0, data: [{ id: 'stale-saved-provider-model' }] }),
+    );
+
+    const modelBox = screen.getAllByRole('combobox')[2];
+    await user.click(modelBox);
+    await user.clear(modelBox);
+    expect(
+      screen.queryByText('stale-saved-provider-model', {
+        selector: '.ant-select-item-option-content',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('gpt-5.6-sol', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+  });
+
+  it('refreshes the model list from a successful connection test', async () => {
+    const user = userEvent.setup();
+    llmApiMocks.testLlmConnection.mockResolvedValue({
+      status: 0,
+      msg: 'ok',
+      models: [{ id: 'qwen3.8-max' }, { id: 'qwen-plus-latest' }],
+    });
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.type(screen.getByLabelText('API Key'), 'sk-preview');
+    await user.click(screen.getByRole('button', { name: /测试连接/ }));
+
+    await waitFor(() => expect(llmApiMocks.testLlmConnection).toHaveBeenCalledTimes(1));
+    expect(llmApiMocks.testLlmConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'sk-preview', provider: 'tongyi' }),
+    );
+    const modelBox = screen.getAllByRole('combobox')[2];
+    await user.click(modelBox);
+    await user.clear(modelBox);
+    expect(
+      await screen.findByText('qwen-plus-latest', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+  });
+
+  it('ignores a connection result after the tested configuration changes', async () => {
+    let resolveTest!: (result: { status: number; msg: string }) => void;
+    llmApiMocks.testLlmConnection.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveTest = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.click(screen.getByRole('button', { name: /测试连接/ }));
+    await waitFor(() => expect(llmApiMocks.testLlmConnection).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(
+      await screen.findByText('OpenAI', { selector: '.ant-select-item-option-content' }),
+    );
+    await act(async () => resolveTest({ status: 0, msg: 'old provider succeeded' }));
+
+    expect(screen.queryByText('old provider succeeded')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /测试连接/ })).not.toHaveClass('ant-btn-loading');
+  });
+});

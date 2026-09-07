@@ -20,14 +20,28 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
-import { listClusters, restartBroker } from '../../../services/clusterService';
+import { listClusters } from '../../../services/clusterService';
+import { listInstances } from '../../../services/instanceService';
 import type { ClusterInfo } from '../../../api/cluster';
+import { downloadCsv } from '../../../utils/download';
 import BrokerCluster from '../BrokerCluster';
 
 vi.mock('../../../services/clusterService', () => ({
   listClusters: vi.fn(),
-  restartBroker: vi.fn(),
 }));
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
+}));
+
+vi.mock('../../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return {
+    ...actual,
+    downloadCsv: vi.fn(),
+  };
+});
 
 // Mock matchMedia for antd responsive components
 beforeAll(() => {
@@ -128,12 +142,25 @@ const createDeferred = <T,>() => {
 describe('BrokerCluster Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'instance-1',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '10.0.1.20:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
     vi.mocked(listClusters).mockResolvedValue(clusterFixture);
-    vi.mocked(restartBroker).mockResolvedValue({ success: true, message: 'restarted' });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('should render the page title', () => {
@@ -153,6 +180,39 @@ describe('BrokerCluster Page', () => {
     expect(brokerA.length).toBeGreaterThan(0);
     expect(screen.getAllByText('broker-api-b').length).toBeGreaterThan(0);
     expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
+    expect(listClusters).toHaveBeenCalledWith('instance-1');
+  });
+
+  it('exports only the currently selected topology tab', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [brokerFilename, brokerCsv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(brokerFilename).toMatch(/^rocketmq-broker-topology-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(brokerCsv).toContain('"broker-api-a"');
+    expect(brokerCsv).toContain('"broker-api-b"');
+    expect(brokerCsv).not.toContain('"nameserver-api-a"');
+
+    await user.click(screen.getByText('NameServer 管理'));
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(2);
+    const [nameServerFilename, nameServerCsv] = vi.mocked(downloadCsv).mock.calls[1];
+    expect(nameServerFilename).toMatch(/^rocketmq-nameserver-topology-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(nameServerCsv).toContain('"nameserver-api-a"');
+    expect(nameServerCsv).not.toContain('"broker-api-a"');
+  }, 10_000);
+  it('does not fall back to an unscoped cluster query when instance discovery fails', async () => {
+    vi.mocked(listInstances).mockRejectedValueOnce(new Error('instance discovery failed'));
+    renderWithProviders(<BrokerCluster />);
+
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(1));
+    expect(listClusters).not.toHaveBeenCalled();
+    expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument();
   });
 
   it('should display broker status tags', async () => {
@@ -185,30 +245,12 @@ describe('BrokerCluster Page', () => {
     expect(screen.getAllByText('10.0.1.30:8080').length).toBeGreaterThan(0);
   });
 
-  it('should render only supported broker restart actions', async () => {
+  it('renders Broker runtime data without unavailable mutation actions', async () => {
     renderWithProviders(<BrokerCluster />);
     await screen.findByText('broker-api-a');
     expect(screen.queryByText('创建集群')).not.toBeInTheDocument();
     expect(screen.queryByText('配置')).not.toBeInTheDocument();
-    const restartButtons = screen.getAllByText('重启');
-    expect(restartButtons).toHaveLength(2);
-  });
-
-  it('restarts a broker after confirmation and refreshes the cluster data', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<BrokerCluster />);
-    await screen.findByText('broker-api-a');
-
-    await user.click(screen.getAllByText('重启')[0]);
-    expect(await screen.findByText('确定要重启 Broker "broker-api-a" 吗？')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /确\s*认/ }));
-
-    await waitFor(() => {
-      expect(restartBroker).toHaveBeenCalledWith('cluster-1', 'broker-api-a');
-    });
-    await waitFor(() => {
-      expect(listClusters).toHaveBeenCalledTimes(2);
-    });
+    expect(screen.queryByText('重启')).not.toBeInTheDocument();
   });
 
   it('does not show mock infrastructure data when the API fails', async () => {
@@ -223,24 +265,77 @@ describe('BrokerCluster Page', () => {
     expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
   });
 
-  it('polls only while live refresh is enabled', async () => {
-    vi.useFakeTimers();
+  it('clears topology from the previous instance when the next instance fails to load', async () => {
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'instance-1',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '10.0.1.20:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'instance-2',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '10.0.2.20:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    vi.mocked(listClusters)
+      .mockResolvedValueOnce(clusterFixture)
+      .mockRejectedValueOnce(new Error('instance-2 unavailable'));
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => expect(listClusters).toHaveBeenLastCalledWith('instance-2'));
+    await waitFor(() => expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '导出' })).toBeDisabled();
+  });
+
+  it('polls only while live refresh is enabled and the document is visible', async () => {
+    const visibilityState = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     renderWithProviders(<BrokerCluster />);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await screen.findByText('broker-api-a');
     expect(listClusters).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
 
     const liveRefreshSwitch = screen.getByRole('switch');
     fireEvent.click(liveRefreshSwitch);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(6000);
     });
+    expect(listClusters).toHaveBeenCalledTimes(1);
+
+    visibilityState.mockReturnValue('visible');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(listClusters).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
     expect(listClusters).toHaveBeenCalledTimes(4);
 
     fireEvent.click(liveRefreshSwitch);
     await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
       await vi.advanceTimersByTimeAsync(4000);
     });
     expect(listClusters).toHaveBeenCalledTimes(4);
@@ -295,15 +390,16 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('[2001:db8::10]:8081')).toBeInTheDocument();
   });
   it('renders unrecognized broker statuses as unavailable instead of running', async () => {
-    vi.mocked(listClusters).mockResolvedValue([{
-      ...clusterFixture[0],
-      brokers: [{ ...clusterFixture[0].brokers[0], status: 'mystery' }],
-    }]);
+    vi.mocked(listClusters).mockResolvedValue([
+      {
+        ...clusterFixture[0],
+        brokers: [{ ...clusterFixture[0].brokers[0], status: 'mystery' }],
+      },
+    ]);
     renderWithProviders(<BrokerCluster />);
 
     await screen.findByText('broker-api-a');
     expect(screen.getByText('N/A')).toBeInTheDocument();
     expect(screen.queryByText('运行中')).not.toBeInTheDocument();
   });
-
 });

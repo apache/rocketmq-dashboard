@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -72,14 +73,74 @@ class MessageControllerTest {
     }
 
     @Test
+    void pagedQueryShouldPassPageAndReturnTruncationState() throws Exception {
+        MessageQueryPageVO page = MessageQueryPageVO.builder().items(List.of()).total(200).page(2).size(50)
+                .resultMayBeTruncated(true).build();
+        when(messageService.queryMessagesPage("instance-a", "orders", null, null, null, 1000L, 2000L, 2, 50))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/messages/page").param("instanceId", "instance-a").param("topic", "orders")
+                        .param("startTime", "1000").param("endTime", "2000").param("page", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(200))
+                .andExpect(jsonPath("$.data.resultMayBeTruncated").value(true));
+
+        verify(messageService).queryMessagesPage("instance-a", "orders", null, null, null, 1000L, 2000L, 2, 50);
+    }
+
+    @Test
     void messageTraceShouldPassInstanceId() throws Exception {
         TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
-        when(messageService.getMessageTrace("instance-a", "msg-001")).thenReturn(trace);
+        when(messageService.getMessageTrace("instance-a", "msg-001", "orders", null)).thenReturn(trace);
 
-        mockMvc.perform(get("/api/messages/msg-001/trace").param("instanceId", "instance-a"))
+        mockMvc.perform(get("/api/messages/msg-001/trace").param("instanceId", "instance-a")
+                .param("topic", "orders"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(messageService).getMessageTrace("instance-a", "msg-001");
+        verify(messageService).getMessageTrace("instance-a", "msg-001", "orders", null);
+    }
+
+    @Test
+    void messageTraceShouldPassCustomTraceTopic() throws Exception {
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(messageService.getMessageTrace("instance-a", "msg-001", "orders", "MY_TRACE"))
+                .thenReturn(trace);
+
+        mockMvc.perform(get("/api/messages/msg-001/trace").param("instanceId", "instance-a")
+                .param("topic", "orders")
+                .param("traceTopic", "MY_TRACE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(messageService).getMessageTrace("instance-a", "msg-001", "orders", "MY_TRACE");
+    }
+
+    @Test
+    void traceByKeyShouldDelegateToService() throws Exception {
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(messageService.getMessageTraceByKey("instance-a", "ORDER-001", "orders", null))
+                .thenReturn(trace);
+
+        mockMvc.perform(get("/api/messages/trace-by-key").param("instanceId", "instance-a")
+                .param("key", "ORDER-001")
+                .param("topic", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(messageService).getMessageTraceByKey("instance-a", "ORDER-001", "orders", null);
+    }
+
+    @Test
+    void directConsumeShouldPassValidatedRequestTest() throws Exception {
+        DirectConsumeMessageResultVO result = DirectConsumeMessageResultVO.builder()
+                .consumeResult("CR_SUCCESS").remark("ok").spentTimeMillis(8).build();
+        when(messageService.consumeMessageDirectly(org.mockito.ArgumentMatchers.any())).thenReturn(result);
+
+        mockMvc.perform(post("/api/messages/direct-consume").contentType("application/json")
+                        .content("{\"instanceId\":\"instance-a\",\"topic\":\"orders\",\"msgId\":\"msg-001\","
+                                + "\"consumerGroup\":\"billing\",\"clientId\":\"client-a\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consumeResult").value("CR_SUCCESS"));
     }
 }

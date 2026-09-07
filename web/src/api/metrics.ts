@@ -10,8 +10,8 @@ export interface DashboardStats {
   totalClusters: number;
   healthyClusters: number;
   totalBrokers: number;
-  totalProxies: number;
-  totalNameServers: number;
+  totalProxies: number | null;
+  totalNameServers: number | null;
   totalTopics: number;
   totalConsumerGroups: number;
   totalMessagesToday: number;
@@ -26,7 +26,7 @@ export interface ClusterOverview {
   type: string;
   status: string;
   brokers: number;
-  proxies: number;
+  proxies: number | null;
   topics: number;
   groups: number;
   tpsIn: number;
@@ -108,18 +108,19 @@ export async function queryMetrics(query: MetricQuery) {
 export interface DataSourceQuery {
   key: string;
   query: MetricQuery;
+  instanceId?: string;
   username?: string;
   password?: string;
   bearerToken?: string;
 }
 
 // Runs a PromQL range query against a configured data source (key identifies the
-// persisted source; credentials are optional and fall back to the stored config).
+// persisted source; credentials are supplied per request and are never persisted).
 export async function queryByDataSource(params: DataSourceQuery) {
-  const { key, query, username, password, bearerToken } = params;
+  const { key, query, instanceId, username, password, bearerToken } = params;
   const res = await client.post<{ data: MetricData }>(
     '/metrics/query/datasource',
-    { query, username, password, bearerToken },
+    { query, instanceId, username, password, bearerToken },
     { params: { key } },
   );
   return res.data.data;
@@ -155,5 +156,12 @@ export async function exportGrafanaDashboard(uid: string): Promise<Blob> {
     `/metrics/grafana/dashboards/${encodeURIComponent(uid)}/export`,
     { responseType: 'blob' },
   );
+  return res.data;
+}
+
+export async function exportGrafanaDashboards(): Promise<Blob> {
+  const res = await client.get<Blob>('/metrics/grafana/dashboards/export', {
+    responseType: 'blob',
+  });
   return res.data;
 }

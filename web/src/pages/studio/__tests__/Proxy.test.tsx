@@ -19,14 +19,22 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import { queryProxyHomePage } from '../../../api/proxy';
+import {
+  addProxyAddress,
+  getProxyTopology,
+  queryProxyHomePage,
+  reloadProxyConfig,
+  removeProxyAddress,
+} from '../../../api/proxy';
 import { LangProvider } from '../../../i18n/LangContext';
 import ProxyPage from '../Proxy';
 
 vi.mock('../../../api/proxy', () => ({
-  addProxyAddr: vi.fn(),
+  addProxyAddress: vi.fn(),
+  getProxyTopology: vi.fn(),
   queryProxyHomePage: vi.fn(),
-  removeProxyAddr: vi.fn(),
+  reloadProxyConfig: vi.fn(),
+  removeProxyAddress: vi.fn(),
 }));
 
 beforeAll(() => {
@@ -72,6 +80,38 @@ describe('ProxyPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(queryProxyHomePage).mockResolvedValue(proxyHome);
+    vi.mocked(getProxyTopology).mockResolvedValue([]);
+    vi.mocked(addProxyAddress).mockResolvedValue(proxyHome);
+    vi.mocked(reloadProxyConfig).mockResolvedValue({
+      success: true,
+    });
+    vi.mocked(removeProxyAddress).mockResolvedValue(proxyHome);
+  });
+
+  it('keeps discovered nodes when browser storage is unavailable', async () => {
+    const storageSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('storage disabled', 'SecurityError');
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('127.0.0.1:8081')).toBeInTheDocument();
+    expect(screen.queryByText('获取代理列表失败')).not.toBeInTheDocument();
+    expect(queryProxyHomePage).toHaveBeenCalledTimes(1);
+    storageSpy.mockRestore();
+  });
+
+  it('uses the default cluster when stored preferences cannot be read', async () => {
+    const storageSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('storage disabled', 'SecurityError');
+    });
+    try {
+      renderPage();
+      await screen.findAllByText('127.0.0.1:8081');
+      expect(screen.getByDisplayValue('DefaultCluster')).toBeInTheDocument();
+    } finally {
+      storageSpy.mockRestore();
+    }
   });
 
   it('loads Proxy nodes once after the page mounts', async () => {
@@ -84,7 +124,7 @@ describe('ProxyPage', () => {
   it('shows success after the proxy list refreshes', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('127.0.0.1:8081');
+    await screen.findAllByText('127.0.0.1:8081');
 
     await user.click(screen.getByRole('button', { name: '刷新' }));
 
@@ -95,7 +135,7 @@ describe('ProxyPage', () => {
   it('does not show success when the proxy list refresh fails', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('127.0.0.1:8081');
+    await screen.findAllByText('127.0.0.1:8081');
     vi.mocked(queryProxyHomePage).mockRejectedValueOnce(new Error('network error'));
 
     await user.click(screen.getByRole('button', { name: '刷新' }));
@@ -108,7 +148,7 @@ describe('ProxyPage', () => {
   it('does not render simulated proxy configuration values', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('127.0.0.1:8081');
+    await screen.findAllByText('127.0.0.1:8081');
 
     await user.click(screen.getByRole('button', { name: '查看配置' }));
 
@@ -122,11 +162,131 @@ describe('ProxyPage', () => {
 
   it('marks runtime metrics unavailable when proxy API only returns addresses', async () => {
     renderPage();
-    await screen.findByText('127.0.0.1:8081');
+    await screen.findAllByText('127.0.0.1:8081');
 
     expect(screen.queryByText('5.3.0')).not.toBeInTheDocument();
     expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(5);
   });
+  it('calls reloadProxyConfig when the reload button is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findAllByText('127.0.0.1:8081');
+
+    await user.click(screen.getByRole('button', { name: '重载配置' }));
+
+    await waitFor(() =>
+      expect(reloadProxyConfig).toHaveBeenCalledWith('DefaultCluster', '127.0.0.1:8081'),
+    );
+    expect(await screen.findByText('配置重载成功')).toBeInTheDocument();
+  });
+
+  it('adds a Proxy address and applies the updated address list', async () => {
+    const user = userEvent.setup();
+    vi.mocked(addProxyAddress).mockResolvedValueOnce({
+      proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    });
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.type(screen.getByLabelText('Proxy 地址'), '10.0.0.10:8081');
+    await user.click(screen.getByRole('button', { name: '新增' }));
+
+    await waitFor(() => expect(addProxyAddress).toHaveBeenCalledWith('10.0.0.10:8081'));
+    expect(await screen.findByText('10.0.0.10:8081')).toBeInTheDocument();
+    expect(await screen.findByText('Proxy 地址已新增')).toBeInTheDocument();
+  });
+
+  it('rejects an empty Proxy address before calling the API', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.click(screen.getByRole('button', { name: '新增' }));
+
+    expect(addProxyAddress).not.toHaveBeenCalled();
+    expect(await screen.findByText('请输入 Proxy 地址')).toBeInTheDocument();
+  });
+
+  it('submits one address mutation when add is clicked twice before rendering', async () => {
+    const mutation = createDeferred<typeof proxyHome>();
+    vi.mocked(addProxyAddress).mockImplementation(() => mutation.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.type(screen.getByLabelText('Proxy 地址'), '10.0.0.10:8081');
+    const addButton = screen.getByRole('button', { name: '新增' });
+    act(() => {
+      addButton.click();
+      addButton.click();
+    });
+
+    expect(addProxyAddress).toHaveBeenCalledTimes(1);
+    mutation.resolve(proxyHome);
+  });
+
+  it('removes a Proxy address and applies the updated address list', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProxyHomePage).mockResolvedValueOnce({
+      proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    });
+    vi.mocked(removeProxyAddress).mockResolvedValueOnce(proxyHome);
+    renderPage();
+    await screen.findByText('10.0.0.10:8081');
+
+    const deleteButtons = screen.getAllByRole('button', { name: '删除' });
+    await user.click(deleteButtons[1]);
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => expect(removeProxyAddress).toHaveBeenCalledWith('10.0.0.10:8081'));
+    expect(screen.queryByText('10.0.0.10:8081')).not.toBeInTheDocument();
+    expect(await screen.findByText('Proxy 地址已删除')).toBeInTheDocument();
+  });
+
+  it('filters Proxy nodes by address and status label', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProxyHomePage).mockResolvedValueOnce({
+      proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    });
+    vi.mocked(getProxyTopology).mockResolvedValueOnce([
+      {
+        proxyAddr: '127.0.0.1:8081',
+        status: 'UP',
+        grpcPort: 8081,
+        remotingPort: null,
+        grpcReachable: true,
+        remotingReachable: false,
+        latencyMs: 3,
+      },
+      {
+        proxyAddr: '10.0.0.10:8081',
+        status: 'DOWN',
+        grpcPort: 8081,
+        remotingPort: null,
+        grpcReachable: false,
+        remotingReachable: false,
+        latencyMs: 0,
+      },
+    ]);
+
+    renderPage();
+    expect(await screen.findByText('127.0.0.1:8081')).toBeInTheDocument();
+    expect(screen.getByText('10.0.0.10:8081')).toBeInTheDocument();
+
+    const filter = screen.getByRole('textbox', { name: '筛选 Proxy 节点' });
+    await user.type(filter, '10.0.0.10');
+    expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
+    expect(screen.getByText('10.0.0.10:8081')).toBeInTheDocument();
+
+    await user.clear(filter);
+    await user.type(filter, '不健康');
+    expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
+    expect(screen.getByText('10.0.0.10:8081')).toBeInTheDocument();
+  });
+
   it('keeps the latest Proxy list when an older refresh resolves last', async () => {
     const older = createDeferred<typeof proxyHome>();
     const latest = createDeferred<typeof proxyHome>();
@@ -141,15 +301,16 @@ describe('ProxyPage', () => {
     const refresh = screen.getByRole('button', { name: '刷新' });
     await user.click(refresh);
     await user.click(refresh);
-    await act(async () => latest.resolve({
-      proxyAddrList: ['127.0.0.2:8081'],
-      currentProxyAddr: '127.0.0.2:8081',
-    }));
+    await act(async () =>
+      latest.resolve({
+        proxyAddrList: ['127.0.0.2:8081'],
+        currentProxyAddr: '127.0.0.2:8081',
+      }),
+    );
     expect(await screen.findByText('127.0.0.2:8081')).toBeInTheDocument();
 
     await act(async () => older.resolve(proxyHome));
     expect(screen.getByText('127.0.0.2:8081')).toBeInTheDocument();
     expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
   });
-
 });

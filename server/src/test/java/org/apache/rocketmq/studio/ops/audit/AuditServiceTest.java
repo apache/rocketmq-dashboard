@@ -64,6 +64,28 @@ class AuditServiceTest {
     }
 
     @Test
+    void recordShouldPreserveClusterIdWhenProvided() {
+        auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:prod-cn", "prod-cn",
+                "updated broker config", "SUCCESS");
+
+        ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
+        verify(auditRepository).save(captor.capture());
+        assertThat(captor.getValue().getClusterId()).isEqualTo("prod-cn");
+    }
+
+    @Test
+    void recordShouldPreserveExplicitResourceClassification() {
+        auditService.record("RESEND_DLQ", "DLQ", "consumer-a", "instance-a",
+                "resent=3", "SUCCESS");
+
+        ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
+        verify(auditRepository).save(captor.capture());
+        assertThat(captor.getValue().getResourceType()).isEqualTo("DLQ");
+        assertThat(captor.getValue().getTarget()).isEqualTo("consumer-a");
+        assertThat(captor.getValue().getClusterId()).isEqualTo("instance-a");
+    }
+
+    @Test
     void queryLogsDelegatesPaginationAndFiltersToRepository() {
         AuditRecordVO record = AuditRecordVO.builder().operationType("CREATE").build();
         when(auditRepository.findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("prod-cn"),
@@ -167,9 +189,44 @@ class AuditServiceTest {
     }
 
     @Test
+    void summarizeParsesAndForwardsTheSharedFilterRangeTest() {
+        AuditSummaryVO summary = AuditSummaryVO.builder().total(12).successful(10).failed(2).build();
+        when(auditRepository.summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+                any(LocalDateTime.class), any(LocalDateTime.class), eq("FAILED"))).thenReturn(summary);
+
+        AuditSummaryVO actual = auditService.summarize("topic", "DELETE_TOPIC", "TOPIC", "prod-cn",
+                "2026-08-01", "2026-08-02", "FAILED");
+
+        assertThat(actual).isSameAs(summary);
+        ArgumentCaptor<LocalDateTime> start = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> end = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(auditRepository).summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+                start.capture(), end.capture(), eq("FAILED"));
+        assertThat(start.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
+        assertThat(end.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 2, 23, 59, 59, 999_999_999));
+    }
+
+    @Test
     void cleanupLogsRejectsNonPositiveRetention() {
         assertThatThrownBy(() -> auditService.cleanupLogs(0))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("beforeDays must be greater than 0");
+    }
+
+    @Test
+    void cleanupLogsRejectsRetentionBeyondMaximum() {
+        assertThatThrownBy(() -> auditService.cleanupLogs(366))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("beforeDays must not exceed 365");
+    }
+
+    @Test
+    void cleanupLogsUsesBoundedRepositoryBatchesTest() {
+        when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20))).thenReturn(500);
+
+        int deleted = auditService.cleanupLogs(90);
+
+        assertThat(deleted).isEqualTo(500);
+        verify(auditRepository).deleteBefore(any(LocalDateTime.class), eq(500), eq(20));
     }
 }

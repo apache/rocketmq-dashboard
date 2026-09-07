@@ -29,11 +29,26 @@ export interface GeneralSettings {
   apiKeyConfigured: boolean;
   model: string;
   baseUrl: string;
+  dingtalkWebhook?: string;
+  dingtalkSigningSecret?: string;
+  clearDingtalkSigningSecret?: boolean;
+  dingtalkWebhookConfigured?: boolean;
+  dingtalkSigningSecretConfigured?: boolean;
+  emailRecipients?: string;
+  smsWebhook?: string;
+  smsWebhookConfigured?: boolean;
 }
 
-export type GeneralSettingsUpdate = Omit<GeneralSettings, 'apiKeyConfigured'> & {
+export type GeneralSettingsUpdate = Omit<
+  GeneralSettings,
+  | 'apiKeyConfigured'
+  | 'dingtalkWebhookConfigured'
+  | 'dingtalkSigningSecretConfigured'
+  | 'smsWebhookConfigured'
+> & {
   apiKey?: string;
   clearApiKey?: boolean;
+  clearDingtalkSigningSecret?: boolean;
 };
 
 export interface DataSource {
@@ -45,9 +60,19 @@ export interface DataSource {
   username?: string;
   password?: string;
   bearerToken?: string;
-  status: string;
+  status?: string | null;
   instanceIds?: string[];
 }
+
+export interface DataSourcePage {
+  items: DataSource[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+const DATA_SOURCE_EXPORT_PAGE_SIZE = 100;
+const DATA_SOURCE_MAX_EXPORT_PAGES = 100;
 
 // ─── General Settings ───────────────────────────────────────────
 export async function getGeneralSettings() {
@@ -56,16 +81,63 @@ export async function getGeneralSettings() {
 }
 
 export async function saveGeneralSettings(data: GeneralSettingsUpdate) {
-  const payload = { ...data } as GeneralSettingsUpdate & { apiKeyConfigured?: boolean };
+  const payload = {
+    ...data,
+  } as GeneralSettingsUpdate & {
+    apiKeyConfigured?: boolean;
+    dingtalkWebhookConfigured?: boolean;
+    dingtalkSigningSecretConfigured?: boolean;
+    smsWebhookConfigured?: boolean;
+  };
   delete payload.apiKeyConfigured;
+  delete payload.dingtalkWebhookConfigured;
+  delete payload.dingtalkSigningSecretConfigured;
+  delete payload.smsWebhookConfigured;
   if (!payload.apiKey?.trim()) delete payload.apiKey;
   await client.post('/settings/general/save', payload);
+}
+
+export async function testNotification(channel: 'dingtalk' | 'email' | 'sms') {
+  await client.post('/settings/general/test-notification', null, { params: { channel } });
 }
 
 // ─── Data Sources ───────────────────────────────────────────────
 export async function listDataSources() {
   const res = await client.get<{ data: DataSource[] }>('/settings/datasources');
   return res.data.data;
+}
+
+export async function listDataSourcesPage(params: {
+  search?: string;
+  type?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const res = await client.get<{ data: DataSourcePage }>('/settings/datasources/page', {
+    params,
+  });
+  return res.data.data;
+}
+
+export async function listAllDataSources(params: { search?: string; type?: string } = {}) {
+  const allDataSources: DataSource[] = [];
+  let page = 1;
+
+  while (page <= DATA_SOURCE_MAX_EXPORT_PAGES) {
+    const result = await listDataSourcesPage({
+      ...params,
+      page,
+      pageSize: DATA_SOURCE_EXPORT_PAGE_SIZE,
+    });
+    allDataSources.push(...result.items);
+    const total = result.total ?? allDataSources.length;
+    if (result.items.length === 0 || allDataSources.length >= total) {
+      return allDataSources;
+    }
+    page += 1;
+  }
+
+  throw new Error(`Data source export exceeded ${DATA_SOURCE_MAX_EXPORT_PAGES} pages`);
 }
 
 export async function createDataSource(data: Partial<DataSource>) {

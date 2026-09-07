@@ -17,6 +17,7 @@
 
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useAiChatHistoryStore } from '../stores/aiChatHistoryStore';
 import client from './client';
 import {
   AiStreamError,
@@ -28,15 +29,20 @@ import {
   type McpTool,
 } from './ai';
 
+vi.mock('../config', () => ({
+  API_BASE_URL: 'https://backend.example.com/studio-api',
+}));
+
 const mock = new MockAdapter(client);
 const encoder = new TextEncoder();
 
-function streamResponse(chunks: string[]): Response {
+function streamResponse(chunks: string[], onCancel?: () => void): Response {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
-      controller.close();
+      if (!onCancel) controller.close();
     },
+    cancel: onCancel,
   });
   return new Response(body, { status: 200 });
 }
@@ -44,11 +50,8 @@ function streamResponse(chunks: string[]): Response {
 describe('AI API', () => {
   beforeEach(() => {
     mock.reset();
-    vi.stubGlobal('localStorage', {
-      getItem: vi.fn().mockReturnValue('test-token'),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-    });
+    localStorage.clear();
+    useAiChatHistoryStore.getState().clearHistories();
   });
 
   afterEach(() => {
@@ -57,6 +60,46 @@ describe('AI API', () => {
   });
 
   describe('chatStream (SSE)', () => {
+    it('uses the configured API base URL and sends browser cookies', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(streamResponse(['data: [DONE]\n\n']));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).resolves.toBeUndefined();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://backend.example.com/studio-api/ai/chat',
+        expect.objectContaining({
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    it('clears the current session when the stream request returns 401', async () => {
+      localStorage.setItem('rocketmq-studio-user', 'admin');
+      localStorage.setItem('rocketmq-studio-user-admin', 'true');
+      useAiChatHistoryStore.getState().startConversation('real', 'conversation-1');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ message: 'Unauthorized' }), {
+            status: 401,
+            statusText: 'Unauthorized',
+          }),
+        ),
+      );
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toMatchObject({ status: 401 });
+
+      expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
+      expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
+      expect(useAiChatHistoryStore.getState().histories.real.conversations).toEqual([]);
+    });
+
     it('reassembles an event split across network chunks', async () => {
       vi.stubGlobal(
         'fetch',
@@ -116,6 +159,34 @@ describe('AI API', () => {
       expect(chunks).toEqual(['hello', 'raw text']);
     });
 
+    it('cancels the reader after the done event', async () => {
+      const onCancel = vi.fn();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(streamResponse(['data: [DONE]\n\n'], onCancel)),
+      );
+
+      await chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn());
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an unbounded SSE event and cancels the reader', async () => {
+      const onCancel = vi.fn();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(streamResponse(['data: ' + 'x'.repeat(1024 * 1024)], onCancel)),
+      );
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toMatchObject({
+        message: 'AI stream event exceeds 1 MiB',
+        code: 'llm.stream.event_too_large',
+      });
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
     it('throws structured errors from SSE error events', async () => {
       vi.stubGlobal(
         'fetch',
@@ -136,6 +207,30 @@ describe('AI API', () => {
         message: 'LLM provider is not configured or enabled',
         code: 'llm.config.incomplete',
         hint: 'Configure and enable an LLM provider.',
+        status: 400,
+      } satisfies Partial<AiStreamError>);
+    });
+
+    it('throws backend error messages from failed HTTP responses', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              code: 400,
+              message: 'Chat request is required',
+              data: null,
+            }),
+            { status: 400, statusText: 'Bad Request' },
+          ),
+        ),
+      );
+
+      await expect(
+        chatStream({ message: '', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toMatchObject({
+        name: 'AiStreamError',
+        message: 'Chat request is required',
         status: 400,
       } satisfies Partial<AiStreamError>);
     });

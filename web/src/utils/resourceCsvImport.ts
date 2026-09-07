@@ -43,24 +43,46 @@ interface ParsedCsvRow {
   cells: string[];
 }
 
-const FORMULA_SAFE_PREFIX_PATTERN = /^'(?=[=+\-@])/;
-const TOPIC_NAME_PATTERN = /^[a-zA-Z0-9_\-/*]+$/;
-const GROUP_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+const FORMULA_SAFE_PREFIX_PATTERN = /^'(?='*[=+\-@\t\r\n])/;
+
+// Aligned with RocketMQ's TopicValidator/GroupValidator: a shared character set (letters,
+// digits, underscore, hyphen, % and |) with per-kind length caps. Topics cap at 127 and
+// consumer groups at 120; both may start with a digit or symbol, so no leading-letter rule.
+export const RESOURCE_NAME_PATTERN = /^[%|a-zA-Z0-9_-]+$/;
+export const RESOURCE_NAME_MAX_LENGTH = { topic: 127, group: 120 } as const;
+
+export type ResourceNameKind = keyof typeof RESOURCE_NAME_MAX_LENGTH;
+
+export const validateResourceName = (name: string, kind: ResourceNameKind): string | null => {
+  if (!name) {
+    return 'Name 不能为空';
+  }
+  const maxLength = RESOURCE_NAME_MAX_LENGTH[kind];
+  if (name.length > maxLength) {
+    return `Name 长度不能超过 ${maxLength} 个字符`;
+  }
+  if (!RESOURCE_NAME_PATTERN.test(name)) {
+    return 'Name 仅支持字母、数字、下划线、短横线、% 和 |';
+  }
+  return null;
+};
 
 const TOPIC_TYPES = new Set(['NORMAL', 'FIFO', 'DELAY', 'TRANSACTION', 'LITE']);
 const TOPIC_PERMISSIONS = new Set(['RW', 'RO', 'WO']);
 const GROUP_SUBSCRIPTION_MODES = new Set(['Push', 'Pop']);
 const GROUP_CONSUME_TYPES = new Set(['CLUSTERING', 'BROADCASTING']);
 const GROUP_SUBSCRIPTION_DATA_TYPES = new Set(['NORMAL', 'FIFO', 'DELAY', 'TRANSACTION']);
-const GROUP_DELIVERY_ORDER_TYPES = new Set(['PARTITON_ORDER', 'PARTITION_ORDER', 'MESSAGES ORDER']);
+const GROUP_DELIVERY_ORDER_TYPES = new Set(['PARTITON_ORDER', 'PARTITION_ORDER', 'MESSAGES_ORDER']);
 
 const restoreFormulaSafeCell = (value: string): string =>
   value.replace(FORMULA_SAFE_PREFIX_PATTERN, '');
 
 const normalizeHeader = (header: string): string => restoreFormulaSafeCell(header).trim();
 
-const normalizeValue = (value: string | undefined): string =>
-  restoreFormulaSafeCell(value ?? '').trim();
+const normalizeValue = (value: string | undefined): string => (value ?? '').trim();
+
+const normalizeDeliveryOrderType = (value: string): string =>
+  value === 'MESSAGES ORDER' ? 'MESSAGES_ORDER' : value;
 
 const parseInteger = (
   value: string,
@@ -99,7 +121,7 @@ const readCsvRows = (content: string): ParsedCsvRow[] => {
     if (nextCells.some((value) => value.trim() !== '')) {
       rows.push({
         lineNumber: rowStartLine,
-        cells: nextCells.map(restoreFormulaSafeCell),
+        cells: nextCells,
       });
     }
     cells = [];
@@ -122,7 +144,7 @@ const readCsvRows = (content: string): ParsedCsvRow[] => {
           quoteJustClosed = true;
         }
       } else {
-        if (char === '\n') lineNumber += 1;
+        if (char === '\n' || (char === '\r' && next !== '\n')) lineNumber += 1;
         cell += char;
       }
       continue;
@@ -193,7 +215,7 @@ export const parseCsvTable = (content: string): CsvRecord[] => {
     return {
       lineNumber: row.lineNumber,
       values: headers.reduce<Record<string, string>>((acc, header, index) => {
-        acc[header] = normalizeValue(row.cells[index]);
+        acc[header] = restoreFormulaSafeCell(row.cells[index] ?? '').trim();
         return acc;
       }, {}),
     };
@@ -260,10 +282,9 @@ export const validateTopicCsvImport = (
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 
-    if (!name) {
-      rowErrors.push('Name 不能为空');
-    } else if (!TOPIC_NAME_PATTERN.test(name)) {
-      rowErrors.push('Name 仅支持字母、数字、下划线、中划线、斜杠和星号');
+    const nameError = validateResourceName(name, 'topic');
+    if (nameError) {
+      rowErrors.push(nameError);
     }
     if (!TOPIC_TYPES.has(type)) {
       rowErrors.push(`Type 不支持：${type}`);
@@ -315,14 +336,15 @@ export const validateConsumerGroupCsvImport = (
     );
     const subscriptionDataType =
       normalizeValue(record.values['Subscription Data Type']) || 'NORMAL';
-    const deliveryOrderType = normalizeValue(record.values['Delivery Order Type']);
+    const deliveryOrderType = normalizeDeliveryOrderType(
+      normalizeValue(record.values['Delivery Order Type']),
+    );
     const duplicateMessage = duplicateMessages.get(record.lineNumber);
     if (duplicateMessage) rowErrors.push(duplicateMessage);
 
-    if (!name) {
-      rowErrors.push('Name 不能为空');
-    } else if (!GROUP_NAME_PATTERN.test(name)) {
-      rowErrors.push('Name 需以字母开头，仅包含字母、数字、下划线和短横线');
+    const nameError = validateResourceName(name, 'group');
+    if (nameError) {
+      rowErrors.push(nameError);
     }
     if (!GROUP_SUBSCRIPTION_MODES.has(subscriptionMode)) {
       rowErrors.push(`Subscription Mode 不支持：${subscriptionMode}`);

@@ -92,7 +92,7 @@ class LlmControllerTest {
     }
 
     @Test
-    void testConfigShouldReturnOperationResult() throws Exception {
+    void configShouldReturnOperationResultTest() throws Exception {
         when(llmConfigService.testConfig(any(LlmConfigVO.class)))
                 .thenReturn(LlmOperationResultVO.success("Configuration accepted"));
 

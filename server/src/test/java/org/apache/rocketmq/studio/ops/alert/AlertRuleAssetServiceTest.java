@@ -20,14 +20,21 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourcePatternResolver;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class AlertRuleAssetServiceTest {
 
@@ -77,6 +84,18 @@ class AlertRuleAssetServiceTest {
     }
 
     @Test
+    void listAssetsShouldSurfaceResourceDiscoveryFailures() throws IOException {
+        ResourcePatternResolver resolver = mock(ResourcePatternResolver.class);
+        when(resolver.getResources(anyString())).thenThrow(new IOException("classpath unavailable"));
+        AlertRuleAssetService failingService = new AlertRuleAssetService(resolver);
+
+        BusinessException exception = assertThrows(BusinessException.class, failingService::listAssets);
+
+        assertEquals(500, exception.getCode());
+        assertEquals("Failed to resolve bundled alert rule assets", exception.getMessage());
+    }
+
+    @Test
     void parseRulesShouldMapSeverityAndTeamLabels() {
         List<PrometheusAlertRule> rules = service.loadDefaultRules();
         boolean hasCritical = rules.stream().anyMatch(r -> "critical".equals(r.severity()));
@@ -84,6 +103,28 @@ class AlertRuleAssetServiceTest {
         assertTrue(hasCritical, "expected at least one critical rule");
         assertTrue(hasBroker, "expected at least one broker rule");
     }
+
+    @Test
+    void clientConnectionDropRuleShouldUseSignedGaugeDeltaTest() {
+        PrometheusAlertRule rule = service.loadDefaultRules().stream()
+                .filter(r -> "RocketMQClientConnectionDrop".equals(r.alert()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("expected bundled client connection drop rule"));
+
+        assertEquals("delta(rocketmq_producer_count[5m]) < -5", rule.expr());
+        assertFalse(rule.expr().contains("changes(rocketmq_producer_count[5m]) < -5"),
+                "changes() counts value transitions and cannot produce a negative drop");
+    }
+
+    @Test
+    void generatorShouldUseSameTriggerableClientConnectionDropExpressionTest() throws IOException {
+        String generator = Files.readString(Path.of("scripts", "gen_alert_rule_yaml.py"));
+
+        assertTrue(generator.contains("'delta(rocketmq_producer_count[5m]) < -5'"));
+        assertFalse(generator.contains("'changes(rocketmq_producer_count[5m]) < -5'"),
+                "generator must not recreate a non-triggerable changes() drop rule");
+    }
+
     @Test
     void assetLoadingShouldSkipEmptyAndNonObjectYaml() {
         AlertRuleAssetService service = serviceWithResources(
@@ -115,6 +156,22 @@ class AlertRuleAssetServiceTest {
                 "warning", "broker", "BrokerDown", "")), service.loadDefaultRules());
     }
 
+    @Test
+    void assetOperationsShouldDeterministicallyDeduplicateName() {
+        AlertRuleAssetService service = serviceWithResources(
+                resource("duplicate.yaml", "z-location", "groups:\n  - name: second\n    rules:\n"
+                        + "      - alert: SecondRule\n        expr: up == 2\n"),
+                resource("duplicate.yaml", "a-location", "groups:\n  - name: first\n    rules:\n"
+                        + "      - alert: FirstRule\n        expr: up == 1\n"));
+
+        assertEquals(List.of(new AlertRuleAssetInfo("duplicate", "first", 1, List.of("warning"))),
+                service.listAssets());
+        assertEquals(List.of("FirstRule"), service.loadDefaultRules().stream()
+                .map(PrometheusAlertRule::alert)
+                .toList());
+        assertTrue(service.getAssetYaml("duplicate").contains("FirstRule"));
+    }
+
     private static AlertRuleAssetService serviceWithResources(Resource... resources) {
         return new AlertRuleAssetService() {
             @Override
@@ -125,10 +182,19 @@ class AlertRuleAssetServiceTest {
     }
 
     private static Resource resource(String filename, String content) {
+        return resource(filename, filename, content);
+    }
+
+    private static Resource resource(String filename, String description, String content) {
         return new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8)) {
             @Override
             public String getFilename() {
                 return filename;
+            }
+
+            @Override
+            public String getDescription() {
+                return description;
             }
         };
     }

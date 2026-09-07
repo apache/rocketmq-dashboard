@@ -51,13 +51,15 @@ class ConsumerDiagnosticsServiceTest {
                 .threads(List.of())
                 .build();
 
-        when(diagnosticsProvider.getConsumerStack("cg-orders", "client-1")).thenReturn(stackTrace);
+        when(diagnosticsProvider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .thenReturn(stackTrace);
 
-        ConsumerStackTraceVO result = diagnosticsService.getConsumerStack("cg-orders", "client-1");
+        ConsumerStackTraceVO result = diagnosticsService.getConsumerStack(
+                "instance-a", "cg-orders", "client-1");
 
         assertThat(result.getGroupName()).isEqualTo("cg-orders");
         assertThat(result.getClientId()).isEqualTo("client-1");
-        verify(diagnosticsProvider).getConsumerStack("cg-orders", "client-1");
+        verify(diagnosticsProvider).getConsumerStack("instance-a", "cg-orders", "client-1");
     }
 
     @Test
@@ -69,25 +71,27 @@ class ConsumerDiagnosticsServiceTest {
                 .threadCount(0)
                 .threads(List.of())
                 .build();
-        when(diagnosticsProvider.getConsumerStack("cg-orders", "client-1")).thenReturn(stackTrace);
+        when(diagnosticsProvider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .thenReturn(stackTrace);
 
-        ConsumerStackTraceVO result = diagnosticsService.getConsumerStack(" cg-orders ", " client-1 ");
+        ConsumerStackTraceVO result = diagnosticsService.getConsumerStack(
+                " instance-a ", " cg-orders ", " client-1 ");
 
         assertThat(result.getGroupName()).isEqualTo("cg-orders");
         assertThat(result.getClientId()).isEqualTo("client-1");
-        verify(diagnosticsProvider).getConsumerStack("cg-orders", "client-1");
+        verify(diagnosticsProvider).getConsumerStack("instance-a", "cg-orders", "client-1");
     }
 
     @Test
     void getConsumerStackShouldRejectBlankGroupName() {
-        assertThatThrownBy(() -> diagnosticsService.getConsumerStack(" ", "client-1"))
+        assertThatThrownBy(() -> diagnosticsService.getConsumerStack("instance-a", " ", "client-1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("groupName is required");
     }
 
     @Test
     void getConsumerStackShouldRejectBlankClientId() {
-        assertThatThrownBy(() -> diagnosticsService.getConsumerStack("cg-orders", " "))
+        assertThatThrownBy(() -> diagnosticsService.getConsumerStack("instance-a", "cg-orders", " "))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("clientId is required");
     }

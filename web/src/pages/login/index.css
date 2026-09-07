@@ -1,0 +1,235 @@
+.login-page {
+  --login-border: #d9e1ec;
+  --login-muted: #667085;
+  --login-page-bg: #f7f9fc;
+  --login-surface: #ffffff;
+  --login-text: #14213d;
+  align-items: stretch;
+  background: var(--login-page-bg);
+  color: var(--login-text);
+  display: grid;
+  grid-template-columns: minmax(420px, 1.1fr) minmax(420px, 0.9fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: auto;
+}
+
+.login-page[data-theme='dark'] {
+  --login-border: #343d4d;
+  --login-muted: #aeb8c8;
+  --login-page-bg: #171b24;
+  --login-surface: #202632;
+  --login-text: #f0f4fa;
+}
+
+.login-brand-panel {
+  background: #13203a;
+  color: #f8fbff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 100%;
+  padding: clamp(32px, 7vw, 96px);
+  position: relative;
+}
+
+.login-brand-panel::after {
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  content: '';
+  height: min(54vw, 760px);
+  position: absolute;
+  right: min(-19vw, -210px);
+  top: 50%;
+  transform: translateY(-50%) rotate(28deg);
+  width: min(54vw, 760px);
+}
+
+.login-brand-lockup,
+.login-brand-status {
+  align-items: center;
+  display: flex;
+  font-size: 16px;
+  font-weight: 600;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.login-brand-mark,
+.login-form-mark {
+  align-items: center;
+  background: #2676d9;
+  border-radius: 8px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 19px;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.login-brand-copy {
+  max-width: 590px;
+  position: relative;
+  z-index: 1;
+}
+
+.login-brand-eyebrow {
+  color: #7dd3fc;
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  margin-bottom: 18px;
+}
+
+.login-brand-title.ant-typography {
+  color: inherit;
+  font-size: clamp(36px, 4vw, 58px);
+  line-height: 1.15;
+  margin: 0 0 20px;
+}
+
+.login-brand-description.ant-typography {
+  color: #c5d3e7;
+  font-size: 17px;
+  line-height: 1.7;
+  margin: 0;
+  max-width: 510px;
+}
+
+.login-brand-status {
+  color: #c5d3e7;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.login-status-dot {
+  background: #43c878;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(67, 200, 120, 0.16);
+  height: 8px;
+  width: 8px;
+}
+
+.login-form-panel {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100%;
+  padding: 48px;
+  position: relative;
+}
+
+.login-theme-action {
+  position: absolute;
+  right: 28px;
+  top: 24px;
+}
+
+.login-theme-action .ant-btn {
+  color: var(--login-muted);
+}
+
+.login-form-shell {
+  max-width: 400px;
+  width: 100%;
+}
+
+.login-form-heading {
+  margin-bottom: 36px;
+}
+
+.login-form-mark {
+  font-size: 17px;
+  height: 32px;
+  margin-bottom: 22px;
+  width: 32px;
+}
+
+.login-form-heading .ant-typography {
+  color: var(--login-text);
+}
+
+.login-form-heading h2.ant-typography {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.login-form-heading .ant-typography-paragraph {
+  color: var(--login-muted);
+  margin-bottom: 0;
+}
+
+.login-form-shell .ant-form-item-label > label {
+  color: var(--login-text);
+  font-weight: 600;
+}
+
+.login-form-shell .ant-input-affix-wrapper,
+.login-form-shell .ant-input {
+  background: var(--login-surface);
+  border-color: var(--login-border);
+}
+
+.login-form-shell .ant-input-affix-wrapper {
+  min-height: 42px;
+}
+
+.login-form-shell .ant-input {
+  color: var(--login-text);
+}
+
+.login-form-shell .ant-input::placeholder {
+  color: var(--login-muted);
+}
+
+.login-form-shell .ant-input-prefix,
+.login-form-shell .ant-input-password-icon {
+  color: var(--login-muted);
+}
+
+.login-submit-item {
+  margin-top: 28px;
+}
+
+.login-submit-item .ant-btn {
+  font-weight: 600;
+  height: 44px;
+}
+
+.login-form-footer {
+  color: var(--login-muted);
+  font-size: 14px;
+  margin: 34px 0 0;
+}
+
+@media (max-width: 820px) {
+  .login-page {
+    display: block;
+  }
+
+  .login-brand-panel {
+    min-height: 236px;
+    padding: 28px 28px 32px;
+  }
+
+  .login-brand-copy {
+    margin-top: 34px;
+  }
+
+  .login-brand-title.ant-typography {
+    font-size: 30px;
+    margin-bottom: 10px;
+  }
+
+  .login-brand-description.ant-typography,
+  .login-brand-status {
+    display: none;
+  }
+
+  .login-form-panel {
+    min-height: calc(100vh - 236px);
+    padding: 64px 28px 40px;
+  }
+}

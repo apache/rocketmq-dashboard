@@ -45,8 +45,10 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
 import org.springframework.util.StringUtils;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -57,11 +59,15 @@ import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Aliyun RocketMQ 5.x implementation of the instance-scoped operations SPI, backed by the
@@ -77,6 +83,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
     private static final String FIXED_RETRY_POLICY = "FixedRetryPolicy";
     private static final int DEFAULT_MAX_RETRY_TIMES = 16;
     private static final int DEFAULT_FIXED_RETRY_INTERVAL_SECONDS = 10;
+    private static final int COUNT_PAGE_SIZE = 10;
     private static final String RESET_TYPE_SPECIFIED_TIME = "SPECIFIED_TIME";
     private static final String RESET_TYPE_LATEST_OFFSET = "LATEST_OFFSET";
 
@@ -89,49 +96,133 @@ public class AliyunInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public Set<InstanceCapability> capabilities() {
+        return Set.of(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT);
+    }
+
+    @Override
     public int countTopics(String instanceId) {
-        return listTopics(instanceId, null, null).size();
+        Context ctx = resolve(instanceId);
+        ListTopicsRequest request = ListTopicsRequest.builder()
+                .instanceId(ctx.cloudInstanceId())
+                .pageNumber(1)
+                .pageSize(COUNT_PAGE_SIZE)
+                .build();
+        ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.listTopics(request));
+        ListTopicsResponseBody body = response == null ? null : response.getBody();
+        ListTopicsResponseBody.Data data = body == null ? null : body.getData();
+        Long totalCount = data == null ? null : data.getTotalCount();
+        return totalCount == null || totalCount < 0
+                ? listTopics(instanceId, null, null).size()
+                : boundedCount(totalCount);
     }
 
     @Override
     public int countGroups(String instanceId) {
-        return listConsumerGroups(instanceId, null).size();
+        Context ctx = resolve(instanceId);
+        ListConsumerGroupsRequest request = ListConsumerGroupsRequest.builder()
+                .instanceId(ctx.cloudInstanceId())
+                .pageNumber(1)
+                .pageSize(COUNT_PAGE_SIZE)
+                .build();
+        ListConsumerGroupsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.listConsumerGroups(request));
+        ListConsumerGroupsResponseBody body = response == null ? null : response.getBody();
+        ListConsumerGroupsResponseBody.Data data = body == null ? null : body.getData();
+        Long totalCount = data == null ? null : data.getTotalCount();
+        return totalCount == null || totalCount < 0
+                ? listConsumerGroups(instanceId, null).size()
+                : boundedCount(totalCount);
+    }
+
+    private int boundedCount(long totalCount) {
+        return totalCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) totalCount;
     }
 
     @Override
     public List<TopicVO> listTopics(String instanceId, String type, String search) {
         Context ctx = resolve(instanceId);
-        List<ListTopicsResponseBody.List> all = new ArrayList<>();
-        for (int page = 1; page <= AliyunConverters.MAX_PAGES; page++) {
-            ListTopicsRequest.Builder builder = ListTopicsRequest.builder()
-                    .instanceId(ctx.cloudInstanceId())
-                    .pageNumber(page)
-                    .pageSize(AliyunConverters.PAGE_SIZE);
-            if (!!StringUtils.hasText(search)) {
-                builder.filter(search);
-            }
-            ListTopicsRequest request = builder.build();
-            ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
-                    client -> client.listTopics(request));
-            ListTopicsResponseBody body = response == null ? null : response.getBody();
-            ListTopicsResponseBody.Data data = body == null ? null : body.getData();
+        List<TopicVO> topics = new ArrayList<>();
+        for (int page = 1; ; page++) {
+            ListTopicsResponseBody.Data data = fetchTopicPage(ctx, type, search, page, AliyunConverters.PAGE_SIZE);
             List<ListTopicsResponseBody.List> list = data == null ? null : data.getList();
             if (list == null || list.isEmpty()) {
                 break;
             }
-            all.addAll(list);
-            if (list.size() < AliyunConverters.PAGE_SIZE) {
+            topics.addAll(toTopics(list, instanceId));
+            if (hasFetchedAll(page, AliyunConverters.PAGE_SIZE, data.getTotalCount())
+                    || list.size() < AliyunConverters.PAGE_SIZE) {
                 break;
             }
         }
-        List<TopicVO> topics = new ArrayList<>();
-        for (ListTopicsResponseBody.List item : all) {
-            TopicVO vo = AliyunConverters.toTopicVO(item, instanceId);
-            if (matchesType(type, vo)) {
-                topics.add(vo);
+
+        return topics;
+    }
+
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search, int page, int pageSize) {
+        Context ctx = resolve(instanceId);
+        ListTopicsResponseBody.Data data = fetchTopicPage(ctx, type, search, page, pageSize);
+        Long totalCount = data == null ? null : data.getTotalCount();
+        if (totalCount == null || totalCount < 0L) {
+            return paginate(listTopics(instanceId, type, search), page, pageSize);
+        }
+        return PageResult.of(toTopics(data.getList(), instanceId), boundedCount(totalCount), page, pageSize);
+    }
+
+    private ListTopicsResponseBody.Data fetchTopicPage(Context ctx, String type, String search, int page, int pageSize) {
+        ListTopicsRequest request = buildTopicRequest(ctx.cloudInstanceId(), type, search, page, pageSize);
+        ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.listTopics(request));
+        ListTopicsResponseBody body = response == null ? null : response.getBody();
+        return body == null ? null : body.getData();
+    }
+
+    private ListTopicsRequest buildTopicRequest(String cloudInstanceId, String type, String search,
+            int page, int pageSize) {
+        ListTopicsRequest.Builder builder = ListTopicsRequest.builder()
+                .instanceId(cloudInstanceId)
+                .pageNumber(page)
+                .pageSize(pageSize);
+        if (StringUtils.hasText(search)) {
+            builder.filter(search);
+        }
+        if (StringUtils.hasText(type)) {
+            builder.messageTypes(List.of(type.trim().toUpperCase(Locale.ROOT)));
+        }
+        return builder.build();
+    }
+
+    private static List<TopicVO> toTopics(List<ListTopicsResponseBody.List> rows, String instanceId) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        List<TopicVO> topics = new ArrayList<>(rows.size());
+        for (ListTopicsResponseBody.List row : rows) {
+            if (row != null) {
+                topics.add(AliyunConverters.toTopicVO(row, instanceId));
+
             }
         }
         return topics;
+    }
+
+    private static boolean hasFetchedAll(int page, int pageSize, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && (long) page * pageSize >= totalCount;
+    }
+
+    private static PageResult<TopicVO> paginate(List<TopicVO> topics, int page, int pageSize) {
+        int total = topics.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 
     @Override
@@ -151,8 +242,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createTopic(request));
         topic.setInstanceId(instanceId);
-        topic.setCreatedAt(java.time.LocalDateTime.now());
-        topic.setUpdatedAt(java.time.LocalDateTime.now());
+        topic.setGmtCreate(java.time.LocalDateTime.now());
+        topic.setGmtModified(java.time.LocalDateTime.now());
         return topic;
     }
 
@@ -198,6 +289,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
             return consumers;
         }
         for (ListTopicSubscriptionsResponseBody.Data item : data) {
+            if (item == null) {
+                continue;
+            }
             consumers.add(AliyunConverters.toTopicConsumerVO(item));
         }
         return consumers;
@@ -207,7 +301,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search) {
         Context ctx = resolve(instanceId);
         List<ListConsumerGroupsResponseBody.List> all = new ArrayList<>();
-        for (int page = 1; page <= AliyunConverters.MAX_PAGES; page++) {
+        for (int page = 1; ; page++) {
             ListConsumerGroupsRequest.Builder builder = ListConsumerGroupsRequest.builder()
                     .instanceId(ctx.cloudInstanceId())
                     .pageNumber(page)
@@ -225,12 +319,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 break;
             }
             all.addAll(list);
-            if (list.size() < AliyunConverters.PAGE_SIZE) {
+            if (hasFetchedAll(page, AliyunConverters.PAGE_SIZE, data.getTotalCount())
+                    || list.size() < AliyunConverters.PAGE_SIZE) {
                 break;
             }
         }
         List<ConsumerGroupVO> groups = new ArrayList<>();
         for (ListConsumerGroupsResponseBody.List item : all) {
+            if (item == null) {
+                continue;
+            }
             groups.add(AliyunConverters.toConsumerGroupVO(item, instanceId));
         }
         return groups;
@@ -265,8 +363,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
         group.setDeliveryOrderType(deliveryOrderType);
         group.setRetryMaxTimes(maxRetryTimes);
         group.setSubscribedTopics(java.util.List.of());
-        group.setCreatedAt(java.time.LocalDateTime.now());
-        group.setUpdatedAt(java.time.LocalDateTime.now());
+        group.setGmtCreate(java.time.LocalDateTime.now());
+        group.setGmtModified(java.time.LocalDateTime.now());
         return group;
     }
 
@@ -327,6 +425,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
             return subscriptions;
         }
         for (ListConsumerGroupSubscriptionsResponseBody.Data item : data) {
+            if (item == null) {
+                continue;
+            }
             subscriptions.add(AliyunConverters.toSubscriptionEntry(item));
         }
         return subscriptions;
@@ -386,6 +487,9 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 break;
             }
             for (ListMessagesResponseBody.List item : list) {
+                if (item == null) {
+                    continue;
+                }
                 MessageRecordVO vo = AliyunConverters.toMessageRecord(item);
                 if (!StringUtils.hasText(tag) || tag.equals(vo.getTag())) {
                     records.add(vo);
@@ -399,10 +503,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         Context ctx = resolve(instanceId);
         GetTraceRequest request = GetTraceRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
+                .topicName(topic)
                 .messageId(msgId)
                 .build();
         GetTraceResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
@@ -410,31 +515,31 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetTraceResponseBody body = response == null ? null : response.getBody();
         GetTraceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
-            throw new BusinessException(404, "Message trace not found: " + msgId);
+            return emptyTraceRecord();
         }
         return AliyunConverters.toTraceRecord(data);
+    }
+
+    private static TraceRecordVO emptyTraceRecord() {
+        return TraceRecordVO.builder()
+                .nodes(Collections.emptyList())
+                .consumerStatus(Collections.emptyList())
+                .build();
     }
 
     private Context resolve(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findById(instanceId)
+        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
-                || !StringUtils.hasText(instance.getCredentialId())) {
+                || instance.getCredentialId() == null) {
             throw new BusinessException(400, "Instance " + instanceId + " is missing Aliyun cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
     }
 
-    private static boolean matchesType(String type, TopicVO vo) {
-        if (!StringUtils.hasText(type)) {
-            return true;
-        }
-        return vo.getType() != null && vo.getType().name().equalsIgnoreCase(type.trim());
-    }
-
-    private record Context(String cloudInstanceId, String regionId, String credentialId) {
+    private record Context(String cloudInstanceId, String regionId, Long credentialId) {
     }
 }

@@ -26,16 +26,43 @@ import MessagePage from '../message';
 
 const serviceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
+  getMessageTraceByKey: vi.fn(),
   queryMessages: vi.fn(),
+  consumeMessageDirectly: vi.fn(),
+}));
+const instanceFilterMocks = vi.hoisted(() => ({
+  useInstanceFilter: vi.fn(),
+}));
+const historyMocks = vi.hoisted(() => ({
+  getQueryHistorySummary: vi.fn(),
+  listMessageQueryHistory: vi.fn(),
+  listTraceQueryHistory: vi.fn(),
 }));
 
-vi.mock('../../../services/messageService', () => serviceMocks);
+vi.mock('../../../services/messageService', () => ({
+  ...serviceMocks,
+  queryMessagePage: ({ page = 1, pageSize = 50, ...params }: Record<string, unknown>) =>
+    Promise.resolve(serviceMocks.queryMessages(params)).then((result) =>
+      Array.isArray(result)
+        ? {
+            items: result,
+            total: result.length,
+            page,
+            size: pageSize,
+            resultMayBeTruncated: false,
+          }
+        : result,
+    ),
+}));
+vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
+
+vi.mock('../../../api/messageHistory', () => historyMocks);
 
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../services/topicService', () => ({
-  listTopics: vi.fn().mockResolvedValue([]),
+  listTopics: vi.fn().mockResolvedValue([{ name: 'topic-a' }]),
 }));
 
 beforeAll(() => {
@@ -69,6 +96,9 @@ const createMessage = (msgId: string): MessageRecord => ({
   topic: `topic-${msgId}`,
   tag: 'tag',
   key: `key-${msgId}`,
+  brokerName: 'broker-a',
+  queueId: 0,
+  queueOffset: 0,
   body: '{}',
   storeTime: '2026-07-31T00:00:00Z',
   bornHost: '127.0.0.1:1000',
@@ -90,23 +120,51 @@ const createTrace = (title: string): TraceRecord => ({
   consumerStatus: [],
 });
 
-const renderPage = () =>
-  render(
-    <ConfigProvider theme={{ token: { motion: false } }}>
-      <App>
-        <LangProvider>
-          <MemoryRouter>
-            <MessagePage />
-          </MemoryRouter>
-        </LangProvider>
-      </App>
-    </ConfigProvider>,
-  );
+const MessagePageWithProviders = () => (
+  <ConfigProvider theme={{ token: { motion: false } }}>
+    <App>
+      <LangProvider>
+        <MemoryRouter>
+          <MessagePage />
+        </MemoryRouter>
+      </LangProvider>
+    </App>
+  </ConfigProvider>
+);
+
+const renderPage = () => render(<MessagePageWithProviders />);
+
+const selectTopic = async (user: ReturnType<typeof userEvent.setup>) => {
+  const topicSelects = screen.getAllByRole('combobox');
+  await user.click(topicSelects[topicSelects.length - 1]!);
+  const topicOptions = await screen.findAllByText('topic-a');
+  await user.click(topicOptions[topicOptions.length - 1]!);
+};
 
 describe('MessagePage async request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     serviceMocks.getMessageTrace.mockResolvedValue(null);
+    serviceMocks.getMessageTraceByKey.mockResolvedValue(null);
+    historyMocks.getQueryHistorySummary.mockResolvedValue({ messageQueries: 0, traceQueries: 0 });
+    historyMocks.listMessageQueryHistory.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+    });
+    historyMocks.listTraceQueryHistory.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+    });
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 1,
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 1, label: 'Instance A' }],
+    });
     vi.spyOn(message, 'success').mockImplementation(vi.fn());
   });
 
@@ -119,6 +177,7 @@ describe('MessagePage async request ownership', () => {
     serviceMocks.queryMessages.mockReturnValue(query.promise);
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(1));
@@ -130,17 +189,112 @@ describe('MessagePage async request ownership', () => {
 
     expect(screen.queryByText('late-after-reset')).not.toBeInTheDocument();
   });
+
+  it('resets pagination and the truncated-result warning', async () => {
+    serviceMocks.queryMessages.mockResolvedValue({
+      items: [createMessage('message-on-page-two')],
+      total: 101,
+      page: 2,
+      size: 50,
+      resultMayBeTruncated: true,
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    expect(await screen.findByText('message-on-page-two')).toBeInTheDocument();
+    expect(screen.getByText('共 101 条消息')).toBeInTheDocument();
+    expect(screen.getByText(/查询结果达到服务端扫描上限/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重置/ }));
+
+    expect(screen.queryByText('message-on-page-two')).not.toBeInTheDocument();
+    expect(screen.queryByText('共 101 条消息')).not.toBeInTheDocument();
+    expect(screen.queryByText(/查询结果达到服务端扫描上限/)).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-pagination-item-active')).not.toBeInTheDocument();
+  });
+
+  it('clears query state and invalidates an in-flight request when the query mode changes', async () => {
+    const lateQuery = createDeferred<MessageRecord[]>();
+    serviceMocks.queryMessages
+      .mockResolvedValueOnce({
+        items: [createMessage('topic-result')],
+        total: 101,
+        page: 2,
+        size: 50,
+        resultMayBeTruncated: true,
+      })
+      .mockReturnValueOnce(lateQuery.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    const queryButton = screen.getByRole('button', { name: /^search查询$/ });
+    await user.click(queryButton);
+    expect(await screen.findByText('topic-result')).toBeInTheDocument();
+    await user.click(queryButton);
+    await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(2));
+
+    await user.click(screen.getByText('按 Message Key'));
+
+    expect(screen.queryByText('topic-result')).not.toBeInTheDocument();
+    expect(screen.queryByText('共 101 条消息')).not.toBeInTheDocument();
+    expect(screen.queryByText(/查询结果达到服务端扫描上限/)).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-pagination-item-active')).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-table-wrapper .ant-spin-spinning')).not.toBeInTheDocument();
+
+    await act(async () => {
+      lateQuery.resolve([createMessage('late-topic-result')]);
+    });
+    expect(screen.queryByText('late-topic-result')).not.toBeInTheDocument();
+  });
+
+  it('clears query results and message details when the selected instance changes', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-from-instance-a')]);
+    let currentInstanceId = 1;
+    const selectInstance = vi.fn((id: number) => {
+      currentInstanceId = id;
+    });
+    instanceFilterMocks.useInstanceFilter.mockImplementation(() => ({
+      selectedInstanceId: currentInstanceId,
+      selectInstance,
+      instanceOptions: [
+        { value: 1, label: 'Instance A' },
+        { value: 2, label: 'Instance B' },
+      ],
+    }));
+    const user = userEvent.setup();
+    const view = renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-from-instance-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    expect(await screen.findByRole('dialog', { name: '消息详情' })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('combobox')[0]!);
+    const instanceOptions = await screen.findAllByText('Instance B');
+    await user.click(instanceOptions[instanceOptions.length - 1]!);
+    view.rerender(<MessagePageWithProviders />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('message-from-instance-a')).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: '消息详情' })).not.toBeInTheDocument();
+    });
+    expect(selectInstance).toHaveBeenCalledWith(2, expect.anything());
+  });
   it('surfaces unavailable message provider errors from query requests', async () => {
     serviceMocks.queryMessages.mockRejectedValue(
       new Error('Message query provider is not configured'),
     );
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
     expect(await screen.findByText('Message query provider is not configured')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
   });
 
   it('surfaces unavailable message provider errors from trace requests', async () => {
@@ -150,6 +304,7 @@ describe('MessagePage async request ownership', () => {
     );
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const row = await screen.findByRole('row', { name: /message-a/ });
@@ -161,19 +316,254 @@ describe('MessagePage async request ownership', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps normal message resend disabled until a real API is wired', async () => {
+  it('loads a message trace lazily and reuses it for the same message', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockResolvedValue(createTrace('cached-trace'));
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    let dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(serviceMocks.getMessageTrace).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByText('消息轨迹'));
+    expect(await within(dialog).findByText('cached-trace description')).toBeInTheDocument();
+    expect(serviceMocks.getMessageTrace).toHaveBeenCalledTimes(1);
+    await user.click(within(dialog).getByText('消息内容'));
+    await user.click(within(dialog).getByText('消息轨迹'));
+    expect(serviceMocks.getMessageTrace).toHaveBeenCalledTimes(1);
+
+    await user.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    await user.click(within(dialog).getByText('消息轨迹'));
+    expect(await within(dialog).findByText('cached-trace description')).toBeInTheDocument();
+    expect(serviceMocks.getMessageTrace).toHaveBeenCalledTimes(1);
+  });
+
+  it('requiresGroupAndClientBeforeDirectConsumeTest', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const row = await screen.findByRole('row', { name: /message-a/ });
     await user.click(within(row).getByRole('button', { name: /详情/ }));
 
     const dialog = await screen.findByRole('dialog', { name: '消息详情' });
-    const resendButton = within(dialog).getByRole('button', { name: /重新发送/ });
-    expect(resendButton).toBeDisabled();
-    expect(resendButton).toHaveAttribute('title', '当前版本尚未接入普通消息重新发送接口');
+    await user.click(within(dialog).getByRole('button', { name: /直接消费/ }));
+    const consumeDialogTitle = await screen.findByText('直接消费消息');
+    const consumeDialog = consumeDialogTitle.closest('[role="dialog"]');
+    expect(consumeDialog).not.toBeNull();
+    expect(
+      within(consumeDialog as HTMLElement).getByPlaceholderText('目标消费者组'),
+    ).toBeInTheDocument();
+    expect(
+      within(consumeDialog as HTMLElement).getByPlaceholderText('在线客户端 ID'),
+    ).toBeInTheDocument();
+
+    await user.click(within(consumeDialog as HTMLElement).getByRole('button', { name: /执\s*行/ }));
+    expect(serviceMocks.consumeMessageDirectly).not.toHaveBeenCalled();
+  });
+
+  it('queries trace by key with a custom trace topic from the trace tab', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTraceByKey.mockResolvedValue(createTrace('key-trace'));
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    await user.click(within(dialog).getByText('按 Message Key'));
+    const keyInput = within(dialog).getByPlaceholderText('输入 Message Key');
+    await user.clear(keyInput);
+    await user.type(keyInput, 'ORDER-001');
+    const traceTopicInput = within(dialog).getByPlaceholderText('轨迹 Topic（留空使用默认）');
+    await user.type(traceTopicInput, 'CUSTOM_TRACE');
+    await user.click(within(dialog).getByRole('button', { name: /查询轨迹/ }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getMessageTraceByKey).toHaveBeenCalledWith(
+        'ORDER-001',
+        1,
+        'topic-message-a',
+        'CUSTOM_TRACE',
+      );
+    });
+    expect(await within(dialog).findByText('key-trace description')).toBeInTheDocument();
+  });
+
+  it('shows trace diagnostics for slow and failed delivery paths', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 5,
+          status: 'finish',
+          description: 'producer sent the message',
+        },
+        {
+          title: 'Broker 存储',
+          timestamp: '2026-07-31T00:00:01.600Z',
+          costTime: 720,
+          status: 'finish',
+          description: 'broker persisted the message',
+        },
+        {
+          title: 'Consumer 消费',
+          timestamp: '2026-07-31T00:00:02.100Z',
+          costTime: 6200,
+          status: 'error',
+          description: 'consumer returned failure',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-billing',
+          deliveryStatus: 'failed',
+          consumeTime: '2026-07-31T00:00:05.000Z',
+          retryCount: 2,
+        },
+        {
+          group: 'cg-notification',
+          deliveryStatus: 'pending',
+          consumeTime: '-',
+          retryCount: 0,
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(await within(dialog).findByText('轨迹诊断')).toBeInTheDocument();
+    expect(within(dialog).getByText('投递异常')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('轨迹阶段失败')).not.toHaveLength(0);
+    expect(within(dialog).getAllByText('阶段耗时偏高')).not.toHaveLength(0);
+    expect(within(dialog).getAllByText('消费投递失败')).not.toHaveLength(0);
+    expect(within(dialog).getAllByText(/cg-billing/)).not.toHaveLength(0);
+    expect(within(dialog).getByText(/cg-notification/)).toBeInTheDocument();
+  });
+
+  it('remembers a custom trace topic per instance across page remounts', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('remembered-message')]);
+    const user = userEvent.setup();
+    const firstRender = renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const firstRow = await screen.findByRole('row', { name: /remembered-message/ });
+    await user.click(within(firstRow).getByRole('button', { name: /轨迹/ }));
+    const firstDialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const firstTraceTopicInput =
+      within(firstDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）');
+    await user.type(firstTraceTopicInput, '  CUSTOM_TRACE  ');
+
+    await waitFor(() => {
+      expect(localStorage.getItem('rocketmq-studio-message-trace-topic:1')).toBe('CUSTOM_TRACE');
+    });
+
+    firstRender.unmount();
+    renderPage();
+    await selectTopic(user);
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const secondRow = await screen.findByRole('row', { name: /remembered-message/ });
+    await user.click(within(secondRow).getByRole('button', { name: /轨迹/ }));
+    const secondDialog = await screen.findByRole('dialog', { name: '消息详情' });
+
+    expect(within(secondDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
+      'CUSTOM_TRACE',
+    );
+  });
+
+  it('does not leak a stored custom trace topic between instances', async () => {
+    localStorage.setItem('rocketmq-studio-message-trace-topic:1', 'TRACE_A');
+    localStorage.setItem('rocketmq-studio-message-trace-topic:2', 'TRACE_B');
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('instance-message')]);
+    let currentInstanceId = 1;
+    instanceFilterMocks.useInstanceFilter.mockImplementation(() => ({
+      selectedInstanceId: currentInstanceId,
+      selectInstance: vi.fn(),
+      instanceOptions: [
+        { value: 1, label: 'Instance A' },
+        { value: 2, label: 'Instance B' },
+      ],
+    }));
+    const user = userEvent.setup();
+    const view = renderPage();
+    await selectTopic(user);
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const firstRow = await screen.findByRole('row', { name: /instance-message/ });
+    await user.click(within(firstRow).getByRole('button', { name: /轨迹/ }));
+    const firstDialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(within(firstDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
+      'TRACE_A',
+    );
+
+    currentInstanceId = 2;
+    view.rerender(<MessagePageWithProviders />);
+    await selectTopic(user);
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const secondRow = await screen.findByRole('row', { name: /instance-message/ });
+    await user.click(within(secondRow).getByRole('button', { name: /轨迹/ }));
+    const secondDialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(within(secondDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
+      'TRACE_B',
+    );
+  });
+
+  it('restores a custom trace topic from history before opening the trace again', async () => {
+    historyMocks.listTraceQueryHistory.mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          msgId: 'history-message',
+          topic: 'orders',
+          traceTopic: 'CUSTOM_TRACE',
+          nodeCount: 1,
+          consumerCount: 0,
+          queriedBy: 'alice',
+          queriedAt: '2026-08-05T12:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('history-message')]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: /服务端历史/ }));
+    await user.click(await screen.findByRole('tab', { name: '轨迹查询' }));
+    await user.click(await screen.findByText('history-message'));
+
+    const row = await screen.findByRole('row', { name: /history-message/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getMessageTrace).toHaveBeenLastCalledWith(
+        'history-message',
+        1,
+        'topic-history-message',
+        'CUSTOM_TRACE',
+      );
+    });
   });
 
   it('keeps the latest query loading and ignores an earlier query result', async () => {
@@ -184,6 +574,7 @@ describe('MessagePage async request ownership', () => {
       .mockReturnValueOnce(secondQuery.promise);
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
     await user.click(queryButton);
@@ -218,6 +609,7 @@ describe('MessagePage async request ownership', () => {
       const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
       const user = userEvent.setup();
       renderPage();
+      await selectTopic(user);
 
       await user.click(screen.getByRole('button', { name: /^search查询$/ }));
       const row = await screen.findByRole('row', { name: /message-a/ });
@@ -255,6 +647,7 @@ describe('MessagePage async request ownership', () => {
     );
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const firstRow = await screen.findByRole('row', { name: /message-a/ });
@@ -278,7 +671,7 @@ describe('MessagePage async request ownership', () => {
       secondTrace.resolve(createTrace('message-b trace'));
     });
 
-    expect(await screen.findByText('message-b trace')).toBeInTheDocument();
+    expect(await screen.findAllByText('message-b trace')).not.toHaveLength(0);
     expect(screen.queryByText('正在加载轨迹数据…')).not.toBeInTheDocument();
   });
 
@@ -294,6 +687,7 @@ describe('MessagePage async request ownership', () => {
     );
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const firstRow = await screen.findByRole('row', { name: /message-a/ });
@@ -307,13 +701,13 @@ describe('MessagePage async request ownership', () => {
     await act(async () => {
       secondTrace.resolve(createTrace('message-b trace'));
     });
-    expect(await screen.findByText('message-b trace')).toBeInTheDocument();
+    expect(await screen.findAllByText('message-b trace')).not.toHaveLength(0);
 
     await act(async () => {
       firstTrace.resolve(createTrace('message-a stale trace'));
     });
 
-    expect(screen.getByText('message-b trace')).toBeInTheDocument();
+    expect(screen.getAllByText('message-b trace')).not.toHaveLength(0);
     expect(screen.queryByText('message-a stale trace')).not.toBeInTheDocument();
   });
 });

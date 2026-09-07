@@ -16,15 +16,24 @@
  */
 
 import { createContext } from 'react';
+import type { ThemeMode } from './themePreference';
 
 export interface ThemeContextType {
+  themeMode: ThemeMode;
   darkMode: boolean;
+  compact: boolean;
+  setThemeMode: (mode: ThemeMode) => void;
+  setCompact: (compact: boolean) => void;
   setDarkMode: (dark: boolean) => void;
   toggleTheme: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
+  themeMode: 'system',
   darkMode: false,
+  compact: false,
+  setThemeMode: () => {},
+  setCompact: () => {},
   setDarkMode: () => {},
   toggleTheme: () => {},
 });

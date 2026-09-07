@@ -18,7 +18,12 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getMessageTrace, queryMessages } from './message';
+import {
+  consumeMessageDirectly,
+  getMessageTrace,
+  queryMessagePage,
+  queryMessages,
+} from './message';
 
 const mock = new MockAdapter(client);
 
@@ -35,7 +40,7 @@ describe('message API', () => {
 
   it('sends the backend-supported query fields with epoch timestamps', async () => {
     const params = {
-      instanceId: 'instance-a',
+      instanceId: 'instance-1',
       topic: 'orders',
       tag: 'created',
       key: 'order-1',
@@ -87,6 +92,17 @@ describe('message API', () => {
     ]);
   });
 
+  it('uses the paged query contract and preserves its truncation state', async () => {
+    const params = { instanceId: 'instance-1', topic: 'orders', page: 2, pageSize: 50 };
+    const page = { items: [], total: 200, page: 2, size: 50, resultMayBeTruncated: true };
+    mock.onGet('/messages/page').reply((config) => {
+      expect(config.params).toEqual(params);
+      return [200, { code: 200, data: page }];
+    });
+
+    await expect(queryMessagePage(params)).resolves.toEqual(page);
+  });
+
   it('unwraps trace records with numeric timestamps', async () => {
     const trace = {
       nodes: [
@@ -108,10 +124,53 @@ describe('message API', () => {
       ],
     };
     mock
-      .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-a' } })
+      .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-1', topic: 'orders' } })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('msg-1', 'instance-a')).resolves.toEqual(trace);
+    await expect(getMessageTrace('msg-1', 'instance-1', 'orders')).resolves.toEqual(trace);
+  });
+
+  it('maps backend trace node statuses to Ant Design step statuses', async () => {
+    const trace = {
+      nodes: [
+        {
+          title: 'Produce',
+          timestamp: 1784246400000,
+          status: 'failed',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'Consume',
+          timestamp: 1784246400000,
+          status: 'finish',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'In flight',
+          timestamp: 1784246400000,
+          status: 'process',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'Unknown',
+          timestamp: 1784246400000,
+          status: 'something-else',
+          costTime: 1,
+          description: 'x',
+        },
+      ],
+      consumerStatus: [],
+    };
+    mock
+      .onGet('/messages/msg-2/trace', { params: { instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: trace });
+
+    const mapped = await getMessageTrace('msg-2', 'instance-1');
+    expect(mapped.nodes.map((node) => node.status)).toEqual(['error', 'finish', 'process', 'wait']);
+    expect(mapped.consumerStatus).toEqual([]);
   });
 
   it('encodes message IDs before requesting trace records', async () => {
@@ -120,9 +179,32 @@ describe('message API', () => {
       consumerStatus: [],
     };
     mock
-      .onGet('/messages/AC1E0A64%2F0000%202A9F%3A1/trace', { params: { instanceId: 'instance-a' } })
+      .onGet('/messages/AC1E0A64%2F0000%202A9F%3A1/trace', {
+        params: { instanceId: 'instance-1', topic: 'orders' },
+      })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-a')).resolves.toEqual(trace);
+    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual(
+      trace,
+    );
+  });
+
+  it('posts direct consumption to the message API', async () => {
+    const request = {
+      instanceId: 'instance-1',
+      topic: 'orders',
+      msgId: 'msg-1',
+      consumerGroup: 'billing',
+      clientId: 'client-a',
+    };
+    const result = {
+      consumeResult: 'CR_SUCCESS',
+      spentTimeMillis: 8,
+      order: false,
+      autoCommit: true,
+    };
+    mock.onPost('/messages/direct-consume', request).reply(200, { code: 200, data: result });
+
+    await expect(consumeMessageDirectly(request)).resolves.toEqual(result);
   });
 });

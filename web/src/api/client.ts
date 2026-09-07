@@ -17,7 +17,8 @@
 
 import axios from 'axios';
 import { message } from 'antd';
-import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
+import { clearAuthSession } from '../stores/authStorage';
+import { clearAiChatHistories } from '../stores/aiChatHistoryStore';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
@@ -45,32 +46,50 @@ function getBusinessError(data: unknown): string | null {
   return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
 }
 
+const CORS_REJECTION_HINT =
+  '请求被服务端 CORS 策略拒绝（Invalid CORS request）：当前访问地址不在后端白名单，请检查部署的 STUDIO_CORS_ALLOWED_ORIGINS 配置';
+
+/**
+ * Spring CORS rejects non-whitelisted origins with 403 and a plain-text body (often
+ * unreadable in the browser), while every application-level 403 carries the JSON
+ * business envelope — a 403 without that envelope is a CORS rejection.
+ */
+function isCorsRejection(error: unknown): boolean {
+  if (!axios.isAxiosError(error) || error.response?.status !== 403) {
+    return false;
+  }
+  const data = error.response.data;
+  if (data === undefined || data === null || data === '') {
+    return true;
+  }
+  return typeof data === 'string' && /cors/i.test(data);
+}
+
 function isPublicAuthRequest(url?: string): boolean {
   if (!url) return false;
-  const requestPath = new URL(url, window.location.origin).pathname;
-  const apiBasePath = new URL(API_BASE_URL, window.location.origin).pathname;
-  const relativePath = requestPath.startsWith(`${apiBasePath}/`)
-    ? requestPath.slice(apiBasePath.length)
-    : requestPath;
-  return PUBLIC_AUTH_PATHS.has(relativePath);
+  try {
+    const requestPath = new URL(url, window.location.origin).pathname;
+    const apiBasePath = new URL(API_BASE_URL, window.location.origin).pathname;
+    const relativePath = requestPath.startsWith(`${apiBasePath}/`)
+      ? requestPath.slice(apiBasePath.length)
+      : requestPath;
+    return PUBLIC_AUTH_PATHS.has(relativePath);
+  } catch {
+    return false;
+  }
+}
+
+export function handleSessionUnauthorized(): void {
+  clearAiChatHistories();
+  clearAuthSession();
+  window.location.href = '/login';
 }
 
 const client = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
+  withCredentials: true,
 });
-
-// Request interceptor: attach Authorization header
-client.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
 
 // Response interceptor: check business code and handle 401
 client.interceptors.response.use(
@@ -84,8 +103,22 @@ client.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
-      clearAuthSession();
-      window.location.href = '/';
+      handleSessionUnauthorized();
+      return Promise.reject(error);
+    }
+    if (isCorsRejection(error)) {
+      message.error(CORS_REJECTION_HINT);
+      if (error instanceof Error) {
+        error.message = CORS_REJECTION_HINT;
+      }
+      return Promise.reject(error);
+    }
+    const errorMessage = getBusinessError(error.response?.data);
+    if (errorMessage) {
+      message.error(errorMessage);
+      if (error instanceof Error) {
+        error.message = errorMessage;
+      }
     }
     return Promise.reject(error);
   },

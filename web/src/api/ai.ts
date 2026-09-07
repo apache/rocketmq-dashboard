@@ -15,7 +15,10 @@
  * limitations under the License.
  */
 
-import client from './client';
+import { API_BASE_URL } from '../config';
+import client, { handleSessionUnauthorized } from './client';
+
+const MAX_SSE_EVENT_CHARS = 1024 * 1024;
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface McpTool {
@@ -108,6 +111,33 @@ function parseStreamError(payload: string): AiStreamError {
   }
 }
 
+async function parseHttpError(response: Response): Promise<AiStreamError> {
+  const fallback = response.statusText || `HTTP ${response.status}`;
+  try {
+    const payload = await response.text();
+    if (!payload.trim()) {
+      return new AiStreamError(
+        `AI chat failed: ${fallback}`,
+        undefined,
+        undefined,
+        response.status,
+      );
+    }
+    try {
+      const parsed = JSON.parse(payload) as AiStreamPayload;
+      const message = typeof parsed.message === 'string' ? parsed.message : payload;
+      const code = typeof parsed.code === 'string' ? parsed.code : undefined;
+      const hint = typeof parsed.hint === 'string' ? parsed.hint : undefined;
+      const status = typeof parsed.status === 'number' ? parsed.status : response.status;
+      return new AiStreamError(message, code, hint, status);
+    } catch {
+      return new AiStreamError(payload, undefined, undefined, response.status);
+    }
+  } catch {
+    return new AiStreamError(`AI chat failed: ${fallback}`, undefined, undefined, response.status);
+  }
+}
+
 function emitEvent(
   event: string,
   onChunk: (text: string) => void,
@@ -158,17 +188,23 @@ export async function chatStream(
   signal?: AbortSignal,
   onEnhance?: (prompt: string) => void,
 ) {
-  const response = await fetch('/api/ai/chat', {
+  const response = await fetch(`${API_BASE_URL}/ai/chat`, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
     },
     body: JSON.stringify(data),
     signal,
   });
 
-  if (!response.ok || !response.body) {
+  if (response.status === 401) {
+    handleSessionUnauthorized();
+  }
+  if (!response.ok) {
+    throw await parseHttpError(response);
+  }
+  if (!response.body) {
     throw new Error(`AI chat failed: ${response.statusText}`);
   }
 
@@ -176,22 +212,35 @@ export async function chatStream(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    let boundary = getEventBoundary(buffer);
-    while (boundary) {
-      const event = buffer.slice(0, boundary.index);
-      buffer = buffer.slice(boundary.index + boundary.length);
-      if (emitEvent(event, onChunk, onEnhance)) return;
-      boundary = getEventBoundary(buffer);
+      buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > MAX_SSE_EVENT_CHARS && !getEventBoundary(buffer)) {
+        throw new AiStreamError('AI stream event exceeds 1 MiB', 'llm.stream.event_too_large');
+      }
+      let boundary = getEventBoundary(buffer);
+      while (boundary) {
+        const event = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary.length);
+        if (event.length > MAX_SSE_EVENT_CHARS) {
+          throw new AiStreamError('AI stream event exceeds 1 MiB', 'llm.stream.event_too_large');
+        }
+        if (emitEvent(event, onChunk, onEnhance)) return;
+        boundary = getEventBoundary(buffer);
+      }
     }
-  }
 
-  buffer += decoder.decode();
-  if (buffer && emitEvent(buffer, onChunk, onEnhance)) return;
+    buffer += decoder.decode();
+    if (buffer.length > MAX_SSE_EVENT_CHARS) {
+      throw new AiStreamError('AI stream event exceeds 1 MiB', 'llm.stream.event_too_large');
+    }
+    if (buffer && emitEvent(buffer, onChunk, onEnhance)) return;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
 }
 
 export async function executeAiCommand(data: AiExecuteRequest) {

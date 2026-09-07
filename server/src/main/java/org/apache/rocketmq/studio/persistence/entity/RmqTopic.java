@@ -24,7 +24,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("rmq_topic")
+@TableName("rmq_instance_topic")
 public class RmqTopic {
 
     @TableId(type = IdType.AUTO)
@@ -50,7 +50,7 @@ public class RmqTopic {
 
     private String createdBy;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

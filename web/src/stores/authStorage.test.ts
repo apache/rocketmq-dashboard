@@ -20,8 +20,8 @@ import {
   clearAuthSession,
   persistAuthSession,
   readAuthSession,
-  TOKEN_STORAGE_KEY,
   USER_ADMIN_STORAGE_KEY,
+  USER_ID_STORAGE_KEY,
   USER_STORAGE_KEY,
 } from './authStorage';
 
@@ -30,32 +30,44 @@ describe('auth session storage', () => {
     localStorage.clear();
   });
 
-  it('persists the token and user together', () => {
-    persistAuthSession('token-1', 'studio-admin', true);
+  it('persists display identity without a bearer token', () => {
+    persistAuthSession('studio-admin', 7, true);
 
-    expect(readAuthSession()).toEqual({ token: 'token-1', user: 'studio-admin', admin: true });
+    expect(readAuthSession()).toEqual({ user: 'studio-admin', userId: 7, admin: true });
+    expect(localStorage.getItem(USER_ID_STORAGE_KEY)).toBe('7');
+    expect(localStorage.getItem('token')).toBeNull();
   });
 
-  it('does not restore an orphaned user without a token', () => {
+  it('restores display identity independently from the HttpOnly session cookie', () => {
     localStorage.setItem(USER_STORAGE_KEY, 'studio-admin');
+    localStorage.setItem(USER_ID_STORAGE_KEY, '7');
     localStorage.setItem(USER_ADMIN_STORAGE_KEY, 'true');
 
-    expect(readAuthSession()).toEqual({ token: null, user: null, admin: null });
+    expect(readAuthSession()).toEqual({ user: 'studio-admin', userId: 7, admin: true });
   });
 
-  it('does not infer admin permissions from legacy sessions', () => {
-    localStorage.setItem(TOKEN_STORAGE_KEY, 'token-1');
+  it('does not infer admin permissions when the display flag is absent', () => {
     localStorage.setItem(USER_STORAGE_KEY, 'studio-admin');
 
-    expect(readAuthSession()).toEqual({ token: 'token-1', user: 'studio-admin', admin: null });
+    expect(readAuthSession()).toEqual({ user: 'studio-admin', userId: null, admin: null });
+  });
+
+  it('ignores legacy non-numeric stored user ids', () => {
+    localStorage.setItem(USER_STORAGE_KEY, 'studio-admin');
+    localStorage.setItem(USER_ID_STORAGE_KEY, 'a1b2c3d4-legacy-uuid');
+    localStorage.setItem(USER_ADMIN_STORAGE_KEY, 'true');
+
+    expect(readAuthSession()).toEqual({ user: 'studio-admin', userId: null, admin: true });
   });
 
   it('clears every persisted session key', () => {
-    persistAuthSession('token-1', 'studio-admin', true);
+    localStorage.setItem('token', 'legacy-token');
+    persistAuthSession('studio-admin', 7, true);
     clearAuthSession();
 
-    expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem('token')).toBeNull();
     expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(USER_ID_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_ADMIN_STORAGE_KEY)).toBeNull();
   });
 });

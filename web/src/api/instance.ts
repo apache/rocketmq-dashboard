@@ -19,46 +19,70 @@ import client from './client';
 
 // ─── Types ──────────────────────────────────────────────────────
 export type InstanceVendor = 'APACHE' | 'ALIYUN' | 'TENCENT';
+export type InstanceType = 'CLOUD' | 'PROXY_LOCAL' | 'PROXY_CLUSTER' | 'DIRECT';
+export type InstanceCapability =
+  | 'TOPIC_MANAGEMENT'
+  | 'CONSUMER_GROUP_MANAGEMENT'
+  | 'MESSAGE_QUERY'
+  | 'MESSAGE_TRACE'
+  | 'ACL_MANAGEMENT'
+  | 'DLQ_MANAGEMENT';
 
 export interface Instance {
-  id: string;
+  id: number;
   name: string;
-  remark: string;
-  type: 'PROXY' | 'DIRECT';
+  remark: string | null;
+  type: InstanceType;
   endpoint: string;
   vendor?: InstanceVendor;
   cloudInstanceId?: string;
-  credentialId?: string;
+  credentialId?: number;
+  adminCredentialRef?: string;
   regionId?: string;
+  regionName?: string;
   topicCount: number;
   consumerGroupCount: number;
   resourceCountsAvailable?: boolean;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
 }
 
 export interface CreateInstanceRequest {
   name?: string;
-  type?: 'PROXY' | 'DIRECT';
+  type?: InstanceType;
   endpoint?: string;
   remark?: string;
   vendor?: InstanceVendor;
   cloudInstanceId?: string;
-  credentialId?: string;
+  credentialId?: number;
+  adminCredentialRef?: string;
   regionId?: string;
 }
 
 export interface UpdateInstanceRequest {
-  id: string;
+  instanceId: string;
   name?: string;
-  type?: 'PROXY' | 'DIRECT';
+  type?: InstanceType;
   endpoint?: string;
   remark?: string;
+  adminCredentialRef?: string;
 }
 
 export interface InstanceQuery {
   type?: Instance['type'];
   search?: string;
+}
+
+/** Whether an instance can use Apache MQAdmin-backed runtime diagnostics. */
+export function supportsApacheRuntime(instance: Pick<Instance, 'vendor'>): boolean {
+  return instance.vendor === undefined || instance.vendor === 'APACHE';
+}
+
+export interface InstanceCapabilities {
+  instanceId: string;
+  vendor: InstanceVendor;
+  accessType: Instance['type'];
+  capabilities: InstanceCapability[];
 }
 
 // ─── Instance CRUD ──────────────────────────────────────────────
@@ -72,6 +96,13 @@ export async function listInstances(query: InstanceQuery = {}) {
   return res.data.data;
 }
 
+export async function getInstanceCapabilities(instanceId: string) {
+  const res = await client.get<{ data: InstanceCapabilities }>(
+    `/instances/${encodeURIComponent(instanceId)}/capabilities`,
+  );
+  return res.data.data;
+}
+
 export async function createInstance(data: CreateInstanceRequest) {
   const res = await client.post<{ data: Instance }>('/instances/create', data);
   return res.data.data;
@@ -82,6 +113,35 @@ export async function updateInstance(data: UpdateInstanceRequest) {
   return res.data.data;
 }
 
-export async function deleteInstance(id: string) {
-  await client.post('/instances/delete', { id });
+export interface CloudImportResult {
+  discovered: number;
+  imported: number;
+  skipped: number;
+  failed: string[];
+  /** Total failures; older servers may omit this field. */
+  failedCount?: number;
+  /** Whether the server returned only a bounded subset of failure details. */
+  failureDetailsTruncated?: boolean;
+}
+
+export async function deleteInstance(instanceId: string) {
+  await client.post('/instances/delete', { id: instanceId });
+}
+
+export interface BatchDeleteResult {
+  deleted: number;
+  failed: string[];
+}
+
+export async function deleteInstancesBatch(ids: string[]) {
+  const res = await client.post<{ data: BatchDeleteResult }>('/instances/delete-batch', { ids });
+  return res.data.data;
+}
+
+export async function importCloudInstances(data: {
+  vendor: Exclude<InstanceVendor, 'APACHE'>;
+  credentialId: number;
+}) {
+  const res = await client.post<{ data: CloudImportResult }>('/instances/import-cloud', data);
+  return res.data.data;
 }

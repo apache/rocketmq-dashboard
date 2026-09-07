@@ -22,10 +22,14 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/nameservers")
@@ -33,6 +37,42 @@ import org.springframework.web.bind.annotation.RestController;
 public class NameServerController {
 
     private final ClusterService clusterService;
+    private final NameServerConfigDiffService configDiffService;
+    private final NameserverRegistryService registryService;
+
+    @GetMapping
+    public Result<List<NameserverRegistryVO>> listRegistry() {
+        return Result.ok(registryService.list());
+    }
+
+    @PostMapping("/registry/create")
+    public Result<NameserverRegistryVO> createRegistryEntry(
+            @Valid @RequestBody(required = false) CreateNameserverRegistryDTO command) {
+        requireCommand(command);
+        return Result.ok(registryService.create(command));
+    }
+
+    @PostMapping("/registry/update")
+    public Result<NameserverRegistryVO> updateRegistryEntry(
+            @Valid @RequestBody(required = false) UpdateNameserverRegistryDTO command) {
+        requireCommand(command);
+        return Result.ok(registryService.update(command));
+    }
+
+    @PostMapping("/registry/delete")
+    public Result<Void> deleteRegistryEntry(
+            @Valid @RequestBody(required = false) DeleteNameserverRegistryDTO command) {
+        requireCommand(command);
+        registryService.delete(command.getId());
+        return Result.ok();
+    }
+
+    @GetMapping("/config-diff")
+    public Result<NameServerConfigDiffVO> compareConfiguration(
+            @RequestParam(required = false) String clusterId,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(configDiffService.compare(clusterId, instanceId));
+    }
 
     @PostMapping("/create")
     public Result<NameServerVO> createNameServer(@Valid @RequestBody(required = false) CreateNameServerDTO command) {

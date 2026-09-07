@@ -1,11 +1,15 @@
 import { isMockMode } from './dataMode';
 import * as clusterApi from '../api/cluster';
 import type {
+  BrokerConfigDiffResult,
   ClusterConfig,
+  ClusterConfigPreviewResult,
   ClusterConfigUpdateResult,
   ClusterInfo,
   ClusterProbeResult,
   K8sCertInfo,
+  NameServerConfigDiffResult,
+  NameserverRegistryEntry,
 } from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
 
@@ -33,11 +37,45 @@ function copyCluster(cluster: ClusterInfo): ClusterInfo {
   };
 }
 
-export async function listClusters(): Promise<ClusterInfo[]> {
+export async function listClusters(instanceId?: string): Promise<ClusterInfo[]> {
   if (isMockMode()) {
     return clusters.map(copyCluster);
   }
-  return clusterApi.listClusters();
+  return clusterApi.listClusters(instanceId);
+}
+
+export async function listRegistryClusters(): Promise<ClusterInfo[]> {
+  if (isMockMode()) {
+    return clusters.map(copyCluster);
+  }
+  return clusterApi.listRegistryClusters();
+}
+
+export async function listNameserverRegistry(): Promise<NameserverRegistryEntry[]> {
+  return clusterApi.listNameserverRegistry();
+}
+
+export async function createNameserverRegistry(data: {
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  description?: string;
+}): Promise<NameserverRegistryEntry> {
+  return clusterApi.createNameserverRegistry(data);
+}
+
+export async function updateNameserverRegistry(data: {
+  id: number;
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  description?: string;
+}): Promise<NameserverRegistryEntry> {
+  return clusterApi.updateNameserverRegistry(data);
+}
+
+export async function deleteNameserverRegistry(id: number): Promise<void> {
+  await clusterApi.deleteNameserverRegistry(id);
 }
 
 export async function testClusterConnection(namesrvAddr: string): Promise<ClusterProbeResult> {
@@ -58,17 +96,109 @@ export async function testClusterConnection(namesrvAddr: string): Promise<Cluste
   return clusterApi.testClusterConnection(namesrvAddr);
 }
 
-export async function getCluster(id: string): Promise<ClusterInfo> {
+export async function getCluster(id: string, instanceId?: string): Promise<ClusterInfo> {
   if (isMockMode()) {
     const cluster = clusters.find((item) => item.id === id);
     if (!cluster) throw new Error('Cluster not found');
     return copyCluster(cluster);
   }
-  return clusterApi.getCluster(id);
+  return clusterApi.getCluster(id, instanceId);
+}
+
+export async function getNameServerConfigDiff(
+  clusterId: string,
+  instanceId?: string,
+): Promise<NameServerConfigDiffResult> {
+  if (!isMockMode()) return clusterApi.getNameServerConfigDiff(clusterId, instanceId);
+
+  const cluster = getMockCluster(clusterId);
+  const nodes = cluster.nameServers.map((nameServer) => ({
+    address: nameServer.addr,
+    reachable: nameServer.status !== 'offline',
+  }));
+  const reachableAddresses = nodes.filter((node) => node.reachable).map((node) => node.address);
+  const driftDetected = cluster.id === 'cluster-prod' && reachableAddresses.length > 1;
+
+  return {
+    cluster: cluster.id,
+    complete: reachableAddresses.length === nodes.length,
+    driftDetected,
+    nodeCount: nodes.length,
+    reachableNodeCount: reachableAddresses.length,
+    comparedKeys: ['listenPort', 'serverWorkerThreads', 'clientRequestThreadPoolNums'],
+    nodes,
+    differences: driftDetected
+      ? [
+          {
+            key: 'serverWorkerThreads',
+            values: reachableAddresses.map((address, index) => ({
+              address,
+              configured: true,
+              value: index === 0 ? '8' : '12',
+            })),
+          },
+        ]
+      : [],
+  };
+}
+
+export async function getBrokerConfigDiff(
+  clusterId: string,
+  instanceId?: string,
+): Promise<BrokerConfigDiffResult> {
+  if (!isMockMode()) return clusterApi.getBrokerConfigDiff(clusterId, instanceId);
+
+  const cluster = getMockCluster(clusterId);
+  const brokers = cluster.brokers
+    .filter((broker) => broker.addr)
+    .map((broker) => ({
+      name: broker.name,
+      address: broker.addr,
+      reachable: String(broker.status) !== 'offline',
+    }));
+  const reachableBrokers = brokers.filter((broker) => broker.reachable);
+  const driftDetected = cluster.id === 'cluster-prod' && reachableBrokers.length > 1;
+
+  return {
+    cluster: cluster.id,
+    complete: reachableBrokers.length === brokers.length,
+    driftDetected,
+    brokerCount: brokers.length,
+    reachableBrokerCount: reachableBrokers.length,
+    comparedFields: [
+      'flushDiskType',
+      'autoCreateTopicEnable',
+      'autoCreateSubscriptionGroup',
+      'maxMessageSize',
+      'msgTraceTopicName',
+      'deleteWhen',
+      'fileReservedTime',
+      'writeQueueNums',
+      'readQueueNums',
+      'brokerPermission',
+    ],
+    brokers,
+    differences: driftDetected
+      ? [
+          {
+            field: 'writeQueueNums',
+            brokerProperty: 'defaultTopicQueueNums',
+            values: reachableBrokers.map((broker, index) => ({
+              brokerName: broker.name,
+              address: broker.address,
+              configured: true,
+              value: index === 0 ? String(cluster.config.writeQueueNums) : '16',
+            })),
+          },
+        ]
+      : [],
+  };
 }
 
 export async function listK8sCerts(): Promise<K8sCertInfo[]> {
-  if (isMockMode()) return mockCertStore.map((cert) => ({ ...cert, san: [...cert.san] }));
+  if (isMockMode()) {
+    return mockCertStore.map((cert) => ({ ...cert, san: cert.san ? [...cert.san] : cert.san }));
+  }
   return clusterApi.listK8sCerts();
 }
 
@@ -78,9 +208,8 @@ export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
     const notAfter = new Date(now);
     notAfter.setFullYear(notAfter.getFullYear() + 1);
     const cert: K8sCertInfo = {
-      id: `cert-${Date.now()}`,
-      name: data.name ?? '',
-      namespace: data.namespace ?? '',
+      id: Date.now(),
+      k8sId: data.k8sId ?? '',
       cluster: data.cluster ?? '',
       type: data.type ?? 'TLS',
       issuer: data.issuer ?? '',
@@ -91,7 +220,7 @@ export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
       san: [...(data.san ?? [])],
     };
     mockCertStore.push(cert);
-    return { ...cert, san: [...cert.san] };
+    return { ...cert, san: cert.san ? [...cert.san] : cert.san };
   }
   return clusterApi.createK8sCert(data);
 }
@@ -101,12 +230,12 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
     const existing = mockCertStore.find((cert) => cert.id === data.id);
     if (!existing) throw new Error(`Certificate not found: ${data.id}`);
     Object.assign(existing, data, { san: data.san ? [...data.san] : existing.san });
-    return { ...existing, san: [...existing.san] };
+    return { ...existing, san: existing.san ? [...existing.san] : existing.san };
   }
   return clusterApi.updateK8sCert(data);
 }
 
-export async function renewK8sCert(id: string): Promise<K8sCertInfo> {
+export async function renewK8sCert(id: number): Promise<K8sCertInfo> {
   if (isMockMode()) {
     const existing = mockCertStore.find((cert) => cert.id === id);
     if (!existing) throw new Error(`Certificate not found: ${id}`);
@@ -119,12 +248,12 @@ export async function renewK8sCert(id: string): Promise<K8sCertInfo> {
       status: 'valid',
       daysRemaining: Math.round((notAfter.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
     });
-    return { ...existing, san: [...existing.san] };
+    return { ...existing, san: existing.san ? [...existing.san] : existing.san };
   }
   return clusterApi.renewK8sCert(id);
 }
 
-export async function deleteK8sCert(id: string): Promise<void> {
+export async function deleteK8sCert(id: number): Promise<void> {
   if (isMockMode()) {
     const index = mockCertStore.findIndex((cert) => cert.id === id);
     if (index < 0) throw new Error(`Certificate not found: ${id}`);
@@ -134,9 +263,12 @@ export async function deleteK8sCert(id: string): Promise<void> {
   return clusterApi.deleteK8sCert(id);
 }
 
-export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
+export async function updateClusterConfig(
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+) {
   if (isMockMode()) {
-    const { id, ...config } = data;
+    const { id } = data;
+    const config = pickClusterConfig(data);
     const cluster = getMockCluster(id);
     Object.assign(cluster.config, config);
     return {
@@ -149,9 +281,92 @@ export async function updateClusterConfig(data: { id: string } & Partial<Cluster
   return clusterApi.updateClusterConfig(data);
 }
 
+export async function previewClusterConfig(
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+): Promise<ClusterConfigPreviewResult> {
+  if (isMockMode()) {
+    const { id } = data;
+    const config = pickClusterConfig(data);
+    const cluster = getMockCluster(id);
+    const currentConfig = { ...cluster.config };
+    const proposedConfig = { ...cluster.config, ...config };
+    const changes = buildMockConfigPreviewChanges(currentConfig, proposedConfig);
+    return {
+      cluster: copyCluster(cluster),
+      currentConfig,
+      proposedConfig,
+      targetBrokers: cluster.brokers
+        .filter((broker) => broker.addr)
+        .map((broker) => ({ name: broker.name, address: broker.addr })),
+      brokerProperties: buildMockBrokerProperties(config),
+      changes,
+      changed: changes.length > 0,
+    };
+  }
+  return clusterApi.previewClusterConfig(data);
+}
+
 export async function restartBroker(clusterId: string, brokerName: string) {
   if (isMockMode()) return { success: true, message: `Broker ${brokerName} restarted (mock)` };
   return clusterApi.restartBroker(clusterId, brokerName);
+}
+
+function pickClusterConfig(config: Partial<ClusterConfig>): Partial<ClusterConfig> {
+  const picked: Partial<ClusterConfig> = {};
+  if (config.flushDiskType !== undefined) picked.flushDiskType = config.flushDiskType;
+  if (config.autoCreateTopicEnable !== undefined) {
+    picked.autoCreateTopicEnable = config.autoCreateTopicEnable;
+  }
+  if (config.autoCreateSubscriptionGroup !== undefined) {
+    picked.autoCreateSubscriptionGroup = config.autoCreateSubscriptionGroup;
+  }
+  if (config.maxMessageSize !== undefined) picked.maxMessageSize = config.maxMessageSize;
+  if (config.fileReservedTime !== undefined) picked.fileReservedTime = config.fileReservedTime;
+  if (config.writeQueueNums !== undefined) picked.writeQueueNums = config.writeQueueNums;
+  if (config.readQueueNums !== undefined) picked.readQueueNums = config.readQueueNums;
+  if (config.brokerPermission !== undefined) picked.brokerPermission = config.brokerPermission;
+  return picked;
+}
+
+function buildMockBrokerProperties(config: Partial<ClusterConfig>): Record<string, string> {
+  const props: Record<string, string> = {};
+  if (config.flushDiskType != null) props.flushDiskType = String(config.flushDiskType);
+  if (config.autoCreateTopicEnable != null) {
+    props.autoCreateTopicEnable = String(config.autoCreateTopicEnable);
+  }
+  if (config.autoCreateSubscriptionGroup != null) {
+    props.autoCreateSubscriptionGroup = String(config.autoCreateSubscriptionGroup);
+  }
+  if (config.maxMessageSize != null) props.maxMessageSize = String(config.maxMessageSize);
+  if (config.fileReservedTime != null) props.fileReservedTime = String(config.fileReservedTime);
+  if (config.writeQueueNums != null) props.defaultTopicQueueNums = String(config.writeQueueNums);
+  if (config.readQueueNums != null) props.defaultTopicQueueNums = String(config.readQueueNums);
+  if (config.brokerPermission != null) props.brokerPermission = String(config.brokerPermission);
+  return props;
+}
+
+function buildMockConfigPreviewChanges(
+  currentConfig: ClusterConfig,
+  proposedConfig: ClusterConfig,
+): ClusterConfigPreviewResult['changes'] {
+  const fields: Array<{ field: keyof ClusterConfig; brokerProperty: string }> = [
+    { field: 'flushDiskType', brokerProperty: 'flushDiskType' },
+    { field: 'autoCreateTopicEnable', brokerProperty: 'autoCreateTopicEnable' },
+    { field: 'autoCreateSubscriptionGroup', brokerProperty: 'autoCreateSubscriptionGroup' },
+    { field: 'maxMessageSize', brokerProperty: 'maxMessageSize' },
+    { field: 'fileReservedTime', brokerProperty: 'fileReservedTime' },
+    { field: 'writeQueueNums', brokerProperty: 'defaultTopicQueueNums' },
+    { field: 'readQueueNums', brokerProperty: 'defaultTopicQueueNums' },
+    { field: 'brokerPermission', brokerProperty: 'brokerPermission' },
+  ];
+  return fields
+    .filter(({ field }) => currentConfig[field] !== proposedConfig[field])
+    .map(({ field, brokerProperty }) => ({
+      field,
+      currentValue: String(currentConfig[field]),
+      proposedValue: String(proposedConfig[field]),
+      brokerProperty,
+    }));
 }
 
 function getMockCluster(clusterId: string) {

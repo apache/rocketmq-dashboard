@@ -24,17 +24,20 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  token: string;
   expiresIn: number;
-  user: {
-    username: string;
-    admin: boolean;
-  };
+  user: AuthenticatedUser;
+}
+
+export interface AuthenticatedUser {
+  userId: number | null;
+  username: string;
+  admin: boolean;
 }
 
 export interface AuthStatus {
   loginRequired: boolean;
   authenticated: boolean;
+  user?: AuthenticatedUser;
 }
 
 // ─── Auth ───────────────────────────────────────────────────────
@@ -50,4 +53,8 @@ export async function login(username: string, password: string) {
 
 export async function logout() {
   await client.post('/auth/logout');
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  await client.post('/auth/password', { currentPassword, newPassword });
 }

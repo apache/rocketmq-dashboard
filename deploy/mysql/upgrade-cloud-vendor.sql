@@ -72,10 +72,26 @@ PREPARE region_id_statement FROM @region_id_sql;
 EXECUTE region_id_statement;
 DEALLOCATE PREPARE region_id_statement;
 
--- 5. 存量实例兜底回填
+-- 5. rmq_instance.admin_credential_ref. The reference is non-secret; actual Apache admin
+-- credentials remain external Spring configuration and are never stored in this database.
+SET @admin_credential_ref_column_exists := (
+    SELECT COUNT(*)
+    FROM information_schema.columns
+    WHERE table_schema = @schema_name
+      AND table_name = 'rmq_instance'
+      AND column_name = 'admin_credential_ref'
+);
+SET @admin_credential_ref_sql := IF(@admin_credential_ref_column_exists = 0,
+    "ALTER TABLE rmq_instance ADD COLUMN admin_credential_ref VARCHAR(128) COMMENT 'External Apache admin credential reference; no secret material' AFTER credential_id",
+    'SELECT 1');
+PREPARE admin_credential_ref_statement FROM @admin_credential_ref_sql;
+EXECUTE admin_credential_ref_statement;
+DEALLOCATE PREPARE admin_credential_ref_statement;
+
+-- 6. 存量实例兜底回填
 UPDATE rmq_instance SET vendor = 'APACHE' WHERE vendor IS NULL OR vendor = '';
 
--- 6. 云厂商凭据表（secret_key 为 base64 编码，禁止明文；access_key 明文用于唯一键与打码展示）
+-- 7. 云厂商凭据表（secret_key 为 base64 编码，禁止明文；access_key 明文用于唯一键与打码展示）
 CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(128) NOT NULL COMMENT '凭据显示名',

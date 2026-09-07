@@ -28,6 +28,8 @@ import lombok.NoArgsConstructor;
 public class ProducerConnectionVO {
     private String clientId;
     private String clientAddr;
+    private String topic;
+    private String producerGroup;
     private String language;
     private String versionDesc;
 }

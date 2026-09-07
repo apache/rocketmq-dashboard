@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { queryProxyHomePage, addProxyAddr, removeProxyAddr } from './proxy';
+import { addProxyAddress, queryProxyHomePage, removeProxyAddress } from './proxy';
 
 const mock = new MockAdapter(client);
 
@@ -55,32 +55,29 @@ describe('Proxy API', () => {
     expect(result.currentProxyAddr).toBe('');
   });
 
-  it('adds a proxy address with form-urlencoded content type', async () => {
-    mock.onPost('/proxy/addProxyAddr.do').reply((config) => {
-      expect(config.headers?.['Content-Type']).toBe('application/x-www-form-urlencoded');
-      expect(config.data).toBe('newProxyAddr=192.168.1.3%3A8081');
-      return [200, { code: 200 }];
+  it('adds proxy addresses through the Studio endpoint', async () => {
+    const data = {
+      proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    };
+    mock.onPost('/proxies/addresses').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ addr: '10.0.0.10:8081' });
+      return [200, { code: 200, data }];
     });
 
-    await addProxyAddr('192.168.1.3:8081');
+    await expect(addProxyAddress('10.0.0.10:8081')).resolves.toEqual(data);
   });
 
-  it('adds a proxy address with localhost', async () => {
-    mock.onPost('/proxy/addProxyAddr.do').reply((config) => {
-      expect(config.data).toBe('newProxyAddr=localhost%3A8081');
-      return [200, { code: 200 }];
+  it('removes proxy addresses through the Studio endpoint', async () => {
+    const data = {
+      proxyAddrList: ['127.0.0.1:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    };
+    mock.onDelete('/proxies/addresses').reply((config) => {
+      expect(config.params).toEqual({ addr: '10.0.0.10:8081' });
+      return [200, { code: 200, data }];
     });
 
-    await addProxyAddr('localhost:8081');
-  });
-
-  it('removes a proxy address with form-urlencoded content type', async () => {
-    mock.onPost('/proxy/removeProxyAddr.do').reply((config) => {
-      expect(config.headers?.['Content-Type']).toBe('application/x-www-form-urlencoded');
-      expect(config.data).toBe('proxyAddr=192.168.1.3%3A8081');
-      return [200, { code: 200 }];
-    });
-
-    await removeProxyAddr('192.168.1.3:8081');
+    await expect(removeProxyAddress('10.0.0.10:8081')).resolves.toEqual(data);
   });
 });

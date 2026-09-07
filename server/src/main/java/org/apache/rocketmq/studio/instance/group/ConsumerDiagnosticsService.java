@@ -28,10 +28,11 @@ public class ConsumerDiagnosticsService {
 
     private final ConsumerDiagnosticsProvider diagnosticsProvider;
 
-    public ConsumerStackTraceVO getConsumerStack(String groupName, String clientId) {
+    public ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId) {
+        String normalizedInstanceId = normalizeOptional(instanceId);
         String normalizedGroupName = normalizeRequired(groupName, "groupName");
         String normalizedClientId = normalizeRequired(clientId, "clientId");
-        return diagnosticsProvider.getConsumerStack(normalizedGroupName, normalizedClientId);
+        return diagnosticsProvider.getConsumerStack(normalizedInstanceId, normalizedGroupName, normalizedClientId);
     }
 
     private String normalizeRequired(String value, String fieldName) {
@@ -39,5 +40,9 @@ public class ConsumerDiagnosticsService {
             throw new BusinessException(400, fieldName + " is required");
         }
         return value.trim();
+    }
+
+    private String normalizeOptional(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 }

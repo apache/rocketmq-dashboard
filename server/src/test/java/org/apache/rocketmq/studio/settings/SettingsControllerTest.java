@@ -17,7 +17,10 @@
 package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.ops.alert.NotificationOutboxService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -27,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
@@ -54,8 +58,11 @@ class SettingsControllerTest {
     @MockBean
     private SettingsService settingsService;
 
+    @MockBean
+    private NotificationOutboxService notificationOutboxService;
+
     @Test
-    void getGeneralSettingsShouldReturnSettings() throws Exception {
+    void getGeneralSettingsShouldReturnSettingsTest() throws Exception {
         GeneralSettingsVO settings = GeneralSettingsVO.builder()
                 .theme("dark")
                 .compact(true)
@@ -88,7 +95,42 @@ class SettingsControllerTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldReturnSuccess() throws Exception {
+    void getGeneralSettingsShouldRedactNotificationWebhooksForReadersTest() throws Exception {
+        AuthenticatedUserContext.setUser("reader", false);
+        try {
+            GeneralSettingsVO settings = GeneralSettingsVO.builder()
+                    .theme("dark")
+                    .compact(true)
+                    .desktopNotify(true)
+                    .notifySound(false)
+                    .sessionTimeout(30)
+                    .requireLogin(true)
+                    .llmProvider("openai")
+                    .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=secret")
+                    .emailRecipients("ops@example.com")
+                    .smsWebhook("https://sms.example.test/notify")
+                    .model("gpt-4")
+                    .baseUrl("https://api.openai.com")
+                    .build();
+            when(settingsService.getGeneralSettings()).thenReturn(settings.toBuilder()
+                    .dingtalkWebhook("******")
+                    .smsWebhook("******")
+                    .build());
+
+            mockMvc.perform(get("/api/settings/general"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.dingtalkWebhook", is("******")))
+                    .andExpect(jsonPath("$.data.dingtalkWebhookConfigured", is(true)))
+                    .andExpect(jsonPath("$.data.emailRecipients", is("ops@example.com")))
+                    .andExpect(jsonPath("$.data.smsWebhook", is("******")))
+                    .andExpect(jsonPath("$.data.smsWebhookConfigured", is(true)));
+        } finally {
+            AuthenticatedUserContext.clear();
+        }
+    }
+
+    @Test
+    void saveGeneralSettingsShouldReturnSuccessTest() throws Exception {
         doNothing().when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
 
         mockMvc.perform(post("/api/settings/general/save")
@@ -117,7 +159,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldAcceptExplicitApiKeyClearWithoutBindingResponseState() throws Exception {
+    void saveGeneralSettingsShouldAcceptExplicitApiKeyClearWithoutBindingResponseStateTest() throws Exception {
         doNothing().when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
 
         mockMvc.perform(post("/api/settings/general/save")
@@ -144,7 +186,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldRejectIncompleteReplacement() throws Exception {
+    void saveGeneralSettingsShouldRejectIncompleteReplacementTest() throws Exception {
         mockMvc.perform(post("/api/settings/general/save")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -159,10 +201,10 @@ class SettingsControllerTest {
     }
 
     @Test
-    void listDataSourcesShouldReturnAllSources() throws Exception {
-        DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("rocketmq")
+    void listDataSourcesShouldReturnAllSourcesTest() throws Exception {
+        DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("Prometheus")
                 .url("prod:9876").status("connected").build();
-        DataSourceVO ds2 = DataSourceVO.builder().key("ds-2").name("Staging").type("rocketmq")
+        DataSourceVO ds2 = DataSourceVO.builder().key("ds-2").name("Staging").type("Prometheus")
                 .url("staging:9876").status("disconnected").build();
         when(settingsService.listDataSources()).thenReturn(Arrays.asList(ds1, ds2));
 
@@ -178,7 +220,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void listDataSourcesShouldReturnEmptyList() throws Exception {
+    void listDataSourcesShouldReturnEmptyListTest() throws Exception {
         when(settingsService.listDataSources()).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/settings/datasources"))
@@ -188,11 +230,34 @@ class SettingsControllerTest {
     }
 
     @Test
-    void createDataSourceShouldReturnCreatedSource() throws Exception {
-        DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
-                .url("new-host:9876").build();
-        DataSourceVO created = DataSourceVO.builder().key("ds-new").name("New DS").type("rocketmq")
-                .url("new-host:9876").status("connected").build();
+    void listDataSourcesPageShouldBindFiltersAndPaginationTest() throws Exception {
+        DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("Prometheus")
+                .url("prod:9876").status("connected").build();
+        PageResult<DataSourceVO> page = PageResult.of(List.of(ds1), 1, 2, 20);
+        when(settingsService.listDataSources("prod", "prometheus", 2, 20)).thenReturn(page);
+
+        mockMvc.perform(get("/api/settings/datasources/page")
+                        .param("search", "prod")
+                        .param("type", "prometheus")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is(200)))
+                .andExpect(jsonPath("$.data.total", is(1)))
+                .andExpect(jsonPath("$.data.page", is(2)))
+                .andExpect(jsonPath("$.data.size", is(20)))
+                .andExpect(jsonPath("$.data.items[0].key", is("ds-1")));
+
+        verify(settingsService).listDataSources("prod", "prometheus", 2, 20);
+    }
+
+    @Test
+    void createDataSourceShouldReturnCreatedSourceTest() throws Exception {
+        DataSourceVO input = DataSourceVO.builder().name("New DS").type("Prometheus")
+                .url("new-host:9876").instanceIds(List.of("instance-a", "instance-b")).build();
+        DataSourceVO created = DataSourceVO.builder().key("ds-new").name("New DS").type("Prometheus")
+                .url("new-host:9876").status("connected")
+                .instanceIds(List.of("instance-a", "instance-b")).build();
         when(settingsService.createDataSource(any(DataSourceVO.class))).thenReturn(created);
 
         mockMvc.perform(post("/api/settings/datasources/create")
@@ -203,10 +268,13 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.data.key", is("ds-new")))
                 .andExpect(jsonPath("$.data.name", is("New DS")))
                 .andExpect(jsonPath("$.data.status", is("connected")));
+
+        verify(settingsService).createDataSource(argThat(dataSource ->
+                List.of("instance-a", "instance-b").equals(dataSource.getInstanceIds())));
     }
 
     @Test
-    void createDataSourceShouldRejectMissingUrl() throws Exception {
+    void createDataSourceShouldRejectMissingUrlTest() throws Exception {
         mockMvc.perform(post("/api/settings/datasources/create")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -223,7 +291,44 @@ class SettingsControllerTest {
     }
 
     @Test
-    void createDataSourceShouldRejectNullRequestBody() throws Exception {
+    void createDataSourceShouldRejectUnsupportedMetricsTypeTest() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "New DS",
+                                  "type": "unsupported",
+                                  "url": "http://metrics.example.test"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source type")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void createDataSourceShouldRejectUnsupportedAuthenticationTest() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "New DS",
+                                  "type": "Prometheus",
+                                  "url": "http://metrics.example.test",
+                                  "auth": "API Key"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source authentication")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void createDataSourceShouldRejectNullRequestBodyTest() throws Exception {
         mockMvc.perform(post("/api/settings/datasources/create")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("null"))
@@ -235,9 +340,9 @@ class SettingsControllerTest {
     }
 
     @Test
-    void updateDataSourceShouldReturnUpdatedSource() throws Exception {
-        DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
-                .url("updated:9876").build();
+    void updateDataSourceShouldReturnUpdatedSourceTest() throws Exception {
+        DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("Prometheus")
+                .url("updated:9876").instanceIds(List.of("instance-b")).build();
         when(settingsService.updateDataSource(any(DataSourceVO.class))).thenReturn(input);
 
         mockMvc.perform(post("/api/settings/datasources/update")
@@ -247,16 +352,19 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.data.key", is("ds-1")))
                 .andExpect(jsonPath("$.data.name", is("Updated DS")));
+
+        verify(settingsService).updateDataSource(argThat(dataSource ->
+                List.of("instance-b").equals(dataSource.getInstanceIds())));
     }
 
     @Test
-    void updateDataSourceShouldRejectMissingName() throws Exception {
+    void updateDataSourceShouldRejectMissingNameTest() throws Exception {
         mockMvc.perform(post("/api/settings/datasources/update")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "key": "ds-1",
-                                  "type": "rocketmq",
+                                  "type": "Prometheus",
                                   "url": "updated:9876"
                                 }
                                 """))
@@ -268,7 +376,46 @@ class SettingsControllerTest {
     }
 
     @Test
-    void updateDataSourceShouldRejectNullRequestBody() throws Exception {
+    void updateDataSourceShouldRejectUnsupportedMetricsTypeTest() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "key": "ds-1",
+                                  "name": "Updated DS",
+                                  "type": "unsupported",
+                                  "url": "http://metrics.example.test"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source type")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void updateDataSourceShouldRejectUnsupportedAuthenticationTest() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "key": "ds-1",
+                                  "name": "Updated DS",
+                                  "type": "Prometheus",
+                                  "url": "http://metrics.example.test",
+                                  "auth": "API Key"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source authentication")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void updateDataSourceShouldRejectNullRequestBodyTest() throws Exception {
         mockMvc.perform(post("/api/settings/datasources/update")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("null"))
@@ -280,7 +427,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void deleteDataSourceShouldReturnSuccess() throws Exception {
+    void deleteDataSourceShouldReturnSuccessTest() throws Exception {
         doNothing().when(settingsService).deleteDataSource("ds-1");
 
         mockMvc.perform(post("/api/settings/datasources/delete")
@@ -292,7 +439,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void deleteDataSourceShouldRejectMissingKey() throws Exception {
+    void deleteDataSourceShouldRejectMissingKeyTest() throws Exception {
         doThrow(new BusinessException(400, "Data source key is required"))
                 .when(settingsService).deleteDataSource(null);
 
@@ -305,7 +452,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void deleteDataSourceShouldRejectUnknownKey() throws Exception {
+    void deleteDataSourceShouldRejectUnknownKeyTest() throws Exception {
         doThrow(new BusinessException(404, "Data source not found: missing"))
                 .when(settingsService).deleteDataSource("missing");
 
@@ -319,7 +466,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void testDataSourceShouldReturnTestResult() throws Exception {
+    void dataSourceShouldReturnTestResultTest() throws Exception {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("localhost:9876")
                 .type("rocketmq")
@@ -340,7 +487,7 @@ class SettingsControllerTest {
     }
 
     @Test
-    void testDataSourceShouldRejectMissingType() throws Exception {
+    void dataSourceShouldRejectMissingTypeTest() throws Exception {
         mockMvc.perform(post("/api/settings/datasources/test")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

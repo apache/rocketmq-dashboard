@@ -17,7 +17,12 @@
 package org.apache.rocketmq.studio.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 
 public interface RmqAlertRuleMapper extends BaseMapper<RmqAlertRule> {
+    @Update("UPDATE rmq_alert_rule SET last_triggered = #{triggeredAt}, gmt_modified = CURRENT_TIMESTAMP "
+            + "WHERE id = #{id}")
+    int updateLastTriggered(@Param("id") Long id, @Param("triggeredAt") String triggeredAt);
 }

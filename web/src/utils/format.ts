@@ -16,14 +16,16 @@
  */
 
 const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
+const safeDecimals = (decimals: number): number =>
+  Number.isFinite(decimals) ? Math.min(100, Math.max(0, Math.trunc(decimals))) : 1;
 
 /**
  * Format a date string or Date object to 'YYYY-MM-DD HH:mm:ss'.
  */
 export function formatDateTime(date: string | Date | null | undefined): string {
-  if (date === null || date === undefined) return '-';
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return String(date);
+  if (isNaN(d.getTime())) return '-';
   return (
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
     `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
@@ -31,13 +33,96 @@ export function formatDateTime(date: string | Date | null | undefined): string {
 }
 
 /**
+ * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
+ * serialize UTC LocalDateTime values without an offset, so normal Date parsing
+ * would incorrectly treat them as browser-local timestamps.
+ */
+export function formatUtcDateTime(
+  date: string | Date | null | undefined,
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): string {
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
+  const utcDate =
+    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
+      ? new Date(`${date}Z`)
+      : new Date(date);
+  if (Number.isNaN(utcDate.getTime())) return '-';
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'short',
+  }).formatToParts(utcDate);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  const year = value('year');
+  const month = value('month');
+  const day = value('day');
+  const hour = value('hour');
+  const minute = value('minute');
+  const second = value('second');
+  const zone = value('timeZoneName');
+  return year && month && day && hour && minute && second
+    ? `${year}-${month}-${day} ${hour}:${minute}:${second}${zone ? ` ${zone}` : ''}`
+    : '-';
+}
+
+/**
  * Format a date string or Date object to 'YYYY-MM-DD'.
  */
 export function formatDate(date: string | Date | null | undefined): string {
-  if (date === null || date === undefined) return '-';
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return String(date);
+  if (isNaN(d.getTime())) return '-';
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+type RelativeTimeTranslator = (key: string, params?: Record<string, string | number>) => string;
+
+/**
+ * Format a recent timestamp for compact conversation history entries.
+ */
+export function formatRelativeTime(
+  timestamp: number,
+  lang: 'zh' | 'en',
+  t: RelativeTimeTranslator,
+  now = Date.now(),
+): string {
+  if (!Number.isFinite(timestamp) || !Number.isFinite(now)) return '-';
+  if (!timestamp) return t('ai.history.justNow');
+
+  const elapsed = Math.max(0, now - timestamp);
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return t('ai.history.justNow');
+  if (minutes < 60) return t('ai.history.minutesAgo', { count: minutes });
+
+  const updatedAt = new Date(timestamp);
+  const current = new Date(now);
+  const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
+  if (updatedAt.toDateString() === current.toDateString()) {
+    return new Intl.DateTimeFormat(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(updatedAt);
+  }
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(updatedAt);
+}
+
+/**
+ * Format a message timestamp for a compact chat bubble footer.
+ */
+export function formatTimeOfDay(timestamp: number): string {
+  if (!Number.isFinite(timestamp)) return '-';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '-';
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /**
@@ -45,14 +130,19 @@ export function formatDate(date: string | Date | null | undefined): string {
  * e.g. 1536 → '1.5 KB', 1048576 → '1 MB'
  */
 export function formatBytes(bytes: number, decimals = 1): string {
+  if (!Number.isFinite(bytes)) return '-';
   if (bytes === 0) return '0 B';
   if (bytes < 0) return `-${formatBytes(-bytes, decimals)}`;
 
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   const k = 1024;
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
-  return `${value.toFixed(decimals)} ${units[i]}`;
+  let i = 0;
+  let value = Math.abs(bytes);
+  while (value >= k && i < units.length - 1) {
+    value /= k;
+    i += 1;
+  }
+  return `${value.toFixed(safeDecimals(decimals))} ${units[i]}`;
 }
 
 /**
@@ -60,7 +150,7 @@ export function formatBytes(bytes: number, decimals = 1): string {
  * e.g. 1234567 → '1,234,567'
  */
 export function formatNumber(num: number): string {
-  return num.toLocaleString('en-US');
+  return Number.isFinite(num) ? num.toLocaleString('en-US') : '-';
 }
 
 /**
@@ -69,6 +159,7 @@ export function formatNumber(num: number): string {
  * e.g. 82500 → zh: "22小时55分钟", en: "22h 55m"
  */
 export function formatDelay(totalSeconds: number, lang: 'zh' | 'en' = 'zh'): string {
+  if (!Number.isFinite(totalSeconds)) return '-';
   if (totalSeconds <= 0) return lang === 'zh' ? '0秒' : '0s';
 
   const days = Math.floor(totalSeconds / 86400);
@@ -99,5 +190,6 @@ export function formatDelay(totalSeconds: number, lang: 'zh' | 'en' = 'zh'): str
  * Format a percentage value (0-100) with fixed decimals.
  */
 export function formatPercent(value: number, decimals = 1): string {
-  return `${value.toFixed(decimals)}%`;
+  if (!Number.isFinite(value)) return '-';
+  return `${value.toFixed(safeDecimals(decimals))}%`;
 }

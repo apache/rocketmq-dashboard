@@ -21,8 +21,11 @@ import client from './client';
 import {
   createAclRule,
   createAclUser,
+  createAndUpdatePlainAccessConfig,
   deleteAclRule,
   deleteAclUser,
+  examineBrokerClusterAclConfig,
+  getAclUserCredentials,
   listAclRules,
   updateAclRule,
   updateAclUser,
@@ -42,18 +45,31 @@ describe('ACL API contract', () => {
   });
 
   it('uses the controller-supported ACL rule filters', async () => {
-    const params = { clusterId: 'cluster-a', principal: 'orders' };
+    const params = {
+      principal: 'orders',
+      resource: 'orders-*',
+      scope: 'cluster',
+      decision: 'ALLOW',
+      aclVersion: '2.0',
+      page: 2,
+      pageSize: 10,
+    };
     mock.onGet('/acl/rules').reply((config) => {
       expect(config.params).toEqual(params);
-      return [200, { code: 200, data: [] }];
+      return [200, { code: 200, data: { items: [], total: 21, page: 2, size: 10 } }];
     });
 
-    await expect(listAclRules(params)).resolves.toEqual([]);
+    await expect(listAclRules(params)).resolves.toEqual({
+      items: [],
+      total: 21,
+      page: 2,
+      size: 10,
+    });
   });
 
   it('returns records created by rule and user APIs', async () => {
     const rule = {
-      id: 'rule-1',
+      id: 11,
       principal: 'orders',
       resource: 'orders-*',
       resourceType: 'Topic',
@@ -62,16 +78,16 @@ describe('ACL API contract', () => {
       decision: 'ALLOW',
       scope: 'cluster',
       aclVersion: 2,
-      createdAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
     };
     const user = {
-      id: 'user-1',
+      id: 21,
       username: 'orders',
       accessKey: 'ak',
       secretKey: 'sk',
       admin: false,
       clusters: ['cluster-a'],
-      createdAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
     };
     mock.onPost('/acl/rules/create').reply(200, { code: 200, data: rule });
     mock.onPost('/acl/users/create').reply(200, { code: 200, data: user });
@@ -82,7 +98,7 @@ describe('ACL API contract', () => {
 
   it('uses backend update and delete endpoints for rules and users', async () => {
     const rule = {
-      id: 'rule-1',
+      id: 11,
       principal: 'orders',
       resource: 'orders-*',
       resourceType: 'Topic',
@@ -91,16 +107,16 @@ describe('ACL API contract', () => {
       decision: 'DENY',
       scope: 'cluster',
       aclVersion: 2,
-      createdAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
     };
     const user = {
-      id: 'user-1',
+      id: 21,
       username: 'orders',
       accessKey: 'ak',
       secretKey: 'sk',
       admin: true,
       clusters: ['cluster-a'],
-      createdAt: '2026-07-17T00:00:00Z',
+      gmtCreate: '2026-07-17T00:00:00Z',
     };
     mock.onPost('/acl/rules/update').reply((config) => {
       expect(JSON.parse(config.data)).toMatchObject({ id: rule.id, decision: 'DENY' });
@@ -123,5 +139,80 @@ describe('ACL API contract', () => {
     await expect(updateAclUser({ id: user.id, admin: true })).resolves.toEqual(user);
     await expect(deleteAclRule(rule.id)).resolves.toBeUndefined();
     await expect(deleteAclUser(user.id)).resolves.toBeUndefined();
+  });
+
+  it('passes Tencent role names as ACL entity identifiers', async () => {
+    mock.onPost('/acl/rules/delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ id: 'reader-role', instanceId: 'tencent-rmq' });
+      return [200, { code: 200 }];
+    });
+    mock.onPost('/acl/users/delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ id: 'reader-role', instanceId: 'tencent-rmq' });
+      return [200, { code: 200 }];
+    });
+    mock.onGet('/acl/users/reader-role/credentials').reply((config) => {
+      expect(config.params).toEqual({ instanceId: 'tencent-rmq' });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            id: 'reader-role',
+            username: 'reader-role',
+            accessKey: 'ak',
+            secretKey: 'sk',
+            admin: false,
+            clusters: ['rmq-cloud'],
+          },
+        },
+      ];
+    });
+
+    await expect(deleteAclRule('reader-role', 'tencent-rmq')).resolves.toBeUndefined();
+    await expect(deleteAclUser('reader-role', 'tencent-rmq')).resolves.toBeUndefined();
+    await expect(getAclUserCredentials('reader-role', 'tencent-rmq')).resolves.toMatchObject({
+      username: 'reader-role',
+      secretKey: 'sk',
+    });
+  });
+
+  it('fetches cluster ACL config by clusterId', async () => {
+    mock.onGet('/acl/cluster-config').reply((config) => {
+      expect(config.params).toEqual({ clusterId: 'cluster-a' });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            clusterId: 'cluster-a',
+            aclEnabled: true,
+            aclVersion: 'ACL 2.0',
+            globalWhiteRemoteAddresses: ['10.0.0.0/8'],
+            accounts: [],
+            accountCount: 0,
+          },
+        },
+      ];
+    });
+
+    const result = await examineBrokerClusterAclConfig('cluster-a');
+    expect(result.clusterId).toBe('cluster-a');
+    expect(result.aclVersion).toBe('ACL 2.0');
+    expect(result.accountCount).toBe(0);
+  });
+
+  it('posts plain access config to create or update', async () => {
+    const payload = {
+      accessKey: 'svc-x',
+      admin: false,
+      defaultTopicPerm: 'PUB',
+      topicPerms: ['t=PUB'],
+    };
+    mock.onPost('/acl/plain-access-config').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(payload);
+      return [200, { code: 200, data: payload }];
+    });
+
+    await expect(createAndUpdatePlainAccessConfig(payload)).resolves.toEqual(payload);
   });
 });

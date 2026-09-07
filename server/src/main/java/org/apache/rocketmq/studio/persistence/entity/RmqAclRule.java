@@ -27,8 +27,8 @@ import java.time.LocalDateTime;
 @TableName("rmq_acl_rule")
 public class RmqAclRule {
 
-    @TableId(type = IdType.INPUT)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
     private String principal;
 
@@ -46,7 +46,7 @@ public class RmqAclRule {
 
     private String aclVersion;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

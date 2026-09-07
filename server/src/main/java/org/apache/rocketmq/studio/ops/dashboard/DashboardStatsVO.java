@@ -30,8 +30,10 @@ public class DashboardStatsVO {
     private int totalClusters;
     private int healthyClusters;
     private int totalBrokers;
-    private int totalProxies;
-    private int totalNameServers;
+    /** Null means Studio cannot discover the count through the selected access path. */
+    private Integer totalProxies;
+    /** Null means Studio cannot discover the count through the selected access path. */
+    private Integer totalNameServers;
     private int totalTopics;
     private int totalConsumerGroups;
     private long totalMessagesToday;

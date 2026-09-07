@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class MultiBackendMetricsSourceTest {
 
@@ -40,6 +41,8 @@ class MultiBackendMetricsSourceTest {
     private String baseUrl;
     private final MetricsSourceFactory factory =
             new MetricsSourceFactory(RestClient.builder(), new ObjectMapper());
+    private final RestClient.Builder restClientBuilder = RestClient.builder();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() throws IOException {
@@ -66,8 +69,7 @@ class MultiBackendMetricsSourceTest {
                     """.formatted(backendType.name()));
         });
 
-        MetricsDataSourceConfig config = configFor(backendType);
-        MetricsSource source = factory.create(config);
+        MetricsSource source = testSourceFor(backendType);
         MetricDataVO result = source.query(query());
 
         assertThat(requestPath.get()).isEqualTo(backendType.getQueryPath());
@@ -101,12 +103,122 @@ class MultiBackendMetricsSourceTest {
         assertThat(factory.create(config)).isInstanceOf(PrometheusMetricsSource.class);
     }
 
+    @Test
+    void noneAuthenticationShouldIgnoreConfiguredCredentials() {
+        assertAuthorization("none", "user", "password", "token", null);
+    }
+
+    @Test
+    void basicAuthenticationShouldTakePrecedenceOverAnUnrelatedBearerToken() {
+        assertAuthorization("basic", "user", "password", "token", "Basic dXNlcjpwYXNzd29yZA==");
+    }
+
+    @Test
+    void bearerAuthenticationShouldIgnoreConfiguredBasicCredentials() {
+        assertAuthorization("bearer", "user", "password", "token", "Bearer token");
+    }
+
+    @Test
+    void authenticationModeShouldRejectMissingRequiredCredentials() {
+        assertAuthenticationFailure("basic", "user", null, null,
+                "Prometheus basic authentication is incomplete");
+        assertAuthenticationFailure("bearer", null, null, null,
+                "Prometheus bearer authentication is incomplete");
+    }
+
+    @Test
+    void unsupportedAuthenticationModeShouldBeRejected() {
+        assertAuthenticationFailure("digest", "user", "password", "token",
+                "Unsupported Prometheus authentication mode: digest");
+    }
+
+    private void assertAuthorization(String authType, String username, String password,
+                                     String bearerToken, String expectedAuthorization) {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        server.createContext(MetricsBackendType.PROMETHEUS.getQueryPath(), exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, """
+                    {"status":"success","data":{"resultType":"matrix","result":[]}}
+                    """);
+        });
+
+        loopbackPrometheusSource(configWithAuth(authType, username, password, bearerToken)).query(query());
+
+        assertThat(authorization.get()).isEqualTo(expectedAuthorization);
+    }
+
+    private void assertAuthenticationFailure(String authType, String username, String password,
+                                             String bearerToken, String message) {
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> loopbackPrometheusSource(configWithAuth(authType, username, password, bearerToken))
+                        .query(query()))
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(503);
+                    assertThat(exception.getMessage()).isEqualTo(message);
+                });
+    }
+
+    private MetricsSource loopbackPrometheusSource(MetricsDataSourceConfig config) {
+        MetricsSourceSettings settings = MetricsSourceSettings.builder()
+                .backendType(MetricsBackendType.PROMETHEUS)
+                .baseUrl(config.getUrl())
+                .authType(config.getAuthType())
+                .username(config.getUsername())
+                .password(config.getPassword())
+                .bearerToken(config.getBearerToken())
+                .build();
+        return new PrometheusMetricsSource(restClientBuilder, objectMapper, settings) {
+            @Override
+            protected void validateQueryHost(String url) {
+                if (url != null && url.startsWith(baseUrl)) {
+                    return;
+                }
+                super.validateQueryHost(url);
+            }
+        };
+    }
+
+    private MetricsDataSourceConfig configWithAuth(String authType, String username,
+                                                   String password, String bearerToken) {
+        MetricsDataSourceConfig config = configFor(MetricsBackendType.PROMETHEUS);
+        config.setAuthType(authType);
+        config.setUsername(username);
+        config.setPassword(password);
+        config.setBearerToken(bearerToken);
+        return config;
+    }
+
     private MetricsDataSourceConfig configFor(MetricsBackendType backendType) {
         MetricsDataSourceConfig config = new MetricsDataSourceConfig();
         config.setName(backendType.name().toLowerCase());
         config.setProviderType(backendType.name());
         config.setUrl(baseUrl);
         return config;
+    }
+
+    private MetricsSource testSourceFor(MetricsBackendType backendType) {
+        return loopbackSource(backendType);
+    }
+
+    private AbstractPrometheusCompatibleMetricsSource loopbackSource(MetricsBackendType backendType) {
+        return new AbstractPrometheusCompatibleMetricsSource(restClientBuilder, objectMapper,
+                MetricsSourceSettings.builder()
+                        .backendType(backendType)
+                        .baseUrl(baseUrl)
+                        .build()) {
+            @Override
+            protected MetricsBackendType backendType() {
+                return backendType;
+            }
+
+            @Override
+            protected void validateQueryHost(String url) {
+                if (url != null && url.startsWith(baseUrl)) {
+                    return;
+                }
+                super.validateQueryHost(url);
+            }
+        };
     }
 
     private MetricQueryDTO query() {
@@ -125,4 +237,5 @@ class MultiBackendMetricsSourceTest {
         exchange.getResponseBody().write(response);
         exchange.close();
     }
+
 }

@@ -36,6 +36,14 @@ public class ClientService {
         return clientProvider.findConnections(requireInstanceId(instanceId), normalizeFilter(clusterId), normalizeFilter(type));
     }
 
+    public List<ClientConnectionVO> listConnectionsAt(String namesrvAddr, String clusterId, String type) {
+        log.info("Listing client connections, namesrvAddr={}, clusterId={}, type={}", namesrvAddr, clusterId, type);
+        if (!StringUtils.hasText(namesrvAddr)) {
+            throw new BusinessException(400, "namesrvAddr is required");
+        }
+        return clientProvider.findConnectionsAt(namesrvAddr.trim(), normalizeFilter(clusterId), normalizeFilter(type));
+    }
+
     private String requireInstanceId(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");

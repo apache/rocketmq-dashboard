@@ -26,7 +26,7 @@ export interface NavigationSearchEntry {
 function normalizeSearchText(value: string): string {
   return value
     .normalize('NFKC')
-    .toLocaleLowerCase()
+    .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 }
@@ -78,7 +78,7 @@ export function isNavigationSearchShortcut(event: {
     ) !== null;
 
   return (
-    event.key.toLocaleLowerCase() === 'k' &&
+    event.key.toLowerCase() === 'k' &&
     (event.metaKey || event.ctrlKey) &&
     !event.altKey &&
     !isEditableTarget

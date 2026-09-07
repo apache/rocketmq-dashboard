@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.nameserver;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,8 +37,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class NameServerConfigDiffServiceTest {
@@ -49,13 +54,17 @@ class NameServerConfigDiffServiceTest {
     private MqAdminExtFactory adminFactory;
 
     @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
+
+    @Mock
     private MQAdminExt admin;
 
     private NameServerConfigDiffService service;
 
     @BeforeEach
     void setUp() {
-        service = new NameServerConfigDiffService(clusterService, adminFactory);
+        service = new NameServerConfigDiffService(
+                clusterService, adminFactory, runtimeAdminClientResolver);
     }
 
     private void stubAdminFactory() {
@@ -106,6 +115,28 @@ class NameServerConfigDiffServiceTest {
                 .containsExactly(
                         tuple("ns-a:9876", true),
                         tuple("ns-b:9876", true));
+    }
+
+    @Test
+    void compareShouldResolveClusterThroughSelectedInstance() throws Exception {
+        when(clusterService.getCluster("cluster-a", "instance-a")).thenReturn(cluster(
+                "ns-a:9876;ns-b:9876",
+                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
+            return action.apply(admin);
+        });
+        when(admin.getNameServerConfig(List.of("ns-a:9876")))
+                .thenReturn(Map.of("ns-a:9876", properties("listenPort", "9876")));
+        when(admin.getNameServerConfig(List.of("ns-b:9876")))
+                .thenReturn(Map.of("ns-b:9876", properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compare(" cluster-a ", " instance-a ");
+
+        assertThat(result.isComplete()).isTrue();
+        verify(clusterService).getCluster("cluster-a", "instance-a");
+        verify(runtimeAdminClientResolver, times(2)).execute(eq("instance-a"), any());
+        verify(adminFactory, never()).execute(anyString(), isNull(), any());
     }
 
     @Test
@@ -184,6 +215,40 @@ class NameServerConfigDiffServiceTest {
         assertThat(result.getNodeCount()).isEqualTo(1);
         assertThat(result.getReachableNodeCount()).isEqualTo(1);
         assertThat(result.getDifferences()).isEmpty();
+    }
+
+    @Test
+    void compareShouldDeduplicateDnsHostnamesIgnoringCase() throws Exception {
+        stubAdminFactory();
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                "ns.example.com:9876", List.of(nameServer("NS.EXAMPLE.COM:9876"))));
+        when(admin.getNameServerConfig(List.of("NS.EXAMPLE.COM:9876")))
+                .thenReturn(Map.of("NS.EXAMPLE.COM:9876", properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compare("cluster-a");
+
+        assertThat(result.getNodeCount()).isEqualTo(1);
+        assertThat(result.getReachableNodeCount()).isEqualTo(1);
+        verify(admin).getNameServerConfig(List.of("NS.EXAMPLE.COM:9876"));
+    }
+
+    @Test
+    void compareShouldPreserveIpv6ZoneCase() throws Exception {
+        stubAdminFactory();
+        String lowerZone = "[fe80::1%en0]:9876";
+        String upperZone = "[fe80::1%EN0]:9876";
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                upperZone, List.of(nameServer(lowerZone))));
+        when(admin.getNameServerConfig(List.of(lowerZone)))
+                .thenReturn(Map.of(lowerZone, properties("listenPort", "9876")));
+        when(admin.getNameServerConfig(List.of(upperZone)))
+                .thenReturn(Map.of(upperZone, properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compare("cluster-a");
+
+        assertThat(result.getNodeCount()).isEqualTo(2);
+        verify(admin).getNameServerConfig(List.of(lowerZone));
+        verify(admin).getNameServerConfig(List.of(upperZone));
     }
 
     @Test

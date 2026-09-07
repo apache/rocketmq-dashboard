@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.instance.message;
 import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -45,8 +47,53 @@ public class MessageController {
         return Result.ok(messageService.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
     }
 
+    @GetMapping("/page")
+    public Result<MessageQueryPageVO> queryMessagesPage(@RequestParam String instanceId,
+            @RequestParam(required = false) String topic, @RequestParam(required = false) String msgId,
+            @RequestParam(required = false) String tag, @RequestParam(required = false) String key,
+            @RequestParam(required = false) Long startTime, @RequestParam(required = false) Long endTime,
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int pageSize) {
+        return Result.ok(messageService.queryMessagesPage(instanceId, topic, msgId, tag, key, startTime, endTime,
+                page, pageSize));
+    }
+
     @GetMapping("/{msgId}/trace")
-    public Result<TraceRecordVO> getMessageTrace(@PathVariable String msgId, @RequestParam String instanceId) {
-        return Result.ok(messageService.getMessageTrace(instanceId, msgId));
+    public Result<TraceRecordVO> getMessageTrace(@PathVariable String msgId, @RequestParam String instanceId,
+                                                 // Optional for the Apache/Aliyun providers; the Tencent
+                                                 // provider requires a non-empty topic (DescribeMessageTrace).
+                                                 @RequestParam(required = false) String topic,
+                                                 // Custom trace topic; when blank the default
+                                                 // RMQ_SYS_TRACE_TOPIC is used.
+                                                 @RequestParam(required = false) String traceTopic) {
+        return Result.ok(messageService.getMessageTrace(instanceId, msgId, topic, traceTopic));
+    }
+
+    @GetMapping("/trace-by-key")
+    public Result<TraceRecordVO> getMessageTraceByKey(@RequestParam String instanceId,
+                                                      @RequestParam String key,
+                                                      @RequestParam(required = false) String topic,
+                                                      @RequestParam(required = false) String traceTopic) {
+        return Result.ok(messageService.getMessageTraceByKey(instanceId, key, topic, traceTopic));
+    }
+
+    @GetMapping("/queues")
+    public Result<List<QueueOffsetVO>> getQueueOffsets(@RequestParam String instanceId,
+                                                       @RequestParam String topic) {
+        return Result.ok(messageService.getQueueOffsets(instanceId, topic));
+    }
+
+    @GetMapping("/queue-message")
+    public Result<MessageRecordVO> pullMessageAtOffset(@RequestParam String instanceId,
+                                                       @RequestParam String topic,
+                                                       @RequestParam String brokerName,
+                                                       @RequestParam int queueId,
+                                                       @RequestParam long offset) {
+        return Result.ok(messageService.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset));
+    }
+
+    @PostMapping("/direct-consume")
+    public Result<DirectConsumeMessageResultVO> consumeMessageDirectly(
+            @jakarta.validation.Valid @RequestBody DirectConsumeMessageDTO request) {
+        return Result.ok(messageService.consumeMessageDirectly(request));
     }
 }

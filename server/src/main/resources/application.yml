@@ -11,12 +11,32 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:studio123}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # Studio is polled by multiple tabs / dashboards; the Spring Boot default of 10
+      # connections saturates fast under concurrent filters + alerting. 30 leaves
+      # headroom without overwhelming a default MySQL max-connections=151.
+      maximum-pool-size: 30
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      pool-name: studio-pool
+      leak-detection-threshold: 30000
+  mail:
+    host: ${STUDIO_ALERTING_SMTP_HOST:}
+    port: ${STUDIO_ALERTING_SMTP_PORT:587}
+    username: ${STUDIO_ALERTING_SMTP_USERNAME:}
+    password: ${STUDIO_ALERTING_SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${STUDIO_ALERTING_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${STUDIO_ALERTING_SMTP_STARTTLS:true}
 
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
   global-config:
+    banner: false
     db-config:
       table-prefix: rmq_
       id-type: auto
@@ -27,9 +47,32 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        add-additional-paths: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  health:
+    mail:
+      # SMTP is optional for native alerting; skip the SMTP connectivity probe
+      # unless explicitly enabled, so health stays UP when no SMTP host is configured.
+      enabled: ${STUDIO_ALERTING_SMTP_HEALTH_ENABLED:false}
+
 studio:
+  cors:
+    allowed-origins: ${STUDIO_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   auth:
-    login-required: ${STUDIO_AUTH_LOGIN_REQUIRED:false}
+    login-required: ${STUDIO_AUTH_LOGIN_REQUIRED:true}
+    # Production defaults. The dev profile disables Secure so local HTTP works without extra environment variables.
+    session-cookie-name: ${STUDIO_AUTH_SESSION_COOKIE_NAME:rmq_studio_session}
+    session-cookie-secure: ${STUDIO_AUTH_SESSION_COOKIE_SECURE:true}
+    session-cookie-same-site: ${STUDIO_AUTH_SESSION_COOKIE_SAME_SITE:Strict}
     users:
       - username: ${STUDIO_AUTH_ADMIN_USERNAME:}
         password: ${STUDIO_AUTH_ADMIN_PASSWORD:}
@@ -49,6 +92,23 @@ studio:
   query-history:
     retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
     cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}
+  alerting:
+    collection-interval: ${STUDIO_ALERTING_COLLECTION_INTERVAL:PT30S}
+    collection-parallelism: ${STUDIO_ALERTING_COLLECTION_PARALLELISM:4}
+    collection-timeout: ${STUDIO_ALERTING_COLLECTION_TIMEOUT:PT15S}
+    collection-lease-duration: ${STUDIO_ALERTING_COLLECTION_LEASE_DURATION:PT1M}
+    collection-lease-renewal-interval: ${STUDIO_ALERTING_COLLECTION_LEASE_RENEWAL_INTERVAL:PT15S}
+    snapshot-retention: ${STUDIO_ALERTING_SNAPSHOT_RETENTION:PT24H}
+    snapshot-cleanup-interval: ${STUDIO_ALERTING_SNAPSHOT_CLEANUP_INTERVAL:PT1H}
+    notification-dispatch-interval: ${STUDIO_ALERTING_NOTIFICATION_DISPATCH_INTERVAL:PT10S}
+    notification-retention: ${STUDIO_ALERTING_NOTIFICATION_RETENTION:P30D}
+    notification-cleanup-interval: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_INTERVAL:PT1H}
+    notification-cleanup-batch-size: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_BATCH_SIZE:500}
+    notification-cleanup-max-batches: ${STUDIO_ALERTING_NOTIFICATION_CLEANUP_MAX_BATCHES:10}
+    notification-claim-timeout: ${STUDIO_ALERTING_NOTIFICATION_CLAIM_TIMEOUT:PT1M}
+    notification-claim-renewal-interval: ${STUDIO_ALERTING_NOTIFICATION_CLAIM_RENEWAL_INTERVAL:PT20S}
+    notification-heartbeat-threads: ${STUDIO_ALERTING_NOTIFICATION_HEARTBEAT_THREADS:2}
   llm:
     token: ${RMQ_LLM_TOKEN:}
     anthropic-base-url: ${RMQ_ANTHROPIC_BASE_URL:}
+    cli-allowed-environment: ${RMQ_LLM_CLI_ALLOWED_ENVIRONMENT:}

@@ -31,12 +31,14 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ClusterOverviewVO {
+    /** Runtime cluster identifier (cluster name); not a database primary key. */
     private String id;
     private String name;
     private ClusterType type;
     private ClusterStatus status;
     private int brokers;
-    private int proxies;
+    /** Null means Studio cannot discover the Proxy count through the selected access path. */
+    private Integer proxies;
     private int topics;
     private int groups;
     private long tpsIn;

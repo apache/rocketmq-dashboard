@@ -58,6 +58,19 @@ public class GrafanaDashboardController {
         return Result.ok(grafanaDashboardService.getDashboard(uid));
     }
 
+    @Operation(summary = "Export all Grafana dashboards",
+            description = "Returns all bundled RocketMQ Grafana dashboards as a downloadable zip archive")
+    @ApiResponse(responseCode = "200", description = "Dashboard archive returned")
+    @GetMapping("/dashboards/export")
+    public ResponseEntity<byte[]> exportDashboards() {
+        byte[] archive = grafanaDashboardService.getDashboardsArchive();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.valueOf("application/zip"));
+        headers.setContentDisposition(
+                ContentDisposition.attachment().filename("rocketmq-grafana-dashboards.zip").build());
+        return new ResponseEntity<>(archive, headers, HttpStatus.OK);
+    }
+
     @Operation(summary = "Export a Grafana dashboard JSON",
             description = "Returns the raw Grafana dashboard JSON as a downloadable attachment")
     @ApiResponse(responseCode = "200", description = "Dashboard JSON returned")

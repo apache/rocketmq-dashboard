@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -78,6 +78,44 @@ describe('HomePage LLM models', () => {
     expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
   });
 
+  it('selects the model saved in the LLM configuration', async () => {
+    llmApiMocks.getLlmConfig.mockResolvedValue({
+      provider: 'deepseek',
+      apiBase: 'https://api.deepseek.com/v1',
+      model: 'deepseek-v4-flash',
+      maxTokens: 4096,
+      temperature: 0.7,
+      enabled: true,
+      ready: true,
+    });
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('deepseek-v4-flash');
+
+    await user.type(
+      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
+      '查看集群状态{enter}',
+    );
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/ai', {
+        state: expect.objectContaining({ model: 'deepseek-v4-flash' }),
+      });
+    });
+  });
+
+  it('does not fetch LLM config in Mock mode', async () => {
+    const { useDataModeStore } = await import('../../../stores/dataModeStore');
+    useDataModeStore.getState().toggle();
+
+    renderHome();
+
+    expect(llmApiMocks.getLlmConfig).not.toHaveBeenCalled();
+    expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
+
+    useDataModeStore.getState().toggle();
+  });
+
   it('submits the selected model and engine to the AI page', async () => {
     const user = userEvent.setup();
     renderHome();
@@ -94,8 +132,65 @@ describe('HomePage LLM models', () => {
           prompt: '查看集群状态',
           model: 'qwen3.8-max',
           engine: 'claude-code',
+          mode: 'chat',
         },
       });
     });
+  });
+
+  it('does not submit while an input method composition is being confirmed', async () => {
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+    const input = screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信');
+
+    fireEvent.change(input, { target: { value: '查看集群状态' } });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the AI page with history intent from the accessible history action', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+
+    const historyButton = screen.getByRole('button', { name: 'AI 对话历史' });
+    expect(historyButton).toHaveAttribute('type', 'button');
+    expect(historyButton).toHaveAttribute('title', 'AI 对话历史');
+
+    await user.click(historyButton);
+
+    expect(navigateMock).toHaveBeenCalledWith('/ai', {
+      state: { historyIntent: 'open' },
+    });
+  });
+
+  it('supports keyboard activation for the history action', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+
+    screen.getByRole('button', { name: 'AI 对话历史' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(navigateMock).toHaveBeenCalledWith('/ai', {
+      state: { historyIntent: 'open' },
+    });
+  });
+});
+
+describe('HomePage footer', () => {
+  it('links to RocketMQ documentation and community pages', () => {
+    renderHome();
+
+    const docsLink = screen.getByRole('link', { name: '文档中心' });
+    expect(docsLink).toHaveAttribute('href', 'https://rocketmq.apache.org/docs/');
+    expect(docsLink).toHaveAttribute('target', '_blank');
+    expect(docsLink).toHaveAttribute('rel', 'noopener noreferrer');
+
+    const communityLink = screen.getByRole('link', { name: 'RocketMQ 社区' });
+    expect(communityLink).toHaveAttribute('href', 'https://rocketmq.apache.org/');
+    expect(communityLink).toHaveAttribute('target', '_blank');
+    expect(communityLink).toHaveAttribute('rel', 'noopener noreferrer');
   });
 });

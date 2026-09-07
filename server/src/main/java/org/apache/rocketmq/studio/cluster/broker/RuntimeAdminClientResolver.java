@@ -7,6 +7,11 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.acl.common.AclClientRPCHook;
+import org.apache.rocketmq.acl.common.SessionCredentials;
+import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -20,12 +25,14 @@ public class RuntimeAdminClientResolver {
 
     private final InstanceRepository instanceRepository;
     private final MqAdminExtFactory adminFactory;
+    private final MqAdminProperties adminProperties;
+    private final MqClientPool clientPool;
 
     public InstanceVO resolveInstance(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        return instanceRepository.findById(instanceId)
+        return instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
     }
 
@@ -37,6 +44,15 @@ public class RuntimeAdminClientResolver {
         return instance.getEndpoint().trim();
     }
 
+    /**
+     * Resolves the ACL hook for short-lived runtime clients that cannot be created by
+     * {@link MqAdminExtFactory}, such as a {@code DefaultMQPullConsumer}.
+     */
+    public RPCHook resolveCredentialHook(String instanceId) {
+        InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
+        return resolveCredential(credentialRef(instance));
+    }
+
     public <T> T execute(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
         return execute(resolveInstance(instanceId), action);
     }
@@ -46,7 +62,53 @@ public class RuntimeAdminClientResolver {
         if (instance == null || !StringUtils.hasText(instance.getEndpoint())) {
             throw new BusinessException(400, "Instance endpoint is required");
         }
-        return adminFactory.execute(instance.getEndpoint().trim(), null, action);
+        String credentialRef = credentialRef(instance);
+        return adminFactory.execute(instance.getEndpoint().trim(), resolveCredential(credentialRef),
+                credentialRef, action);
+    }
+
+    /** Runs an action on a pooled, long-lived pull consumer bound to the instance endpoint. */
+    public <T> T executePullConsumer(String instanceId,
+                                     MqClientPool.ClientAction<DefaultMQPullConsumer, T> action) {
+        InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
+        String credentialRef = credentialRef(instance);
+        return clientPool.withPullConsumer(requireEndpoint(instance), resolveCredential(credentialRef),
+                credentialRef, action);
+    }
+
+    /** Runs an action on a pooled, long-lived producer bound to the instance endpoint. */
+    public <T> T executeProducer(String instanceId,
+                                 MqClientPool.ClientAction<DefaultMQProducer, T> action) {
+        InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
+        String credentialRef = credentialRef(instance);
+        return clientPool.withProducer(requireEndpoint(instance), resolveCredential(credentialRef),
+                credentialRef, action);
+    }
+
+    private String requireEndpoint(InstanceVO instance) {
+        if (instance == null || !StringUtils.hasText(instance.getEndpoint())) {
+            throw new BusinessException(400, "Instance endpoint is required");
+        }
+        return instance.getEndpoint().trim();
+    }
+
+    private String credentialRef(InstanceVO instance) {
+        return StringUtils.hasText(instance.getAdminCredentialRef())
+                ? instance.getAdminCredentialRef().trim() : null;
+    }
+
+    private RPCHook resolveCredential(String credentialRef) {
+        if (!StringUtils.hasText(credentialRef)) {
+            return null;
+        }
+        MqAdminProperties.Credential credential = adminProperties.getCredentials().get(credentialRef);
+        if (credential == null || !StringUtils.hasText(credential.getAccessKey())
+                || !StringUtils.hasText(credential.getSecretKey())) {
+            throw new BusinessException(422,
+                    "Admin credential reference is not configured: " + credentialRef);
+        }
+        return new AclClientRPCHook(new SessionCredentials(
+                credential.getAccessKey().trim(), credential.getSecretKey()));
     }
 
     private InstanceVO requireApacheInstance(InstanceVO instance) {

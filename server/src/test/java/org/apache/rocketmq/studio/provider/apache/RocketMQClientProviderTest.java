@@ -53,6 +53,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -65,14 +66,52 @@ class RocketMQClientProviderTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @Mock
+    private MqAdminExtFactory adminFactory;
+
     private RocketMQClientProvider provider;
 
     @BeforeEach
     void setUp() {
-        provider = new RocketMQClientProvider(runtimeAdminClientResolver);
+        provider = new RocketMQClientProvider(runtimeAdminClientResolver, adminFactory);
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>
                         getArgument(1).apply(adminExt));
+        lenient().when(adminFactory.execute(anyString(), any(), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>
+                                getArgument(2).apply(adminExt));
+    }
+
+    @Test
+    void findConnectionsAtShouldUseNameserverScopedAdminClientTest() throws Exception {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(null);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+
+        List<ClientConnectionVO> result = provider.findConnectionsAt("10.0.1.31:9876", null, null);
+
+        assertThat(result).isEmpty();
+        verify(adminFactory).execute(eq("10.0.1.31:9876"), any(), any(MqAdminExtFactory.AdminAction.class));
+        verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
+    }
+
+    @Test
+    void connectionVersionShouldBeResolvedFromMQVersionCodeTest() throws Exception {
+        Map<String, String> clusters = new HashMap<>();
+        clusters.put("10.0.0.11:10911", "cluster-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(clusters));
+        Map<String, List<ProducerInfo>> data = new HashMap<>();
+        data.put("pg-order", List.of(new ProducerInfo(
+                "client-1", "10.0.0.21:49152", LanguageCode.JAVA, 500, 1000L)));
+        ProducerTableInfo producerTable = new ProducerTableInfo(data);
+        when(adminExt.getAllProducerInfo("10.0.0.11:10911")).thenReturn(producerTable);
+
+        List<ClientConnectionVO> connections = provider.findConnectionsAt("10.0.1.31:9876", null, "Producer");
+
+        assertThat(connections).hasSize(1);
+        assertThat(connections.get(0).getVersion())
+                .isEqualTo(org.apache.rocketmq.common.MQVersion.getVersionDesc(500));
     }
 
     @Test
@@ -115,6 +154,51 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void producerScanPreservesIdenticalConnectionsAcrossClusters() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
+                "127.0.0.1:10911", "cluster-a",
+                "127.0.0.2:10911", "cluster-b")));
+        ProducerInfo shared = producerInfo("producer-client", "10.0.0.1:1000");
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of("pg-order", List.of(shared))));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of("pg-order", List.of(shared))));
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", null, "Producer");
+
+        assertThat(connections).hasSize(2);
+        assertThat(connections)
+                .extracting(ClientConnectionVO::getClusterName)
+                .containsExactlyInAnyOrder("cluster-a", "cluster-b");
+    }
+
+    @Test
+    void clientScanUsesActualBrokerClustersAndFiltersRequestedCluster() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
+                "127.0.0.1:10911", "cluster-a",
+                "127.0.0.2:10911", "cluster-b")));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-a", List.of(producerInfo("producer-a", "10.0.0.1:1000")))));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-b", List.of(producerInfo("producer-b", "10.0.0.2:1000")))));
+
+        List<ClientConnectionVO> allConnections = provider.findConnections("instance-a", null, "Producer");
+        List<ClientConnectionVO> clusterBConnections = provider.findConnections("instance-a", "cluster-b", "Producer");
+
+        assertThat(allConnections)
+                .extracting(ClientConnectionVO::getClusterName)
+                .containsExactlyInAnyOrder("cluster-a", "cluster-b");
+        assertThat(clusterBConnections).singleElement().satisfies(connection -> {
+            assertThat(connection.getClientId()).isEqualTo("producer-b");
+            assertThat(connection.getClusterName()).isEqualTo("cluster-b");
+        });
+        verify(adminExt).getAllProducerInfo("127.0.0.1:10911");
+        verify(adminExt, times(2)).getAllProducerInfo("127.0.0.2:10911");
+    }
+
+    @Test
     void producerScanReturnsPartialResultsWhenOneBrokerFails() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
                 "127.0.0.1:10911", "127.0.0.2:10911"));
@@ -146,6 +230,39 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void producerGroupSelectorReturnsSortedUniqueBoundedMatches() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        " pg-payment ", List.of(producerInfo("producer-payment", "10.0.0.2:1000")),
+                        "pg-order", List.of(producerInfo("producer-order", "10.0.0.1:1000")))));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-order", List.of(producerInfo("producer-order-2", "10.0.0.3:1000")),
+                        "pg-shipment", List.of(producerInfo("producer-shipment", "10.0.0.4:1000")),
+                        " ", List.of(producerInfo("ignored", "10.0.0.5:1000")))));
+
+        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", "pg", 2);
+
+        assertThat(groups).containsExactly("pg-order", "pg-payment");
+        verify(adminExt, never()).examineProducerConnectionInfo(anyString(), anyString());
+    }
+
+    @Test
+    void producerGroupSelectorFailsWhenEveryBrokerQueryFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllProducerInfo(anyString()))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.findProducerGroups("instance-a", "TopicA", "pg", 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query producer groups from all brokers")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void exactProducerQueryPassesNonBlankGroupToAdminApi() throws Exception {
         ProducerConnection producerConnection = new ProducerConnection();
         producerConnection.setConnectionSet(new HashSet<>(List.of(
@@ -162,6 +279,60 @@ class RocketMQClientProviderTest {
         });
         verify(adminExt).examineProducerConnectionInfo("pg-order", "TopicA");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+    }
+
+    @Test
+    void producerQueryWithoutGroupScansActiveProducerGroups() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-order", List.of(producerInfo("producer-order", "10.0.0.1:1000")),
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        ProducerConnection orderConnection = new ProducerConnection();
+        orderConnection.setConnectionSet(new HashSet<>(List.of(
+                connection("producer-order", "10.0.0.1:1000"))));
+        ProducerConnection paymentConnection = new ProducerConnection();
+        paymentConnection.setConnectionSet(new HashSet<>(List.of(
+                connection("producer-payment", "10.0.0.2:1000"))));
+        when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
+                .thenReturn(orderConnection);
+        when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
+                .thenReturn(paymentConnection);
+
+        List<ClientConnectionVO> connections = provider.findProducerConnections("instance-a", "TopicA", null);
+
+        assertThat(connections)
+                .extracting(ClientConnectionVO::getProducerGroup)
+                .containsExactly("pg-order", "pg-payment");
+        assertThat(connections)
+                .extracting(ClientConnectionVO::getGroupOrTopic)
+                .containsOnly("TopicA");
+        verify(adminExt).getAllProducerInfo("127.0.0.1:10911");
+        verify(adminExt).examineProducerConnectionInfo("pg-order", "TopicA");
+        verify(adminExt).examineProducerConnectionInfo("pg-payment", "TopicA");
+    }
+
+    @Test
+    void producerQueryWithoutGroupReturnsPartialResultsWhenOneGroupFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-order", List.of(producerInfo("producer-order", "10.0.0.1:1000")),
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        ProducerConnection paymentConnection = new ProducerConnection();
+        paymentConnection.setConnectionSet(new HashSet<>(List.of(
+                connection("producer-payment", "10.0.0.2:1000"))));
+        when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
+                .thenReturn(paymentConnection);
+
+        List<ClientConnectionVO> connections = provider.findProducerConnections("instance-a", "TopicA", null);
+
+        assertThat(connections).singleElement().satisfies(connection -> {
+            assertThat(connection.getClientId()).isEqualTo("producer-payment");
+            assertThat(connection.getProducerGroup()).isEqualTo("pg-payment");
+        });
     }
 
     @Test
@@ -218,6 +389,27 @@ class RocketMQClientProviderTest {
         assertThat(connections).isEmpty();
         verify(adminExt).examineBrokerClusterInfo();
         verify(adminExt).getAllSubscriptionGroup("127.0.0.1:10911", 5000L);
+    }
+
+    @Test
+    void consumerScanFiltersSubscriptionGroupsByClusterAndPreservesClusterName() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
+                "127.0.0.1:10911", "cluster-a",
+                "127.0.0.2:10911", "cluster-b")));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.2:10911", 5000L))
+                .thenReturn(subscriptionGroups("group-b"));
+        ConsumerConnection consumerConnection = new ConsumerConnection();
+        consumerConnection.setConnectionSet(new HashSet<>(List.of(connection("consumer-b", "10.0.0.2:1000"))));
+        when(adminExt.examineConsumerConnectionInfo("group-b")).thenReturn(consumerConnection);
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-b", "Consumer");
+
+        assertThat(connections).singleElement().satisfies(connection -> {
+            assertThat(connection.getClientId()).isEqualTo("consumer-b");
+            assertThat(connection.getClusterName()).isEqualTo("cluster-b");
+        });
+        verify(adminExt, never()).getAllSubscriptionGroup("127.0.0.1:10911", 5000L);
+        verify(adminExt).getAllSubscriptionGroup("127.0.0.2:10911", 5000L);
     }
 
     @Test
@@ -282,6 +474,18 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void consumerScanWithOnlySystemGroupsReturnsEmptyInsteadOf502() throws Exception {
+        SubscriptionGroupWrapper wrapper = subscriptionGroups("%RETRY%group-a", "%DLQ%group-b");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
+
+        assertThat(connections).isEmpty();
+        verify(adminExt, never()).examineConsumerConnectionInfo(anyString());
+    }
+
+    @Test
     void consumerScanReturnsPartialResultsWhenOneGroupQueryFails() throws Exception {
         SubscriptionGroupWrapper wrapper = subscriptionGroups("group-a", "group-b");
         ConsumerConnection consumerConnection = new ConsumerConnection();
@@ -324,12 +528,22 @@ class RocketMQClientProviderTest {
     }
 
     private static ClusterInfo clusterInfo(String... brokerAddresses) {
+        Map<String, String> clusters = new HashMap<>();
+        for (int i = 0; i < brokerAddresses.length; i++) {
+            clusters.put(brokerAddresses[i], "cluster-a");
+        }
+        return clusterInfo(clusters);
+    }
+
+    private static ClusterInfo clusterInfo(Map<String, String> clustersByAddress) {
         ClusterInfo clusterInfo = new ClusterInfo();
         Map<String, BrokerData> brokerAddrTable = new HashMap<>();
-        for (int i = 0; i < brokerAddresses.length; i++) {
+        int i = 0;
+        for (Map.Entry<String, String> entry : clustersByAddress.entrySet()) {
             String brokerName = "broker-" + i;
             brokerAddrTable.put(brokerName, new BrokerData(
-                    "cluster-a", brokerName, new HashMap<>(Map.of(0L, brokerAddresses[i]))));
+                    entry.getValue(), brokerName, new HashMap<>(Map.of(0L, entry.getKey()))));
+            i++;
         }
         clusterInfo.setBrokerAddrTable(brokerAddrTable);
         return clusterInfo;

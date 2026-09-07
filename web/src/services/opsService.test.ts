@@ -20,11 +20,16 @@ import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
   createAlertRule,
+  deleteAlertRule,
+  exportAlertRulesTransfer,
   exportAuditLogs,
   getAuditFilterOptions,
+  importAlertRulesTransfer,
   listAlertRules,
+  listAlertRulesPage,
   listAuditRecords,
   listSystemAlerts,
+  listSystemAlertsPage,
   toggleAlertRule,
   updateAlertRule,
 } from './opsService';
@@ -57,6 +62,17 @@ describe('ops service mock data', () => {
     expect(second[0]).not.toBe(first[0]);
   });
 
+  it('filters and pages mock alert rules without exposing mutable rows', async () => {
+    const first = await listAlertRulesPage('CLUSTER', { page: 1, pageSize: 1, search: '磁盘' });
+
+    expect(first.items).toHaveLength(1);
+    expect(first.total).toBeGreaterThanOrEqual(1);
+    first.items[0].name = 'mutated';
+
+    const second = await listAlertRulesPage('CLUSTER', { page: 1, pageSize: 1, search: '磁盘' });
+    expect(second.items[0].name).not.toBe('mutated');
+  });
+
   it('copies alert rule channels on create, update, and toggle', async () => {
     const channels = ['email'];
     const created = await createAlertRule({
@@ -87,17 +103,82 @@ describe('ops service mock data', () => {
     const before = await listAlertRules();
     const missingRule = {
       ...before[0],
-      id: 'missing-alert-rule',
+      id: 999999,
       name: 'missing rule',
     };
 
-    await expect(updateAlertRule(missingRule)).rejects.toThrow(
-      'Alert rule not found: missing-alert-rule',
-    );
+    await expect(updateAlertRule(missingRule)).rejects.toThrow('Alert rule not found: 999999');
 
     const after = await listAlertRules();
     expect(after.map((rule) => rule.id)).toEqual(before.map((rule) => rule.id));
-    expect(after.find((rule) => rule.id === 'missing-alert-rule')).toBeUndefined();
+    expect(after.find((rule) => rule.id === 999999)).toBeUndefined();
+  });
+
+  it('keeps alert rule CRUD isolated between cluster and business domains', async () => {
+    const clusterRule = await createAlertRule(
+      { name: 'cluster-domain-rule', channels: ['email'] },
+      'CLUSTER',
+    );
+    const businessRule = await createAlertRule(
+      { name: 'business-domain-rule', channels: ['sms'] },
+      'BUSINESS',
+    );
+
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.name)).toContain(
+      'cluster-domain-rule',
+    );
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.name)).not.toContain(
+      'business-domain-rule',
+    );
+    expect((await listAlertRules('BUSINESS')).map((rule) => rule.name)).toContain(
+      'business-domain-rule',
+    );
+    expect((await listAlertRules('BUSINESS')).map((rule) => rule.name)).not.toContain(
+      'cluster-domain-rule',
+    );
+
+    await updateAlertRule({ ...businessRule, name: 'updated-business-domain-rule' }, 'BUSINESS');
+    expect((await listAlertRules('BUSINESS')).map((rule) => rule.name)).toContain(
+      'updated-business-domain-rule',
+    );
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.name)).not.toContain(
+      'updated-business-domain-rule',
+    );
+
+    await deleteAlertRule(clusterRule.id, 'CLUSTER');
+    expect((await listAlertRules('CLUSTER')).map((rule) => rule.id)).not.toContain(clusterRule.id);
+    expect((await listAlertRules('BUSINESS')).map((rule) => rule.id)).toContain(businessRule.id);
+    await deleteAlertRule(businessRule.id, 'BUSINESS');
+  });
+
+  it('imports and exports alert rules within the selected domain only', async () => {
+    const imported = await importAlertRulesTransfer(
+      {
+        version: 1,
+        domain: 'BUSINESS',
+        rules: [
+          {
+            name: 'business-transfer-rule',
+            metric: 'consumer.lag.total',
+            operator: '>',
+            threshold: 100,
+            duration: '5m',
+            channels: ['email'],
+            enabled: true,
+            description: 'business-only transfer',
+          },
+        ],
+      },
+      'BUSINESS',
+    );
+
+    expect((await exportAlertRulesTransfer('BUSINESS')).rules.map((rule) => rule.name)).toContain(
+      'business-transfer-rule',
+    );
+    expect(
+      (await exportAlertRulesTransfer('CLUSTER')).rules.map((rule) => rule.name),
+    ).not.toContain('business-transfer-rule');
+    await deleteAlertRule(imported[0].id, 'BUSINESS');
   });
 
   it('returns copied system alert rows', async () => {
@@ -108,6 +189,15 @@ describe('ops service mock data', () => {
     const second = await listSystemAlerts();
     expect(second[0].title).toBe(originalTitle);
     expect(second[0]).not.toBe(first[0]);
+  });
+
+  it('pages mock system alert rows', async () => {
+    const full = await listSystemAlerts();
+    const result = await listSystemAlertsPage({ page: 1, pageSize: 1 });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.total).toBeGreaterThanOrEqual(1);
+    expect(result.items[0]).not.toBe(full[0]);
   });
 
   it('returns copied audit records', async () => {
@@ -133,7 +223,7 @@ describe('ops service mock data', () => {
 
   it('searches records safely when optional text fields are missing', async () => {
     const record = {
-      id: 'audit-null-safe',
+      id: 90001,
       timestamp: '2026-07-26 10:00:00',
       operator: null,
       operationType: 'DIAGNOSE',
@@ -149,12 +239,12 @@ describe('ops service mock data', () => {
 
     const result = await listAuditRecords({ search: 'grpc client', pageSize: 100 });
 
-    expect(result.items.map((item) => item.id)).toContain('audit-null-safe');
+    expect(result.items.map((item) => item.id)).toContain(90001);
   });
 
   it('derives filter options and applies resource and cluster filters', async () => {
     const matching = {
-      id: 'audit-filter-match',
+      id: 90002,
       timestamp: '2026-08-01 10:00:00',
       operator: 'admin',
       operationType: 'RESET_OFFSET',
@@ -167,7 +257,7 @@ describe('ops service mock data', () => {
     } as AuditRecord;
     const otherCluster = {
       ...matching,
-      id: 'audit-filter-other-cluster',
+      id: 90003,
       clusterId: 'prod-other',
     };
     insertedRecords.push(matching, otherCluster);
@@ -184,12 +274,12 @@ describe('ops service mock data', () => {
     expect(options.resourceTypes).toContain('CONSUMER_GROUP');
     expect(options.clusterIds).toEqual(expect.arrayContaining(['prod-filter', 'prod-other']));
     expect(options.results).toContain('PARTIAL');
-    expect(result.items.map((record) => record.id)).toEqual(['audit-filter-match']);
+    expect(result.items.map((record) => record.id)).toEqual([90002]);
   });
 
   it('exports filtered audit records as escaped CSV', async () => {
     const record = {
-      id: 'audit-csv-export',
+      id: 90004,
       timestamp: '2026-08-01 10:00:00',
       operator: '=admin',
       operationType: 'DELETE',

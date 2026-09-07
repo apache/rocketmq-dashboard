@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.group;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 
 import org.apache.rocketmq.studio.common.domain.Result;
@@ -29,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 @RestController
@@ -38,6 +41,7 @@ public class ConsumerGroupController {
 
     private final MetadataService metadataService;
     private final ConsumerDiagnosticsService consumerDiagnosticsService;
+    private final org.apache.rocketmq.studio.instance.InstanceService instanceService;
 
     @GetMapping
     public Result<List<ConsumerGroupVO>> listConsumerGroups(
@@ -47,11 +51,58 @@ public class ConsumerGroupController {
         return Result.ok(metadataService.listConsumerGroups(instanceId, clusterId, search));
     }
 
+    @GetMapping("/page")
+    public Result<PageResult<ConsumerGroupVO>> listConsumerGroupsPage(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String clusterId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(metadataService.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize));
+    }
+
     @GetMapping("/{name}")
     public Result<ConsumerGroupVO> getConsumerGroup(
             @PathVariable String name,
             @RequestParam(required = false) String instanceId) {
         return Result.ok(metadataService.getConsumerGroup(instanceId, name));
+    }
+
+    @GetMapping("/{name}/settings")
+    public Result<ConsumerGroupSettingsVO> getConsumerGroupSettings(@PathVariable String name,
+                                                                      @RequestParam String instanceId) {
+        return Result.ok(metadataService.getConsumerGroupSettings(instanceId, name));
+    }
+
+    @PostMapping("/settings")
+    public Result<ConsumerGroupSettingsVO> updateConsumerGroupSettings(
+            @Valid @RequestBody UpdateConsumerGroupSettingsDTO request) {
+        return Result.ok(metadataService.updateConsumerGroupSettings(request.getInstanceId(), request.getName(),
+                request.getRetryQueueNums(), request.getRetryMaxTimes()));
+    }
+
+    @GetMapping("/{name}/refresh")
+    public Result<ConsumerGroupVO> refreshConsumerGroup(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.refreshConsumerGroup(instanceId, name));
+    }
+
+    @GetMapping("/export")
+    public Result<String> exportConsumerGroups(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String subscriptionMode,
+            @RequestParam(required = false) String names) {
+        return Result.ok(metadataService.exportConsumerGroups(instanceId, search,
+                subscriptionMode, parseNames(names)));
+    }
+
+    @PostMapping("/import")
+    public Result<ImportConsumerGroupsResultVO> importConsumerGroups(
+            @Valid @RequestBody ImportConsumerGroupsDTO request) {
+        String instanceId = instanceService.normalizeIdentifier(request.getInstanceId());
+        return Result.ok(metadataService.importConsumerGroups(instanceId, request.getGroups()));
     }
 
     @GetMapping("/{name}/progress")
@@ -71,13 +122,16 @@ public class ConsumerGroupController {
     @GetMapping("/{name}/instances/{clientId}/stack")
     public Result<ConsumerStackTraceVO> getConsumerStack(
             @PathVariable String name,
-            @PathVariable String clientId) {
-        return Result.ok(consumerDiagnosticsService.getConsumerStack(name, clientId));
+            @PathVariable String clientId,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(consumerDiagnosticsService.getConsumerStack(instanceId, name, clientId));
     }
 
     @PostMapping("/create")
     public Result<ConsumerGroupVO> createConsumerGroup(@Valid @RequestBody CreateConsumerGroupDTO group) {
-        return Result.ok(metadataService.createConsumerGroup(group.toConsumerGroupVO()));
+        ConsumerGroupVO vo = group.toConsumerGroupVO();
+        vo.setInstanceId(instanceService.normalizeIdentifier(group.getInstanceId()));
+        return Result.ok(metadataService.createConsumerGroup(vo));
     }
 
     @PostMapping("/delete")
@@ -91,5 +145,23 @@ public class ConsumerGroupController {
         metadataService.resetOffset(request.getInstanceId(), request.getName(),
                 request.getTimestamp(), request.getTopic());
         return Result.ok();
+    }
+
+    private List<String> parseNames(String names) {
+        if (names == null || names.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(names.split(","))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    @PostMapping("/reset-offset/preview")
+    public Result<ResetConsumerOffsetPreviewVO> previewResetOffset(@Valid @RequestBody ResetConsumerOffsetDTO request) {
+        return Result.ok(metadataService.previewResetOffset(request.getInstanceId(), request.getName(),
+                request.getTimestamp(), request.getTopic()));
+
     }
 }

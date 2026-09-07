@@ -27,6 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,7 +40,7 @@ public class MetricsService {
     private static final long MAX_RANGE_SECONDS = 31L * 24 * 60 * 60;
     private static final long MAX_SAMPLE_POINTS = 11_000L;
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
-    private static final Pattern DURATION_PART_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)(ms|s|m|h|d|w|y)");
+    private static final Pattern DURATION_PART_PATTERN = Pattern.compile("(\\d+)(ms|s|m|h|d|w|y)");
     private static final Map<String, BigDecimal> UNIT_TO_MILLIS = Map.of(
             "ms", BigDecimal.ONE,
             "s", BigDecimal.valueOf(1_000L),
@@ -47,6 +49,15 @@ public class MetricsService {
             "d", BigDecimal.valueOf(86_400_000L),
             "w", BigDecimal.valueOf(604_800_000L),
             "y", BigDecimal.valueOf(31_536_000_000L)
+    );
+    private static final Map<String, Integer> UNIT_ORDER = Map.of(
+            "y", 0,
+            "w", 1,
+            "d", 2,
+            "h", 3,
+            "m", 4,
+            "s", 5,
+            "ms", 6
     );
 
     private final MetricsSource metricsSource;
@@ -82,11 +93,24 @@ public class MetricsService {
         MetricQueryDTO resolvedQuery = resolveMetricQuery(request.getQuery());
         validateQueryWindow(resolvedQuery);
         DataSourceVO dataSource = settingsService.getDataSource(dataSourceKey);
+        validateInstanceBinding(dataSourceKey, dataSource, request.getInstanceId());
         MetricsSource source = metricsSourceFactory.create(toConfig(dataSource, request));
         log.debug("Querying data source {} (type={}): start={}, end={}, step={}",
                 dataSourceKey, dataSource.getType(),
                 resolvedQuery.getStart(), resolvedQuery.getEnd(), resolvedQuery.getStep());
         return source.query(resolvedQuery);
+    }
+
+    private void validateInstanceBinding(String dataSourceKey, DataSourceVO dataSource, String instanceId) {
+        List<String> bindings = dataSource.getInstanceIds();
+        if (bindings == null || bindings.isEmpty()) {
+            return;
+        }
+        String normalizedInstanceId = StringUtils.hasText(instanceId) ? instanceId.strip() : null;
+        if (normalizedInstanceId == null || !bindings.contains(normalizedInstanceId)) {
+            throw badRequest("Data source " + dataSourceKey + " is not available for instance "
+                    + (normalizedInstanceId == null ? "<missing>" : normalizedInstanceId));
+        }
     }
 
     private MetricsDataSourceConfig toConfig(DataSourceVO dataSource, MetricsDataSourceQueryRequest request) {
@@ -105,21 +129,25 @@ public class MetricsService {
         if (!StringUtils.hasText(auth)) {
             return "none";
         }
-        return switch (auth.trim().toLowerCase()) {
+        return switch (auth.trim().toLowerCase(Locale.ROOT)) {
+            case "none" -> "none";
             case "basic auth", "basic" -> "basic";
             case "bearer token", "bearer" -> "bearer";
-            default -> "none";
+            default -> throw badRequest("Unsupported data source authentication mode: " + auth.trim());
         };
     }
 
     private void validateQueryWindow(MetricQueryDTO query) {
-        long rangeSeconds = query.getEnd() - query.getStart();
-        if (rangeSeconds <= 0) {
+        long start = query.getStart();
+        long end = query.getEnd();
+        if (end <= start) {
             throw badRequest("Metric query end must be later than start");
         }
-        if (rangeSeconds > MAX_RANGE_SECONDS) {
+        if (start <= Long.MAX_VALUE - MAX_RANGE_SECONDS
+                && end > start + MAX_RANGE_SECONDS) {
             throw badRequest("Metric query range must not exceed 31 days");
         }
+        long rangeSeconds = end - start;
         BigDecimal stepMillis = parseStepMillis(query.getStep());
         if (stepMillis.signum() <= 0) {
             throw badRequest("Metric query step must be positive");
@@ -172,13 +200,20 @@ public class MetricsService {
         Matcher matcher = DURATION_PART_PATTERN.matcher(value);
         BigDecimal millis = BigDecimal.ZERO;
         int position = 0;
+        int previousUnitOrder = -1;
         while (matcher.find()) {
             if (matcher.start() != position) {
                 throw badRequest("Metric query step is invalid");
             }
+            String unit = matcher.group(2);
+            int unitOrder = UNIT_ORDER.get(unit);
+            if (unitOrder <= previousUnitOrder) {
+                throw badRequest("Metric query step is invalid");
+            }
             BigDecimal amount = new BigDecimal(matcher.group(1));
-            millis = millis.add(amount.multiply(UNIT_TO_MILLIS.get(matcher.group(2))));
+            millis = millis.add(amount.multiply(UNIT_TO_MILLIS.get(unit)));
             position = matcher.end();
+            previousUnitOrder = unitOrder;
         }
         if (position != value.length()) {
             throw badRequest("Metric query step is invalid");

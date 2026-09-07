@@ -19,19 +19,38 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import type { DataSource } from '../../../api/settings';
-import { createDataSource, listDataSources, testDataSource } from '../../../api/settings';
-import { DataSourceTab } from '../index';
+import type { DataSource, DataSourcePage } from '../../../api/settings';
+import {
+  createDataSource,
+  listAllDataSources,
+  listDataSourcesPage,
+  testDataSource,
+  updateDataSource,
+} from '../../../api/settings';
+import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
+import { downloadCsv } from '../../../utils/download';
+import { DataSourceTab } from '../DataSourceTab';
 
 vi.mock('../../../api/settings', () => ({
   createDataSource: vi.fn(),
   deleteDataSource: vi.fn(),
   getGeneralSettings: vi.fn(),
-  listDataSources: vi.fn(),
+  listAllDataSources: vi.fn(),
+  listDataSourcesPage: vi.fn(),
   saveGeneralSettings: vi.fn(),
   testDataSource: vi.fn(),
   updateDataSource: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => {
+  const downloadModule =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return {
+    ...downloadModule,
+    downloadCsv: vi.fn(),
+  };
+});
 
 const sources: DataSource[] = [
   {
@@ -40,7 +59,6 @@ const sources: DataSource[] = [
     type: 'Prometheus',
     url: 'http://prometheus:9090',
     auth: 'None',
-    status: 'healthy',
   },
   {
     key: 'thanos-dr',
@@ -51,6 +69,23 @@ const sources: DataSource[] = [
     status: 'healthy',
   },
 ];
+
+const sourcePage: DataSourcePage = {
+  items: sources,
+  total: sources.length,
+  page: 1,
+  size: 20,
+};
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -71,7 +106,59 @@ beforeAll(() => {
 describe('DataSourceTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listDataSources).mockResolvedValue(sources);
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    vi.mocked(listDataSourcesPage).mockResolvedValue(sourcePage);
+    vi.mocked(listAllDataSources).mockResolvedValue(sources);
+  });
+
+  it('keeps data source creation disabled until the initial list is ready', async () => {
+    const initialList = deferred<DataSourcePage>();
+    vi.mocked(listDataSourcesPage).mockReturnValue(initialList.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    const addButton = screen.getByRole('button', { name: /添加数据源/ });
+    expect(addButton).toBeDisabled();
+    await user.click(addButton);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    initialList.resolve(sourcePage);
+
+    await waitFor(() => expect(addButton).toBeEnabled());
+    await user.click(addButton);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('does not report a data source as offline when the backend has not tested it', async () => {
+    render(
+      <LangProvider>
+        <App>
+          <DataSourceTab />
+        </App>
+      </LangProvider>,
+    );
+
+    await screen.findByText('Prometheus prod');
+
+    expect(screen.getByText('未检测')).toBeInTheDocument();
+    expect(screen.queryByText('离线')).not.toBeInTheDocument();
+  });
+
+  it('renders management controls in English when English is selected', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    render(
+      <LangProvider>
+        <App>
+          <DataSourceTab />
+        </App>
+      </LangProvider>,
+    );
+
+    expect(await screen.findByPlaceholderText('Search data source names')).toBeInTheDocument();
   });
 
   it('shows connection test loading only on the clicked row', async () => {
@@ -99,6 +186,103 @@ describe('DataSourceTab', () => {
     });
 
     resolveTest({ success: true, message: 'ok' });
+  });
+
+  it('keeps each row loading until its own connection test finishes', async () => {
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      ...sourcePage,
+      items: sources.map((source) => ({ ...source, auth: 'None' })),
+    });
+    let resolveFirst: (value: { success: boolean; message: string }) => void = () => undefined;
+    let resolveSecond: (value: { success: boolean; message: string }) => void = () => undefined;
+    vi.mocked(testDataSource)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    const buttons = screen.getAllByRole('button', { name: /测试连接/ });
+    await user.click(buttons[0]);
+    await user.click(buttons[1]);
+
+    await waitFor(() => {
+      expect(buttons[0]).toHaveClass('ant-btn-loading');
+      expect(buttons[1]).toHaveClass('ant-btn-loading');
+    });
+
+    resolveFirst({ success: true, message: 'ok' });
+    await waitFor(() => {
+      expect(buttons[0]).not.toHaveClass('ant-btn-loading');
+      expect(buttons[1]).toHaveClass('ant-btn-loading');
+    });
+
+    resolveSecond({ success: true, message: 'ok' });
+    await waitFor(() => {
+      expect(buttons[1]).not.toHaveClass('ant-btn-loading');
+    });
+  });
+
+  it('exports all data sources that match the active filters without secrets', async () => {
+    vi.mocked(listAllDataSources).mockResolvedValue([
+      {
+        ...sources[1],
+        instanceIds: ['instance-1'],
+        username: 'hidden-user',
+        password: 'hidden-password',
+        bearerToken: 'hidden-token',
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <LangProvider>
+        <App>
+          <DataSourceTab />
+        </App>
+      </LangProvider>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.type(screen.getByPlaceholderText('搜索数据源名称'), 'prom');
+    await selectFilterOption(user, '全部类型', 'Thanos');
+    await waitFor(() =>
+      expect(listDataSourcesPage).toHaveBeenLastCalledWith({
+        search: 'prom',
+        type: 'Thanos',
+        page: 1,
+        pageSize: 20,
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    await waitFor(() =>
+      expect(listAllDataSources).toHaveBeenCalledWith({
+        search: 'prom',
+        type: 'Thanos',
+      }),
+    );
+    const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toMatch(/^rocketmq-data-sources-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(csv).toContain('"Name","Type","URL","Applicable Instances","Authentication","Status"');
+    expect(csv).toContain('"Thanos DR","Thanos","http://thanos:10902"');
+    expect(csv).toContain('"Bearer Token"');
+    expect(csv).not.toContain('hidden-user');
+    expect(csv).not.toContain('hidden-password');
+    expect(csv).not.toContain('hidden-token');
   });
 
   it('submits basic auth credentials when testing from the modal', async () => {
@@ -163,6 +347,36 @@ describe('DataSourceTab', () => {
     });
   });
 
+  it('updates authenticated data source metadata without requiring query credentials', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(updateDataSource).mockResolvedValue({
+      ...sources[1],
+      name: 'Thanos primary',
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+    await screen.findByText('Thanos DR');
+
+    const editButtons = screen.getAllByRole('button', { name: /edit/i });
+    await user.click(editButtons[1]);
+    const dialog = await screen.findByRole('dialog');
+    const nameInput = within(dialog).getByDisplayValue('Thanos DR');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Thanos primary');
+    await user.click(within(dialog).getByRole('button', { name: 'OK' }));
+
+    await waitFor(() =>
+      expect(updateDataSource).toHaveBeenCalledWith({
+        ...sources[1],
+        name: 'Thanos primary',
+      }),
+    );
+  });
+
   it('creates and tests a Grafana Mimir data source', async () => {
     vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
     vi.mocked(createDataSource).mockResolvedValue({
@@ -173,6 +387,19 @@ describe('DataSourceTab', () => {
       auth: 'None',
       status: 'healthy',
     });
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      ...sourcePage,
+      items: [
+        {
+          key: 'mimir-prod',
+          name: 'Mimir prod',
+          type: 'Mimir',
+          url: 'http://mimir:9009',
+          auth: 'None',
+          status: 'healthy',
+        },
+      ],
+    });
 
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
@@ -181,7 +408,7 @@ describe('DataSourceTab', () => {
       </App>,
     );
 
-    await screen.findByText('Prometheus prod');
+    await waitFor(() => expect(listDataSourcesPage).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: /添加数据源/ }));
     await user.type(screen.getByLabelText('名称'), 'Mimir prod');
     await selectAntdOption(user, '类型', 'Grafana Mimir');
@@ -296,4 +523,15 @@ async function selectAntdOption(
     return element;
   });
   await user.click(within(popup).getByRole('option', { name: option }));
+}
+
+async function selectFilterOption(
+  user: ReturnType<typeof userEvent.setup>,
+  placeholder: string,
+  option: string,
+) {
+  await user.click(screen.getByText(placeholder));
+  await user.click(
+    await screen.findByText(option, { selector: '.ant-select-item-option-content' }),
+  );
 }

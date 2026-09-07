@@ -15,19 +15,49 @@
  * limitations under the License.
  */
 
-export const thresholdUnits: Record<string, string> = {
-  磁盘使用率: '%',
-  消费堆积量: '条',
-  'TPS 异常': 'TPS',
-  'Broker 离线': '个',
-  'Proxy 连接数': '个',
+export const legacyMetricValues: Record<string, string> = {
+  磁盘使用率: 'rocketmq_disk_use_ratio',
+  消费堆积量: 'rocketmq_consumer_lag_messages',
+  'TPS 异常': 'rocketmq_tps',
+  'Broker 离线': 'rocketmq_broker_offline',
+  'Proxy 连接数': 'rocketmq_proxy_connections',
 };
 
-export function attachThresholdUnit<T extends { metric: string }>(
+const legacyDurationValues: Record<string, string> = {
+  '1分钟': '1m',
+  '5分钟': '5m',
+  '15分钟': '15m',
+  '30分钟': '30m',
+};
+
+export const thresholdUnits: Record<string, string> = {
+  rocketmq_disk_use_ratio: '%',
+  rocketmq_consumer_lag_messages: '条',
+  rocketmq_tps: 'TPS',
+  rocketmq_broker_offline: '个',
+  rocketmq_proxy_connections: '个',
+};
+
+export function normalizeMetric(metric: string): string {
+  return legacyMetricValues[metric] ?? metric;
+}
+
+export function normalizeDuration(duration: string): string {
+  return legacyDurationValues[duration] ?? duration;
+}
+
+export function attachThresholdUnit<T extends { metric: string; duration?: string }>(
   values: T,
-): T & { thresholdUnit: string } {
+): Omit<T, 'metric' | 'duration'> & {
+  metric: string;
+  duration?: string;
+  thresholdUnit: string;
+} {
+  const metric = normalizeMetric(values.metric);
   return {
     ...values,
-    thresholdUnit: thresholdUnits[values.metric] ?? '',
+    metric,
+    ...(values.duration === undefined ? {} : { duration: normalizeDuration(values.duration) }),
+    thresholdUnit: thresholdUnits[metric] ?? '',
   };
 }

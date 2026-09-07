@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,9 +75,27 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(authorization.get()).isEqualTo("Bearer sk-test");
         assertThat(requestBody.get().path("model").asText()).isEqualTo("gpt-4o-mini");
         assertThat(requestBody.get().path("stream").asBoolean()).isFalse();
-        assertThat(requestBody.get().path("messages").path(0).path("role").asText()).isEqualTo("user");
-        assertThat(requestBody.get().path("messages").path(0).path("content").asText()).isEqualTo("hello");
+        assertThat(requestBody.get().path("messages").path(0).path("role").asText()).isEqualTo("system");
+        assertThat(requestBody.get().path("messages").path(0).path("content").asText())
+                .contains("valid CommonMark Markdown");
+        assertThat(requestBody.get().path("messages").path(1).path("role").asText()).isEqualTo("user");
+        assertThat(requestBody.get().path("messages").path(1).path("content").asText()).isEqualTo("hello");
         assertThat(requestBody.get().path("max_tokens").asInt()).isEqualTo(256);
+    }
+
+    @Test
+    void supportsShouldNormalizeProviderIndependentlyOfDefaultLocale() {
+        Locale originalLocale = Locale.getDefault();
+
+        boolean supported;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            supported = client.supports(config("OPENAI", "sk-test"));
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        assertThat(supported).isTrue();
     }
 
     @Test
@@ -134,6 +153,64 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(tokens).containsExactly("hel", "lo");
         assertThat(requestBody.get().path("model").asText()).isEqualTo("gpt-test");
         assertThat(requestBody.get().path("stream").asBoolean()).isTrue();
+    }
+
+    @Test
+    void streamShouldExposeErrorEnvelopeFromSuccessfulResponse() {
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200, """
+                data: {"error":{"message":"quota exceeded"}}
+
+                data: [DONE]
+
+                """, "text/event-stream"));
+
+        assertThatThrownBy(() -> client.stream(
+                config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider stream failed: quota exceeded")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(502);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.stream_error");
+                    assertThat(gatewayException.getHint()).contains("account quota");
+                });
+    }
+
+    @Test
+    void streamShouldEnforceTimeoutWhileReadingResponseBody() {
+        OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
+                objectMapper,
+                HttpClient.newBuilder().connectTimeout(Duration.ofMillis(300)).build(),
+                Duration.ofMillis(300));
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try {
+                exchange.getResponseBody().write("""
+                        data: {"choices":[{"delta":{"content":"first"}}]}
+
+                        """.getBytes(StandardCharsets.UTF_8));
+                exchange.getResponseBody().flush();
+                Thread.sleep(500);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+        List<String> tokens = new ArrayList<>();
+
+        assertThatThrownBy(() -> timeoutClient.stream(
+                config("openai", "sk-test"), "hello", null, tokens::add))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider stream timed out")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(504);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.timeout");
+                });
+        assertThat(tokens).containsExactly("first");
     }
 
     @Test
@@ -248,6 +325,94 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void completeShouldRejectOversizedProviderResponse() {
+        client = clientWithLimit(1024);
+        String body = completionBody(1025);
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, body, "application/json"));
+
+        assertThatThrownBy(() -> client.complete(config("openai", "sk-test"), "hello", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.response_too_large");
+                    assertThat(exception.getMessage()).contains("1024 bytes");
+                });
+    }
+
+    @Test
+    void completeShouldAllowProviderResponseAtConfiguredLimit() {
+        client = clientWithLimit(1024);
+        String body = completionBody(1024);
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, body, "application/json"));
+
+        String result = client.complete(config("openai", "sk-test"), "hello", null);
+
+        assertThat(result).isNotEmpty();
+    }
+
+    @Test
+    void listModelsShouldRejectOversizedProviderResponse() {
+        client = clientWithLimit(1024);
+        server.createContext("/v1/models",
+                exchange -> respond(exchange, 200, "x".repeat(1025), "application/json"));
+
+        assertThatThrownBy(() -> client.listModels(config("openai", "sk-test")))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("llm.provider.response_too_large"));
+    }
+
+    @Test
+    void streamShouldRejectOversizedUpstreamErrorResponse() {
+        client = clientWithLimit(1024);
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 500, "x".repeat(1025), "application/json"));
+
+        assertThatThrownBy(() -> client.stream(config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("llm.provider.response_too_large"));
+    }
+
+    @Test
+    void streamShouldRejectOversizedSuccessfulResponse() {
+        client = clientWithLimit(1024);
+        String body = "data: {\"choices\":[{\"delta\":{\"content\":\""
+                + "x".repeat(1024)
+                + "\"}}]}\n\n";
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, body, "text/event-stream"));
+
+        assertThatThrownBy(() -> client.stream(config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.response_too_large");
+                    assertThat(exception.getMessage()).contains("1024 bytes");
+                });
+    }
+
+    @Test
+    void completeShouldRejectOversizedPromptBeforeCallingUpstream() {
+        assertThatThrownBy(() -> client.complete(
+                config("openai", "sk-test"),
+                "x".repeat(AiPayloadGuard.MAX_OUTBOUND_PROMPT_BYTES + 1),
+                null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getCode()).isEqualTo("llm.request.payload_too_large");
+                });
+    }
+
+    @Test
+    void completeShouldRejectOversizedConfiguredModel() {
+        LlmConfigVO config = config("openai", "sk-test");
+        config.setModel("x".repeat(AiPayloadGuard.MAX_MODEL_BYTES + 1));
+
+        assertThatThrownBy(() -> client.complete(config, "hello", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("llm.request.payload_too_large"));
+    }
+
+    @Test
     void completeShouldExposeTimeoutAsGatewayTimeout() {
         OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
                 objectMapper,
@@ -285,6 +450,21 @@ class OpenAiCompatibleLlmClientTest {
                 .temperature(0.2)
                 .enabled(true)
                 .build();
+    }
+
+    private OpenAiCompatibleLlmClient clientWithLimit(int limitBytes) {
+        return new OpenAiCompatibleLlmClient(objectMapper) {
+            @Override
+            int responseBodyLimitBytes() {
+                return limitBytes;
+            }
+        };
+    }
+
+    private String completionBody(int length) {
+        String prefix = "{\"choices\":[{\"message\":{\"content\":\"";
+        String suffix = "\"}}]}";
+        return prefix + "x".repeat(length - prefix.length() - suffix.length()) + suffix;
     }
 
     private void respond(HttpExchange exchange, int status, String body, String contentType) throws IOException {

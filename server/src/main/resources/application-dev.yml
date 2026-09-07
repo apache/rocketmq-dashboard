@@ -14,7 +14,12 @@ spring:
       enabled: true
       path: /h2-console
 
+studio:
+  auth:
+    # Browsers do not send Secure cookies over local HTTP.
+    session-cookie-secure: false
+
 logging:
   level:
-    org.apache.rocketmq.studio: DEBUG
-    org.springframework.web: DEBUG
+    org.apache.rocketmq.studio: INFO
+    org.springframework.web: INFO

@@ -33,6 +33,8 @@ public class CreateAclRuleDTO {
     private String decision;
     private String scope;
     private String aclVersion;
+    /** Instance id used to route the operation to a cloud-vendor ACL backend. */
+    private String instanceId;
 
     public AclRuleVO toAclRuleVO() {
         return AclRuleVO.builder()

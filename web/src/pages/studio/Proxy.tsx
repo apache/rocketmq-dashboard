@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Card,
   Table,
@@ -23,8 +23,6 @@ import {
   Button,
   Space,
   Modal,
-  Form,
-  Input,
   Spin,
   Row,
   Col,
@@ -32,26 +30,42 @@ import {
   Progress,
   Descriptions,
   Tooltip,
-  Popconfirm,
   App,
   Typography,
+  Input,
+  Popconfirm,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   ArrowClockwise,
-  Plus,
-  Trash,
   GearSix,
   Gauge,
   CheckCircle,
   XCircle,
   Warning,
+  Plus,
+  Trash,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { queryProxyHomePage, addProxyAddr, removeProxyAddr, type ProxyNode } from '../../api/proxy';
+import {
+  addProxyAddress,
+  getProxyTopology,
+  removeProxyAddress,
+  queryProxyHomePage,
+  reloadProxyConfig,
+  type ProxyHomePageData,
+  type ProxyNode,
+} from '../../api/proxy';
+import { readLocalStorage, writeLocalStorage } from '../../utils/browserStorage';
 
 const { Text } = Typography;
+
+const persistProxyAddress = (address?: string) => {
+  if (!address) return;
+  writeLocalStorage('proxyAddr', address);
+};
 
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
@@ -61,8 +75,14 @@ const ProxyPage: React.FC = () => {
   const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
-  const [form] = Form.useForm();
+  const [newProxyAddress, setNewProxyAddress] = useState('');
+  const [nodeFilter, setNodeFilter] = useState('');
+  const [addressMutationLoading, setAddressMutationLoading] = useState(false);
+  const addressMutationInFlight = useRef(false);
+  const [removingProxyAddress, setRemovingProxyAddress] = useState<string | null>(null);
+  const [clusterId, setClusterId] = useState<string>(
+    readLocalStorage('clusterId') || 'DefaultCluster',
+  );
   const loadRequestId = useRef(0);
 
   const [clusterStats, setClusterStats] = useState({
@@ -72,13 +92,9 @@ const ProxyPage: React.FC = () => {
     totalTPS: null as number | null,
   });
 
-  const loadProxyNodes = useCallback(async () => {
-    const requestId = ++loadRequestId.current;
-    setLoading(true);
-    try {
-      const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
-      if (requestId !== loadRequestId.current) return false;
-      const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
+  const applyProxyHome = useCallback(
+    async ({ proxyAddrList, currentProxyAddr }: ProxyHomePageData, requestId: number) => {
+      const baseNodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
         key: addr,
         address: addr,
         status: 'unknown' as const,
@@ -90,6 +106,28 @@ const ProxyPage: React.FC = () => {
         uptime: null,
         isSelected: addr === currentProxyAddr,
       }));
+      let nodes = baseNodes;
+
+      // Overlay the live TCP health view (UP/PARTIAL/DOWN) when the backend exposes it.
+      try {
+        const topology = await getProxyTopology();
+        if (requestId !== loadRequestId.current) return false;
+        const statusByAddr = new Map(topology.map((node) => [node.proxyAddr, node.status]));
+        nodes = baseNodes.map((node) => {
+          const probeStatus = statusByAddr.get(node.address);
+          const status: ProxyNode['status'] =
+            probeStatus === 'UP'
+              ? 'healthy'
+              : probeStatus === 'PARTIAL'
+                ? 'warning'
+                : probeStatus === 'DOWN'
+                  ? 'unhealthy'
+                  : node.status;
+          return { ...node, status };
+        });
+      } catch {
+        // Health probing is best-effort; keep the unknown status when it is unavailable.
+      }
       setProxyNodes(nodes);
 
       setClusterStats({
@@ -99,12 +137,19 @@ const ProxyPage: React.FC = () => {
         totalTPS: null,
       });
 
-      if (currentProxyAddr) {
-        localStorage.setItem('proxyAddr', currentProxyAddr);
-      } else if (proxyAddrList && proxyAddrList.length > 0) {
-        localStorage.setItem('proxyAddr', proxyAddrList[0]);
-      }
+      persistProxyAddress(currentProxyAddr || proxyAddrList?.[0]);
       return true;
+    },
+    [],
+  );
+
+  const loadProxyNodes = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
+    setLoading(true);
+    try {
+      const home = await queryProxyHomePage();
+      if (requestId !== loadRequestId.current) return false;
+      return await applyProxyHome(home, requestId);
     } catch {
       if (requestId !== loadRequestId.current) return false;
       message.error(t('proxy.fetchListFailed'));
@@ -114,14 +159,15 @@ const ProxyPage: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [message, t]);
+  }, [applyProxyHome, message, t]);
 
   useEffect(() => {
+    const requestId = loadRequestId.current;
     // The state updates are performed by the asynchronous Proxy API request, not by this effect itself.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadProxyNodes();
     return () => {
-      ++loadRequestId.current;
+      loadRequestId.current = requestId + 1;
     };
   }, [loadProxyNodes]);
 
@@ -130,44 +176,88 @@ const ProxyPage: React.FC = () => {
     setConfigModalOpen(true);
   };
 
-  const handleAddNode = async () => {
-    let values: { address: string };
-    try {
-      values = await form.validateFields();
-    } catch {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await addProxyAddr(values.address);
-      message.success(t('common.success'));
-      setAddNodeModalOpen(false);
-      form.resetFields();
-      await loadProxyNodes();
-    } catch {
-      message.error(t('proxy.addFailed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRemoveNode = async (node: ProxyNode) => {
-    setLoading(true);
-    try {
-      await removeProxyAddr(node.address);
-      message.success(t('common.success'));
-      await loadProxyNodes();
-    } catch {
-      message.error(t('proxy.removeFailed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleRefresh = async () => {
+    if (addressMutationInFlight.current) return;
     if (await loadProxyNodes()) {
       message.success(t('common.refreshSuccess'));
+    }
+  };
+
+  const handleClusterIdChange = (value: string) => {
+    setClusterId(value);
+    if (value) {
+      writeLocalStorage('clusterId', value);
+    }
+  };
+
+  const handleAddProxyAddress = async () => {
+    if (addressMutationInFlight.current) return;
+    const addr = newProxyAddress.trim();
+    if (!addr) {
+      message.warning(t('proxy.addressRequired'));
+      return;
+    }
+    addressMutationInFlight.current = true;
+    const requestId = ++loadRequestId.current;
+    setAddressMutationLoading(true);
+    setLoading(true);
+    try {
+      const home = await addProxyAddress(addr);
+      if (requestId !== loadRequestId.current) return;
+      await applyProxyHome(home, requestId);
+      setNewProxyAddress('');
+      message.success(t('proxy.addAddressSuccess'));
+    } catch {
+      if (requestId === loadRequestId.current) {
+        message.error(t('proxy.addAddressFailed'));
+      }
+    } finally {
+      addressMutationInFlight.current = false;
+      if (requestId === loadRequestId.current) {
+        setAddressMutationLoading(false);
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleRemoveProxyAddress = async (addr: string) => {
+    if (addressMutationInFlight.current) return;
+    addressMutationInFlight.current = true;
+    const requestId = ++loadRequestId.current;
+    setRemovingProxyAddress(addr);
+    setLoading(true);
+    try {
+      const home = await removeProxyAddress(addr);
+      if (requestId !== loadRequestId.current) return;
+      await applyProxyHome(home, requestId);
+      if (selectedNode?.address === addr) {
+        setSelectedNode(null);
+        setConfigModalOpen(false);
+      }
+      message.success(t('proxy.removeAddressSuccess'));
+    } catch {
+      if (requestId === loadRequestId.current) {
+        message.error(t('proxy.removeAddressFailed'));
+      }
+    } finally {
+      addressMutationInFlight.current = false;
+      if (requestId === loadRequestId.current) {
+        setRemovingProxyAddress(null);
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleReloadConfig = async (node: ProxyNode) => {
+    try {
+      const result = await reloadProxyConfig(clusterId, node.address);
+      if (result.success) {
+        message.success(t('proxy.reloadSuccess'));
+      } else {
+        message.warning(t('proxy.reloadFailed'));
+      }
+    } catch {
+      message.error(t('proxy.reloadFailed'));
     }
   };
 
@@ -188,6 +278,16 @@ const ProxyPage: React.FC = () => {
         icon: <Warning size={12} weight="fill" />,
         label: t('proxy.warning'),
       },
+      error: {
+        color: 'error',
+        icon: <XCircle size={12} weight="fill" />,
+        label: t('proxy.statusError'),
+      },
+      offline: {
+        color: 'default',
+        icon: null,
+        label: t('proxy.statusOffline'),
+      },
       unknown: {
         color: 'default',
         icon: null,
@@ -201,6 +301,38 @@ const ProxyPage: React.FC = () => {
       </Tag>
     );
   };
+
+  const proxyStatusLabel = useCallback(
+    (status: string) => {
+      const map: Record<string, string> = {
+        healthy: t('proxy.healthy'),
+        unhealthy: t('proxy.unhealthy'),
+        warning: t('proxy.warning'),
+        error: t('proxy.statusError'),
+        offline: t('proxy.statusOffline'),
+        unknown: t('common.na'),
+      };
+      return map[status] || map.unknown;
+    },
+    [t],
+  );
+
+  const filteredProxyNodes = useMemo(() => {
+    const keyword = nodeFilter.trim().toLowerCase();
+    if (!keyword) return proxyNodes;
+    return proxyNodes.filter((node) =>
+      [
+        node.address,
+        node.status,
+        proxyStatusLabel(node.status),
+        node.version,
+        node.uptime,
+        node.isSelected ? t('proxy.current') : '',
+      ]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => value.toLowerCase().includes(keyword)),
+    );
+  }, [nodeFilter, proxyNodes, proxyStatusLabel, t]);
 
   const renderUnavailable = () => <Text type="secondary">{t('common.na')}</Text>;
 
@@ -304,18 +436,31 @@ const ProxyPage: React.FC = () => {
               onClick={() => handleViewConfig(record)}
             />
           </Tooltip>
-          {!record.isSelected && (
-            <Popconfirm
-              title={t('proxy.confirmRemove')}
-              onConfirm={() => handleRemoveNode(record)}
-              okText={t('common.yes')}
-              cancelText={t('common.no')}
-            >
-              <Tooltip title={t('proxy.remove')}>
-                <Button type="link" size="small" danger icon={<Trash size={14} />} />
-              </Tooltip>
-            </Popconfirm>
-          )}
+          <Tooltip title={t('proxy.reloadConfig')}>
+            <Button
+              type="link"
+              size="small"
+              icon={<ArrowClockwise size={14} />}
+              aria-label={t('proxy.reloadConfig')}
+              onClick={() => handleReloadConfig(record)}
+            />
+          </Tooltip>
+          <Popconfirm
+            title={t('proxy.removeAddressConfirm', { addr: record.address })}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+            disabled={removingProxyAddress === record.address}
+            onConfirm={() => void handleRemoveProxyAddress(record.address)}
+          >
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<Trash size={14} />}
+              aria-label={t('common.delete')}
+              loading={removingProxyAddress === record.address}
+            />
+          </Popconfirm>
         </Space>
       ),
     },
@@ -330,11 +475,31 @@ const ProxyPage: React.FC = () => {
 
         extra={
           <Space>
+            <Input
+              placeholder={t('proxy.addressPlaceholder')}
+              value={newProxyAddress}
+              onChange={(e) => setNewProxyAddress(e.target.value)}
+              onPressEnter={() => void handleAddProxyAddress()}
+              style={{ width: 220 }}
+              aria-label={t('proxy.address')}
+              disabled={addressMutationLoading}
+            />
+            <Button
+              icon={<Plus size={14} />}
+              onClick={() => void handleAddProxyAddress()}
+              loading={addressMutationLoading}
+            >
+              {t('common.add')}
+            </Button>
+            <Input
+              placeholder={t('proxy.clusterIdPlaceholder')}
+              value={clusterId}
+              onChange={(e) => handleClusterIdChange(e.target.value)}
+              style={{ width: 200 }}
+              aria-label={t('proxy.clusterId')}
+            />
             <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
               {t('common.refresh')}
-            </Button>
-            <Button icon={<Plus size={14} />} onClick={() => setAddNodeModalOpen(true)}>
-              {t('proxy.addNode')}
             </Button>
           </Space>
         }
@@ -386,8 +551,28 @@ const ProxyPage: React.FC = () => {
         </Row>
 
         {/* Node Table */}
-        <Card title={t('proxy.nodes')} bordered={false} style={{ borderRadius: 8 }}>
-          <Table columns={columns} dataSource={proxyNodes} pagination={false} size="middle" />
+        <Card
+          title={t('proxy.nodes')}
+          variant="borderless"
+          style={{ borderRadius: 8, marginBottom: 24 }}
+          extra={
+            <Input
+              allowClear
+              aria-label={t('proxy.nodeFilter')}
+              placeholder={t('proxy.nodeFilterPlaceholder')}
+              prefix={<MagnifyingGlass size={14} />}
+              value={nodeFilter}
+              onChange={(event) => setNodeFilter(event.target.value)}
+              style={{ width: 260 }}
+            />
+          }
+        >
+          <Table
+            columns={columns}
+            dataSource={filteredProxyNodes}
+            pagination={false}
+            size="middle"
+          />
         </Card>
       </Spin>
 
@@ -408,38 +593,6 @@ const ProxyPage: React.FC = () => {
             {t('proxy.configUnavailableHint')}
           </Descriptions.Item>
         </Descriptions>
-      </Modal>
-
-      {/* Add Node Modal */}
-      <Modal
-        title={t('proxy.addProxyNode')}
-        open={addNodeModalOpen}
-        onCancel={() => {
-          setAddNodeModalOpen(false);
-          form.resetFields();
-        }}
-        onOk={handleAddNode}
-        okText={t('common.add')}
-        cancelText={t('common.cancel')}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="address"
-            label={t('proxy.address')}
-            rules={[
-              {
-                required: true,
-                message: t('proxy.addrRequired'),
-              },
-              {
-                pattern: /^[\w.-]+:\d+$/,
-                message: t('proxy.invalidAddress'),
-              },
-            ]}
-          >
-            <Input placeholder={t('proxy.addressPlaceholder')} />
-          </Form.Item>
-        </Form>
       </Modal>
     </div>
   );

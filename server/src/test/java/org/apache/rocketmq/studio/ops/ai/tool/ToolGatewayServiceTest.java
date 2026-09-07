@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerConfigDiffService;
@@ -28,7 +29,9 @@ import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.ops.ai.AiToolVO;
@@ -38,6 +41,7 @@ import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardService;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -60,6 +64,7 @@ class ToolGatewayServiceTest {
     private ToolCatalog catalog;
     private ClusterService clusterService;
     private DashboardService dashboardService;
+    private MessageService messageService;
     private MetadataService metadataService;
     private AlertService alertService;
     private NameServerConfigDiffService nameServerConfigDiffService;
@@ -71,13 +76,17 @@ class ToolGatewayServiceTest {
     private ConsumerGroupListToolHandler consumerGroupListHandler;
     private AlertRuleListToolHandler alertRuleListHandler;
     private NameServerConfigDiffToolHandler nameServerConfigDiffHandler;
+    private MessageQueryToolHandler messageQueryHandler;
+    private MessageTraceToolHandler messageTraceHandler;
     private ToolGatewayService gateway;
 
     @BeforeEach
     void setUp() {
+        AuthenticatedUserContext.setUser(1L, "admin", true);
         catalog = canonicalCatalog();
         clusterService = mock(ClusterService.class);
         dashboardService = mock(DashboardService.class);
+        messageService = mock(MessageService.class);
         metadataService = mock(MetadataService.class);
         alertService = mock(AlertService.class);
         nameServerConfigDiffService = mock(NameServerConfigDiffService.class);
@@ -90,6 +99,8 @@ class ToolGatewayServiceTest {
         alertRuleListHandler = new AlertRuleListToolHandler(alertService);
         nameServerConfigDiffHandler = new NameServerConfigDiffToolHandler(
                 nameServerConfigDiffService);
+        messageQueryHandler = new MessageQueryToolHandler(messageService);
+        messageTraceHandler = new MessageTraceToolHandler(messageService);
         gateway = gateway(
                 catalog,
                 clusterListHandler,
@@ -98,7 +109,14 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler);
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler);
+    }
+
+    @AfterEach
+    void clearAuthenticatedUser() {
+        AuthenticatedUserContext.clear();
     }
 
     @Test
@@ -121,8 +139,37 @@ class ToolGatewayServiceTest {
                         "rmq.dashboard.summary",
                         "rmq.topic.list",
                         "rmq.group.list",
+                        "rmq.message.query",
+                        "rmq.message.trace",
                         "rmq.alert.rule.list",
                         "rmq.nameserver.config.diff");
+    }
+
+    @Test
+    void discoveryForReaderFiltersSensitiveMessageTools() {
+        AuthenticatedUserContext.setUser(2L, "reader", false);
+        when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
+
+        assertThat(gateway.discover("cluster-v5"))
+                .extracting(AiToolVO::getName)
+                .contains(
+                        "rmq.cluster.list",
+                        "rmq.capabilities",
+                        "rmq.dashboard.summary",
+                        "rmq.topic.list",
+                        "rmq.group.list",
+                        "rmq.alert.rule.list",
+                        "rmq.nameserver.config.diff")
+                .doesNotContain("rmq.message.query", "rmq.message.trace");
+    }
+
+    @Test
+    void discoveryWithClusterOfUnknownTypeOnlyExposesGlobalTools() {
+        when(clusterService.getCluster("unknown")).thenReturn(cluster("unknown", null));
+
+        assertThat(gateway.discover("unknown"))
+                .extracting(AiToolVO::getName)
+                .containsExactly("rmq.cluster.list");
     }
 
     @Test
@@ -195,6 +242,21 @@ class ToolGatewayServiceTest {
                 "status", "healthy",
                 "version", "5.2.0")));
         assertThat(output.toString()).doesNotContain("do-not-expose");
+    }
+
+    @Test
+    void readerCanExecuteLowRiskReadOnlyTool() {
+        AuthenticatedUserContext.setUser(2L, "reader", false);
+        when(clusterService.listClusters()).thenReturn(List.of(cluster(ClusterType.V5_PROXY_CLUSTER)));
+
+        Object output = gateway.execute("rmq.cluster.list", Map.of());
+
+        assertThat(output).isEqualTo(List.of(Map.of(
+                "id", "cluster-v5",
+                "name", "test",
+                "type", "V5_PROXY_CLUSTER",
+                "status", "healthy",
+                "version", "5.2.0")));
     }
 
     @Test
@@ -329,25 +391,31 @@ class ToolGatewayServiceTest {
         when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         TopicVO topic = topic();
         topic.setRemark("do-not-expose");
-        when(metadataService.listTopics("cluster-v5", "NORMAL", "order"))
-                .thenReturn(List.of(topic));
+        when(metadataService.listTopicsPage("cluster-v5", null, "NORMAL", "order", 2, 20))
+                .thenReturn(PageResult.of(List.of(topic), 101, 2, 20));
 
         Object output = gateway.execute("rmq.topic.list", Map.of(
                 "cluster", "cluster-v5",
                 "type", "NORMAL",
-                "search", "order"));
+                "search", "order",
+                "page", 2,
+                "pageSize", 20));
 
-        assertThat(output).isEqualTo(List.of(Map.of(
-                "name", "order-topic",
-                "namespace", "default",
-                "clusterId", "cluster-v5",
-                "type", "NORMAL",
-                "writeQueues", 8,
-                "readQueues", 8,
-                "perm", "RW",
-                "messageCount", 1200L,
-                "tps", 23.5D,
-                "consumerGroupCount", 3)));
+        assertThat(output).isEqualTo(Map.of(
+                "items", List.of(Map.of(
+                        "name", "order-topic",
+                        "namespace", "default",
+                        "clusterId", "cluster-v5",
+                        "type", "NORMAL",
+                        "writeQueues", 8,
+                        "readQueues", 8,
+                        "perm", "RW",
+                        "messageCount", 1200L,
+                        "tps", 23.5D,
+                        "consumerGroupCount", 3)),
+                "total", 101L,
+                "page", 2,
+                "size", 20));
         assertThat(output.toString()).doesNotContain("do-not-expose");
     }
 
@@ -364,22 +432,29 @@ class ToolGatewayServiceTest {
         when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         ConsumerGroupVO group = consumerGroup();
         group.setDelaySeconds(30);
-        when(metadataService.listConsumerGroups("cluster-v5", "order")).thenReturn(List.of(group));
+        when(metadataService.listConsumerGroupsPage("cluster-v5", null, "order", 2, 20))
+                .thenReturn(PageResult.of(List.of(group), 101, 2, 20));
 
         Object output = gateway.execute("rmq.group.list", Map.of(
                 "cluster", "cluster-v5",
-                "search", "order"));
+                "search", "order",
+                "page", 2,
+                "pageSize", 20));
 
-        assertThat(output).isEqualTo(List.of(Map.of(
-                "name", "cg-order",
-                "namespace", "default",
-                "clusterId", "cluster-v5",
-                "subscriptionMode", "Push",
-                "consumeType", "CLUSTERING",
-                "onlineInstances", 2,
-                "totalLag", 42L,
-                "subscribedTopics", List.of("order-topic"),
-                "retryMaxTimes", 16)));
+        assertThat(output).isEqualTo(Map.of(
+                "items", List.of(Map.of(
+                        "name", "cg-order",
+                        "namespace", "default",
+                        "clusterId", "cluster-v5",
+                        "subscriptionMode", "Push",
+                        "consumeType", "CLUSTERING",
+                        "onlineInstances", 2,
+                        "totalLag", 42L,
+                        "subscribedTopics", List.of("order-topic"),
+                        "retryMaxTimes", 16)),
+                "total", 101L,
+                "page", 2,
+                "size", 20));
         assertThat(output.toString()).doesNotContain("delaySeconds");
     }
 
@@ -393,26 +468,32 @@ class ToolGatewayServiceTest {
 
     @Test
     void executesAlertRuleListThroughADataMinimizingProjection() {
-        when(alertService.listRules()).thenReturn(List.of(
-                alertRule("rule-1", "High Lag", "rocketmq_consumer_lag_messages", true),
-                alertRule("rule-2", "Broker Down", "up", false)));
+        when(alertService.listRules("  LAG  ", true, 2, 20)).thenReturn(PageResult.of(
+                List.of(alertRule(1L, "High Lag", "rocketmq_consumer_lag_messages", true)),
+                101, 2, 20));
 
         Object output = gateway.execute("rmq.alert.rule.list", Map.of(
                 "cluster", "cluster-v5",
                 "search", "  LAG  ",
-                "enabled", true));
-
-        assertThat(output).isEqualTo(List.of(Map.of(
-                "id", "rule-1",
-                "name", "High Lag",
-                "metric", "rocketmq_consumer_lag_messages",
-                "operator", ">",
-                "threshold", 100000D,
-                "thresholdUnit", "messages",
-                "duration", "5m",
-                "channels", List.of("email"),
                 "enabled", true,
-                "description", "Consumer lag is high")));
+                "page", 2,
+                "pageSize", 20));
+
+        assertThat(output).isEqualTo(Map.of(
+                "items", List.of(Map.of(
+                        "id", 1L,
+                        "name", "High Lag",
+                        "metric", "rocketmq_consumer_lag_messages",
+                        "operator", ">",
+                        "threshold", 100000D,
+                        "thresholdUnit", "messages",
+                        "duration", "5m",
+                        "channels", List.of("email"),
+                        "enabled", true,
+                        "description", "Consumer lag is high")),
+                "total", 101L,
+                "page", 2,
+                "size", 20));
         assertThat(output.toString()).doesNotContain("lastTriggered");
     }
 
@@ -468,6 +549,17 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    void readerCannotExecuteSensitiveMessageQueryTool() {
+        AuthenticatedUserContext.setUser(2L, "reader", false);
+
+        assertThatThrownBy(() -> gateway.execute(
+                "rmq.message.query", Map.of("cluster", "cluster-v5")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Admin permission required");
+        verifyNoInteractions(messageService);
+    }
+
+    @Test
     void refusesNonL1CatalogEntriesEvenWhenAHandlerIsRegistered() throws IOException {
         String yaml = canonicalCatalogText().replaceFirst("riskLevel: L1", "riskLevel: L2");
         ToolCatalog l2Catalog = ToolCatalog.load(
@@ -481,11 +573,39 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler);
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler);
 
         assertThatThrownBy(() -> l2Gateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("only L1 tools are enabled");
+        verifyNoInteractions(clusterService);
+    }
+
+    @Test
+    void readerCannotExecuteCatalogEntriesWithoutReadPermission() throws IOException {
+        AuthenticatedUserContext.setUser(2L, "reader", false);
+        String yaml = canonicalCatalogText().replaceFirst(
+                "permission: cluster:read", "permission: cluster:write");
+        ToolCatalog writeCatalog = ToolCatalog.load(
+                new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
+                new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
+        ToolGatewayService writeGateway = gateway(
+                writeCatalog,
+                clusterListHandler,
+                capabilitiesHandler,
+                dashboardSummaryHandler,
+                topicListHandler,
+                consumerGroupListHandler,
+                alertRuleListHandler,
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler);
+
+        assertThatThrownBy(() -> writeGateway.execute("rmq.cluster.list", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Admin permission required");
         verifyNoInteractions(clusterService);
     }
 
@@ -515,15 +635,12 @@ class ToolGatewayServiceTest {
     @Test
     void failsStartupWhenToolSchemaContainsAnUnresolvedReference() throws IOException {
         String yaml = canonicalCatalogText().replace(
-                """
-                            inputSchema:
-                              type: object
-                              additionalProperties: false
-                        """,
-                """
-                            inputSchema:
-                              $ref: '#/missing'
-                        """);
+                "    inputSchema:\n"
+                        + "      type: object\n"
+                        + "      additionalProperties: false\n",
+                "    inputSchema:\n"
+                        + "      $ref: '#/missing'\n");
+        assertThat(yaml).contains("$ref: '#/missing'");
         ToolCatalog invalidCatalog = ToolCatalog.load(
                 new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
                 new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
@@ -536,7 +653,9 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler))
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input schema")
                 .hasMessageContaining("rmq.cluster.list");
@@ -545,14 +664,11 @@ class ToolGatewayServiceTest {
     @Test
     void failsStartupWhenToolSchemaViolatesTheJsonSchemaMetaSchema() throws IOException {
         String yaml = canonicalCatalogText().replace(
-                """
-                            inputSchema:
-                              type: object
-                        """,
-                """
-                            inputSchema:
-                              type: unsupported
-                        """);
+                "    inputSchema:\n"
+                        + "      type: object\n",
+                "    inputSchema:\n"
+                        + "      type: unsupported\n");
+        assertThat(yaml).contains("type: unsupported");
         ToolCatalog invalidCatalog = ToolCatalog.load(
                 new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
                 new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
@@ -565,7 +681,9 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler))
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input schema")
                 .hasMessageContaining("rmq.cluster.list");
@@ -592,7 +710,9 @@ class ToolGatewayServiceTest {
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
-                nameServerConfigDiffHandler);
+                nameServerConfigDiffHandler,
+                messageQueryHandler,
+                messageTraceHandler);
 
         assertThatThrownBy(() -> invalidGateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(IllegalStateException.class)
@@ -604,6 +724,7 @@ class ToolGatewayServiceTest {
                 toolCatalog,
                 capabilityResolver,
                 new ObjectMapper(),
+                new ToolAccessPolicy(toolCatalog),
                 List.of(handlers));
     }
 
@@ -615,7 +736,8 @@ class ToolGatewayServiceTest {
 
     private static String canonicalCatalogText() throws IOException {
         return new ClassPathResource("tool-catalog/rmq-tools.yaml")
-                .getContentAsString(StandardCharsets.UTF_8);
+                .getContentAsString(StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
     }
 
     private static ClusterVO cluster(ClusterType type) {
@@ -662,7 +784,7 @@ class ToolGatewayServiceTest {
         return group;
     }
 
-    private static AlertRuleVO alertRule(String id, String name, String metric, boolean enabled) {
+    private static AlertRuleVO alertRule(Long id, String name, String metric, boolean enabled) {
         return AlertRuleVO.builder()
                 .id(id)
                 .name(name)

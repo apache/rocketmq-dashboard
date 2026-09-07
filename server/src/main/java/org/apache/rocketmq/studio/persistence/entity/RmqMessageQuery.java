@@ -24,7 +24,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("rmq_message_query")
+@TableName("rmq_instance_message")
 public class RmqMessageQuery {
 
     @TableId(type = IdType.AUTO)
@@ -46,9 +46,13 @@ public class RmqMessageQuery {
 
     private Integer resultCount;
 
+    private String resultSnapshot;
+
     private String clusterId;
 
     private String queriedBy;
 
-    private LocalDateTime queriedAt;
+    private LocalDateTime gmtCreate;
+
+    private LocalDateTime gmtModified;
 }

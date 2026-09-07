@@ -23,16 +23,30 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class SystemAlertVO {
-    private String id;
+    private Long id;
     private AlertLevel level;
     private String title;
     private String description;
     private LocalDateTime time;
     private boolean acknowledged;
+    private String acknowledgedBy;
+    private LocalDateTime acknowledgedAt;
+    private AlertDomain domain;
+    private Long ruleId;
+    private String fingerprint;
+    private String transition;
+    private String instanceId;
+    private Double currentValue;
+    private boolean notificationSuppressed;
+    private Long suppressionCauseAlertId;
+    private String suppressionReason;
+    @Builder.Default
+    private Map<String, String> labels = Map.of();
 }

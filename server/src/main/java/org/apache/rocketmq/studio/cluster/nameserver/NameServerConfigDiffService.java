@@ -22,7 +22,9 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Stream;
@@ -70,10 +73,24 @@ public class NameServerConfigDiffService {
 
     private final ClusterService clusterService;
     private final MqAdminExtFactory adminFactory;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     public NameServerConfigDiffVO compare(String clusterId) {
         String normalizedClusterId = requireClusterId(clusterId);
-        ClusterVO cluster = clusterService.getCluster(normalizedClusterId);
+        return compare(normalizedClusterId, clusterService.getCluster(normalizedClusterId), null);
+    }
+
+    public NameServerConfigDiffVO compare(String clusterId, String instanceId) {
+        String normalizedClusterId = requireClusterId(clusterId);
+        String normalizedInstanceId = normalizeInstanceId(instanceId);
+        return compare(normalizedClusterId,
+                clusterService.getCluster(normalizedClusterId, normalizedInstanceId), normalizedInstanceId);
+    }
+
+    private NameServerConfigDiffVO compare(
+            String normalizedClusterId,
+            ClusterVO cluster,
+            String instanceId) {
         List<String> addresses = collectNameServerAddresses(cluster);
         if (addresses.isEmpty()) {
             throw new BusinessException(409,
@@ -86,7 +103,7 @@ public class NameServerConfigDiffService {
 
         for (String address : addresses) {
             try {
-                Properties config = readConfig(connectionEndpoint, address);
+                Properties config = readConfig(instanceId, connectionEndpoint, address);
                 reachableConfigs.put(address, config);
                 nodes.add(NameServerConfigDiffVO.NodeStatusVO.builder()
                         .address(address)
@@ -115,16 +132,21 @@ public class NameServerConfigDiffService {
                 .build();
     }
 
-    private Properties readConfig(String connectionEndpoint, String address) {
-        return adminFactory.execute(connectionEndpoint, null, admin -> {
-            Map<String, Properties> configs = admin.getNameServerConfig(List.of(address));
-            Properties config = configs == null ? null : configs.get(address);
-            if (config == null) {
-                throw new BusinessException(502,
-                        "NameServer returned no configuration: " + address);
-            }
-            return config;
-        });
+    private Properties readConfig(String instanceId, String connectionEndpoint, String address) {
+        if (instanceId != null) {
+            return runtimeAdminClientResolver.execute(instanceId, admin -> readConfig(admin, address));
+        }
+        return adminFactory.execute(connectionEndpoint, null, admin -> readConfig(admin, address));
+    }
+
+    private Properties readConfig(MQAdminExt admin, String address) throws Exception {
+        Map<String, Properties> configs = admin.getNameServerConfig(List.of(address));
+        Properties config = configs == null ? null : configs.get(address);
+        if (config == null) {
+            throw new BusinessException(502,
+                    "NameServer returned no configuration: " + address);
+        }
+        return config;
     }
 
     private List<NameServerConfigDiffVO.ConfigDifferenceVO> findDifferences(
@@ -171,12 +193,26 @@ public class NameServerConfigDiffService {
                         .filter(node -> node != null)
                         .map(NameServerVO::getAddr);
         Stream<String> endpointAddresses = splitEndpoint(cluster.getEndpoint()).stream();
-        return Stream.concat(declared, endpointAddresses)
+        Map<String, String> uniqueAddresses = new LinkedHashMap<>();
+        Stream.concat(declared, endpointAddresses)
                 .filter(address -> address != null && !address.isBlank())
                 .map(String::trim)
-                .distinct()
+                .forEach(address -> uniqueAddresses.putIfAbsent(canonicalAddressKey(address), address));
+        return uniqueAddresses.values().stream()
                 .sorted()
                 .toList();
+    }
+
+    private String canonicalAddressKey(String address) {
+        int separator = address.lastIndexOf(':');
+        if (separator <= 0 || address.indexOf(':') != separator) {
+            return address;
+        }
+        String host = address.substring(0, separator);
+        if (host.indexOf('%') >= 0) {
+            return address;
+        }
+        return host.toLowerCase(Locale.ROOT) + address.substring(separator);
     }
 
     private String connectionEndpoint(ClusterVO cluster, List<String> addresses) {
@@ -201,5 +237,9 @@ public class NameServerConfigDiffService {
             throw new BusinessException(400, "cluster is required");
         }
         return clusterId.trim();
+    }
+
+    private String normalizeInstanceId(String instanceId) {
+        return instanceId == null || instanceId.isBlank() ? null : instanceId.trim();
     }
 }

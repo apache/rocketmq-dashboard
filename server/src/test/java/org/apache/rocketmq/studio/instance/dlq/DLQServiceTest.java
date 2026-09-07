@@ -17,6 +17,8 @@
 
 package org.apache.rocketmq.studio.instance.dlq;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -88,6 +90,47 @@ class DLQServiceTest {
     }
 
     @Test
+    void actionsShouldNormalizeIdentifiersBeforeDelegatingTest() {
+        List<String> msgIds = List.of(" msg-1 ", " msg-2 ");
+
+        dlqService.resendMessages("instance-1", " group-1 ", 1000L, 2000L, " target-topic ");
+        dlqService.exportMessages("instance-1", " group-1 ", 1000L, 2000L, 100);
+        dlqService.listMessages("instance-1", " group-1 ", 1000L, 2000L, 1, 20);
+        dlqService.resendSelectedMessages("instance-1", " group-1 ", msgIds, " target-topic ");
+        dlqService.exportExcel("instance-1", " group-1 ", 1000L, 2000L, msgIds);
+
+        verify(dlqProvider).resendMessages(
+                "instance-1", "group-1", 1000L, 2000L, "target-topic");
+        verify(dlqProvider).exportMessages("instance-1", "group-1", 1000L, 2000L, 100);
+        verify(dlqProvider).listMessages("instance-1", "group-1", 1000L, 2000L, 1, 20);
+        verify(dlqProvider).resendMessages(
+                "instance-1", "group-1", List.of("msg-1", "msg-2"), "target-topic");
+        verify(dlqProvider).exportExcel(
+                "instance-1", "group-1", 1000L, 2000L, List.of("msg-1", "msg-2"));
+    }
+
+    @Test
+    void resendMessagesShouldTreatBlankTargetTopicAsAbsentTest() {
+        dlqService.resendMessages("instance-1", "group-1", 1000L, 2000L, "   ");
+
+        verify(dlqProvider).resendMessages("instance-1", "group-1", 1000L, 2000L, null);
+    }
+
+    @Test
+    void selectedActionsShouldRejectBlankMsgIdsTest() {
+        assertThatThrownBy(() -> dlqService.resendSelectedMessages(
+                "instance-1", "group-1", List.of("msg-1", " "), null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("msgId must not be blank");
+        assertThatThrownBy(() -> dlqService.exportExcel(
+                "instance-1", "group-1", null, null, List.of("msg-1", " ")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("msgId must not be blank");
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
     void resendMessagesShouldAcceptNullTimeRange() {
         dlqService.resendMessages("instance-1", "group-1", null, null, "target-topic");
 
@@ -122,6 +165,66 @@ class DLQServiceTest {
     void resendMessagesShouldRejectReversedTimeRange() {
         assertThatThrownBy(() -> dlqService.resendMessages("instance-1", "group-1", 2000L, 1000L, "target-topic"))
                 .hasMessage("endTime must not be earlier than startTime");
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void exportMessagesShouldDelegateToProviderTest() {
+        dlqService.exportMessages("instance-1", "group-1", 1000L, 2000L, 100);
+
+        verify(dlqProvider).exportMessages("instance-1", "group-1", 1000L, 2000L, 100);
+    }
+
+    @Test
+    void exportMessagesShouldAcceptNullTimeRangeTest() {
+        dlqService.exportMessages("instance-1", "group-1", null, null, null);
+
+        verify(dlqProvider).exportMessages("instance-1", "group-1", null, null, null);
+    }
+
+    @Test
+    void exportMessagesShouldRejectPartialTimeRangeTest() {
+        assertThatThrownBy(() -> dlqService.exportMessages("instance-1", "group-1", 1000L, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime and endTime must be provided together")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void exportMessagesShouldRejectReversedTimeRangeTest() {
+        assertThatThrownBy(() -> dlqService.exportMessages("instance-1", "group-1", 2000L, 1000L, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("endTime must not be earlier than startTime")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void listDLQGroupsShouldDelegatePagedQueryWithTrimmedSearch() {
+        PageResult<DLQGroupVO> page = PageResult.of(List.of(), 0, 2, 50);
+        when(dlqProvider.listDLQGroups("instance-1", "order", 2, 50)).thenReturn(page);
+
+        PageResult<DLQGroupVO> result = dlqService.listDLQGroups("instance-1", " order ", 2, 50);
+
+        assertThat(result).isSameAs(page);
+        verify(dlqProvider).listDLQGroups("instance-1", "order", 2, 50);
+    }
+
+    @Test
+    void listDLQGroupsShouldRejectInvalidPagination() {
+        assertThatThrownBy(() -> dlqService.listDLQGroups("instance-1", null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid page or pageSize");
+        assertThatThrownBy(() -> dlqService.listDLQGroups("instance-1", null, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid page or pageSize");
+        assertThatThrownBy(() -> dlqService.listDLQGroups("instance-1", null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid page or pageSize");
 
         verifyNoInteractions(dlqProvider);
     }

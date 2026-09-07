@@ -36,20 +36,48 @@ describe('useInstanceFilter', () => {
   it('replaces an unknown route instance with the first available instance', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
-        id: 'instance-a',
-        name: 'Instance A',
+        id: 7,
+        name: 'instance-a',
         remark: '',
-        type: 'PROXY',
+        type: 'PROXY_CLUSTER',
         endpoint: '127.0.0.1:8080',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
       },
     ]);
 
     render(
       <MemoryRouter initialEntries={['/instance/missing/topic']}>
+        <Routes>
+          <Route path="/instance/:instanceId/topic" element={<InstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
+    });
+  });
+
+  it('recovers from a malformed encoded instance id', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 7,
+        name: 'instance-a',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '127.0.0.1:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={['/instance/%E0%A4%A/topic']}>
         <Routes>
           <Route path="/instance/:instanceId/topic" element={<InstanceRouteProbe />} />
         </Routes>

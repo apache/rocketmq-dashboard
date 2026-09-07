@@ -25,7 +25,7 @@ import lombok.ToString;
 import org.springframework.util.StringUtils;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class GeneralSettingsVO {
@@ -44,9 +44,38 @@ public class GeneralSettingsVO {
     private boolean clearApiKey;
     private String model;
     private String baseUrl;
+    private String deploymentName;
+    private String apiVersion;
+    private String awsRegion;
+    private Integer maxTokens;
+    private Double temperature;
+    private String dingtalkWebhook;
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @ToString.Exclude
+    private String dingtalkSigningSecret;
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @ToString.Exclude
+    private boolean clearDingtalkSigningSecret;
+    private String emailRecipients;
+    private String smsWebhook;
 
     @JsonProperty(value = "apiKeyConfigured", access = JsonProperty.Access.READ_ONLY)
     public boolean isApiKeyConfigured() {
         return StringUtils.hasText(apiKey);
+    }
+
+    @JsonProperty(value = "dingtalkWebhookConfigured", access = JsonProperty.Access.READ_ONLY)
+    public boolean isDingtalkWebhookConfigured() {
+        return StringUtils.hasText(dingtalkWebhook);
+    }
+
+    @JsonProperty(value = "dingtalkSigningSecretConfigured", access = JsonProperty.Access.READ_ONLY)
+    public boolean isDingtalkSigningSecretConfigured() {
+        return StringUtils.hasText(dingtalkSigningSecret);
+    }
+
+    @JsonProperty(value = "smsWebhookConfigured", access = JsonProperty.Access.READ_ONLY)
+    public boolean isSmsWebhookConfigured() {
+        return StringUtils.hasText(smsWebhook);
     }
 }

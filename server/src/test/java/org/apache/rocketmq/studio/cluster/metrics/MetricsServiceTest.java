@@ -29,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -244,6 +245,47 @@ class MetricsServiceTest {
     }
 
     @Test
+    void queryShouldRejectReversedWindowWhenTimestampSubtractionWouldOverflow() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(Long.MAX_VALUE)
+                .end(Long.MIN_VALUE)
+                .step("1m")
+                .build();
+
+        assertBadRequest(query, "Metric query end must be later than start");
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldRejectOversizedWindowWhenTimestampSubtractionWouldOverflow() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(Long.MIN_VALUE)
+                .end(Long.MAX_VALUE)
+                .step("1h")
+                .build();
+
+        assertBadRequest(query, "Metric query range must not exceed 31 days");
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldAcceptMaximumWindowNearTimestampUpperBound() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(Long.MAX_VALUE - 31L * 24 * 60 * 60)
+                .end(Long.MAX_VALUE)
+                .step("1h")
+                .build();
+        when(metricsSource.query(query)).thenReturn(emptyMetricData());
+
+        metricsService.query(query);
+
+        verify(metricsSource).query(query);
+    }
+
+    @Test
     void queryShouldRejectOversizedWindow() {
         MetricQueryDTO query = MetricQueryDTO.builder()
                 .metric("rocketmq_messages_in_total")
@@ -267,6 +309,36 @@ class MetricsServiceTest {
 
         assertBadRequest(query, "Metric query step is invalid");
         verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldRejectInvalidPrometheusDurationCombinations() {
+        for (String step : List.of("1s1h", "1m1m", "1ms1s", "1.5h")) {
+            MetricQueryDTO query = MetricQueryDTO.builder()
+                    .metric("rocketmq_messages_in_total")
+                    .start(1700000000L)
+                    .end(1700003600L)
+                    .step(step)
+                    .build();
+
+            assertBadRequest(query, "Metric query step is invalid");
+        }
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldAcceptOrderedPrometheusDurationCombinations() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1h30m15s500ms")
+                .build();
+        when(metricsSource.query(query)).thenReturn(emptyMetricData());
+
+        metricsService.query(query);
+
+        verify(metricsSource).query(query);
     }
 
     @Test
@@ -309,6 +381,18 @@ class MetricsServiceTest {
                 .build();
     }
 
+    private MetricsDataSourceQueryRequest dataSourceRequest(String instanceId) {
+        MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setInstanceId(instanceId);
+        request.setQuery(MetricQueryDTO.builder()
+                .metric("cpu")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1m")
+                .build());
+        return request;
+    }
+
     private void assertBadRequest(MetricQueryDTO query, String message) {
         assertThatExceptionOfType(PrometheusException.class)
                 .isThrownBy(() -> metricsService.query(query))
@@ -347,6 +431,124 @@ class MetricsServiceTest {
         verify(settingsService).getDataSource("ds-1");
         verify(metricsSourceFactory).create(any(MetricsDataSourceConfig.class));
         verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryByDataSourceShouldAllowMatchingInstanceBinding() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest("instance-a");
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .auth("none")
+                .instanceIds(List.of("instance-a", "instance-b"))
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.queryByDataSource("ds-1", request);
+
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryByDataSourceShouldRejectDifferentInstanceBinding() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest("instance-b");
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .instanceIds(List.of("instance-a"))
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.queryByDataSource("ds-1", request))
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("Data source ds-1 is not available for instance instance-b");
+                });
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
+    @Test
+    void queryByDataSourceShouldRejectMissingInstanceForBoundSource() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest(null);
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .instanceIds(List.of("instance-a"))
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.queryByDataSource("ds-1", request))
+                .satisfies(exception -> assertThat(exception.getStatusCode()).isEqualTo(400));
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
+    @Test
+    void queryByDataSourceShouldRejectUnsupportedStoredAuthMode() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest(null);
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .auth("digest")
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.queryByDataSource("ds-1", request))
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("Unsupported data source authentication mode: digest");
+                });
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
+    @Test
+    void queryByDataSourceShouldNormalizeAuthIndependentlyOfDefaultLocale() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("cpu")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1m")
+                .build();
+        MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setQuery(query);
+        request.setUsername("prom");
+        request.setPassword("secret");
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-prod")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .auth("BASIC")
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(metricData("cpu", List.of()));
+        Locale originalLocale = Locale.getDefault();
+
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            metricsService.queryByDataSource("ds-1", request);
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        ArgumentCaptor<MetricsDataSourceConfig> configCaptor = ArgumentCaptor.forClass(MetricsDataSourceConfig.class);
+        verify(metricsSourceFactory).create(configCaptor.capture());
+        assertThat(configCaptor.getValue().getAuthType()).isEqualTo("basic");
     }
 
     @Test

@@ -18,20 +18,26 @@ package org.apache.rocketmq.studio.cluster.metrics.grafana;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Loads the Grafana dashboard JSON assets bundled under {@code classpath*:grafana/*.json}
@@ -39,20 +45,29 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class GrafanaDashboardService {
 
     private static final String LOCATION_PATTERN = "classpath*:grafana/*.json";
 
     private final ObjectMapper objectMapper;
-    private final ResourcePatternResolver resourceResolver = new PathMatchingResourcePatternResolver();
+    private final ResourcePatternResolver resourceResolver;
+
+    @Autowired
+    public GrafanaDashboardService(ObjectMapper objectMapper) {
+        this(objectMapper, new PathMatchingResourcePatternResolver());
+    }
+
+    GrafanaDashboardService(ObjectMapper objectMapper, ResourcePatternResolver resourceResolver) {
+        this.objectMapper = objectMapper;
+        this.resourceResolver = resourceResolver;
+    }
 
     /**
      * Lists metadata for every bundled Grafana dashboard.
      */
     public List<GrafanaDashboardInfo> listDashboards() {
         List<GrafanaDashboardInfo> infos = new ArrayList<>();
-        for (Resource resource : resolveResources()) {
+        for (Resource resource : resolveUniqueResources()) {
             String uid = uidOf(resource);
             if (uid == null) {
                 continue;
@@ -88,6 +103,9 @@ public class GrafanaDashboardService {
         try (InputStream in = resource.getInputStream()) {
             @SuppressWarnings("unchecked")
             Map<String, Object> model = objectMapper.readValue(in, Map.class);
+            if (model == null) {
+                throw new BusinessException(500, "Failed to read Grafana dashboard: " + uid);
+            }
             return model;
         } catch (IOException e) {
             throw new BusinessException(500, "Failed to read Grafana dashboard: " + uid);
@@ -111,8 +129,32 @@ public class GrafanaDashboardService {
         }
     }
 
+    /**
+     * Returns all valid bundled dashboards as a zip archive. Invalid dashboard assets are skipped
+     * the same way as {@link #listDashboards()} so the archive matches the visible dashboard list.
+     */
+    public byte[] getDashboardsArchive() {
+        List<GrafanaDashboardInfo> dashboards = listDashboards();
+        if (dashboards.isEmpty()) {
+            throw new BusinessException(404, "No Grafana dashboards are available");
+        }
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream();
+             ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
+            for (GrafanaDashboardInfo dashboard : dashboards) {
+                ZipEntry entry = new ZipEntry(dashboard.uid() + ".json");
+                zip.putNextEntry(entry);
+                zip.write(getDashboardJson(dashboard.uid()).getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+            zip.finish();
+            return output.toByteArray();
+        } catch (IOException e) {
+            throw new BusinessException(500, "Failed to export Grafana dashboards");
+        }
+    }
+
     private Resource findResource(String uid) {
-        for (Resource resource : resolveResources()) {
+        for (Resource resource : resolveUniqueResources()) {
             if (uid.equals(uidOf(resource))) {
                 return resource;
             }
@@ -120,12 +162,21 @@ public class GrafanaDashboardService {
         return null;
     }
 
+    private List<Resource> resolveUniqueResources() {
+        Map<String, Resource> resourcesByUid = new LinkedHashMap<>();
+        Arrays.stream(resolveResources())
+                .filter(resource -> uidOf(resource) != null)
+                .sorted(Comparator.comparing(Resource::getDescription))
+                .forEach(resource -> resourcesByUid.putIfAbsent(uidOf(resource), resource));
+        return new ArrayList<>(resourcesByUid.values());
+    }
+
     protected Resource[] resolveResources() {
         try {
             return resourceResolver.getResources(LOCATION_PATTERN);
         } catch (IOException e) {
             log.warn("Unable to resolve Grafana dashboard resources: {}", e.getMessage());
-            return new Resource[0];
+            throw new BusinessException(500, "Failed to resolve bundled Grafana dashboards");
         }
     }
 

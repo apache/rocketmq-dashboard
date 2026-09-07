@@ -20,23 +20,29 @@ import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 
-import org.apache.rocketmq.studio.common.domain.BaseEntity;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * Clusters are discovered from live broker state and cached by cluster name; they are not
+ * backed by a database table, so the identifier stays a String instead of the numeric
+ * auto-increment primary key used by persisted entities.
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true)
-public class ClusterVO extends BaseEntity {
+public class ClusterVO {
+    private String id;
+    private LocalDateTime gmtCreate;
+    private LocalDateTime gmtModified;
     private String name;
     private String nsClusterName;
     private ClusterType type;

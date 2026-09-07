@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.metrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -49,9 +50,20 @@ public class PrometheusMetricsSource extends AbstractPrometheusCompatibleMetrics
                 .baseUrl(properties.getBaseUrl())
                 .connectTimeout(properties.getConnectTimeout())
                 .readTimeout(properties.getReadTimeout())
+                .authType(legacyAuthType(properties))
                 .username(properties.getUsername())
                 .password(properties.getPassword())
                 .bearerToken(properties.getBearerToken())
                 .build();
+    }
+
+    private static String legacyAuthType(PrometheusProperties properties) {
+        if (StringUtils.hasText(properties.getBearerToken())) {
+            return "bearer";
+        }
+        if (StringUtils.hasText(properties.getUsername()) || StringUtils.hasText(properties.getPassword())) {
+            return "basic";
+        }
+        return "none";
     }
 }

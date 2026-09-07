@@ -19,8 +19,8 @@ export interface Topic {
   tps: number;
   consumerGroupCount: number;
   remark: string;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
 }
 
 export interface TopicQuery {
@@ -30,12 +30,24 @@ export interface TopicQuery {
   search?: string;
 }
 
+export interface TopicExportQuery extends TopicQuery {
+  names?: string[];
+}
+
 export interface BrokerRoute {
   brokerName: string;
   brokerAddr: string;
+  masterAddr?: string;
+  brokerAddrs?: Record<string, string>;
+  brokerIds?: number[];
+  replicaCount?: number;
   writeQueues: number;
   readQueues: number;
   perm: string;
+  permCode?: number;
+  readable?: boolean;
+  writable?: boolean;
+  topicSysFlag?: number;
 }
 
 export interface ConsumerGroupInfo {
@@ -44,6 +56,39 @@ export interface ConsumerGroupInfo {
   messageModel: string;
   consumeTps: number;
   diffTotal: number;
+  metricsAvailable?: boolean;
+}
+
+export interface TopicConsumerPage {
+  items: ConsumerGroupInfo[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface ImportTopicsRequest {
+  instanceId: string;
+  topics: Partial<Topic>[];
+}
+
+export interface ImportTopicsFailure {
+  index: number;
+  name?: string;
+  message: string;
+}
+
+export interface ImportTopicsResult {
+  imported: number;
+  failed: number;
+  topics: Topic[];
+  failures: ImportTopicsFailure[];
 }
 
 // ─── Consumer Group (matches mock/consumers.ts) ─────────────────
@@ -60,8 +105,8 @@ export interface ConsumerGroup {
   subscriptionDataType: string;
   deliveryOrderType?: string;
   retryMaxTimes: number;
-  createdAt: string;
-  updatedAt: string;
+  gmtCreate: string;
+  gmtModified: string;
   delaySeconds: number;
   instances: ConsumerInstance[];
 }
@@ -75,11 +120,35 @@ export interface ConsumerInstance {
   topicLag: Record<string, number>;
 }
 
+export interface ConsumerThreadStack {
+  threadName: string;
+  threadId: number;
+  state: string;
+  blockedTime: number;
+  waitedTime: number;
+  stackTrace: string[];
+}
+
+export interface ConsumerStackTrace {
+  groupName: string;
+  clientId: string;
+  capturedAt: string;
+  threadCount: number;
+  threads: ConsumerThreadStack[];
+}
+
 export interface ConsumerGroupDetail extends ConsumerGroup {
   instances: ConsumerInstance[];
 }
 
+export interface ConsumerGroupSettings {
+  groupName: string;
+  retryQueueNums: number;
+  retryMaxTimes: number;
+}
+
 export interface QueueProgress {
+  topic: string;
   broker: string;
   queueId: number;
   brokerOffset: number;
@@ -101,15 +170,61 @@ export interface ConsumerGroupQuery {
   search?: string;
 }
 
-export interface ResetConsumerOffsetRequest {
-  name: string;
-  timestamp: number;
-  topic?: string;
+export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ConsumerGroupExportQuery extends ConsumerGroupQuery {
+  names?: string[];
+  subscriptionMode?: string;
+}
+
+export interface ImportConsumerGroupsRequest {
+  instanceId: string;
+  groups: Partial<ConsumerGroup>[];
+}
+
+export interface ImportConsumerGroupsFailure {
+  index: number;
+  name?: string;
+  message: string;
+}
+
+export interface ImportConsumerGroupsResult {
+  imported: number;
+  failed: number;
+  groups: ConsumerGroup[];
+  failures: ImportConsumerGroupsFailure[];
 }
 
 // ─── Topic API ──────────────────────────────────────────────────
 export async function listTopics(params?: TopicQuery) {
   const res = await client.get<{ data: Topic[] }>('/topics', { params });
+  return res.data.data;
+}
+
+export interface TopicPage {
+  items: Topic[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export async function listTopicsPage(params?: TopicQuery & { page?: number; pageSize?: number }) {
+  const res = await client.get<{ data: TopicPage }>('/topics/page', { params });
+  return res.data.data;
+}
+
+export async function exportTopics(params?: TopicExportQuery) {
+  const res = await client.get<{ data: string }>('/topics/export', {
+    params: { ...params, names: params?.names?.join(',') },
+  });
+  return res.data.data;
+}
+
+export async function importTopics(data: ImportTopicsRequest) {
+  const res = await client.post<{ data: ImportTopicsResult }>('/topics/import', data);
   return res.data.data;
 }
 
@@ -143,6 +258,19 @@ export async function getTopicConsumers(name: string, instanceId?: string) {
   return res.data.data;
 }
 
+export async function getTopicConsumerPage(
+  name: string,
+  instanceId: string | undefined,
+  page: number,
+  pageSize: number,
+) {
+  const res = await client.get<{ data: TopicConsumerPage }>(
+    `/topics/${encodeURIComponent(name)}/consumers/page`,
+    { params: { ...(instanceId ? { instanceId } : {}), page, pageSize } },
+  );
+  return res.data.data;
+}
+
 export interface SendTopicMessageRequest {
   topic: string;
   instanceId?: string;
@@ -169,9 +297,22 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery) {
   return res.data.data;
 }
 
+export async function listConsumerGroupPage(params?: ConsumerGroupPageQuery) {
+  const res = await client.get<{ data: PageResult<ConsumerGroup> }>('/groups/page', { params });
+  return res.data.data;
+}
+
 export async function getConsumerGroup(name: string, instanceId?: string) {
   const res = await client.get<{ data: ConsumerGroupDetail }>(
     `/groups/${encodeURIComponent(name)}`,
+    { params: instanceId ? { instanceId } : {} },
+  );
+  return res.data.data;
+}
+
+export async function refreshConsumerGroup(name: string, instanceId?: string) {
+  const res = await client.get<{ data: ConsumerGroup | null }>(
+    `/groups/${encodeURIComponent(name)}/refresh`,
     { params: instanceId ? { instanceId } : {} },
   );
   return res.data.data;
@@ -193,8 +334,31 @@ export async function getConsumerSubscriptions(name: string, instanceId?: string
   return res.data.data;
 }
 
+export async function getConsumerStack(name: string, clientId: string, instanceId?: string) {
+  const res = await client.get<{ data: ConsumerStackTrace }>(
+    `/groups/${encodeURIComponent(name)}/instances/${encodeURIComponent(clientId)}/stack`,
+    { params: instanceId ? { instanceId } : {} },
+  );
+  return res.data.data;
+}
+
 export async function createConsumerGroup(data: Partial<ConsumerGroup>) {
   const res = await client.post<{ data: ConsumerGroup }>('/groups/create', data);
+  return res.data.data;
+}
+
+export async function getConsumerGroupSettings(name: string, instanceId: string) {
+  const res = await client.get<{ data: ConsumerGroupSettings }>(
+    `/groups/${encodeURIComponent(name)}/settings`,
+    { params: { instanceId } },
+  );
+  return res.data.data;
+}
+
+export async function updateConsumerGroupSettings(
+  data: Omit<ConsumerGroupSettings, 'groupName'> & { instanceId: string; name: string },
+) {
+  const res = await client.post<{ data: ConsumerGroupSettings }>('/groups/settings', data);
   return res.data.data;
 }
 
@@ -206,20 +370,63 @@ export interface ResetConsumerOffsetRequest {
   name: string;
   instanceId?: string;
   timestamp: number;
-  topic?: string;
+  topic: string;
+}
+
+export interface ResetConsumerOffsetQueuePreview {
+  topic: string;
+  broker: string;
+  queueId: number;
+  minOffset: number;
+  maxOffset: number;
+  brokerOffset: number;
+  consumerOffset: number;
+  targetOffset: number;
+  currentLag: number;
+  projectedLag: number;
+  offsetDelta: number;
+  riskLevel: 'INFO' | 'WARNING' | 'ERROR' | string;
+  message: string;
+}
+
+export interface ResetConsumerOffsetPreview {
+  instanceId?: string;
+  groupName: string;
+  topic: string;
+  timestamp: number;
+  complete: boolean;
+  allowReset: boolean;
+  queueCount: number;
+  warningCount: number;
+  rewindQueueCount: number;
+  fastForwardQueueCount: number;
+  currentTotalLag: number;
+  projectedTotalLag: number;
+  totalOffsetDelta: number;
+  warnings: string[];
+  queues: ResetConsumerOffsetQueuePreview[];
+}
+
+export async function previewConsumerOffsetReset(data: ResetConsumerOffsetRequest) {
+  const res = await client.post<{ data: ResetConsumerOffsetPreview }>(
+    '/groups/reset-offset/preview',
+    data,
+  );
+  return res.data.data;
 }
 
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest) {
   await client.post('/groups/reset-offset', data);
 }
 
-export async function importConsumerGroups(data: string) {
-  await client.post('/groups/import', { data });
+export async function importConsumerGroups(data: ImportConsumerGroupsRequest) {
+  const res = await client.post<{ data: ImportConsumerGroupsResult }>('/groups/import', data);
+  return res.data.data;
 }
 
-export async function exportConsumerGroups(names?: string[]) {
+export async function exportConsumerGroups(params?: ConsumerGroupExportQuery) {
   const res = await client.get<{ data: string }>('/groups/export', {
-    params: { names: names?.join(',') },
+    params: { ...params, names: params?.names?.join(',') },
   });
   return res.data.data;
 }

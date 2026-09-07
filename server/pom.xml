@@ -29,6 +29,10 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
         <dependency>
@@ -80,7 +84,7 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>runtime</scope>
+            <scope>test</scope>
         </dependency>
         <!-- RocketMQ Admin Tools (kept from trunk #694) -->
         <dependency>
@@ -98,17 +102,37 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- Used by PlainAclRemoteAddressValidator for IP address grammar checks;
+             currently arrives transitively via rocketmq-tools -> rocketmq-common,
+             declared explicitly to keep the direct usage resolvable. -->
+        <dependency>
+            <groupId>commons-validator</groupId>
+            <artifactId>commons-validator</artifactId>
+            <version>1.10.0</version>
+        </dependency>
         <!-- Aliyun RocketMQ 5.x OpenAPI (async V2 SDK), used by provider/alibaba -->
         <dependency>
             <groupId>com.aliyun</groupId>
             <artifactId>alibabacloud-rocketmq20220801</artifactId>
             <version>5.0.8</version>
         </dependency>
-        <!-- Tencent Cloud TDMQ OpenAPI, reserved for provider/tencent (not implemented yet) -->
+        <!-- Tencent Cloud RocketMQ 5.x OpenAPI (Trocket v20230308), used by provider/tencent -->
         <dependency>
             <groupId>com.tencentcloudapi</groupId>
-            <artifactId>tencentcloud-sdk-java-tdmq</artifactId>
-            <version>3.1.1500</version>
+            <artifactId>tencentcloud-sdk-java-trocket</artifactId>
+            <version>3.1.1498</version>
+        </dependency>
+        <!-- rocketmq-common also brings Kotlin-based okio-jvm 3.x; keep its runtime available. -->
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib</artifactId>
+            <version>1.9.25</version>
+        </dependency>
+        <!-- Excel export for DLQ message details (single / batch). -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>3.3.4</version>
         </dependency>
     </dependencies>
 

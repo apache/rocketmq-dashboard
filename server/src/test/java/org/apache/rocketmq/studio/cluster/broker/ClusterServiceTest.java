@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
@@ -89,6 +90,7 @@ class ClusterServiceTest {
                 .version("5.1.0")
                 .brokers(List.of(BrokerVO.builder()
                         .name("broker-0")
+                        .addr("10.0.0.1:10911")
                         .build()))
                 .proxies(List.of(ProxyVO.builder()
                         .addr("10.0.0.10:8081")
@@ -133,6 +135,50 @@ class ClusterServiceTest {
     }
 
     @Test
+    void listClustersShouldUseSelectedInstance() {
+        when(clusterProvider.discoverClusters("instance-1")).thenReturn(List.of(sampleCluster));
+
+        List<ClusterVO> result = clusterService.listClusters("instance-1");
+
+        assertThat(result).containsExactly(sampleCluster);
+        verify(clusterProvider).discoverClusters("instance-1");
+        verify(clusterProvider, never()).discoverClusters();
+    }
+
+    @Test
+    void listClustersShouldNotRepeatBrokerConfigReadsForDuplicateBrokers() {
+        ClusterVO duplicateCluster = ClusterVO.builder()
+                .name("duplicate-cluster")
+                .status(ClusterStatus.warning)
+                .brokers(List.of(BrokerVO.builder()
+                        .name("broker-0")
+                        .addr("10.0.0.1:10911")
+                        .build()))
+                .build();
+        duplicateCluster.setId("cluster-2");
+        sampleCluster.setConfig(null);
+        when(clusterProvider.discoverClusters()).thenReturn(List.of(sampleCluster, duplicateCluster));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null))
+                .thenThrow(new BusinessException(502, "broker unavailable"));
+        when(clusterRepository.findById("cluster-1"))
+                .thenReturn(Optional.of(ClusterVO.builder()
+                        .config(ClusterConfigVO.builder().maxMessageSize(1024).build())
+                        .build()));
+        when(clusterRepository.findById("cluster-2"))
+                .thenReturn(Optional.of(ClusterVO.builder()
+                        .config(ClusterConfigVO.builder().maxMessageSize(2048).build())
+                        .build()));
+
+        List<ClusterVO> result = clusterService.listClusters();
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getConfig().getMaxMessageSize()).isEqualTo(1024);
+        assertThat(result.get(1).getConfig().getMaxMessageSize()).isEqualTo(2048);
+        verify(brokerConfigService, org.mockito.Mockito.times(1))
+                .getBrokerConfig("10.0.0.1:10911", null);
+    }
+
+    @Test
     void updateClusterConfigShouldRejectDifferentDefaultReadAndWriteQueueNums() {
         UpdateConfigDTO command = UpdateConfigDTO.builder()
                 .id("cluster-1")
@@ -145,6 +191,63 @@ class ClusterServiceTest {
                 .hasMessageContaining("requires matching writeQueueNums and readQueueNums");
 
         verifyNoInteractions(clusterRepository, clusterProvider);
+    }
+
+    @Test
+    void previewConfigShouldReturnEffectiveBrokerUpdateWithoutMutatingCluster() {
+        sampleCluster.setBrokers(List.of(
+                BrokerVO.builder().name("broker-0").addr("10.0.0.1:10911").build(),
+                BrokerVO.builder().name("broker-1").addr("10.0.0.2:10911").build()));
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        ClusterConfigVO storedConfig = sampleCluster.getConfig();
+
+        ClusterConfigPreviewVO preview = clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("SYNC_FLUSH")
+                .autoCreateTopicEnable(false)
+                .writeQueueNums(16)
+                .build());
+
+        assertThat(preview.isChanged()).isTrue();
+        assertThat(preview.getTargetBrokers())
+                .extracting(ClusterConfigPreviewVO.BrokerTargetVO::getAddress)
+                .containsExactly("10.0.0.1:10911", "10.0.0.2:10911");
+        assertThat(preview.getBrokerProperties())
+                .containsEntry("flushDiskType", "SYNC_FLUSH")
+                .containsEntry("autoCreateTopicEnable", "false")
+                .containsEntry("defaultTopicQueueNums", "16");
+        assertThat(preview.getChanges())
+                .extracting(ClusterConfigPreviewVO.ConfigChangeVO::getField)
+                .containsExactly("flushDiskType", "autoCreateTopicEnable", "writeQueueNums", "readQueueNums");
+        assertThat(preview.getProposedConfig().getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
+        assertThat(preview.getProposedConfig().getWriteQueueNums()).isEqualTo(16);
+        assertThat(preview.getProposedConfig().getReadQueueNums()).isEqualTo(16);
+        assertThat(sampleCluster.getConfig()).isSameAs(storedConfig);
+        assertThat(storedConfig.getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
+        assertThat(storedConfig.getWriteQueueNums()).isEqualTo(8);
+        assertThat(storedConfig.getReadQueueNums()).isEqualTo(8);
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
+        verifyNoInteractions(brokerConfigService, auditService);
+    }
+
+    @Test
+    void previewConfigShouldUseSelectedInstanceWithoutCallingBrokerUpdate() {
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-1")).thenReturn(sampleCluster);
+
+        ClusterConfigPreviewVO preview = clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .instanceId("instance-1")
+                .brokerPermission(4)
+                .build());
+
+        assertThat(preview.getChanges())
+                .extracting(ClusterConfigPreviewVO.ConfigChangeVO::getField)
+                .containsExactly("brokerPermission");
+        verify(clusterProvider).refreshClusterDetail("cluster-1", "instance-1");
+        verify(brokerConfigService, never()).updateBrokerConfig(any(), any(), any());
+        verify(brokerConfigService, never()).updateBrokerConfig(any(), any(), any(), any());
+        verifyNoInteractions(auditService);
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
     }
 
     @Test
@@ -170,6 +273,17 @@ class ClusterServiceTest {
     }
 
     @Test
+    void getClusterShouldUseSelectedInstance() {
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-1")).thenReturn(sampleCluster);
+
+        ClusterVO result = clusterService.getCluster("cluster-1", "instance-1");
+
+        assertThat(result).isSameAs(sampleCluster);
+        verify(clusterProvider).refreshClusterDetail("cluster-1", "instance-1");
+        verify(clusterProvider, never()).refreshClusterDetail("cluster-1");
+    }
+
+    @Test
     void getClusterShouldThrowWhenNotFound() {
         when(clusterProvider.refreshClusterDetail("nonexistent")).thenReturn(null);
 
@@ -177,6 +291,25 @@ class ClusterServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Cluster details are unavailable: nonexistent")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(503));
+    }
+
+    @Test
+    void listProxiesShouldUseResolvedCluster() {
+        when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
+
+        List<ProxyVO> proxies = clusterService.listProxies("cluster-1");
+
+        assertThat(proxies).extracting(ProxyVO::getAddr).containsExactly("10.0.0.10:8081");
+    }
+
+    @Test
+    void requireProxyShouldRejectUnknownAddress() {
+        when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
+
+        assertThatThrownBy(() -> clusterService.requireProxy("cluster-1", "127.0.0.1:8081"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Proxy not found: 127.0.0.1:8081")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
 
     @Test
@@ -198,7 +331,7 @@ class ClusterServiceTest {
     void updateConfigShouldSucceedWhenAuditRecordingFails() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         doThrow(new IllegalStateException("audit storage unavailable")).when(auditService)
-                .record(any(), any(), any(), any());
+                .record(any(), any(), any(), any(), any(), any());
 
         ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
                 .id("cluster-1")
@@ -207,6 +340,33 @@ class ClusterServiceTest {
 
         assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
         verify(clusterRepository).updateConfig(eq("cluster-1"), any(ClusterConfigVO.class));
+    }
+
+    @Test
+    void updateConfigShouldFailWhenNoBrokerAddressIsAvailable() {
+        sampleCluster.setBrokers(List.of());
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("SYNC_FLUSH")
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.FAILED);
+        assertThat(result.getSuccessfulBrokers()).isEmpty();
+        assertThat(result.getFailedBrokers()).singleElement().satisfies(failure -> {
+            assertThat(failure.getAddress()).isEqualTo("N/A");
+            assertThat(failure.getMessage()).contains("No broker address");
+        });
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
+        verifyNoInteractions(brokerConfigService);
+        verify(auditService).record(
+                eq("UPDATE_CLUSTER_CONFIG"),
+                eq("CLUSTER"),
+                eq("CLUSTER:cluster-1"),
+                eq("cluster-1"),
+                org.mockito.ArgumentMatchers.contains("No broker address"),
+                eq("FAILED"));
     }
 
     @Test
@@ -293,9 +453,28 @@ class ClusterServiceTest {
         verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
         verify(auditService).record(
                 eq("UPDATE_CLUSTER_CONFIG"),
+                eq("CLUSTER"),
                 eq("CLUSTER:cluster-1"),
+                eq("cluster-1"),
                 org.mockito.ArgumentMatchers.contains("10.0.0.2:10911"),
                 eq("PARTIAL"));
+    }
+
+    @Test
+    void updateConfigShouldUseSelectedInstanceForBrokerUpdates() {
+        sampleCluster.setBrokers(List.of(BrokerVO.builder().name("broker-0").addr("10.0.0.1:10911").build()));
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-1")).thenReturn(sampleCluster);
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .instanceId("instance-1")
+                .writeQueueNums(16)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
+        verify(clusterProvider).refreshClusterDetail("cluster-1", "instance-1");
+        verify(brokerConfigService).updateBrokerConfig(
+                eq("10.0.0.1:10911"), eq("cluster-1"), eq("instance-1"), any());
     }
 
     @Test
@@ -310,6 +489,23 @@ class ClusterServiceTest {
         assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Cluster not found: missing");
+    }
+
+    @Test
+    void updateConfigShouldNotFallBackToPersistedClusterWhenLiveRefreshFails() {
+        when(clusterProvider.refreshClusterDetail("cluster-1"))
+                .thenThrow(new BusinessException(502, "NameServer unavailable"));
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("SYNC_FLUSH")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("NameServer unavailable")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+        verify(clusterRepository, never()).findById("cluster-1");
     }
 
     @Test
@@ -333,6 +529,7 @@ class ClusterServiceTest {
         ClusterVO clusterWithNullConfig = ClusterVO.builder()
                 .name("null-config-cluster")
                 .status(ClusterStatus.healthy)
+                .brokers(List.of(BrokerVO.builder().addr("10.0.0.1:10911").build()))
                 .config(null)
                 .build();
         clusterWithNullConfig.setId("cluster-nc");
@@ -376,6 +573,7 @@ class ClusterServiceTest {
         ClusterVO clusterWithNullConfig = ClusterVO.builder()
                 .name("null-config-cluster")
                 .status(ClusterStatus.healthy)
+                .brokers(List.of(BrokerVO.builder().addr("10.0.0.1:10911").build()))
                 .config(null)
                 .build();
         clusterWithNullConfig.setId("cluster-nc");

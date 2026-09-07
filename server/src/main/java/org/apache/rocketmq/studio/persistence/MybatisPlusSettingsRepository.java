@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.persistence;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -23,9 +25,12 @@ import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,7 +43,7 @@ import java.util.stream.Collectors;
 @Repository
 public class MybatisPlusSettingsRepository implements SettingsRepository {
 
-    private static final String SETTINGS_ID = "singleton";
+    private static final String GENERAL_SETTINGS_KEY = "general";
 
     private final RmqSettingsMapper settingsMapper;
     private final RmqDataSourceMapper dataSourceMapper;
@@ -52,9 +57,15 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         this.objectMapper = objectMapper;
     }
 
+    private RmqSettings findSingletonSettings() {
+        return settingsMapper.selectOne(new QueryWrapper<RmqSettings>()
+                .eq("settings_key", GENERAL_SETTINGS_KEY)
+                .last("LIMIT 1"));
+    }
+
     @Override
     public GeneralSettingsVO loadGeneralSettings() {
-        RmqSettings entity = settingsMapper.selectById(SETTINGS_ID);
+        RmqSettings entity = findSingletonSettings();
         if (entity == null || entity.getJson() == null) {
             return GeneralSettingsVO.builder()
                     .theme("system")
@@ -63,28 +74,21 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                     .notifySound(false)
                     .sessionTimeout(30)
                     .requireLogin(false)
-                    .llmProvider("openai")
+                    .llmProvider("tongyi")
                     .apiKey("")
-                    .model("gpt-4")
+                    .model("qwen3.8-max")
                     .baseUrl("")
                     .build();
         }
         try {
-            return objectMapper.readValue(entity.getJson(), GeneralSettingsVO.class);
+            GeneralSettingsVO settings = objectMapper.readValue(entity.getJson(), GeneralSettingsVO.class);
+            if (settings == null) {
+                throw new BusinessException(500, "Persisted general settings are invalid");
+            }
+            return settings;
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize general settings", e);
-            return GeneralSettingsVO.builder()
-                    .theme("system")
-                    .compact(false)
-                    .desktopNotify(true)
-                    .notifySound(false)
-                    .sessionTimeout(30)
-                    .requireLogin(false)
-                    .llmProvider("openai")
-                    .apiKey("")
-                    .model("gpt-4")
-                    .baseUrl("")
-                    .build();
+            throw new BusinessException(500, "Persisted general settings are invalid");
         }
     }
 
@@ -92,17 +96,37 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     @Transactional
     public void saveGeneralSettings(GeneralSettingsVO settings) {
         try {
-            String json = objectMapper.writeValueAsString(settings);
-            RmqSettings entity = settingsMapper.selectById(SETTINGS_ID);
+            com.fasterxml.jackson.databind.node.ObjectNode node =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.valueToTree(settings);
+            // apiKey is WRITE_ONLY (hidden from API responses), but it must be serialized even
+            // when blank so the LLM configuration endpoint can explicitly clear a stored key.
+            node.put("apiKey", settings.getApiKey() == null ? "" : settings.getApiKey());
+            if (org.springframework.util.StringUtils.hasText(settings.getDingtalkSigningSecret())) {
+                // The signing secret is also WRITE_ONLY and must be retained in persisted settings.
+                node.put("dingtalkSigningSecret", settings.getDingtalkSigningSecret());
+            }
+            String json = objectMapper.writeValueAsString(node);
+            RmqSettings entity = findSingletonSettings();
             if (entity == null) {
                 entity = new RmqSettings();
-                entity.setId(SETTINGS_ID);
+                entity.setSettingsKey(GENERAL_SETTINGS_KEY);
                 entity.setJson(json);
-                entity.setUpdatedAt(LocalDateTime.now());
-                settingsMapper.insert(entity);
+                entity.setGmtCreate(LocalDateTime.now());
+                entity.setGmtModified(LocalDateTime.now());
+                try {
+                    settingsMapper.insert(entity);
+                } catch (DuplicateKeyException duplicateKey) {
+                    RmqSettings concurrent = findSingletonSettings();
+                    if (concurrent == null) {
+                        throw duplicateKey;
+                    }
+                    concurrent.setJson(json);
+                    concurrent.setGmtModified(LocalDateTime.now());
+                    settingsMapper.updateById(concurrent);
+                }
             } else {
                 entity.setJson(json);
-                entity.setUpdatedAt(LocalDateTime.now());
+                entity.setGmtModified(LocalDateTime.now());
                 settingsMapper.updateById(entity);
             }
         } catch (JsonProcessingException e) {
@@ -113,56 +137,90 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
 
     @Override
     public List<DataSourceVO> findAllDataSources() {
-        return dataSourceMapper.selectList(null).stream()
+        return dataSourceMapper.selectList(new QueryWrapper<RmqDataSource>().orderByAsc("id")).stream()
                 .map(this::toDataSourceVO)
                 .collect(Collectors.toList());
     }
 
     @Override
+    public PageResult<DataSourceVO> findDataSources(String search, String type, int page, int pageSize) {
+        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
+        String normalizedType = type == null || type.isBlank() ? null : type.trim();
+        QueryWrapper<RmqDataSource> query = new QueryWrapper<RmqDataSource>()
+                .like(normalizedSearch != null, "json", normalizedSearch)
+                .apply(normalizedType != null,
+                        "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%')", normalizedType)
+                .orderByDesc("gmt_modified", "id");
+        Page<RmqDataSource> result = dataSourceMapper.selectPage(new Page<>(page, pageSize), query);
+        return PageResult.of(result.getRecords().stream().map(this::toDataSourceVO).toList(),
+                result.getTotal(), page, pageSize);
+    }
+
+    @Override
+    @Transactional
     public DataSourceVO saveDataSource(DataSourceVO dataSource) {
         RmqDataSource entity = new RmqDataSource();
-        entity.setDsKey(dataSource.getKey());
+        // The ds_key business key is derived from the auto-increment id: insert first with a
+        // temporary unique key, then publish "ds-<id>" once the id is known.
+        entity.setDsKey("ds-tmp-" + System.currentTimeMillis() + "-" + Math.floorMod(System.nanoTime(), 1_000_000));
         entity.setJson(toJson(dataSource));
-        entity.setCreatedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setGmtCreate(LocalDateTime.now());
+        entity.setGmtModified(LocalDateTime.now());
         dataSourceMapper.insert(entity);
+        String dsKey = "ds-" + entity.getId();
+        entity.setDsKey(dsKey);
+        dataSource.setKey(dsKey);
+        entity.setJson(toJson(dataSource));
+        dataSourceMapper.updateById(entity);
         return dataSource;
     }
 
     @Override
     public boolean replaceDataSource(DataSourceVO dataSource) {
-        RmqDataSource existing = dataSourceMapper.selectById(dataSource.getKey());
+        RmqDataSource existing = selectByDsKey(dataSource.getKey());
         if (existing == null) {
             return false;
         }
         existing.setJson(toJson(dataSource));
-        existing.setUpdatedAt(LocalDateTime.now());
-        dataSourceMapper.updateById(existing);
-        return true;
+        existing.setGmtModified(LocalDateTime.now());
+        return dataSourceMapper.updateById(existing) > 0;
     }
 
     @Override
     public boolean deleteDataSource(String key) {
-        return dataSourceMapper.deleteById(key) > 0;
+        return dataSourceMapper.delete(
+                new QueryWrapper<RmqDataSource>().eq("ds_key", key)) > 0;
     }
 
     @Override
     public Optional<DataSourceVO> findDataSourceByKey(String key) {
-        RmqDataSource entity = dataSourceMapper.selectById(key);
+        RmqDataSource entity = selectByDsKey(key);
         if (entity == null) {
             return Optional.empty();
         }
         return Optional.of(toDataSourceVO(entity));
     }
 
+    private RmqDataSource selectByDsKey(String key) {
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        return dataSourceMapper.selectOne(new QueryWrapper<RmqDataSource>()
+                .eq("ds_key", key)
+                .last("LIMIT 1"));
+    }
+
     private DataSourceVO toDataSourceVO(RmqDataSource entity) {
         try {
             DataSourceVO vo = objectMapper.readValue(entity.getJson(), DataSourceVO.class);
+            if (vo == null) {
+                throw new BusinessException(500, "Persisted data source is invalid: " + entity.getDsKey());
+            }
             vo.setKey(entity.getDsKey());
             return vo;
-        } catch (JsonProcessingException e) {
+        } catch (JsonProcessingException | IllegalArgumentException e) {
             log.error("Failed to deserialize data source: {}", entity.getDsKey(), e);
-            return DataSourceVO.builder().key(entity.getDsKey()).build();
+            throw new BusinessException(500, "Persisted data source is invalid: " + entity.getDsKey());
         }
     }
 

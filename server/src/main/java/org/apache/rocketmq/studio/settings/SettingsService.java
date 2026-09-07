@@ -19,8 +19,18 @@ package org.apache.rocketmq.studio.settings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.UrlHostGuard;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -33,21 +43,28 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
 
 @Slf4j
 @Service
 public class SettingsService {
 
+    private static final String REDACTED_NOTIFICATION_WEBHOOK = "******";
+    private static final List<byte[]> CLOUD_METADATA_ADDRESSES = List.of(
+            new byte[] {
+                (byte) 0xfd, 0x00, 0x0e, (byte) 0xc2,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x02, 0x54
+            }, // AWS IMDS IPv6: fd00:ec2::254
+            new byte[] {100, 100, 100, (byte) 200}); // Alibaba Cloud ECS metadata
     private static final Set<String> PROMETHEUS_COMPATIBLE_TYPES = Set.of(
             "prometheus", "victoriametrics", "thanos", "mimir", "cortex", "arms");
     private static final String PROMETHEUS_TEST_QUERY = "up";
@@ -62,55 +79,173 @@ public class SettingsService {
     private final ObjectMapper objectMapper;
     private final OperationAuditService operationAuditService;
 
+    @Autowired
     public SettingsService(SettingsRepository settingsRepository, RestClient.Builder restClientBuilder,
                            ObjectMapper objectMapper, OperationAuditService operationAuditService) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(DATA_SOURCE_TEST_CONNECT_TIMEOUT);
-        requestFactory.setReadTimeout(DATA_SOURCE_TEST_READ_TIMEOUT);
+        this(settingsRepository, buildDataSourceRestClient(restClientBuilder), objectMapper, operationAuditService);
+    }
+
+    SettingsService(SettingsRepository settingsRepository, RestClient restClient,
+                    ObjectMapper objectMapper, OperationAuditService operationAuditService) {
         this.settingsRepository = settingsRepository;
-        this.restClient = restClientBuilder.requestFactory(requestFactory).build();
+        this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.operationAuditService = operationAuditService;
+    }
+
+    private static RestClient buildDataSourceRestClient(RestClient.Builder restClientBuilder) {
+        SimpleClientHttpRequestFactory requestFactory = new DataSourceClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(DATA_SOURCE_TEST_CONNECT_TIMEOUT);
+        requestFactory.setReadTimeout(DATA_SOURCE_TEST_READ_TIMEOUT);
+        return restClientBuilder.requestFactory(requestFactory).build();
     }
 
 
     public GeneralSettingsVO getGeneralSettings() {
         log.debug("Loading general settings");
-        return settingsRepository.loadGeneralSettings();
+        GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
+        if (AuthenticatedUserContext.currentUserIsAdminOrSystem()) {
+            return settings;
+        }
+        return redactNotificationWebhooks(settings);
+    }
+
+    private GeneralSettingsVO redactNotificationWebhooks(GeneralSettingsVO settings) {
+        if (settings == null) {
+            return null;
+        }
+        return settings.toBuilder()
+                .dingtalkWebhook(StringUtils.hasText(settings.getDingtalkWebhook())
+                        ? REDACTED_NOTIFICATION_WEBHOOK
+                        : settings.getDingtalkWebhook())
+                .smsWebhook(StringUtils.hasText(settings.getSmsWebhook())
+                        ? REDACTED_NOTIFICATION_WEBHOOK
+                        : settings.getSmsWebhook())
+                .build();
     }
 
 
     public synchronized void saveGeneralSettings(GeneralSettingsVO settings) {
         log.info("Saving general settings");
+        validateLlmBaseUrl(settings.getBaseUrl());
         GeneralSettingsVO currentSettings = settingsRepository.loadGeneralSettings();
         if (settings.isClearApiKey()) {
             settings.setApiKey("");
         } else if (!StringUtils.hasText(settings.getApiKey()) && currentSettings != null) {
             settings.setApiKey(currentSettings.getApiKey());
         }
+        if (settings.isClearDingtalkSigningSecret()) {
+            settings.setDingtalkSigningSecret("");
+        } else if (!StringUtils.hasText(settings.getDingtalkSigningSecret()) && currentSettings != null) {
+            settings.setDingtalkSigningSecret(currentSettings.getDingtalkSigningSecret());
+        }
+        if (currentSettings != null) {
+            if (!StringUtils.hasText(settings.getLlmEngine())) {
+                settings.setLlmEngine(currentSettings.getLlmEngine());
+            }
+            if (!StringUtils.hasText(settings.getDeploymentName())) {
+                settings.setDeploymentName(currentSettings.getDeploymentName());
+            }
+            if (!StringUtils.hasText(settings.getApiVersion())) {
+                settings.setApiVersion(currentSettings.getApiVersion());
+            }
+            if (!StringUtils.hasText(settings.getAwsRegion())) {
+                settings.setAwsRegion(currentSettings.getAwsRegion());
+            }
+            if (settings.getMaxTokens() == null) {
+                settings.setMaxTokens(currentSettings.getMaxTokens());
+            }
+            if (settings.getTemperature() == null) {
+                settings.setTemperature(currentSettings.getTemperature());
+            }
+        }
         settings.setClearApiKey(false);
+        settings.setClearDingtalkSigningSecret(false);
         settingsRepository.saveGeneralSettings(settings);
-        operationAuditService.record("UPDATE_SETTINGS", "SETTINGS", "general",
-                null, "General settings updated", "SUCCESS", null);
+        recordSettingsAudit();
+    }
+
+    private void validateLlmBaseUrl(String baseUrl) {
+        if (!StringUtils.hasText(baseUrl)) {
+            return;
+        }
+        try {
+            UrlHostGuard.check(baseUrl, true);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(400, "Invalid LLM base URL: " + exception.getMessage());
+        }
+    }
+
+    private void recordSettingsAudit() {
+        try {
+            operationAuditService.record("UPDATE_SETTINGS", "SETTINGS", "general",
+                    null, "General settings updated", "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record general settings audit: {}", auditFailure.getMessage());
+        }
+    }
+
+    private void recordDataSourceAudit(String operation, DataSourceVO dataSource) {
+        if (dataSource == null) {
+            return;
+        }
+        String detail = String.format("name=%s, type=%s, instanceCount=%d", dataSource.getName(),
+                dataSource.getType(), dataSource.getInstanceIds() == null ? 0 : dataSource.getInstanceIds().size());
+        recordDataSourceAudit(operation, dataSource.getKey(), detail);
+    }
+
+    private void recordDataSourceDeleteAudit(String key) {
+        recordDataSourceAudit("DELETE_DATA_SOURCE", key, "key=" + key);
+    }
+
+    private void recordDataSourceAudit(String operation, String key, String detail) {
+        try {
+            operationAuditService.record(operation, "METRICS_DATA_SOURCE", key, null, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record data source audit operation={} key={}: {}", operation, key,
+                    auditFailure.getMessage());
+        }
     }
 
 
+    // The full-list endpoint is hit by every metrics tab on first paint and
+    // every time the datasource dropdown re-fetches. Caching it with the
+    // write paths evicted below keeps the user-visible list correct while
+    // removing a per-tab DB round trip.
+    @Cacheable("data-sources")
     public List<DataSourceVO> listDataSources() {
         log.debug("Listing all data sources");
         return settingsRepository.findAllDataSources();
     }
 
+    @Cacheable(value = "data-sources", key = "'page:' + #search + ':' + #type + ':' + #page + ':' + #pageSize")
+    public PageResult<DataSourceVO> listDataSources(String search, String type, int page, int pageSize) {
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than zero");
+        }
+        if (pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "pageSize must be between 1 and 100");
+        }
+        log.debug("Listing data sources, search={}, type={}, page={}, pageSize={}",
+                search, type, page, pageSize);
+        return settingsRepository.findDataSources(search, type, page, pageSize);
+    }
 
+
+    @CacheEvict(value = "data-sources", allEntries = true)
     public DataSourceVO createDataSource(DataSourceVO dataSource) {
         if (dataSource == null) {
             throw new BusinessException(400, "Data source request is required");
         }
         log.info("Creating data source: {}", dataSource.getName());
-        dataSource.setKey(UUID.randomUUID().toString());
-        return settingsRepository.saveDataSource(dataSource);
+        validateDataSourceUrl(dataSource.getUrl());
+        DataSourceVO saved = settingsRepository.saveDataSource(dataSource);
+        recordDataSourceAudit("CREATE_DATA_SOURCE", saved);
+        return saved;
     }
 
 
+    @CacheEvict(value = "data-sources", allEntries = true)
     public DataSourceVO updateDataSource(DataSourceVO dataSource) {
         if (dataSource == null) {
             throw new BusinessException(400, "Data source request is required");
@@ -118,19 +253,31 @@ public class SettingsService {
         String key = normalizeDataSourceKey(dataSource.getKey());
         dataSource.setKey(key);
         log.info("Updating data source: {}", key);
+        validateDataSourceUrl(dataSource.getUrl());
         if (!settingsRepository.replaceDataSource(dataSource)) {
             throw new BusinessException(404, "Data source not found: " + key);
         }
+        recordDataSourceAudit("UPDATE_DATA_SOURCE", dataSource);
         return dataSource;
     }
 
+    private void validateDataSourceUrl(String url) {
+        try {
+            UrlHostGuard.check(url, false);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(400, exception.getMessage());
+        }
+    }
 
+
+    @CacheEvict(value = "data-sources", allEntries = true)
     public void deleteDataSource(String key) {
         String normalizedKey = normalizeDataSourceKey(key);
         log.info("Deleting data source: {}", normalizedKey);
         if (!settingsRepository.deleteDataSource(normalizedKey)) {
             throw new BusinessException(404, "Data source not found: " + normalizedKey);
         }
+        recordDataSourceDeleteAudit(normalizedKey);
     }
 
 
@@ -153,7 +300,7 @@ public class SettingsService {
 
         try {
             JsonNode response = restClient.get()
-                    .uri(prometheusQueryUri(request.getUrl()))
+                    .uri(prometheusQueryUri(request.getUrl(), request.getType()))
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(headers -> applyAuthentication(headers, request))
                     .retrieve()
@@ -178,7 +325,8 @@ public class SettingsService {
 
     private boolean isPrometheusCompatible(String type) {
         return StringUtils.hasText(type)
-                && PROMETHEUS_COMPATIBLE_TYPES.contains(type.replaceAll("\\s+", "").toLowerCase());
+                && PROMETHEUS_COMPATIBLE_TYPES.contains(
+                        type.replaceAll("\\s+", "").toLowerCase(Locale.ROOT));
     }
 
     private String normalizeDataSourceKey(String key) {
@@ -214,10 +362,10 @@ public class SettingsService {
         if (!StringUtils.hasText(auth)) {
             return AUTH_NONE;
         }
-        return auth.trim().replaceAll("\\s+", " ").toLowerCase();
+        return auth.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    private URI prometheusQueryUri(String baseUrl) throws URISyntaxException {
+    private URI prometheusQueryUri(String baseUrl, String providerType) throws URISyntaxException {
         if (!StringUtils.hasText(baseUrl)) {
             throw new IllegalArgumentException("Data source URL is required");
         }
@@ -234,7 +382,8 @@ public class SettingsService {
             throw new IllegalArgumentException(
                     "Data source URL must not point to a local or private address");
         }
-        return UriComponentsBuilder.fromUriString(normalized + "/api/v1/query")
+        String queryPath = MetricsBackendType.fromProviderType(providerType).getInstantQueryPath();
+        return UriComponentsBuilder.fromUriString(normalized + queryPath)
                 .queryParam("query", PROMETHEUS_TEST_QUERY)
                 .build()
                 .toUri();
@@ -242,12 +391,14 @@ public class SettingsService {
 
     /**
      * SSRF guard: the test endpoint performs a server-side HTTP request to an attacker-supplied
-     * URL. The hostname {@code localhost} and link-local addresses (169.254.x.x, fe80:: — the
-     * cloud metadata range) are never legitimate Prometheus endpoints and are rejected. Loopback
-     * IPs and private site-local ranges stay allowed because on-premise Prometheus servers live
-     * on the internal network and the endpoint itself requires admin rights.
+     * URL. The hostname {@code localhost}, loopback IPs (127.x.x.x, ::1), link-local addresses
+     * (169.254.x.x, fe80:: — the cloud metadata range), and known metadata endpoints not covered
+     * by Java's address categories are never legitimate Prometheus endpoints and are rejected.
+     * Private site-local ranges stay allowed because on-premise Prometheus servers live on the
+     * internal network and the endpoint itself requires admin rights. Package-private so tests
+     * can admit the loopback-bound embedded test server.
      */
-    private boolean isAllowedDataSourceHost(String host) {
+    boolean isAllowedDataSourceHost(String host) {
         if (!StringUtils.hasText(host)) {
             return false;
         }
@@ -256,12 +407,34 @@ public class SettingsService {
             return false;
         }
         try {
-            InetAddress address = InetAddress.getByName(normalized);
-            return !address.isAnyLocalAddress() && !address.isLinkLocalAddress();
+            return areAllowedDataSourceAddresses(InetAddress.getAllByName(normalized));
         } catch (UnknownHostException exception) {
-            // Unresolvable host: let the connection attempt surface the real connectivity error.
-            return true;
+            // Fail closed: an unresolvable host must not be handed to the connection
+            // layer (this used to return true, creating a blind reachability oracle that
+            // differed from UrlHostGuard.check, which also fails closed).
+            return false;
         }
+    }
+
+    boolean areAllowedDataSourceAddresses(InetAddress[] addresses) {
+        if (addresses == null || addresses.length == 0) {
+            return false;
+        }
+        for (InetAddress address : addresses) {
+            if (address == null
+                    || address.isAnyLocalAddress()
+                    || address.isLinkLocalAddress()
+                    || address.isLoopbackAddress()
+                    || isKnownCloudMetadataAddress(address)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isKnownCloudMetadataAddress(InetAddress address) {
+        return CLOUD_METADATA_ADDRESSES.stream()
+                .anyMatch(metadataAddress -> Arrays.equals(address.getAddress(), metadataAddress));
     }
 
     private DataSourceTestResultVO prometheusSuccess(JsonNode response) {

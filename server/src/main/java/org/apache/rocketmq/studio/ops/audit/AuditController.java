@@ -56,6 +56,19 @@ public class AuditController {
         return Result.ok(auditService.getFilterOptions());
     }
 
+    @GetMapping("/summary")
+    public Result<AuditSummaryVO> summarize(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String operationType,
+            @RequestParam(required = false) String resourceType,
+            @RequestParam(required = false) String clusterId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) String result) {
+        return Result.ok(auditService.summarize(search, operationType, resourceType,
+                clusterId, startDate, endDate, result));
+    }
+
     @GetMapping("/export")
     public Result<String> exportLogs(
             @RequestParam(required = false) String search,

@@ -90,6 +90,17 @@ describe('API client response contract', () => {
     expect(message.error).toHaveBeenCalledWith('Topic already exists');
   });
 
+  it('rejects failed HTTP envelopes with the backend message', async () => {
+    mock.onPost('/topics/create').reply(400, {
+      code: 400,
+      message: 'Topic name is required',
+      data: null,
+    });
+
+    await expect(client.post('/topics/create', {})).rejects.toThrow('Topic name is required');
+    expect(message.error).toHaveBeenCalledWith('Topic name is required');
+  });
+
   it('uses a stable fallback for malformed error envelopes', async () => {
     mock.onGet('/clusters').reply(200, { code: '500', data: null });
 
@@ -110,10 +121,10 @@ describe('API client response contract', () => {
     expect(message.error).not.toHaveBeenCalled();
   });
 
-  it('attaches the stored bearer token to outgoing requests', async () => {
-    localStorage.setItem('token', 'test-token');
+  it('uses credentials without attaching a client-readable bearer token', async () => {
     mock.onGet('/clusters').reply((config) => {
-      expect(config.headers?.Authorization).toBe('Bearer test-token');
+      expect(config.headers?.Authorization).toBeUndefined();
+      expect(config.withCredentials).toBe(true);
       return [200, { code: 200, message: 'success', data: [] }];
     });
 
@@ -123,29 +134,52 @@ describe('API client response contract', () => {
   it.each(['/auth/login', '/auth/status'])(
     'does not clear the current session when public auth request %s returns 401',
     async (path) => {
-      localStorage.setItem('token', 'current-token');
       localStorage.setItem('rocketmq-studio-user', 'admin');
       localStorage.setItem('rocketmq-studio-user-admin', 'true');
       mock.onAny(path).reply(401, { code: 401, message: 'Unauthorized', data: null });
 
       await expect(client.get(path)).rejects.toMatchObject({ response: { status: 401 } });
 
-      expect(localStorage.getItem('token')).toBe('current-token');
+      expect(localStorage.getItem('token')).toBeNull();
       expect(localStorage.getItem('rocketmq-studio-user')).toBe('admin');
       expect(localStorage.getItem('rocketmq-studio-user-admin')).toBe('true');
     },
   );
 
   it('clears the current session when a protected API request returns 401', async () => {
-    localStorage.setItem('token', 'expired-token');
     localStorage.setItem('rocketmq-studio-user', 'admin');
     localStorage.setItem('rocketmq-studio-user-admin', 'true');
     mock.onGet('/clusters').reply(401, { code: 401, message: 'Unauthorized', data: null });
 
     await expect(client.get('/clusters')).rejects.toMatchObject({ response: { status: 401 } });
 
-    expect(localStorage.getItem('token')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
+    expect(message.error).not.toHaveBeenCalled();
+  });
+
+  it('preserves the original 401 error when the request URL is malformed', async () => {
+    mock.onGet('http://[').reply(401, { code: 401, message: 'Unauthorized', data: null });
+
+    await expect(client.get('http://[')).rejects.toMatchObject({ response: { status: 401 } });
+  });
+
+  it('surfaces an actionable hint when the server rejects the origin via CORS', async () => {
+    mock.onPost('/instances/delete').reply(403, 'Invalid CORS request');
+
+    await expect(client.post('/instances/delete', { id: 'x' })).rejects.toThrow(/CORS/);
+    expect(message.error).toHaveBeenCalledWith(
+      expect.stringContaining('STUDIO_CORS_ALLOWED_ORIGINS'),
+    );
+  });
+
+  it('does not treat a business-envelope 403 as a CORS rejection', async () => {
+    mock
+      .onPost('/instances/delete')
+      .reply(403, { code: 403, message: 'Admin permission required', data: null });
+
+    await expect(client.post('/instances/delete', { id: 'x' })).rejects.toThrow(
+      'Admin permission required',
+    );
   });
 });

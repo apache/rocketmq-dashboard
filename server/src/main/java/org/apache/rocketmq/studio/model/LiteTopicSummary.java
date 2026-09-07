@@ -67,13 +67,14 @@ public class LiteTopicSummary {
     }
 
     public double getConsumerDensity() {
-        if (topicCount == null || topicCount == 0) {
+        if (topicCount == null || topicCount == 0 || consumerCount == null) {
             return 0.0;
         }
         return (double) consumerCount / topicCount;
     }
 
     public boolean isEmptyAggregation() {
-        return consumerCount == 0 && (totalBacklog == null || totalBacklog == 0);
+        return (consumerCount == null || consumerCount == 0)
+                && (totalBacklog == null || totalBacklog == 0);
     }
 }

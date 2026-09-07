@@ -38,14 +38,14 @@ public class LiteTopicQuota {
     private Double maxCreationRate;
 
     public double getUsageRate() {
-        if (maxTopicCount == null || maxTopicCount == 0) {
+        if (maxTopicCount == null || maxTopicCount <= 0 || currentTopicCount == null) {
             return 0.0;
         }
         return (double) currentTopicCount / maxTopicCount;
     }
 
     public double getSessionUsageRate() {
-        if (maxSessionCount == null || maxSessionCount == 0) {
+        if (maxSessionCount == null || maxSessionCount <= 0 || currentSessionCount == null) {
             return 0.0;
         }
         return (double) currentSessionCount / maxSessionCount;
@@ -57,14 +57,14 @@ public class LiteTopicQuota {
 
     public boolean isQuotaExceeded() {
         // Guard against unset fields, mirroring getUsageRate; an unconfigured max is not exceeded.
-        return maxTopicCount != null && currentTopicCount != null
+        return maxTopicCount != null && maxTopicCount > 0 && currentTopicCount != null
                 && currentTopicCount >= maxTopicCount;
     }
 
     public Integer getRemainingQuota() {
-        if (maxTopicCount == null) {
+        if (maxTopicCount == null || maxTopicCount <= 0) {
             return 0;
         }
-        return Math.max(0, maxTopicCount - currentTopicCount);
+        return Math.max(0, maxTopicCount - (currentTopicCount == null ? 0 : currentTopicCount));
     }
 }

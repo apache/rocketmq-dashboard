@@ -21,6 +21,7 @@ export interface LlmConfig {
   provider: string;
   engine?: string;
   apiKey?: string;
+  clearApiKey?: boolean;
   apiKeyConfigured?: boolean;
   apiBase: string;
   model: string;
@@ -39,6 +40,7 @@ export interface LlmTestResult {
   errMsg?: string;
   code?: string;
   hint?: string;
+  models?: LlmModelItem[];
 }
 
 export interface LlmModelItem {

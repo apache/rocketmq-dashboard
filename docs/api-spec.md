@@ -25,7 +25,7 @@
 >
 > Base URL: `/api`
 > Content-Type: `application/json`
-> 认证方式: `Authorization: Bearer <token>`
+> 浏览器认证方式: `HttpOnly` 会话 Cookie。自动化 API 客户端可在登录时显式请求 bearer token，后续使用 `Authorization: Bearer <token>`。
 
 ## 接口设计风格
 
@@ -104,16 +104,26 @@
 | 61 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
 | 62 | GET | `/api/settings/general` | 获取通用设置 |
 | 63 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 64 | GET | `/api/settings/datasources` | 数据源列表 |
-| 65 | POST | `/api/settings/datasources/create` | 创建数据源 |
-| 66 | POST | `/api/settings/datasources/update` | 更新数据源 |
-| 67 | POST | `/api/settings/datasources/delete` | 删除数据源 |
-| 68 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 69 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 70 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 71 | GET | `/api/ai/tools` | 可用工具列表 |
-| 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 64 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
+| 65 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
+| 66 | POST | `/api/settings/datasources/create` | 创建数据源 |
+| 67 | POST | `/api/settings/datasources/update` | 更新数据源 |
+| 68 | POST | `/api/settings/datasources/delete` | 删除数据源 |
+| 69 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
+| 70 | POST | `/api/ai/chat` | AI 对话（SSE） |
+| 71 | POST | `/api/ai/execute` | 执行 AI 指令 |
+| 72 | GET | `/api/ai/tools` | 可用工具列表 |
+| 73 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 74 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 75 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 76 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 77 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 78 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 79 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 80 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 81 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 82 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 83 | GET | `/api/topics/page` | Topic 分页列表 |
 
 ## 通用响应格式
 
@@ -161,13 +171,20 @@ POST /api/auth/login
 | `username` | `string` | 是 | 用户名 |
 | `password` | `string` | 是 | 密码 |
 
+**可选 Request Header：**
+
+| Header | 值 | 说明 |
+|--------|----|------|
+| `X-RocketMQ-Studio-Session-Delivery` | `bearer` | 仅供非浏览器 API 客户端使用。响应 `data.token` 返回 bearer token，且不设置 Cookie。省略时使用 `HttpOnly` 会话 Cookie，响应不包含 token。 |
+
 **Response `data`:**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `token` | `string` | JWT Token |
+| `token` | `string` | 仅当请求 `X-RocketMQ-Studio-Session-Delivery: bearer` 时返回的会话 token |
 | `expiresIn` | `number` | 过期时间（秒） |
 | `user` | `object` | 用户信息 |
+| `user.userId` | `number` | 用户 ID（数据库主键）。配置引导用户（未落库）登录时为空 |
 | `user.username` | `string` | 用户名 |
 | `user.admin` | `boolean` | 是否管理员 |
 
@@ -282,7 +299,7 @@ GET /api/instances?type={type}&search={keyword}
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | `string` | 否 | 按类型过滤: `PROXY` / `DIRECT` |
+| `type` | `string` | 否 | 按类型过滤: `PROXY`（全部 Proxy）/ `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `search` | `string` | 否 | 按名称或地址搜索 |
 
 **Response `data`:** `Instance[]`
@@ -292,7 +309,7 @@ GET /api/instances?type={type}&search={keyword}
 | `id` | `string` | 实例 ID |
 | `name` | `string` | 实例名称 |
 | `remark` | `string` | 备注 |
-| `type` | `string` | 接入类型: `PROXY` / `DIRECT` |
+| `type` | `string` | 接入类型: `PROXY`（兼容值）/ `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `endpoint` | `string` | 接入地址 |
 | `topicCount` | `number` | Topic 数量 |
 | `consumerGroupCount` | `number` | 消费组数量 |
@@ -310,7 +327,7 @@ POST /api/instances/create
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 实例名称 |
-| `type` | `string` | 是 | `PROXY` / `DIRECT` |
+| `type` | `string` | 是 | Apache 实例使用 `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；旧 `PROXY` 请求归一为 `PROXY_CLUSTER` |
 | `endpoint` | `string` | 是 | 接入地址 |
 
 **Response `data`:** `Instance`
@@ -327,7 +344,7 @@ POST /api/instances/update
 |------|------|------|------|
 | `id` | `string` | 是 | 实例 ID |
 | `name` | `string` | 是 | 实例名称 |
-| `type` | `string` | 是 | `PROXY` / `DIRECT` |
+| `type` | `string` | 是 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；旧 `PROXY` 请求归一为 `PROXY_CLUSTER` |
 | `endpoint` | `string` | 是 | 接入地址 |
 
 **Response `data`:** `Instance`
@@ -345,6 +362,27 @@ POST /api/instances/delete
 | `id` | `string` | 是 | 实例 ID |
 
 **Response `data`:** `null`
+
+### 3.5 获取实例能力契约
+
+```
+GET /api/instances/{instanceId}/capabilities
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+
+**Response `data`:** `InstanceCapabilities`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instanceId` | `string` | 实例 ID |
+| `vendor` | `string` | 厂商: `APACHE` / `ALIYUN` / `TENCENT` |
+| `accessType` | `string` | 接入类型: `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` 等 |
+| `capabilities` | `string[]` | 能力列表: `TOPIC_MANAGEMENT` / `CONSUMER_GROUP_MANAGEMENT` / `MESSAGE_QUERY` / `MESSAGE_TRACE` / `ACL_MANAGEMENT` / `DLQ_MANAGEMENT` |
 
 ---
 
@@ -541,7 +579,36 @@ POST /api/nameservers/delete
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.10 重启 Proxy
+### 4.10 检查 NameServer 配置漂移
+
+```
+GET /api/nameservers/config-diff?clusterId={clusterId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 是 | 要检查的集群 ID |
+
+该接口逐个读取集群内的 NameServer 配置，只比较服务端白名单中的非敏感运行参数。完整配置、路径、密码和凭据不会返回；单个节点读取失败时仍返回其他节点的结果，并将 `complete` 标记为 `false`。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `string` | 集群 ID |
+| `complete` | `boolean` | 是否成功读取全部 NameServer 节点 |
+| `driftDetected` | `boolean` | 可达节点间是否存在配置差异 |
+| `nodeCount` | `number` | NameServer 节点总数 |
+| `reachableNodeCount` | `number` | 成功读取的节点数 |
+| `comparedKeys` | `string[]` | 本次比较的安全配置项 |
+| `nodes` | `NodeStatus[]` | 节点地址和可达状态 |
+| `differences` | `ConfigDifference[]` | 配置不一致的键及各节点值 |
+
+`differences[].values[].configured` 用于区分未配置和已配置为空值；`value` 仅包含白名单配置项的值。
+
+### 4.11 重启 Proxy
 
 ```
 POST /api/proxies/restart
@@ -555,7 +622,7 @@ POST /api/proxies/restart
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.11 获取 K8s 证书列表
+### 4.12 获取 K8s 证书列表
 
 ```
 GET /api/k8s-certs
@@ -577,7 +644,7 @@ GET /api/k8s-certs
 | `daysRemaining` | `number` | 剩余天数 |
 | `san` | `string[]` | Subject Alternative Name 列表 |
 
-### 4.12 添加 K8s 证书
+### 4.13 添加 K8s 证书
 
 ```
 POST /api/k8s-certs/create
@@ -595,7 +662,7 @@ POST /api/k8s-certs/create
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.13 更新 K8s 证书
+### 4.14 更新 K8s 证书
 
 ```
 POST /api/k8s-certs/update
@@ -614,7 +681,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.14 续期 K8s 证书
+### 4.15 续期 K8s 证书
 
 ```
 POST /api/k8s-certs/renew
@@ -628,7 +695,7 @@ POST /api/k8s-certs/renew
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 删除 K8s 证书
+### 4.16 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete
@@ -678,7 +745,33 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `createdAt` | `string` | 创建时间 (ISO 8601) |
 | `updatedAt` | `string` | 更新时间 (ISO 8601) |
 
-### 5.2 创建 Topic
+### 5.2 分页获取 Topic 列表
+
+```
+GET /api/topics/page?instanceId={instanceId}&clusterId={clusterId}&type={type}&search={keyword}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 实例 ID（全局唯一字符串） |
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `type` | `string` | 否 | 按类型过滤 |
+| `search` | `string` | 否 | 按名称搜索 |
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，最大 `100` |
+
+**Response `data`:** `PageResult<Topic>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `Topic[]` | 当前页数据，结构同 5.1 |
+| `total` | `number` | 总条数；云厂商实例返回 provider 原生分页的匹配总数，不会被单次列表上限截断 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 每页条数（回显请求中的 `pageSize`） |
+
+### 5.3 创建 Topic
 
 ```
 POST /api/topics/create
@@ -699,7 +792,7 @@ POST /api/topics/create
 
 **Response `data`:** `Topic`
 
-### 5.3 更新 Topic
+### 5.4 更新 Topic
 
 ```
 POST /api/topics/update
@@ -720,7 +813,7 @@ POST /api/topics/update
 
 **Response `data`:** `Topic`
 
-### 5.4 删除 Topic
+### 5.5 删除 Topic
 
 ```
 POST /api/topics/delete
@@ -734,7 +827,7 @@ POST /api/topics/delete
 
 **Response `data`:** `null`
 
-### 5.5 获取 Topic 路由信息
+### 5.6 获取 Topic 路由信息
 
 ```
 GET /api/topics/:name/routes
@@ -750,7 +843,7 @@ GET /api/topics/:name/routes
 | `readQueues` | `number` | 读队列数 |
 | `perm` | `string` | 权限 |
 
-### 5.6 获取 Topic 消费者列表
+### 5.7 获取 Topic 消费者列表
 
 ```
 GET /api/topics/:name/consumers
@@ -766,7 +859,7 @@ GET /api/topics/:name/consumers
 | `consumeTps` | `number` | 消费 TPS |
 | `diffTotal` | `number` | 堆积消息数 |
 
-### 5.7 发送消息到 Topic
+### 5.8 发送消息到 Topic
 
 ```
 POST /api/topics/send
@@ -1117,6 +1210,69 @@ POST /api/acl/users/delete
 
 **Response `data`:** `null`
 
+### 7.8 获取集群 ACL 配置概要
+
+```
+GET /api/acl/cluster-config?clusterId={clusterId}
+```
+
+**该接口返回 Dashboard 存储（`rmq_acl_user` / `rmq_acl_rule`）的存储级概要，不是对 Broker 运行时状态的实时查询。** `clusterId` 用于圈定概要范围：账号的集群绑定为空视为全局生效，否则仅当其集群列表包含 `clusterId` 时纳入。因此：
+
+- `aclVersion` 表示存储所管理的账号模型（当前固定为 `ACL 2.0`），不反映 Broker 实际开启的 ACL 版本；
+- `aclEnabled` 表示该集群是否存在已配置的账号，不等于 Broker 端鉴权开关；
+- `globalWhiteRemoteAddresses` 当前存储未建模，固定返回空数组；
+- `accounts` 中每个账号的 `secretKey` 均为脱敏值，明文仅通过 7.10 的显式凭证接口获取。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 是 | 集群 ID，用于圈定账号范围 |
+
+**Response `data`:** `AclClusterConfig`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `clusterId` | `string` | 请求的集群 ID（回显） |
+| `aclEnabled` | `boolean` | 存储中该集群是否存在已配置账号 |
+| `aclVersion` | `string` | 存储管理的账号模型版本 |
+| `globalWhiteRemoteAddresses` | `string[]` | 全局 IP 白名单（当前固定为空） |
+| `accounts` | `PlainAccessConfig[]` | 账号列表，`secretKey` 为脱敏值 |
+| `accountCount` | `number` | 账号数量 |
+
+### 7.9 创建/更新 Plain Access 账号
+
+```
+POST /api/acl/plain-access-config
+```
+
+以 `accessKey` 为账号标识执行 upsert：账号身份写入 `rmq_acl_user`，资源权限以先删后插方式整体替换写入 `rmq_acl_rule`（每条资源权限生成唯一规则 ID `plain-{accessKey}-t-{index}` / `plain-{accessKey}-g-{index}`），两步在同一事务内完成，中途失败会整体回滚。
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `accessKey` | `string` | 是 | 账号 AccessKey（更新时不可变更） |
+| `secretKey` | `string` | 条件 | 新建账号必填；更新时留空表示保留原密钥 |
+| `whiteRemoteAddress` | `string` | 否 | IP 白名单，持久化存储，空表示不限制 |
+| `admin` | `boolean` | 否 | 是否管理员 |
+| `defaultTopicPerm` | `string` | 否 | 默认 Topic 权限 |
+| `defaultGroupPerm` | `string` | 否 | 默认 Group 权限 |
+| `topicPerms` | `string[]` | 否 | 逐 Topic 权限，格式 `resource=action` |
+| `groupPerms` | `string[]` | 否 | 逐 Group 权限，格式 `resource=action` |
+
+**Response `data`:** `PlainAccessConfig`。`secretKey` 仅在本次显式提交时回显，保留原密钥时返回 `null`。
+
+### 7.10 查看单个用户明文凭证
+
+```
+GET /api/acl/users/:id/credentials
+```
+
+返回单个用户的明文 AccessKey / SecretKey（存储为 base64，读取时解码）。明文凭证只通过该显式端点提供；用户列表与集群 ACL 概要均只返回脱敏值。
+
+**Response `data`:** `AclUser`（`accessKey` / `secretKey` 为明文）
+
 ---
 
 ## 8. 消息查询 Message
@@ -1222,10 +1378,24 @@ GET /api/messages/:msgId/trace
 ### 9.1 获取 DLQ 列表
 
 ```
-GET /api/dlq?clusterId={clusterId}
+GET /api/dlq?instanceId={instanceId}&search={keyword}&page={page}&pageSize={pageSize}
 ```
 
-**Response `data`:** `DLQGroup[]`
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `search` | `string` | 否 | 按 Group 名称或 DLQ Topic 搜索，大小写不敏感 |
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，最大 `100` |
+
+**Response `data`:** `PageResult<DLQGroup>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `DLQGroup[]` | 当前页数据 |
+| `total` | `number` | 匹配总数 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 当前页大小 |
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -1234,7 +1404,8 @@ GET /api/dlq?clusterId={clusterId}
 | `messageCount` | `number` | 死信消息数量 |
 | `lastEnqueueTime` | `string` | 最后入队时间 (ISO 8601) |
 | `retryCount` | `number` | 已重试次数 |
-| `status` | `string` | 状态: `active` / `empty` |
+| `status` | `string` | 状态: `ACTIVE` / `EMPTY` / `UNAVAILABLE` |
+| `statsAvailable` | `boolean` | 是否成功读取 DLQ Topic 统计信息 |
 
 ### 9.2 重发死信消息
 
@@ -1246,12 +1417,22 @@ POST /api/dlq/resend
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
 | `groupName` | `string` | 是 | 消费组名称 |
-| `startTime` | `string` | 是 | 重投时间范围起始 (ISO 8601) |
-| `endTime` | `string` | 是 | 重投时间范围结束 (ISO 8601) |
+| `startTime` | `number` | 否 | 重投时间范围起始（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 重投时间范围结束（Unix 毫秒时间戳） |
 | `targetTopic` | `string` | 否 | 目标 Topic，不传则重投回原 Topic |
 
-**Response `data`:** `null`
+**Response `data`:** `DLQResendResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `matched` | `number` | 命中的死信消息数 |
+| `resent` | `number` | 成功重投条数 |
+| `failed` | `number` | 重投失败条数 |
+| `outcome` | `string` | 结果: `SUCCESS` / `PARTIAL` / `FAILED` / `NO_MESSAGES` |
+| `scanIncomplete` | `boolean` | 是否有部分队列扫描失败 |
+| `failedQueueCount` | `number` | 扫描失败的队列数 |
 
 ---
 
@@ -1579,11 +1760,13 @@ POST /api/settings/general/save
 
 **Response `data`:** `null`
 
-### 14.3 获取数据源列表
+### 14.3 获取数据源选择器列表（未分页）
 
 ```
 GET /api/settings/datasources
 ```
+
+用于选择器、下拉框等需要一次性加载全部数据源的场景；不支持 `search`、`type`、`page` 或 `pageSize`。设置页表格应使用 14.4 的分页接口。
 
 **Response `data`:** `DataSource[]`
 
@@ -1591,12 +1774,39 @@ GET /api/settings/datasources
 |------|------|------|
 | `key` | `string` | 数据源 ID |
 | `name` | `string` | 名称 |
-| `type` | `string` | 类型: `Prometheus` / `VictoriaMetrics` / `Thanos` |
+| `type` | `string` | 类型: `Prometheus` / `VictoriaMetrics` / `Thanos` / `Mimir` / `Cortex` / `ARMS` |
 | `url` | `string` | 连接 URL |
 | `auth` | `string` | 认证方式: `None` / `Basic Auth` / `Bearer Token` |
-| `status` | `string` | 状态: `healthy` / `error` |
+| `status` | `string?` | 连接状态，可能为空 |
+| `instanceIds` | `string[]?` | 绑定的实例 ID 列表；为空或省略表示全局可用 |
 
-### 14.4 创建数据源
+### 14.4 分页获取数据源列表
+
+```
+GET /api/settings/datasources/page?search={keyword}&type={type}&page={page}&pageSize={pageSize}
+```
+
+用于设置页表格的搜索、类型筛选和分页加载；与 14.3 的未分页 selector endpoint 区分使用。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `search` | `string` | 否 | 按数据源名称等库存字段搜索 |
+| `type` | `string` | 否 | 按数据源类型过滤，值同 `DataSource.type` |
+| `page` | `number` | 否 | 页码，默认 `1`，必须大于等于 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，范围 `1`-`100` |
+
+**Response `data`:** `PageResult<DataSource>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `DataSource[]` | 当前页数据，结构同 14.3 |
+| `total` | `number` | 匹配筛选条件的数据源总数 |
+| `page` | `number` | 当前页码（回显请求中的 `page`） |
+| `size` | `number` | 每页条数（回显请求中的 `pageSize`） |
+
+### 14.5 创建数据源
 
 ```
 POST /api/settings/datasources/create
@@ -1613,7 +1823,7 @@ POST /api/settings/datasources/create
 
 **Response `data`:** `DataSource`
 
-### 14.5 更新数据源
+### 14.6 更新数据源
 
 ```
 POST /api/settings/datasources/update
@@ -1631,7 +1841,7 @@ POST /api/settings/datasources/update
 
 **Response `data`:** `DataSource`
 
-### 14.6 删除数据源
+### 14.7 删除数据源
 
 ```
 POST /api/settings/datasources/delete
@@ -1645,7 +1855,7 @@ POST /api/settings/datasources/delete
 
 **Response `data`:** `null`
 
-### 14.7 测试数据源连接
+### 14.8 测试数据源连接
 
 ```
 POST /api/settings/datasources/test
@@ -1878,6 +2088,108 @@ studio:
 | `503` | Prometheus 未配置或暂时不可用 |
 | `504` | Prometheus 查询超时 |
 
+### 16.2 Grafana 看板列表
+
+```
+GET /api/metrics/grafana/dashboards
+```
+
+返回内置的 RocketMQ Grafana 看板资产元数据。服务端只返回可以解析为 JSON
+对象且包含有效 `uid` 的看板；无效资产会被跳过。
+
+**Response `data`:** `GrafanaDashboardInfo[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `uid` | `string` | Grafana 看板 UID，同时用于详情和导出接口 |
+| `title` | `string` | 看板标题 |
+| `description` | `string` | 看板说明 |
+| `tags` | `string[]` | 看板标签 |
+
+**Response 示例：**
+
+```json
+[
+  {
+    "uid": "rocketmq-overview",
+    "title": "RocketMQ Cluster Overview",
+    "description": "Overview dashboard for RocketMQ cluster metrics",
+    "tags": ["rocketmq"]
+  }
+]
+```
+
+### 16.3 获取 Grafana 看板 JSON 模型
+
+```
+GET /api/metrics/grafana/dashboards/:uid
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `uid` | `string` | 是 | Grafana 看板 UID |
+
+**Response `data`:** `Record<string, any>`
+
+响应体是完整 Grafana dashboard JSON 模型，前端可用于预览或复制配置。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `404` | 指定 UID 的内置看板不存在 |
+| `500` | 看板 JSON 读取失败 |
+
+### 16.4 导出单个 Grafana 看板
+
+```
+GET /api/metrics/grafana/dashboards/:uid/export
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `uid` | `string` | 是 | Grafana 看板 UID |
+
+**Response:**
+
+- `Content-Type: application/json`
+- `Content-Disposition: attachment; filename="{uid}.json"`
+- Body 为原始 Grafana dashboard JSON 文件内容。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `404` | 指定 UID 的内置看板不存在 |
+| `500` | 看板 JSON 读取失败 |
+
+### 16.5 打包导出全部 Grafana 看板
+
+```
+GET /api/metrics/grafana/dashboards/export
+```
+
+返回全部有效内置 Grafana 看板的 zip 压缩包。压缩包内每个条目按
+`{uid}.json` 命名，条目集合与 `GET /api/metrics/grafana/dashboards`
+返回的可见看板列表保持一致。
+
+**Response:**
+
+- `Content-Type: application/zip`
+- `Content-Disposition: attachment; filename="rocketmq-grafana-dashboards.zip"`
+- Body 为 zip 文件二进制内容。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `404` | 没有可导出的有效内置看板 |
+| `500` | 看板 JSON 读取或 zip 打包失败 |
+
 ---
 
 ## 附录 A：枚举值速查
@@ -1907,4 +2219,4 @@ studio:
 | **顺序类型** | `PARTITON_ORDER`, `MESSAGES_ORDER` |
 | **通知渠道** | `dingtalk`, `email`, `sms` |
 | **LLM 提供商** | `openai`, `azure`, `ollama`, `qwen` |
-| **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos` |
+| **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos`, `Mimir`, `Cortex`, `ARMS` |

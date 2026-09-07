@@ -27,8 +27,8 @@ import java.time.LocalDateTime;
 @TableName("rmq_acl_user")
 public class RmqAclUser {
 
-    @TableId(type = IdType.INPUT)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
     private String username;
 
@@ -40,7 +40,9 @@ public class RmqAclUser {
 
     private String clusters;
 
-    private LocalDateTime createdAt;
+    private String whiteRemoteAddress;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtCreate;
+
+    private LocalDateTime gmtModified;
 }

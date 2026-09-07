@@ -17,7 +17,10 @@
 package org.apache.rocketmq.studio.provider.credential;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqCloudCredential;
 import org.apache.rocketmq.studio.persistence.mapper.RmqCloudCredentialMapper;
@@ -46,9 +49,25 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
                 .map(MybatisPlusCloudCredentialRepository::toVO)
                 .collect(Collectors.toList());
     }
+    @Override
+    public PageResult<CloudCredentialVO> findPage(InstanceVendor vendor, String search, int page, int pageSize) {
+        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
+        QueryWrapper<RmqCloudCredential> q = new QueryWrapper<RmqCloudCredential>()
+                .eq(vendor != null, "vendor", vendor == null ? null : vendor.name())
+                .like(normalizedSearch != null, "name", normalizedSearch)
+                .orderByDesc("gmt_modified", "id");
+        Page<RmqCloudCredential> result = credentialMapper.selectPage(new Page<>(page, pageSize), q);
+        return PageResult.of(result.getRecords().stream()
+                        .map(MybatisPlusCloudCredentialRepository::toVO)
+                        .toList(),
+                result.getTotal(), page, pageSize);
+    }
 
     @Override
-    public Optional<CloudCredentialVO> findById(String id) {
+    public Optional<CloudCredentialVO> findById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
         return Optional.ofNullable(credentialMapper.selectById(id))
                 .map(MybatisPlusCloudCredentialRepository::toVO);
     }
@@ -66,17 +85,26 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
     @Override
     public CloudCredentialVO save(CloudCredentialVO credential) {
         RmqCloudCredential entity = toEntity(credential);
-        if (credentialMapper.selectById(entity.getId()) != null) {
-            credentialMapper.updateById(entity);
+        if (entity.getId() != null) {
+            if (credentialMapper.updateById(entity) == 0) {
+                throw new BusinessException(409,
+                        "Cloud credential update was not applied: " + entity.getId());
+            }
         } else {
             credentialMapper.insert(entity);
+            credential.setId(entity.getId());
         }
         return credential;
     }
 
     @Override
-    public boolean deleteById(String id) {
-        return credentialMapper.deleteById(id) > 0;
+    public boolean replace(CloudCredentialVO credential) {
+        return credential.getId() != null && credentialMapper.updateById(toEntity(credential)) > 0;
+    }
+
+    @Override
+    public boolean deleteById(Long id) {
+        return id != null && credentialMapper.deleteById(id) > 0;
     }
 
     // ── Mapping ────────────────────────────────────────────────────
@@ -85,12 +113,12 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
         CloudCredentialVO vo = new CloudCredentialVO();
         vo.setId(entity.getId());
         vo.setName(entity.getName());
-        vo.setVendor(parseVendor(entity.getVendor()));
+        vo.setVendor(parseVendor(entity.getId(), entity.getVendor()));
         vo.setAccessKey(entity.getAccessKey());
         vo.setSecretKey(CredentialUtils.decodeBase64(entity.getSecretKey()));
         vo.setRemark(entity.getRemark());
-        vo.setCreatedAt(entity.getCreatedAt());
-        vo.setUpdatedAt(entity.getUpdatedAt());
+        vo.setGmtCreate(entity.getGmtCreate());
+        vo.setGmtModified(entity.getGmtModified());
         return vo;
     }
 
@@ -102,16 +130,17 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
         entity.setAccessKey(vo.getAccessKey());
         entity.setSecretKey(CredentialUtils.encodeBase64(vo.getSecretKey()));
         entity.setRemark(vo.getRemark());
-        entity.setCreatedAt(vo.getCreatedAt());
-        entity.setUpdatedAt(vo.getUpdatedAt() == null ? LocalDateTime.now() : vo.getUpdatedAt());
+        entity.setGmtCreate(vo.getGmtCreate());
+        entity.setGmtModified(vo.getGmtModified() == null ? LocalDateTime.now() : vo.getGmtModified());
         return entity;
     }
 
-    private static InstanceVendor parseVendor(String vendor) {
+    private static InstanceVendor parseVendor(Long credentialId, String vendor) {
         try {
             return InstanceVendor.valueOf(vendor);
         } catch (IllegalArgumentException | NullPointerException ex) {
-            return null;
+            throw new BusinessException(500, "Invalid persisted cloud credential vendor for credential "
+                    + credentialId + ": " + vendor);
         }
     }
 }

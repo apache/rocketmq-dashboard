@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.settings;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import org.apache.rocketmq.studio.ops.alert.NotificationOutboxService;
 
 @RestController
 @RequestMapping("/api/settings")
@@ -34,6 +36,7 @@ import java.util.List;
 public class SettingsController {
 
     private final SettingsService settingsService;
+    private final NotificationOutboxService notificationOutboxService;
 
     @GetMapping("/general")
     public Result<GeneralSettingsVO> getGeneralSettings() {
@@ -46,9 +49,24 @@ public class SettingsController {
         return Result.ok();
     }
 
+    @PostMapping("/general/test-notification")
+    public Result<Void> testNotification(@RequestParam String channel) {
+        notificationOutboxService.sendTestMessage(channel);
+        return Result.ok();
+    }
+
     @GetMapping("/datasources")
     public Result<List<DataSourceVO>> listDataSources() {
         return Result.ok(settingsService.listDataSources());
+    }
+
+    @GetMapping("/datasources/page")
+    public Result<PageResult<DataSourceVO>> listDataSources(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(settingsService.listDataSources(search, type, page, pageSize));
     }
 
     @PostMapping("/datasources/create")

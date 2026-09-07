@@ -16,7 +16,13 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { getMessageTrace, listDLQGroups, queryMessages } from './messageService';
+import {
+  consumeMessageDirectly,
+  getMessageTrace,
+  listDLQGroups,
+  queryMessagePage,
+  queryMessages,
+} from './messageService';
 
 vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
@@ -49,6 +55,15 @@ describe('message service mock data', () => {
     expect(messages.map((message) => message.msgId)).toEqual(['AC1E0A6400002A9F0000000001A3F7C2']);
   });
 
+  it('validates mock message pagination like the real endpoint', async () => {
+    await expect(queryMessagePage({ topic: 'order-create', page: 0 })).rejects.toThrow(
+      'page must be positive',
+    );
+    await expect(
+      queryMessagePage({ topic: 'order-create', page: 1, pageSize: 201 }),
+    ).rejects.toThrow('pageSize must be between 1 and 200');
+  });
+
   it('returns copied message trace rows', async () => {
     const first = await getMessageTrace('AC1E0A6400002A9F0000000001A3F2B1');
     expect(first?.nodes[0].title).toBe('Producer 发送');
@@ -66,12 +81,40 @@ describe('message service mock data', () => {
 
   it('returns copied DLQ group rows', async () => {
     const first = await listDLQGroups('instance-1');
-    expect(first[0].groupName).toBe('cg-order-processor');
+    expect(first.items[0].groupName).toBe('cg-order-processor');
+    expect(first.total).toBeGreaterThanOrEqual(1);
 
-    first[0].groupName = 'mutated-group';
+    first.items[0].groupName = 'mutated-group';
 
     const second = await listDLQGroups('instance-1');
-    expect(second[0].groupName).toBe('cg-order-processor');
-    expect(second[0]).not.toBe(first[0]);
+    expect(second.items[0].groupName).toBe('cg-order-processor');
+    expect(second.items[0]).not.toBe(first.items[0]);
+  });
+
+  it('marks direct-consume results as mock-only in mock mode', async () => {
+    await expect(
+      consumeMessageDirectly({
+        instanceId: 'instance-1',
+        topic: 'orders',
+        msgId: 'msg-1',
+        consumerGroup: 'billing',
+        clientId: 'client-a',
+      }),
+    ).resolves.toMatchObject({
+      consumeResult: 'CR_SUCCESS',
+      remark: expect.stringContaining('Mock mode'),
+    });
+  });
+
+  it('filters and pages mock DLQ groups', async () => {
+    const filtered = await listDLQGroups('instance-1', 'order', 1, 20);
+    expect(filtered.items.every((group) => group.groupName.includes('order'))).toBe(true);
+    expect(filtered.total).toBe(filtered.items.length);
+    expect(filtered.page).toBe(1);
+    expect(filtered.size).toBe(20);
+
+    const all = await listDLQGroups('instance-1', undefined, 1, 1);
+    expect(all.items).toHaveLength(1);
+    expect(all.total).toBeGreaterThanOrEqual(1);
   });
 });

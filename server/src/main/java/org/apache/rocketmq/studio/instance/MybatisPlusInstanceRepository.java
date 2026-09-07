@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.instance;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqInstance;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
@@ -85,8 +86,24 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     @Override
-    public Optional<InstanceVO> findById(String id) {
+    public Optional<InstanceVO> findById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
         RmqInstance entity = instanceMapper.selectById(id);
+        if (entity == null) {
+            return Optional.empty();
+        }
+        return Optional.of(toVO(entity));
+    }
+
+    @Override
+    public Optional<InstanceVO> findByName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        RmqInstance entity = instanceMapper.selectOne(
+                new QueryWrapper<RmqInstance>().eq("name", name).last("LIMIT 1"));
         if (entity == null) {
             return Optional.empty();
         }
@@ -97,22 +114,30 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     @Transactional
     public InstanceVO save(InstanceVO instance) {
         RmqInstance entity = toEntity(instance);
-        if (instanceMapper.selectById(entity.getId()) != null) {
-            instanceMapper.updateById(entity);
+        if (entity.getId() != null) {
+            // A non-null id identifies an existing instance, so the update path must only
+            // update. If the row vanished (concurrent delete), a zero-row update is a
+            // conflict; re-inserting here would resurrect the deleted instance under its
+            // old id.
+            if (instanceMapper.updateById(entity) == 0) {
+                throw new BusinessException(409,
+                        "Instance update was not applied: " + entity.getId());
+            }
         } else {
             instanceMapper.insert(entity);
+            instance.setId(entity.getId());
         }
         return instance;
     }
 
     @Override
-    public void deleteById(String id) {
-        instanceMapper.deleteById(id);
+    public boolean deleteById(Long id) {
+        return id != null && instanceMapper.deleteById(id) > 0;
     }
 
     @Override
-    public boolean existsByCredentialId(String credentialId) {
-        if (credentialId == null || credentialId.isBlank()) {
+    public boolean existsByCredentialId(Long credentialId) {
+        if (credentialId == null) {
             return false;
         }
         return instanceMapper.selectCount(
@@ -135,33 +160,39 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         InstanceVO vo = InstanceVO.builder()
                 .name(entity.getName())
                 .remark(entity.getRemark())
-                .type(parseType(entity.getType()))
+                .type(parseType(entity.getId(), entity.getType()))
                 .endpoint(entity.getEndpoint())
-                .vendor(parseVendor(entity.getVendor()))
+                .vendor(parseVendor(entity.getId(), entity.getVendor()))
                 .cloudInstanceId(entity.getCloudInstanceId())
                 .credentialId(entity.getCredentialId())
+                .adminCredentialRef(entity.getAdminCredentialRef())
                 .regionId(entity.getRegionId())
                 .build();
         vo.setId(entity.getId());
-        vo.setCreatedAt(entity.getCreatedAt());
-        vo.setUpdatedAt(entity.getUpdatedAt());
+        vo.setGmtCreate(entity.getGmtCreate());
+        vo.setGmtModified(entity.getGmtModified());
         return vo;
     }
 
-    private InstanceType parseType(String type) {
+    private InstanceType parseType(Long instanceId, String type) {
         try {
             return InstanceType.valueOf(type);
         } catch (IllegalArgumentException | NullPointerException ex) {
-            return InstanceType.PROXY;
+            throw invalidPersistedValue(instanceId, "type", type);
         }
     }
 
-    private InstanceVendor parseVendor(String vendor) {
+    private InstanceVendor parseVendor(Long instanceId, String vendor) {
         try {
             return InstanceVendor.valueOf(vendor);
         } catch (IllegalArgumentException | NullPointerException ex) {
-            return InstanceVendor.APACHE;
+            throw invalidPersistedValue(instanceId, "vendor", vendor);
         }
+    }
+
+    private BusinessException invalidPersistedValue(Long instanceId, String field, String value) {
+        return new BusinessException(500, "Invalid persisted instance " + field
+                + " for instance " + instanceId + ": " + value);
     }
 
     private RmqInstance toEntity(InstanceVO vo) {
@@ -174,9 +205,10 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         entity.setVendor(vo.getVendor() == null ? InstanceVendor.APACHE.name() : vo.getVendor().name());
         entity.setCloudInstanceId(vo.getCloudInstanceId());
         entity.setCredentialId(vo.getCredentialId());
+        entity.setAdminCredentialRef(vo.getAdminCredentialRef());
         entity.setRegionId(vo.getRegionId());
-        entity.setCreatedAt(vo.getCreatedAt());
-        entity.setUpdatedAt(vo.getUpdatedAt());
+        entity.setGmtCreate(vo.getGmtCreate());
+        entity.setGmtModified(vo.getGmtModified());
         return entity;
     }
 }

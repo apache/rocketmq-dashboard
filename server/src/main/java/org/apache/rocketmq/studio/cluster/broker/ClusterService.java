@@ -17,44 +17,114 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.config.BrokerConfigUpdateFailureVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
 import org.apache.rocketmq.studio.cluster.nameserver.RestartNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
+import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ClusterService {
 
+    private static final long REGISTRY_PROBE_TIMEOUT_SECONDS = 15;
+    private static final int REGISTRY_PROBE_MAX_CONCURRENCY = 8;
+    private static final int REGISTRY_PROBE_QUEUE_CAPACITY = 32;
+
     private final ClusterRepository clusterRepository;
     private final ClusterProvider clusterProvider;
     private final RocketMQBrokerConfigService brokerConfigService;
     private final AuditService auditService;
+    private final NameserverRegistryService registryService;
+
+    // Bounded so blocked probes cannot accumulate threads; replaceable in unit tests.
+    private RegistryProbeRunner registryProbeRunner = new RegistryProbeRunner(
+            REGISTRY_PROBE_MAX_CONCURRENCY, REGISTRY_PROBE_QUEUE_CAPACITY,
+            REGISTRY_PROBE_TIMEOUT_SECONDS * 1000L);
+
+    void setRegistryProbeRunner(RegistryProbeRunner registryProbeRunner) {
+        this.registryProbeRunner = registryProbeRunner;
+    }
+
+    @PreDestroy
+    void closeRegistryProbeRunner() {
+        registryProbeRunner.close();
+    }
 
     public List<ClusterVO> listClusters() {
         log.info("Listing all clusters");
         List<ClusterVO> discovered = clusterProvider.discoverClusters();
         if (discovered != null && !discovered.isEmpty()) {
-            discovered.forEach(this::enrichWithLiveConfig);
+            enrichDiscoveredClusters(discovered, null);
+            return discovered;
+        }
+        return List.of();
+    }
+
+    /**
+     * Probes every nameserver address registered in rmq_nameserver concurrently and
+     * aggregates the online clusters. A single unreachable or timed-out entry is
+     * logged and skipped without affecting the other entries.
+     */
+    public List<ClusterVO> listRegistryClusters() {
+        List<NameserverRegistryVO> probeable = registryService.list().stream()
+                .filter(entry -> entry.getNamesrvAddr() != null && !entry.getNamesrvAddr().isBlank())
+                .toList();
+        if (probeable.isEmpty()) {
+            return List.of();
+        }
+        return registryProbeRunner.probeAll(probeable, this::probeRegistryEntry);
+    }
+
+    private List<ClusterVO> probeRegistryEntry(NameserverRegistryVO entry) {
+        try {
+            List<ClusterVO> clusters = clusterProvider.discoverClustersAt(entry.getNamesrvAddr());
+            for (ClusterVO cluster : clusters) {
+                cluster.setNsClusterName(cluster.getName());
+                cluster.setName(entry.getName());
+                cluster.setEndpoint(entry.getNamesrvAddr());
+            }
+            return clusters;
+        } catch (Exception e) {
+            log.warn("Failed to probe NameServer registry entry {} ({}): {}",
+                    entry.getName(), entry.getNamesrvAddr(), e.getMessage());
+            return List.of();
+        }
+    }
+
+    public List<ClusterVO> listClusters(String instanceId) {
+        log.info("Listing clusters for instance: {}", instanceId);
+        List<ClusterVO> discovered = clusterProvider.discoverClusters(instanceId);
+        if (discovered != null && !discovered.isEmpty()) {
+            enrichDiscoveredClusters(discovered, instanceId);
             return discovered;
         }
         return List.of();
@@ -70,17 +140,90 @@ public class ClusterService {
         throw new BusinessException(503, "Cluster details are unavailable: " + id);
     }
 
+    public ClusterVO getCluster(String id, String instanceId) {
+        log.info("Getting cluster detail: {}", id);
+        ClusterVO live = clusterProvider.refreshClusterDetail(id, instanceId);
+        if (live != null) {
+            enrichWithLiveConfig(live, instanceId);
+            return live;
+        }
+        throw new BusinessException(503, "Cluster details are unavailable: " + id);
+    }
+
+    public List<ProxyVO> listProxies(String clusterId) {
+        ClusterVO cluster = resolveCluster(clusterId);
+        if (cluster.getProxies() == null || cluster.getProxies().isEmpty()) {
+            return List.of();
+        }
+        return List.copyOf(cluster.getProxies());
+    }
+
+    public void requireProxy(String clusterId, String addr) {
+        ClusterVO cluster = resolveCluster(clusterId);
+        requireProxy(cluster, addr);
+    }
+
+    public ClusterConfigPreviewVO previewClusterConfig(UpdateConfigDTO command) {
+        log.info("Previewing cluster config update for: {}", command.getId());
+        requireMatchingDefaultQueueNums(command);
+        ClusterVO cluster = resolveCluster(command.getId(), command.getInstanceId());
+        ClusterConfigVO currentConfig = copyConfig(cluster.getConfig());
+        ClusterConfigVO proposedConfig = copyConfig(currentConfig);
+        applyConfig(command, proposedConfig);
+        List<ClusterConfigPreviewVO.ConfigChangeVO> changes =
+                findConfigChanges(currentConfig, proposedConfig);
+        return ClusterConfigPreviewVO.builder()
+                .cluster(cluster)
+                .currentConfig(currentConfig)
+                .proposedConfig(proposedConfig)
+                .targetBrokers(targetBrokers(cluster))
+                .brokerProperties(buildBrokerPropertyMap(command))
+                .changes(changes)
+                .changed(!changes.isEmpty())
+                .build();
+    }
+
     /**
      * Attach live broker configuration (read from the first reachable master broker via the
      * admin API) to a discovered cluster. Falls back to the persisted config, if any, when the
      * live read is unavailable.
      */
     private void enrichWithLiveConfig(ClusterVO cluster) {
+        enrichWithLiveConfig(cluster, null);
+    }
+
+    private void enrichWithLiveConfig(ClusterVO cluster, String instanceId) {
+        enrichWithLiveConfig(cluster, instanceId, Set.of());
+    }
+
+    /**
+     * Enriches a discovered cluster list without repeating broker-config reads for the same
+     * broker address. Multiple registry entries can expose the same underlying clusters;
+     * once an address fails, later duplicates should use the persisted fallback immediately.
+     */
+    private void enrichDiscoveredClusters(List<ClusterVO> clusters, String instanceId) {
+        Set<String> attemptedAddresses = new LinkedHashSet<>();
+        for (ClusterVO cluster : clusters) {
+            if (cluster == null) {
+                continue;
+            }
+            enrichWithLiveConfig(cluster, instanceId, attemptedAddresses);
+            if (cluster.getBrokers() != null) {
+                cluster.getBrokers().stream()
+                        .map(BrokerVO::getAddr)
+                        .filter(address -> address != null && !address.isEmpty())
+                        .forEach(attemptedAddresses::add);
+            }
+        }
+    }
+
+    private void enrichWithLiveConfig(ClusterVO cluster, String instanceId, Set<String> attemptedAddresses) {
         if (cluster.getBrokers() != null) {
             for (BrokerVO broker : cluster.getBrokers()) {
-                if (broker.getAddr() != null && !broker.getAddr().isEmpty()) {
+                if (broker.getAddr() != null && !broker.getAddr().isEmpty()
+                        && !attemptedAddresses.contains(broker.getAddr())) {
                     try {
-                        cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr()));
+                        cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId));
                         return;
                     } catch (Exception e) {
                         log.warn("Failed to read live config from broker {}: {}",
@@ -97,7 +240,7 @@ public class ClusterService {
     public ClusterConfigUpdateResultVO updateClusterConfig(UpdateConfigDTO command) {
         log.info("Updating cluster config for: {}", command.getId());
         requireMatchingDefaultQueueNums(command);
-        ClusterVO cluster = resolveCluster(command.getId());
+        ClusterVO cluster = resolveCluster(command.getId(), command.getInstanceId());
 
         ClusterConfigVO config = copyConfig(cluster.getConfig());
         applyConfig(command, config);
@@ -112,7 +255,12 @@ public class ClusterService {
                     continue;
                 }
                 try {
-                    brokerConfigService.updateBrokerConfig(address, command.getId(), brokerProps);
+                    if (command.getInstanceId() == null || command.getInstanceId().isBlank()) {
+                        brokerConfigService.updateBrokerConfig(address, command.getId(), brokerProps);
+                    } else {
+                        brokerConfigService.updateBrokerConfig(
+                                address, command.getId(), command.getInstanceId(), brokerProps);
+                    }
                     successfulBrokers.add(address);
                 } catch (Exception e) {
                     failedBrokers.add(BrokerConfigUpdateFailureVO.builder()
@@ -121,6 +269,12 @@ public class ClusterService {
                             .build());
                 }
             }
+        }
+        if (successfulBrokers.isEmpty() && failedBrokers.isEmpty()) {
+            failedBrokers.add(BrokerConfigUpdateFailureVO.builder()
+                    .address("N/A")
+                    .message("No broker address is available for configuration update")
+                    .build());
         }
 
         ClusterConfigUpdateResultVO.Status status = updateStatus(successfulBrokers, failedBrokers);
@@ -190,7 +344,8 @@ public class ClusterService {
                 .map(failure -> failure.getAddress() + ": " + failure.getMessage())
                 .toList();
         try {
-            auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:" + clusterId, detail, status.name());
+            auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER", "CLUSTER:" + clusterId,
+                    clusterId, detail, status.name());
         } catch (Exception e) {
             log.warn("Failed to record cluster config update audit for {}: {}", clusterId, e.getMessage());
         }
@@ -200,6 +355,19 @@ public class ClusterService {
         ClusterVO live = clusterProvider.refreshClusterDetail(clusterId);
         if (live != null) {
             enrichWithLiveConfig(live);
+            return live;
+        }
+        return clusterRepository.findById(clusterId)
+                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId));
+    }
+
+    private ClusterVO resolveCluster(String clusterId, String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            return resolveCluster(clusterId);
+        }
+        ClusterVO live = clusterProvider.refreshClusterDetail(clusterId, instanceId);
+        if (live != null) {
+            enrichWithLiveConfig(live, instanceId);
             return live;
         }
         return clusterRepository.findById(clusterId)
@@ -226,31 +394,94 @@ public class ClusterService {
 
     private Properties buildBrokerProperties(UpdateConfigDTO command) {
         Properties props = new Properties();
+        buildBrokerPropertyMap(command).forEach(props::setProperty);
+        return props;
+    }
+
+    private Map<String, String> buildBrokerPropertyMap(UpdateConfigDTO command) {
+        Map<String, String> props = new LinkedHashMap<>();
         if (command.getFlushDiskType() != null) {
-            props.setProperty("flushDiskType", command.getFlushDiskType());
+            props.put("flushDiskType", command.getFlushDiskType());
         }
         if (command.getAutoCreateTopicEnable() != null) {
-            props.setProperty("autoCreateTopicEnable", command.getAutoCreateTopicEnable().toString());
+            props.put("autoCreateTopicEnable", command.getAutoCreateTopicEnable().toString());
         }
         if (command.getAutoCreateSubscriptionGroup() != null) {
-            props.setProperty("autoCreateSubscriptionGroup", command.getAutoCreateSubscriptionGroup().toString());
+            props.put("autoCreateSubscriptionGroup", command.getAutoCreateSubscriptionGroup().toString());
         }
         if (command.getMaxMessageSize() != null) {
-            props.setProperty("maxMessageSize", command.getMaxMessageSize().toString());
+            props.put("maxMessageSize", command.getMaxMessageSize().toString());
         }
         if (command.getFileReservedTime() != null) {
-            props.setProperty("fileReservedTime", command.getFileReservedTime().toString());
+            props.put("fileReservedTime", command.getFileReservedTime().toString());
         }
         if (command.getWriteQueueNums() != null) {
-            props.setProperty("defaultTopicQueueNums", command.getWriteQueueNums().toString());
+            props.put("defaultTopicQueueNums", command.getWriteQueueNums().toString());
         }
         if (command.getReadQueueNums() != null) {
-            props.setProperty("defaultTopicQueueNums", command.getReadQueueNums().toString());
+            props.put("defaultTopicQueueNums", command.getReadQueueNums().toString());
         }
         if (command.getBrokerPermission() != null) {
-            props.setProperty("brokerPermission", command.getBrokerPermission().toString());
+            props.put("brokerPermission", command.getBrokerPermission().toString());
         }
         return props;
+    }
+
+    private List<ClusterConfigPreviewVO.BrokerTargetVO> targetBrokers(ClusterVO cluster) {
+        if (cluster.getBrokers() == null) {
+            return List.of();
+        }
+        return cluster.getBrokers().stream()
+                .filter(broker -> broker.getAddr() != null && !broker.getAddr().isBlank())
+                .map(broker -> ClusterConfigPreviewVO.BrokerTargetVO.builder()
+                        .name(broker.getName())
+                        .address(broker.getAddr())
+                        .build())
+                .toList();
+    }
+
+    private List<ClusterConfigPreviewVO.ConfigChangeVO> findConfigChanges(
+            ClusterConfigVO current,
+            ClusterConfigVO proposed) {
+        List<ClusterConfigPreviewVO.ConfigChangeVO> changes = new ArrayList<>();
+        addConfigChange(changes, "flushDiskType", "flushDiskType",
+                current.getFlushDiskType(), proposed.getFlushDiskType());
+        addConfigChange(changes, "autoCreateTopicEnable", "autoCreateTopicEnable",
+                current.isAutoCreateTopicEnable(), proposed.isAutoCreateTopicEnable());
+        addConfigChange(changes, "autoCreateSubscriptionGroup", "autoCreateSubscriptionGroup",
+                current.isAutoCreateSubscriptionGroup(), proposed.isAutoCreateSubscriptionGroup());
+        addConfigChange(changes, "maxMessageSize", "maxMessageSize",
+                current.getMaxMessageSize(), proposed.getMaxMessageSize());
+        addConfigChange(changes, "fileReservedTime", "fileReservedTime",
+                current.getFileReservedTime(), proposed.getFileReservedTime());
+        addConfigChange(changes, "writeQueueNums", "defaultTopicQueueNums",
+                current.getWriteQueueNums(), proposed.getWriteQueueNums());
+        addConfigChange(changes, "readQueueNums", "defaultTopicQueueNums",
+                current.getReadQueueNums(), proposed.getReadQueueNums());
+        addConfigChange(changes, "brokerPermission", "brokerPermission",
+                current.getBrokerPermission(), proposed.getBrokerPermission());
+        return changes;
+    }
+
+    private void addConfigChange(
+            List<ClusterConfigPreviewVO.ConfigChangeVO> changes,
+            String field,
+            String brokerProperty,
+            Object currentValue,
+            Object proposedValue) {
+        if (Objects.equals(currentValue, proposedValue)) {
+            return;
+        }
+        changes.add(ClusterConfigPreviewVO.ConfigChangeVO.builder()
+                .field(field)
+                .currentValue(previewValue(currentValue))
+                .proposedValue(previewValue(proposedValue))
+                .brokerProperty(brokerProperty)
+                .build());
+    }
+
+    private String previewValue(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private void requireMatchingDefaultQueueNums(UpdateConfigDTO command) {

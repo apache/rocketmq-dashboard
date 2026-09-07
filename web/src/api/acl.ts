@@ -1,8 +1,17 @@
 import client from './client';
 
 // Matches mock/acl.ts
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export type AclEntityId = number | string;
+
 export interface AclRule {
-  id: string;
+  id: AclEntityId;
   principal: string;
   resource: string;
   resourceType: string;
@@ -11,65 +20,127 @@ export interface AclRule {
   decision: string;
   scope: string;
   aclVersion: number | string;
-  createdAt?: string | null;
+  gmtCreate?: string | null;
 }
 
 export interface AclRuleQuery {
-  clusterId?: string;
   principal?: string;
+  instanceId?: string;
+  resource?: string;
+  scope?: string;
+  decision?: string;
+  aclVersion?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// Users list query
+export interface AclUserQuery {
+  keyword?: string;
+  instanceId?: string;
+}
+
+export interface AclUserPage {
+  items: AclUser[];
+  total: number;
+  page: number;
+  size: number;
 }
 
 export interface AclUser {
-  id: string;
+  id: AclEntityId;
   username: string;
-  accessKey: string;
-  secretKey: string;
+  accessKey?: string | null;
+  secretKey?: string | null;
   admin: boolean;
   clusters: string[];
-  createdAt?: string | null;
+  permRead?: boolean;
+  permWrite?: boolean;
+  gmtCreate?: string | null;
 }
 
 export async function listAclRules(params?: AclRuleQuery) {
-  const res = await client.get<{ data: AclRule[] }>('/acl/rules', { params });
+  const res = await client.get<{ data: PageResult<AclRule> }>('/acl/rules', { params });
   return res.data.data;
 }
 
-export async function createAclRule(data: Partial<AclRule>) {
+export async function createAclRule(data: Partial<AclRule> & { instanceId?: string }) {
   const res = await client.post<{ data: AclRule }>('/acl/rules/create', data);
   return res.data.data;
 }
 
-export async function updateAclRule(data: Partial<AclRule>) {
+export async function updateAclRule(data: Partial<AclRule> & { instanceId?: string }) {
   const res = await client.post<{ data: AclRule }>('/acl/rules/update', data);
   return res.data.data;
 }
 
-export async function deleteAclRule(id: string) {
-  await client.post('/acl/rules/delete', { id });
+export async function deleteAclRule(id: AclEntityId, instanceId?: string) {
+  await client.post('/acl/rules/delete', { id, instanceId });
 }
 
-export async function listAclUsers(params?: { keyword?: string }) {
+export async function listAclUsers(params?: AclUserQuery) {
   const res = await client.get<{ data: AclUser[] }>('/acl/users', { params });
   return res.data.data;
 }
 
-export async function getAclUserCredentials(id: string) {
+export async function pageAclUsers(params: AclUserQuery & { page: number; pageSize: number }) {
+  const res = await client.get<{ data: AclUserPage }>('/acl/users/page', { params });
+  return res.data.data;
+}
+
+export async function getAclUserCredentials(id: AclEntityId, instanceId?: string) {
   const res = await client.get<{ data: AclUser }>(
-    `/acl/users/${encodeURIComponent(id)}/credentials`,
+    `/acl/users/${encodeURIComponent(String(id))}/credentials`,
+    { params: { instanceId } },
   );
   return res.data.data;
 }
 
-export async function createAclUser(data: Partial<AclUser>) {
+export async function createAclUser(data: Partial<AclUser> & { instanceId?: string }) {
   const res = await client.post<{ data: AclUser }>('/acl/users/create', data);
   return res.data.data;
 }
 
-export async function updateAclUser(data: Partial<AclUser>) {
+export async function updateAclUser(data: Partial<AclUser> & { instanceId?: string }) {
   const res = await client.post<{ data: AclUser }>('/acl/users/update', data);
   return res.data.data;
 }
 
-export async function deleteAclUser(id: string) {
-  await client.post('/acl/users/delete', { id });
+export async function deleteAclUser(id: AclEntityId, instanceId?: string) {
+  await client.post('/acl/users/delete', { id, instanceId });
+}
+
+// ============ ACL 2.0: cluster config & plain access ============
+
+export interface PlainAccessConfig {
+  accessKey: string;
+  secretKey?: string | null;
+  whiteRemoteAddress?: string | null;
+  admin: boolean;
+  defaultTopicPerm?: string;
+  defaultGroupPerm?: string;
+  topicPerms?: string[];
+  groupPerms?: string[];
+  gmtCreate?: string | null;
+}
+
+export interface AclClusterConfig {
+  clusterId: string;
+  aclEnabled: boolean;
+  aclVersion: string;
+  globalWhiteRemoteAddresses: string[];
+  accounts: PlainAccessConfig[];
+  accountCount: number;
+}
+
+export async function examineBrokerClusterAclConfig(clusterId: string) {
+  const res = await client.get<{ data: AclClusterConfig }>('/acl/cluster-config', {
+    params: { clusterId },
+  });
+  return res.data.data;
+}
+
+export async function createAndUpdatePlainAccessConfig(data: Partial<PlainAccessConfig>) {
+  const res = await client.post<{ data: PlainAccessConfig }>('/acl/plain-access-config', data);
+  return res.data.data;
 }

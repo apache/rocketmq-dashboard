@@ -129,7 +129,7 @@ export const topTopicsByThroughput = [
 
 export const systemAlerts = [
   {
-    id: 'alert-1',
+    id: 1,
     level: 'warning' as const,
     title: 'rocketmq-prod-5 磁盘使用率偏高',
     description: '磁盘使用率 86%，已自动切为只读模式',
@@ -137,7 +137,7 @@ export const systemAlerts = [
     acknowledged: false,
   },
   {
-    id: 'alert-2',
+    id: 2,
     level: 'error' as const,
     title: 'rocketmq-prod-7 进入维护模式',
     description: '磁盘使用率 91%，已禁止读写，需人工介入处理',
@@ -145,7 +145,7 @@ export const systemAlerts = [
     acknowledged: false,
   },
   {
-    id: 'alert-3',
+    id: 3,
     level: 'info' as const,
     title: 'rocketmq-prod-7 版本落后',
     description: '当前版本 5.1.4，集群版本 5.2.0，建议升级',

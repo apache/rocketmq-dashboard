@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,6 +28,7 @@ vi.mock('../../../services/opsService', () => ({
   cleanupAuditLogs: vi.fn(),
   exportAuditLogs: vi.fn(),
   getAuditFilterOptions: vi.fn(),
+  getAuditSummary: vi.fn(),
   listAuditRecords: vi.fn(),
 }));
 
@@ -37,6 +38,14 @@ const renderWithProviders = (ui: React.ReactElement) =>
       <LangProvider>{ui}</LangProvider>
     </App>,
   );
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
 
 describe('Audit page', () => {
   let createObjectURL: ReturnType<typeof vi.fn>;
@@ -61,15 +70,15 @@ describe('Audit page', () => {
 
   beforeEach(() => {
     vi.mocked(opsService.getAuditFilterOptions).mockResolvedValue({
-      operationTypes: ['CREATE_TOPIC', 'RESET_OFFSET'],
-      resourceTypes: ['CONSUMER_GROUP', 'TOPIC'],
+      operationTypes: ['ADD_PROXY_ADDRESS', 'CREATE_TOPIC', 'RESET_OFFSET'],
+      resourceTypes: ['CONSUMER_GROUP', 'PROXY', 'TOPIC'],
       clusterIds: ['prod-cn', 'prod-sh'],
       results: ['FAILED', 'PARTIAL', 'SUCCESS'],
     });
     vi.mocked(opsService.listAuditRecords).mockResolvedValue({
       items: [
         {
-          id: 'audit-1',
+          id: 1,
           timestamp: '2026-08-01 10:00:00',
           operator: 'admin',
           operationType: 'DELETE_TOPIC',
@@ -84,6 +93,16 @@ describe('Audit page', () => {
       total: 1,
       page: 1,
       size: 20,
+    });
+    vi.mocked(opsService.getAuditSummary).mockResolvedValue({
+      total: 10,
+      successful: 8,
+      failed: 1,
+      partial: 1,
+      uniqueOperators: 3,
+      latestAt: '2026-08-01 10:00:00',
+      byOperation: [{ name: 'DELETE_TOPIC', count: 6 }],
+      byResourceType: [{ name: 'TOPIC', count: 9 }],
     });
     vi.mocked(opsService.exportAuditLogs).mockResolvedValue(
       '\uFEFFtimestamp,operator\r\n"2026-08-01 10:00:00","admin"\r\n',
@@ -112,6 +131,11 @@ describe('Audit page', () => {
 
     expect(await screen.findByText('topic-a')).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'topic-a' }),
+      ),
+    );
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
     await waitFor(() =>
@@ -132,6 +156,54 @@ describe('Audit page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:audit');
   });
 
+  it('renders control-plane audit labels and parsed detail values', async () => {
+    vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
+      items: [
+        {
+          id: 2,
+          timestamp: '2026-08-01 11:00:00',
+          operator: 'ops-chen',
+          operationType: 'RELOAD_PROXY_CONFIG',
+          resourceType: 'PROXY',
+          target: '10.0.30.10:8081',
+          clusterId: 'prod-cn',
+          detail: 'topic=orders, timestamp=1784246400000',
+          result: 'SUCCESS',
+          errorMessage: '',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('重载 Proxy 配置')).toBeInTheDocument();
+    expect(screen.getByText('Proxy')).toBeInTheDocument();
+    expect(screen.getByText('成功')).toBeInTheDocument();
+    expect(screen.getByText('topic: orders')).toBeInTheDocument();
+    expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
+  });
+
+  it('loads a filtered server-side summary dashboard', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('匹配记录')).toBeInTheDocument();
+    expect(screen.getByText('80')).toBeInTheDocument();
+    expect(screen.getAllByText('DELETE TOPIC').length).toBeGreaterThan(0);
+    await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
+
+    await waitFor(
+      () =>
+        expect(opsService.getAuditSummary).toHaveBeenLastCalledWith(
+          expect.objectContaining({ search: 'topic-a' }),
+        ),
+      { timeout: 1000 },
+    );
+  });
+
   it('loads persisted filter values and forwards their original codes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
@@ -139,12 +211,12 @@ describe('Audit page', () => {
     expect(await screen.findByText('topic-a')).toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: '操作类型' }));
     await user.click(
-      await screen.findByText('CREATE TOPIC', { selector: '.ant-select-item-option-content' }),
+      await screen.findByText('创建 Topic', { selector: '.ant-select-item-option-content' }),
     );
-    expect(screen.getByText('SUCCESS')).toBeInTheDocument();
+    expect(screen.getByText('成功')).toBeInTheDocument();
     await user.click(screen.getByRole('combobox', { name: '资源类型' }));
     await user.click(
-      await screen.findByText('CONSUMER GROUP', {
+      await screen.findByText('消费组', {
         selector: '.ant-select-item-option-content',
       }),
     );
@@ -166,6 +238,70 @@ describe('Audit page', () => {
         result: undefined,
       }),
     );
+  });
+
+  it('shows loading state while refreshed records are pending', async () => {
+    const user = userEvent.setup();
+    vi.mocked(opsService.listAuditRecords)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 2,
+            timestamp: '2026-08-01 10:00:00',
+            operator: 'admin',
+            operationType: 'DELETE_TOPIC',
+            resourceType: 'TOPIC',
+            target: 'topic-a',
+            clusterId: 'prod-cn',
+            detail: 'removed topic-a',
+            result: 'SUCCESS',
+            errorMessage: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const { container } = renderWithProviders(<AuditPage />);
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '操作类型' }));
+    await user.click(
+      await screen.findByText('创建 Topic', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(2));
+    expect(container.querySelector('.ant-spin-spinning')).not.toBeNull();
+  });
+
+  it('ignores stale filter-option responses after cleanup refreshes', async () => {
+    const user = userEvent.setup();
+    const staleOptions = deferred<Awaited<ReturnType<typeof opsService.getAuditFilterOptions>>>();
+    vi.mocked(opsService.getAuditFilterOptions)
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockImplementationOnce(() => staleOptions.promise);
+    vi.mocked(opsService.cleanupAuditLogs).mockResolvedValue(3);
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /清理日志/ }));
+    await user.click(await screen.findByRole('button', { name: /确认清理/ }));
+
+    await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenNthCalledWith(2));
+
+    await act(async () => {
+      staleOptions.resolve({
+        operationTypes: ['STALE_OPERATION'],
+        resourceTypes: [],
+        clusterIds: [],
+        results: [],
+      });
+    });
+
+    await user.click(screen.getByRole('combobox', { name: '操作类型' }));
+    expect(await screen.findByText('Stale Operation')).toBeInTheDocument();
   });
 
   it('still loads audit records when filter options cannot be loaded', async () => {

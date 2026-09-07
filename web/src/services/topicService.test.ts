@@ -15,7 +15,14 @@
  * limitations under the License.
  */
 
-import { createTopic, getTopicConsumers, getTopicRoutes, listTopics } from './topicService';
+import {
+  createTopic,
+  getTopicConsumerPage,
+  getTopicConsumers,
+  getTopicRoutes,
+  listAllTopics,
+  listTopics,
+} from './topicService';
 
 vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
@@ -39,9 +46,13 @@ describe('topic service mock data', () => {
     expect(first[0].brokerName).toBe('broker-a-0');
 
     first[0].brokerName = 'mutated-broker';
+    if (first[0].brokerAddrs) first[0].brokerAddrs['0'] = '127.0.0.1:10911';
+    if (first[0].brokerIds) first[0].brokerIds.push(99);
 
     const second = await getTopicRoutes('order-create');
     expect(second[0].brokerName).toBe('broker-a-0');
+    expect(second[0].brokerAddrs?.['0']).toBe('10.0.1.10:10911');
+    expect(second[0].brokerIds).toEqual([0, 1]);
     expect(second[0]).not.toBe(first[0]);
   });
 
@@ -56,6 +67,13 @@ describe('topic service mock data', () => {
     expect(second[0]).not.toBe(first[0]);
   });
 
+  it('paginates copied topic consumer rows', async () => {
+    const page = await getTopicConsumerPage('order-create', undefined, 1, 1);
+
+    expect(page).toMatchObject({ total: 4, page: 1, pageSize: 1 });
+    expect(page.items[0].group).toBe('GID_order_service');
+  });
+
   it('trims search text before filtering topic names', async () => {
     const topics = await listTopics({ search: '  ORDER-CREATE  ' });
 
@@ -67,6 +85,19 @@ describe('topic service mock data', () => {
     const blankSearchTopics = await listTopics({ search: '   ' });
 
     expect(blankSearchTopics).toHaveLength(allTopics.length);
+  });
+
+  it('filters mock topics by instance ID', async () => {
+    const topics = await listTopics({ instanceId: 'instance-proxy-1' });
+    const directTopics = await listTopics({ instanceId: 'instance-proxy-1', search: 'order' });
+    const exportedTopics = await listAllTopics({
+      instanceId: 'instance-proxy-1',
+      search: 'order',
+    });
+
+    expect(topics).not.toHaveLength(0);
+    expect(topics.every((topic) => topic.instanceId === 'instance-proxy-1')).toBe(true);
+    expect(exportedTopics).toEqual(directTopics);
   });
 
   it('rejects duplicate topic creates in the same cluster', async () => {

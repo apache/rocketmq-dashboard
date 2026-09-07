@@ -21,6 +21,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -30,9 +32,14 @@ public class LlmOperationResultVO {
     private String errMsg;
     private String code;
     private String hint;
+    private List<LlmModelItemVO> models;
 
     public static LlmOperationResultVO success(String message) {
-        return new LlmOperationResultVO(0, message, null, null, null);
+        return new LlmOperationResultVO(0, message, null, null, null, null);
+    }
+
+    public static LlmOperationResultVO successWithModels(String message, List<LlmModelItemVO> models) {
+        return new LlmOperationResultVO(0, message, null, null, null, models);
     }
 
     public static LlmOperationResultVO failure(String message) {
@@ -40,6 +47,6 @@ public class LlmOperationResultVO {
     }
 
     public static LlmOperationResultVO failure(String code, String message, String hint) {
-        return new LlmOperationResultVO(1, null, message, code, hint);
+        return new LlmOperationResultVO(1, null, message, code, hint, null);
     }
 }

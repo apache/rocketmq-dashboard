@@ -70,8 +70,8 @@ public class ClusterRepositoryImpl implements ClusterRepository {
         // observe a partially updated snapshot (new config, old updatedAt).
         store.computeIfPresent(clusterId, (id, cluster) -> {
             ClusterVO updated = defensiveCopy(cluster);
-            updated.setConfig(config);
-            updated.setUpdatedAt(LocalDateTime.now());
+            updated.setConfig(copyConfig(config));
+            updated.setGmtModified(LocalDateTime.now());
             log.info("Config updated for cluster: {}", clusterId);
             return updated;
         });
@@ -89,20 +89,81 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .endpoint(cluster.getEndpoint())
                 .status(cluster.getStatus())
                 .version(cluster.getVersion())
-                // new ArrayList forces a fresh list even when the source is already immutable
-                // (List.copyOf would return the source reference for immutable inputs).
-                .brokers(cluster.getBrokers() == null ? null : new ArrayList<>(cluster.getBrokers()))
-                .proxies(cluster.getProxies() == null ? null : new ArrayList<>(cluster.getProxies()))
-                .nameServers(cluster.getNameServers() == null ? null : new ArrayList<>(cluster.getNameServers()))
-                .config(cluster.getConfig())
+                .brokers(cluster.getBrokers() == null ? null : new ArrayList<>(cluster.getBrokers().stream()
+                        .map(this::copyBroker)
+                        .toList()))
+                .proxies(cluster.getProxies() == null ? null : new ArrayList<>(cluster.getProxies().stream()
+                        .map(this::copyProxy)
+                        .toList()))
+                .nameServers(cluster.getNameServers() == null ? null : new ArrayList<>(cluster.getNameServers().stream()
+                        .map(this::copyNameServer)
+                        .toList()))
+                .config(copyConfig(cluster.getConfig()))
                 .topicCount(cluster.getTopicCount())
                 .groupCount(cluster.getGroupCount())
                 .tpsHistory(cluster.getTpsHistory() == null ? null : new ArrayList<>(cluster.getTpsHistory()))
                 .build();
         copy.setId(cluster.getId());
-        copy.setCreatedAt(cluster.getCreatedAt());
-        copy.setUpdatedAt(cluster.getUpdatedAt());
+        copy.setGmtCreate(cluster.getGmtCreate());
+        copy.setGmtModified(cluster.getGmtModified());
         return copy;
+    }
+
+    private BrokerVO copyBroker(BrokerVO broker) {
+        if (broker == null) {
+            return null;
+        }
+        return BrokerVO.builder()
+                .name(broker.getName())
+                .addr(broker.getAddr())
+                .version(broker.getVersion())
+                .status(broker.getStatus())
+                .diskUsage(broker.getDiskUsage())
+                .tpsIn(broker.getTpsIn())
+                .tpsOut(broker.getTpsOut())
+                .runtimeStatsAvailable(broker.isRuntimeStatsAvailable())
+                .build();
+    }
+
+    private ProxyVO copyProxy(ProxyVO proxy) {
+        if (proxy == null) {
+            return null;
+        }
+        return ProxyVO.builder()
+                .addr(proxy.getAddr())
+                .status(proxy.getStatus())
+                .connections(proxy.getConnections())
+                .grpcPort(proxy.getGrpcPort())
+                .remotingPort(proxy.getRemotingPort())
+                .build();
+    }
+
+    private NameServerVO copyNameServer(NameServerVO nameServer) {
+        if (nameServer == null) {
+            return null;
+        }
+        return NameServerVO.builder()
+                .addr(nameServer.getAddr())
+                .status(nameServer.getStatus())
+                .build();
+    }
+
+    private ClusterConfigVO copyConfig(ClusterConfigVO config) {
+        if (config == null) {
+            return null;
+        }
+        return ClusterConfigVO.builder()
+                .writeQueueNums(config.getWriteQueueNums())
+                .readQueueNums(config.getReadQueueNums())
+                .maxMessageSize(config.getMaxMessageSize())
+                .msgTraceTopicName(config.getMsgTraceTopicName())
+                .autoCreateTopicEnable(config.isAutoCreateTopicEnable())
+                .autoCreateSubscriptionGroup(config.isAutoCreateSubscriptionGroup())
+                .deleteWhen(config.getDeleteWhen())
+                .fileReservedTime(config.getFileReservedTime())
+                .flushDiskType(config.getFlushDiskType())
+                .brokerPermission(config.getBrokerPermission())
+                .build();
     }
 
     private void initStubData() {
@@ -171,8 +232,8 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .tpsHistory(List.of(1200, 1350, 1100, 1450, 1280, 1500, 1380, 1420, 1300, 1550))
                 .build();
         cluster1.setId("cluster-001");
-        cluster1.setCreatedAt(LocalDateTime.now().minusDays(30));
-        cluster1.setUpdatedAt(LocalDateTime.now());
+        cluster1.setGmtCreate(LocalDateTime.now().minusDays(30));
+        cluster1.setGmtModified(LocalDateTime.now());
 
         ClusterVO cluster2 = ClusterVO.builder()
                 .name("rmq-cluster-staging")
@@ -224,8 +285,8 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .tpsHistory(List.of(320, 280, 350, 310, 290, 340, 300, 330, 310, 350))
                 .build();
         cluster2.setId("cluster-002");
-        cluster2.setCreatedAt(LocalDateTime.now().minusDays(15));
-        cluster2.setUpdatedAt(LocalDateTime.now().minusHours(3));
+        cluster2.setGmtCreate(LocalDateTime.now().minusDays(15));
+        cluster2.setGmtModified(LocalDateTime.now().minusHours(3));
 
         store.put(cluster1.getId(), cluster1);
         store.put(cluster2.getId(), cluster2);

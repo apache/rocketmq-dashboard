@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { App, Button, Modal, Space, Table, Tag, Typography } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DownloadSimple, Eye } from '@phosphor-icons/react';
+import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import {
   exportAlertRuleAsset,
@@ -26,6 +26,7 @@ import {
   listAlertRuleAssets,
 } from '../services/alertRuleAssetService';
 import type { AlertRuleAssetInfo } from '../api/alertRuleAssets';
+import { downloadBlob } from '../utils/download';
 
 const { Text } = Typography;
 
@@ -39,31 +40,72 @@ export const AlertRuleAssetList: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const [assets, setAssets] = useState<AlertRuleAssetInfo[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [selectedSeverities, setSelectedSeverities] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [viewing, setViewing] = useState<AlertRuleAssetInfo | null>(null);
   const [viewContent, setViewContent] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
+  const mountedRef = useRef(true);
+  const listRequestId = useRef(0);
   const viewRequestId = useRef(0);
+  const exportingNamesRef = useRef<Set<string>>(new Set());
   const [exportingNames, setExportingNames] = useState<Set<string>>(() => new Set());
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const data = await listAlertRuleAssets();
-        if (!cancelled) setAssets(data);
-      } catch {
-        if (!cancelled) message.error(t('alertAssets.loadFailed'));
-      } finally {
-        if (!cancelled) setLoading(false);
+  const severityOptions = useMemo(
+    () =>
+      Array.from(new Set(assets.flatMap((asset) => asset.severities || [])))
+        .sort((a, b) => a.localeCompare(b))
+        .map((severity) => ({ label: severity.toUpperCase(), value: severity })),
+    [assets],
+  );
+
+  const filteredAssets = useMemo(() => {
+    const normalizedSearch = searchText.trim().toLowerCase();
+    return assets.filter((asset) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        [asset.name, asset.group]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalizedSearch));
+      const matchesSeverity =
+        selectedSeverities.length === 0 ||
+        selectedSeverities.some((severity) => (asset.severities || []).includes(severity));
+
+      return matchesSearch && matchesSeverity;
+    });
+  }, [assets, searchText, selectedSeverities]);
+
+  const loadAssets = useCallback(async () => {
+    const requestId = ++listRequestId.current;
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const data = await listAlertRuleAssets();
+      if (mountedRef.current && requestId === listRequestId.current) {
+        setAssets(data);
       }
-    };
-    void load();
+    } catch {
+      if (mountedRef.current && requestId === listRequestId.current) {
+        setLoadError(true);
+        message.error(t('alertAssets.loadFailed'));
+      }
+    } finally {
+      if (mountedRef.current && requestId === listRequestId.current) {
+        setLoading(false);
+      }
+    }
+  }, [message, t]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const timeoutId = window.setTimeout(() => void loadAssets());
     return () => {
-      cancelled = true;
-      viewRequestId.current += 1;
+      window.clearTimeout(timeoutId);
+      mountedRef.current = false;
     };
-  }, [t, message]);
+  }, [loadAssets]);
 
   const handleView = async (info: AlertRuleAssetInfo) => {
     const requestId = ++viewRequestId.current;
@@ -72,15 +114,15 @@ export const AlertRuleAssetList: React.FC = () => {
     setViewLoading(true);
     try {
       const yaml = await getAlertRuleAsset(info.name);
-      if (requestId === viewRequestId.current) {
+      if (mountedRef.current && requestId === viewRequestId.current) {
         setViewContent(yaml);
       }
     } catch {
-      if (requestId === viewRequestId.current) {
+      if (mountedRef.current && requestId === viewRequestId.current) {
         message.error(t('alertAssets.loadFailed'));
       }
     } finally {
-      if (requestId === viewRequestId.current) {
+      if (mountedRef.current && requestId === viewRequestId.current) {
         setViewLoading(false);
       }
     }
@@ -93,30 +135,19 @@ export const AlertRuleAssetList: React.FC = () => {
     setViewLoading(false);
   };
 
-  const triggerDownload = (name: string, content: Blob | string) => {
-    const blob = typeof content === 'string' ? new Blob([content], { type: 'text/yaml' }) : content;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${name}.yaml`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleExport = async (info: AlertRuleAssetInfo) => {
-    setExportingNames((current) => new Set(current).add(info.name));
+    if (exportingNamesRef.current.has(info.name)) return;
+    exportingNamesRef.current.add(info.name);
+    setExportingNames(new Set(exportingNamesRef.current));
     try {
       const blob = await exportAlertRuleAsset(info.name);
-      triggerDownload(info.name, blob);
+      downloadBlob(blob, `${info.name}.yaml`);
       message.success(t('alertAssets.exported'));
     } catch {
       message.error(t('alertAssets.exportFailed'));
     } finally {
-      setExportingNames((current) => {
-        const next = new Set(current);
-        next.delete(info.name);
-        return next;
-      });
+      exportingNamesRef.current.delete(info.name);
+      if (mountedRef.current) setExportingNames(new Set(exportingNamesRef.current));
     }
   };
 
@@ -177,9 +208,48 @@ export const AlertRuleAssetList: React.FC = () => {
 
   return (
     <div>
+      <Space style={{ marginBottom: 12 }}>
+        <Input.Search
+          allowClear
+          placeholder={t('alertAssets.searchPlaceholder')}
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          onSearch={setSearchText}
+          style={{ width: 280 }}
+        />
+        <Select
+          allowClear
+          mode="multiple"
+          maxTagCount="responsive"
+          options={severityOptions}
+          placeholder={t('alertAssets.allSeverities')}
+          value={selectedSeverities}
+          onChange={setSelectedSeverities}
+          style={{ minWidth: 220 }}
+        />
+      </Space>
+
+      {loadError && (
+        <Alert
+          showIcon
+          type="error"
+          message={t('alertAssets.loadFailed')}
+          action={
+            <Button
+              size="small"
+              icon={<ArrowClockwise size={16} />}
+              onClick={() => void loadAssets()}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
+
       <Table
         columns={columns}
-        dataSource={assets}
+        dataSource={filteredAssets}
         loading={loading}
         rowKey="name"
         pagination={false}
@@ -204,7 +274,7 @@ export const AlertRuleAssetList: React.FC = () => {
               background: '#f5f5f5',
               padding: 16,
               borderRadius: 6,
-              fontSize: 12,
+              fontSize: 14,
             }}
           >
             {viewContent}

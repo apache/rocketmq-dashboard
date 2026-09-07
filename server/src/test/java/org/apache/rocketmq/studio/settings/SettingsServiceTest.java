@@ -17,36 +17,57 @@
 package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @ExtendWith(MockitoExtension.class)
 class SettingsServiceTest {
+
+    private static final String PROMETHEUS_BASE_URL = "http://192.0.2.1:9090";
+    private static final String PROMETHEUS_QUERY_URL = PROMETHEUS_BASE_URL + "/api/v1/query?query=up";
+    private static final String VICTORIA_METRICS_QUERY_URL =
+            PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
+    private static final String MIMIR_QUERY_URL =
+            PROMETHEUS_BASE_URL + "/prometheus/api/v1/query?query=up";
+    private static final String PROMETHEUS_SUCCESS_BODY =
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}";
 
     @Mock
     private SettingsRepository settingsRepository;
@@ -56,24 +77,24 @@ class SettingsServiceTest {
 
     private SettingsService settingsService;
 
-    private HttpServer prometheusServer;
-    private String prometheusBaseUrl;
+    private MockRestServiceServer prometheusServer;
 
     @BeforeEach
-    void setUp() throws IOException {
-        settingsService = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService);
-        prometheusServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        prometheusBaseUrl = "http://127.0.0.1:" + prometheusServer.getAddress().getPort();
-        prometheusServer.start();
+    void setUpTest() {
+        RestClient.Builder restClientBuilder = RestClient.builder();
+        prometheusServer = MockRestServiceServer.bindTo(restClientBuilder).build();
+        settingsService = new SettingsService(settingsRepository, restClientBuilder.build(),
+                new ObjectMapper(), operationAuditService);
     }
 
+
     @AfterEach
-    void tearDown() {
-        prometheusServer.stop(0);
+    void tearDownTest() {
+        prometheusServer.verify();
     }
 
     @Test
-    void getGeneralSettingsShouldReturnCurrentSettings() {
+    void getGeneralSettingsShouldReturnCurrentSettingsTest() {
         GeneralSettingsVO settings = GeneralSettingsVO.builder()
                 .theme("dark")
                 .compact(true)
@@ -99,7 +120,29 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldPreserveExistingApiKeyWhenOmitted() {
+    void getGeneralSettingsShouldRedactNotificationWebhooksForReaderSessionsTest() {
+        GeneralSettingsVO settings = GeneralSettingsVO.builder()
+                .theme("dark")
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=secret")
+                .smsWebhook("https://sms.example.test/notify")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(settings);
+        AuthenticatedUserContext.setUser("reader", false);
+
+        try {
+            GeneralSettingsVO result = settingsService.getGeneralSettings();
+
+            assertThat(result.getDingtalkWebhook()).isEqualTo("******");
+            assertThat(result.isDingtalkWebhookConfigured()).isTrue();
+            assertThat(result.getSmsWebhook()).isEqualTo("******");
+            assertThat(result.isSmsWebhookConfigured()).isTrue();
+        } finally {
+            AuthenticatedUserContext.clear();
+        }
+    }
+
+    @Test
+    void saveGeneralSettingsShouldPreserveExistingApiKeyWhenOmittedTest() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")
                 .build();
@@ -117,7 +160,56 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldReplaceExistingApiKey() {
+    void saveGeneralSettingsShouldPreserveProviderSpecificLlmFieldsWhenOmittedTest() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .deploymentName("production-gpt")
+                .apiVersion("2024-06-01")
+                .awsRegion("eu-west-1")
+                .llmEngine("http")
+                .maxTokens(8192)
+                .temperature(0.2)
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDeploymentName()).isEqualTo("production-gpt");
+        assertThat(update.getApiVersion()).isEqualTo("2024-06-01");
+        assertThat(update.getAwsRegion()).isEqualTo("eu-west-1");
+        assertThat(update.getLlmEngine()).isEqualTo("http");
+        assertThat(update.getMaxTokens()).isEqualTo(8192);
+        assertThat(update.getTemperature()).isEqualTo(0.2);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldRejectMetadataLlmBaseUrlBeforePersistingTest() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .baseUrl("http://169.254.169.254/latest/meta-data")
+                .build();
+
+        assertThatThrownBy(() -> settingsService.saveGeneralSettings(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("LLM base URL")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verify(settingsRepository, never()).saveGeneralSettings(any());
+    }
+
+    @Test
+    void saveGeneralSettingsShouldAllowLoopbackForLocalLlmGatewaysTest() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .baseUrl("http://localhost:11434/v1")
+                .build();
+
+        settingsService.saveGeneralSettings(update);
+
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldReplaceExistingApiKeyTest() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")
                 .build();
@@ -133,7 +225,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldClearApiKeyOnlyWhenExplicitlyRequested() {
+    void saveGeneralSettingsShouldClearApiKeyOnlyWhenExplicitlyRequestedTest() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")
                 .build();
@@ -150,7 +242,24 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldLetClearTakePrecedenceOverReplacementApiKey() {
+    void saveGeneralSettingsShouldClearDingtalkSigningSecretOnlyWhenExplicitlyRequestedTest() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkSigningSecret("SEC-existing")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .clearDingtalkSigningSecret(true)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkSigningSecret()).isEmpty();
+        assertThat(update.isClearDingtalkSigningSecret()).isFalse();
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldLetClearTakePrecedenceOverReplacementApiKeyTest() {
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .apiKey("sk-new")
                 .clearApiKey(true)
@@ -164,7 +273,25 @@ class SettingsServiceTest {
     }
 
     @Test
-    void listDataSourcesShouldReturnAllSources() {
+    void saveGeneralSettingsShouldSucceedWhenAuditRecordingFailsTest() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("dark")
+                .build();
+        doThrow(new IllegalStateException("audit unavailable"))
+                .when(operationAuditService)
+                .record("UPDATE_SETTINGS", "SETTINGS", "general",
+                        null, "General settings updated", "SUCCESS", null);
+
+        assertThatCode(() -> settingsService.saveGeneralSettings(update))
+                .doesNotThrowAnyException();
+
+        verify(settingsRepository).saveGeneralSettings(update);
+        verify(operationAuditService).record("UPDATE_SETTINGS", "SETTINGS", "general",
+                null, "General settings updated", "SUCCESS", null);
+    }
+
+    @Test
+    void listDataSourcesShouldReturnAllSourcesTest() {
         DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("rocketmq")
                 .url("localhost:9876").status("connected").build();
         DataSourceVO ds2 = DataSourceVO.builder().key("ds-2").name("Staging").type("rocketmq")
@@ -181,7 +308,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void listDataSourcesShouldReturnEmptyListWhenNoSources() {
+    void listDataSourcesShouldReturnEmptyListWhenNoSourcesTest() {
         when(settingsRepository.findAllDataSources()).thenReturn(Collections.emptyList());
 
         List<DataSourceVO> result = settingsService.listDataSources();
@@ -190,24 +317,65 @@ class SettingsServiceTest {
     }
 
     @Test
-    void createDataSourceShouldAssignKeyBeforeSaving() {
+    void listDataSourcesShouldValidatePaginationBeforeRepositoryAccessTest() {
+        assertThatThrownBy(() -> settingsService.listDataSources(null, null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than zero");
+        assertThatThrownBy(() -> settingsService.listDataSources(null, null, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+        assertThatThrownBy(() -> settingsService.listDataSources(null, null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be between 1 and 100");
+
+        verifyNoInteractions(settingsRepository);
+    }
+
+    @Test
+    void listDataSourcesShouldDelegateBoundedInventoryQueryTest() {
+        PageResult<DataSourceVO> page = PageResult.of(List.of(), 0, 2, 20);
+        when(settingsRepository.findDataSources(" prod ", " prometheus ", 2, 20))
+                .thenReturn(page);
+
+        PageResult<DataSourceVO> result = settingsService.listDataSources(
+                " prod ", " prometheus ", 2, 20);
+
+        assertThat(result).isSameAs(page);
+        verify(settingsRepository).findDataSources(" prod ", " prometheus ", 2, 20);
+    }
+
+    @Test
+    void createDataSourceShouldAssignKeyBeforeSavingTest() {
         DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
-                .url("new-host:9876").build();
+                .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    DataSourceVO dataSource = invocation.getArgument(0);
+                    // Repository contract: the ds key is generated from the auto-increment id.
+                    dataSource.setKey("ds-1");
+                    return dataSource;
+                });
 
         DataSourceVO result = settingsService.createDataSource(input);
 
         assertThat(result.getKey()).isNotBlank();
         assertThat(result.getName()).isEqualTo("New DS");
         verify(settingsRepository).saveDataSource(input);
+        verify(operationAuditService).record("CREATE_DATA_SOURCE", "METRICS_DATA_SOURCE", result.getKey(),
+                null, "name=New DS, type=rocketmq, instanceCount=0", "SUCCESS", null);
     }
 
     @Test
-    void createDataSourceShouldReplaceClientProvidedKey() {
-        DataSourceVO input = DataSourceVO.builder().key("existing-key").name("New DS").build();
+    void createDataSourceShouldReplaceClientProvidedKeyTest() {
+        DataSourceVO input = DataSourceVO.builder().key("existing-key").name("New DS")
+                .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    DataSourceVO dataSource = invocation.getArgument(0);
+                    // Repository contract: a client-provided key is replaced by the generated one.
+                    dataSource.setKey("ds-1");
+                    return dataSource;
+                });
 
         DataSourceVO result = settingsService.createDataSource(input);
 
@@ -216,7 +384,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void createDataSourceShouldRejectNullRequest() {
+    void createDataSourceShouldRejectNullRequestTest() {
         assertThatThrownBy(() -> settingsService.createDataSource(null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source request is required")
@@ -227,9 +395,35 @@ class SettingsServiceTest {
     }
 
     @Test
-    void updateDataSourceShouldDelegateToRepository() {
+    void createDataSourceShouldRejectLoopbackUrlTest() {
+        DataSourceVO input = DataSourceVO.builder().name("Loopback DS").type("rocketmq")
+                .url("http://127.0.0.1:9090").build();
+
+        assertThatThrownBy(() -> settingsService.createDataSource(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("local, loopback or metadata address")
+                .extracting("code")
+                .isEqualTo(400);
+        verify(settingsRepository, never()).saveDataSource(any());
+    }
+
+    @Test
+    void updateDataSourceShouldRejectMetadataUrlTest() {
+        DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Metadata DS").type("rocketmq")
+                .url("http://169.254.169.254/latest/meta-data/").build();
+
+        assertThatThrownBy(() -> settingsService.updateDataSource(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("local, loopback or metadata address")
+                .extracting("code")
+                .isEqualTo(400);
+        verify(settingsRepository, never()).replaceDataSource(any());
+    }
+
+    @Test
+    void updateDataSourceShouldDelegateToRepositoryTest() {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
-                .url("updated-host:9876").build();
+                .url("http://10.1.2.3").build();
         when(settingsRepository.replaceDataSource(input)).thenReturn(true);
 
         DataSourceVO result = settingsService.updateDataSource(input);
@@ -237,10 +431,12 @@ class SettingsServiceTest {
         assertThat(result.getKey()).isEqualTo("ds-1");
         assertThat(result.getName()).isEqualTo("Updated DS");
         verify(settingsRepository).replaceDataSource(input);
+        verify(operationAuditService).record("UPDATE_DATA_SOURCE", "METRICS_DATA_SOURCE", "ds-1",
+                null, "name=Updated DS, type=rocketmq, instanceCount=0", "SUCCESS", null);
     }
 
     @Test
-    void updateDataSourceShouldRejectNullRequest() {
+    void updateDataSourceShouldRejectNullRequestTest() {
         assertThatThrownBy(() -> settingsService.updateDataSource(null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source request is required")
@@ -251,10 +447,10 @@ class SettingsServiceTest {
     }
 
     @Test
-    void updateDataSourceShouldRejectUnknownKey() {
+    void updateDataSourceShouldRejectUnknownKeyTest() {
         SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key("missing").name("Unexpected DS").type("rocketmq")
-                .url("unexpected-host:9876").build();
+                .url("http://10.1.2.3").build();
 
         assertThatThrownBy(() -> service.updateDataSource(input))
                 .isInstanceOf(BusinessException.class)
@@ -265,11 +461,11 @@ class SettingsServiceTest {
     }
 
     @Test
-    void updateDataSourceShouldRejectBlankKey() {
+    void updateDataSourceShouldRejectBlankKeyTest() {
         SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
                 operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key(" ").name("Unexpected DS").type("rocketmq")
-                .url("unexpected-host:9876").build();
+                .url("http://10.1.2.3").build();
 
         assertThatThrownBy(() -> service.updateDataSource(input))
                 .isInstanceOf(BusinessException.class)
@@ -280,16 +476,18 @@ class SettingsServiceTest {
     }
 
     @Test
-    void deleteDataSourceShouldDelegateToRepository() {
+    void deleteDataSourceShouldDelegateToRepositoryTest() {
         when(settingsRepository.deleteDataSource("ds-1")).thenReturn(true);
 
         settingsService.deleteDataSource("ds-1");
 
         verify(settingsRepository).deleteDataSource("ds-1");
+        verify(operationAuditService).record("DELETE_DATA_SOURCE", "METRICS_DATA_SOURCE", "ds-1",
+                null, "key=ds-1", "SUCCESS", null);
     }
 
     @Test
-    void deleteDataSourceShouldRejectUnknownKey() {
+    void deleteDataSourceShouldRejectUnknownKeyTest() {
         SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
                 operationAuditService);
 
@@ -301,7 +499,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void deleteDataSourceShouldRejectBlankKey() {
+    void deleteDataSourceShouldRejectBlankKeyTest() {
         assertThatThrownBy(() -> settingsService.deleteDataSource(" "))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source key is required")
@@ -310,16 +508,12 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldQueryPrometheusEndpoint() {
-        AtomicReference<String> requestPath = new AtomicReference<>();
-        AtomicReference<String> requestQuery = new AtomicReference<>();
-        prometheusServer.createContext("/api/v1/query", exchange -> {
-            requestPath.set(exchange.getRequestURI().getPath());
-            requestQuery.set(exchange.getRequestURI().getRawQuery());
-            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
-        });
+    void connectionShouldQueryPrometheusEndpointTest() {
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .build();
 
@@ -327,19 +521,18 @@ class SettingsServiceTest {
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("Connection successful");
-        assertThat(requestPath.get()).isEqualTo("/api/v1/query");
-        assertThat(requestQuery.get()).isEqualTo("query=up");
     }
 
     @Test
-    void testConnectionShouldApplyBasicAuthentication() {
-        AtomicReference<String> authorization = new AtomicReference<>();
-        prometheusServer.createContext("/api/v1/query", exchange -> {
-            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
-            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
-        });
+    void connectionShouldApplyBasicAuthenticationTest() {
+        String expectedAuthorization = "Basic "
+                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8));
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, expectedAuthorization))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .auth("Basic Auth")
                 .username("prom")
@@ -349,19 +542,44 @@ class SettingsServiceTest {
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
-        assertThat(authorization.get()).isEqualTo("Basic "
-                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test
-    void testConnectionShouldApplyBearerAuthentication() {
-        AtomicReference<String> authorization = new AtomicReference<>();
-        prometheusServer.createContext("/api/v1/query", exchange -> {
-            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
-            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
-        });
+    void connectionShouldNormalizeIdentifiersIndependentlyOfDefaultLocaleTest() {
+        String expectedAuthorization = "Basic "
+                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8));
+        prometheusServer.expect(requestTo(MIMIR_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, expectedAuthorization))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
+                .type("MIMIR")
+                .auth("Basic Auth")
+                .username("prom")
+                .password("secret")
+                .build();
+        Locale originalLocale = Locale.getDefault();
+
+        DataSourceTestResultVO result;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            result = settingsService.testDataSource(request);
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        assertThat(result.isSuccess()).isTrue();
+    }
+
+    @Test
+    void connectionShouldApplyBearerAuthenticationTest() {
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .auth("Bearer Token")
                 .bearerToken("token-1")
@@ -370,11 +588,10 @@ class SettingsServiceTest {
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
-        assertThat(authorization.get()).isEqualTo("Bearer token-1");
     }
 
     @Test
-    void testConnectionShouldRejectLocalhostHostname() {
+    void connectionShouldRejectLocalhostHostnameTest() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("http://localhost:9090")
                 .type("Prometheus")
@@ -387,7 +604,20 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectLinkLocalMetadataAddress() {
+    void connectionShouldRejectLoopbackIpv4AddressTest() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("http://127.0.0.1:9090")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("local or private address");
+    }
+
+    @Test
+    void connectionShouldRejectLinkLocalMetadataAddressTest() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("http://169.254.169.254/latest/meta-data/")
                 .type("Prometheus")
@@ -400,9 +630,69 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectIncompleteBasicAuthentication() {
+    void connectionShouldRejectAwsImdsIpv6AddressTest() {
+        DataSourceTestDTO compressedRequest = DataSourceTestDTO.builder()
+                .url("http://[fd00:ec2::254]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+        DataSourceTestDTO expandedRequest = DataSourceTestDTO.builder()
+                .url("http://[fd00:0ec2:0000:0000:0000:0000:0000:0254]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO compressedResult = settingsService.testDataSource(compressedRequest);
+        DataSourceTestResultVO expandedResult = settingsService.testDataSource(expandedRequest);
+
+        assertThat(compressedResult.isSuccess()).isFalse();
+        assertThat(compressedResult.getMessage()).contains("local or private address");
+        assertThat(expandedResult.isSuccess()).isFalse();
+        assertThat(expandedResult.getMessage()).contains("local or private address");
+    }
+
+    @Test
+    void connectionShouldRejectAlibabaCloudMetadataAddressTest() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("http://100.100.100.200/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+        DataSourceTestDTO ipv4MappedRequest = DataSourceTestDTO.builder()
+                .url("http://[::ffff:100.100.100.200]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+        DataSourceTestResultVO ipv4MappedResult = settingsService.testDataSource(ipv4MappedRequest);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("local or private address");
+        assertThat(ipv4MappedResult.isSuccess()).isFalse();
+        assertThat(ipv4MappedResult.getMessage()).contains("local or private address");
+    }
+
+    @Test
+    void dataSourceAddressPolicyShouldRejectMixedSafeAndLoopbackResultsTest() throws Exception {
+        InetAddress[] addresses = {
+                InetAddress.getByName("192.0.2.1"),
+                InetAddress.getByName("127.0.0.1")
+        };
+
+        assertThat(settingsService.areAllowedDataSourceAddresses(addresses)).isFalse();
+    }
+
+    @Test
+    void dataSourceAddressPolicyShouldAcceptAllSafeResultsTest() throws Exception {
+        InetAddress[] addresses = {
+                InetAddress.getByName("192.0.2.1"),
+                InetAddress.getByName("198.51.100.1")
+        };
+
+        assertThat(settingsService.areAllowedDataSourceAddresses(addresses)).isTrue();
+    }
+
+    @Test
+    void connectionShouldRejectIncompleteBasicAuthenticationTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .auth("Basic Auth")
                 .username("prom")
@@ -414,9 +704,9 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectMissingBearerToken() {
+    void connectionShouldRejectMissingBearerTokenTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .auth("Bearer Token")
                 .build());
@@ -426,11 +716,14 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldReturnPrometheusErrorDetails() {
-        prometheusServer.createContext("/api/v1/query", exchange -> respond(exchange, 422,
-                "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid query\"}"));
+    void connectionShouldReturnPrometheusErrorDetailsTest() {
+        prometheusServer.expect(requestTo(VICTORIA_METRICS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid query\"}"));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("VictoriaMetrics")
                 .build();
 
@@ -442,7 +735,7 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectInvalidUrl() {
+    void connectionShouldRejectInvalidUrlTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url("ftp://example.com")
                 .type("Prometheus")
@@ -454,9 +747,9 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldRejectUnsupportedType() {
+    void connectionShouldRejectUnsupportedTypeTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("rocketmq")
                 .build());
 
@@ -464,11 +757,4 @@ class SettingsServiceTest {
         assertThat(result.getMessage()).isEqualTo("Unsupported data source type: rocketmq");
     }
 
-    private void respond(HttpExchange exchange, int statusCode, String body) throws IOException {
-        byte[] response = body.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(statusCode, response.length);
-        exchange.getResponseBody().write(response);
-        exchange.close();
-    }
 }

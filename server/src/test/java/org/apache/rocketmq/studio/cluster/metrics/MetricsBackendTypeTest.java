@@ -18,6 +18,8 @@ package org.apache.rocketmq.studio.cluster.metrics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class MetricsBackendTypeTest {
@@ -28,6 +30,10 @@ class MetricsBackendTypeTest {
         assertThat(MetricsBackendType.fromProviderType("VICTORIAMETRICS"))
                 .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
         assertThat(MetricsBackendType.fromProviderType("VICTORIA_METRICS"))
+                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
+        assertThat(MetricsBackendType.fromProviderType("victoria metrics"))
+                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
+        assertThat(MetricsBackendType.fromProviderType("victoria-metrics"))
                 .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
         assertThat(MetricsBackendType.fromProviderType("THANOS")).isEqualTo(MetricsBackendType.THANOS);
         assertThat(MetricsBackendType.fromProviderType("CORTEX")).isEqualTo(MetricsBackendType.CORTEX);
@@ -44,6 +50,21 @@ class MetricsBackendTypeTest {
     }
 
     @Test
+    void shouldResolveProviderTypeIndependentlyOfDefaultLocale() {
+        Locale originalLocale = Locale.getDefault();
+
+        MetricsBackendType backendType;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            backendType = MetricsBackendType.fromProviderType("mimir");
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        assertThat(backendType).isEqualTo(MetricsBackendType.MIMIR);
+    }
+
+    @Test
     void shouldExposeDistinctQueryPathsForBackends() {
         assertThat(MetricsBackendType.PROMETHEUS.getQueryPath()).isEqualTo("/api/v1/query_range");
         assertThat(MetricsBackendType.VICTORIA_METRICS.getQueryPath())
@@ -52,5 +73,23 @@ class MetricsBackendTypeTest {
         assertThat(MetricsBackendType.THANOS.getQueryPath()).isEqualTo("/api/v1/query_range");
         assertThat(MetricsBackendType.CORTEX.getQueryPath()).isEqualTo("/api/v1/query_range");
         assertThat(MetricsBackendType.ARMS.getQueryPath()).isEqualTo("/api/v1/query_range");
+    }
+
+    @Test
+    void shouldExposeCanonicalProviderType() {
+        assertThat(MetricsBackendType.PROMETHEUS.getProviderType()).isEqualTo("Prometheus");
+        assertThat(MetricsBackendType.VICTORIA_METRICS.getProviderType()).isEqualTo("VictoriaMetrics");
+        assertThat(MetricsBackendType.ARMS.getProviderType()).isEqualTo("ARMS");
+    }
+
+    @Test
+    void shouldExposeDistinctInstantQueryPathsForBackends() {
+        assertThat(MetricsBackendType.PROMETHEUS.getInstantQueryPath()).isEqualTo("/api/v1/query");
+        assertThat(MetricsBackendType.VICTORIA_METRICS.getInstantQueryPath())
+                .isEqualTo("/select/0/prometheus/api/v1/query");
+        assertThat(MetricsBackendType.MIMIR.getInstantQueryPath()).isEqualTo("/prometheus/api/v1/query");
+        assertThat(MetricsBackendType.THANOS.getInstantQueryPath()).isEqualTo("/api/v1/query");
+        assertThat(MetricsBackendType.CORTEX.getInstantQueryPath()).isEqualTo("/api/v1/query");
+        assertThat(MetricsBackendType.ARMS.getInstantQueryPath()).isEqualTo("/api/v1/query");
     }
 }

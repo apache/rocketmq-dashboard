@@ -26,8 +26,10 @@ import {
   createK8sCert,
   deleteK8sCert,
   getCluster,
+  getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
+  previewClusterConfig,
   updateClusterConfig,
   updateK8sCert,
   updateNameServer,
@@ -69,6 +71,47 @@ describe('clusterService mock clusters', () => {
     expect(detail.nameServers).not.toBe(listed.nameServers);
     expect(detail.config).not.toBe(listed.config);
     expect(detail.tpsHistory).not.toBe(listed.tpsHistory);
+  });
+
+  it('returns a complete mock NameServer drift result for the selected cluster', async () => {
+    const result = await getNameServerConfigDiff('cluster-prod');
+
+    expect(result.cluster).toBe('cluster-prod');
+    expect(result.nodeCount).toBeGreaterThan(1);
+    expect(result.reachableNodeCount).toBe(result.nodeCount);
+    expect(result.driftDetected).toBe(true);
+    expect(result.differences).toEqual([
+      expect.objectContaining({
+        key: 'serverWorkerThreads',
+        values: expect.arrayContaining([
+          expect.objectContaining({ address: expect.any(String), configured: true }),
+        ]),
+      }),
+    ]);
+  });
+
+  it('previews mock config updates without mutating the cluster', async () => {
+    const before = await getCluster('cluster-prod');
+
+    const preview = await previewClusterConfig({
+      id: before.id,
+      writeQueueNums: before.config.writeQueueNums + 1,
+    });
+
+    expect(preview.changed).toBe(true);
+    expect(preview.brokerProperties).toMatchObject({
+      defaultTopicQueueNums: String(before.config.writeQueueNums + 1),
+    });
+    expect(preview.targetBrokers.map((broker) => broker.address)).toEqual(
+      before.brokers.map((broker) => broker.addr),
+    );
+    expect(preview.changes).toEqual([
+      expect.objectContaining({
+        field: 'writeQueueNums',
+        brokerProperty: 'defaultTopicQueueNums',
+      }),
+    ]);
+    await expect(getCluster('cluster-prod')).resolves.toMatchObject({ config: before.config });
   });
 
   it('persists partial mock config updates without copying id into config', async () => {
@@ -128,8 +171,7 @@ describe('clusterService mock clusters', () => {
   it('copies certificate SAN arrays before writing them into the mock store', async () => {
     const san = ['proxy.example.com'];
     const created = await createK8sCert({
-      name: 'cert-copy-test',
-      namespace: 'rocketmq',
+      k8sId: 'cert-copy-test',
       cluster: 'cluster-prod',
       san,
     });

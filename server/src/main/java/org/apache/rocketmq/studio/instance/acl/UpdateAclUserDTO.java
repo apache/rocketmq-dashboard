@@ -32,13 +32,32 @@ public class UpdateAclUserDTO {
      */
     private Boolean admin;
     private List<String> clusters;
+    /** Tencent Cloud role read permission. */
+    private Boolean permRead;
+    /** Tencent Cloud role write permission. */
+    private Boolean permWrite;
+    /** Instance id used to route the operation to a cloud-vendor ACL backend. */
+    private String instanceId;
 
     public AclUserVO toAclUserVO() {
         return AclUserVO.builder()
-                .id(id)
+                .id(numericIdOrNull())
                 .username(username)
                 .admin(admin != null && admin)
+                .permRead(permRead)
+                .permWrite(permWrite)
                 .clusters(clusters)
                 .build();
+    }
+
+    private Long numericIdOrNull() {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(id.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 }

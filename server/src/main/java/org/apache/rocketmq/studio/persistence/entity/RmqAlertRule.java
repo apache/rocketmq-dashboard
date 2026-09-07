@@ -27,8 +27,10 @@ import java.time.LocalDateTime;
 @TableName("rmq_alert_rule")
 public class RmqAlertRule {
 
-    @TableId(type = IdType.INPUT)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
+    private String domain;
 
     private String name;
 
@@ -41,6 +43,10 @@ public class RmqAlertRule {
     private String thresholdUnit;
 
     private String duration;
+
+    private String aggregation;
+
+    private Integer windowSeconds;
 
     private String channels;
 
@@ -56,7 +62,19 @@ public class RmqAlertRule {
 
     private String severity;
 
-    private LocalDateTime createdAt;
+    private String instanceId;
 
-    private LocalDateTime updatedAt;
+    private String consumerGroup;
+
+    private String topic;
+
+    private Integer consecutiveSamples;
+    private String reminderInterval;
+    private String notificationTemplate;
+
+    private String semanticFingerprint;
+
+    private LocalDateTime gmtCreate;
+
+    private LocalDateTime gmtModified;
 }

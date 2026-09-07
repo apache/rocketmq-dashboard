@@ -13,9 +13,6 @@ services:
       JAVA_OPT_EXT: -Xms512m -Xmx512m -Xmn256m
     ports:
       - "9876:9876"
-    networks:
-      default:
-        ipv4_address: 10.89.2.10
 
   broker-0:
     image: apache-rocketmq:develop
@@ -34,9 +31,6 @@ services:
       - "10909:10909"
       - "10911:10911"
       - "10912:10912"
-    networks:
-      default:
-        ipv4_address: 10.89.2.11
     depends_on:
       - nameserver
 
@@ -58,9 +52,6 @@ services:
       - "20909:20909"
       - "20911:20911"
       - "20912:20912"
-    networks:
-      default:
-        ipv4_address: 10.89.2.12
     depends_on:
       - nameserver
 
@@ -119,11 +110,8 @@ services:
 
 networks:
   default:
-    name: rocketmq_default
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.89.2.0/24
+    name: rocketmq_net
+    external: true
 
 volumes:
   broker-0-store:

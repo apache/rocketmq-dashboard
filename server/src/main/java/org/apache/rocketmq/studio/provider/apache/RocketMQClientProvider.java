@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -29,11 +30,13 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ClientProvider;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
+import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,13 +44,13 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Live {@link ClientProvider} backed by the RocketMQ admin API. It discovers producer
@@ -63,10 +66,17 @@ public class RocketMQClientProvider implements ClientProvider {
     private static final long SUBSCRIPTION_GROUP_TIMEOUT_MILLIS = 5000L;
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final MqAdminExtFactory adminFactory;
 
     @Override
     public List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type) {
         return runtimeAdminClientResolver.execute(instanceId, adminExt -> findConnections(adminExt, clusterId, type));
+    }
+
+    @Override
+    public List<ClientConnectionVO> findConnectionsAt(String namesrvAddr, String clusterId, String type) {
+        return adminFactory.execute(namesrvAddr, null,
+                adminExt -> findConnections(adminExt, clusterId, type));
     }
 
     private List<ClientConnectionVO> findConnections(MQAdminExt adminExt, String clusterId, String type) {
@@ -87,7 +97,68 @@ public class RocketMQClientProvider implements ClientProvider {
                 adminExt -> findProducerConnections(adminExt, topic, producerGroup));
     }
 
+    @Override
+    public List<String> findProducerGroups(String instanceId, String topic, String query, int limit) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> findProducerGroups(adminExt, topic, query, limit));
+    }
+
+    private List<String> findProducerGroups(MQAdminExt adminExt, String topic, String query, int limit) {
+        BrokerTopology topology = discoverBrokerTopology(adminExt, null, "producer group selector");
+        if (topology.brokerAddresses().isEmpty()) {
+            return List.of();
+        }
+        String normalizedQuery = query == null ? null : query.toLowerCase(Locale.ROOT);
+        LinkedHashSet<String> groups = new LinkedHashSet<>();
+        int successfulBrokers = 0;
+        for (String brokerAddress : topology.brokerAddresses()) {
+            try {
+                ProducerTableInfo producerTable = adminExt.getAllProducerInfo(brokerAddress);
+                successfulBrokers++;
+                collectProducerGroups(groups, producerTable, normalizedQuery);
+            } catch (Exception e) {
+                log.warn("Failed to fetch producer groups from broker={}, skipping", brokerAddress, e);
+            }
+        }
+        if (successfulBrokers == 0) {
+            throw new BusinessException(502, "Failed to query producer groups from all brokers");
+        }
+        return groups.stream()
+                .sorted(Comparator.naturalOrder())
+                .limit(limit)
+                .toList();
+    }
+
     private List<ClientConnectionVO> findProducerConnections(MQAdminExt adminExt, String topic, String producerGroup) {
+        if (producerGroup == null || producerGroup.isBlank()) {
+            return findProducerConnectionsForActiveGroups(adminExt, topic);
+        }
+        return findProducerConnectionsForGroup(adminExt, topic, producerGroup);
+    }
+
+    private List<ClientConnectionVO> findProducerConnectionsForActiveGroups(MQAdminExt adminExt, String topic) {
+        List<String> producerGroups = findProducerGroups(adminExt, topic, null, Integer.MAX_VALUE);
+        if (producerGroups.isEmpty()) {
+            return List.of();
+        }
+        List<ClientConnectionVO> connections = new ArrayList<>();
+        int successfulGroupQueries = 0;
+        for (String producerGroup : producerGroups) {
+            try {
+                connections.addAll(findProducerConnectionsForGroup(adminExt, topic, producerGroup));
+                successfulGroupQueries++;
+            } catch (BusinessException e) {
+                log.warn("Failed to query producer connections for group={}, skipping", producerGroup, e);
+            }
+        }
+        if (successfulGroupQueries == 0) {
+            throw new BusinessException(502, "Failed to query producer connections from all groups");
+        }
+        return connections;
+    }
+
+    private List<ClientConnectionVO> findProducerConnectionsForGroup(
+            MQAdminExt adminExt, String topic, String producerGroup) {
         try {
             ProducerConnection producerConnection =
                     adminExt.examineProducerConnectionInfo(producerGroup, topic);
@@ -124,46 +195,49 @@ public class RocketMQClientProvider implements ClientProvider {
 
     private List<ClientConnectionVO> findAllProducerConnections(
             MQAdminExt adminExt, String clusterId) {
-        Set<String> brokerAddresses = collectProducerBrokerAddresses(adminExt);
+        BrokerTopology topology = discoverBrokerTopology(adminExt, clusterId, "producer connections");
         Map<String, ClientConnectionVO> connections = new LinkedHashMap<>();
         int successfulBrokers = 0;
-        for (String brokerAddress : brokerAddresses) {
+        for (String brokerAddress : topology.brokerAddresses()) {
             try {
                 ProducerTableInfo producerTable = adminExt.getAllProducerInfo(brokerAddress);
                 successfulBrokers++;
-                addProducerConnections(connections, producerTable, clusterId);
+                addProducerConnections(connections, producerTable, topology.clusterFor(brokerAddress));
             } catch (Exception e) {
                 log.warn("Failed to fetch producer connections from broker={}, skipping", brokerAddress, e);
             }
         }
-        if (!brokerAddresses.isEmpty() && successfulBrokers == 0) {
+        if (!topology.brokerAddresses().isEmpty() && successfulBrokers == 0) {
             throw new BusinessException(502, "Failed to query producer connections from all brokers");
         }
         return new ArrayList<>(connections.values());
     }
 
-    private Set<String> collectProducerBrokerAddresses(MQAdminExt adminExt) {
+    private BrokerTopology discoverBrokerTopology(MQAdminExt adminExt, String clusterId, String operation) {
         ClusterInfo clusterInfo;
         try {
             clusterInfo = adminExt.examineBrokerClusterInfo();
         } catch (Exception e) {
             throw new BusinessException(502,
-                    "Failed to discover brokers for producer connections: " + rootMessage(e));
+                    "Failed to discover brokers for " + operation + ": " + rootMessage(e));
         }
-        Set<String> addresses = new LinkedHashSet<>();
+        Map<String, String> clusterByAddress = new LinkedHashMap<>();
         if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-            return addresses;
+            return new BrokerTopology(clusterByAddress);
         }
         for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-            if (brokerData == null) {
+            if (brokerData == null || brokerData.getBrokerAddrs() == null
+                    || brokerData.getBrokerAddrs().isEmpty()) {
                 continue;
             }
             String brokerAddress = brokerData.selectBrokerAddr();
-            if (brokerAddress != null && !brokerAddress.isBlank()) {
-                addresses.add(brokerAddress);
+            String brokerCluster = brokerData.getCluster();
+            if (brokerAddress != null && !brokerAddress.isBlank()
+                    && (clusterId == null || clusterId.equals(brokerCluster))) {
+                clusterByAddress.putIfAbsent(brokerAddress, brokerCluster);
             }
         }
-        return addresses;
+        return new BrokerTopology(clusterByAddress);
     }
 
     private void addProducerConnections(
@@ -181,7 +255,8 @@ public class RocketMQClientProvider implements ClientProvider {
                 if (producerInfo == null) {
                     continue;
                 }
-                String key = producerGroup + '\0'
+                String key = Objects.toString(clusterId, "") + '\0'
+                        + producerGroup + '\0'
                         + Objects.toString(producerInfo.getClientId(), "") + '\0'
                         + Objects.toString(producerInfo.getRemoteIP(), "");
                 connections.putIfAbsent(key, toConnectionVO(producerInfo, producerGroup, clusterId));
@@ -189,29 +264,52 @@ public class RocketMQClientProvider implements ClientProvider {
         });
     }
 
+    private void collectProducerGroups(
+            LinkedHashSet<String> groups,
+            ProducerTableInfo producerTable,
+            String normalizedQuery) {
+        if (producerTable == null || producerTable.getData() == null) {
+            return;
+        }
+        producerTable.getData().keySet().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(group -> !group.isEmpty())
+                .filter(group -> normalizedQuery == null
+                        || group.toLowerCase(Locale.ROOT).contains(normalizedQuery))
+                .forEach(groups::add);
+    }
+
     private ClientConnectionVO toConnectionVO(
             ProducerInfo producerInfo, String producerGroup, String clusterId) {
+        String remoteIp = producerInfo.getRemoteIP();
+        if (remoteIp != null && remoteIp.startsWith("/")) {
+            remoteIp = remoteIp.substring(1);
+        }
         return ClientConnectionVO.builder()
                 .clientId(producerInfo.getClientId())
                 .type(ClientType.Producer)
                 .groupOrTopic(producerGroup)
                 .producerGroup(producerGroup)
                 .protocol(Protocol.Remoting)
-                .address(producerInfo.getRemoteIP())
+                .address(remoteIp)
                 .language(mapLanguage(producerInfo.getLanguage()))
-                .version(String.valueOf(producerInfo.getVersion()))
+                .version(MQVersion.getVersionDesc(producerInfo.getVersion()))
                 .clusterName(clusterId)
                 .build();
     }
 
     private List<ClientConnectionVO> findConsumerConnections(MQAdminExt adminExt, String clusterId) {
         List<ClientConnectionVO> result = new ArrayList<>();
-        Set<String> groups = collectSubscriptionGroups(adminExt);
+        Map<String, String> groups = collectSubscriptionGroups(adminExt, clusterId);
+        int attemptedGroupQueries = 0;
         int successfulGroupQueries = 0;
-        for (String group : groups) {
+        for (Map.Entry<String, String> groupEntry : groups.entrySet()) {
+            String group = groupEntry.getKey();
             if (isSystemGroup(group)) {
                 continue;
             }
+            attemptedGroupQueries++;
             try {
                 ConsumerConnection consumerConnection = adminExt.examineConsumerConnectionInfo(group);
                 successfulGroupQueries++;
@@ -222,48 +320,35 @@ public class RocketMQClientProvider implements ClientProvider {
                     if (connection == null) {
                         continue;
                     }
-                    result.add(toConnectionVO(connection, ClientType.Consumer, group, null, clusterId));
+                    result.add(toConnectionVO(connection, ClientType.Consumer, group, null,
+                            groupEntry.getValue()));
                 }
             } catch (Exception e) {
                 log.warn("Failed to examine consumer connection for group={}, skipping", group, e);
             }
         }
-        if (!groups.isEmpty() && successfulGroupQueries == 0) {
+        // Only fail when at least one non-system group was actually attempted and all of them
+        // failed; a cluster whose subscription table holds only system groups is not an error.
+        if (attemptedGroupQueries > 0 && successfulGroupQueries == 0) {
             throw new BusinessException(502, "Failed to query consumer connections from all groups");
         }
         return result;
     }
 
-    private Set<String> collectSubscriptionGroups(MQAdminExt adminExt) {
-        Set<String> groups = new LinkedHashSet<>();
-        ClusterInfo clusterInfo;
-        try {
-            clusterInfo = adminExt.examineBrokerClusterInfo();
-        } catch (Exception e) {
-            log.warn("Failed to fetch cluster info for consumer connection scan", e);
-            throw new BusinessException(502, "Failed to discover brokers for consumer connections: "
-                    + rootMessage(e));
-        }
-        if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-            return groups;
-        }
+    private Map<String, String> collectSubscriptionGroups(MQAdminExt adminExt, String clusterId) {
+        Map<String, String> groups = new LinkedHashMap<>();
+        BrokerTopology topology = discoverBrokerTopology(adminExt, clusterId, "consumer connections");
         int attemptedBrokerQueries = 0;
         int successfulBrokerQueries = 0;
-        for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-            if (brokerData == null) {
-                continue;
-            }
-            String brokerAddr = brokerData.selectBrokerAddr();
-            if (brokerAddr == null) {
-                continue;
-            }
+        for (String brokerAddr : topology.brokerAddresses()) {
             try {
                 attemptedBrokerQueries++;
                 SubscriptionGroupWrapper wrapper =
                         adminExt.getAllSubscriptionGroup(brokerAddr, SUBSCRIPTION_GROUP_TIMEOUT_MILLIS);
                 successfulBrokerQueries++;
                 if (wrapper != null && wrapper.getSubscriptionGroupTable() != null) {
-                    groups.addAll(wrapper.getSubscriptionGroupTable().keySet());
+                    wrapper.getSubscriptionGroupTable().keySet().forEach(group ->
+                            groups.putIfAbsent(group, topology.clusterFor(brokerAddr)));
                 }
             } catch (Exception e) {
                 log.warn("Failed to fetch subscription groups from broker={}, skipping", brokerAddr, e);
@@ -285,7 +370,7 @@ public class RocketMQClientProvider implements ClientProvider {
                 .protocol(Protocol.Remoting)
                 .address(connection.getClientAddr())
                 .language(mapLanguage(connection.getLanguage()))
-                .version(String.valueOf(connection.getVersion()))
+                .version(MQVersion.getVersionDesc(connection.getVersion()))
                 .clusterName(clusterId)
                 .build();
     }
@@ -333,17 +418,7 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private boolean isSystemGroup(String group) {
-        if (group == null) {
-            return true;
-        }
-        return group.startsWith("CID_RMQ_SYS_")
-                || group.startsWith("CID_ONSAPI_")
-                || group.startsWith("TOOLS_CONSUMER")
-                || group.startsWith("FILTERSRV_CONSUMER")
-                || group.startsWith("CID_SYS_")
-                || group.startsWith("%RETRY%")
-                || group.startsWith("SELF_TEST_")
-                || group.startsWith("CID_HOUSEKEEPING");
+        return SystemGroupFilter.isSystem(group);
     }
 
     private String rootMessage(Throwable error) {
@@ -355,5 +430,15 @@ public class RocketMQClientProvider implements ClientProvider {
         return message == null || message.isBlank()
                 ? current.getClass().getSimpleName()
                 : message;
+    }
+
+    private record BrokerTopology(Map<String, String> clusterByAddress) {
+        private List<String> brokerAddresses() {
+            return List.copyOf(clusterByAddress.keySet());
+        }
+
+        private String clusterFor(String brokerAddress) {
+            return clusterByAddress.get(brokerAddress);
+        }
     }
 }

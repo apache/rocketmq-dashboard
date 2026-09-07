@@ -20,11 +20,16 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
- * Common delete-by-id request body shared by all delete endpoints.
+ * Common delete-by-id request body shared by all delete endpoints. The id stays a String
+ * because some backends (Tencent Cloud ACL) identify resources by name; consumers that
+ * operate on numeric database keys parse it to Long at the boundary.
  */
 @Data
 public class DeleteRequestDTO {
 
     @NotBlank(message = "id is required")
     private String id;
+
+    /** Optional instance id used to route the delete to a cloud-vendor ACL backend. */
+    private String instanceId;
 }

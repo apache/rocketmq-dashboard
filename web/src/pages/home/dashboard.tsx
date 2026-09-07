@@ -23,21 +23,28 @@ import MetricsExplorer from '../../components/MetricsExplorer';
 import { CLUSTER_TYPE_MAP } from '../../constants/theme';
 import { getDashboard } from '../../services/dashboardService';
 import type { DashboardData } from '../../api/metrics';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
 import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
+
+const renderTopologyCount = (value: number | null) =>
+  value === null ? 'N/A' : value.toLocaleString();
 
 const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [dashboardInstanceId, setDashboardInstanceId] = useState<string>();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const dashboardRequestIdRef = useRef(0);
+  const clusterPagePath = selectedInstanceId
+    ? `/cluster?instanceId=${encodeURIComponent(selectedInstanceId)}`
+    : '/cluster';
 
   const loadDashboard = useCallback(async () => {
     const requestId = ++dashboardRequestIdRef.current;
@@ -47,6 +54,7 @@ const DashboardPage = () => {
       const nextDashboard = await getDashboard(selectedInstanceId);
       if (requestId === dashboardRequestIdRef.current) {
         setDashboard(nextDashboard);
+        setDashboardInstanceId(selectedInstanceId);
       }
     } catch {
       if (requestId === dashboardRequestIdRef.current) {
@@ -63,7 +71,7 @@ const DashboardPage = () => {
     let cancelled = false;
     void listInstances()
       .then((nextInstances) => {
-        if (!cancelled) setInstances(nextInstances);
+        if (!cancelled) setInstances(nextInstances.filter(supportsApacheRuntime));
       })
       .catch(() => {
         if (!cancelled) setInstances([]);
@@ -77,6 +85,8 @@ const DashboardPage = () => {
     void Promise.resolve().then(loadDashboard);
   }, [loadDashboard]);
 
+  const visibleDashboard = dashboardInstanceId === selectedInstanceId ? dashboard : null;
+
   const dashboardHeader = (
     <PageHeader
       title={t('dashboard.title')}
@@ -89,7 +99,7 @@ const DashboardPage = () => {
             placeholder="All configured instances"
             value={selectedInstanceId}
             onChange={setSelectedInstanceId}
-            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
             style={{ width: 220 }}
           />
           <Button onClick={() => void loadDashboard()} loading={loading}>
@@ -100,7 +110,7 @@ const DashboardPage = () => {
     />
   );
 
-  if (loading && !dashboard) {
+  if (loading && !visibleDashboard) {
     return (
       <div style={{ padding: 24 }}>
         {dashboardHeader}
@@ -109,7 +119,7 @@ const DashboardPage = () => {
     );
   }
 
-  if (loadError || !dashboard) {
+  if (loadError || !visibleDashboard) {
     return (
       <div style={{ padding: 24 }}>
         {dashboardHeader}
@@ -128,7 +138,7 @@ const DashboardPage = () => {
     );
   }
 
-  const { stats, clusters } = dashboard;
+  const { stats, clusters } = visibleDashboard;
 
   const statCards = [
     {
@@ -137,7 +147,7 @@ const DashboardPage = () => {
       icon: <ClusterOutlined style={{ fontSize: 22, color: '#52c41a' }} />,
       color: '#52c41a',
       suffix: '',
-      detail: `${stats.totalBrokers} Brokers · ${stats.totalProxies} Proxy`,
+      detail: `${stats.totalBrokers} Brokers · ${renderTopologyCount(stats.totalProxies)} Proxy`,
     },
     {
       title: t('dashboard.topics'),
@@ -194,7 +204,7 @@ const DashboardPage = () => {
       title: t('common.version'),
       dataIndex: 'version',
       key: 'version',
-      render: (v: string) => <span style={{ fontSize: 13 }}>{v}</span>,
+      render: (v: string) => <span style={{ fontSize: 14 }}>{v}</span>,
     },
     {
       title: t('dashboard.broker'),
@@ -202,7 +212,7 @@ const DashboardPage = () => {
       key: 'brokers',
       width: 80,
       align: 'center' as const,
-      render: (v: number) => Math.max(0, v),
+      render: renderTopologyCount,
     },
     {
       title: t('dashboard.proxy'),
@@ -210,7 +220,7 @@ const DashboardPage = () => {
       key: 'proxies',
       width: 80,
       align: 'center' as const,
-      render: (v: number) => Math.max(0, v),
+      render: renderTopologyCount,
     },
     {
       title: t('dashboard.topic'),
@@ -279,7 +289,7 @@ const DashboardPage = () => {
                 suffix={card.suffix}
                 valueStyle={{ fontSize: 28, fontWeight: 600 }}
               />
-              <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+              <Text type="secondary" style={{ fontSize: 14, marginTop: 4, display: 'block' }}>
                 {card.detail}
               </Text>
             </Card>
@@ -289,7 +299,7 @@ const DashboardPage = () => {
 
       <Card
         title={t('dashboard.clusterHealth')}
-        extra={<a onClick={() => navigate('/cluster')}>{t('common.viewAll')}</a>}
+        extra={<a onClick={() => navigate(clusterPagePath)}>{t('common.viewAll')}</a>}
         styles={{ body: { padding: '0 20px 16px' } }}
       >
         <Table
@@ -300,7 +310,7 @@ const DashboardPage = () => {
           pagination={false}
           onRow={() => ({
             style: { cursor: 'pointer' },
-            onClick: () => navigate('/cluster'),
+            onClick: () => navigate(clusterPagePath),
           })}
         />
       </Card>

@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 @RestController
@@ -36,6 +39,7 @@ import java.util.List;
 public class TopicController {
 
     private final MetadataService metadataService;
+    private final org.apache.rocketmq.studio.instance.InstanceService instanceService;
 
     @GetMapping
     public Result<List<TopicVO>> listTopics(
@@ -46,16 +50,46 @@ public class TopicController {
         return Result.ok(metadataService.listTopics(instanceId, clusterId, type, search));
     }
 
+    @GetMapping("/page")
+    public Result<PageResult<TopicVO>> listTopicsPage(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String clusterId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(metadataService.listTopicsPage(instanceId, clusterId, type, search, page, pageSize));
+    }
+
+    @GetMapping("/export")
+    public Result<String> exportTopics(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String names) {
+        return Result.ok(metadataService.exportTopics(instanceId, type, search, parseNames(names)));
+    }
+
+    @PostMapping("/import")
+    public Result<ImportTopicsResultVO> importTopics(@Valid @RequestBody ImportTopicsDTO request) {
+        String instanceId = instanceService.normalizeIdentifier(request.getInstanceId());
+        return Result.ok(metadataService.importTopics(instanceId, request.getTopics()));
+    }
+
     @PostMapping("/create")
     public Result<TopicVO> createTopic(@Valid @RequestBody(required = false) CreateTopicDTO topic) {
         requireCreateTopicRequest(topic);
-        return Result.ok(metadataService.createTopic(topic.toTopicVO()));
+        TopicVO vo = topic.toTopicVO();
+        vo.setInstanceId(instanceService.normalizeIdentifier(topic.getInstanceId()));
+        return Result.ok(metadataService.createTopic(vo));
     }
 
     @PostMapping("/update")
     public Result<TopicVO> updateTopic(@Valid @RequestBody(required = false) UpdateTopicDTO topic) {
         requireTopicRequest(topic);
-        return Result.ok(metadataService.updateTopic(topic.toTopicVO()));
+        TopicVO vo = topic.toTopicVO();
+        vo.setInstanceId(instanceService.normalizeIdentifier(topic.getInstanceId()));
+        return Result.ok(metadataService.updateTopic(vo));
     }
 
     @PostMapping("/delete")
@@ -77,6 +111,15 @@ public class TopicController {
             @PathVariable String name,
             @RequestParam(required = false) String instanceId) {
         return Result.ok(metadataService.getTopicConsumers(instanceId, name));
+    }
+
+    @GetMapping("/{name}/consumers/page")
+    public Result<TopicConsumerPageVO> getTopicConsumersPage(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(metadataService.getTopicConsumersPage(instanceId, name, page, pageSize));
     }
 
     @PostMapping("/send")
@@ -107,5 +150,16 @@ public class TopicController {
         if (request == null) {
             throw new BusinessException(400, "Topic send message request is required");
         }
+    }
+
+    private List<String> parseNames(String names) {
+        if (names == null || names.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(names.split(","))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .distinct()
+                .toList();
     }
 }

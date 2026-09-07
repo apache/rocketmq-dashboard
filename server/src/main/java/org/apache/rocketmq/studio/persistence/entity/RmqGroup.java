@@ -24,7 +24,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("rmq_group")
+@TableName("rmq_instance_group")
 public class RmqGroup {
 
     @TableId(type = IdType.AUTO)
@@ -46,7 +46,7 @@ public class RmqGroup {
 
     private String createdBy;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

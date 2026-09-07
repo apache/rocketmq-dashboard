@@ -17,6 +17,7 @@
 
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { App as AntdApp } from 'antd';
 import AlertRuleAssetList from '../AlertRuleAssetList';
 import { LangProvider } from '../../i18n/LangContext';
@@ -81,6 +82,46 @@ describe('AlertRuleAssetList', () => {
     expect(screen.getByText('rocketmq-consumer-lag-high')).toBeInTheDocument();
   });
 
+  it('filters assets by search text and severity', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const { container } = renderWithProviders(<AlertRuleAssetList />);
+
+    expect(await screen.findByText('rocketmq-broker-down')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(/Search alert|搜索告警/), 'consumer');
+
+    expect(screen.getByText('rocketmq-consumer-lag-high')).toBeInTheDocument();
+    expect(screen.queryByText('rocketmq-broker-down')).not.toBeInTheDocument();
+
+    await user.clear(screen.getByPlaceholderText(/Search alert|搜索告警/));
+    await user.click(container.querySelector('.ant-select-selector') as Element);
+    await user.click(
+      await screen.findByText('CRITICAL', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.getByText('rocketmq-broker-down')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText('rocketmq-consumer-lag-high')).not.toBeInTheDocument(),
+    );
+  }, 10_000);
+  it('keeps a failed list request visible and recovers when retried', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets)
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(sampleAssets);
+
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const retryButton = await screen.findByRole('button', { name: /Retry|重试/ });
+    expect(alertRuleAssetService.listAlertRuleAssets).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(retryButton);
+
+    expect(await screen.findByText('rocketmq-broker-down')).toBeInTheDocument();
+    expect(alertRuleAssetService.listAlertRuleAssets).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /Retry|重试/ })).not.toBeInTheDocument();
+  });
+
   it('opens a modal with yaml content when View is clicked', async () => {
     vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
     vi.mocked(alertRuleAssetService.getAlertRuleAsset).mockResolvedValue(
@@ -143,6 +184,24 @@ describe('AlertRuleAssetList', () => {
       expect(exportButtons[0]).toHaveClass('ant-btn-loading');
       expect(exportButtons[1]).toHaveClass('ant-btn-loading');
     });
+  });
+
+  it('deduplicates an asset export before loading state renders', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    let resolveExport!: (value: Blob) => void;
+    vi.mocked(alertRuleAssetService.exportAlertRuleAsset).mockImplementation(
+      () => new Promise((resolve) => (resolveExport = resolve)),
+    );
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const exportButtons = await screen.findAllByRole('button', { name: /导出|Export/ });
+    act(() => {
+      exportButtons[0].click();
+      exportButtons[0].click();
+    });
+
+    expect(alertRuleAssetService.exportAlertRuleAsset).toHaveBeenCalledTimes(1);
+    await act(async () => resolveExport(new Blob(['rules'])));
   });
 
   it('downloads the yaml when Export is clicked', async () => {

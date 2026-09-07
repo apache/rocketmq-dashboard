@@ -17,9 +17,12 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  getStoredThemePreference,
-  persistThemePreference,
+  COMPACT_STORAGE_KEY,
   THEME_STORAGE_KEY,
+  getStoredCompact,
+  getStoredThemeMode,
+  persistCompact,
+  persistThemeMode,
 } from './themePreference';
 
 describe('theme preference', () => {
@@ -27,17 +30,31 @@ describe('theme preference', () => {
     localStorage.clear();
   });
 
-  it('uses no explicit preference for missing or invalid stored values', () => {
-    expect(getStoredThemePreference()).toBeNull();
-    localStorage.setItem(THEME_STORAGE_KEY, 'system');
-    expect(getStoredThemePreference()).toBeNull();
+  it('falls back to system mode for missing or invalid stored values', () => {
+    expect(getStoredThemeMode()).toBe('system');
+    localStorage.setItem(THEME_STORAGE_KEY, 'neon');
+    expect(getStoredThemeMode()).toBe('system');
   });
 
-  it('persists manual light and dark theme choices', () => {
-    persistThemePreference(true);
-    expect(getStoredThemePreference()).toBe('dark');
+  it('persists light, dark and system theme choices', () => {
+    persistThemeMode('dark');
+    expect(getStoredThemeMode()).toBe('dark');
 
-    persistThemePreference(false);
-    expect(getStoredThemePreference()).toBe('light');
+    persistThemeMode('light');
+    expect(getStoredThemeMode()).toBe('light');
+
+    persistThemeMode('system');
+    expect(getStoredThemeMode()).toBe('system');
+  });
+
+  it('persists the compact mode preference', () => {
+    expect(getStoredCompact()).toBe(false);
+
+    persistCompact(true);
+    expect(getStoredCompact()).toBe(true);
+    expect(localStorage.getItem(COMPACT_STORAGE_KEY)).toBe('true');
+
+    persistCompact(false);
+    expect(getStoredCompact()).toBe(false);
   });
 });

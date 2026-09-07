@@ -16,12 +16,14 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface AclRepository {
-    List<AclRuleVO> findRules(String clusterId, String principal);
+    PageResult<AclRuleVO> findRulePage(String principal, String resource, String scope,
+            String decision, String aclVersion, int page, int pageSize);
 
     AclRuleVO saveRule(AclRuleVO rule);
 
@@ -31,13 +33,36 @@ public interface AclRepository {
      */
     Optional<AclRuleVO> replaceRule(AclRuleVO rule);
 
-    boolean deleteRule(String id);
+    boolean deleteRule(Long id);
 
     List<AclUserVO> findUsers();
 
-    Optional<AclUserVO> findUserById(String id);
+    PageResult<AclUserVO> findUserPage(String keyword, int page, int pageSize);
+
+    Optional<AclUserVO> findUserById(Long id);
 
     AclUserVO saveUser(AclUserVO user);
 
-    boolean deleteUser(String id);
+    /**
+     * Replaces an existing user atomically without creating a missing user.
+     * Returns empty when the user no longer exists.
+     */
+    Optional<AclUserVO> replaceUser(AclUserVO user);
+
+    boolean deleteUser(Long id);
+
+    /**
+     * Examines the effective ACL configuration of a broker cluster: the enabled
+     * flag, ACL version, the global IP whitelist and the list of plain access
+     * accounts provisioned for the cluster. Reads from the MySQL-backed
+     * {@code rmq_acl_user} / {@code rmq_acl_rule} tables.
+     */
+    AclClusterConfigVO examineBrokerClusterAclConfig(String clusterId);
+
+    /**
+     * Creates a new plain access account or updates an existing one (keyed by
+     * access key). Persists the account identity to {@code rmq_acl_user} and the
+     * per-resource permissions to {@code rmq_acl_rule}.
+     */
+    PlainAccessConfigVO createAndUpdatePlainAccessConfig(PlainAccessConfigVO config);
 }

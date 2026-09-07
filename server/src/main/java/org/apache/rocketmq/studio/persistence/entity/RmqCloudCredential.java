@@ -27,8 +27,8 @@ import java.time.LocalDateTime;
 @TableName("rmq_cloud_credential")
 public class RmqCloudCredential {
 
-    @TableId(type = IdType.INPUT)
-    private String id;
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
     private String name;
 
@@ -40,7 +40,7 @@ public class RmqCloudCredential {
 
     private String remark;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime gmtCreate;
 
-    private LocalDateTime updatedAt;
+    private LocalDateTime gmtModified;
 }

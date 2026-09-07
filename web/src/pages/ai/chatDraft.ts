@@ -15,21 +15,54 @@
  * limitations under the License.
  */
 
+import type { AgentEngine } from '../../stores/engineStore';
+
+export type ChatMode = 'chat' | 'diagnose' | 'manage' | 'query';
+
+const CHAT_MODES = new Set<ChatMode>(['chat', 'diagnose', 'manage', 'query']);
+const AGENT_ENGINES = new Set<AgentEngine>(['claude-code', 'qoder', 'http']);
+
 export interface ChatDraft {
   prompt: string;
   model?: string;
+  engine?: AgentEngine;
+  mode?: ChatMode;
   enhance?: boolean;
+  newConversation?: boolean;
+  conversationId?: string;
 }
 
 export function getChatDraft(state: unknown): ChatDraft | null {
   if (typeof state !== 'object' || state === null) return null;
   const candidate = state as Record<string, unknown>;
-  if (typeof candidate.prompt !== 'string' || !candidate.prompt.trim()) return null;
+  const prompt = typeof candidate.prompt === 'string' ? candidate.prompt.trim() : '';
+  const conversationId =
+    typeof candidate.conversationId === 'string' && candidate.conversationId.trim()
+      ? candidate.conversationId
+      : undefined;
+  if (!prompt && !conversationId) return null;
   const model = typeof candidate.model === 'string' ? candidate.model.trim() : '';
+  const mode =
+    typeof candidate.mode === 'string' && CHAT_MODES.has(candidate.mode as ChatMode)
+      ? (candidate.mode as ChatMode)
+      : undefined;
+  const engine =
+    typeof candidate.engine === 'string' && AGENT_ENGINES.has(candidate.engine as AgentEngine)
+      ? (candidate.engine as AgentEngine)
+      : undefined;
 
   return {
-    prompt: candidate.prompt.trim(),
+    prompt,
     ...(model ? { model } : {}),
+    ...(engine ? { engine } : {}),
+    ...(mode ? { mode } : {}),
     ...(candidate.enhance === true ? { enhance: true } : {}),
+    ...(candidate.newConversation === true ? { newConversation: true } : {}),
+    ...(conversationId ? { conversationId } : {}),
   };
+}
+
+export function shouldOpenChatHistory(state: unknown): boolean {
+  if (typeof state !== 'object' || state === null) return false;
+  return (state as Record<string, unknown>).historyIntent === 'open';
 }

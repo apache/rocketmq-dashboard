@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.auth;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolAccessPolicy;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
@@ -37,6 +38,7 @@ public class AuthWebConfig implements WebMvcConfigurer {
     private final ObjectProvider<AuthProperties> authPropertiesProvider;
     private final ObjectProvider<AuthService> authServiceProvider;
     private final ObjectProvider<SettingsRepository> settingsRepositoryProvider;
+    private final ObjectProvider<ToolAccessPolicy> toolAccessPolicyProvider;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -44,7 +46,9 @@ public class AuthWebConfig implements WebMvcConfigurer {
         // missing the interceptor falls back to the static login-required property (effectively
         // no enforcement), matching the old conditional-registration behaviour.
         registry.addInterceptor(new AuthInterceptor(authPropertiesProvider.getIfAvailable(),
-                        authServiceProvider.getIfAvailable(), settingsRepositoryProvider.getIfAvailable()))
+                        authServiceProvider.getIfAvailable(),
+                        settingsRepositoryProvider.getIfAvailable(),
+                        toolAccessPolicyProvider.getIfAvailable()))
                 .addPathPatterns("/api/**");
     }
 }

@@ -16,26 +16,21 @@
  */
 
 import React from 'react';
-import { Card, Space } from 'antd';
-import { Warning } from '@phosphor-icons/react';
+import { Card } from 'antd';
 import { useLang } from '../../i18n/LangContext';
+import PageHeader from '../../components/PageHeader';
 import AlertRuleAssetList from '../../components/AlertRuleAssetList';
 
 const AlertRuleAssetsPage: React.FC = () => {
   const { t } = useLang();
 
   return (
-    <div style={{ padding: '0 0 24px' }}>
-      <Card
-        size="small"
-        title={
-          <Space>
-            <Warning size={18} />
-            <span>{t('alertAssets.title')}</span>
-          </Space>
-        }
-      >
-        <AlertRuleAssetList />
+    <div style={{ padding: 24 }}>
+      <PageHeader title={t('alertAssets.title')} subtitle="可复用的业务告警规则模板资产" />
+      <Card styles={{ body: { padding: 0 } }}>
+        <div style={{ padding: 16 }}>
+          <AlertRuleAssetList />
+        </div>
       </Card>
     </div>
   );

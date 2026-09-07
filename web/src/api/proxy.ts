@@ -37,6 +37,16 @@ export interface ProxyNode {
   isSelected: boolean;
 }
 
+export interface ProxyTopologyNode {
+  proxyAddr: string;
+  status: 'UP' | 'PARTIAL' | 'DOWN';
+  grpcPort: number;
+  remotingPort: number | null;
+  grpcReachable: boolean;
+  remotingReachable: boolean;
+  latencyMs: number;
+}
+
 // ─── API Functions ───────────────────────────────────────────────
 
 export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
@@ -44,18 +54,35 @@ export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
   return res.data.data;
 }
 
-export async function addProxyAddr(address: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('newProxyAddr', address);
-  await client.post('/proxy/addProxyAddr.do', params, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+/** Live TCP health/topology view of every registered proxy node. */
+export async function getProxyTopology(): Promise<ProxyTopologyNode[]> {
+  const res = await client.get<{ data: ProxyTopologyNode[] }>('/proxies/topology');
+  return res.data.data;
 }
 
-export async function removeProxyAddr(address: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('proxyAddr', address);
-  await client.post('/proxy/removeProxyAddr.do', params, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+export async function addProxyAddress(addr: string): Promise<ProxyHomePageData> {
+  const res = await client.post<{ data: ProxyHomePageData }>('/proxies/addresses', { addr });
+  return res.data.data;
+}
+
+export async function removeProxyAddress(addr: string): Promise<ProxyHomePageData> {
+  const res = await client.delete<{ data: ProxyHomePageData }>('/proxies/addresses', {
+    params: { addr },
   });
+  return res.data.data;
+}
+
+/**
+ * Trigger a configuration hot-reload for a proxy.
+ * Uses the same DTO as restartProxy ({ clusterId, addr }).
+ */
+export async function reloadProxyConfig(
+  clusterId: string,
+  addr: string,
+): Promise<{ success: boolean }> {
+  const res = await client.post<{ data: { success: boolean } }>('/proxies/config/reload', {
+    clusterId,
+    addr,
+  });
+  return res.data.data;
 }

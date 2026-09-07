@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.apache.rocketmq.studio.cluster.metrics.MetricQueryDTO;
 import lombok.Data;
+import lombok.ToString;
 
 /**
  * Request to run a PromQL range query against a configured data source.
@@ -36,9 +37,13 @@ public class MetricsDataSourceQueryRequest {
     @NotNull(message = "query is required")
     private MetricQueryDTO query;
 
+    private String instanceId;
+
     private String username;
 
+    @ToString.Exclude
     private String password;
 
+    @ToString.Exclude
     private String bearerToken;
 }

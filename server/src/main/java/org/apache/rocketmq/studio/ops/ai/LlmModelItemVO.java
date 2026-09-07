@@ -25,6 +25,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LlmModelItemVO {
+    /** LLM model identifier such as "gpt-4o"; not a database primary key. */
     private String id;
     private String name;
 }

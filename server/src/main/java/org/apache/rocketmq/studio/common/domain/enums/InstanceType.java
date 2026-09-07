@@ -18,5 +18,9 @@
 package org.apache.rocketmq.studio.common.domain.enums;
 
 public enum InstanceType {
-    PROXY, DIRECT
+    /** Cloud-managed (vendor-hosted) instance selected from the vendor catalog. */
+    CLOUD,
+    PROXY_LOCAL,
+    PROXY_CLUSTER,
+    DIRECT;
 }

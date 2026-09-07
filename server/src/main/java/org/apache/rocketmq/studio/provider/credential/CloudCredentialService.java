@@ -19,17 +19,21 @@ package org.apache.rocketmq.studio.provider.credential;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
+import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -39,6 +43,7 @@ public class CloudCredentialService {
     private final CloudCredentialRepository credentialRepository;
     private final InstanceRepository instanceRepository;
     private final AliyunClientFactory aliyunClientFactory;
+    private final TencentClientFactory tencentClientFactory;
     private final OperationAuditService operationAuditService;
 
     public List<CloudCredentialVO> listMasked() {
@@ -46,6 +51,11 @@ public class CloudCredentialService {
         return credentialRepository.findAll().stream()
                 .map(this::maskAccessKey)
                 .toList();
+    }
+    public PageResult<CloudCredentialVO> listMasked(InstanceVendor vendor, String search, int page, int pageSize) {
+        if (page < 1 || pageSize < 1 || pageSize > 100) throw new BusinessException(400, "Invalid page or pageSize");
+        PageResult<CloudCredentialVO> result = credentialRepository.findPage(vendor, search, page, pageSize);
+        return PageResult.of(result.getItems().stream().map(this::maskAccessKey).toList(), result.getTotal(), page, pageSize);
     }
 
     public CloudCredentialVO create(CloudCredentialVO credential) {
@@ -68,17 +78,22 @@ public class CloudCredentialService {
                                     + " and accessKey " + CredentialUtils.mask(credential.getAccessKey()));
                 });
         log.info("Creating cloud credential name={}, vendor={}", credential.getName(), credential.getVendor());
-        credential.setId(UUID.randomUUID().toString());
-        credential.setCreatedAt(LocalDateTime.now());
-        credential.setUpdatedAt(LocalDateTime.now());
-        CloudCredentialVO saved = credentialRepository.save(credential);
-        recordAudit("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
+        credential.setGmtCreate(LocalDateTime.now());
+        credential.setGmtModified(LocalDateTime.now());
+        CloudCredentialVO saved;
+        try {
+            saved = credentialRepository.save(credential);
+        } catch (DuplicateKeyException exception) {
+            throw new BusinessException(409, "Cloud credential already exists for vendor "
+                    + credential.getVendor() + " and accessKey " + CredentialUtils.mask(credential.getAccessKey()));
+        }
+        recordAudit("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(saved.getId()), null,
                 credentialAuditDetail(saved));
         return maskAccessKey(saved);
     }
 
     public CloudCredentialVO update(UpdateCloudCredentialDTO request) {
-        if (request == null || !StringUtils.hasText(request.getId())) {
+        if (request == null || request.getId() == null) {
             throw new BusinessException(400, "Cloud credential id is required");
         }
         log.info("Updating cloud credential id={}", request.getId());
@@ -96,16 +111,18 @@ public class CloudCredentialService {
         if (request.getRemark() != null) {
             existing.setRemark(request.getRemark());
         }
-        existing.setUpdatedAt(LocalDateTime.now());
-        CloudCredentialVO saved = credentialRepository.save(existing);
-        invalidateAliyunClients(saved);
-        recordAudit("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
-                credentialAuditDetail(saved));
-        return maskAccessKey(saved);
+        existing.setGmtModified(LocalDateTime.now());
+        if (!credentialRepository.replace(existing)) {
+            throw new BusinessException(404, "Cloud credential not found: " + request.getId());
+        }
+        invalidateCloudClients(existing);
+        recordAudit("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(existing.getId()), null,
+                credentialAuditDetail(existing));
+        return maskAccessKey(existing);
     }
 
-    public void delete(String id) {
-        if (!StringUtils.hasText(id)) {
+    public void delete(Long id) {
+        if (id == null) {
             throw new BusinessException(400, "Cloud credential id is required");
         }
         log.info("Deleting cloud credential id={}", id);
@@ -114,14 +131,20 @@ public class CloudCredentialService {
         if (instanceRepository.existsByCredentialId(id)) {
             throw new BusinessException(400, "Cloud credential is referenced by existing instances");
         }
-        credentialRepository.deleteById(id);
-        invalidateAliyunClients(existing);
-        recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", id, null,
+        try {
+            if (!credentialRepository.deleteById(id)) {
+                throw new BusinessException(404, "Cloud credential not found: " + id);
+            }
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(409, "Cloud credential is referenced by existing instances");
+        }
+        invalidateCloudClients(existing);
+        recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(id), null,
                 credentialAuditDetail(existing));
     }
 
-    public CloudCredentialVO reveal(String id) {
-        if (!StringUtils.hasText(id)) {
+    public CloudCredentialVO reveal(Long id) {
+        if (id == null) {
             throw new BusinessException(400, "Cloud credential id is required");
         }
         return credentialRepository.findById(id)
@@ -136,8 +159,8 @@ public class CloudCredentialService {
         masked.setAccessKey(CredentialUtils.mask(credential.getAccessKey()));
         masked.setSecretKey(null);
         masked.setRemark(credential.getRemark());
-        masked.setCreatedAt(credential.getCreatedAt());
-        masked.setUpdatedAt(credential.getUpdatedAt());
+        masked.setGmtCreate(credential.getGmtCreate());
+        masked.setGmtModified(credential.getGmtModified());
         return masked;
     }
 
@@ -145,9 +168,11 @@ public class CloudCredentialService {
         return "name=" + credential.getName() + ", vendor=" + credential.getVendor();
     }
 
-    private void invalidateAliyunClients(CloudCredentialVO credential) {
+    private void invalidateCloudClients(CloudCredentialVO credential) {
         if (credential.getVendor() == org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.ALIYUN) {
             aliyunClientFactory.invalidateCredential(credential.getId());
+        } else if (credential.getVendor() == org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.TENCENT) {
+            tencentClientFactory.invalidateCredential(credential.getId());
         }
     }
 

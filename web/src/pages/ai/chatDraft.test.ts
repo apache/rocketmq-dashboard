@@ -16,13 +16,23 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { getChatDraft } from './chatDraft';
+import { getChatDraft, shouldOpenChatHistory } from './chatDraft';
 
 describe('AI chat draft navigation state', () => {
   it('normalizes a prompt and preserves a selected model', () => {
     expect(getChatDraft({ prompt: '  检查集群状态  ', model: '  qwen3.7-max  ' })).toEqual({
       prompt: '检查集群状态',
       model: 'qwen3.7-max',
+    });
+  });
+
+  it('preserves supported home modes and drops unknown modes', () => {
+    expect(getChatDraft({ prompt: '检查集群状态', mode: 'diagnose' })).toEqual({
+      prompt: '检查集群状态',
+      mode: 'diagnose',
+    });
+    expect(getChatDraft({ prompt: '检查集群状态', mode: 'unknown' })).toEqual({
+      prompt: '检查集群状态',
     });
   });
 
@@ -36,5 +46,12 @@ describe('AI chat draft navigation state', () => {
     expect(getChatDraft({ prompt: '检查集群状态', model: '   ' })).toEqual({
       prompt: '检查集群状态',
     });
+  });
+
+  it('only opens history for the explicit history route intent', () => {
+    expect(shouldOpenChatHistory({ historyIntent: 'open' })).toBe(true);
+    expect(shouldOpenChatHistory({ historyIntent: 'closed' })).toBe(false);
+    expect(shouldOpenChatHistory({ prompt: '检查集群状态' })).toBe(false);
+    expect(shouldOpenChatHistory(null)).toBe(false);
   });
 });

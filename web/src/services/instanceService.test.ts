@@ -15,14 +15,24 @@
  * limitations under the License.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const dataModeMock = vi.hoisted(() => ({ isMockMode: vi.fn(() => true) }));
+vi.mock('./dataMode', () => dataModeMock);
+const instanceApiMock = vi.hoisted(() => ({ listInstances: vi.fn() }));
+vi.mock('../api/instance', () => instanceApiMock);
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
 
-import { createInstance, deleteInstance, listInstances, updateInstance } from './instanceService';
+import {
+  createInstance,
+  deleteInstance,
+  getInstanceCapabilities,
+  listInstances,
+  updateInstance,
+} from './instanceService';
+import type { Instance } from '../api/instance';
 
 describe('instanceService mock instances', () => {
   it('returns defensive copies from list reads', async () => {
@@ -42,22 +52,26 @@ describe('instanceService mock instances', () => {
 
   it('filters mock instances with the same type and search semantics as the API', async () => {
     const byType = await listInstances({ type: 'DIRECT' });
-    expect(byType.map((instance) => instance.id)).toEqual([
-      'instance-direct-1',
-      'instance-direct-2',
-    ]);
+    expect(byType.map((instance) => instance.id)).toEqual([1, 2]);
 
     const byEndpoint = await listInstances({ search: '  10.0.2.21  ' });
-    expect(byEndpoint.map((instance) => instance.id)).toEqual(['instance-proxy-1']);
+    expect(byEndpoint.map((instance) => instance.id)).toEqual([3]);
 
     const combined = await listInstances({ type: 'DIRECT', search: 'instance-direct-2' });
-    expect(combined.map((instance) => instance.id)).toEqual(['instance-direct-2']);
+    expect(combined.map((instance) => instance.id)).toEqual([2]);
+
+    const clusterOnly = await listInstances({ type: 'PROXY_CLUSTER' });
+    expect(clusterOnly.map((instance) => instance.id)).toEqual([3, 4]);
+    await expect(listInstances({ type: 'PROXY_LOCAL' })).resolves.toEqual([
+      expect.objectContaining({ type: 'PROXY_LOCAL' }),
+    ]);
+    await expect(listInstances({ type: 'CLOUD' })).resolves.toEqual([]);
   });
 
   it('does not expose created or updated store records by reference', async () => {
     const created = await createInstance({
       name: 'rocketmq-copy-test',
-      type: 'PROXY',
+      type: 'PROXY_CLUSTER',
       endpoint: 'proxy-copy-test:8080',
       remark: 'created',
     });
@@ -69,11 +83,12 @@ describe('instanceService mock instances', () => {
     const storedCreated = afterCreate.find((instance) => instance.id === created.id);
     expect(storedCreated).toMatchObject({
       name: 'rocketmq-copy-test',
+      type: 'PROXY_CLUSTER',
       remark: 'created',
     });
 
     const updated = await updateInstance({
-      id: created.id,
+      instanceId: 'rocketmq-copy-test',
       remark: 'updated',
     });
     updated.remark = 'mutated-updated';
@@ -91,5 +106,84 @@ describe('instanceService mock instances', () => {
     );
 
     await expect(listInstances()).resolves.toEqual(before);
+  });
+
+  it('returns provider-specific mock capabilities without sharing mutable arrays', async () => {
+    const first = await getInstanceCapabilities('instance-direct-1');
+    expect(first.instanceId).toBe('instance-direct-1');
+    expect(first.vendor).toBe('APACHE');
+    first.capabilities.length = 0;
+
+    const second = await getInstanceCapabilities('instance-direct-1');
+
+    expect(second.capabilities).toContain('DLQ_MANAGEMENT');
+    await expect(getInstanceCapabilities('missing-instance')).rejects.toThrow(
+      'Instance not found: missing-instance',
+    );
+  });
+});
+
+describe('instanceService list request dedupe', () => {
+  beforeEach(() => {
+    dataModeMock.isMockMode.mockReturnValue(true);
+    instanceApiMock.listInstances.mockReset();
+  });
+
+  it('shares one inflight list request between concurrent callers', async () => {
+    dataModeMock.isMockMode.mockReturnValue(false);
+    const fixture: Instance[] = [
+      {
+        id: 1,
+        name: 'shared-instance',
+        remark: null,
+        type: 'PROXY_CLUSTER',
+        endpoint: '10.0.0.1:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ];
+    let resolveList!: (value: Instance[]) => void;
+    instanceApiMock.listInstances.mockImplementation(
+      () =>
+        new Promise<Instance[]>((resolve) => {
+          resolveList = resolve;
+        }),
+    );
+
+    const first = listInstances({});
+    const second = listInstances({ search: '   ' });
+    resolveList(fixture);
+
+    const [a, b] = await Promise.all([first, second]);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(1);
+    expect(a).toEqual(b);
+    expect(a).not.toBe(b);
+
+    instanceApiMock.listInstances.mockResolvedValue(fixture);
+    await listInstances({});
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not share inflight requests across data modes', async () => {
+    dataModeMock.isMockMode.mockReturnValue(false);
+    let resolveRealList!: (value: Instance[]) => void;
+    instanceApiMock.listInstances.mockImplementationOnce(
+      () =>
+        new Promise<Instance[]>((resolve) => {
+          resolveRealList = resolve;
+        }),
+    );
+
+    const realRequest = listInstances({});
+    dataModeMock.isMockMode.mockReturnValue(true);
+    const mockResult = await listInstances({});
+
+    expect(mockResult.length).toBeGreaterThan(0);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(1);
+
+    resolveRealList([]);
+    await expect(realRequest).resolves.toEqual([]);
   });
 });

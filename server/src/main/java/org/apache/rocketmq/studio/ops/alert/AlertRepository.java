@@ -16,21 +16,41 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface AlertRepository {
     List<AlertRuleVO> findAllRules();
 
-    AlertRuleVO saveRule(AlertRuleVO rule);
+    PageResult<AlertRuleVO> findRulePage(String search, Boolean enabled, int page, int pageSize);
+
+    PageResult<AlertRuleVO> findRulesPage(AlertRuleQuery query);
+
+    Optional<AlertRuleVO> findRuleById(Long id);
+
+    List<AlertRuleVO> findRulesByIds(List<Long> ids);
+
+    AlertRuleVO insertRule(AlertRuleVO rule);
 
     boolean replaceRule(AlertRuleVO rule);
 
-    boolean deleteRule(String id);
+    void markRuleTriggered(Long id, String triggeredAt);
+
+    boolean deleteRule(Long id);
 
     List<SystemAlertVO> findAlerts(String level);
 
+    PageResult<SystemAlertVO> findAlerts(String level, int page, int pageSize);
+
+    Optional<SystemAlertVO> findAlertById(Long id);
+
+    PageResult<SystemAlertVO> findAlertsPage(SystemAlertQuery query);
+
     SystemAlertVO saveAlert(SystemAlertVO alert);
+
+    boolean acknowledgeAlert(SystemAlertVO alert);
 
     int deleteAcknowledgedAlerts();
 }

@@ -50,10 +50,9 @@ describe('LlmSettingsPage', () => {
 
   it('keeps provider fallback models available before config is saved', () => {
     expect(fallbackModelOptions('openai')).toEqual([
-      { value: 'gpt-4o', label: 'gpt-4o' },
-      { value: 'gpt-4-turbo', label: 'gpt-4-turbo' },
-      { value: 'gpt-4', label: 'gpt-4' },
-      { value: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo' },
+      { value: 'gpt-5.6-sol', label: 'gpt-5.6-sol' },
+      { value: 'gpt-5.6-terra', label: 'gpt-5.6-terra' },
+      { value: 'gpt-5.6-luna', label: 'gpt-5.6-luna' },
     ]);
   });
 

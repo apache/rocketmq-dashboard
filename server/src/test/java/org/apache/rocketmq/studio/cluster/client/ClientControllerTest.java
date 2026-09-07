@@ -69,9 +69,9 @@ class ClientControllerTest {
                 .connectedAt(LocalDateTime.of(2026, 1, 1, 12, 5))
                 .clusterName("production-cluster")
                 .build();
-        when(clientService.listConnections("instance-1", null, null)).thenReturn(List.of(grpcClient, remotingClient));
+        when(clientService.listConnectionsAt("10.0.1.31:9876", null, null)).thenReturn(List.of(grpcClient, remotingClient));
 
-        mockMvc.perform(get("/api/clients").param("instanceId", "instance-1"))
+        mockMvc.perform(get("/api/clients").param("namesrvAddr", "10.0.1.31:9876"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
@@ -84,15 +84,15 @@ class ClientControllerTest {
                 .andExpect(jsonPath("$.data[1].type").value("Producer"))
                 .andExpect(jsonPath("$.data[1].protocol").value("Remoting"));
 
-        verify(clientService).listConnections("instance-1", null, null);
+        verify(clientService).listConnectionsAt("10.0.1.31:9876", null, null);
     }
 
     @Test
     void listConnectionsShouldPassClusterAndTypeFilters() throws Exception {
-        when(clientService.listConnections("instance-1", "production-cluster", "Consumer")).thenReturn(List.of());
+        when(clientService.listConnectionsAt("10.0.1.31:9876", "production-cluster", "Consumer")).thenReturn(List.of());
 
         mockMvc.perform(get("/api/clients")
-                        .param("instanceId", "instance-1")
+                        .param("namesrvAddr", "10.0.1.31:9876")
                         .param("clusterId", "production-cluster")
                         .param("type", "Consumer"))
                 .andExpect(status().isOk())
@@ -100,6 +100,6 @@ class ClientControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data").isEmpty());
 
-        verify(clientService).listConnections("instance-1", "production-cluster", "Consumer");
+        verify(clientService).listConnectionsAt("10.0.1.31:9876", "production-cluster", "Consumer");
     }
 }

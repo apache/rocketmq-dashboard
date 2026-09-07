@@ -16,22 +16,28 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.Set;
 
 /**
  * Open-source Apache RocketMQ implementation: pure delegation to the existing admin-client
@@ -52,20 +58,39 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public Set<InstanceCapability> capabilities() {
+        return Set.of(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT,
+                InstanceCapability.DLQ_MANAGEMENT);
+    }
+
+    @Override
     public int countTopics(String instanceId) {
-        return (int) instanceRepository.countTopicsByInstance(instanceId);
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(instance -> (int) instanceRepository.countTopicsByInstance(instance.getName()))
+                .orElse(0);
     }
 
     @Override
     public int countGroups(String instanceId) {
-        return (int) instanceRepository.countGroupsByInstance(instanceId);
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(instance -> (int) instanceRepository.countGroupsByInstance(instance.getName()))
+                .orElse(0);
     }
 
     @Override
     public List<TopicVO> listTopics(String instanceId, String type, String search) {
-        return metadataProvider.listTopics(null, type, search).stream()
-                .filter(topic -> matchesInstance(topic.getInstanceId(), instanceId))
-                .toList();
+        return metadataProvider.listTopics(instanceId, null, type, search);
+    }
+
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search,
+            int page, int pageSize) {
+        return metadataProvider.listTopicsPage(instanceId, null, type, search, page, pageSize);
     }
 
     @Override
@@ -89,8 +114,19 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public TopicConsumerPageVO getTopicConsumersPage(String instanceId, String topicName, int page, int pageSize) {
+        return metadataProvider.getTopicConsumersPage(instanceId, topicName, page, pageSize);
+    }
+
+    @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search) {
         return metadataProvider.listConsumerGroups(instanceId, null, search);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
+            int page, int pageSize) {
+        return metadataProvider.listConsumerGroupsPage(instanceId, null, search, page, pageSize);
     }
 
     @Override
@@ -114,6 +150,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String groupName,
+                                                           long timestamp, String topic) {
+        return adminClient.previewResetOffset(instanceId, groupName, timestamp, topic);
+    }
+
+    @Override
     public void resetOffset(String instanceId, String groupName, long timestamp, String topic) {
         adminClient.resetOffset(instanceId, groupName, timestamp, topic);
     }
@@ -125,14 +167,22 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
-        return messageProvider.getMessageTrace(instanceId, msgId);
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
+        return messageProvider.getMessageTrace(instanceId, msgId, topic);
     }
 
-    private boolean matchesInstance(String topicInstanceId, String instanceId) {
-        if (instanceId == null || instanceId.isBlank()) {
-            return true;
-        }
-        return Objects.equals(topicInstanceId, instanceId);
+    @Override
+    public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        return messageProvider.consumeMessageDirectly(request);
+    }
+
+    @Override
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic, String traceTopic) {
+        return messageProvider.getMessageTrace(instanceId, msgId, topic, traceTopic);
+    }
+
+    @Override
+    public TraceRecordVO getMessageTraceByKey(String instanceId, String key, String topic, String traceTopic) {
+        return messageProvider.getMessageTraceByKey(instanceId, key, topic, traceTopic);
     }
 }

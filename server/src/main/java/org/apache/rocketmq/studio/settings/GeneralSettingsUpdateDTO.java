@@ -55,6 +55,15 @@ public class GeneralSettingsUpdateDTO {
     private String model;
     @NotNull
     private String baseUrl;
+    private String deploymentName;
+    private String apiVersion;
+    private String awsRegion;
+    private String dingtalkWebhook;
+    @ToString.Exclude
+    private String dingtalkSigningSecret;
+    private boolean clearDingtalkSigningSecret;
+    private String emailRecipients;
+    private String smsWebhook;
 
     public GeneralSettingsVO toSettings() {
         return GeneralSettingsVO.builder()
@@ -70,6 +79,14 @@ public class GeneralSettingsUpdateDTO {
                 .clearApiKey(clearApiKey)
                 .model(model)
                 .baseUrl(baseUrl)
+                .deploymentName(deploymentName)
+                .apiVersion(apiVersion)
+                .awsRegion(awsRegion)
+                .dingtalkWebhook(dingtalkWebhook)
+                .dingtalkSigningSecret(dingtalkSigningSecret)
+                .clearDingtalkSigningSecret(clearDingtalkSigningSecret)
+                .emailRecipients(emailRecipients)
+                .smsWebhook(smsWebhook)
                 .build();
     }
 }

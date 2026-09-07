@@ -33,6 +33,11 @@ const settings: GeneralSettings = {
   apiKeyConfigured: true,
   model: 'gpt-5',
   baseUrl: 'https://api.example.com/v1',
+  dingtalkWebhook: '******',
+  dingtalkWebhookConfigured: true,
+  emailRecipients: 'ops@example.com',
+  smsWebhook: '******',
+  smsWebhookConfigured: true,
 };
 const editableSettings: GeneralSettingsUpdate = {
   theme: settings.theme,
@@ -82,6 +87,8 @@ describe('general settings API', () => {
       const body = JSON.parse(config.data);
       expect(body).not.toHaveProperty('apiKey');
       expect(body).not.toHaveProperty('apiKeyConfigured');
+      expect(body).not.toHaveProperty('dingtalkWebhookConfigured');
+      expect(body).not.toHaveProperty('smsWebhookConfigured');
       return [200, { code: 200, data: null }];
     });
 

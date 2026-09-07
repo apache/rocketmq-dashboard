@@ -27,12 +27,20 @@ public class CreateAclUserDTO {
     private String username;
     private boolean admin;
     private List<String> clusters;
+    /** Tencent Cloud role read permission. */
+    private Boolean permRead;
+    /** Tencent Cloud role write permission. */
+    private Boolean permWrite;
+    /** Instance id used to route the operation to a cloud-vendor ACL backend. */
+    private String instanceId;
 
     public AclUserVO toAclUserVO() {
         AclUserVO user = new AclUserVO();
         user.setUsername(username);
         user.setAdmin(admin);
         user.setClusters(clusters);
+        user.setPermRead(permRead);
+        user.setPermWrite(permWrite);
         return user;
     }
 }

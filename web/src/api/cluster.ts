@@ -61,6 +61,18 @@ export interface NameServerInfo {
   status: string;
 }
 
+export interface NameserverRegistryEntry {
+  id: number;
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace: string | null;
+  k8sId: string | null;
+  status: string | null;
+  description: string | null;
+  gmtCreate: string | null;
+  gmtModified: string | null;
+}
+
 export interface ClusterConfig {
   flushDiskType: string;
   autoCreateTopicEnable: boolean;
@@ -88,6 +100,59 @@ export interface ClusterConfigUpdateResult {
   failedBrokers: BrokerConfigUpdateFailure[];
 }
 
+export interface ClusterConfigPreviewTarget {
+  name: string;
+  address: string;
+}
+
+export interface ClusterConfigPreviewChange {
+  field: string;
+  currentValue: string | null;
+  proposedValue: string | null;
+  brokerProperty: string;
+}
+
+export interface ClusterConfigPreviewResult {
+  cluster: ClusterInfo;
+  currentConfig: ClusterConfig;
+  proposedConfig: ClusterConfig;
+  targetBrokers: ClusterConfigPreviewTarget[];
+  brokerProperties: Record<string, string>;
+  changes: ClusterConfigPreviewChange[];
+  changed: boolean;
+}
+
+export interface BrokerConfigDiffBroker {
+  name: string;
+  address: string;
+  reachable: boolean;
+  message?: string | null;
+}
+
+export interface BrokerConfigDiffValue {
+  brokerName: string;
+  address: string;
+  configured: boolean;
+  value: string | null;
+}
+
+export interface BrokerConfigDifference {
+  field: string;
+  brokerProperty: string;
+  values: BrokerConfigDiffValue[];
+}
+
+export interface BrokerConfigDiffResult {
+  cluster: string;
+  complete: boolean;
+  driftDetected: boolean;
+  brokerCount: number;
+  reachableBrokerCount: number;
+  comparedFields: string[];
+  brokers: BrokerConfigDiffBroker[];
+  differences: BrokerConfigDifference[];
+}
+
 export interface ClusterProbeResult {
   connected: boolean;
   namesrvAddr: string;
@@ -99,23 +164,53 @@ export interface ClusterProbeResult {
 }
 
 export interface K8sCertInfo {
-  id: string;
-  name: string;
-  namespace: string;
+  id: number;
+  k8sId: string;
   cluster: string;
-  type: string;
-  issuer: string;
-  notBefore: string;
-  notAfter: string;
-  status: string;
+  type: string | null;
+  issuer: string | null;
+  notBefore: string | null;
+  notAfter: string | null;
+  status: string | null;
   daysRemaining: number;
-  san: string[];
+  san: string[] | null;
+  certPem?: string;
+  keyPem?: string;
+}
+
+export interface NameServerConfigValue {
+  address: string;
+  configured: boolean;
+  value: string | null;
+}
+
+export interface NameServerConfigDifference {
+  key: string;
+  values: NameServerConfigValue[];
+}
+
+export interface NameServerConfigDiffResult {
+  cluster: string;
+  complete: boolean;
+  driftDetected: boolean;
+  nodeCount: number;
+  reachableNodeCount: number;
+  comparedKeys: string[];
+  nodes: Array<{ address: string; reachable: boolean }>;
+  differences: NameServerConfigDifference[];
 }
 
 // ─── Cluster ────────────────────────────────────────────────────
-export async function listClusters() {
-  const res = await client.get<{ data: ClusterInfo[] }>('/clusters');
+export async function listClusters(instanceId?: string) {
+  const res = await client.get<{ data: ClusterInfo[] }>('/clusters', {
+    params: instanceId ? { instanceId } : undefined,
+  });
   return res.data.data;
+}
+
+export async function listRegistryClusters() {
+  const res = await client.get<{ data: ClusterInfo[] }>('/clusters/registry');
+  return res.data.data ?? [];
 }
 
 export async function testClusterConnection(namesrvAddr: string) {
@@ -125,15 +220,37 @@ export async function testClusterConnection(namesrvAddr: string) {
   return res.data.data;
 }
 
-export async function getCluster(id: string) {
-  const res = await client.get<{ data: ClusterInfo }>(`/clusters/${pathSegment(id)}`);
+export async function getCluster(id: string, instanceId?: string) {
+  const res = await client.get<{ data: ClusterInfo }>(`/clusters/${pathSegment(id)}`, {
+    params: instanceId ? { instanceId } : undefined,
+  });
   return res.data.data;
 }
 
-export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
+export async function updateClusterConfig(
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+) {
   const res = await client.post<{ data: ClusterConfigUpdateResult }>(
     '/clusters/config/update',
     data,
+  );
+  return res.data.data;
+}
+
+export async function previewClusterConfig(
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+) {
+  const res = await client.post<{ data: ClusterConfigPreviewResult }>(
+    '/clusters/config/preview',
+    data,
+  );
+  return res.data.data;
+}
+
+export async function getBrokerConfigDiff(clusterId: string, instanceId?: string) {
+  const res = await client.get<{ data: BrokerConfigDiffResult }>(
+    `/clusters/${pathSegment(clusterId)}/broker-config-diff`,
+    { params: instanceId ? { instanceId } : undefined },
   );
   return res.data.data;
 }
@@ -146,6 +263,44 @@ export async function restartBroker(clusterId: string, brokerName: string) {
 }
 
 // ─── NameServer ─────────────────────────────────────────────────
+export async function listNameserverRegistry() {
+  const res = await client.get<{ data: NameserverRegistryEntry[] }>('/nameservers');
+  return res.data.data ?? [];
+}
+
+export async function createNameserverRegistry(data: {
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  k8sId?: string;
+  description?: string;
+}) {
+  const res = await client.post<{ data: NameserverRegistryEntry }>(
+    '/nameservers/registry/create',
+    data,
+  );
+  return res.data.data;
+}
+
+export async function updateNameserverRegistry(data: {
+  id: number;
+  name: string;
+  namesrvAddr: string;
+  k8sNamespace?: string;
+  k8sId?: string;
+  description?: string;
+}) {
+  const res = await client.post<{ data: NameserverRegistryEntry }>(
+    '/nameservers/registry/update',
+    data,
+  );
+  return res.data.data;
+}
+
+export async function deleteNameserverRegistry(id: number) {
+  await client.post('/nameservers/registry/delete', { id });
+}
+
 export async function restartNameServer(data: { clusterId: string; addr: string }) {
   await client.post('/nameservers/restart', data);
 }
@@ -174,6 +329,13 @@ export async function updateNameServer(data: {
   await client.post('/nameservers/update', data);
 }
 
+export async function getNameServerConfigDiff(clusterId: string, instanceId?: string) {
+  const res = await client.get<{ data: NameServerConfigDiffResult }>('/nameservers/config-diff', {
+    params: { clusterId, ...(instanceId ? { instanceId } : {}) },
+  });
+  return res.data.data;
+}
+
 // ─── Proxy ──────────────────────────────────────────────────────
 export async function restartProxy(data: { clusterId: string; addr: string }) {
   await client.post('/proxies/restart', data);
@@ -195,11 +357,11 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>) {
   return res.data.data;
 }
 
-export async function renewK8sCert(id: string) {
+export async function renewK8sCert(id: number) {
   const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', { id });
   return res.data.data;
 }
 
-export async function deleteK8sCert(id: string) {
+export async function deleteK8sCert(id: number) {
   await client.post('/k8s-certs/delete', { id });
 }

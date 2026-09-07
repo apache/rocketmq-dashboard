@@ -16,14 +16,20 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -48,12 +54,26 @@ class ApacheInstanceProviderTest {
     private ApacheInstanceProvider provider;
 
     @Test
+    void capabilitiesShouldIncludeApacheOnlyOperationsTest() {
+        assertThat(provider.capabilities()).contains(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT,
+                InstanceCapability.DLQ_MANAGEMENT);
+    }
+
+    @Test
     void vendorShouldBeApacheTest() {
         assertThat(provider.vendor()).isEqualTo(InstanceVendor.APACHE);
     }
 
     @Test
     void countTopicsShouldDelegateToRepositoryTest() {
+        InstanceVO instance = InstanceVO.builder().name("inst-1").build();
+        instance.setId(1L);
+        when(instanceRepository.findByIdentifier("inst-1")).thenReturn(Optional.of(instance));
         when(instanceRepository.countTopicsByInstance("inst-1")).thenReturn(3L);
 
         assertThat(provider.countTopics("inst-1")).isEqualTo(3);
@@ -61,9 +81,21 @@ class ApacheInstanceProviderTest {
 
     @Test
     void countGroupsShouldDelegateToRepositoryTest() {
+        InstanceVO instance = InstanceVO.builder().name("inst-1").build();
+        instance.setId(1L);
+        when(instanceRepository.findByIdentifier("inst-1")).thenReturn(Optional.of(instance));
         when(instanceRepository.countGroupsByInstance("inst-1")).thenReturn(2L);
 
         assertThat(provider.countGroups("inst-1")).isEqualTo(2);
+    }
+
+    @Test
+    void listTopicsShouldPassTheSelectedInstanceToMetadataProvider() {
+        when(metadataProvider.listTopics("inst-1", null, "FIFO", "orders")).thenReturn(java.util.List.of());
+
+        assertThat(provider.listTopics("inst-1", "FIFO", "orders")).isEmpty();
+
+        verify(metadataProvider).listTopics("inst-1", null, "FIFO", "orders");
     }
 
     @Test
@@ -73,5 +105,15 @@ class ApacheInstanceProviderTest {
         assertThat(provider.listConsumerGroups("inst-1", "orders")).isEmpty();
 
         verify(metadataProvider).listConsumerGroups("inst-1", null, "orders");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldRouteThroughDatabasePaginationTest() {
+        PageResult<ConsumerGroupVO> page = PageResult.of(java.util.List.of(), 0, 1, 20);
+        when(metadataProvider.listConsumerGroupsPage("inst-1", null, "orders", 1, 20)).thenReturn(page);
+
+        assertThat(provider.listConsumerGroupsPage("inst-1", "orders", 1, 20)).isSameAs(page);
+
+        verify(metadataProvider).listConsumerGroupsPage("inst-1", null, "orders", 1, 20);
     }
 }

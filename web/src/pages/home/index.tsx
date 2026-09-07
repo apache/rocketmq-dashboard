@@ -34,6 +34,7 @@ import {
 } from '@phosphor-icons/react';
 import { getLlmConfig } from '../../api/llm';
 import { useEngineStore } from '../../stores/engineStore';
+import { useDataModeStore } from '../../stores/dataModeStore';
 import { useLang } from '../../i18n/LangContext';
 
 /* ─── Time-aware greeting key ─── */
@@ -64,6 +65,9 @@ const ENGINE_OPTIONS = [
   { value: 'qoder', label: 'Qoder' },
   { value: 'http', label: 'HTTP' },
 ];
+
+const ROCKETMQ_DOCS_URL = 'https://rocketmq.apache.org/docs/';
+const ROCKETMQ_COMMUNITY_URL = 'https://rocketmq.apache.org/';
 
 // 首页只暴露这些模型（token-plan 网关实际可对话的模型集），qwen3.8-max 为推荐项。
 const HOME_MODELS = [
@@ -98,6 +102,17 @@ const HomePage = () => {
     let cancelled = false;
 
     const loadModels = async () => {
+      const useMock = useDataModeStore.getState().useMock;
+      if (useMock) {
+        if (cancelled) return;
+        setModelOptions(
+          HOME_MODELS.map((value) => ({ value, recommended: value === RECOMMENDED_MODEL })),
+        );
+        setSelectedModel((current) =>
+          current && HOME_MODELS.includes(current) ? current : HOME_MODELS[0] || '',
+        );
+        return;
+      }
       const config = await getLlmConfig().catch(() => null);
       if (cancelled) return;
 
@@ -120,7 +135,7 @@ const HomePage = () => {
         })),
       );
       setSelectedModel((current) =>
-        current && values.includes(current) ? current : values[0] || '',
+        current && values.includes(current) ? current : configuredModel || values[0] || '',
       );
     };
 
@@ -174,6 +189,7 @@ const HomePage = () => {
 
   /* ─── Keyboard shortcut: Enter to send ─── */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handlePromptSubmit();
@@ -192,10 +208,15 @@ const HomePage = () => {
             prompt,
             ...(selectedModel ? { model: selectedModel } : {}),
             engine,
+            mode: activeMode,
             ...(promoteOn ? { enhance: true } : {}),
           }
         : null,
     });
+  };
+
+  const handleHistoryOpen = () => {
+    navigate('/ai', { state: { historyIntent: 'open' } });
   };
 
   return (
@@ -214,6 +235,7 @@ const HomePage = () => {
           className="pointer-events-none absolute inset-0 overflow-hidden"
           style={{ animation: '8s ease-in-out infinite oneday-bg-drift' }}
         >
+          {/* Top-left blue orb */}
           <div
             aria-hidden="true"
             className="absolute"
@@ -230,6 +252,58 @@ const HomePage = () => {
               willChange: 'transform, opacity',
             }}
           />
+          {/* Bottom-right violet orb */}
+          <div
+            aria-hidden="true"
+            className="absolute"
+            style={{
+              bottom: '-18%',
+              right: '-10%',
+              width: '48%',
+              height: '48%',
+              background:
+                'radial-gradient(circle at 70% 70%, rgb(221, 214, 254) 0%, rgb(233, 213, 255) 40%, transparent 68%)',
+              opacity: 0.4,
+              filter: 'blur(90px)',
+              animation: '10s ease-in-out infinite oneday-orb-drift-b',
+              willChange: 'transform, opacity',
+            }}
+          />
+          {/* Top-right warm accent */}
+          <div
+            aria-hidden="true"
+            className="absolute"
+            style={{
+              top: '-8%',
+              right: '5%',
+              width: '30%',
+              height: '30%',
+              background:
+                'radial-gradient(circle at 60% 40%, rgb(254, 215, 170) 0%, transparent 60%)',
+              opacity: 0.3,
+              filter: 'blur(70px)',
+              animation: '12s ease-in-out infinite oneday-orb-drift-c',
+              willChange: 'transform, opacity',
+            }}
+          />
+          {/* Center-bottom subtle blue-green */}
+          <div
+            aria-hidden="true"
+            className="absolute"
+            style={{
+              bottom: '10%',
+              left: '20%',
+              width: '35%',
+              height: '28%',
+              background:
+                'radial-gradient(ellipse at 50% 80%, rgb(153, 246, 228) 0%, transparent 60%)',
+              opacity: 0.2,
+              filter: 'blur(80px)',
+              animation: '14s ease-in-out infinite oneday-orb-drift-a',
+              willChange: 'transform, opacity',
+            }}
+          />
+          {/* Noise texture overlay */}
           <div
             aria-hidden="true"
             className="absolute inset-0"
@@ -253,7 +327,7 @@ const HomePage = () => {
               <div className="flex justify-center items-center px-4 py-2 min-h-[36px]">
                 <span className="inline-flex items-center gap-2 text-sm text-amber-600 cursor-pointer hover:text-amber-700 transition-colors">
                   <MegaphoneSimple size={16} weight="fill" />
-                  <span>RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台</span>
+                  <span>{t('home.banner')}</span>
                 </span>
               </div>
             </div>
@@ -400,7 +474,13 @@ const HomePage = () => {
                     />
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors">
+                    <button
+                      type="button"
+                      className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
+                      aria-label={t('ai.history.title')}
+                      title={t('ai.history.title')}
+                      onClick={handleHistoryOpen}
+                    >
                       <ClockCounterClockwise size={20} />
                     </button>
                   </div>
@@ -499,22 +579,30 @@ const HomePage = () => {
         >
           <span className="pointer-events-auto">
             <a
-              href="#"
+              href={ROCKETMQ_DOCS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="transition-colors hover:text-purple-500"
               style={{ textDecoration: 'none' }}
             >
-              文档中心
+              {t('home.docs')}
             </a>
             <span style={{ margin: '0 4px' }}>｜</span>
             <a
-              href="#"
+              href={ROCKETMQ_COMMUNITY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="transition-colors hover:text-purple-500"
               style={{ textDecoration: 'none' }}
             >
-              RocketMQ 社区
+              {t('home.community')}
             </a>
             <span style={{ margin: '0 4px' }}>｜</span>
-            <span>RocketMQ Studio 出品</span>
+            <span>{t('home.brand')}</span>
+            <span style={{ margin: '0 4px' }}>｜</span>
+            <span>
+              当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})
+            </span>
           </span>
         </footer>
       </div>

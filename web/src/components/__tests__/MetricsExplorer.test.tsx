@@ -84,6 +84,27 @@ const metricData = {
   warnings: [],
 };
 
+const histogramOnlyData = {
+  resultType: 'matrix',
+  series: [
+    {
+      labels: { cluster: 'prod', node_id: 'broker-a' },
+      values: [],
+      histograms: [
+        {
+          timestamp: 1_799_996_400,
+          histogram: { count: '10', sum: '250', buckets: [] },
+        },
+        {
+          timestamp: 1_800_000_000,
+          histogram: { count: '20', sum: '600', buckets: [] },
+        },
+      ],
+    },
+  ],
+  warnings: [],
+};
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -147,6 +168,29 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('42 messages/s')).toBeInTheDocument();
   });
 
+  it('sorts provider samples before drawing and selecting the latest value', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [
+            { timestamp: 1_800_000_000, value: '42' },
+            { timestamp: 1_799_996_400, value: '40' },
+          ],
+        },
+      ],
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
+    const chart = screen.getByRole('img', { name: 'Message In TPS time series' });
+    const points = chart.querySelector('polyline')?.getAttribute('points')?.split(' ') ?? [];
+    const xCoordinates = points.map((point) => Number(point.split(',')[0]));
+    expect(xCoordinates).toEqual([...xCoordinates].sort((left, right) => left - right));
+  });
+
   it('updates the query window when the range changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
@@ -162,6 +206,83 @@ describe('MetricsExplorer', () => {
         step: '2m',
       }),
     );
+  });
+
+  it('renders one panel per metric in the selected profile', async () => {
+    vi.mocked(listMetricProfiles).mockResolvedValue([
+      {
+        id: 'rocketmq5-native',
+        name: 'RocketMQ 5.x Native',
+        description: 'RocketMQ 5.x native metrics',
+        metrics: [
+          {
+            semanticMetric: 'message_in_tps',
+            name: 'Message In TPS',
+            unit: 'messages/s',
+            prometheusMetric: 'rocketmq_messages_in_total',
+            promql: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+            labels: ['cluster'],
+          },
+          {
+            semanticMetric: 'consumer_lag_messages',
+            name: 'Consumer Lag Messages',
+            unit: 'messages',
+            prometheusMetric: 'rocketmq_consumer_lag_messages',
+            promql: 'sum(rocketmq_consumer_lag_messages) by (cluster)',
+            labels: ['cluster'],
+          },
+        ],
+      },
+    ]);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Message In TPS')).toBeInTheDocument();
+    expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
+    expect(queryMetrics).toHaveBeenCalledWith({
+      metric: 'sum(rocketmq_consumer_lag_messages) by (cluster)',
+      start: 1_799_996_400,
+      end: 1_800_000_000,
+      step: '30s',
+    });
+  });
+
+  it('caps the plotted series and reports the hidden count', async () => {
+    const manySeries = Array.from({ length: 14 }, (_, index) => ({
+      labels: { cluster: 'prod', node_id: `broker-${index}` },
+      values: [
+        { timestamp: 1_799_996_400, value: String(index) },
+        { timestamp: 1_800_000_000, value: String(index + 1) },
+      ],
+      histograms: [],
+    }));
+    vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: manySeries });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText(/另有 4 条序列未显示/)).toBeInTheDocument();
+    const chart = screen.getByRole('img', { name: 'Message In TPS time series' });
+    expect(chart.querySelectorAll('polyline')).toHaveLength(10);
+  });
+
+  it('runs a custom PromQL expression from the query box', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: /查\s*询/ }));
+
+    await waitFor(() =>
+      expect(queryMetrics).toHaveBeenCalledWith({
+        metric: 'sum(rocketmq_topic_number)',
+        start: 1_799_996_400,
+        end: 1_800_000_000,
+        step: '30s',
+      }),
+    );
+    expect(await screen.findAllByText('cluster=prod / node_id=broker-a')).not.toHaveLength(0);
   });
 
   it('queries the first metric when the version profile changes', async () => {
@@ -221,15 +342,76 @@ describe('MetricsExplorer', () => {
 
     expect(await screen.findByText('Prometheus 查询失败')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: '指标模板' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '刷新指标' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '刷新全部面板' })).toBeInTheDocument();
   });
 
-  it('shows an empty state when Prometheus returns no scalar samples', async () => {
+  it('shows the actionable message returned by the metrics API', async () => {
+    vi.mocked(queryMetrics).mockRejectedValue({
+      response: { data: { message: 'Prometheus base URL is not configured' } },
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('Prometheus base URL is not configured')).toBeInTheDocument();
+  });
+
+  it('shows an empty state when Prometheus returns no samples at all', async () => {
     vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: [] });
 
     renderWithProviders(<MetricsExplorer />);
 
-    expect(await screen.findByText('暂无标量数据')).toBeInTheDocument();
+    expect(await screen.findByText('暂无数据')).toBeInTheDocument();
+  });
+
+  it('renders histogram-only series from observed sums instead of an empty state', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue(histogramOnlyData);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(
+      await screen.findByRole('img', { name: 'Message In TPS time series' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('600 messages/s')).toBeInTheDocument();
+    expect(screen.getByText('直方图')).toBeInTheDocument();
+    expect(screen.queryByText('暂无数据')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the observation count when the histogram sum is missing', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...histogramOnlyData,
+      series: [
+        {
+          ...histogramOnlyData.series[0],
+          histograms: [
+            { timestamp: 1_800_000_000, histogram: { count: '20', sum: '', buckets: [] } },
+          ],
+        },
+      ],
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('20 messages/s')).toBeInTheDocument();
+  });
+
+  it('prefers scalar samples when a series has both values and histograms', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          histograms: [
+            { timestamp: 1_800_000_000, histogram: { count: '99', sum: '999', buckets: [] } },
+          ],
+        },
+      ],
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
+    expect(screen.queryByText('999 messages/s')).not.toBeInTheDocument();
+    expect(screen.queryByText('直方图')).not.toBeInTheDocument();
   });
 
   it('queries the selected data source through the datasource endpoint', async () => {
@@ -242,11 +424,12 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
+        instanceIds: ['instance-1'],
       },
     ]);
     vi.mocked(queryByDataSource).mockResolvedValue(metricData);
 
-    renderWithProviders(<MetricsExplorer />);
+    renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
 
     await screen.findByRole('combobox', { name: '数据源' });
     await user.click(screen.getByRole('combobox', { name: '数据源' }));
@@ -259,6 +442,7 @@ describe('MetricsExplorer', () => {
     await waitFor(() =>
       expect(queryByDataSource).toHaveBeenCalledWith({
         key: 'ds-prom-1',
+        instanceId: 'instance-1',
         query: {
           metric: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
           start: 1_799_996_400,
@@ -268,6 +452,97 @@ describe('MetricsExplorer', () => {
       }),
     );
     expect(vi.mocked(queryMetrics).mock.calls.length).toBe(queryMetricsCallsBefore);
+  });
+
+  it('prompts for basic credentials and supplies them only to the selected data source query', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await user.click(await screen.findByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Protected Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    expect(await screen.findByRole('dialog', { name: '数据源认证' })).toBeInTheDocument();
+    expect(queryByDataSource).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('用户名'), 'metrics-reader');
+    await user.type(screen.getByLabelText('密码'), 'secret-value');
+    await user.click(screen.getByRole('button', { name: /连\s*接/ }));
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith({
+        key: 'ds-basic',
+        username: 'metrics-reader',
+        password: 'secret-value',
+        instanceId: undefined,
+        query: {
+          metric: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+          start: 1_799_996_400,
+          end: 1_800_000_000,
+          step: '30s',
+        },
+      }),
+    );
+  });
+
+  it('prompts for a bearer token without persisting it when the source is left', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-bearer',
+        name: 'Bearer Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Bearer Token',
+        status: 'healthy',
+      },
+    ]);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    const sourceSelect = await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(sourceSelect);
+    await user.click(
+      await screen.findByText('Bearer Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await user.type(await screen.findByLabelText('令牌'), 'ephemeral-token');
+    await user.click(screen.getByRole('button', { name: /连\s*接/ }));
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'ds-bearer', bearerToken: 'ephemeral-token' }),
+      ),
+    );
+
+    await user.click(sourceSelect);
+    await user.click(
+      await screen.findByText('默认数据源', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(sourceSelect);
+    await user.click(
+      await screen.findByText('Bearer Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    expect(await screen.findByRole('dialog', { name: '数据源认证' })).toBeInTheDocument();
+    expect(screen.getByLabelText('令牌')).toHaveValue('');
   });
 
   it('only offers data sources bound to the selected instance or globally available', async () => {
@@ -287,7 +562,7 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
-        instanceIds: ['instance-a'],
+        instanceIds: ['instance-1'],
       },
       {
         key: 'ds-instance-b',
@@ -296,12 +571,12 @@ describe('MetricsExplorer', () => {
         url: '',
         auth: 'None',
         status: 'healthy',
-        instanceIds: ['instance-b'],
+        instanceIds: ['instance-2'],
       },
     ]);
 
     const user = userEvent.setup();
-    renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+    renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
 
     await screen.findByRole('combobox', { name: '数据源' });
     await user.click(screen.getByRole('combobox', { name: '数据源' }));
@@ -309,5 +584,59 @@ describe('MetricsExplorer', () => {
     expect(await screen.findByText('Global Prometheus')).toBeInTheDocument();
     expect(screen.getByText('Instance A Prometheus')).toBeInTheDocument();
     expect(screen.queryByText('Instance B Prometheus')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the default source when the selected data source leaves the instance scope', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-instance-a',
+        name: 'Instance A Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+        instanceIds: ['instance-1'],
+      },
+    ]);
+
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+
+    await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(screen.getByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Instance A Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'ds-instance-a',
+          instanceId: 'instance-1',
+        }),
+      ),
+    );
+    const dataSourceQueriesBeforeScopeChange = vi.mocked(queryByDataSource).mock.calls.length;
+    const defaultQueriesBeforeScopeChange = vi.mocked(queryMetrics).mock.calls.length;
+
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+
+    await waitFor(() =>
+      expect(vi.mocked(queryMetrics).mock.calls.length).toBeGreaterThan(
+        defaultQueriesBeforeScopeChange,
+      ),
+    );
+    expect(vi.mocked(queryByDataSource).mock.calls).toHaveLength(
+      dataSourceQueriesBeforeScopeChange,
+    );
+    expect(screen.getAllByTitle('默认数据源').length).toBeGreaterThan(0);
   });
 });

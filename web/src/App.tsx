@@ -23,8 +23,8 @@ import { isMockMode } from './services/dataMode';
 import { useLang } from './i18n/LangContext';
 import useAuthStore from './stores/authStore';
 import MainLayout from './layouts/MainLayout';
-import LoginPage from './pages/login';
 
+const LoginPage = lazy(() => import('./pages/login'));
 const HomePage = lazy(() => import('./pages/home'));
 const InstancePage = lazy(() => import('./pages/instance'));
 const TopicPage = lazy(() => import('./pages/instance/topic'));
@@ -38,26 +38,25 @@ const ClientsPage = lazy(() => import('./pages/cluster/clients'));
 const DashboardOpsPage = lazy(() => import('./pages/home/dashboard'));
 const AlertsPage = lazy(() => import('./pages/ops/alerts'));
 const SystemAlertsPage = lazy(() => import('./pages/ops/systemAlerts'));
+const NotificationDeliveriesPage = lazy(() => import('./pages/ops/notificationDeliveries'));
 const AuditPage = lazy(() => import('./pages/ops/audit'));
 const AiPage = lazy(() => import('./pages/ai'));
 const SettingsPage = lazy(() => import('./pages/settings'));
-const LlmSettingsPage = lazy(() => import('./pages/studio/LlmSettings'));
 const ProxyPage = lazy(() => import('./pages/studio/Proxy'));
 const LiteTopicPage = lazy(() => import('./pages/studio/LiteTopic'));
-const GroupManagementPage = lazy(() => import('./pages/studio/GroupManagement'));
 const BrokerClusterPage = lazy(() => import('./pages/studio/BrokerCluster'));
-const SslSettingsPage = lazy(() => import('./pages/studio/SslSettings'));
-const AlertManagementPage = lazy(() => import('./pages/studio/AlertManagement'));
 const GrafanaDashboardsPage = lazy(() => import('./pages/studio/GrafanaDashboards'));
 const ProducerPage = lazy(() => import('./pages/studio/Producer'));
 const OpsPage = lazy(() => import('./pages/studio/Ops'));
 const AlertRuleAssetsPage = lazy(() => import('./pages/studio/AlertRuleAssets'));
+const UserManagementPage = lazy(() => import('./pages/studio/UserManagement'));
 
 type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
 
 export function AuthGate() {
   const { t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
+  const syncAuth = useAuthStore((state) => state.login);
   const [gateState, setGateState] = useState<AuthGateState>(isMockMode() ? 'allowed' : 'checking');
   const [attempt, setAttempt] = useState(0);
 
@@ -68,7 +67,15 @@ export function AuthGate() {
     void getAuthStatus()
       .then((status) => {
         if (cancelled) return;
-        if (!status.loginRequired || status.authenticated) {
+        if (status.authenticated && status.user) {
+          syncAuth(status.user.username, status.user.userId, status.user.admin);
+        }
+        if (!status.loginRequired) {
+          clearAuth();
+          setGateState('allowed');
+          return;
+        }
+        if (status.authenticated) {
           setGateState('allowed');
           return;
         }
@@ -82,7 +89,7 @@ export function AuthGate() {
     return () => {
       cancelled = true;
     };
-  }, [attempt, clearAuth]);
+  }, [attempt, clearAuth, syncAuth]);
 
   const retry = useCallback(() => {
     setGateState('checking');
@@ -140,7 +147,23 @@ export function LazyRouteOutlet() {
 function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/login"
+        element={
+          <Suspense
+            fallback={
+              <div
+                role="status"
+                style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}
+              >
+                <Spin size="large" />
+              </div>
+            }
+          >
+            <LoginPage />
+          </Suspense>
+        }
+      />
       <Route element={<AuthGate />}>
         <Route path="/" element={<MainLayout />}>
           <Route element={<LazyRouteOutlet />}>
@@ -162,19 +185,30 @@ function App() {
             <Route path="ops/dashboard" element={<DashboardOpsPage />} />
             <Route path="ops/grafana" element={<GrafanaDashboardsPage />} />
             <Route path="ops/alerts" element={<AlertsPage />} />
+            <Route path="ops/business-alerts" element={<AlertsPage domain="BUSINESS" />} />
             <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
+            <Route path="ops/alert-deliveries" element={<NotificationDeliveriesPage />} />
             <Route path="ops/audit" element={<AuditPage />} />
             <Route path="ai" element={<AiPage />} />
             <Route path="settings" element={<SettingsPage />} />
-            <Route path="studio/llm-settings" element={<LlmSettingsPage />} />
             <Route path="studio/proxy" element={<ProxyPage />} />
             <Route path="studio/lite-topic" element={<LiteTopicPage />} />
-            <Route path="studio/group-management" element={<GroupManagementPage />} />
+            <Route
+              path="studio/group-management"
+              element={<Navigate to="/instance/consumer" replace />}
+            />
             <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
-            <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
-            <Route path="studio/alert-management" element={<AlertManagementPage />} />
+            <Route
+              path="studio/alert-management"
+              element={<Navigate to="/ops/business-alerts" replace />}
+            />
             <Route path="studio/producer" element={<ProducerPage />} />
             <Route path="studio/ops" element={<OpsPage />} />
+            <Route
+              path="instance/alerts"
+              element={<Navigate to="/ops/business-alerts" replace />}
+            />
+            <Route path="studio/users" element={<UserManagementPage />} />
             <Route path="ops/alert-rule-templates" element={<AlertRuleAssetsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

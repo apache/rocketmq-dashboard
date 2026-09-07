@@ -116,7 +116,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 0
       },
       "fieldConfig": {
         "defaults": {
@@ -158,7 +158,7 @@
         "h": 6,
         "w": 6,
         "x": 0,
-        "y": 16
+        "y": 8
       },
       "fieldConfig": {
         "defaults": {
@@ -200,8 +200,8 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 12,
-        "y": 22
+        "x": 6,
+        "y": 8
       },
       "fieldConfig": {
         "defaults": {
@@ -243,8 +243,8 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 0,
-        "y": 28
+        "x": 12,
+        "y": 8
       },
       "fieldConfig": {
         "defaults": {
@@ -286,8 +286,8 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 12,
-        "y": 34
+        "x": 18,
+        "y": 8
       },
       "fieldConfig": {
         "defaults": {

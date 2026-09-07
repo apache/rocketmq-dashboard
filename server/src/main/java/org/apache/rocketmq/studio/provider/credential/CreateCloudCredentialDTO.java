@@ -19,6 +19,9 @@ package org.apache.rocketmq.studio.provider.credential;
 import jakarta.validation.constraints.NotBlank;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import lombok.Data;
+import lombok.ToString;
+
+import java.util.Locale;
 
 @Data
 public class CreateCloudCredentialDTO {
@@ -30,9 +33,11 @@ public class CreateCloudCredentialDTO {
     private String vendor;
 
     @NotBlank(message = "credential accessKey is required")
+    @ToString.Exclude
     private String accessKey;
 
     @NotBlank(message = "credential secretKey is required")
+    @ToString.Exclude
     private String secretKey;
 
     private String remark;
@@ -52,7 +57,7 @@ public class CreateCloudCredentialDTO {
             return null;
         }
         try {
-            return InstanceVendor.valueOf(vendor.trim().toUpperCase());
+            return InstanceVendor.valueOf(vendor.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             return null;
         }

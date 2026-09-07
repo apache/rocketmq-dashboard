@@ -12,7 +12,7 @@ export async function listGrafanaDashboards(): Promise<GrafanaDashboardInfo[]> {
       uid,
       title,
       description,
-      tags,
+      tags: [...tags],
     }));
   }
   return metricsApi.listGrafanaDashboards();
@@ -24,7 +24,7 @@ export async function getGrafanaDashboard(uid: string): Promise<Record<string, u
     if (!found) {
       throw new Error(`Grafana dashboard not found: ${uid}`);
     }
-    return found.model;
+    return structuredClone(found.model);
   }
   return metricsApi.getGrafanaDashboard(uid);
 }
@@ -36,4 +36,26 @@ export async function exportGrafanaDashboard(uid: string): Promise<Blob> {
     return new Blob([JSON.stringify(model, null, 2)], { type: 'application/json' });
   }
   return metricsApi.exportGrafanaDashboard(uid);
+}
+
+export interface GrafanaDashboardDownload {
+  blob: Blob;
+  filename: string;
+}
+
+export async function exportGrafanaDashboards(): Promise<GrafanaDashboardDownload> {
+  if (isMockMode()) {
+    const bundle = mockGrafanaDashboards.map(({ uid, model }) => ({
+      filename: `${uid}.json`,
+      model,
+    }));
+    return {
+      blob: new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }),
+      filename: 'rocketmq-grafana-dashboards.json',
+    };
+  }
+  return {
+    blob: await metricsApi.exportGrafanaDashboards(),
+    filename: 'rocketmq-grafana-dashboards.zip',
+  };
 }

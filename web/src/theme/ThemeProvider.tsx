@@ -15,45 +15,49 @@
  * limitations under the License.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import ThemeContext from './ThemeContext';
 import {
-  getStoredThemePreference,
+  getStoredCompact,
+  getStoredThemeMode,
   getSystemDarkMode,
-  persistThemePreference,
+  persistCompact,
+  persistThemeMode,
+  type ThemeMode,
 } from './themePreference';
 
-export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [themeState, setThemeState] = useState(() => {
-    const preference = getStoredThemePreference();
-    return {
-      darkMode: preference ? preference === 'dark' : getSystemDarkMode(),
-      followsSystem: preference === null,
-    };
-  });
+const DARK_MEDIA_QUERY = '(prefers-color-scheme: dark)';
 
-  const setDarkMode = (darkMode: boolean) => {
-    persistThemePreference(darkMode);
-    setThemeState({ darkMode, followsSystem: false });
+const subscribeSystemDark = (callback: () => void) => {
+  if (!window.matchMedia) return () => {};
+  const mediaQuery = window.matchMedia(DARK_MEDIA_QUERY);
+  mediaQuery.addEventListener('change', callback);
+  return () => mediaQuery.removeEventListener('change', callback);
+};
+
+export const ThemeProvider = ({ children }: { children: ReactNode }) => {
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(getStoredThemeMode);
+  const [compact, setCompactState] = useState(getStoredCompact);
+  const systemDark = useSyncExternalStore(subscribeSystemDark, getSystemDarkMode, () => false);
+
+  const setThemeMode = (mode: ThemeMode) => {
+    persistThemeMode(mode);
+    setThemeModeState(mode);
   };
 
-  const toggleTheme = () => setDarkMode(!themeState.darkMode);
+  const setCompact = (nextCompact: boolean) => {
+    persistCompact(nextCompact);
+    setCompactState(nextCompact);
+  };
 
-  useEffect(() => {
-    if (!themeState.followsSystem || !window.matchMedia) return;
-
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const updateTheme = (event: MediaQueryListEvent) => {
-      setThemeState((current) =>
-        current.followsSystem ? { ...current, darkMode: event.matches } : current,
-      );
-    };
-    mediaQuery.addEventListener('change', updateTheme);
-    return () => mediaQuery.removeEventListener('change', updateTheme);
-  }, [themeState.followsSystem]);
+  const darkMode = themeMode === 'dark' || (themeMode === 'system' && systemDark);
+  const setDarkMode = (dark: boolean) => setThemeMode(dark ? 'dark' : 'light');
+  const toggleTheme = () => setDarkMode(!darkMode);
 
   return (
-    <ThemeContext.Provider value={{ darkMode: themeState.darkMode, setDarkMode, toggleTheme }}>
+    <ThemeContext.Provider
+      value={{ themeMode, darkMode, compact, setThemeMode, setCompact, setDarkMode, toggleTheme }}
+    >
       {children}
     </ThemeContext.Provider>
   );

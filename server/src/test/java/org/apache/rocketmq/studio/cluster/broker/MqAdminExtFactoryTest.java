@@ -85,6 +85,22 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
+    void releaseShouldEvictOnlyMatchingCredentialIdentityTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.1:9876", null, "credential-a", ignored -> null);
+        factory.execute("10.0.0.1:9876", null, "credential-b", ignored -> null);
+        factory.release("10.0.0.1:9876", "credential-a");
+        factory.execute("10.0.0.1:9876", null, "credential-b", ignored -> null);
+        factory.execute("10.0.0.1:9876", null, "credential-a", ignored -> null);
+
+        assertThat(factory.created.get()).isEqualTo(3);
+        verify(admin, times(3)).start();
+        verify(admin).shutdown();
+    }
+
+    @Test
     void releaseShouldEvictClientUsingEquivalentNameServerAddressList() throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         RecordingFactory factory = new RecordingFactory(admin);
@@ -107,6 +123,43 @@ class MqAdminExtFactoryTest {
 
         assertThat(factory.created.get()).isEqualTo(1);
         verify(admin).setNamesrvAddr("10.0.0.1:9876;10.0.0.2:9876");
+    }
+
+    @Test
+    void executeShouldNotShareClientsAcrossCredentialReferences() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-a", ignored -> null);
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-b", ignored -> null);
+
+        assertThat(factory.created.get()).isEqualTo(2);
+        verify(admin, times(2)).start();
+    }
+
+    @Test
+    void executeShouldNotShareClientsAcrossLegacyHookInstances() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), ignored -> null);
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), ignored -> null);
+
+        assertThat(factory.created.get()).isEqualTo(2);
+    }
+
+    @Test
+    void releaseShouldEvictEveryCredentialIdentityForAnEndpoint() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-a", ignored -> null);
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-b", ignored -> null);
+        factory.release("10.0.0.1:9876");
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-a", ignored -> null);
+
+        assertThat(factory.created.get()).isEqualTo(3);
+        verify(admin, times(2)).shutdown();
     }
 
     @Test
@@ -139,5 +192,18 @@ class MqAdminExtFactoryTest {
         assertThatThrownBy(() -> factory.execute("10.0.0.1:9876", null, a -> "unused"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("shutting down");
+    }
+
+    @Test
+    void executeShouldNotCreateConnectionAfterShutdown() {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        factory.shutdown();
+
+        assertThatThrownBy(() -> factory.execute("10.0.0.1:9876", null, a -> "unused"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("shutting down");
+        // No fresh admin connection may be established while the factory is shut down.
+        assertThat(factory.created.get()).isZero();
     }
 }

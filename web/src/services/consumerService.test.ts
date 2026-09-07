@@ -18,15 +18,26 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createConsumerGroup,
+  deleteConsumerGroup,
   getConsumerGroup,
   getConsumerProgress,
+  getConsumerStack,
   getConsumerSubscriptions,
+  listAllConsumerGroups,
+  listConsumerGroupPage,
   listConsumerGroups,
+  previewConsumerOffsetReset,
+  refreshConsumerGroup,
 } from './consumerService';
 
 const { mode, metadataApi } = vi.hoisted(() => ({
   mode: { mock: true },
-  metadataApi: { getConsumerGroup: vi.fn() },
+  metadataApi: {
+    getConsumerGroup: vi.fn(),
+    listConsumerGroupPage: vi.fn(),
+    listConsumerGroups: vi.fn(),
+    previewConsumerOffsetReset: vi.fn(),
+  },
 }));
 
 vi.mock('./dataMode', () => ({ isMockMode: () => mode.mock }));
@@ -74,6 +85,98 @@ describe('consumer service mock data', () => {
     expect(blankSearchGroups).toHaveLength(allGroups.length);
   });
 
+  it('returns paged mock consumer groups with the filtered total', async () => {
+    const page = await listConsumerGroupPage({
+      search: 'cg-order-notify',
+      page: 1,
+      pageSize: 1,
+    });
+
+    expect(page.items.map((group) => group.name)).toEqual(['cg-order-notify']);
+    expect(page.total).toBe(1);
+    expect(page.page).toBe(1);
+    expect(page.size).toBe(1);
+  });
+
+  it('returns an empty page when the one-based offset starts past the filtered total', async () => {
+    const page = await listConsumerGroupPage({
+      search: 'cg-order-notify',
+      page: 2,
+      pageSize: 1,
+    });
+
+    expect(page.items).toEqual([]);
+    expect(page.total).toBe(1);
+    expect(page.page).toBe(2);
+    expect(page.size).toBe(1);
+  });
+
+  it('loads every API consumer group page matching the export filters', async () => {
+    mode.mock = false;
+    const firstGroup = { name: 'cg-a', subscribedTopics: null, instances: null };
+    const secondGroup = { name: 'cg-b', subscribedTopics: ['topic-b'], instances: [] };
+    metadataApi.listConsumerGroupPage
+      .mockResolvedValueOnce({
+        items: [firstGroup],
+        total: 2,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({
+        items: [secondGroup],
+        total: 2,
+        page: 2,
+        size: 100,
+      });
+    try {
+      const groups = await listAllConsumerGroups({
+        instanceId: 'instance-1',
+        search: 'cg',
+      });
+
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenNthCalledWith(1, {
+        instanceId: 'instance-1',
+        search: 'cg',
+        page: 1,
+        pageSize: 100,
+      });
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenNthCalledWith(2, {
+        instanceId: 'instance-1',
+        search: 'cg',
+        page: 2,
+        pageSize: 100,
+      });
+      expect(groups).toEqual([
+        { name: 'cg-a', subscribedTopics: [], instances: [] },
+        { name: 'cg-b', subscribedTopics: ['topic-b'], instances: [] },
+      ]);
+    } finally {
+      mode.mock = true;
+    }
+  });
+
+  it('stops API consumer group export when pagination exceeds the safety limit', async () => {
+    mode.mock = false;
+    metadataApi.listConsumerGroupPage.mockReset();
+    metadataApi.listConsumerGroupPage.mockResolvedValue({
+      items: [{ name: 'cg-a', subscribedTopics: null, instances: null }],
+      total: Number.MAX_SAFE_INTEGER,
+      page: 1,
+      size: 100,
+    });
+    try {
+      await expect(listAllConsumerGroups()).rejects.toThrow(
+        'Consumer group export exceeded 100 pages',
+      );
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenCalledTimes(100);
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        page: 100,
+        pageSize: 100,
+      });
+    } finally {
+      mode.mock = true;
+    }
+  });
   it('returns copied progress and subscription rows', async () => {
     const firstProgress = await getConsumerProgress('cg-order-notify');
     const firstSubscriptions = await getConsumerSubscriptions('cg-order-notify');
@@ -88,6 +191,76 @@ describe('consumer service mock data', () => {
     expect(secondSubscriptions[0]).not.toBe(firstSubscriptions[0]);
   });
 
+  it('builds copied reset offset previews in mock mode', async () => {
+    const firstPreview = await previewConsumerOffsetReset({
+      name: 'cg-order-notify',
+      instanceId: 'instance-proxy-1',
+      topic: 'order-create',
+      timestamp: 1784246400000,
+    });
+
+    expect(firstPreview.groupName).toBe('cg-order-notify');
+    expect(firstPreview.topic).toBe('order-create');
+    expect(firstPreview.complete).toBe(true);
+    expect(firstPreview.queueCount).toBeGreaterThan(0);
+    expect(firstPreview.rewindQueueCount).toBeGreaterThan(0);
+    expect(firstPreview.queues[0].topic).toBe('order-create');
+    firstPreview.queues[0].broker = 'mutated-broker';
+    firstPreview.warnings.push('mutated-warning');
+
+    const secondPreview = await previewConsumerOffsetReset({
+      name: 'cg-order-notify',
+      instanceId: 'instance-proxy-1',
+      topic: 'order-create',
+      timestamp: 1784246400000,
+    });
+    expect(secondPreview.queues[0].broker).not.toBe('mutated-broker');
+    expect(secondPreview.warnings).not.toContain('mutated-warning');
+  });
+
+  it('forwards reset offset previews in API mode', async () => {
+    mode.mock = false;
+    const request = {
+      name: 'cg-orders',
+      instanceId: 'instance-1',
+      topic: 'orders',
+      timestamp: 1784246400000,
+    };
+    const preview = {
+      instanceId: 'instance-1',
+      groupName: 'cg-orders',
+      topic: 'orders',
+      timestamp: 1784246400000,
+      complete: true,
+      allowReset: true,
+      queueCount: 0,
+      warningCount: 0,
+      rewindQueueCount: 0,
+      fastForwardQueueCount: 0,
+      currentTotalLag: 0,
+      projectedTotalLag: 0,
+      totalOffsetDelta: 0,
+      warnings: [],
+      queues: [],
+    };
+    metadataApi.previewConsumerOffsetReset.mockResolvedValue(preview);
+    try {
+      await expect(previewConsumerOffsetReset(request)).resolves.toEqual(preview);
+      expect(metadataApi.previewConsumerOffsetReset).toHaveBeenCalledWith(request);
+    } finally {
+      mode.mock = true;
+    }
+  });
+
+  it('returns an empty mock consumer stack trace', async () => {
+    const stack = await getConsumerStack('cg-order-notify', 'client-1');
+
+    expect(stack.groupName).toBe('cg-order-notify');
+    expect(stack.clientId).toBe('client-1');
+    expect(stack.threadCount).toBe(0);
+    expect(stack.threads).toEqual([]);
+  });
+
   it('returns a copy after creating consumer groups', async () => {
     const created = await createConsumerGroup({
       name: 'cg-created-copy-test',
@@ -100,6 +273,44 @@ describe('consumer service mock data', () => {
     expect(detail).not.toBe(created);
   });
 
+  it('isolates mock consumer groups with the same name by instance', async () => {
+    const name = 'cg-shared-instance-scope-test';
+    await createConsumerGroup({ name, instanceId: 'instance-a', namespace: 'namespace-a' });
+    await createConsumerGroup({ name, instanceId: 'instance-b', namespace: 'namespace-b' });
+
+    try {
+      await expect(
+        createConsumerGroup({ name, instanceId: 'instance-a' }),
+      ).rejects.toThrow(`Consumer group already exists: ${name}`);
+
+      const instanceAGroups = await listConsumerGroups({ instanceId: 'instance-a', search: name });
+      const instanceBGroups = await listConsumerGroups({ instanceId: 'instance-b', search: name });
+      expect(instanceAGroups).toHaveLength(1);
+      expect(instanceAGroups[0].namespace).toBe('namespace-a');
+      expect(instanceBGroups).toHaveLength(1);
+      expect(instanceBGroups[0].namespace).toBe('namespace-b');
+      await expect(getConsumerGroup(name, 'instance-a')).resolves.toMatchObject({
+        instanceId: 'instance-a',
+        namespace: 'namespace-a',
+      });
+      await expect(refreshConsumerGroup(name, 'instance-b')).resolves.toMatchObject({
+        instanceId: 'instance-b',
+        namespace: 'namespace-b',
+      });
+
+      await deleteConsumerGroup(name, 'instance-a');
+      await expect(getConsumerGroup(name, 'instance-a')).rejects.toThrow(
+        `Consumer group not found: ${name}`,
+      );
+      await expect(getConsumerGroup(name, 'instance-b')).resolves.toMatchObject({
+        instanceId: 'instance-b',
+      });
+    } finally {
+      await deleteConsumerGroup(name, 'instance-a');
+      await deleteConsumerGroup(name, 'instance-b');
+    }
+  });
+
   it('forwards the selected instance when loading consumer group details in API mode', async () => {
     mode.mock = false;
     const detail = {
@@ -110,8 +321,25 @@ describe('consumer service mock data', () => {
     try {
       metadataApi.getConsumerGroup.mockResolvedValue(detail);
 
-      await expect(getConsumerGroup('cg-orders', 'instance-a')).resolves.toEqual(detail);
-      expect(metadataApi.getConsumerGroup).toHaveBeenCalledWith('cg-orders', 'instance-a');
+      await expect(getConsumerGroup('cg-orders', 'instance-1')).resolves.toEqual(detail);
+      expect(metadataApi.getConsumerGroup).toHaveBeenCalledWith('cg-orders', 'instance-1');
+    } finally {
+      mode.mock = true;
+    }
+  });
+
+  it('normalizes null subscribedTopics and instances from the backend', async () => {
+    mode.mock = false;
+    const rawGroup = { name: 'cg-nulls', subscribedTopics: null, instances: null };
+    metadataApi.listConsumerGroups.mockResolvedValue([rawGroup]);
+    metadataApi.getConsumerGroup.mockResolvedValue(rawGroup);
+    try {
+      const groups = await listConsumerGroups();
+      expect(groups[0].subscribedTopics).toEqual([]);
+      expect(groups[0].instances).toEqual([]);
+      const detail = await getConsumerGroup('cg-nulls');
+      expect(detail.subscribedTopics).toEqual([]);
+      expect(detail.instances).toEqual([]);
     } finally {
       mode.mock = true;
     }

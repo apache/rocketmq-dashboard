@@ -23,6 +23,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { LangProvider } from '../../i18n/LangContext';
 import {
   exportGrafanaDashboard,
+  exportGrafanaDashboards,
   getGrafanaDashboard,
   listGrafanaDashboards,
 } from '../../services/grafanaService';
@@ -32,6 +33,7 @@ vi.mock('../../services/grafanaService', () => ({
   listGrafanaDashboards: vi.fn(),
   getGrafanaDashboard: vi.fn(),
   exportGrafanaDashboard: vi.fn(),
+  exportGrafanaDashboards: vi.fn(),
 }));
 
 const dashboards = [
@@ -39,9 +41,9 @@ const dashboards = [
     uid: 'rocketmq-overview',
     title: 'RocketMQ Cluster Overview',
     description: 'Overview',
-    tags: ['rocketmq'],
+    tags: ['overview', 'rocketmq'],
   },
-  { uid: 'rocketmq-broker', title: 'RocketMQ Broker', description: 'Broker', tags: ['rocketmq'] },
+  { uid: 'rocketmq-broker', title: 'RocketMQ Broker', description: 'Broker', tags: ['broker'] },
 ];
 
 const dashboardModel = {
@@ -50,6 +52,15 @@ const dashboardModel = {
   schemaVersion: 39,
   panels: [{ id: 1, title: 'Messages In TPS', type: 'timeseries' }],
 };
+
+const renderDashboardList = () =>
+  render(
+    <App>
+      <LangProvider>
+        <GrafanaDashboardList />
+      </LangProvider>
+    </App>,
+  );
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -68,11 +79,16 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(listGrafanaDashboards).mockResolvedValue(dashboards);
   vi.mocked(getGrafanaDashboard).mockResolvedValue(dashboardModel);
   vi.mocked(exportGrafanaDashboard).mockResolvedValue(
     new Blob([JSON.stringify(dashboardModel, null, 2)], { type: 'application/json' }),
   );
+  vi.mocked(exportGrafanaDashboards).mockResolvedValue({
+    blob: new Blob(['zip-content'], { type: 'application/zip' }),
+    filename: 'rocketmq-grafana-dashboards.zip',
+  });
 });
 
 afterEach(() => {
@@ -91,6 +107,49 @@ describe('GrafanaDashboardList', () => {
 
     expect(await screen.findByText('RocketMQ Cluster Overview')).toBeInTheDocument();
     expect(screen.getByText('RocketMQ Broker')).toBeInTheDocument();
+  });
+
+  it('filters dashboards by search text and tags', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const { container } = renderDashboardList();
+    const overviewCell = await screen.findByText('RocketMQ Cluster Overview');
+    expect(overviewCell).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText(/Search dashboard|搜索看板/), 'broker');
+    const brokerCell = screen.getByText('RocketMQ Broker');
+    expect(brokerCell).toBeInTheDocument();
+    expect(screen.queryByText('RocketMQ Cluster Overview')).not.toBeInTheDocument();
+
+    await user.clear(screen.getByPlaceholderText(/Search dashboard|搜索看板/));
+    await user.click(container.querySelector('.ant-select-selector') as Element);
+    await user.click(
+      await screen.findByText('overview', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.getByText('RocketMQ Cluster Overview')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('RocketMQ Broker')).not.toBeInTheDocument());
+  }, 10_000);
+  it('keeps a failed list request visible and recovers when retried', async () => {
+    vi.mocked(listGrafanaDashboards)
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(dashboards);
+    const user = userEvent.setup();
+
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    const retryButton = await screen.findByRole('button', { name: /Retry|重试/ });
+    expect(listGrafanaDashboards).toHaveBeenCalledTimes(1);
+
+    await user.click(retryButton);
+
+    expect(await screen.findByText('RocketMQ Cluster Overview')).toBeInTheDocument();
+    expect(listGrafanaDashboards).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /Retry|重试/ })).not.toBeInTheDocument();
   });
 
   it('opens the view modal and renders the dashboard JSON', async () => {
@@ -160,7 +219,8 @@ describe('GrafanaDashboardList', () => {
     );
 
     await screen.findByText('RocketMQ Cluster Overview');
-    const exportButtons = screen.getAllByRole('button', { name: /Export|导出/ });
+    // Exact-name match: the toolbar "Export all" button also matches /Export|导出/.
+    const exportButtons = screen.getAllByRole('button', { name: /^(Export|导出)$/ });
     await user.click(exportButtons[0]);
     await user.click(exportButtons[1]);
 
@@ -169,6 +229,44 @@ describe('GrafanaDashboardList', () => {
       expect(exportButtons[0]).toHaveClass('ant-btn-loading');
       expect(exportButtons[1]).toHaveClass('ant-btn-loading');
     });
+  });
+
+  it('deduplicates a dashboard export before loading state renders', async () => {
+    let resolveExport!: (value: Blob) => void;
+    vi.mocked(exportGrafanaDashboard).mockImplementation(
+      () => new Promise((resolve) => (resolveExport = resolve)),
+    );
+    renderDashboardList();
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    const exportButtons = screen.getAllByRole('button', { name: /^(Export|导出)$/ });
+    act(() => {
+      exportButtons[0].click();
+      exportButtons[0].click();
+    });
+
+    expect(exportGrafanaDashboard).toHaveBeenCalledTimes(1);
+    await act(async () => resolveExport(new Blob(['dashboard'])));
+  });
+
+  it('deduplicates bulk export before loading state renders', async () => {
+    let resolveExport!: (value: Awaited<ReturnType<typeof exportGrafanaDashboards>>) => void;
+    vi.mocked(exportGrafanaDashboards).mockImplementation(
+      () => new Promise((resolve) => (resolveExport = resolve)),
+    );
+    renderDashboardList();
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    const exportAll = screen.getByRole('button', { name: /Export all|导出全部/ });
+    act(() => {
+      exportAll.click();
+      exportAll.click();
+    });
+
+    expect(exportGrafanaDashboards).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      resolveExport({ blob: new Blob(['dashboards']), filename: 'dashboards.zip' }),
+    );
   });
 
   it('exports a dashboard and triggers a download', async () => {
@@ -189,12 +287,79 @@ describe('GrafanaDashboardList', () => {
 
     await screen.findByText('RocketMQ Cluster Overview');
     const exportButtons = screen.getAllByRole('button', { name: /Export|导出/ });
-    await user.click(exportButtons[0]);
+    await user.click(exportButtons[1]);
 
     await waitFor(() => expect(exportGrafanaDashboard).toHaveBeenCalledWith('rocketmq-overview'));
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalled();
 
     clickSpy.mockRestore();
+  });
+
+  it('exports all dashboards and downloads the archive', async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.fn().mockReturnValue('blob:grafana-all');
+    const revokeObjectURL = vi.fn();
+    let downloadedFilename = '';
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadedFilename = this.download;
+    });
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: revokeObjectURL });
+
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    await user.type(screen.getByPlaceholderText(/Search dashboard|搜索看板/), 'broker');
+    await user.click(screen.getByRole('button', { name: /Export all|导出全部/ }));
+
+    await waitFor(() => expect(exportGrafanaDashboards).toHaveBeenCalledTimes(1));
+    expect(exportGrafanaDashboard).not.toHaveBeenCalled();
+    expect(downloadedFilename).toBe('rocketmq-grafana-dashboards.zip');
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalled();
+
+    clickSpy.mockRestore();
+  });
+
+  it('uses the JSON filename returned by mock bulk export', async () => {
+    vi.mocked(exportGrafanaDashboards).mockResolvedValue({
+      blob: new Blob(['json-content'], { type: 'application/json' }),
+      filename: 'rocketmq-grafana-dashboards.json',
+    });
+    const user = userEvent.setup();
+    let downloadedFilename = '';
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadedFilename = this.download;
+    });
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: vi.fn().mockReturnValue('blob:grafana-all-json'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: vi.fn() });
+
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    await user.click(screen.getByRole('button', { name: /Export all|导出全部/ }));
+
+    await waitFor(() => expect(exportGrafanaDashboards).toHaveBeenCalledTimes(1));
+    expect(downloadedFilename).toBe('rocketmq-grafana-dashboards.json');
   });
 });

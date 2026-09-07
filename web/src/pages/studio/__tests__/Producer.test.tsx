@@ -15,13 +15,15 @@
  * limitations under the License.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import ProducerPage from '../Producer';
 import {
+  type ProducerConnection,
+  type ProducerConnectionResult,
   fetchProducerGroups,
   fetchTopicList,
   queryProducerConnection,
@@ -62,25 +64,45 @@ const renderWithProviders = (ui: React.ReactElement) => {
   );
 };
 
+const producerResult = (connectionSet: ProducerConnection[]): ProducerConnectionResult => ({
+  connectionSet,
+  summary: {
+    totalConnections: connectionSet.length,
+    uniqueClientCount: new Set(connectionSet.map((connection) => connection.clientId)).size,
+    uniqueAddressCount: new Set(connectionSet.map((connection) => connection.clientAddr)).size,
+    uniqueLanguageCount: new Set(connectionSet.map((connection) => connection.language)).size,
+    uniqueVersionCount: new Set(connectionSet.map((connection) => connection.versionDesc)).size,
+    languages: connectionSet.map((connection) => ({ value: connection.language, count: 1 })),
+    versions: connectionSet.map((connection) => ({ value: connection.versionDesc, count: 1 })),
+    duplicateClientIds: [],
+    warnings: connectionSet.length === 0 ? ['NO_CONNECTIONS'] : [],
+    readiness: connectionSet.length === 0 ? 'UNAVAILABLE' : 'READY',
+  },
+});
+
 describe('ProducerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
-        name: 'Primary instance',
+        id: 1,
+        name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
     ]);
     vi.mocked(fetchTopicList).mockResolvedValue(['order-events', 'payment-events']);
     vi.mocked(fetchProducerGroups).mockResolvedValue(['pg-order', 'pg-payment']);
-    vi.mocked(queryProducerConnection).mockResolvedValue([]);
+    vi.mocked(queryProducerConnection).mockResolvedValue(producerResult([]));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('loads topic options after mount', async () => {
@@ -89,6 +111,40 @@ describe('ProducerPage', () => {
     await waitFor(() => {
       expect(fetchTopicList).toHaveBeenCalledWith('instance-1');
     });
+    expect(fetchProducerGroups).not.toHaveBeenCalled();
+  });
+
+  it('uses an Apache instance rather than a cloud instance for producer diagnostics', async () => {
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'cloud-instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: 'cloud:9876',
+        vendor: 'ALIYUN',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
+      },
+      {
+        id: 2,
+        name: 'apache-instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: 'apache:9876',
+        vendor: 'APACHE',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
+      },
+    ]);
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith('apache-instance'));
+    expect(screen.queryByText('cloud-instance')).not.toBeInTheDocument();
   });
 
   it('renders topic options loaded from the API', async () => {
@@ -104,27 +160,42 @@ describe('ProducerPage', () => {
     expect(await screen.findByRole('option', { name: 'payment-events' })).toBeInTheDocument();
   });
 
-  it('suggests active producer groups while keeping free-form input', async () => {
+  it('discovers producer groups from selector interactions after topic selection', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);
 
-    await waitFor(() => expect(fetchProducerGroups).toHaveBeenCalledTimes(1));
-    const groupInput = screen.getAllByRole('combobox')[2];
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await user.click(groupInput);
     await user.type(groupInput, 'payment');
 
+    await waitFor(() => {
+      expect(fetchProducerGroups).toHaveBeenLastCalledWith('instance-1', {
+        topic: 'order-events',
+        query: 'payment',
+        limit: 20,
+      });
+    });
     expect(await screen.findByRole('option', { name: 'pg-payment' })).toBeInTheDocument();
   });
 
   it('queries producer connections with the required topic and group', async () => {
     const user = userEvent.setup();
-    vi.mocked(queryProducerConnection).mockResolvedValue([
-      {
-        clientId: 'producer-1',
-        clientAddr: '192.168.1.10',
-        language: 'JAVA',
-        versionDesc: '5.1.0',
-      },
-    ]);
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-1',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
@@ -144,9 +215,23 @@ describe('ProducerPage', () => {
       );
     });
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
+    expect(await screen.findByText('生产者连接健康')).toBeInTheDocument();
+    expect(screen.getByText('就绪')).toBeInTheDocument();
   });
 
-  it('does not query without a producer group', async () => {
+  it('queries all active producer groups when producer group is empty', async () => {
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-all-1',
+          clientAddr: '192.168.1.10',
+          topic: 'order-events',
+          producerGroup: 'pg-order',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);
 
@@ -158,10 +243,128 @@ describe('ProducerPage', () => {
     );
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
+    await waitFor(() => {
+      expect(queryProducerConnection).toHaveBeenCalledWith('instance-1', 'order-events', undefined);
+    });
+    expect(await screen.findByText('producer-all-1')).toBeInTheDocument();
+    expect(screen.getByText('pg-order')).toBeInTheDocument();
+  });
+
+  it('renders producer connection warnings from the summary', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection).mockResolvedValue({
+      connectionSet: [
+        {
+          clientId: 'producer-a',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+        {
+          clientId: 'producer-a',
+          clientAddr: '192.168.1.11',
+          language: 'JAVA',
+          versionDesc: '5.2.0',
+        },
+      ],
+      summary: {
+        totalConnections: 2,
+        uniqueClientCount: 1,
+        uniqueAddressCount: 2,
+        uniqueLanguageCount: 1,
+        uniqueVersionCount: 2,
+        languages: [{ value: 'JAVA', count: 2 }],
+        versions: [
+          { value: '5.1.0', count: 1 },
+          { value: '5.2.0', count: 1 },
+        ],
+        duplicateClientIds: ['producer-a'],
+        warnings: ['DUPLICATE_CLIENT_ID', 'MIXED_CLIENT_VERSION'],
+        readiness: 'WARNING',
+      },
+    });
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+
+    expect(await screen.findByText('存在重复 Client ID')).toBeInTheDocument();
+    expect(screen.getByText('存在多个客户端版本')).toBeInTheDocument();
+    expect(screen.getByText('JAVA: 2')).toBeInTheDocument();
+  });
+
+  it('exports the current producer connection diagnostics as CSV', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:producer-connections';
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection).mockResolvedValue({
+      connectionSet: [
+        {
+          clientId: '@producer-a',
+          clientAddr: '192.168.1.10',
+          topic: 'order-events',
+          producerGroup: 'order-producer',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ],
+      summary: {
+        totalConnections: 1,
+        uniqueClientCount: 1,
+        uniqueAddressCount: 1,
+        uniqueLanguageCount: 1,
+        uniqueVersionCount: 1,
+        languages: [{ value: 'JAVA', count: 1 }],
+        versions: [{ value: '5.1.0', count: 1 }],
+        duplicateClientIds: [],
+        warnings: ['INCOMPLETE_CLIENT_METADATA'],
+        readiness: 'WARNING',
+      },
+    });
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    expect(await screen.findByText('@producer-a')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    await expect(blob.text()).resolves.toBe(
+      [
+        '"Instance ID","Topic","Producer Group","Readiness","Warnings","Client ID","Address","Language","Version"',
+        '"instance-1","order-events","order-producer","WARNING","INCOMPLETE_CLIENT_METADATA","\'@producer-a","192.168.1.10","JAVA","5.1.0"',
+      ].join('\n'),
+    );
     expect(
-      await screen.findByText('请输入生产者组', { selector: '.ant-form-item-explain-error' }),
-    ).toBeInTheDocument();
-    expect(queryProducerConnection).not.toHaveBeenCalled();
+      document.querySelector('a[download^="rocketmq-producer-connections-"]'),
+    ).not.toBeInTheDocument();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:producer-connections');
   });
 
   it('keeps manual producer group queries available when suggestions fail', async () => {
@@ -175,6 +378,7 @@ describe('ProducerPage', () => {
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
     );
+    await user.click(groupInput);
     await user.type(groupInput, 'manual-producer');
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
@@ -190,37 +394,39 @@ describe('ProducerPage', () => {
   it('clears stale producer query state before loading a new instance', async () => {
     vi.mocked(listInstances).mockResolvedValue([
       {
-        id: 'instance-1',
-        name: 'Primary instance',
+        id: 1,
+        name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
       {
-        id: 'instance-2',
-        name: 'Secondary instance',
+        id: 2,
+        name: 'instance-2',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.2:9876',
         topicCount: 0,
         consumerGroupCount: 0,
-        createdAt: '2026-08-01T00:00:00',
-        updatedAt: '2026-08-01T00:00:00',
+        gmtCreate: '2026-08-01T00:00:00',
+        gmtModified: '2026-08-01T00:00:00',
       },
     ]);
     vi.mocked(fetchTopicList).mockResolvedValueOnce(['order-events']).mockResolvedValueOnce([]);
-    vi.mocked(queryProducerConnection).mockResolvedValue([
-      {
-        clientId: 'producer-1',
-        clientAddr: '192.168.1.10',
-        language: 'JAVA',
-        versionDesc: '5.1.0',
-      },
-    ]);
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-1',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
     const user = userEvent.setup();
     const { container } = renderWithProviders(<ProducerPage />);
 
@@ -230,13 +436,14 @@ describe('ProducerPage', () => {
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
     );
+    await user.click(groupInput);
     await user.type(groupInput, 'order-producer');
     await user.click(screen.getByRole('button', { name: /搜索/ }));
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
 
     fireEvent.mouseDown(instanceSelect.parentElement!);
     await user.click(
-      await screen.findByText('Secondary instance', {
+      await screen.findByText('instance-2', {
         selector: '.ant-select-item-option-content',
       }),
     );
@@ -245,5 +452,79 @@ describe('ProducerPage', () => {
     // scope to the page container: antd keeps closed dropdown portals in document.body
     expect(within(container).queryByText('producer-1')).not.toBeInTheDocument();
     expect(within(container).queryByText('order-events')).not.toBeInTheDocument();
+  });
+
+  it('clears stale results when a new producer query fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection)
+      .mockResolvedValueOnce(
+        producerResult([
+          {
+            clientId: 'producer-1',
+            clientAddr: '192.168.1.10',
+            language: 'JAVA',
+            versionDesc: '5.1.0',
+          },
+        ]),
+      )
+      .mockRejectedValueOnce(new Error('broker unavailable'));
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    const search = screen.getByRole('button', { name: /搜索/ });
+    await user.click(search);
+    expect(await screen.findByText('producer-1')).toBeInTheDocument();
+
+    await user.click(search);
+
+    await waitFor(() => expect(queryProducerConnection).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('producer-1')).not.toBeInTheDocument());
+    expect(screen.queryByText('生产者连接健康')).not.toBeInTheDocument();
+  });
+
+  it('ignores duplicate producer queries while the first request is pending', async () => {
+    const user = userEvent.setup();
+    let resolveQuery: ((value: ProducerConnectionResult) => void) | undefined;
+    vi.mocked(queryProducerConnection).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveQuery = resolve;
+        }),
+    );
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    const search = screen.getByRole('button', { name: /搜索/ });
+    await user.click(search);
+    await waitFor(() => expect(queryProducerConnection).toHaveBeenCalledTimes(1));
+    fireEvent.click(search);
+
+    expect(queryProducerConnection).toHaveBeenCalledTimes(1);
+    resolveQuery?.(producerResult([]));
+    await waitFor(() => expect(search).not.toHaveClass('ant-btn-loading'));
+  });
+
+  it('does not discover producer groups before a topic is selected', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const groupInput = screen.getAllByRole('combobox')[2];
+    await user.click(groupInput);
+    await user.type(groupInput, 'order');
+
+    expect(fetchProducerGroups).not.toHaveBeenCalled();
   });
 });

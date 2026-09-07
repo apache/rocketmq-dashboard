@@ -33,6 +33,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,7 +47,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AliyunCatalogServiceTest {
 
-    private static final String CREDENTIAL_ID = "cred-1";
+    private static final Long CREDENTIAL_ID = 1L;
     private static final String REGION = "cn-hangzhou";
 
     @Mock
@@ -57,6 +58,25 @@ class AliyunCatalogServiceTest {
     @BeforeEach
     void setUp() {
         service = new AliyunCatalogService(clientFactory);
+    }
+
+    @Test
+    void listRegionsShouldSkipNullSdkRecords() {
+        ListRegionsResponse response = ListRegionsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListRegionsResponseBody.builder()
+                        .data(Arrays.asList(null, ListRegionsResponseBody.Data.builder()
+                                .regionId("cn-hangzhou")
+                                .supportRocketmqV5(true)
+                                .build()))
+                        .build())
+                .build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(AliyunCatalogService.DEFAULT_REGION), any()))
+                .thenReturn(response);
+
+        assertThat(service.listRegions(CREDENTIAL_ID))
+                .extracting(CloudRegionVO::getRegionId)
+                .containsExactly("cn-hangzhou");
     }
 
     @Test
@@ -91,8 +111,19 @@ class AliyunCatalogServiceTest {
     }
 
     @Test
+    void listCloudInstancesShouldSkipNullSdkRecords() {
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
+                .thenReturn(instancesResponse(Arrays.asList(null, instanceRow("rmq-a", "A"))));
+
+        assertThat(service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .extracting(CloudInstanceOptionVO::getInstanceId)
+                .containsExactly("rmq-a");
+    }
+
+    @Test
     void listCloudInstancesShouldAggregatePagesTest() {
-        ListInstancesResponse firstPage = instancesResponse(instanceRows(AliyunConverters.PAGE_SIZE, 0));
+        ListInstancesResponse firstPage = instancesResponse(
+                instanceRows(AliyunConverters.PAGE_SIZE, 0), AliyunConverters.PAGE_SIZE + 3L);
         ListInstancesResponse secondPage = instancesResponse(instanceRows(3, AliyunConverters.PAGE_SIZE));
         when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
                 .thenReturn(firstPage, secondPage);
@@ -104,14 +135,18 @@ class AliyunCatalogServiceTest {
     }
 
     @Test
-    void listCloudInstancesShouldStopAtMaxPagesTest() {
-        ListInstancesResponse fullPage = instancesResponse(instanceRows(AliyunConverters.PAGE_SIZE, 0));
-        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(fullPage);
+    void listCloudInstancesShouldContinuePastFallbackPageCapWhenTotalCountRequiresIt() {
+        ListInstancesResponse fullPage = instancesResponse(
+                instanceRows(AliyunConverters.PAGE_SIZE, 0), AliyunConverters.PAGE_SIZE * 6L + 1);
+        ListInstancesResponse finalPage = instancesResponse(instanceRows(1, AliyunConverters.PAGE_SIZE * 6),
+                AliyunConverters.PAGE_SIZE * 6L + 1);
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
+                .thenReturn(fullPage, fullPage, fullPage, fullPage, fullPage, fullPage, finalPage);
 
         List<CloudInstanceOptionVO> options = service.listCloudInstances(CREDENTIAL_ID, REGION, null);
 
-        assertThat(options).hasSize(AliyunConverters.PAGE_SIZE * AliyunConverters.MAX_PAGES);
-        verify(clientFactory, times(AliyunConverters.MAX_PAGES)).call(eq(CREDENTIAL_ID), eq(REGION), any());
+        assertThat(options).hasSize(AliyunConverters.PAGE_SIZE * 6 + 1);
+        verify(clientFactory, times(7)).call(eq(CREDENTIAL_ID), eq(REGION), any());
     }
 
     @Test
@@ -129,6 +164,19 @@ class AliyunCatalogServiceTest {
         assertThat(byId.get(0).getInstanceId()).isEqualTo("rmq-test-002");
         assertThat(byName).hasSize(1);
         assertThat(byName.get(0).getInstanceName()).isEqualTo("Staging");
+    }
+
+    @Test
+    void listCloudInstancesShouldNormalizeRegionAndSearchTest() {
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
+                .thenReturn(instancesResponse(List.of(instanceRow("rmq-prod-001", "Production"))));
+
+        List<CloudInstanceOptionVO> result = service.listCloudInstances(
+                CREDENTIAL_ID, "  cn-hangzhou  ", "  production  ");
+
+        assertThat(result).extracting(CloudInstanceOptionVO::getInstanceName)
+                .containsExactly("Production");
+        verify(clientFactory).call(eq(CREDENTIAL_ID), eq(REGION), any());
     }
 
     @Test
@@ -177,6 +225,17 @@ class AliyunCatalogServiceTest {
                 .isEqualTo("rmq-cn-001-vpc.rmq.aliyuncs.com:8080");
     }
 
+    @Test
+    void getCloudInstanceShouldNormalizeLookupIdentifiersTest() {
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.getCloudInstance(
+                CREDENTIAL_ID, "  cn-hangzhou  ", "  rmq-missing  "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Aliyun instance not found: rmq-missing");
+        verify(clientFactory).call(eq(CREDENTIAL_ID), eq(REGION), any());
+    }
+
     private static List<ListInstancesResponseBody.List> instanceRows(int count, int idOffset) {
         List<ListInstancesResponseBody.List> rows = new ArrayList<>();
         for (int i = 0; i < count; i++) {
@@ -198,6 +257,10 @@ class AliyunCatalogServiceTest {
     }
 
     private static ListInstancesResponse instancesResponse(List<ListInstancesResponseBody.List> rows) {
+        return instancesResponse(rows, (long) rows.size());
+    }
+
+    private static ListInstancesResponse instancesResponse(List<ListInstancesResponseBody.List> rows, long totalCount) {
         return ListInstancesResponse.create().toBuilder()
                 .statusCode(200)
                 .body(ListInstancesResponseBody.builder()
@@ -205,7 +268,7 @@ class AliyunCatalogServiceTest {
                                 .list(rows)
                                 .pageNumber(1L)
                                 .pageSize((long) AliyunConverters.PAGE_SIZE)
-                                .totalCount((long) rows.size())
+                                .totalCount(totalCount)
                                 .build())
                         .build())
                 .build();

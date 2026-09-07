@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.audit;
 
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -28,5 +29,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class AuditCleanupDTO {
     @Positive(message = "beforeDays must be greater than 0")
+    @Max(value = 365, message = "beforeDays must not exceed 365")
     private Integer beforeDays;
 }

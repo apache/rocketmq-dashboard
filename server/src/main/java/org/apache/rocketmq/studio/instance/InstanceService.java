@@ -22,20 +22,37 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.RegionNames;
+import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
+import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
+import org.apache.rocketmq.studio.provider.CloudRegionVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.settings.DataSourceVO;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.UUID;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -46,7 +63,25 @@ public class InstanceService {
     private final CloudCredentialRepository cloudCredentialRepository;
     private final InstanceProviderRegistry providerRegistry;
     private final MqAdminExtFactory adminFactory;
+    private final MqClientPool clientPool;
     private final OperationAuditService operationAuditService;
+    private final SettingsRepository settingsRepository;
+    private final RegionNames regionNames;
+
+    static final int COUNT_PARALLELISM = 8;
+    static final int COUNT_QUEUE_CAPACITY = 128;
+    static final long COUNT_TIMEOUT_SECONDS = 3;
+    private static final int MAX_BATCH_FAILURE_MESSAGE_LENGTH = 500;
+    static final int MAX_CLOUD_IMPORT_FAILURE_DETAILS = 100;
+    static final int MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH = 500;
+
+    private final InstanceResourceCountRunner countRunner = new InstanceResourceCountRunner(
+            COUNT_PARALLELISM, COUNT_QUEUE_CAPACITY, COUNT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+    @PreDestroy
+    void shutdownCountRunner() {
+        countRunner.close();
+    }
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -62,26 +97,100 @@ public class InstanceService {
         } else {
             instances = instanceRepository.findAll();
         }
-        instances.forEach(this::fillCounts);
-        return instances;
+        fillCountsInParallel(instances);
+        instances.forEach(instance -> instance.setRegionName(regionNames.resolve(instance.getRegionId())));
+        List<InstanceVO> sorted = new ArrayList<>(instances);
+        sorted.sort(Comparator
+                .comparing((InstanceVO instance) ->
+                        instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE ? 0 : 1)
+                .thenComparing(instance -> instance.getVendor() == null ? "" : instance.getVendor().name())
+                .thenComparing(instance -> instance.getRegionId() == null ? "" : instance.getRegionId())
+                .thenComparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER));
+        return sorted;
+    }
+
+    /**
+     * Fans out per-instance resource counts on a bounded executor. Cloud vendors resolve counts
+     * through remote OpenAPIs, so a slow instance only degrades its own row (counts marked
+     * unavailable) instead of blocking the whole list response.
+     */
+    private void fillCountsInParallel(List<InstanceVO> instances) {
+        if (instances.isEmpty()) {
+            return;
+        }
+        List<InstanceResourceCountRunner.CountOutcome> outcomes =
+                countRunner.countAll(instances, this::loadCounts);
+        int rejected = 0;
+        int timedOut = 0;
+        int failed = 0;
+        for (int index = 0; index < instances.size(); index++) {
+            InstanceVO instance = instances.get(index);
+            InstanceResourceCountRunner.CountOutcome outcome = outcomes.get(index);
+            if (outcome.available()) {
+                applyCounts(instance, outcome.counts());
+                continue;
+            }
+
+            clearCounts(instance);
+            switch (outcome.status()) {
+                case REJECTED -> rejected++;
+                case TIMED_OUT -> timedOut++;
+                case FAILED -> {
+                    failed++;
+                    log.warn("Failed to load resource counts for instance {}: {}",
+                            instance.getId(), rootMessage(outcome.failure()));
+                }
+                case INTERRUPTED -> log.debug(
+                        "Resource count lookup interrupted for instance {}", instance.getId());
+                case SUCCESS -> throw new IllegalStateException("available count outcome has no values");
+            }
+        }
+        if (timedOut > 0) {
+            log.warn("Resource count deadline reached after {}s for {} instance(s)",
+                    COUNT_TIMEOUT_SECONDS, timedOut);
+        }
+        if (rejected > 0) {
+            log.warn("Resource count executor saturated; {} instance(s) marked unavailable", rejected);
+        }
+        if (failed > 0) {
+            log.debug("Resource count lookup failed for {} instance(s)", failed);
+        }
     }
 
     /**
      * Resource counts live on the vendor side (cloud APIs) or in the local tables (Apache),
      * so resolve them uniformly through the vendor provider.
      */
-    private void fillCounts(InstanceVO instance) {
+    private InstanceResourceCountRunner.ResourceCounts loadCounts(InstanceVO instance) {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
-        try {
-            InstanceProvider provider = providerRegistry.forVendor(vendor);
-            instance.setTopicCount(provider.countTopics(instance.getId()));
-            instance.setConsumerGroupCount(provider.countGroups(instance.getId()));
-            instance.setResourceCountsAvailable(true);
-        } catch (RuntimeException ex) {
-            instance.setResourceCountsAvailable(false);
-            log.warn("Failed to load resource counts for instance {}: {}",
-                    instance.getId(), ex.getMessage());
+        InstanceProvider provider = providerRegistry.forVendor(vendor);
+        int topicCount = provider.countTopics(String.valueOf(instance.getId()));
+        int consumerGroupCount = provider.countGroups(String.valueOf(instance.getId()));
+        return new InstanceResourceCountRunner.ResourceCounts(topicCount, consumerGroupCount);
+    }
+
+    private static void applyCounts(InstanceVO instance, InstanceResourceCountRunner.ResourceCounts counts) {
+        instance.setTopicCount(counts.topicCount());
+        instance.setConsumerGroupCount(counts.consumerGroupCount());
+        instance.setResourceCountsAvailable(true);
+    }
+
+    private static void clearCounts(InstanceVO instance) {
+        instance.setTopicCount(0);
+        instance.setConsumerGroupCount(0);
+        instance.setResourceCountsAvailable(false);
+    }
+
+    private static String rootMessage(Throwable failure) {
+        if (failure == null) {
+            return "unknown failure";
         }
+        Throwable current = failure;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return StringUtils.hasText(message) ? message : current.getClass().getSimpleName();
     }
 
     public InstanceVO createInstance(InstanceVO instance) {
@@ -91,25 +200,263 @@ public class InstanceService {
 
         switch (vendor) {
             case APACHE -> createApacheInstance(instance);
-            case ALIYUN -> createAliyunInstance(instance);
-            case TENCENT -> throw new BusinessException(501, "Tencent Cloud instance is not supported yet");
+            case ALIYUN, TENCENT -> createCloudInstance(instance, vendor);
         }
 
-        instance.setId(UUID.randomUUID().toString());
-        instance.setCreatedAt(LocalDateTime.now());
-        instance.setUpdatedAt(LocalDateTime.now());
-        InstanceVO saved = instanceRepository.save(instance);
-        recordAudit("CREATE_INSTANCE", "INSTANCE", saved.getId(), null,
+        requireUniqueInstanceName(instance.getName(), null);
+        instance.setGmtCreate(LocalDateTime.now());
+        instance.setGmtModified(LocalDateTime.now());
+        InstanceVO saved;
+        try {
+            saved = instanceRepository.save(instance);
+        } catch (DataIntegrityViolationException exception) {
+            if (vendor != InstanceVendor.APACHE && isCloudCredentialReferenceViolation(exception)) {
+                throw new BusinessException(409, "Cloud credential no longer exists: " + instance.getCredentialId());
+            }
+            throw exception;
+        }
+        recordAudit("CREATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
+    }
+
+    /**
+     * Imports every cloud instance visible to the credential by walking all catalog regions.
+     * Remarks are resolved from the cloud instance detail during creation. Instances whose
+     * resolved name already exists are skipped; region and per-instance failures are collected
+     * instead of aborting the batch. Failure details are bounded while the result retains the
+     * complete failure count.
+     */
+    public CloudImportResultVO importCloudInstances(InstanceVendor vendor, Long credentialId) {
+        if (vendor == null || vendor == InstanceVendor.APACHE) {
+            throw new BusinessException(400, "Import is only supported for cloud vendors");
+        }
+        if (credentialId == null) {
+            throw new BusinessException(400, "credentialId is required");
+        }
+        CloudCredentialVO credential = cloudCredentialRepository.findById(credentialId)
+                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + credentialId));
+        if (credential.getVendor() != vendor) {
+            throw new BusinessException(400, "Cloud credential vendor does not match " + vendor);
+        }
+        CloudImportAccumulator result = new CloudImportAccumulator();
+        CloudCatalogProvider catalog;
+        try {
+            catalog = providerRegistry.catalogFor(vendor);
+        } catch (RuntimeException ex) {
+            result.addFailure("catalog", ex);
+            return finishCloudImport(vendor, credentialId, result);
+        }
+        if (catalog == null) {
+            result.addFailure("catalog", "provider returned no cloud catalog");
+            return finishCloudImport(vendor, credentialId, result);
+        }
+
+        List<CloudRegionVO> regions;
+        try {
+            regions = catalog.listRegions(credentialId);
+        } catch (RuntimeException ex) {
+            result.addFailure("regions", ex);
+            return finishCloudImport(vendor, credentialId, result);
+        }
+        if (regions == null) {
+            result.addFailure("regions", "catalog returned a null region list");
+            return finishCloudImport(vendor, credentialId, result);
+        }
+
+        Set<String> seenRegions = new LinkedHashSet<>();
+        for (CloudRegionVO region : regions) {
+            String regionId = normalizeCloudImportValue(region == null ? null : region.getRegionId());
+            if (regionId == null) {
+                result.addFailure("region", "catalog returned an invalid region entry");
+                continue;
+            }
+            if (!seenRegions.add(regionId)) {
+                continue;
+            }
+            importCloudRegion(catalog, vendor, credentialId, regionId, result);
+        }
+        return finishCloudImport(vendor, credentialId, result);
+    }
+
+    private void importCloudRegion(CloudCatalogProvider catalog, InstanceVendor vendor, Long credentialId,
+                                   String regionId, CloudImportAccumulator result) {
+        List<CloudInstanceOptionVO> options;
+        try {
+            options = catalog.listCloudInstances(credentialId, regionId, null);
+        } catch (RuntimeException ex) {
+            result.addFailure(regionId, ex);
+            return;
+        }
+        if (options == null) {
+            result.addFailure(regionId, "catalog returned a null instance list");
+            return;
+        }
+
+        for (int index = 0; index < options.size(); index++) {
+            CloudInstanceOptionVO option = options.get(index);
+            String rowTarget = regionId + " row " + (index + 1);
+            if (option == null) {
+                result.addFailure(rowTarget, "catalog returned a null instance entry");
+                continue;
+            }
+            String cloudInstanceId = normalizeCloudImportValue(option.getInstanceId());
+            if (cloudInstanceId == null) {
+                result.addFailure(rowTarget, "catalog returned an instance without an id");
+                continue;
+            }
+            if (!result.markDiscovered(regionId, cloudInstanceId)) {
+                continue;
+            }
+            importCloudInstance(vendor, credentialId, regionId, cloudInstanceId, result);
+        }
+    }
+
+    private void importCloudInstance(InstanceVendor vendor, Long credentialId,
+                                     String regionId, String cloudInstanceId, CloudImportAccumulator result) {
+        InstanceVO request = InstanceVO.builder()
+                .vendor(vendor)
+                .credentialId(credentialId)
+                .regionId(regionId)
+                .cloudInstanceId(cloudInstanceId)
+                .name(cloudInstanceId)
+                .build();
+        try {
+            createInstance(request);
+            result.imported++;
+        } catch (DuplicateInstanceNameException ex) {
+            result.skipped++;
+        } catch (BusinessException ex) {
+            result.addFailure(cloudInstanceId, ex);
+        } catch (RuntimeException ex) {
+            result.addFailure(cloudInstanceId, ex);
+        }
+    }
+
+    private CloudImportResultVO finishCloudImport(InstanceVendor vendor, Long credentialId,
+                                                  CloudImportAccumulator result) {
+        log.info("Cloud import finished: vendor={}, credentialId={}, discovered={}, imported={}, skipped={}, failed={}",
+                vendor, credentialId, result.discovered, result.imported, result.skipped, result.failedCount);
+        recordAudit("IMPORT_CLOUD_INSTANCES", "INSTANCE", String.valueOf(credentialId), null,
+                "vendor=" + vendor + ", imported=" + result.imported + ", skipped=" + result.skipped
+                        + ", failed=" + result.failedCount);
+        return result.toValue();
+    }
+
+    private String normalizeCloudImportValue(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private static String cloudImportFailureMessage(Throwable failure) {
+        String message = failure == null ? null : failure.getMessage();
+        if (!StringUtils.hasText(message)) {
+            message = failure == null ? "unknown failure" : failure.getClass().getSimpleName();
+        }
+        return boundedCloudImportText(message, MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH);
+    }
+
+    private static String boundedCloudImportText(String value, int maxLength) {
+        String singleLine = value == null ? "" : value.replaceAll("\\s+", " ").trim();
+        if (singleLine.length() <= maxLength) {
+            return singleLine;
+        }
+        return singleLine.substring(0, maxLength - 1) + "…";
+    }
+
+    private static final class CloudImportAccumulator {
+
+        private final List<String> failed = new ArrayList<>();
+        private final Set<CloudInstanceKey> discoveredKeys = new HashSet<>();
+        private int discovered;
+        private int imported;
+        private int skipped;
+        private int failedCount;
+        private boolean failureDetailsTruncated;
+
+        private boolean markDiscovered(String regionId, String cloudInstanceId) {
+            if (!discoveredKeys.add(new CloudInstanceKey(regionId, cloudInstanceId))) {
+                return false;
+            }
+            discovered++;
+            return true;
+        }
+
+        private void addFailure(String target, Throwable failure) {
+            addFailure(target, cloudImportFailureMessage(failure));
+        }
+
+        private void addFailure(String target, String message) {
+            failedCount++;
+            if (failed.size() < MAX_CLOUD_IMPORT_FAILURE_DETAILS) {
+                String safeTarget = boundedCloudImportText(target, MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH);
+                String safeMessage = boundedCloudImportText(message, MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH);
+                failed.add(boundedCloudImportText(safeTarget + ": " + safeMessage,
+                        MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH));
+            } else {
+                failureDetailsTruncated = true;
+            }
+        }
+
+        private CloudImportResultVO toValue() {
+            return CloudImportResultVO.builder()
+                    .discovered(discovered)
+                    .imported(imported)
+                    .skipped(skipped)
+                    .failedCount(failedCount)
+                    .failureDetailsTruncated(failureDetailsTruncated)
+                    .failed(List.copyOf(failed))
+                    .build();
+        }
+    }
+
+    private record CloudInstanceKey(String regionId, String cloudInstanceId) {
+    }
+
+    private void requireUniqueInstanceName(String name, Long excludeId) {
+        if (!StringUtils.hasText(name)) {
+            return;
+        }
+        instanceRepository.findByName(name).ifPresent(existing -> {
+            if (excludeId == null || !excludeId.equals(existing.getId())) {
+                throw new DuplicateInstanceNameException(name);
+            }
+        });
+    }
+
+    /**
+     * Resolves the external instance identifier (globally unique instance name, with a
+     * numeric primary-key fallback) to the internal database id.
+     */
+    public Long resolveInstanceId(String instanceId) {
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(InstanceVO::getId)
+                .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+    }
+
+    /**
+     * Normalizes any accepted identifier (instance name or legacy numeric id) to the
+     * canonical instance ID (the globally unique instance name). Unknown values pass
+     * through unchanged.
+     */
+    public String normalizeIdentifier(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            return instanceId;
+        }
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(InstanceVO::getName)
+                .orElse(instanceId);
     }
 
     private void createApacheInstance(InstanceVO instance) {
         instance.setVendor(InstanceVendor.APACHE);
         instance.setName(requireInstanceName(instance.getName()));
         instance.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
+        instance.setAdminCredentialRef(normalizeCredentialRef(instance.getAdminCredentialRef()));
         if (instance.getType() == null) {
             throw new BusinessException(400, "InstanceVO type is required");
+        }
+        if (instance.getType() == InstanceType.CLOUD) {
+            throw new BusinessException(400, "CLOUD type is reserved for vendor-managed instances");
         }
     }
 
@@ -118,29 +465,36 @@ public class InstanceService {
      * one of the cloud instances returned by the vendor catalog; endpoint is resolved from the
      * cloud instance detail (VPC endpoint preferred).
      */
-    private void createAliyunInstance(InstanceVO instance) {
-        instance.setVendor(InstanceVendor.ALIYUN);
+    private void createCloudInstance(InstanceVO instance, InstanceVendor vendor) {
+        instance.setVendor(vendor);
         if (instance.getEndpoint() != null && !instance.getEndpoint().isBlank()) {
             throw new BusinessException(400, "Commercial instances must be selected from the cloud catalog, endpoint cannot be set manually");
         }
-        if (!StringUtils.hasText(instance.getCredentialId()) || !StringUtils.hasText(instance.getCloudInstanceId())
+        if (instance.getCredentialId() == null || !StringUtils.hasText(instance.getCloudInstanceId())
                 || !StringUtils.hasText(instance.getRegionId())) {
-            throw new BusinessException(400, "credentialId, cloudInstanceId and regionId are required for Aliyun instances");
+            throw new BusinessException(400,
+                    "credentialId, cloudInstanceId and regionId are required for " + vendor + " instances");
         }
         CloudCredentialVO credential = cloudCredentialRepository.findById(instance.getCredentialId())
                 .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + instance.getCredentialId()));
-        if (credential.getVendor() != InstanceVendor.ALIYUN) {
-            throw new BusinessException(400, "Cloud credential vendor does not match ALIYUN");
+        if (credential.getVendor() != vendor) {
+            throw new BusinessException(400, "Cloud credential vendor does not match " + vendor);
         }
-        CloudInstanceDetailVO detail = providerRegistry.catalogFor(InstanceVendor.ALIYUN)
+        CloudInstanceDetailVO detail = providerRegistry.catalogFor(vendor)
                 .getCloudInstance(instance.getCredentialId(), instance.getRegionId(), instance.getCloudInstanceId());
+        if (detail == null) {
+            throw new BusinessException(502,
+                    "Cloud instance details unavailable: " + instance.getCloudInstanceId());
+        }
         if (!StringUtils.hasText(instance.getName())) {
-            instance.setName(detail.getInstanceName() != null && !detail.getInstanceName().isBlank()
-                    ? detail.getInstanceName() : detail.getInstanceId());
+            instance.setName(detail.getInstanceId());
         }
         instance.setName(requireInstanceName(instance.getName()));
-        instance.setType(InstanceType.PROXY);
+        instance.setType(InstanceType.CLOUD);
         instance.setEndpoint(resolveEndpoint(detail));
+        if (!StringUtils.hasText(instance.getRemark()) && StringUtils.hasText(detail.getRemark())) {
+            instance.setRemark(detail.getRemark());
+        }
     }
 
     private String resolveEndpoint(CloudInstanceDetailVO detail) {
@@ -148,6 +502,7 @@ public class InstanceService {
             throw new BusinessException(502, "Cloud instance has no endpoint: " + detail.getInstanceId());
         }
         return detail.getEndpoints().stream()
+                .filter(Objects::nonNull)
                 .filter(endpoint -> endpoint.getEndpointUrl() != null && !endpoint.getEndpointUrl().isBlank())
                 .sorted((a, b) -> Integer.compare(endpointPriority(a.getEndpointType()), endpointPriority(b.getEndpointType())))
                 .map(CloudInstanceDetailVO.CloudEndpoint::getEndpointUrl)
@@ -159,7 +514,7 @@ public class InstanceService {
         if (endpointType == null) {
             return 2;
         }
-        return switch (endpointType.toUpperCase()) {
+        return switch (endpointType.toUpperCase(Locale.ROOT)) {
             case "TCP_VPC" -> 0;
             case "TCP_INTERNET" -> 1;
             default -> 2;
@@ -184,14 +539,22 @@ public class InstanceService {
         if (!StringUtils.hasText(name)) {
             throw new BusinessException(400, "InstanceVO name is required");
         }
-        return name.trim();
+        String trimmed = name.trim();
+        if (trimmed.length() > 64) {
+            throw new BusinessException(400, "InstanceVO name must not exceed 64 characters");
+        }
+        return trimmed;
+    }
+
+    private String normalizeCredentialRef(String credentialRef) {
+        return StringUtils.hasText(credentialRef) ? credentialRef.trim() : null;
     }
 
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
 
-        if (instance.getId() == null || instance.getId().isBlank()) {
+        if (instance.getId() == null) {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
@@ -205,10 +568,16 @@ public class InstanceService {
         InstanceVO updated = copyOf(existing);
         boolean cloudInstance = existing.getVendor() != null && existing.getVendor() != InstanceVendor.APACHE;
         if (instance.getName() != null) {
-            updated.setName(requireInstanceName(instance.getName()));
+            String requestedName = requireInstanceName(instance.getName());
+            if (!requestedName.equals(existing.getName())) {
+                throw new BusinessException(400, "Instance ID cannot be changed after creation");
+            }
         }
         if (!cloudInstance) {
             if (instance.getType() != null) {
+                if (instance.getType() == InstanceType.CLOUD) {
+                    throw new BusinessException(400, "CLOUD type is reserved for vendor-managed instances");
+                }
                 updated.setType(instance.getType());
             }
             if (instance.getEndpoint() != null) {
@@ -218,38 +587,107 @@ public class InstanceService {
         if (instance.getRemark() != null) {
             updated.setRemark(instance.getRemark());
         }
-        updated.setUpdatedAt(LocalDateTime.now());
+        if (!cloudInstance && instance.getAdminCredentialRef() != null) {
+            updated.setAdminCredentialRef(normalizeCredentialRef(instance.getAdminCredentialRef()));
+        }
+        updated.setGmtModified(LocalDateTime.now());
 
         InstanceVO saved = instanceRepository.save(updated);
-        releaseApacheEndpointIfUnused(existing, saved.getEndpoint());
-        recordAudit("UPDATE_INSTANCE", "INSTANCE", saved.getId(), null,
+        releaseApacheClientIfChanged(existing, saved);
+        recordAudit("UPDATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
     }
 
-    public void deleteInstance(String id) {
+    @Transactional
+    public void deleteInstance(Long id) {
         log.info("Deleting instance: {}", id);
 
-        if (id == null || id.isBlank()) {
+        if (id == null) {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
         InstanceVO existing = instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
 
-        InstanceProvider provider = providerRegistry.forVendor(
-                existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor());
-        int topicCount = provider.countTopics(id);
-        int consumerGroupCount = provider.countGroups(id);
-        if (topicCount > 0 || consumerGroupCount > 0) {
-            throw new BusinessException(409, String.format(
-                    "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
-                    topicCount, consumerGroupCount));
+        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
+        if (vendor == InstanceVendor.APACHE) {
+            InstanceProvider provider = providerRegistry.forVendor(InstanceVendor.APACHE);
+            int topicCount = provider.countTopics(String.valueOf(id));
+            int consumerGroupCount = provider.countGroups(String.valueOf(id));
+            if (topicCount > 0 || consumerGroupCount > 0) {
+                throw new BusinessException(409, String.format(
+                        "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
+                        topicCount, consumerGroupCount));
+            }
         }
-        instanceRepository.deleteById(id);
+        if (!instanceRepository.deleteById(id)) {
+            throw new BusinessException(404, "InstanceVO not found: " + id);
+        }
+        removeDataSourceBindings(existing.getName());
         releaseApacheEndpointIfUnused(existing, null);
-        recordAudit("DELETE_INSTANCE", "INSTANCE", id, null,
+        recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing));
+    }
+
+    /**
+     * Deletes the selected instances one by one, collecting per-instance failures (for example
+     * an APACHE instance that still owns topics/groups) instead of aborting the whole batch.
+     */
+    public BatchDeleteResultVO deleteInstances(List<String> instanceIds) {
+        if (instanceIds == null || instanceIds.isEmpty()) {
+            throw new BusinessException(400, "Instance IDs are required");
+        }
+        List<String> normalizedIds = instanceIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(instanceId -> !instanceId.isEmpty())
+                .distinct()
+                .toList();
+        if (normalizedIds.isEmpty()) {
+            throw new BusinessException(400, "Instance IDs are required");
+        }
+        int deleted = 0;
+        List<String> failed = new ArrayList<>();
+        for (String instanceId : normalizedIds) {
+            try {
+                deleteInstance(resolveInstanceId(instanceId));
+                deleted++;
+            } catch (BusinessException ex) {
+                failed.add(instanceId + ": " + ex.getMessage());
+            } catch (RuntimeException ex) {
+                String message = batchFailureMessage(ex);
+                log.warn("Failed to delete instance {} during batch operation: {}", instanceId, message);
+                failed.add(instanceId + ": " + message);
+            }
+        }
+        return BatchDeleteResultVO.builder().deleted(deleted).failed(failed).build();
+    }
+
+    private static String batchFailureMessage(RuntimeException failure) {
+        String message = failure.getMessage();
+        if (!StringUtils.hasText(message)) {
+            message = failure.getClass().getSimpleName();
+        }
+        message = message.trim();
+        return message.length() > MAX_BATCH_FAILURE_MESSAGE_LENGTH
+                ? message.substring(0, MAX_BATCH_FAILURE_MESSAGE_LENGTH) : message;
+    }
+
+    private void removeDataSourceBindings(String instanceId) {
+        for (DataSourceVO dataSource : settingsRepository.findAllDataSources()) {
+            List<String> instanceIds = dataSource.getInstanceIds();
+            if (instanceIds == null || !instanceIds.contains(instanceId)) {
+                continue;
+            }
+            dataSource.setInstanceIds(instanceIds.stream()
+                    .filter(candidate -> !instanceId.equals(candidate))
+                    .toList());
+            if (!settingsRepository.replaceDataSource(dataSource)) {
+                log.warn("Metrics data source {} disappeared while removing instance binding {}",
+                        dataSource.getKey(), instanceId);
+            }
+        }
     }
 
     private void requireInstance(InstanceVO instance) {
@@ -263,6 +701,26 @@ public class InstanceService {
         return "name=" + instance.getName() + ", vendor=" + vendor + ", type=" + instance.getType();
     }
 
+    private boolean isCloudCredentialReferenceViolation(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                boolean foreignKeyFailure = lower.contains("foreign key")
+                        || lower.contains("referential integrity");
+                boolean credentialReference = lower.contains("credential_id")
+                        || lower.contains("rmq_cloud_credential");
+                if (lower.contains("fk_instance_cloud_credential")
+                        || foreignKeyFailure && credentialReference) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
     private InstanceVO copyOf(InstanceVO instance) {
         InstanceVO copy = InstanceVO.builder()
                 .name(instance.getName())
@@ -272,13 +730,14 @@ public class InstanceService {
                 .vendor(instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor())
                 .cloudInstanceId(instance.getCloudInstanceId())
                 .credentialId(instance.getCredentialId())
+                .adminCredentialRef(instance.getAdminCredentialRef())
                 .regionId(instance.getRegionId())
                 .topicCount(instance.getTopicCount())
                 .consumerGroupCount(instance.getConsumerGroupCount())
                 .build();
         copy.setId(instance.getId());
-        copy.setCreatedAt(instance.getCreatedAt());
-        copy.setUpdatedAt(instance.getUpdatedAt());
+        copy.setGmtCreate(instance.getGmtCreate());
+        copy.setGmtModified(instance.getGmtModified());
         return copy;
     }
 
@@ -287,19 +746,41 @@ public class InstanceService {
         if (vendor != InstanceVendor.APACHE) {
             return;
         }
-        releaseEndpointIfUnused(existing.getEndpoint(), currentEndpoint, existing.getId());
+        releaseOldClientIfUnused(existing, currentEndpoint, null, existing.getId());
     }
 
-    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, String excludedInstanceId) {
-        String oldEndpoint = normalizeEndpoint(previousEndpoint);
-        if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))) {
+    private void releaseApacheClientIfChanged(InstanceVO existing, InstanceVO saved) {
+        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
+        if (vendor != InstanceVendor.APACHE) {
             return;
         }
-        boolean stillReferenced = instanceRepository.findAll().stream()
-                .anyMatch(instance -> !excludedInstanceId.equals(instance.getId())
-                        && oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
-        if (!stillReferenced) {
+        releaseOldClientIfUnused(existing, saved.getEndpoint(), saved.getAdminCredentialRef(), existing.getId());
+    }
+
+    private void releaseOldClientIfUnused(InstanceVO existing, String currentEndpoint,
+                                          String currentCredentialRef, Long excludedInstanceId) {
+        String oldEndpoint = normalizeEndpoint(existing.getEndpoint());
+        String oldCredentialRef = normalizeCredentialRef(existing.getAdminCredentialRef());
+        if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))
+                && Objects.equals(oldCredentialRef, normalizeCredentialRef(currentCredentialRef))) {
+            return;
+        }
+        List<InstanceVO> remaining = instanceRepository.findAll().stream()
+                .filter(instance -> !excludedInstanceId.equals(instance.getId()))
+                .toList();
+        boolean endpointReferenced = remaining.stream()
+                .anyMatch(instance -> oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
+        if (!endpointReferenced) {
             adminFactory.release(oldEndpoint);
+            clientPool.release(oldEndpoint);
+            return;
+        }
+        boolean identityReferenced = remaining.stream()
+                .anyMatch(instance -> oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint()))
+                        && Objects.equals(oldCredentialRef, normalizeCredentialRef(instance.getAdminCredentialRef())));
+        if (!identityReferenced) {
+            adminFactory.release(oldEndpoint, oldCredentialRef);
+            clientPool.release(oldEndpoint, oldCredentialRef);
         }
     }
 

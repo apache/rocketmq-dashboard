@@ -39,5 +39,6 @@ public class ResetConsumerOffsetDTO {
     @Positive(message = "timestamp must be positive")
     private Long timestamp;
 
+    @NotBlank(message = "topic is required")
     private String topic;
 }

@@ -1,0 +1,10 @@
+# Keep the Docker build context lean.
+# NOTE: do not exclude target/ — deploy.sh mode A uses the runtime-prebuilt
+# stage which runs COPY target/*.jar app.jar.
+.git
+.github
+*.log
+.DS_Store
+localRepository
+.idea
+*.iml

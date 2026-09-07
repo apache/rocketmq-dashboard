@@ -44,15 +44,19 @@ class ProducerControllerTest {
 
     @Test
     void listProducerGroupsShouldReturnSuggestions() throws Exception {
-        when(producerConnectionService.listProducerGroups("instance-1"))
+        when(producerConnectionService.listProducerGroups("instance-1", "order-topic", "pg", 20))
                 .thenReturn(List.of("pg-order", "pg-payment"));
 
-        mockMvc.perform(get("/api/producer/groups").param("instanceId", "instance-1"))
+        mockMvc.perform(get("/api/producer/groups")
+                        .param("instanceId", "instance-1")
+                        .param("topic", "order-topic")
+                        .param("query", "pg")
+                        .param("limit", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0]").value("pg-order"))
                 .andExpect(jsonPath("$.data[1]").value("pg-payment"));
 
-        verify(producerConnectionService).listProducerGroups("instance-1");
+        verify(producerConnectionService).listProducerGroups("instance-1", "order-topic", "pg", 20);
     }
 
     @Test
@@ -60,6 +64,8 @@ class ProducerControllerTest {
         ProducerConnectionVO connection = ProducerConnectionVO.builder()
                 .clientId("producer-1")
                 .clientAddr("10.0.0.1:38888")
+                .topic("order-topic")
+                .producerGroup("pg-order")
                 .language("Java")
                 .versionDesc("5.1.0")
                 .build();
@@ -74,8 +80,14 @@ class ProducerControllerTest {
                 .andExpect(jsonPath("$.connectionSet").isArray())
                 .andExpect(jsonPath("$.connectionSet[0].clientId").value("producer-1"))
                 .andExpect(jsonPath("$.connectionSet[0].clientAddr").value("10.0.0.1:38888"))
+                .andExpect(jsonPath("$.connectionSet[0].topic").value("order-topic"))
+                .andExpect(jsonPath("$.connectionSet[0].producerGroup").value("pg-order"))
                 .andExpect(jsonPath("$.connectionSet[0].language").value("Java"))
-                .andExpect(jsonPath("$.connectionSet[0].versionDesc").value("5.1.0"));
+                .andExpect(jsonPath("$.connectionSet[0].versionDesc").value("5.1.0"))
+                .andExpect(jsonPath("$.summary.totalConnections").value(1))
+                .andExpect(jsonPath("$.summary.uniqueClientCount").value(1))
+                .andExpect(jsonPath("$.summary.uniqueAddressCount").value(1))
+                .andExpect(jsonPath("$.summary.readiness").value("READY"));
 
         verify(producerConnectionService).listConnections("instance-1", "order-topic", "pg-order");
     }
@@ -93,15 +105,19 @@ class ProducerControllerTest {
     }
 
     @Test
-    void listConnectionsShouldRequireProducerGroup() throws Exception {
+    void listConnectionsShouldAllowMissingProducerGroup() throws Exception {
+        when(producerConnectionService.listConnections("instance-1", "order-topic", null))
+                .thenReturn(List.of());
+
         mockMvc.perform(get("/api/producer/connection")
                         .param("instanceId", "instance-1")
                         .param("topic", "order-topic"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("producerGroup is required"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connectionSet").isArray())
+                .andExpect(jsonPath("$.summary.totalConnections").value(0))
+                .andExpect(jsonPath("$.summary.readiness").value("UNAVAILABLE"));
 
-        verifyNoInteractions(producerConnectionService);
+        verify(producerConnectionService).listConnections("instance-1", "order-topic", null);
     }
 
     @Test

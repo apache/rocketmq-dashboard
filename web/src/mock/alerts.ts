@@ -17,7 +17,7 @@
 
 export const mockAlertRules = [
   {
-    id: 'alert-001',
+    id: 1,
     name: 'Broker 磁盘使用率过高',
     metric: '磁盘使用率',
     operator: '>' as const,
@@ -30,7 +30,7 @@ export const mockAlertRules = [
     description: '当 Broker 磁盘使用率超过 85% 时触发告警',
   },
   {
-    id: 'alert-002',
+    id: 2,
     name: '消费堆积量异常',
     metric: '消费堆积量',
     operator: '>' as const,
@@ -43,7 +43,7 @@ export const mockAlertRules = [
     description: '消费组堆积消息数超过 10000 条时触发',
   },
   {
-    id: 'alert-003',
+    id: 3,
     name: 'TPS 突降告警',
     metric: 'TPS 异常',
     operator: '<' as const,
@@ -56,7 +56,7 @@ export const mockAlertRules = [
     description: 'TPS 低于 500 时触发，可能表示生产端异常',
   },
   {
-    id: 'alert-004',
+    id: 4,
     name: 'Broker 离线检测',
     metric: 'Broker 离线',
     operator: '>=' as const,
@@ -69,7 +69,7 @@ export const mockAlertRules = [
     description: '检测到任意 Broker 节点离线时立即触发',
   },
   {
-    id: 'alert-005',
+    id: 5,
     name: 'Proxy 连接数过高',
     metric: 'Proxy 连接数',
     operator: '>' as const,
@@ -82,7 +82,7 @@ export const mockAlertRules = [
     description: 'Proxy 连接数超过 5000 时触发告警',
   },
   {
-    id: 'alert-006',
+    id: 6,
     name: '磁盘使用率预警',
     metric: '磁盘使用率',
     operator: '>=' as const,
@@ -95,7 +95,7 @@ export const mockAlertRules = [
     description: '磁盘使用率超过 70% 的预警级别',
   },
   {
-    id: 'alert-007',
+    id: 7,
     name: '消费堆积轻微告警',
     metric: '消费堆积量',
     operator: '>' as const,
@@ -108,7 +108,7 @@ export const mockAlertRules = [
     description: '消费堆积量超过 5000 条时的轻微告警',
   },
   {
-    id: 'alert-008',
+    id: 8,
     name: 'TPS 突增告警',
     metric: 'TPS 异常',
     operator: '>' as const,

@@ -59,8 +59,8 @@ public class AliyunCatalogService implements CloudCatalogProvider {
     }
 
     @Override
-    public List<CloudRegionVO> listRegions(String credentialId) {
-        requireNonBlank(credentialId, "credentialId");
+    public List<CloudRegionVO> listRegions(Long credentialId) {
+        requireId(credentialId, "credentialId");
         ListRegionsResponse response = clientFactory.call(credentialId, DEFAULT_REGION,
                 client -> client.listRegions(ListRegionsRequest.builder().build()));
         ListRegionsResponseBody body = response == null ? null : response.getBody();
@@ -70,7 +70,7 @@ public class AliyunCatalogService implements CloudCatalogProvider {
             return regions;
         }
         for (ListRegionsResponseBody.Data item : data) {
-            if (Boolean.TRUE.equals(item.getSupportRocketmqV5())) {
+            if (item != null && Boolean.TRUE.equals(item.getSupportRocketmqV5())) {
                 regions.add(AliyunConverters.toRegionVO(item));
             }
         }
@@ -80,14 +80,19 @@ public class AliyunCatalogService implements CloudCatalogProvider {
     }
 
     @Override
-    public List<CloudInstanceOptionVO> listCloudInstances(String credentialId, String regionId, String search) {
-        requireNonBlank(credentialId, "credentialId");
+    public List<CloudInstanceOptionVO> listCloudInstances(Long credentialId, String regionId, String search) {
+        requireId(credentialId, "credentialId");
         requireNonBlank(regionId, "regionId");
-        List<ListInstancesResponseBody.List> all = fetchAllInstances(credentialId, regionId);
+        String normalizedRegionId = regionId.strip();
+        String normalizedSearch = search == null ? null : search.strip();
+        List<ListInstancesResponseBody.List> all = fetchAllInstances(credentialId, normalizedRegionId);
         List<CloudInstanceOptionVO> options = new ArrayList<>();
         for (ListInstancesResponseBody.List item : all) {
+            if (item == null) {
+                continue;
+            }
             CloudInstanceOptionVO vo = AliyunConverters.toInstanceOptionVO(item);
-            if (matchesSearch(search, vo)) {
+            if (matchesSearch(normalizedSearch, vo)) {
                 options.add(vo);
             }
         }
@@ -95,24 +100,26 @@ public class AliyunCatalogService implements CloudCatalogProvider {
     }
 
     @Override
-    public CloudInstanceDetailVO getCloudInstance(String credentialId, String regionId, String cloudInstanceId) {
-        requireNonBlank(credentialId, "credentialId");
+    public CloudInstanceDetailVO getCloudInstance(Long credentialId, String regionId, String cloudInstanceId) {
+        requireId(credentialId, "credentialId");
         requireNonBlank(regionId, "regionId");
         requireNonBlank(cloudInstanceId, "cloudInstanceId");
-        GetInstanceRequest request = GetInstanceRequest.builder().instanceId(cloudInstanceId).build();
-        GetInstanceResponse response = clientFactory.call(credentialId, regionId,
+        String normalizedRegionId = regionId.strip();
+        String normalizedCloudInstanceId = cloudInstanceId.strip();
+        GetInstanceRequest request = GetInstanceRequest.builder().instanceId(normalizedCloudInstanceId).build();
+        GetInstanceResponse response = clientFactory.call(credentialId, normalizedRegionId,
                 client -> client.getInstance(request));
         GetInstanceResponseBody body = response == null ? null : response.getBody();
         GetInstanceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
-            throw new BusinessException(404, "Aliyun instance not found: " + cloudInstanceId);
+            throw new BusinessException(404, "Aliyun instance not found: " + normalizedCloudInstanceId);
         }
         return AliyunConverters.toInstanceDetailVO(data);
     }
 
-    private List<ListInstancesResponseBody.List> fetchAllInstances(String credentialId, String regionId) {
+    private List<ListInstancesResponseBody.List> fetchAllInstances(Long credentialId, String regionId) {
         List<ListInstancesResponseBody.List> all = new ArrayList<>();
-        for (int page = 1; page <= AliyunConverters.MAX_PAGES; page++) {
+        for (int page = 1; ; page++) {
             ListInstancesRequest request = ListInstancesRequest.builder()
                     .pageNumber(page)
                     .pageSize(AliyunConverters.PAGE_SIZE)
@@ -126,7 +133,13 @@ public class AliyunCatalogService implements CloudCatalogProvider {
                 break;
             }
             all.addAll(list);
-            if (list.size() < AliyunConverters.PAGE_SIZE) {
+            Long totalCount = data.getTotalCount();
+            if (totalCount != null && totalCount < 0) {
+                throw new BusinessException(502, "Aliyun instance catalog returned a negative totalCount");
+            }
+            if (list.size() < AliyunConverters.PAGE_SIZE
+                    || totalCount != null && all.size() >= totalCount
+                    || totalCount == null && page >= AliyunConverters.MAX_PAGES) {
                 break;
             }
         }
@@ -147,6 +160,12 @@ public class AliyunCatalogService implements CloudCatalogProvider {
 
     private static void requireNonBlank(String value, String name) {
         if (value == null || value.isBlank()) {
+            throw new BusinessException(400, name + " is required");
+        }
+    }
+
+    private static void requireId(Long value, String name) {
+        if (value == null) {
             throw new BusinessException(400, name + " is required");
         }
     }

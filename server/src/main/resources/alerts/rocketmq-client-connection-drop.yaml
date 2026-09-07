@@ -6,7 +6,7 @@ groups:
   - name: rocketmq-client.rules
     rules:
       - alert: RocketMQClientConnectionDrop
-        expr: changes(rocketmq_producer_count[5m]) < -5
+        expr: delta(rocketmq_producer_count[5m]) < -5
         for: 5m
         labels:
           severity: warning

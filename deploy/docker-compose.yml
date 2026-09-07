@@ -5,9 +5,13 @@ services:
     image: mysql:8.0
     container_name: rocketmq-studio-mysql
     restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --init-connect=SET NAMES utf8mb4
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      MYSQL_ROOT_PASSWORD: studio123
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-studio123}
       MYSQL_DATABASE: rocketmq
     ports:
       - "3306:3306"
@@ -19,7 +23,7 @@ services:
       - studio-net
       - rocketmq
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pstudio123"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -33,9 +37,10 @@ services:
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      STUDIO_AUTH_LOGIN_REQUIRED: ${STUDIO_AUTH_LOGIN_REQUIRED:-false}
+      STUDIO_AUTH_LOGIN_REQUIRED: ${STUDIO_AUTH_LOGIN_REQUIRED:-true}
       STUDIO_AUTH_ADMIN_USERNAME: ${STUDIO_AUTH_ADMIN_USERNAME:-}
       STUDIO_AUTH_ADMIN_PASSWORD: ${STUDIO_AUTH_ADMIN_PASSWORD:-}
+      STUDIO_CORS_ALLOWED_ORIGINS: ${STUDIO_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       STUDIO_METRICS_PROMETHEUS_BASE_URL: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:-}
       STUDIO_METRICS_PROMETHEUS_USERNAME: ${STUDIO_METRICS_PROMETHEUS_USERNAME:-}
       STUDIO_METRICS_PROMETHEUS_PASSWORD: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:-}
@@ -43,16 +48,13 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/rocketmq?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: studio123
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-studio123}
       STUDIO_ROCKETMQ_NAMESRV_ADDR: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:-nameserver:9876}
       RMQ_LLM_TOKEN: ${RMQ_LLM_TOKEN:-}
       RMQ_ANTHROPIC_BASE_URL: ${RMQ_ANTHROPIC_BASE_URL:-}
+      RMQ_LLM_CLI_ALLOWED_ENVIRONMENT: ${RMQ_LLM_CLI_ALLOWED_ENVIRONMENT:-}
     expose:
       - "8888"
-    extra_hosts:
-      - "nameserver:10.89.2.10"
-      - "broker-0:10.89.2.11"
-      - "broker-1:10.89.2.12"
     networks:
       - studio-net
       - rocketmq
@@ -60,7 +62,7 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8888/actuator/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8888/readyz"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -70,6 +72,8 @@ services:
     build:
       context: ../web
       dockerfile: Dockerfile
+      args:
+        VITE_GIT_COMMIT: ${STUDIO_BUILD_COMMIT:-dev}
     image: rocketmq-web:latest
     container_name: rocketmq-web
     restart: unless-stopped
@@ -86,7 +90,7 @@ networks:
     driver: bridge
   rocketmq:
     external: true
-    name: rocketmq_default
+    name: rocketmq_net
 
 volumes:
   mysql-data:

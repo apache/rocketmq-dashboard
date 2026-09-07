@@ -21,7 +21,8 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
-import LiteTopic from '../LiteTopic';
+import { downloadCsv } from '../../../utils/download';
+import LiteTopic, { formatTime } from '../LiteTopic';
 
 const apiMocks = vi.hoisted(() => ({
   queryLiteTopicCapability: vi.fn(),
@@ -32,6 +33,15 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/liteTopic', () => apiMocks);
+
+vi.mock('../../../utils/download', async () => {
+  const downloadModule =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return {
+    ...downloadModule,
+    downloadCsv: vi.fn(),
+  };
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -68,6 +78,14 @@ const createDeferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
+describe('LiteTopic time formatting', () => {
+  it('preserves epoch timestamps and rejects invalid provider values', () => {
+    expect(formatTime(0)).toBe(new Date(0).toLocaleString());
+    expect(formatTime(Number.POSITIVE_INFINITY)).toBe('-');
+    expect(formatTime(Number.MAX_VALUE)).toBe('-');
+  });
+});
+
 const createQuota = (currentTopicCount: number): LiteTopicQuota => ({
   currentTopicCount,
   maxTopicCount: 100,
@@ -101,6 +119,30 @@ describe('LiteTopic Page', () => {
       consumedMessages: 0,
       popProgress: 96,
     });
+  });
+
+  it('returns to the first page when the local TTL filter changes', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      ...Array.from({ length: 11 }, (_, index) => ({
+        namespace: 'default',
+        topicPattern: `active-${String(index).padStart(2, '0')}*`,
+        ttlStatus: 'ACTIVE' as const,
+      })),
+      { namespace: 'default', topicPattern: 'expired-*', ttlStatus: 'EXPIRED' },
+    ]);
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    await screen.findByText('active-00*');
+    await user.click(container.querySelector('.ant-pagination-next button')!);
+    expect(await screen.findByText('expired-*')).toBeInTheDocument();
+    expect(screen.queryByText('active-00*')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '状态' }));
+    await user.click(
+      await screen.findByText('活跃', { selector: '.ant-select-item-option-content' }),
+    );
+    expect(await screen.findByText('active-00*')).toBeInTheDocument();
   });
 
   it('displays the session POP progress returned by the API as a percentage', async () => {
@@ -234,6 +276,44 @@ describe('LiteTopic Page', () => {
     expect(screen.getByText('unknown-*')).toBeInTheDocument();
     expect(screen.getByText('missing-status-*')).toBeInTheDocument();
     expect(apiMocks.queryLiteTopicList).toHaveBeenCalledTimes(initialListRequestCount);
+  });
+
+  it('exports the current LiteTopic filter result', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: '=active-*',
+        topicCount: 3,
+        consumerCount: 2,
+        totalBacklog: 12,
+        averageTTL: 60000,
+        ttlStatus: 'ACTIVE',
+        lastActiveTime: 1893456000000,
+        sessionIds: ['session-1', 'session-2'],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'expired-*',
+        ttlStatus: 'EXPIRED',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('=active-*')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '状态' }));
+    await user.click(
+      await screen.findByText('活跃', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toMatch(/^rocketmq-lite-topics-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(csv).toContain('"Namespace","Topic Pattern","Topic Count"');
+    expect(csv).toContain('"default","\'=active-*","3","2","12","1.0min","活跃"');
+    expect(csv).toContain('"session-1;session-2"');
+    expect(csv).not.toContain('expired-*');
   });
 
   it('keeps an early filtered display while a delayed bootstrap supplies namespace options', async () => {
@@ -464,5 +544,26 @@ describe('LiteTopic Page', () => {
     });
     expect(screen.queryByText('old-*')).not.toBeInTheDocument();
     expect(screen.queryByText('90 / 100')).not.toBeInTheDocument();
+  });
+
+  it('clears stale quota while preserving a successfully refreshed topic list', async () => {
+    apiMocks.queryLiteTopicQuota
+      .mockResolvedValueOnce(createQuota(90))
+      .mockRejectedValueOnce(new Error('quota unavailable'));
+    apiMocks.queryLiteTopicList
+      .mockResolvedValueOnce([{ namespace: 'default', topicPattern: 'old-*' }])
+      .mockResolvedValueOnce([{ namespace: 'default', topicPattern: 'fresh-*' }]);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('old-*')).toBeInTheDocument();
+    expect(screen.getByText('90 / 100')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /刷新/ }));
+
+    expect(await screen.findByText('fresh-*')).toBeInTheDocument();
+    expect(screen.queryByText('old-*')).not.toBeInTheDocument();
+    expect(screen.queryByText('90 / 100')).not.toBeInTheDocument();
+    expect(await screen.findByText('获取配额信息失败')).toBeInTheDocument();
   });
 });

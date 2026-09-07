@@ -6,10 +6,10 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardData } from '../../../api/metrics';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -52,6 +52,19 @@ const dashboard = (name: string): DashboardData => ({
   ],
 });
 
+const unavailableTopologyDashboard = (): DashboardData => ({
+  ...dashboard('proxy-cluster'),
+  stats: {
+    ...dashboard('proxy-cluster').stats,
+    totalProxies: null,
+    totalNameServers: null,
+  },
+  clusters: dashboard('proxy-cluster').clusters.map((cluster) => ({
+    ...cluster,
+    proxies: null,
+  })),
+});
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((promiseResolve) => {
@@ -69,6 +82,16 @@ const renderWithProviders = (ui: React.ReactElement) =>
     </App>,
   );
 
+const LocationProbe = () => {
+  const location = useLocation();
+  return (
+    <output data-testid="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+};
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -83,12 +106,65 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(instanceService.listInstances).mockResolvedValue([
-    { id: 'instance-a', name: 'Instance A', endpoint: 'a:9876', type: 'DIRECT', remark: '', topicCount: 0, consumerGroupCount: 0, createdAt: '', updatedAt: '' },
-    { id: 'instance-b', name: 'Instance B', endpoint: 'b:9876', type: 'DIRECT', remark: '', topicCount: 0, consumerGroupCount: 0, createdAt: '', updatedAt: '' },
+    {
+      id: 1,
+      name: 'instance-a',
+      endpoint: 'a:9876',
+      type: 'DIRECT',
+      remark: '',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      gmtCreate: '',
+      gmtModified: '',
+    },
+    {
+      id: 2,
+      name: 'instance-b',
+      endpoint: 'b:9876',
+      type: 'DIRECT',
+      remark: '',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      gmtCreate: '',
+      gmtModified: '',
+    },
   ]);
 });
 
 describe('DashboardPage', () => {
+  it('renders unavailable Proxy topology counts as N/A instead of zero', async () => {
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(unavailableTopologyDashboard());
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('proxy-cluster');
+    expect(await screen.findByText(/1 Brokers · N\/A Proxy/u)).toBeInTheDocument();
+    expect(screen.queryByText('0 Proxy')).not.toBeInTheDocument();
+    const row = screen.getByText('proxy-cluster').closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getAllByText('N/A').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not show dashboard data from the previous instance while loading a new selection', async () => {
+    const instanceA = deferred<DashboardData>();
+    vi.mocked(dashboardService.getDashboard)
+      .mockResolvedValueOnce(dashboard('initial-cluster'))
+      .mockReturnValueOnce(instanceA.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('initial-cluster');
+    const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(dashboardService.getDashboard).toHaveBeenCalledWith('instance-a'));
+
+    expect(screen.queryByText('initial-cluster')).not.toBeInTheDocument();
+    instanceA.resolve(dashboard('instance-a-cluster'));
+    await screen.findByText('instance-a-cluster');
+  });
+
   it('does not let a stale instance response overwrite the latest selection', async () => {
     const instanceA = deferred<DashboardData>();
     const instanceB = deferred<DashboardData>();
@@ -102,9 +178,13 @@ describe('DashboardPage', () => {
     await screen.findByText('initial-cluster');
     const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
     await user.click(selector);
-    await user.click(await screen.findByText('Instance A', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
+    );
     await user.click(selector);
-    await user.click(await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
+    );
 
     instanceB.resolve(dashboard('instance-b-cluster'));
     expect(await screen.findByText('instance-b-cluster')).toBeInTheDocument();
@@ -114,5 +194,70 @@ describe('DashboardPage', () => {
       expect(screen.queryByText('instance-a-cluster')).not.toBeInTheDocument();
     });
     expect(screen.getByText('instance-b-cluster')).toBeInTheDocument();
+  });
+
+  it('preserves the selected instance when navigating to the cluster page', async () => {
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('instance-a-cluster'));
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <DashboardPage />
+        <LocationProbe />
+      </>,
+    );
+
+    await screen.findByText('instance-a-cluster');
+    const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByText('查看全部'));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=instance-b');
+  });
+
+  it('does not offer cloud instances for MQAdmin runtime diagnostics', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'apache-instance',
+        endpoint: 'apache:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'cloud-instance',
+        endpoint: 'cloud:9876',
+        type: 'DIRECT',
+        vendor: 'ALIYUN',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('apache-cluster'));
+    const user = userEvent.setup();
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('apache-cluster');
+    await user.click(screen.getByRole('combobox', { name: 'Dashboard instance' }));
+
+    expect(
+      await screen.findByText('apache-instance', {
+        selector: '.ant-select-item-option-content',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('cloud-instance', { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
   });
 });

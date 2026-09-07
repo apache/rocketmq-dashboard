@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.cluster.config.BrokerConfigDiffVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
@@ -41,6 +43,7 @@ import java.util.Collections;
 import java.util.stream.Stream;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -65,8 +68,32 @@ class ClusterControllerTest {
     @MockBean
     private ClusterConnectionService clusterConnectionService;
 
+    @MockBean
+    private BrokerConfigDiffService brokerConfigDiffService;
+
     @Test
-    void testConnectionShouldReturnProbeResult() throws Exception {
+    void listRegistryClustersShouldReturnDiscoveredClustersTest() throws Exception {
+        when(clusterService.listRegistryClusters()).thenReturn(Collections.singletonList(
+                ClusterVO.builder()
+                        .id("DefaultCluster")
+                        .name("rocketmq1")
+                        .nsClusterName("DefaultCluster")
+                        .endpoint("rocketmq1-nameserver:9876")
+                        .status(ClusterStatus.healthy)
+                        .build()));
+
+        mockMvc.perform(get("/api/clusters/registry"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].name").value("rocketmq1"))
+                .andExpect(jsonPath("$.data[0].nsClusterName").value("DefaultCluster"))
+                .andExpect(jsonPath("$.data[0].endpoint").value("rocketmq1-nameserver:9876"));
+
+        verify(clusterService).listRegistryClusters();
+    }
+
+    @Test
+    void connectionShouldReturnProbeResultTest() throws Exception {
         ClusterProbeResult probe = ClusterProbeResult.builder()
                 .connected(true)
                 .namesrvAddr("10.0.0.1:9876")
@@ -94,7 +121,7 @@ class ClusterControllerTest {
     }
 
     @Test
-    void testConnectionShouldRejectBlankNamesrvAddr() throws Exception {
+    void connectionShouldRejectBlankNamesrvAddrTest() throws Exception {
         ObjectNode command = objectMapper.createObjectNode().put("namesrvAddr", " ");
 
         mockMvc.perform(post("/api/clusters/test-connection")
@@ -111,7 +138,7 @@ class ClusterControllerTest {
     void listClustersShouldReturnAllClusters() throws Exception {
         ClusterVO cluster1 = buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy);
         ClusterVO cluster2 = buildCluster("cluster-2", "staging-cluster", ClusterStatus.warning);
-        when(clusterService.listClusters()).thenReturn(Arrays.asList(cluster1, cluster2));
+        when(clusterService.listClusters(isNull())).thenReturn(Arrays.asList(cluster1, cluster2));
 
         mockMvc.perform(get("/api/clusters"))
                 .andExpect(status().isOk())
@@ -128,7 +155,7 @@ class ClusterControllerTest {
 
     @Test
     void listClustersShouldReturnEmptyArrayWhenNoClusters() throws Exception {
-        when(clusterService.listClusters()).thenReturn(Collections.emptyList());
+        when(clusterService.listClusters(isNull())).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/clusters"))
                 .andExpect(status().isOk())
@@ -147,7 +174,7 @@ class ClusterControllerTest {
                 .maxMessageSize(4194304)
                 .autoCreateTopicEnable(true)
                 .build());
-        when(clusterService.getCluster("cluster-1")).thenReturn(cluster);
+        when(clusterService.getCluster("cluster-1", null)).thenReturn(cluster);
 
         mockMvc.perform(get("/api/clusters/cluster-1"))
                 .andExpect(status().isOk())
@@ -193,6 +220,105 @@ class ClusterControllerTest {
                 .andExpect(jsonPath("$.data.cluster.config.flushDiskType").value("SYNC_FLUSH"))
                 .andExpect(jsonPath("$.data.cluster.config.writeQueueNums").value(16))
                 .andExpect(jsonPath("$.data.cluster.config.readQueueNums").value(16));
+    }
+
+    @Test
+    void previewConfigShouldReturnEffectiveBrokerChanges() throws Exception {
+        ClusterVO cluster = buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy);
+        when(clusterService.previewClusterConfig(any(UpdateConfigDTO.class))).thenReturn(
+                ClusterConfigPreviewVO.builder()
+                        .cluster(cluster)
+                        .targetBrokers(Collections.singletonList(
+                                ClusterConfigPreviewVO.BrokerTargetVO.builder()
+                                        .name("broker-0")
+                                        .address("10.0.0.1:10911")
+                                        .build()))
+                        .brokerProperties(Collections.singletonMap("defaultTopicQueueNums", "16"))
+                        .changes(Collections.singletonList(
+                                ClusterConfigPreviewVO.ConfigChangeVO.builder()
+                                        .field("writeQueueNums")
+                                        .currentValue("8")
+                                        .proposedValue("16")
+                                        .brokerProperty("defaultTopicQueueNums")
+                                        .build()))
+                        .changed(true)
+                        .build());
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .writeQueueNums(16)
+                .readQueueNums(16)
+                .build();
+
+        mockMvc.perform(post("/api/clusters/config/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.changed").value(true))
+                .andExpect(jsonPath("$.data.targetBrokers[0].address").value("10.0.0.1:10911"))
+                .andExpect(jsonPath("$.data.brokerProperties.defaultTopicQueueNums").value("16"))
+                .andExpect(jsonPath("$.data.changes[0].field").value("writeQueueNums"))
+                .andExpect(jsonPath("$.data.changes[0].brokerProperty").value("defaultTopicQueueNums"));
+
+        verify(clusterService).previewClusterConfig(any(UpdateConfigDTO.class));
+    }
+
+    @Test
+    void brokerConfigCompareShouldReturnDriftResultTest() throws Exception {
+        when(brokerConfigDiffService.compare("cluster-1", "instance-1")).thenReturn(
+                BrokerConfigDiffVO.builder()
+                        .cluster("cluster-1")
+                        .complete(true)
+                        .driftDetected(true)
+                        .brokerCount(2)
+                        .reachableBrokerCount(2)
+                        .comparedFields(Arrays.asList("flushDiskType", "writeQueueNums"))
+                        .brokers(Arrays.asList(
+                                BrokerConfigDiffVO.BrokerStatusVO.builder()
+                                        .name("broker-a")
+                                        .address("10.0.0.1:10911")
+                                        .reachable(true)
+                                        .build(),
+                                BrokerConfigDiffVO.BrokerStatusVO.builder()
+                                        .name("broker-b")
+                                        .address("10.0.0.2:10911")
+                                        .reachable(true)
+                                        .build()))
+                        .differences(Collections.singletonList(
+                                BrokerConfigDiffVO.ConfigDifferenceVO.builder()
+                                        .field("writeQueueNums")
+                                        .brokerProperty("defaultTopicQueueNums")
+                                        .values(Arrays.asList(
+                                                BrokerConfigDiffVO.ConfigValueVO.builder()
+                                                        .brokerName("broker-a")
+                                                        .address("10.0.0.1:10911")
+                                                        .configured(true)
+                                                        .value("8")
+                                                        .build(),
+                                                BrokerConfigDiffVO.ConfigValueVO.builder()
+                                                        .brokerName("broker-b")
+                                                        .address("10.0.0.2:10911")
+                                                        .configured(true)
+                                                        .value("16")
+                                                        .build()))
+                                        .build()))
+                        .build());
+
+        mockMvc.perform(get("/api/clusters/cluster-1/broker-config-diff")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.complete").value(true))
+                .andExpect(jsonPath("$.data.driftDetected").value(true))
+                .andExpect(jsonPath("$.data.brokerCount").value(2))
+                .andExpect(jsonPath("$.data.reachableBrokerCount").value(2))
+                .andExpect(jsonPath("$.data.brokers[0].address").value("10.0.0.1:10911"))
+                .andExpect(jsonPath("$.data.differences[0].field").value("writeQueueNums"))
+                .andExpect(jsonPath("$.data.differences[0].brokerProperty").value("defaultTopicQueueNums"))
+                .andExpect(jsonPath("$.data.differences[0].values[1].value").value("16"));
+
+        verify(brokerConfigDiffService).compare("cluster-1", "instance-1");
     }
 
     @Test

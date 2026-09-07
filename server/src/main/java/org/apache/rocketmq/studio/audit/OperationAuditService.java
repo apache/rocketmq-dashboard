@@ -45,8 +45,17 @@ public class OperationAuditService {
         audit.setResult(result);
         audit.setErrorMessage(errorMessage);
         audit.setOperator(AuthenticatedUserContext.currentUsernameOrSystem());
-        audit.setOperatedAt(LocalDateTime.now());
-        auditMapper.insert(audit);
-        log.debug("Audit recorded: {} {} {}", operation, resourceType, resourceName);
+        LocalDateTime now = LocalDateTime.now();
+        audit.setGmtCreate(now);
+        audit.setGmtModified(now);
+        try {
+            auditMapper.insert(audit);
+            log.debug("Audit recorded: {} {} {}", operation, resourceType, resourceName);
+        } catch (RuntimeException auditFailure) {
+            // Audit is observational. A failed sink must not turn an operation that already
+            // completed at a broker or provider into an API failure that callers may retry.
+            log.warn("Failed to record audit operation={} resourceType={} resource={}: {}",
+                    operation, resourceType, resourceName, auditFailure.getMessage());
+        }
     }
 }

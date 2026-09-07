@@ -35,10 +35,12 @@ public class UpdateAclRuleDTO {
     private String decision;
     private String scope;
     private String aclVersion;
+    /** Instance id used to route the operation to a cloud-vendor ACL backend. */
+    private String instanceId;
 
     public AclRuleVO toAclRuleVO() {
         return AclRuleVO.builder()
-                .id(id)
+                .id(numericIdOrNull())
                 .principal(principal)
                 .resource(resource)
                 .resourceType(resourceType)
@@ -48,5 +50,16 @@ public class UpdateAclRuleDTO {
                 .scope(scope)
                 .aclVersion(aclVersion)
                 .build();
+    }
+
+    private Long numericIdOrNull() {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(id.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 }

@@ -43,4 +43,13 @@ class LiteTopicSummaryTest {
 
         assertThat(summary.getTTLStatus()).isEqualTo("ACTIVE");
     }
+
+    @Test
+    void aggregationHelpersShouldHandleUnsetConsumerCount() {
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setTopicCount(5);
+
+        assertThat(summary.getConsumerDensity()).isZero();
+        assertThat(summary.isEmptyAggregation()).isTrue();
+    }
 }

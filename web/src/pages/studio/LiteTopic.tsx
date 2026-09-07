@@ -45,6 +45,7 @@ import {
   PencilSimple,
   Gauge,
   Info,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -58,6 +59,7 @@ import {
   type LiteTopicItem,
   type LiteTopicSession,
 } from '../../api/liteTopic';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const formatDuration = (ms: number | undefined | null): string => {
   if (ms == null) return '-';
@@ -67,9 +69,10 @@ const formatDuration = (ms: number | undefined | null): string => {
   return `${(ms / 3600000).toFixed(1)}h`;
 };
 
-const formatTime = (timestamp: number | undefined | null): string => {
-  if (!timestamp) return '-';
-  return new Date(timestamp).toLocaleString();
+export const formatTime = (timestamp: number | undefined | null): string => {
+  if (timestamp == null || !Number.isFinite(timestamp)) return '-';
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
 };
 
 const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' => {
@@ -79,6 +82,24 @@ const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' =
 };
 
 const knownTTLStatuses = new Set(['ACTIVE', 'EXPIRING_SOON', 'EXPIRED']);
+
+interface LiteTopicExportRow extends LiteTopicItem {
+  ttlStatusLabel: string;
+  sessionCount: number;
+}
+
+const LITE_TOPIC_EXPORT_COLUMNS: CsvColumn<LiteTopicExportRow>[] = [
+  { header: 'Namespace', value: (item) => item.namespace },
+  { header: 'Topic Pattern', value: (item) => item.topicPattern },
+  { header: 'Topic Count', value: (item) => item.topicCount },
+  { header: 'Consumer Count', value: (item) => item.consumerCount },
+  { header: 'Total Backlog', value: (item) => item.totalBacklog },
+  { header: 'Average TTL', value: (item) => formatDuration(item.averageTTL) },
+  { header: 'TTL Status', value: (item) => item.ttlStatusLabel },
+  { header: 'Last Active Time', value: (item) => formatTime(item.lastActiveTime) },
+  { header: 'Session Count', value: (item) => item.sessionCount },
+  { header: 'Session IDs', value: (item) => item.sessionIds?.join(';') },
+];
 
 const collectNamespaces = (items: LiteTopicItem[]): string[] => {
   const namespaces = new Map<string, string>();
@@ -113,6 +134,8 @@ const LiteTopicPage: React.FC = () => {
   const [namespaceFilter, setNamespaceFilter] = useState('');
   const [ttlStatusFilter, setTTLStatusFilter] = useState('');
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Session drawer
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
@@ -166,6 +189,9 @@ const LiteTopicPage: React.FC = () => {
 
       if (quotaResult.status === 'fulfilled') {
         setQuota(quotaResult.value);
+      } else {
+        setQuota(null);
+        messageRef.current.warning(translationRef.current('liteTopic.fetchQuotaFailed'));
       }
 
       if (listResult.status === 'fulfilled') {
@@ -237,6 +263,7 @@ const LiteTopicPage: React.FC = () => {
   }, [fetchData]);
 
   const handleSearch = () => {
+    setCurrentPage(1);
     void fetchData(patternFilter || undefined, namespaceFilter || undefined);
   };
 
@@ -247,6 +274,7 @@ const LiteTopicPage: React.FC = () => {
   const handleNamespaceChange = (val: string | undefined) => {
     const namespace = val || undefined;
     setNamespaceFilter(namespace || '');
+    setCurrentPage(1);
     void fetchData(patternFilter || undefined, namespace, { clear: true });
   };
 
@@ -303,6 +331,15 @@ const LiteTopicPage: React.FC = () => {
     return <Tag color={cfg.color}>{cfg.label}</Tag>;
   };
 
+  const getTTLStatusLabel = (status: string | undefined) => {
+    const map: Record<string, string> = {
+      ACTIVE: t('liteTopic.active'),
+      EXPIRING_SOON: t('liteTopic.expiringSoon'),
+      EXPIRED: t('liteTopic.expired'),
+    };
+    return map[status || ''] || t('liteTopic.unknown');
+  };
+
   const filteredTopicList = topicList.filter((item) => {
     if (!ttlStatusFilter) return true;
     if (ttlStatusFilter === 'UNKNOWN') {
@@ -310,6 +347,24 @@ const LiteTopicPage: React.FC = () => {
     }
     return item.ttlStatus === ttlStatusFilter;
   });
+
+  const lastPage = Math.max(1, Math.ceil(filteredTopicList.length / pageSize));
+  const clampedCurrentPage = Math.min(currentPage, lastPage);
+
+  const handleExport = () => {
+    try {
+      const rows = filteredTopicList.map((item) => ({
+        ...item,
+        ttlStatusLabel: getTTLStatusLabel(item.ttlStatus),
+        sessionCount: item.sessionIds?.length ?? 0,
+      }));
+      const filename = `rocketmq-lite-topics-${new Date().toISOString().slice(0, 10)}.csv`;
+      downloadCsv(filename, buildCsv(LITE_TOPIC_EXPORT_COLUMNS, rows));
+      message.success(t('liteTopic.exportSuccess', { total: rows.length }));
+    } catch {
+      message.error(t('liteTopic.exportFailed'));
+    }
+  };
 
   // ─── Columns ─────────────────────────────────────────────────
 
@@ -430,7 +485,7 @@ const LiteTopicPage: React.FC = () => {
         : 0;
 
     return (
-      <Card bordered={false} style={{ marginBottom: 16, borderRadius: 8 }}>
+      <Card variant="borderless" style={{ marginBottom: 16, borderRadius: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
           <Gauge size={20} weight="bold" style={{ marginRight: 8, color: '#1677ff' }} />
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
@@ -440,7 +495,7 @@ const LiteTopicPage: React.FC = () => {
         <Row gutter={24}>
           <Col span={8}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
+              <div style={{ fontSize: 14, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
                 {t('liteTopic.topicUsage')}
               </div>
               <Progress
@@ -454,14 +509,14 @@ const LiteTopicPage: React.FC = () => {
                       : '#1677ff'
                 }
               />
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginTop: 4 }}>
                 {quota.currentTopicCount} / {quota.maxTopicCount}
               </div>
             </div>
           </Col>
           <Col span={8}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
+              <div style={{ fontSize: 14, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
                 {t('liteTopic.sessionUsage')}
               </div>
               <Progress
@@ -475,14 +530,14 @@ const LiteTopicPage: React.FC = () => {
                       : '#1677ff'
                 }
               />
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginTop: 4 }}>
                 {quota.currentSessionCount} / {quota.maxSessionCount}
               </div>
             </div>
           </Col>
           <Col span={8}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
+              <div style={{ fontSize: 14, color: '#595959', marginBottom: 8, fontWeight: 500 }}>
                 {t('liteTopic.creationRate')}
               </div>
               <Progress
@@ -496,7 +551,7 @@ const LiteTopicPage: React.FC = () => {
                       : '#1677ff'
                 }
               />
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginTop: 4 }}>
                 {quota.currentCreationRate} / {quota.maxCreationRate}
               </div>
             </div>
@@ -542,13 +597,13 @@ const LiteTopicPage: React.FC = () => {
       <div>
         <Descriptions column={2} bordered size="small">
           <Descriptions.Item label={t('liteTopic.sessionId')} span={2}>
-            <code style={{ fontSize: 12 }}>{sessionData.sessionId}</code>
+            <code style={{ fontSize: 14 }}>{sessionData.sessionId}</code>
           </Descriptions.Item>
           <Descriptions.Item label={t('liteTopic.clientId')}>
             {sessionData.clientId || '-'}
           </Descriptions.Item>
           <Descriptions.Item label={t('liteTopic.clientAddress')}>
-            <code style={{ fontSize: 12 }}>{sessionData.clientAddress || '-'}</code>
+            <code style={{ fontSize: 14 }}>{sessionData.clientAddress || '-'}</code>
           </Descriptions.Item>
           <Descriptions.Item label={t('liteTopic.parentTopic')}>
             {sessionData.parentTopic || '-'}
@@ -592,10 +647,10 @@ const LiteTopicPage: React.FC = () => {
         <Row gutter={16}>
           <Col span={8}>
             <Card
-              bordered={false}
+              variant="borderless"
               style={{ background: '#f6ffed', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.totalMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700 }}>{sessionData.totalMessages ?? 0}</div>
@@ -603,10 +658,10 @@ const LiteTopicPage: React.FC = () => {
           </Col>
           <Col span={8}>
             <Card
-              bordered={false}
+              variant="borderless"
               style={{ background: '#f6ffed', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.consumedMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700 }}>
@@ -616,10 +671,10 @@ const LiteTopicPage: React.FC = () => {
           </Col>
           <Col span={8}>
             <Card
-              bordered={false}
+              variant="borderless"
               style={{ background: '#fffbe6', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
-              <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+              <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.pendingMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700, color: '#fa8c16' }}>
@@ -714,9 +769,19 @@ const LiteTopicPage: React.FC = () => {
       <PageHeader
         title={t('liteTopic.title')}
         extra={
-          <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
-            {t('common.refresh')}
-          </Button>
+          <Space>
+            <Button
+              icon={<DownloadSimple size={14} />}
+              size="small"
+              disabled={loading || filteredTopicList.length === 0}
+              onClick={handleExport}
+            >
+              {t('common.export')}
+            </Button>
+            <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
+              {t('common.refresh')}
+            </Button>
+          </Space>
         }
       />
 
@@ -724,7 +789,7 @@ const LiteTopicPage: React.FC = () => {
       {renderQuotaPanel()}
 
       {/* Search / Filter Bar */}
-      <Card bordered={false} style={{ marginBottom: 16, borderRadius: 8 }}>
+      <Card variant="borderless" style={{ marginBottom: 16, borderRadius: 8 }}>
         <Space size="middle" wrap>
           <Input
             placeholder={t('liteTopic.searchPlaceholder')}
@@ -753,7 +818,10 @@ const LiteTopicPage: React.FC = () => {
             aria-label={t('liteTopic.status')}
             placeholder={t('liteTopic.status')}
             value={ttlStatusFilter || undefined}
-            onChange={(value) => setTTLStatusFilter(value || '')}
+            onChange={(value) => {
+              setTTLStatusFilter(value || '');
+              setCurrentPage(1);
+            }}
             style={{ width: 160 }}
             allowClear
             options={[
@@ -770,14 +838,19 @@ const LiteTopicPage: React.FC = () => {
       </Card>
 
       {/* Main Table */}
-      <Card bordered={false} style={{ borderRadius: 8 }}>
+      <Card variant="borderless" style={{ borderRadius: 8 }}>
         <Table
           columns={columns}
           dataSource={filteredTopicList}
           rowKey={(record) => JSON.stringify([record.namespace, record.topicPattern])}
           loading={loading}
           pagination={{
-            pageSize: 10,
+            current: clampedCurrentPage,
+            pageSize,
+            onChange: (page, nextPageSize) => {
+              setCurrentPage(page);
+              setPageSize(nextPageSize);
+            },
             showTotal: (total) => t('liteTopic.total').replace('{total}', String(total)),
             showSizeChanger: true,
           }}
@@ -800,7 +873,7 @@ const LiteTopicPage: React.FC = () => {
           setSessionDrawerOpen(false);
           setSessionData(null);
         }}
-        destroyOnClose
+        destroyOnHidden
       >
         {renderSessionContent()}
       </Drawer>
@@ -814,7 +887,7 @@ const LiteTopicPage: React.FC = () => {
         confirmLoading={extendTTLLoading}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label={t('liteTopic.pattern')}>

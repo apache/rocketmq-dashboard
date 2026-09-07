@@ -14,7 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.rocketmq.studio.cluster.metrics;
+
+import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
+
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,7 +27,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
@@ -39,6 +42,7 @@ import java.net.URI;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.StreamSupport;
 
@@ -68,7 +72,7 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
     protected AbstractPrometheusCompatibleMetricsSource(RestClient.Builder restClientBuilder,
                                                          ObjectMapper objectMapper,
                                                          MetricsSourceSettings settings) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        NoRedirectClientHttpRequestFactory requestFactory = new NoRedirectClientHttpRequestFactory();
         requestFactory.setConnectTimeout(settings.getConnectTimeout());
         requestFactory.setReadTimeout(settings.getReadTimeout());
         this.restClient = restClientBuilder.requestFactory(requestFactory).build();
@@ -171,6 +175,10 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
             while (baseUrl.endsWith("/")) {
                 baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
             }
+            // SSRF guard: a stored data source is queried server-side on every request, so the
+            // host must be validated here even though it was checked when the data source was
+            // saved (a pre-save check alone is bypassable via direct DB edits).
+            validateQueryHost(baseUrl);
             URI uri = URI.create(baseUrl + settings.getQueryPath());
             if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
                 throw new IllegalArgumentException("Unsupported " + backendLabel() + " URL scheme");
@@ -182,19 +190,38 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
         }
     }
 
+    /**
+     * SSRF validation hook for the query target. Package-visible and overridable so tests can
+     * admit the loopback-bound embedded server while production keeps the strict guard.
+     */
+    protected void validateQueryHost(String url) {
+        org.apache.rocketmq.studio.common.util.UrlHostGuard.check(url, false);
+    }
+
     private void applyAuthentication(HttpHeaders headers) {
-        if (StringUtils.hasText(settings.getBearerToken())) {
-            headers.setBearerAuth(settings.getBearerToken());
-            return;
-        }
-        boolean hasUsername = StringUtils.hasText(settings.getUsername());
-        boolean hasPassword = StringUtils.hasText(settings.getPassword());
-        if (hasUsername != hasPassword) {
-            throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
-                    backendLabel() + " basic authentication is incomplete");
-        }
-        if (hasUsername) {
-            headers.setBasicAuth(settings.getUsername(), settings.getPassword());
+        String authType = StringUtils.hasText(settings.getAuthType())
+                ? settings.getAuthType().strip().toLowerCase(Locale.ROOT)
+                : "none";
+        switch (authType) {
+            case "none" -> {
+                // Credentials may remain after changing modes; none must never send them.
+            }
+            case "basic" -> {
+                if (!StringUtils.hasText(settings.getUsername()) || !StringUtils.hasText(settings.getPassword())) {
+                    throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                            backendLabel() + " basic authentication is incomplete");
+                }
+                headers.setBasicAuth(settings.getUsername(), settings.getPassword());
+            }
+            case "bearer" -> {
+                if (!StringUtils.hasText(settings.getBearerToken())) {
+                    throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                            backendLabel() + " bearer authentication is incomplete");
+                }
+                headers.setBearerAuth(settings.getBearerToken());
+            }
+            default -> throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                    "Unsupported " + backendLabel() + " authentication mode: " + settings.getAuthType());
         }
     }
 
@@ -249,6 +276,10 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
         Iterator<Map.Entry<String, JsonNode>> fields = metric.fields();
         fields.forEachRemaining(entry -> {
             String key = entry.getKey();
+            if (!entry.getValue().isTextual()) {
+                throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                        backendLabel() + " returned a malformed time-series label");
+            }
             String value = entry.getValue().asText();
             if (key.length() > MAX_LABEL_KEY_LENGTH || value.length() > MAX_LABEL_VALUE_LENGTH) {
                 throw new PrometheusException(HttpStatus.PAYLOAD_TOO_LARGE.value(),
@@ -272,12 +303,17 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
 
     private MetricDataVO.MetricSampleVO parseSample(JsonNode sampleNode) {
         if (sampleNode == null || !sampleNode.isArray() || sampleNode.size() != 2
-                || !sampleNode.get(0).isNumber()) {
+                || !sampleNode.get(0).isNumber() || !sampleNode.get(1).isTextual()) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    backendLabel() + " returned a malformed sample");
+        }
+        double timestamp = sampleNode.get(0).asDouble();
+        if (!Double.isFinite(timestamp)) {
             throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
                     backendLabel() + " returned a malformed sample");
         }
         return MetricDataVO.MetricSampleVO.builder()
-                .timestamp(sampleNode.get(0).asDouble())
+                .timestamp(timestamp)
                 .value(sampleNode.get(1).asText())
                 .build();
     }
@@ -288,8 +324,13 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
             throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
                     backendLabel() + " returned a malformed histogram sample");
         }
+        double timestamp = sampleNode.get(0).asDouble();
+        if (!Double.isFinite(timestamp)) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    backendLabel() + " returned a malformed histogram sample");
+        }
         return MetricDataVO.MetricHistogramSampleVO.builder()
-                .timestamp(sampleNode.get(0).asDouble())
+                .timestamp(timestamp)
                 .histogram(sampleNode.get(1))
                 .build();
     }

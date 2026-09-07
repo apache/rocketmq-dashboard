@@ -22,7 +22,34 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   anchor.download = filename;
   anchor.style.display = 'none';
   document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+};
+
+export interface CsvColumn<T> {
+  header: string;
+  value: (row: T) => unknown;
+}
+
+export const escapeCsvCell = (value: unknown) => {
+  const text = value == null ? '' : String(value);
+  // Prefix both formulas and literal apostrophe-prefixed formulas. The importer removes
+  // exactly one protection apostrophe, so any apostrophes supplied by the user survive a
+  // complete export/import round trip.
+  const formulaSafeText = /^(?:[=+\-@\t\r\n]|'+[=+\-@\t\r\n])/.test(text) ? `'${text}` : text;
+  return `"${formulaSafeText.replace(/"/g, '""')}"`;
+};
+
+export const buildCsv = <T>(columns: CsvColumn<T>[], rows: T[]) =>
+  [
+    columns.map((column) => escapeCsvCell(column.header)).join(','),
+    ...rows.map((row) => columns.map((column) => escapeCsvCell(column.value(row))).join(',')),
+  ].join('\n');
+
+export const downloadCsv = (filename: string, csv: string) => {
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename);
 };

@@ -25,6 +25,8 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import org.springframework.util.StringUtils;
 
+import java.util.Locale;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -39,6 +41,8 @@ public class LlmConfigVO {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @ToString.Exclude
     private String apiKey;
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private boolean clearApiKey;
     private String apiBase;
     private String model;
     private int maxTokens;
@@ -67,6 +71,6 @@ public class LlmConfigVO {
     }
 
     public String normalizeEngine() {
-        return StringUtils.hasText(engine) ? engine.trim().toLowerCase() : ENGINE_HTTP;
+        return StringUtils.hasText(engine) ? engine.trim().toLowerCase(Locale.ROOT) : ENGINE_HTTP;
     }
 }

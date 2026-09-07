@@ -15,27 +15,30 @@
  * limitations under the License.
  */
 
-export type ThemePreference = 'dark' | 'light';
+import { readLocalStorage, writeLocalStorage } from '../utils/browserStorage';
+
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 export const THEME_STORAGE_KEY = 'rocketmq-studio-theme';
+export const COMPACT_STORAGE_KEY = 'rocketmq-studio-compact';
 
-export function getStoredThemePreference(): ThemePreference | null {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === 'dark' || stored === 'light' ? stored : null;
-  } catch {
-    return null;
-  }
+export function getStoredThemeMode(): ThemeMode {
+  const stored = readLocalStorage(THEME_STORAGE_KEY);
+  return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : 'system';
+}
+
+export function persistThemeMode(mode: ThemeMode): void {
+  writeLocalStorage(THEME_STORAGE_KEY, mode);
 }
 
 export function getSystemDarkMode(): boolean {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 }
 
-export function persistThemePreference(darkMode: boolean): void {
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, darkMode ? 'dark' : 'light');
-  } catch {
-    // The active theme still changes when browser storage is unavailable.
-  }
+export function getStoredCompact(): boolean {
+  return readLocalStorage(COMPACT_STORAGE_KEY) === 'true';
+}
+
+export function persistCompact(compact: boolean): void {
+  writeLocalStorage(COMPACT_STORAGE_KEY, String(compact));
 }

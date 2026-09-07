@@ -138,7 +138,7 @@ export const mockAlertRuleAssets: MockAlertRuleAsset[] = [
       'rocketmq-client-connection-drop',
       'rocketmq-client.rules',
       'RocketMQClientConnectionDrop',
-      'changes(rocketmq_producer_count[5m]) < -5',
+      'delta(rocketmq_producer_count[5m]) < -5',
       'warning',
     ),
   },

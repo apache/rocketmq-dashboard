@@ -16,17 +16,19 @@
  */
 package org.apache.rocketmq.studio.provider.credential;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+import lombok.ToString;
 
 @Data
 public class UpdateCloudCredentialDTO {
 
-    @NotBlank(message = "credential id is required")
-    private String id;
+    @NotNull(message = "credential id is required")
+    private Long id;
 
     private String name;
 
+    @ToString.Exclude
     private String secretKey;
 
     private String remark;

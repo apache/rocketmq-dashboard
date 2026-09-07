@@ -17,14 +17,22 @@
 
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.model.Acl2PolicyContext;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -32,15 +40,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,6 +65,12 @@ class AclServiceTest {
     @Mock
     private OperationAuditService operationAuditService;
 
+    @Mock
+    private InstanceRepository instanceRepository;
+
+    @Mock
+    private TencentAclService tencentAclService;
+
     @InjectMocks
     private AclService aclService;
 
@@ -61,7 +79,7 @@ class AclServiceTest {
     @BeforeEach
     void setUp() {
         existingUser = AclUserVO.builder()
-                .id("user-1")
+                .id(1L)
                 .username("orders")
                 .accessKey("access-key-123456")
                 .secretKey("secret-key-987654")
@@ -76,23 +94,143 @@ class AclServiceTest {
                 AclRuleVO.builder().principal("user1").resource("topic-1").decision("ALLOW").build(),
                 AclRuleVO.builder().principal("user2").resource("topic-2").decision("DENY").build()
         );
-        when(aclRepository.findRules("cluster-1", "user1")).thenReturn(rules);
+        when(aclRepository.findRulePage("user1", "topic", "cluster", "ALLOW", "2.0", 2, 5))
+                .thenReturn(PageResult.of(rules, 12, 2, 5));
 
-        List<AclRuleVO> result = aclService.listRules("cluster-1", "user1");
+        PageResult<AclRuleVO> result = aclService.listRules("user1", "topic", "cluster",
+                "ALLOW", "2.0", null, 2, 5);
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getPrincipal()).isEqualTo("user1");
-        verify(aclRepository).findRules("cluster-1", "user1");
+        assertThat(result.getItems()).hasSize(2);
+        assertThat(result.getItems().get(0).getPrincipal()).isEqualTo("user1");
+        assertThat(result.getTotal()).isEqualTo(12);
+        verify(aclRepository).findRulePage("user1", "topic", "cluster", "ALLOW", "2.0", 2, 5);
+    }
+
+    @Test
+    void capabilitiesShouldDescribeApacheRemoteReadSupport() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("instance-1")
+                .vendor(InstanceVendor.APACHE)
+                .type(InstanceType.DIRECT)
+                .build();
+        instance.setId(1L);
+        when(instanceRepository.findByIdentifier("instance-1")).thenReturn(Optional.of(instance));
+
+        AclCapabilitiesVO capabilities = aclService.capabilities("instance-1");
+
+        assertThat(capabilities.instanceId()).isEqualTo(1L);
+        assertThat(capabilities.vendor()).isEqualTo(InstanceVendor.APACHE);
+        assertThat(capabilities.instanceType()).isEqualTo(InstanceType.DIRECT);
+        assertThat(capabilities.stateSource()).isEqualTo("APACHE_ACL2");
+        assertThat(capabilities.remoteReadSupported()).isTrue();
+        assertThat(capabilities.remoteWriteSupported()).isFalse();
+    }
+
+    @Test
+    void capabilitiesShouldRejectUnknownInstance() {
+        when(instanceRepository.findByIdentifier("missing")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> aclService.capabilities("missing"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance not found: missing");
     }
 
     @Test
     void listRulesShouldPassNullFilters() {
-        when(aclRepository.findRules(null, null)).thenReturn(List.of());
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
 
-        List<AclRuleVO> result = aclService.listRules(null, null);
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+                null, null, null);
 
-        assertThat(result).isEmpty();
-        verify(aclRepository).findRules(null, null);
+        assertThat(result.getItems()).isEmpty();
+        verify(aclRepository).findRulePage(null, null, null, null, null, 1, 20);
+    }
+
+    @Test
+    void listRulesShouldRejectInvalidPaginationBeforeQueryingRules() {
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+                null, 0, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be >= 1 and pageSize must be between 1 and 100")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+                null, 1, 0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+                null, 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
+
+        verifyNoInteractions(aclRepository);
+    }
+
+    @Test
+    void listRulesShouldAcceptTheMaximumPageSizeForApacheRules() {
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 100))
+                .thenReturn(PageResult.empty(1, 100));
+
+        aclService.listRules(null, null, null, null, null, null, 1, 100);
+
+        verify(aclRepository).findRulePage(null, null, null, null, null, 1, 100);
+    }
+
+    @Test
+    void listRulesShouldRejectInvalidPaginationBeforeTencentRuleDiscovery() {
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+                "tencent-instance", 1, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
+
+        verifyNoInteractions(instanceRepository);
+        verifyNoInteractions(tencentAclService);
+    }
+
+    @Test
+    void pageUsersShouldUseDatabasePaginationForApacheUsers() {
+        AclUserVO user = AclUserVO.builder()
+                .id(1L)
+                .username("orders")
+                .accessKey("access-key-123456")
+                .secretKey("secret-key-987654")
+                .admin(false)
+                .clusters(List.of("cluster-a"))
+                .gmtCreate(LocalDateTime.now())
+                .build();
+        when(aclRepository.findUserPage("orders", 2, 20))
+                .thenReturn(PageResult.of(List.of(user), 21, 2, 20));
+
+        PageResult<AclUserVO> result = aclService.pageUsers(null, 2, 20, " orders ");
+
+        assertThat(result.getItems()).singleElement().satisfies(listed -> {
+            assertThat(listed.getUsername()).isEqualTo("orders");
+            assertThat(listed.getAccessKey()).isEqualTo("acce****3456");
+            assertThat(listed.getSecretKey()).isEqualTo("secr****7654");
+        });
+        assertThat(result.getTotal()).isEqualTo(21);
+        verify(aclRepository).findUserPage("orders", 2, 20);
+        verify(aclRepository, never()).findUsers();
+        verifyNoInteractions(instanceRepository, tencentAclService);
+    }
+
+    @Test
+    void listRulesShouldReturnEmptyPageWhenTencentPageOffsetExceedsIntegerRange() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceRepository.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
+                AclRuleVO.builder().principal("role-a").resource("topic-a").build()));
+
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+                "tencent-instance", Integer.MAX_VALUE, 100);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
     }
 
     @Test
@@ -104,26 +242,32 @@ class AclServiceTest {
                 .decision("ALLOW")
                 .build();
 
-        when(aclRepository.saveRule(any(AclRuleVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.saveRule(any(AclRuleVO.class))).thenAnswer(invocation -> {
+            AclRuleVO rule = invocation.getArgument(0);
+            if (rule.getId() == null) {
+                rule.setId(1L);
+            }
+            return rule;
+        });
 
-        AclRuleVO result = aclService.createRule(input);
+        AclRuleVO result = aclService.createRule(input, null);
 
-        assertThat(result.getId()).isNotBlank();
-        assertThat(result.getCreatedAt()).isNotNull();
+        assertThat(result.getId()).isNotNull();
+        assertThat(result.getGmtCreate()).isNotNull();
         assertThat(result.getPrincipal()).isEqualTo("user1");
         assertThat(result.getResource()).isEqualTo("topic-1");
         verify(aclRepository).saveRule(any(AclRuleVO.class));
-        verify(operationAuditService).record(eq("CREATE_ACL_RULE"), eq("ACL_RULE"), eq(result.getId()), eq(null),
+        verify(operationAuditService).record(eq("CREATE_ACL_RULE"), eq("ACL_RULE"), eq("1"), eq(null),
                 eq("principal=user1"), eq("SUCCESS"), eq(null));
     }
 
     @Test
     void deleteRuleShouldDelegateToRepository() {
-        when(aclRepository.deleteRule("rule-1")).thenReturn(true);
-        aclService.deleteRule("rule-1");
+        when(aclRepository.deleteRule(1L)).thenReturn(true);
+        aclService.deleteRule("1", null);
 
-        verify(aclRepository).deleteRule("rule-1");
-        verify(operationAuditService).record(eq("DELETE_ACL_RULE"), eq("ACL_RULE"), eq("rule-1"), eq(null),
+        verify(aclRepository).deleteRule(1L);
+        verify(operationAuditService).record(eq("DELETE_ACL_RULE"), eq("ACL_RULE"), eq("1"), eq(null),
                 eq(null), eq("SUCCESS"), eq(null));
     }
 
@@ -134,7 +278,7 @@ class AclServiceTest {
                 .resource("topic-1")
                 .build();
 
-        assertThatThrownBy(() -> aclService.updateRule(input))
+        assertThatThrownBy(() -> aclService.updateRule(input, null))
                 .hasMessage("ACL rule id is required");
     }
 
@@ -142,42 +286,43 @@ class AclServiceTest {
     void updateRuleShouldReplaceExistingRule() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 1, 1, 0, 0);
         AclRuleVO input = AclRuleVO.builder()
-                .id("rule-1")
+                .id(1L)
                 .principal("user1")
                 .resource("topic-1")
                 .decision("DENY")
-                .createdAt(createdAt)
+                .gmtCreate(createdAt)
                 .build();
 
         when(aclRepository.replaceRule(input)).thenReturn(Optional.of(input));
 
-        AclRuleVO result = aclService.updateRule(input);
+        AclRuleVO result = aclService.updateRule(input, null);
 
-        assertThat(result.getId()).isEqualTo("rule-1");
-        assertThat(result.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(result.getId()).isEqualTo(1L);
+        assertThat(result.getGmtCreate()).isEqualTo(createdAt);
         assertThat(result.getDecision()).isEqualTo("DENY");
         verify(aclRepository).replaceRule(input);
         verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
-        verify(operationAuditService).record(eq("UPDATE_ACL_RULE"), eq("ACL_RULE"), eq("rule-1"), eq(null),
+        verify(operationAuditService).record(eq("UPDATE_ACL_RULE"), eq("ACL_RULE"), eq("1"), eq(null),
                 eq("principal=user1"), eq("SUCCESS"), eq(null));
     }
 
     @Test
     void updateRuleShouldRejectUnknownIdInsteadOfCreatingRule() {
         when(aclRepository.replaceRule(any(AclRuleVO.class))).thenReturn(Optional.empty());
-        when(aclRepository.findRules(null, null)).thenReturn(List.of());
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
         AclRuleVO update = AclRuleVO.builder()
-                .id("missing-rule")
+                .id(999L)
                 .principal("orders")
                 .resource("orders-topic")
                 .decision("DENY")
                 .build();
 
-        assertThatThrownBy(() -> aclService.updateRule(update))
+        assertThatThrownBy(() -> aclService.updateRule(update, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("ACL rule not found: missing-rule")
+                .hasMessage("ACL rule not found: 999")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-        assertThat(aclService.listRules(null, null)).isEmpty();
+        assertThat(aclService.listRules(null, null, null, null, null, null, 1, 20).getItems()).isEmpty();
         verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
     }
 
@@ -185,8 +330,12 @@ class AclServiceTest {
     void updateRuleShouldPreserveStoredCreationTimestamp() {
         java.util.concurrent.atomic.AtomicReference<AclRuleVO> stored = new java.util.concurrent.atomic.AtomicReference<>();
         when(aclRepository.saveRule(any(AclRuleVO.class))).thenAnswer(invocation -> {
-            stored.set(invocation.getArgument(0));
-            return invocation.getArgument(0);
+            AclRuleVO rule = invocation.getArgument(0);
+            if (rule.getId() == null) {
+                rule.setId(1L);
+            }
+            stored.set(rule);
+            return rule;
         });
         when(aclRepository.replaceRule(any(AclRuleVO.class))).thenAnswer(invocation -> {
             AclRuleVO rule = invocation.getArgument(0);
@@ -201,15 +350,15 @@ class AclServiceTest {
                     .decision(rule.getDecision())
                     .scope(rule.getScope())
                     .aclVersion(rule.getAclVersion())
-                    .createdAt(stored.get().getCreatedAt())
+                    .gmtCreate(stored.get().getGmtCreate())
                     .build());
         });
         AclRuleVO created = aclService.createRule(AclRuleVO.builder()
                 .principal("orders")
                 .resource("orders-topic")
                 .decision("ALLOW")
-                .build());
-        LocalDateTime originalCreatedAt = created.getCreatedAt();
+                .build(), null);
+        LocalDateTime originalCreatedAt = created.getGmtCreate();
 
         LocalDateTime clientCreatedAt = originalCreatedAt.plusDays(1);
         AclRuleVO update = AclRuleVO.builder()
@@ -217,14 +366,14 @@ class AclServiceTest {
                 .principal("orders")
                 .resource("orders-topic")
                 .decision("DENY")
-                .createdAt(clientCreatedAt)
+                .gmtCreate(clientCreatedAt)
                 .build();
 
-        AclRuleVO updated = aclService.updateRule(update);
+        AclRuleVO updated = aclService.updateRule(update, null);
 
-        assertThat(updated.getCreatedAt()).isEqualTo(originalCreatedAt);
+        assertThat(updated.getGmtCreate()).isEqualTo(originalCreatedAt);
         assertThat(updated.getDecision()).isEqualTo("DENY");
-        assertThat(update.getCreatedAt()).isEqualTo(clientCreatedAt);
+        assertThat(update.getGmtCreate()).isEqualTo(clientCreatedAt);
     }
 
     @Test
@@ -245,7 +394,7 @@ class AclServiceTest {
         );
         when(aclRepository.findUsers()).thenReturn(users);
 
-        List<AclUserVO> result = aclService.listUsers();
+        List<AclUserVO> result = aclService.listUsers(null);
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getUsername()).isEqualTo("admin");
@@ -265,7 +414,7 @@ class AclServiceTest {
                 .secretKey(credential)
                 .build()));
 
-        AclUserVO result = aclService.listUsers().get(0);
+        AclUserVO result = aclService.listUsers(null).get(0);
 
         assertThat(result.getAccessKey()).isEqualTo(expected);
         assertThat(result.getSecretKey()).isEqualTo(expected);
@@ -281,7 +430,7 @@ class AclServiceTest {
                 .clusters(clusters)
                 .build()));
 
-        AclUserVO result = aclService.listUsers().get(0);
+        AclUserVO result = aclService.listUsers(null).get(0);
 
         assertThat(result.getClusters()).containsExactly("cluster-a");
         assertThatThrownBy(() -> result.getClusters().add("cluster-b"))
@@ -307,19 +456,25 @@ class AclServiceTest {
                 .admin(false)
                 .build();
 
-        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(invocation -> {
+            AclUserVO user = invocation.getArgument(0);
+            if (user.getId() == null) {
+                user.setId(1L);
+            }
+            return user;
+        });
 
-        AclUserVO result = aclService.createUser(input);
+        AclUserVO result = aclService.createUser(input, null);
 
-        assertThat(result.getId()).isNotBlank();
+        assertThat(result.getId()).isNotNull();
         assertThat(result.getAccessKey()).isNotBlank();
         assertThat(result.getSecretKey()).isNotBlank();
         assertThat(result.getAccessKey()).doesNotContain("-");
         assertThat(result.getSecretKey()).doesNotContain("-");
-        assertThat(result.getCreatedAt()).isNotNull();
+        assertThat(result.getGmtCreate()).isNotNull();
         assertThat(result.getUsername()).isEqualTo("newuser");
         verify(aclRepository).saveUser(any(AclUserVO.class));
-        verify(operationAuditService).record(eq("CREATE_ACL_USER"), eq("ACL_USER"), eq(result.getId()), eq(null),
+        verify(operationAuditService).record(eq("CREATE_ACL_USER"), eq("ACL_USER"), eq("1"), eq(null),
                 argThat(detail -> detail.equals("username=newuser, admin=false")
                         && !detail.contains(result.getAccessKey()) && !detail.contains(result.getSecretKey())),
                 eq("SUCCESS"), eq(null));
@@ -327,28 +482,28 @@ class AclServiceTest {
 
     @Test
     void deleteUserShouldDelegateToRepository() {
-        when(aclRepository.deleteUser("user-1")).thenReturn(true);
-        aclService.deleteUser("user-1");
+        when(aclRepository.deleteUser(1L)).thenReturn(true);
+        aclService.deleteUser("1", null);
 
-        verify(aclRepository).deleteUser("user-1");
-        verify(operationAuditService).record(eq("DELETE_ACL_USER"), eq("ACL_USER"), eq("user-1"), eq(null),
+        verify(aclRepository).deleteUser(1L);
+        verify(operationAuditService).record(eq("DELETE_ACL_USER"), eq("ACL_USER"), eq("1"), eq(null),
                 eq(null), eq("SUCCESS"), eq(null));
     }
 
     @Test
     void deleteRuleShouldRejectUnknownRule() {
-        when(aclRepository.deleteRule("missing")).thenReturn(false);
+        when(aclRepository.deleteRule(999L)).thenReturn(false);
 
-        assertThatThrownBy(() -> aclService.deleteRule("missing"))
+        assertThatThrownBy(() -> aclService.deleteRule("999", null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
 
     @Test
     void deleteUserShouldRejectUnknownUser() {
-        when(aclRepository.deleteUser("missing")).thenReturn(false);
+        when(aclRepository.deleteUser(999L)).thenReturn(false);
 
-        assertThatThrownBy(() -> aclService.deleteUser("missing"))
+        assertThatThrownBy(() -> aclService.deleteUser("999", null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
@@ -358,39 +513,39 @@ class AclServiceTest {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
         input.setUsername("newuser");
 
-        assertThatThrownBy(() -> aclService.updateUser(input))
+        assertThatThrownBy(() -> aclService.updateUser(input, null))
                 .hasMessage("ACL user id is required");
     }
 
     @Test
     void updateUserShouldSaveExistingUser() {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId("user-1");
+        input.setId("1");
         input.setUsername("newuser");
         input.setAdmin(true);
 
         ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
-        when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(existingUser));
-        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(inv -> Optional.of(inv.getArgument(0)));
 
-        AclUserVO result = aclService.updateUser(input);
+        AclUserVO result = aclService.updateUser(input, null);
 
-        assertThat(result.getId()).isEqualTo("user-1");
+        assertThat(result.getId()).isEqualTo(1L);
         assertThat(result.getUsername()).isEqualTo("newuser");
         assertThat(result.getAccessKey()).isEqualTo("acce****3456");
         assertThat(result.getSecretKey()).isEqualTo("secr****7654");
         assertThat(result.isAdmin()).isTrue();
-        verify(aclRepository).saveUser(captor.capture());
+        verify(aclRepository).replaceUser(captor.capture());
         assertThat(captor.getValue().getAccessKey()).isEqualTo("access-key-123456");
         assertThat(captor.getValue().getSecretKey()).isEqualTo("secret-key-987654");
-        verify(operationAuditService).record(eq("UPDATE_ACL_USER"), eq("ACL_USER"), eq("user-1"), eq(null),
+        verify(operationAuditService).record(eq("UPDATE_ACL_USER"), eq("ACL_USER"), eq("1"), eq(null),
                 eq("username=newuser, admin=true"), eq("SUCCESS"), eq(null));
     }
 
     @Test
     void updateUserShouldPreserveAdminWhenNotProvided() {
         AclUserVO adminUser = AclUserVO.builder()
-                .id("user-1")
+                .id(1L)
                 .username("orders")
                 .accessKey("access-key-123456")
                 .secretKey("secret-key-987654")
@@ -398,35 +553,66 @@ class AclServiceTest {
                 .clusters(List.of("cluster-a"))
                 .build();
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId("user-1");
+        input.setId("1");
         input.setUsername("renamed");
         // admin intentionally left null: the existing admin flag must survive the partial update.
 
         ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
-        when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(adminUser));
-        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.findUserById(1L)).thenReturn(Optional.of(adminUser));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(inv -> Optional.of(inv.getArgument(0)));
 
-        AclUserVO result = aclService.updateUser(input);
+        AclUserVO result = aclService.updateUser(input, null);
 
         assertThat(result.getUsername()).isEqualTo("renamed");
         assertThat(result.isAdmin()).isTrue();
-        verify(aclRepository).saveUser(captor.capture());
+        verify(aclRepository).replaceUser(captor.capture());
         assertThat(captor.getValue().isAdmin()).isTrue();
+    }
+
+    @Test
+    void updateUserShouldRejectBlankUsernameWithoutSaving() {
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setId("1");
+        input.setUsername("   ");
+
+        when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
+
+        assertThatThrownBy(() -> aclService.updateUser(input, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL username is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).saveUser(any(AclUserVO.class));
     }
 
     @Test
     void updateUserShouldThrowWhenUserDoesNotExist() {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId("missing");
+        input.setId("999");
         input.setUsername("ghost");
 
-        when(aclRepository.findUserById("missing")).thenReturn(Optional.empty());
+        when(aclRepository.findUserById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> aclService.updateUser(input))
+        assertThatThrownBy(() -> aclService.updateUser(input, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("ACL user not found: missing")
+                .hasMessage("ACL user not found: 999")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-        verify(aclRepository, never()).saveUser(any(AclUserVO.class));
+        verify(aclRepository, never()).replaceUser(any(AclUserVO.class));
+    }
+
+    @Test
+    void updateUserShouldRejectConcurrentDeletion() {
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setId("1");
+        input.setUsername("renamed");
+        when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> aclService.updateUser(input, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user not found: 1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -436,7 +622,7 @@ class AclServiceTest {
                 .resource("topic-1")
                 .build();
 
-        assertThatThrownBy(() -> aclService.createRule(input))
+        assertThatThrownBy(() -> aclService.createRule(input, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
                 .hasMessage("ACL principal is required");
@@ -450,7 +636,7 @@ class AclServiceTest {
                 .resource(" ")
                 .build();
 
-        assertThatThrownBy(() -> aclService.createRule(input))
+        assertThatThrownBy(() -> aclService.createRule(input, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
                 .hasMessage("ACL resource is required");
@@ -464,7 +650,7 @@ class AclServiceTest {
                 .admin(false)
                 .build();
 
-        assertThatThrownBy(() -> aclService.createUser(input))
+        assertThatThrownBy(() -> aclService.createUser(input, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
                 .hasMessage("ACL username is required");
@@ -475,27 +661,36 @@ class AclServiceTest {
     void createListUpdateShouldPreserveStoredCredentials() {
         java.util.concurrent.atomic.AtomicReference<AclUserVO> stored = new java.util.concurrent.atomic.AtomicReference<>();
         when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(invocation -> {
-            stored.set(invocation.getArgument(0));
-            return invocation.getArgument(0);
+            AclUserVO user = invocation.getArgument(0);
+            if (user.getId() == null) {
+                user.setId(1L);
+            }
+            stored.set(user);
+            return user;
         });
         when(aclRepository.findUserById(any())).thenAnswer(invocation -> Optional.ofNullable(stored.get()));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(invocation -> {
+            AclUserVO incoming = invocation.getArgument(0);
+            stored.set(incoming);
+            return Optional.of(incoming);
+        });
         when(aclRepository.findUsers()).thenAnswer(invocation -> List.of(stored.get()));
 
         AclUserVO created = aclService.createUser(AclUserVO.builder()
                 .username("orders")
                 .admin(false)
                 .clusters(List.of("cluster-a"))
-                .build());
+                .build(), null);
         String accessKey = created.getAccessKey();
         String secretKey = created.getSecretKey();
-        AclUserVO listed = aclService.listUsers().get(0);
+        AclUserVO listed = aclService.listUsers(null).get(0);
 
         UpdateAclUserDTO update = new UpdateAclUserDTO();
-        update.setId(listed.getId());
+        update.setId(String.valueOf(listed.getId()));
         update.setUsername("orders-admin");
         update.setAdmin(true);
         update.setClusters(listed.getClusters());
-        AclUserVO updated = aclService.updateUser(update);
+        AclUserVO updated = aclService.updateUser(update, null);
 
         assertThat(listed.getAccessKey()).isNotEqualTo(accessKey);
         assertThat(listed.getSecretKey()).isNotEqualTo(secretKey);
@@ -508,7 +703,261 @@ class AclServiceTest {
         assertThat(storedUser.isAdmin()).isTrue();
     }
 
+    // ── Plain access / cluster config inspection (PR-7) ──────────────
+
+    @Test
+    void examineBrokerClusterAclConfigShouldRequireClusterId() {
+        assertThatThrownBy(() -> aclService.examineBrokerClusterAclConfig(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).examineBrokerClusterAclConfig(any());
+    }
+
+    @Test
+    void examineBrokerClusterAclConfigShouldDelegateToRepository() {
+        AclClusterConfigVO expected = AclClusterConfigVO.builder()
+                .clusterId("c1")
+                .aclEnabled(true)
+                .aclVersion("ACL 2.0")
+                .accounts(List.of())
+                .accountCount(0)
+                .build();
+        when(aclRepository.examineBrokerClusterAclConfig("c1")).thenReturn(expected);
+
+        AclClusterConfigVO result = aclService.examineBrokerClusterAclConfig("c1");
+
+        assertThat(result).isSameAs(expected);
+        verify(aclRepository).examineBrokerClusterAclConfig("c1");
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldRequireAccessKey() {
+        PlainAccessConfigVO blank = PlainAccessConfigVO.builder().accessKey(" ").build();
+        assertThatThrownBy(() -> aclService.createAndUpdatePlainAccessConfig(blank))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).createAndUpdatePlainAccessConfig(any());
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}"})
+    void createAndUpdatePlainAccessConfigShouldRejectInvalidWhiteRemoteAddress(String whiteRemoteAddress) {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .whiteRemoteAddress(whiteRemoteAddress)
+                .build();
+
+        assertThatThrownBy(() -> aclService.createAndUpdatePlainAccessConfig(config))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("whiteRemoteAddress is not a valid plain ACL address expression")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).createAndUpdatePlainAccessConfig(any());
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"*", "192.168.*.*", "192.168.1-100.*", "192.168.1.{1,2,3}",
+        "192.168.1.10,192.168.1.11", "2001:db8::1"})
+    void createAndUpdatePlainAccessConfigShouldAcceptValidWhiteRemoteAddress(String whiteRemoteAddress) {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .whiteRemoteAddress(whiteRemoteAddress)
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        PlainAccessConfigVO result = aclService.createAndUpdatePlainAccessConfig(config);
+
+        assertThat(result).isSameAs(config);
+        verify(aclRepository).createAndUpdatePlainAccessConfig(config);
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldNormalizeWhiteRemoteAddressBeforePersistence() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .whiteRemoteAddress(" 192.168.1.10 ")
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        PlainAccessConfigVO result = aclService.createAndUpdatePlainAccessConfig(config);
+
+        assertThat(result.getWhiteRemoteAddress()).isEqualTo("192.168.1.10");
+        verify(aclRepository).createAndUpdatePlainAccessConfig(argThat(saved ->
+                "192.168.1.10".equals(saved.getWhiteRemoteAddress())));
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldNormalizeBlankWhiteRemoteAddressToNull() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .whiteRemoteAddress("   ")
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        PlainAccessConfigVO result = aclService.createAndUpdatePlainAccessConfig(config);
+
+        assertThat(result.getWhiteRemoteAddress()).isNull();
+        verify(aclRepository).createAndUpdatePlainAccessConfig(argThat(saved ->
+                saved.getWhiteRemoteAddress() == null));
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldDelegateToRepository() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .secretKey("sk-1")
+                .admin(false)
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        PlainAccessConfigVO result = aclService.createAndUpdatePlainAccessConfig(config);
+
+        assertThat(result).isSameAs(config);
+        verify(aclRepository).createAndUpdatePlainAccessConfig(config);
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldAuditWithoutSensitiveValues() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-sensitive")
+                .secretKey("secret-value")
+                .whiteRemoteAddress("192.168.*.*")
+                .admin(true)
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        aclService.createAndUpdatePlainAccessConfig(config);
+
+        verify(operationAuditService).record(eq("UPSERT_PLAIN_ACCESS_CONFIG"), eq("ACL_USER"),
+                eq("ak-sensitive"), eq(null),
+                argThat(detail -> detail.equals("admin=true, whiteRemoteAddressConfigured=true")
+                        && !detail.contains("secret-value") && !detail.contains("192.168.*.*")),
+                eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldNotFailWhenAuditRecordingFails() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .admin(false)
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+        doThrow(new IllegalStateException("audit unavailable")).when(operationAuditService)
+                .record(any(), any(), any(), any(), any(), any(), any());
+
+        assertThatCode(() -> aclService.createAndUpdatePlainAccessConfig(config))
+                .doesNotThrowAnyException();
+
+        verify(operationAuditService).record(eq("UPSERT_PLAIN_ACCESS_CONFIG"), eq("ACL_USER"),
+                eq("ak-1"), eq(null),
+                eq("admin=false, whiteRemoteAddressConfigured=false"),
+                eq("SUCCESS"), eq(null));
+    }
+
     private String mask(String credential) {
         return credential.substring(0, 4) + "****" + credential.substring(credential.length() - 4);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldAcceptValidPolicy() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("orders-policy");
+        policy.setBoundType("Topic");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("orders-*")));
+        policy.setWhiteSet(List.of("192.168.1.0/24", "10.0.0.1"));
+
+        aclService.validateAcl2Policy(policy);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldIgnoreTheJvmDefaultLocaleWhenNormalizingBoundType() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            Acl2PolicyContext policy = new Acl2PolicyContext();
+            policy.setPolicyName("orders-policy");
+            policy.setBoundType("topic");
+            policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("orders-*")));
+
+            aclService.validateAcl2Policy(policy);
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRejectNullPolicy() {
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRequirePolicyName() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setBoundType("Group");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL 2.0 policyName is required");
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRejectInvalidBoundType() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("NONSENSE");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("boundType must be one of");
+    }
+
+    @Test
+    void validateAcl2PolicyShouldAcceptWildcardBoundType() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("*");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+
+        aclService.validateAcl2Policy(policy);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRequireRules() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("Topic");
+
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL 2.0 policy rules are required");
+    }
+
+    @Test
+    void validateAcl2PolicyShouldAcceptZeroDotZeroWildcardInWhiteSet() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("Group");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+        policy.setWhiteSet(List.of("0.0.0.0"));
+
+        aclService.validateAcl2Policy(policy);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRejectMalformedWhiteSetEntry() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("Group");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+        policy.setWhiteSet(List.of("192.168.1.0/24", "not-an-ip"));
+
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("whiteSet entry is not a valid IP/CIDR range");
     }
 }

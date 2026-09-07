@@ -36,8 +36,21 @@ public class MessageProviderStub implements MessageProvider {
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         log.warn("MessageProviderStub.getMessageTrace called but no real message provider is configured");
+        throw unsupported();
+    }
+
+    @Override
+    public List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic) {
+        log.warn("MessageProviderStub.getQueueOffsets called but no real message provider is configured");
+        throw unsupported();
+    }
+
+    @Override
+    public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
+                                                int queueId, long offset) {
+        log.warn("MessageProviderStub.pullMessageAtOffset called but no real message provider is configured");
         throw unsupported();
     }
 

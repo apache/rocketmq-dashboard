@@ -23,6 +23,7 @@ import {
   listGrafanaDashboards,
   getGrafanaDashboard,
   exportGrafanaDashboard,
+  exportGrafanaDashboards,
   listMetricProfiles,
   queryByDataSource,
   queryMetrics,
@@ -65,11 +66,11 @@ describe('metrics API', () => {
 
   it('forwards the selected instance to the dashboard endpoint', async () => {
     mock.onGet('/dashboard').reply((config) => {
-      expect(config.params).toEqual({ instanceId: 'instance-prod' });
+      expect(config.params).toEqual({ instanceId: 'instance-1' });
       return [200, { code: 200, data: dashboard }];
     });
 
-    await expect(getDashboard('instance-prod')).resolves.toEqual(dashboard);
+    await expect(getDashboard('instance-1')).resolves.toEqual(dashboard);
   });
 
   it('posts a metrics query and returns its result', async () => {
@@ -100,6 +101,7 @@ describe('metrics API', () => {
   it('posts a data-source query by key and returns its result', async () => {
     const dsQuery = {
       key: 'ds-prom-1',
+      instanceId: 'instance-1',
       query: { metric: 'up', start: 1, end: 2, step: '1m' },
     };
     const result = {
@@ -118,6 +120,7 @@ describe('metrics API', () => {
       expect(config.params).toEqual({ key: 'ds-prom-1' });
       expect(JSON.parse(config.data)).toEqual({
         query: dsQuery.query,
+        instanceId: 'instance-1',
         username: undefined,
         password: undefined,
         bearerToken: undefined,
@@ -190,5 +193,15 @@ describe('metrics API', () => {
     const result = await exportGrafanaDashboard('rocketmq-overview');
     expect(result).toBeInstanceOf(Blob);
     await expect(result.text()).resolves.toContain('rocketmq-overview');
+  });
+
+  it('exports all Grafana dashboards as a blob', async () => {
+    const blob = new Blob(['zip-content'], { type: 'application/zip' });
+
+    mock.onGet('/metrics/grafana/dashboards/export').reply(200, blob);
+
+    const result = await exportGrafanaDashboards();
+    expect(result).toBeInstanceOf(Blob);
+    await expect(result.text()).resolves.toContain('zip-content');
   });
 });

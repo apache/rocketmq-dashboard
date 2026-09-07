@@ -16,19 +16,32 @@
  */
 package org.apache.rocketmq.studio.cluster.metrics;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class MetricProfileService {
 
+    private final PrometheusProperties prometheusProperties;
+
     public List<MetricProfileVO> listProfiles() {
-        return List.of(
+        List<MetricProfileVO> profiles = new ArrayList<>(List.of(
                 profile(MetricProfile.ROCKETMQ_4_EXPORTER, rocketmq4ExporterMetrics()),
                 profile(MetricProfile.ROCKETMQ_5_NATIVE, rocketmq5NativeMetrics())
-        );
+        ));
+        String preferredId = prometheusProperties.getProfile();
+        for (int i = 1; i < profiles.size(); i++) {
+            if (profiles.get(i).getId().equals(preferredId)) {
+                profiles.add(0, profiles.remove(i));
+                break;
+            }
+        }
+        return List.copyOf(profiles);
     }
 
     public String resolvePromql(String profileId, String semanticMetric) {
@@ -97,12 +110,19 @@ public class MetricProfileService {
                 mapping(SemanticMetric.CONSUMER_LAG_MESSAGES, "rocketmq_consumer_lag_messages",
                         "sum(rocketmq_consumer_lag_messages) by (cluster, topic, consumer_group)",
                         "cluster", "topic", "consumer_group"),
-                mapping(SemanticMetric.CONSUMER_LAG_LATENCY, "rocketmq_consumer_lag_latency",
-                        "max(rocketmq_consumer_lag_latency) by (cluster, topic, consumer_group)",
+                mapping(SemanticMetric.CONSUMER_LAG_LATENCY, "rocketmq_consumer_lag_latency_milliseconds",
+                        "max(rocketmq_consumer_lag_latency_milliseconds) by (cluster, topic, consumer_group)",
                         "cluster", "topic", "consumer_group"),
-                mapping(SemanticMetric.BROKER_HEALTH, "rocketmq_processor_watermark",
-                        "max(rocketmq_processor_watermark) by (cluster, node_id, processor)",
-                        "cluster", "node_id", "processor")
+                // Every broker reports the same cluster-level count; max avoids double counting.
+                mapping(SemanticMetric.TOPIC_NUMBER, "rocketmq_topic_number",
+                        "max(rocketmq_topic_number) by (cluster)",
+                        "cluster"),
+                mapping(SemanticMetric.CONSUMER_GROUP_NUMBER, "rocketmq_consumer_group_number",
+                        "max(rocketmq_consumer_group_number) by (cluster)",
+                        "cluster"),
+                mapping(SemanticMetric.BROKER_HEALTH, "up",
+                        "min(up{job=~\".*rocketmq.*\"}) by (job, instance)",
+                        "job", "instance")
         );
     }
 

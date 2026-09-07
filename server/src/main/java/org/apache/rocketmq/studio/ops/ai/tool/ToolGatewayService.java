@@ -24,6 +24,7 @@ import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import com.networknt.schema.dialect.Dialects;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.ai.AiToolVO;
 import org.springframework.stereotype.Service;
@@ -47,15 +48,18 @@ public class ToolGatewayService {
     private final Map<String, ToolHandler> handlers;
     private final Map<String, Schema> inputSchemas;
     private final Map<String, Schema> outputSchemas;
+    private final ToolAccessPolicy toolAccessPolicy;
 
     public ToolGatewayService(
             ToolCatalog catalog,
             CapabilityResolver capabilityResolver,
             ObjectMapper objectMapper,
+            ToolAccessPolicy toolAccessPolicy,
             List<ToolHandler> handlers) {
         this.catalog = catalog;
         this.capabilityResolver = capabilityResolver;
         this.objectMapper = objectMapper;
+        this.toolAccessPolicy = toolAccessPolicy;
         this.handlers = registerHandlers(catalog, handlers);
 
         SchemaRegistry registry = SchemaRegistry.withDefaultDialect(
@@ -70,16 +74,35 @@ public class ToolGatewayService {
 
     public List<AiToolVO> discover(String clusterId) {
         boolean clusterSelected = clusterId != null && !clusterId.isBlank();
-        Set<String> capabilities = clusterSelected
-                ? Set.copyOf(capabilityResolver.resolve(clusterId))
-                : Collections.emptySet();
+        DiscoveryCapabilities discoveryCapabilities = resolveDiscoveryCapabilities(clusterId, clusterSelected);
 
         return catalog.list().stream()
-                .filter(definition -> clusterSelected || !requiresCluster(definition))
-                .filter(definition -> capabilities.containsAll(
+                .filter(definition -> discoveryCapabilities.clusterCapabilitiesResolved()
+                        || !requiresCluster(definition))
+                .filter(definition -> discoveryCapabilities.capabilities().containsAll(
                         definition.requiredCapabilities()))
+                .filter(this::isVisibleToCurrentUser)
                 .map(ToolGatewayService::toView)
                 .toList();
+    }
+
+    /**
+     * A tool directory must remain available when the selected cluster cannot report its
+     * architecture. In that case expose only tools that do not require cluster capabilities;
+     * execution still resolves capabilities and returns the original diagnostic error.
+     */
+    private DiscoveryCapabilities resolveDiscoveryCapabilities(String clusterId, boolean clusterSelected) {
+        if (!clusterSelected) {
+            return new DiscoveryCapabilities(false, Collections.emptySet());
+        }
+        try {
+            return new DiscoveryCapabilities(true, Set.copyOf(capabilityResolver.resolve(clusterId)));
+        } catch (BusinessException ignored) {
+            return new DiscoveryCapabilities(false, Collections.emptySet());
+        }
+    }
+
+    private record DiscoveryCapabilities(boolean clusterCapabilitiesResolved, Set<String> capabilities) {
     }
 
     public Object execute(String name, Map<String, Object> input) {
@@ -95,6 +118,7 @@ public class ToolGatewayService {
             throw new BusinessException(
                     400, "Execution rejected; only L1 tools are enabled: " + name);
         }
+        toolAccessPolicy.authorizeCurrentUser(definition);
         enforceCapabilities(definition, normalizedInput);
 
         Object output = handler.execute(normalizedInput);
@@ -199,6 +223,10 @@ public class ToolGatewayService {
     private static boolean requiresCluster(ToolDefinition definition) {
         Object required = definition.inputSchema().get("required");
         return required instanceof List<?> fields && fields.contains("cluster");
+    }
+
+    private boolean isVisibleToCurrentUser(ToolDefinition definition) {
+        return AuthenticatedUserContext.currentUserIsAdmin() || toolAccessPolicy.isReaderAccessible(definition);
     }
 
     private static AiToolVO toView(ToolDefinition definition) {

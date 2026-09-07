@@ -20,11 +20,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
 import {
   getConsumerGroup,
+  getConsumerGroupSettings,
   getConsumerProgress,
   getConsumerSubscriptions,
+  listConsumerGroupPage,
   listConsumerGroups,
   deleteConsumerGroup,
+  previewConsumerOffsetReset,
   resetConsumerOffset,
+  updateConsumerGroupSettings,
 } from './metadata';
 
 const mock = new MockAdapter(client);
@@ -39,8 +43,8 @@ const group = {
   subscribedTopics: ['orders'],
   subscriptionDataType: 'NORMAL',
   retryMaxTimes: 16,
-  createdAt: '2026-07-17T00:00:00Z',
-  updatedAt: '2026-07-17T00:00:00Z',
+  gmtCreate: '2026-07-17T00:00:00Z',
+  gmtModified: '2026-07-17T00:00:00Z',
   delaySeconds: 0,
   instances: [],
 };
@@ -66,9 +70,26 @@ describe('consumer groups API contract', () => {
     await expect(listConsumerGroups(params)).resolves.toEqual([group]);
   });
 
+  it('uses the paged inventory query fields supported by the backend', async () => {
+    const params = {
+      instanceId: 'instance-1',
+      clusterId: 'cluster-a',
+      search: 'orders',
+      page: 2,
+      pageSize: 10,
+    };
+    const page = { items: [group], total: 11, page: 2, size: 10 };
+    mock.onGet('/groups/page').reply((config) => {
+      expect(config.params).toEqual(params);
+      return [200, { code: 200, data: page }];
+    });
+
+    await expect(listConsumerGroupPage(params)).resolves.toEqual(page);
+  });
+
   it('encodes consumer group names and passes instance context for runtime queries', async () => {
     const groupName = '%RETRY%cg-order';
-    const instanceId = 'instance-a';
+    const instanceId = 'instance-1';
     mock.onGet('/groups/%25RETRY%25cg-order').reply(200, { code: 200, data: group });
     mock.onGet('/groups/%25RETRY%25cg-order/progress').reply(200, { code: 200, data: [] });
     mock.onGet('/groups/%25RETRY%25cg-order/subscriptions').reply(200, { code: 200, data: [] });
@@ -84,7 +105,7 @@ describe('consumer groups API contract', () => {
   it('unwraps detail records and sends numeric reset timestamps', async () => {
     const reset = {
       name: group.name,
-      instanceId: 'instance-a',
+      instanceId: 'instance-1',
       topic: 'orders',
       timestamp: 1784246400000,
     };
@@ -98,12 +119,82 @@ describe('consumer groups API contract', () => {
     await expect(resetConsumerOffset(reset)).resolves.toBeUndefined();
   });
 
+  it('posts reset preview requests and unwraps queue impact data', async () => {
+    const request = {
+      name: group.name,
+      instanceId: 'instance-1',
+      topic: 'orders',
+      timestamp: 1784246400000,
+    };
+    const preview = {
+      instanceId: 'instance-1',
+      groupName: group.name,
+      topic: 'orders',
+      timestamp: 1784246400000,
+      complete: true,
+      allowReset: true,
+      queueCount: 1,
+      warningCount: 1,
+      rewindQueueCount: 1,
+      fastForwardQueueCount: 0,
+      currentTotalLag: 30,
+      projectedTotalLag: 40,
+      totalOffsetDelta: -10,
+      warnings: ['1 queue(s) will move backward and may replay consumed messages'],
+      queues: [
+        {
+          topic: 'orders',
+          broker: 'broker-a',
+          queueId: 0,
+          minOffset: 0,
+          maxOffset: 200,
+          brokerOffset: 120,
+          consumerOffset: 90,
+          targetOffset: 80,
+          currentLag: 30,
+          projectedLag: 40,
+          offsetDelta: -10,
+          riskLevel: 'WARNING',
+          message: 'Replays 10 message(s)',
+        },
+      ],
+    };
+    mock.onPost('/groups/reset-offset/preview').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(request);
+      return [200, { code: 200, data: preview }];
+    });
+
+    await expect(previewConsumerOffsetReset(request)).resolves.toEqual(preview);
+  });
+
   it('includes selected instance context when deleting a consumer group', async () => {
     mock.onPost('/groups/delete').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ name: group.name, instanceId: 'instance-a' });
+      expect(JSON.parse(config.data)).toEqual({ name: group.name, instanceId: 'instance-1' });
       return [200, { code: 200, data: null }];
     });
 
-    await expect(deleteConsumerGroup(group.name, 'instance-a')).resolves.toBeUndefined();
+    await expect(deleteConsumerGroup(group.name, 'instance-1')).resolves.toBeUndefined();
+  });
+
+  it('gets and updates settings in the selected Apache instance', async () => {
+    const settings = { groupName: group.name, retryQueueNums: 2, retryMaxTimes: 8 };
+    mock
+      .onGet(`/groups/${encodeURIComponent(group.name)}/settings`, {
+        params: { instanceId: 'instance-1' },
+      })
+      .reply(200, { code: 200, data: settings });
+    await expect(getConsumerGroupSettings(group.name, 'instance-1')).resolves.toEqual(settings);
+
+    const payload = {
+      instanceId: 'instance-1',
+      name: group.name,
+      retryQueueNums: 2,
+      retryMaxTimes: 8,
+    };
+    mock.onPost('/groups/settings').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(payload);
+      return [200, { code: 200, data: settings }];
+    });
+    await expect(updateConsumerGroupSettings(payload)).resolves.toEqual(settings);
   });
 });

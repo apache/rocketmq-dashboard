@@ -19,10 +19,9 @@ package org.apache.rocketmq.studio.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolAccessPolicy;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -31,36 +30,56 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.Set;
 
-@RequiredArgsConstructor
 public class AuthInterceptor implements HandlerInterceptor {
 
     private static final Set<String> READER_POST_PATHS = Set.of(
             "/api/auth/logout",
+            "/api/auth/password",
             "/api/ai/chat",
-            "/api/clusters/test-connection",
-            "/api/llm/config/test",
-            "/api/metrics/query");
+            "/api/metrics/query",
+            "/api/metrics/query/datasource");
 
     private final AuthProperties authProperties;
     private final AuthService authService;
     private final SettingsRepository settingsRepository;
+    private final ToolAccessPolicy toolAccessPolicy;
+
+    public AuthInterceptor(AuthProperties authProperties, AuthService authService,
+                           SettingsRepository settingsRepository) {
+        this(authProperties, authService, settingsRepository, null);
+    }
+
+    public AuthInterceptor(AuthProperties authProperties, AuthService authService,
+                           SettingsRepository settingsRepository, ToolAccessPolicy toolAccessPolicy) {
+        this.authProperties = authProperties;
+        this.authService = authService;
+        this.settingsRepository = settingsRepository;
+        this.toolAccessPolicy = toolAccessPolicy;
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                              Object handler) throws Exception {
         AuthenticatedUserContext.clear();
         if (!isLoginRequired() || CorsUtils.isPreFlightRequest(request)
-                || isPublicPath(requestPath(request))) {
+                || isPublicPath(requestPath(request)) || authService == null) {
+            // Slice tests and minimal contexts may not provide AuthService; fall back to no
+            // enforcement, matching the documented AuthWebConfig behaviour.
             return true;
         }
-        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (!authService.isAuthenticated(authorization)) {
+        String authorization = AuthCookie.authorization(request, authProperties);
+        var authenticatedUser = authService.getAuthenticatedUser(authorization).orElse(null);
+        if (authenticatedUser == null) {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
             return false;
         }
-        authService.getAuthenticatedUser(authorization)
-                .ifPresent(user -> AuthenticatedUserContext.setUsername(user.getUsername()));
-        if (requiresAdmin(request, requestPath(request)) && !authService.isAdmin(authorization)) {
+
+        AuthenticatedUserContext.setUser(
+                authenticatedUser.getUserId(),
+                authenticatedUser.getUsername(),
+                authenticatedUser.isAdmin());
+        if (requiresAdmin(request, requestPath(request))
+                && !authenticatedUser.isAdmin()) {
             writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
             return false;
         }
@@ -77,13 +96,14 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
         if (settingsRepository == null) {
-            return false;
+            return true;
         }
         try {
             GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
-            return settings != null && settings.isRequireLogin();
+            return settings == null || settings.isRequireLogin();
         } catch (Exception exception) {
-            return false;
+            // Fail closed: when the policy cannot be read, default to requiring login.
+            return true;
         }
     }
 
@@ -94,16 +114,51 @@ public class AuthInterceptor implements HandlerInterceptor {
             // Read endpoints stay open to readers, except credential views that expose secrets.
             return isAdminOnlyGetPath(path);
         }
+        String normalizedPath = normalizePath(stripPathParameters(path));
+        if (toolAccessPolicy != null && toolAccessPolicy.isToolExecutionPath(normalizedPath)) {
+            return !toolAccessPolicy.isReaderAccessiblePath(normalizedPath);
+        }
         return !HttpMethod.POST.matches(method) || !READER_POST_PATHS.contains(normalizePath(path));
     }
 
     private boolean isAdminOnlyGetPath(String path) {
-        return isCredentialRevealPath(path, "/api/acl/users/")
-                || isCredentialRevealPath(path, "/api/cloud-credentials/");
+        String normalizedPath = normalizePath(stripPathParameters(path));
+        return "/api/llm/config".equals(normalizedPath)
+                || "/api/llm/models".equals(normalizedPath)
+                || "/api/studio-users".equals(normalizedPath)
+                || isCloudCatalogPath(normalizedPath)
+                || "/api/acl/remote/rules".equals(normalizedPath)
+                || isCredentialRevealPath(normalizedPath, "/api/acl/users/")
+                || isCredentialRevealPath(normalizedPath, "/api/cloud-credentials/");
+    }
+
+    private boolean isCloudCatalogPath(String path) {
+        return path.startsWith("/api/cloud/aliyun/")
+                || path.startsWith("/api/cloud/tencent/");
     }
 
     private boolean isCredentialRevealPath(String path, String prefix) {
-        return path.startsWith(prefix) && path.endsWith("/credentials");
+        return path != null && path.startsWith(prefix) && path.endsWith("/credentials");
+    }
+
+    private String stripPathParameters(String path) {
+        if (path == null || path.indexOf(';') < 0) {
+            return path;
+        }
+        StringBuilder stripped = new StringBuilder(path.length());
+        boolean insideParameters = false;
+        for (int index = 0; index < path.length(); index++) {
+            char character = path.charAt(index);
+            if (character == ';') {
+                insideParameters = true;
+            } else if (character == '/') {
+                insideParameters = false;
+                stripped.append(character);
+            } else if (!insideParameters) {
+                stripped.append(character);
+            }
+        }
+        return stripped.toString();
     }
 
     private void writeError(HttpServletResponse response, HttpStatus status, String message)
@@ -124,6 +179,8 @@ public class AuthInterceptor implements HandlerInterceptor {
         path = normalizePath(path);
         return path.equals("/api/auth/login")
                 || path.equals("/api/auth/status")
+                || path.equals("/livez")
+                || path.equals("/readyz")
                 || path.startsWith("/api-docs")
                 || path.startsWith("/swagger-ui")
                 || path.startsWith("/actuator/health");

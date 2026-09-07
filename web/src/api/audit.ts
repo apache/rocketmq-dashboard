@@ -27,6 +27,22 @@ export interface AuditFilterOptions {
   results: string[];
 }
 
+export interface AuditSummaryBucket {
+  name: string;
+  count: number;
+}
+
+export interface AuditSummary {
+  total: number;
+  successful: number;
+  failed: number;
+  partial: number;
+  uniqueOperators: number;
+  latestAt: string | null;
+  byOperation: AuditSummaryBucket[];
+  byResourceType: AuditSummaryBucket[];
+}
+
 export async function fetchAuditFilterOptions(): Promise<AuditFilterOptions> {
   const res = await client.get<{ data: AuditFilterOptions }>('/audit-logs/filter-options');
   return res.data.data;
@@ -34,5 +50,10 @@ export async function fetchAuditFilterOptions(): Promise<AuditFilterOptions> {
 
 export async function exportAuditLogs(params?: AuditFilter): Promise<string> {
   const res = await client.get<{ data: string }>('/audit-logs/export', { params });
+  return res.data.data;
+}
+
+export async function fetchAuditSummary(params?: AuditFilter): Promise<AuditSummary> {
+  const res = await client.get<{ data: AuditSummary }>('/audit-logs/summary', { params });
   return res.data.data;
 }

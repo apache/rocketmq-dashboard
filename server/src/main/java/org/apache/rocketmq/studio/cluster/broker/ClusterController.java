@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.cluster.config.BrokerConfigDiffVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
 import org.apache.rocketmq.studio.common.domain.Result;
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -40,10 +43,16 @@ public class ClusterController {
 
     private final ClusterService clusterService;
     private final ClusterConnectionService clusterConnectionService;
+    private final BrokerConfigDiffService brokerConfigDiffService;
 
     @GetMapping
-    public Result<List<ClusterVO>> listClusters() {
-        return Result.ok(clusterService.listClusters());
+    public Result<List<ClusterVO>> listClusters(@RequestParam(required = false) String instanceId) {
+        return Result.ok(clusterService.listClusters(instanceId));
+    }
+
+    @GetMapping("/registry")
+    public Result<List<ClusterVO>> listRegistryClusters() {
+        return Result.ok(clusterService.listRegistryClusters());
     }
 
     @PostMapping("/test-connection")
@@ -52,14 +61,28 @@ public class ClusterController {
     }
 
     @GetMapping("/{id}")
-    public Result<ClusterVO> getCluster(@PathVariable String id) {
-        return Result.ok(clusterService.getCluster(id));
+    public Result<ClusterVO> getCluster(@PathVariable String id,
+                                        @RequestParam(required = false) String instanceId) {
+        return Result.ok(clusterService.getCluster(id, instanceId));
     }
 
     @PostMapping("/config/update")
     public Result<ClusterConfigUpdateResultVO> updateClusterConfig(@Valid @RequestBody(required = false) UpdateConfigDTO command) {
         requireUpdateConfigCommand(command);
         return Result.ok(clusterService.updateClusterConfig(command));
+    }
+
+    @PostMapping("/config/preview")
+    public Result<ClusterConfigPreviewVO> previewClusterConfig(@Valid @RequestBody(required = false) UpdateConfigDTO command) {
+        requireUpdateConfigCommand(command);
+        return Result.ok(clusterService.previewClusterConfig(command));
+    }
+
+    @GetMapping("/{id}/broker-config-diff")
+    public Result<BrokerConfigDiffVO> compareBrokerConfiguration(
+            @PathVariable String id,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(brokerConfigDiffService.compare(id, instanceId));
     }
 
     @PostMapping("/{clusterId}/brokers/{name}/restart")

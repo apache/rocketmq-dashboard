@@ -54,6 +54,14 @@ describe('alertRuleAssetService (mock mode)', () => {
     expect(yaml).toContain('RocketMQBrokerDown');
   });
 
+  it('uses a triggerable producer connection drop expression in mock assets', async () => {
+    mode.mock = true;
+    const yaml = await getAlertRuleAsset('rocketmq-client-connection-drop');
+
+    expect(yaml).toContain('expr: delta(rocketmq_producer_count[5m]) < -5');
+    expect(yaml).not.toContain('changes(rocketmq_producer_count[5m]) < -5');
+  });
+
   it('throws for an unknown asset', async () => {
     mode.mock = true;
     await expect(getAlertRuleAsset('does-not-exist')).rejects.toThrow();

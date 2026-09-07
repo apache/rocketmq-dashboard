@@ -16,7 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,6 +27,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AcknowledgeSystemAlertDTO {
-    @NotBlank(message = "id is required")
-    private String id;
+    @NotNull(message = "id is required")
+    private Long id;
 }

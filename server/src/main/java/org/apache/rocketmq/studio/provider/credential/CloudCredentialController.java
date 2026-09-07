@@ -19,16 +19,21 @@ package org.apache.rocketmq.studio.provider.credential;
 import jakarta.validation.Valid;
 import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.EntityIds;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import lombok.RequiredArgsConstructor;
 
-import java.util.List;
 
 @RequiredArgsConstructor
 @RestController
@@ -38,8 +43,10 @@ public class CloudCredentialController {
     private final CloudCredentialService credentialService;
 
     @GetMapping
-    public Result<List<CloudCredentialVO>> listCredentials() {
-        return Result.ok(credentialService.listMasked());
+    public Result<PageResult<CloudCredentialVO>> listCredentials(@RequestParam(required = false) InstanceVendor vendor,
+            @RequestParam(required = false) String search, @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(credentialService.listMasked(vendor, search, page, pageSize));
     }
 
     @PostMapping("/create")
@@ -62,12 +69,14 @@ public class CloudCredentialController {
 
     @PostMapping("/delete")
     public Result<Void> deleteCredential(@Valid @RequestBody DeleteRequestDTO request) {
-        credentialService.delete(request.getId());
+        credentialService.delete(EntityIds.parseId(request.getId()));
         return Result.ok();
     }
 
     @GetMapping("/{id}/credentials")
-    public Result<CloudCredentialVO> getCredentialSecrets(@PathVariable String id) {
-        return Result.ok(credentialService.reveal(id));
+    public ResponseEntity<Result<CloudCredentialVO>> getCredentialSecrets(@PathVariable Long id) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(Result.ok(credentialService.reveal(id)));
     }
 }

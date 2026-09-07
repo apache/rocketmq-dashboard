@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.group;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -58,12 +59,67 @@ class ConsumerGroupControllerTest {
     private MetadataService metadataService;
 
     @MockBean
+    private org.apache.rocketmq.studio.instance.InstanceService instanceService;
+
+    @MockBean
     private ConsumerDiagnosticsService consumerDiagnosticsService;
+
+    @Test
+    void listConsumerGroupsShouldPassQueryParams() throws Exception {
+        when(metadataService.listConsumerGroups("instance-a", "cluster-a", "orders"))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/groups")
+                        .param("instanceId", "instance-a")
+                        .param("clusterId", "cluster-a")
+                        .param("search", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+
+        verify(metadataService).listConsumerGroups("instance-a", "cluster-a", "orders");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPassSelectedInstanceFiltersAndPaging() throws Exception {
+        PageResult<ConsumerGroupVO> page = PageResult.of(List.of(), 3, 2, 20);
+        when(metadataService.listConsumerGroupsPage("instance-a", "cluster-a", "orders", 2, 20))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/groups/page")
+                        .param("instanceId", "instance-a")
+                        .param("clusterId", "cluster-a")
+                        .param("search", "orders")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(20));
+
+        verify(metadataService).listConsumerGroupsPage("instance-a", "cluster-a", "orders", 2, 20);
+    }
+
+    @Test
+    void exportConsumerGroupsShouldPassViewFiltersAndSelectedNames() throws Exception {
+        when(metadataService.exportConsumerGroups("instance-a", "orders", "Pop",
+                List.of("cg-a", "cg-b"))).thenReturn("\"Name\"\n\"cg-a\"");
+
+        mockMvc.perform(get("/api/groups/export")
+                        .param("instanceId", "instance-a")
+                        .param("search", "orders")
+                        .param("subscriptionMode", "Pop")
+                        .param("names", "cg-a, cg-b,cg-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value("\"Name\"\n\"cg-a\""));
+
+        verify(metadataService).exportConsumerGroups("instance-a", "orders", "Pop",
+                List.of("cg-a", "cg-b"));
+    }
 
     @Test
     void createConsumerGroupShouldPassValidatedRequest() throws Exception {
         Map<String, Object> body = Map.of(
-                "instanceId", "instance-a",
+                "instanceId", 7,
                 "name", "cg-orders",
                 "clusterId", "cluster-a",
                 "retryMaxTimes", 8,
@@ -75,6 +131,7 @@ class ConsumerGroupControllerTest {
         created.setRetryMaxTimes(8);
 
         when(metadataService.createConsumerGroup(any(ConsumerGroupVO.class))).thenReturn(created);
+        when(instanceService.normalizeIdentifier("7")).thenReturn("rocketmq1");
 
         mockMvc.perform(post("/api/groups/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -88,8 +145,45 @@ class ConsumerGroupControllerTest {
         verify(metadataService).createConsumerGroup(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("cg-orders");
         assertThat(captor.getValue().getClusterId()).isEqualTo("cluster-a");
-        assertThat(captor.getValue().getInstanceId()).isEqualTo("instance-a");
+        assertThat(captor.getValue().getInstanceId()).isEqualTo("rocketmq1");
         assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
+    }
+
+    @Test
+    void importConsumerGroupsShouldNormalizeInstanceAndDelegateBatch() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "7",
+                "groups", List.of(Map.of(
+                        "name", "cg-orders",
+                        "subscriptionMode", "Push",
+                        "consumeType", "CLUSTERING",
+                        "retryMaxTimes", 8
+                ))
+        );
+        ConsumerGroupVO created = new ConsumerGroupVO();
+        created.setName("cg-orders");
+        when(instanceService.normalizeIdentifier("7")).thenReturn("rocketmq1");
+        when(metadataService.importConsumerGroups(eq("rocketmq1"), any()))
+                .thenReturn(ImportConsumerGroupsResultVO.builder()
+                        .imported(1)
+                        .failed(0)
+                        .groups(List.of(created))
+                        .failures(List.of())
+                        .build());
+
+        mockMvc.perform(post("/api/groups/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.groups[0].name").value("cg-orders"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<CreateConsumerGroupDTO>> captor = ArgumentCaptor.forClass(List.class);
+        verify(metadataService).importConsumerGroups(eq("rocketmq1"), captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).getName()).isEqualTo("cg-orders");
+        assertThat(captor.getValue().get(0).getRetryMaxTimes()).isEqualTo(8);
     }
 
     @Test
@@ -112,7 +206,7 @@ class ConsumerGroupControllerTest {
     @Test
     void createConsumerGroupShouldRejectNegativeRetryMaxTimes() throws Exception {
         Map<String, Object> body = Map.of(
-                "instanceId", "instance-a",
+                "instanceId", 7,
                 "name", "cg-orders",
                 "retryMaxTimes", -1
         );
@@ -125,6 +219,35 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.message").value("retryMaxTimes must be zero or positive"));
 
         verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void consumerGroupSettingsShouldUseTheSelectedInstance() throws Exception {
+        ConsumerGroupSettingsVO settings = ConsumerGroupSettingsVO.builder().groupName("cg-orders")
+                .retryQueueNums(2).retryMaxTimes(8).build();
+        when(metadataService.getConsumerGroupSettings("instance-a", "cg-orders")).thenReturn(settings);
+
+        mockMvc.perform(get("/api/groups/cg-orders/settings").param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retryQueueNums").value(2));
+
+        verify(metadataService).getConsumerGroupSettings("instance-a", "cg-orders");
+    }
+
+    @Test
+    void consumerGroupSettingsUpdateShouldValidateAndDelegate() throws Exception {
+        Map<String, Object> body = Map.of("instanceId", "instance-a", "name", "cg-orders",
+                "retryQueueNums", 2, "retryMaxTimes", 8);
+        when(metadataService.updateConsumerGroupSettings("instance-a", "cg-orders", 2, 8))
+                .thenReturn(ConsumerGroupSettingsVO.builder().groupName("cg-orders").retryQueueNums(2)
+                        .retryMaxTimes(8).build());
+
+        mockMvc.perform(post("/api/groups/settings").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retryMaxTimes").value(8));
+
+        verify(metadataService).updateConsumerGroupSettings("instance-a", "cg-orders", 2, 8);
     }
 
     @Test
@@ -145,9 +268,11 @@ class ConsumerGroupControllerTest {
                 .threads(List.of(thread))
                 .build();
 
-        when(consumerDiagnosticsService.getConsumerStack("cg-orders", "client-1")).thenReturn(stackTrace);
+        when(consumerDiagnosticsService.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .thenReturn(stackTrace);
 
-        mockMvc.perform(get("/api/groups/cg-orders/instances/client-1/stack"))
+        mockMvc.perform(get("/api/groups/cg-orders/instances/client-1/stack")
+                        .param("instanceId", "instance-a"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.groupName").value("cg-orders"))
@@ -156,6 +281,7 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.data.threads[0].threadName").value("ConsumeMessageThread_1"))
                 .andExpect(jsonPath("$.data.threads[0].stackTrace[0]")
                         .value("org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.run"));
+        verify(consumerDiagnosticsService).getConsumerStack("instance-a", "cg-orders", "client-1");
     }
 
     @Test
@@ -191,6 +317,65 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.message").value("success"));
 
         verify(metadataService).resetOffset(eq("instance-a"), eq("cg-orders"), eq(1784246400000L), eq("orders"));
+    }
+
+    @Test
+    void previewResetOffsetShouldPassValidatedRequestAndReturnQueueImpact() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
+                "name", "cg-orders",
+                "topic", "orders",
+                "timestamp", 1784246400000L
+        );
+        ResetConsumerOffsetQueuePreviewVO queue = ResetConsumerOffsetQueuePreviewVO.builder()
+                .topic("orders")
+                .broker("broker-a")
+                .queueId(0)
+                .minOffset(0L)
+                .maxOffset(200L)
+                .brokerOffset(120L)
+                .consumerOffset(90L)
+                .targetOffset(80L)
+                .currentLag(30L)
+                .projectedLag(40L)
+                .offsetDelta(-10L)
+                .riskLevel("WARNING")
+                .message("Replays 10 message(s)")
+                .build();
+        ResetConsumerOffsetPreviewVO preview = ResetConsumerOffsetPreviewVO.builder()
+                .instanceId("instance-a")
+                .groupName("cg-orders")
+                .topic("orders")
+                .timestamp(1784246400000L)
+                .complete(true)
+                .allowReset(true)
+                .queueCount(1)
+                .warningCount(1)
+                .rewindQueueCount(1)
+                .fastForwardQueueCount(0)
+                .currentTotalLag(30L)
+                .projectedTotalLag(40L)
+                .totalOffsetDelta(-10L)
+                .warnings(List.of("1 queue(s) will move backward and may replay consumed messages"))
+                .queues(List.of(queue))
+                .build();
+        when(metadataService.previewResetOffset("instance-a", "cg-orders", 1784246400000L, "orders"))
+                .thenReturn(preview);
+
+        mockMvc.perform(post("/api/groups/reset-offset/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.groupName").value("cg-orders"))
+                .andExpect(jsonPath("$.data.allowReset").value(true))
+                .andExpect(jsonPath("$.data.queueCount").value(1))
+                .andExpect(jsonPath("$.data.projectedTotalLag").value(40))
+                .andExpect(jsonPath("$.data.queues[0].targetOffset").value(80))
+                .andExpect(jsonPath("$.data.queues[0].riskLevel").value("WARNING"));
+
+        verify(metadataService).previewResetOffset(eq("instance-a"), eq("cg-orders"),
+                eq(1784246400000L), eq("orders"));
     }
 
     @Test

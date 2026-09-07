@@ -48,7 +48,7 @@ describe('client connections API', () => {
   it('uses the query parameters supported by the backend', async () => {
     mock.onGet('/clients').reply((config) => {
       expect(config.params).toEqual({
-        instanceId: 'instance-1',
+        namesrvAddr: '10.0.1.33:9876',
         clusterId: 'production-cluster',
         type: 'Producer',
       });
@@ -57,7 +57,7 @@ describe('client connections API', () => {
 
     await expect(
       listConnections({
-        instanceId: 'instance-1',
+        namesrvAddr: '10.0.1.33:9876',
         clusterId: 'production-cluster',
         type: 'Producer',
       }),

@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -24,7 +23,12 @@ import java.util.List;
 
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 public class ProducerConnectionResultVO {
     private List<ProducerConnectionVO> connectionSet;
+    private ProducerConnectionSummaryVO summary;
+
+    public ProducerConnectionResultVO(List<ProducerConnectionVO> connectionSet) {
+        this.connectionSet = connectionSet == null ? List.of() : connectionSet;
+        this.summary = ProducerConnectionSummaryVO.from(this.connectionSet);
+    }
 }

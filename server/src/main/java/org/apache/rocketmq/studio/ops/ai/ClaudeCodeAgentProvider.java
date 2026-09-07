@@ -24,13 +24,17 @@ import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -47,11 +51,15 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
     private static final String COMPATIBLE_MODE_SUFFIX = "/compatible-mode/v1";
     private static final String ANTHROPIC_APP_SUFFIX = "/apps/anthropic";
     private static final long STREAM_TIMEOUT_SECONDS = 300;
+    private static final long OUTPUT_DRAIN_TIMEOUT_SECONDS = 10;
+    private static final int MAX_STDERR_BYTES = 64 * 1024;
+    private static final String STDERR_TRUNCATED_SUFFIX = "\n...[stderr truncated]";
 
     private final LlmProperties llmProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ClaudeCodeAgentProvider(LlmProperties llmProperties) {
+    public ClaudeCodeAgentProvider(LlmProperties llmProperties, CliProcessEnvironment processEnvironment) {
+        super(processEnvironment);
         this.llmProperties = llmProperties;
     }
 
@@ -90,28 +98,38 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         command.add("--include-partial-messages");
 
         ProcessBuilder builder = new ProcessBuilder(command);
-        builder.environment().putAll(childEnv(config));
+        processEnvironment().apply(builder, childEnv(config));
         builder.redirectErrorStream(false);
+        // The claude CLI waits 3s for stdin and emits a warning that leaks into the
+        // reply unless stdin is explicitly /dev/null; fall back to closing the pipe
+        // on platforms without it.
+        java.io.File devNull = new java.io.File("/dev/null");
+        boolean devNullAvailable = devNull.exists();
+        if (devNullAvailable) {
+            builder.redirectInput(ProcessBuilder.Redirect.from(devNull));
+        }
+        Process process = null;
         try {
-            Process process = builder.start();
+            process = startProcess(builder);
+            if (!devNullAvailable) {
+                process.getOutputStream().close();
+            }
             AtomicBoolean emitted = new AtomicBoolean(false);
             StringBuilder resultText = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    parseStreamLine(line, tokenConsumer, emitted, resultText);
-                }
-            }
-            boolean finished = process.waitFor(STREAM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            CompletableFuture<Void> stdoutFuture = drainStdout(
+                    process.getInputStream(), tokenConsumer, emitted, resultText);
+            CompletableFuture<String> stderrFuture = readAsync(process.getErrorStream());
+            long timeoutSeconds = streamTimeoutSeconds();
+            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 throw new LlmGatewayException(504, "llm.provider.timeout",
-                        binaryName() + " CLI stream timed out after " + STREAM_TIMEOUT_SECONDS + "s",
+                        binaryName() + " CLI stream timed out after " + timeoutSeconds + "s",
                         "Retry with a shorter prompt or check the gateway latency.");
             }
+            await(stdoutFuture);
+            String stderr = await(stderrFuture);
             if (process.exitValue() != 0 && !emitted.get()) {
-                String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
                 throw new LlmGatewayException(502, "llm.provider.cli_error",
                         binaryName() + " CLI failed: " + (StringUtils.hasText(stderr) ? stderr.trim() : "unknown error"),
                         "Check the provider credentials, base URL and model name.");
@@ -124,9 +142,64 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                     "Failed to execute " + binaryName() + " CLI",
                     "Check that the CLI binary is installed and executable.", exception);
         } catch (InterruptedException exception) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     binaryName() + " CLI execution was interrupted", "Retry the request.", exception);
+        }
+    }
+
+    protected Process startProcess(ProcessBuilder builder) throws IOException {
+        return builder.start();
+    }
+
+    protected long streamTimeoutSeconds() {
+        return STREAM_TIMEOUT_SECONDS;
+    }
+
+    private CompletableFuture<Void> drainStdout(InputStream stdout, Consumer<String> tokenConsumer,
+                                                AtomicBoolean emitted, StringBuilder resultText) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(stdout, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    parseStreamLine(line, tokenConsumer, emitted, resultText);
+                }
+                result.complete(null);
+            } catch (Exception exception) {
+                result.completeExceptionally(exception);
+            }
+        });
+        return result;
+    }
+
+    private CompletableFuture<String> readAsync(InputStream stream) {
+        CompletableFuture<String> result = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try (stream) {
+                byte[] bytes = stream.readNBytes(MAX_STDERR_BYTES + 1);
+                boolean truncated = bytes.length > MAX_STDERR_BYTES;
+                int length = Math.min(bytes.length, MAX_STDERR_BYTES);
+                String output = new String(bytes, 0, length, StandardCharsets.UTF_8);
+                result.complete(truncated ? output + STDERR_TRUNCATED_SUFFIX : output);
+            } catch (Exception exception) {
+                result.completeExceptionally(exception);
+            }
+        });
+        return result;
+    }
+
+    private <T> T await(CompletableFuture<T> future) throws IOException, InterruptedException {
+        try {
+            return future.get(OUTPUT_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (ExecutionException exception) {
+            throw new IOException("Failed to drain Claude CLI output", exception.getCause());
+        } catch (TimeoutException exception) {
+            throw new IOException("Timed out while draining Claude CLI output", exception);
         }
     }
 
