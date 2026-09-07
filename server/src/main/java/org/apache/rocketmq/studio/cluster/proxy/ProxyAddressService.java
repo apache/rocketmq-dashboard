@@ -147,6 +147,17 @@ public class ProxyAddressService {
         probeExecutor.shutdownNow();
     }
 
+    /**
+     * Snapshot of the proxy addresses registered in this console (host:port form,
+     * data-plane convention, e.g. {@code 127.0.0.1:8081}). Used by the RIP-2 admin
+     * client to derive candidate proxy-admin endpoints on the same hosts.
+     */
+    public java.util.List<String> knownProxyAddresses() {
+        synchronized (this) {
+            return new java.util.ArrayList<>(proxyAddrs);
+        }
+    }
+
     public synchronized ProxyHomeVO getHomePage() {
         return ProxyHomeVO.builder()
                 .proxyAddrList(new ArrayList<>(proxyAddrs))

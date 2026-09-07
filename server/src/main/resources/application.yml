@@ -89,6 +89,10 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:}
+    # RIP-2: explicit proxy-admin (gRPC, upstream Admin 2.2.0) endpoints. Comma separated.
+    # When empty the admin client derives candidates from registered proxy hosts + admin-port.
+    proxy-admin-addresses: ${STUDIO_ROCKETMQ_PROXY_ADMIN_ADDRESSES:}
+    proxy-admin-port: ${STUDIO_ROCKETMQ_PROXY_ADMIN_PORT:8083}
   query-history:
     retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
     cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}
