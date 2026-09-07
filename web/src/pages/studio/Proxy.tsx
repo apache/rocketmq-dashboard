@@ -67,6 +67,12 @@ const persistProxyAddress = (address?: string) => {
   writeLocalStorage('proxyAddr', address);
 };
 
+const formatClockTime = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
@@ -77,6 +83,7 @@ const ProxyPage: React.FC = () => {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [newProxyAddress, setNewProxyAddress] = useState('');
   const [nodeFilter, setNodeFilter] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [addressMutationLoading, setAddressMutationLoading] = useState(false);
   const addressMutationInFlight = useRef(false);
   const [removingProxyAddress, setRemovingProxyAddress] = useState<string | null>(null);
@@ -149,7 +156,11 @@ const ProxyPage: React.FC = () => {
     try {
       const home = await queryProxyHomePage();
       if (requestId !== loadRequestId.current) return false;
-      return await applyProxyHome(home, requestId);
+      const applied = await applyProxyHome(home, requestId);
+      if (requestId === loadRequestId.current && applied) {
+        setLastUpdated(Date.now());
+      }
+      return applied;
     } catch {
       if (requestId !== loadRequestId.current) return false;
       message.error(t('proxy.fetchListFailed'));
@@ -498,6 +509,11 @@ const ProxyPage: React.FC = () => {
               style={{ width: 200 }}
               aria-label={t('proxy.clusterId')}
             />
+            {lastUpdated !== null && (
+              <Text type="secondary" data-testid="proxy-last-updated">
+                {t('common.lastUpdated')} {formatClockTime(lastUpdated)}
+              </Text>
+            )}
             <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
               {t('common.refresh')}
             </Button>

@@ -313,4 +313,48 @@ describe('ProxyPage', () => {
     expect(screen.getByText('127.0.0.2:8081')).toBeInTheDocument();
     expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
   });
+
+  it('shows the last successful proxy list load time', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 6, 1, 8, 30, 45).getTime());
+    renderPage();
+
+    await screen.findByText('127.0.0.1:8081');
+    expect(screen.getByTestId('proxy-last-updated')).toHaveTextContent('最近更新 08:30:45');
+    nowSpy.mockRestore();
+  });
+
+  it('updates the load time after a successful refresh', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 6, 1, 8, 30, 45).getTime());
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('127.0.0.1:8081');
+    expect(screen.getByTestId('proxy-last-updated')).toHaveTextContent('最近更新 08:30:45');
+
+    nowSpy.mockReturnValue(new Date(2026, 6, 1, 9, 0, 0).getTime());
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+
+    await waitFor(() => expect(queryProxyHomePage).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId('proxy-last-updated')).toHaveTextContent('最近更新 09:00:00'),
+    );
+    nowSpy.mockRestore();
+  });
+
+  it('keeps the previous load time when a refresh fails', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 6, 1, 8, 30, 45).getTime());
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('127.0.0.1:8081');
+    expect(screen.getByTestId('proxy-last-updated')).toHaveTextContent('最近更新 08:30:45');
+
+    vi.mocked(queryProxyHomePage).mockRejectedValueOnce(new Error('network error'));
+    nowSpy.mockReturnValue(new Date(2026, 6, 1, 9, 0, 0).getTime());
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+
+    expect(await screen.findByText('获取代理列表失败')).toBeInTheDocument();
+    expect(screen.getByTestId('proxy-last-updated')).toHaveTextContent('最近更新 08:30:45');
+    nowSpy.mockRestore();
+  });
 });
