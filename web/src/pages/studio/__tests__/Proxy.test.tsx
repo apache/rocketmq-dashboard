@@ -313,4 +313,86 @@ describe('ProxyPage', () => {
     expect(screen.getByText('127.0.0.2:8081')).toBeInTheDocument();
     expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
   });
+
+  it('exports the currently filtered Proxy nodes as CSV', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:proxy-nodes';
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      vi.mocked(queryProxyHomePage).mockResolvedValueOnce({
+        proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+        currentProxyAddr: '127.0.0.1:8081',
+      });
+      vi.mocked(getProxyTopology).mockResolvedValueOnce([
+        {
+          proxyAddr: '127.0.0.1:8081',
+          status: 'UP',
+          grpcPort: 8081,
+          remotingPort: null,
+          grpcReachable: true,
+          remotingReachable: false,
+          latencyMs: 3,
+        },
+        {
+          proxyAddr: '10.0.0.10:8081',
+          status: 'DOWN',
+          grpcPort: 8081,
+          remotingPort: null,
+          grpcReachable: false,
+          remotingReachable: false,
+          latencyMs: 0,
+        },
+      ]);
+
+      renderPage();
+      await screen.findByText('127.0.0.1:8081');
+
+      const filter = screen.getByRole('textbox', { name: '筛选 Proxy 节点' });
+      await user.type(filter, '不健康');
+      expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
+      expect(screen.getByText('10.0.0.10:8081')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '导出' }));
+
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      await expect(blob.text()).resolves.toBe(
+        [
+          '"Address","Status","Version","Connections","TPS","Memory (%)","CPU (%)","Uptime"',
+          '"10.0.0.10:8081","Unhealthy","","","","","",""',
+        ].join('\n'),
+      );
+      expect(
+        document.querySelector('a[download^="rocketmq-proxy-nodes-"]'),
+      ).not.toBeInTheDocument();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:proxy-nodes');
+    } finally {
+      clickSpy.mockRestore();
+    }
+  });
+
+  it('disables the CSV export button when the filtered node list is empty', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    const exportButton = screen.getByRole('button', { name: '导出' });
+    expect(exportButton).toBeEnabled();
+
+    const filter = screen.getByRole('textbox', { name: '筛选 Proxy 节点' });
+    await user.type(filter, 'no-such-node');
+    expect(exportButton).toBeDisabled();
+  });
 });
