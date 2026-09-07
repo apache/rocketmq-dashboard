@@ -70,7 +70,7 @@ import {
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
-import { downloadBlob } from '../../utils/download';
+import { buildCsv, downloadBlob, downloadCsv } from '../../utils/download';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -723,6 +723,29 @@ const MessagePageContent = ({
     message.success('消息下载成功');
   };
 
+  const handleExportCsv = () => {
+    if (messages.length === 0) return;
+    const csv = buildCsv<MessageRecord>(
+      [
+        { header: 'Message ID', value: (row) => row.msgId },
+        { header: 'Topic', value: (row) => row.topic },
+        { header: 'Queue ID', value: (row) => row.queueId },
+        { header: 'Offset', value: (row) => row.queueOffset },
+        { header: 'Key', value: (row) => row.key ?? '' },
+        { header: 'Tag', value: (row) => row.tag ?? '' },
+        { header: 'Store Time', value: (row) => formatTimeMs(row.storeTime) },
+        { header: 'Born Host', value: (row) => row.bornHost },
+        { header: 'Size', value: (row) => row.size },
+      ],
+      messages,
+    );
+    const topic = (selectedTopic?.trim() || messages[0]?.topic || 'messages').replace(
+      /[^\w.-]+/g,
+      '_',
+    );
+    downloadCsv(`rocketmq-messages-${topic}-${dayjs().format('YYYY-MM-DD')}.csv`, csv);
+  };
+
   /* ─── Table Columns ─── */
   const columns: ColumnsType<MessageRecord> = [
     {
@@ -1197,7 +1220,19 @@ const MessagePageContent = ({
 
       {/* ── Results Table ── */}
       {queryMode !== 'queue' && (
-        <Card styles={{ body: { padding: 0 } }}>
+        <Card
+          title="查询结果"
+          extra={
+            <Button
+              icon={<DownloadOutlined />}
+              disabled={messages.length === 0 || queryLoading}
+              onClick={handleExportCsv}
+            >
+              导出 CSV
+            </Button>
+          }
+          styles={{ body: { padding: 0 } }}
+        >
           <Table
             columns={columns}
             dataSource={messages}

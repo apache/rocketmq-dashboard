@@ -36,6 +36,9 @@ const topicServiceMocks = vi.hoisted(() => ({
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
 }));
+const downloadMocks = vi.hoisted(() => ({
+  downloadCsv: vi.fn(),
+}));
 
 vi.mock('../../../services/messageService', () => ({
   ...messageServiceMocks,
@@ -49,6 +52,11 @@ vi.mock('../../../services/messageService', () => ({
     })),
 }));
 vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
+
+vi.mock('../../../utils/download', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../utils/download')>()),
+  downloadCsv: downloadMocks.downloadCsv,
+}));
 
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
@@ -103,6 +111,7 @@ const lastElement = <T,>(elements: T[]): T => elements[elements.length - 1]!;
 describe('Message page query history', () => {
   beforeEach(() => {
     localStorage.clear();
+    downloadMocks.downloadCsv.mockReset();
     messageServiceMocks.consumeMessageDirectly.mockReset();
     messageServiceMocks.getMessageTrace.mockReset().mockResolvedValue(null);
     messageServiceMocks.getMessageTraceByKey.mockReset().mockResolvedValue(null);
@@ -317,5 +326,34 @@ describe('Message page query history', () => {
     await user.click(screen.getAllByRole('combobox')[1]);
 
     expect(screen.queryByText('order-create')).not.toBeInTheDocument();
+  });
+
+  it('exports the current message query results as CSV', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-EXPORT-001')]);
+    renderWithProviders(<MessagePage />);
+
+    const exportButton = screen.getByRole('button', { name: /导出 CSV/ });
+    expect(exportButton).toBeDisabled();
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-EXPORT-001');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-EXPORT-001')).toBeInTheDocument();
+    await waitFor(() => expect(exportButton).toBeEnabled());
+    expect(downloadMocks.downloadCsv).not.toHaveBeenCalled();
+
+    await user.click(exportButton);
+
+    expect(downloadMocks.downloadCsv).toHaveBeenCalledTimes(1);
+    const [filename, csv] = downloadMocks.downloadCsv.mock.calls[0] as [string, string];
+    expect(filename).toMatch(/^rocketmq-messages-order-create-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(csv).toContain('"Message ID"');
+    expect(csv).toContain('"MID-EXPORT-001"');
+    expect(csv).toContain('"topic-MID-EXPORT-001"');
+    expect(csv).toContain('"Born Host"');
   });
 });
