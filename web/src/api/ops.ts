@@ -354,6 +354,19 @@ export async function retryAlertDeliveries(ids: number[]) {
   return res.data.data;
 }
 
+export async function retryFilteredAlertDeliveries(params: {
+  channel?: string;
+  instanceId?: string;
+  limit?: number;
+}) {
+  const res = await client.post<{ data: NotificationDeliveryBulkRetryResult }>(
+    '/system-alerts/deliveries/retry-filtered',
+    null,
+    { params },
+  );
+  return res.data.data;
+}
+
 export async function listAlertDeliveriesPage(params: NotificationDeliveryQuery = {}) {
   const res = await client.get<{ data: PageResult<NotificationDeliveryRecord> }>(
     '/system-alerts/deliveries/page',

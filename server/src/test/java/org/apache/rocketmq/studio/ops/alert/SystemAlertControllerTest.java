@@ -159,6 +159,21 @@ class SystemAlertControllerTest {
     }
 
     @Test
+    void retryFilteredFailedDeliveriesShouldForwardFiltersAndLimitTest() throws Exception {
+        when(notificationOutboxService.retryFailedDeliveries("dingtalk", "local", 100))
+                .thenReturn(new NotificationDeliveryBulkRetryResult(List.of(8L), Map.of()));
+
+        mockMvc.perform(post("/api/system-alerts/deliveries/retry-filtered")
+                        .param("channel", "dingtalk")
+                        .param("instanceId", "local")
+                        .param("limit", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.succeededIds[0]").value(8));
+
+        verify(notificationOutboxService).retryFailedDeliveries("dingtalk", "local", 100);
+    }
+
+    @Test
     void acknowledgeAlertShouldPassValidatedRequestTest() throws Exception {
         SystemAlertVO acknowledged = SystemAlertVO.builder()
                 .id(1L)

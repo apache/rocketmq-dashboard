@@ -63,6 +63,7 @@ import jakarta.mail.internet.InternetAddress;
 public class NotificationOutboxService {
     private static final int MAX_ATTEMPTS = 5;
     private static final int BATCH_SIZE = 20;
+    private static final int MAX_FILTERED_RETRY_DELIVERIES = 100;
     private static final Duration DEFAULT_CLAIM_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration DEFAULT_CLAIM_RENEWAL_INTERVAL = Duration.ofSeconds(20);
     private static final int DEFAULT_HEARTBEAT_THREADS = 2;
@@ -260,6 +261,22 @@ public class NotificationOutboxService {
             }
         }
         return new NotificationDeliveryBulkRetryResult(succeeded, failures);
+    }
+
+    public NotificationDeliveryBulkRetryResult retryFailedDeliveries(
+            String channel, String instanceId, int limit) {
+        if (limit < 1 || limit > MAX_FILTERED_RETRY_DELIVERIES) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Filtered retry limit must be between 1 and " + MAX_FILTERED_RETRY_DELIVERIES);
+        }
+        String normalizedChannel = normalizeFilter(channel);
+        String normalizedInstanceId = normalizeTrim(instanceId);
+        List<Long> deliveryIds = mapper.findFailedDeliveryIds(
+                normalizedChannel, normalizedInstanceId, limit);
+        if (deliveryIds.isEmpty()) {
+            return new NotificationDeliveryBulkRetryResult(List.of(), Map.of());
+        }
+        return retryFailedDeliveries(deliveryIds);
     }
 
     private static String normalizeFilter(String value) {

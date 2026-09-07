@@ -10,7 +10,11 @@ import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listInstances } from '../../../services/instanceService';
-import { listAlertDeliveriesPage, retryAlertDelivery } from '../../../services/opsService';
+import {
+  listAlertDeliveriesPage,
+  retryAlertDelivery,
+  retryFilteredAlertDeliveries,
+} from '../../../services/opsService';
 import NotificationDeliveriesPage from '../notificationDeliveries';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -20,6 +24,7 @@ vi.mock('../../../services/opsService', () => ({
   listAlertDeliveriesPage: vi.fn(),
   retryAlertDeliveries: vi.fn(),
   retryAlertDelivery: vi.fn(),
+  retryFilteredAlertDeliveries: vi.fn(),
 }));
 
 const deferred = <T,>() => {
@@ -167,6 +172,32 @@ describe('NotificationDeliveriesPage', () => {
     expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
+    );
+  });
+
+  it('retries filtered failed deliveries instead of only the visible page', async () => {
+    vi.mocked(retryFilteredAlertDeliveries).mockResolvedValue({
+      succeededIds: [7, 8],
+      failures: {},
+    });
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: /重试匹配的失败记录/ }));
+
+    await waitFor(() =>
+      expect(retryFilteredAlertDeliveries).toHaveBeenCalledWith({
+        channel: undefined,
+        instanceId: undefined,
+        limit: 100,
+      }),
     );
   });
 });

@@ -99,6 +99,14 @@ public class SystemAlertController {
         return Result.ok(notificationOutboxService.retryFailedDeliveries(deliveryIds));
     }
 
+    @PostMapping("/deliveries/retry-filtered")
+    public Result<NotificationDeliveryBulkRetryResult> retryFilteredFailedDeliveries(
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(defaultValue = "100") int limit) {
+        return Result.ok(notificationOutboxService.retryFailedDeliveries(channel, instanceId, limit));
+    }
+
     @PostMapping("/acknowledge")
     public Result<SystemAlertVO> acknowledgeAlert(
             @Valid @RequestBody(required = false) AcknowledgeSystemAlertDTO request) {

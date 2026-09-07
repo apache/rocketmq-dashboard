@@ -531,6 +531,42 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void filteredRetryUsesBoundedFailedDeliveryIdsTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        RmqAlertNotificationOutbox failed = new RmqAlertNotificationOutbox();
+        failed.setId(7L);
+        failed.setAlertId(3L);
+        failed.setChannel("dingtalk");
+        failed.setStatus(NotificationOutboxStatus.FAILED.name());
+        when(mapper.findFailedDeliveryIds("dingtalk", "Local", 100)).thenReturn(List.of(7L, 8L));
+        when(mapper.selectById(7L)).thenReturn(failed);
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        NotificationDeliveryBulkRetryResult result = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class))
+                .retryFailedDeliveries(" DingTalk ", "Local", 100);
+
+        assertThat(result.getSucceededIds()).containsExactly(7L);
+        assertThat(result.getFailures()).containsKey(8L);
+        verify(mapper).findFailedDeliveryIds("dingtalk", "Local", 100);
+    }
+
+    @Test
+    void filteredRetryRejectsInvalidLimitTest() {
+        NotificationOutboxService service = new NotificationOutboxService(
+                mock(RmqAlertNotificationOutboxMapper.class), mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.retryFailedDeliveries(null, null, 0))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessage("Filtered retry limit must be between 1 and 100");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.retryFailedDeliveries(null, null, 101))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessage("Filtered retry limit must be between 1 and 100");
+    }
+
+    @Test
     void renewsClaimWhileEmailDeliveryIsStillInFlightTest() throws Exception {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         SettingsRepository settings = mock(SettingsRepository.class);
