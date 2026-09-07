@@ -101,6 +101,14 @@ beforeAll(() => {
       removeEventListener: vi.fn(),
     })),
   });
+  Object.defineProperty(URL, 'createObjectURL', {
+    writable: true,
+    value: vi.fn(() => 'blob:dashboard'),
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    writable: true,
+    value: vi.fn(),
+  });
 });
 
 beforeEach(() => {
@@ -259,5 +267,68 @@ describe('DashboardPage', () => {
     expect(
       screen.queryByText('cloud-instance', { selector: '.ant-select-item-option-content' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('exports the cluster summary table as CSV for the selected instance', async () => {
+    const user = userEvent.setup();
+    let exportedFilename = '';
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        exportedFilename = this.download;
+      });
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('apache-cluster'));
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('apache-cluster');
+    const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(dashboardService.getDashboard).toHaveBeenCalledWith('instance-a'));
+    await screen.findByText('apache-cluster');
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    const blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+    await expect(blob.text()).resolves.toBe(
+      [
+        '"集群名称","状态","类型","版本","Broker","Proxy","Topic","Group","TPS In","TPS Out"',
+        '"apache-cluster","healthy","V4_NAMESRV","5.0.0","1","0","1","1","1","1"',
+      ].join('\n'),
+    );
+    expect(exportedFilename).toMatch(/^rocketmq-clusters-instance-a-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(URL.revokeObjectURL)).toHaveBeenCalledWith('blob:dashboard');
+    clickSpy.mockRestore();
+  });
+
+  it('uses "all" in the CSV filename when no instance is selected', async () => {
+    const user = userEvent.setup();
+    let exportedFilename = '';
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        exportedFilename = this.download;
+      });
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('apache-cluster'));
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('apache-cluster');
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(exportedFilename).toMatch(/^rocketmq-clusters-all-\d{4}-\d{2}-\d{2}\.csv$/);
+    clickSpy.mockRestore();
+  });
+
+  it('disables the CSV export button while there are no clusters', async () => {
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue({
+      ...dashboard('empty-cluster'),
+      clusters: [],
+    });
+    renderWithProviders(<DashboardPage />);
+
+    const exportButton = await screen.findByRole('button', { name: /导出/ });
+    expect(exportButton).toBeDisabled();
   });
 });
