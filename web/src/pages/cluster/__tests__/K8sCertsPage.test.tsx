@@ -19,6 +19,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
+import { LangProvider } from '../../../i18n/LangContext';
 import type { K8sCertInfo } from '../../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
@@ -94,7 +95,9 @@ describe('K8sCertsPage', () => {
   const renderPage = () =>
     render(
       <App>
-        <K8sCertsPage />
+        <LangProvider>
+          <K8sCertsPage />
+        </LangProvider>
       </App>,
     );
 
@@ -191,5 +194,48 @@ describe('K8sCertsPage', () => {
 
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
+  });
+
+  it('shows the last successful cert load time', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 6, 1, 8, 30, 45).getTime());
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    expect(screen.getByTestId('certs-last-updated')).toHaveTextContent('最近更新 08:30:45');
+    nowSpy.mockRestore();
+  });
+
+  it('updates the load time after a successful manual refresh', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 6, 1, 8, 30, 45).getTime());
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    expect(screen.getByTestId('certs-last-updated')).toHaveTextContent('最近更新 08:30:45');
+
+    vi.mocked(listK8sCerts).mockResolvedValueOnce([{ ...certs[0], k8sId: 'refreshed-cert' }]);
+    nowSpy.mockReturnValue(new Date(2026, 6, 1, 9, 0, 0).getTime());
+    await user.click(screen.getByRole('button', { name: /刷\s*新/ }));
+
+    expect(await screen.findByText('refreshed-cert')).toBeInTheDocument();
+    expect(screen.getByTestId('certs-last-updated')).toHaveTextContent('最近更新 09:00:00');
+    nowSpy.mockRestore();
+  });
+
+  it('keeps the previous load time when a refresh fails', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 6, 1, 8, 30, 45).getTime());
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    expect(screen.getByTestId('certs-last-updated')).toHaveTextContent('最近更新 08:30:45');
+
+    vi.mocked(listK8sCerts).mockRejectedValueOnce(new Error('boom'));
+    nowSpy.mockReturnValue(new Date(2026, 6, 1, 9, 0, 0).getTime());
+    await user.click(screen.getByRole('button', { name: /刷\s*新/ }));
+
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(screen.getByTestId('certs-last-updated')).toHaveTextContent('最近更新 08:30:45');
+    nowSpy.mockRestore();
   });
 });
