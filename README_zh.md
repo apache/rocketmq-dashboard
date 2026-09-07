@@ -49,7 +49,7 @@ cd .. && docker compose up -d --build
 | **监控面板** | 集群/ Broker / Topic / 消费组全局统计，TPS 趋势图 |
 | **实例管理** | 多实例接入（Proxy / Direct 模式），实例 CRUD |
 | **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新 |
-| **K8s 证书** | TLS / mTLS / ServiceAccount 证书管理与续期 |
+| **K8s 证书** | Studio 本地 TLS / mTLS / ServiceAccount 证书配置 |
 | **Topic 管理** | Topic CRUD、路由查看、消费者列表、多类型支持（Normal / FIFO / Delay / Transaction / Lite） |
 | **消费组管理** | 消费组 CRUD、消费进度、订阅详情、位点重置、配置导入导出 |
 | **ACL 权限** | ACL 规则与用户管理，支持 v1 / v2 双版本 |
