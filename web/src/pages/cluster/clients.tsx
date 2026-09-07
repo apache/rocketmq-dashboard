@@ -56,6 +56,12 @@ import { matchesClientSearch } from './clientsSearch';
 const { Text } = Typography;
 const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
 
+const formatClockTime = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 /* ─── Helpers ─── */
 
 const typeConfig: Record<string, { color: string; label: string }> = {
@@ -161,6 +167,7 @@ const ClientsPage = () => {
   const [registryClusters, setRegistryClusters] = useState<ClusterInfo[]>([]);
   const [selectedEndpoint, setSelectedEndpoint] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
@@ -235,6 +242,7 @@ const ClientsPage = () => {
       .then((nextConnections) => {
         if (connectionRequestRef.current === requestId) {
           setConnections(nextConnections);
+          setLastUpdated(Date.now());
           setLoadError(null);
         }
       })
@@ -723,13 +731,20 @@ const ClientsPage = () => {
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
         </Space>
-        <Button
-          icon={<DownloadSimple size={16} />}
-          disabled={exportConnections.length === 0}
-          onClick={handleExport}
-        >
-          {t('common.export')}
-        </Button>
+        <Space size={12} align="center">
+          {lastUpdated !== null && (
+            <Text type="secondary" data-testid="clients-last-updated">
+              {t('common.lastUpdated')} {formatClockTime(lastUpdated)}
+            </Text>
+          )}
+          <Button
+            icon={<DownloadSimple size={16} />}
+            disabled={exportConnections.length === 0}
+            onClick={handleExport}
+          >
+            {t('common.export')}
+          </Button>
+        </Space>
       </Flex>
 
       <Flex
