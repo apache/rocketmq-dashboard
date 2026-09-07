@@ -1356,6 +1356,54 @@ describe('Consumer page', () => {
     expect(await screen.findByText('消费组配置已保存')).toBeInTheDocument();
   });
 
+  it('edits consumption switches from the detail modal settings tab', async () => {
+    vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
+      groupName: 'remote-cg',
+      retryQueueNums: 1,
+      retryMaxTimes: 16,
+      consumeEnable: false,
+      consumeMessageOrderly: true,
+      consumeBroadcastEnable: false,
+    });
+    vi.mocked(consumerService.updateConsumerGroupSettings).mockResolvedValue({
+      groupName: 'remote-cg',
+      retryQueueNums: 1,
+      retryMaxTimes: 16,
+      consumeEnable: true,
+      consumeMessageOrderly: true,
+      consumeBroadcastEnable: false,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: /详\s*情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(dialog).getByRole('tab', { name: /配\s*置/ }));
+
+    const consumeSwitch = await within(dialog).findByRole('switch', { name: '启用消费' });
+    expect(consumeSwitch).not.toBeChecked();
+    expect(within(dialog).getByRole('switch', { name: '顺序消费' })).toBeChecked();
+    expect(within(dialog).getByRole('switch', { name: '广播消费' })).not.toBeChecked();
+
+    await user.click(consumeSwitch);
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => {
+      expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledWith({
+        instanceId: 'instance-1',
+        name: 'remote-cg',
+        retryQueueNums: 1,
+        retryMaxTimes: 16,
+        consumeEnable: true,
+        consumeMessageOrderly: true,
+        consumeBroadcastEnable: false,
+      });
+    });
+    expect((await screen.findAllByText('消费组配置已保存')).length).toBeGreaterThan(0);
+  });
+
   it('renders an unknown (-1) lag as unavailable in the table and the lag detail', async () => {
     const user = userEvent.setup();
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(

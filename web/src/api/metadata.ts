@@ -145,6 +145,9 @@ export interface ConsumerGroupSettings {
   groupName: string;
   retryQueueNums: number;
   retryMaxTimes: number;
+  consumeEnable?: boolean;
+  consumeMessageOrderly?: boolean;
+  consumeBroadcastEnable?: boolean;
 }
 
 export interface QueueProgress {
