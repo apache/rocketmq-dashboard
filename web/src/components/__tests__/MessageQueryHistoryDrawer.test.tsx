@@ -110,4 +110,45 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(screen.queryByText('order-1')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled();
   });
+
+  it('re-submits the history when a search term is entered', async () => {
+    const user = userEvent.setup();
+    render(
+      <App>
+        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+      </App>,
+    );
+    await screen.findByText('order-1');
+    vi.mocked(listMessageQueryHistory).mockClear();
+
+    await user.type(
+      screen.getByPlaceholderText('搜索 Topic、轨迹 Topic、Message ID、Key 或操作者'),
+      'orders{enter}',
+    );
+
+    await waitFor(() =>
+      expect(listMessageQueryHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'orders', page: 1 }),
+      ),
+    );
+  });
+
+  it('invokes the message row selection callback', async () => {
+    const user = userEvent.setup();
+    const onSelectMessage = vi.fn();
+    render(
+      <App>
+        <MessageQueryHistoryDrawer
+          open
+          clusterId="instance-a"
+          onClose={vi.fn()}
+          onSelectMessage={onSelectMessage}
+        />
+      </App>,
+    );
+
+    await user.click(await screen.findByText('order-1'));
+
+    expect(onSelectMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 1, topic: 'orders' }));
+  });
 });
