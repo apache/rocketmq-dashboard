@@ -19,17 +19,11 @@ package org.apache.rocketmq.studio.instance.dlq;
 import lombok.Builder;
 import lombok.Value;
 
-import java.util.List;
-
+/** One bounded dead-letter resend failure returned to the caller. */
 @Value
 @Builder
-public class DLQResendResultVO {
-    int matched;
-    int resent;
-    int failed;
-    String outcome;
-    boolean scanIncomplete;
-    int failedQueueCount;
-    List<DLQResendFailureVO> failures;
-    boolean failuresTruncated;
+public class DLQResendFailureVO {
+    String msgId;
+    String targetTopic;
+    String reason;
 }

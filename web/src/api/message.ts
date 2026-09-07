@@ -106,6 +106,14 @@ export interface DLQResendResult {
   outcome: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'NO_MESSAGES';
   scanIncomplete?: boolean;
   failedQueueCount?: number;
+  failures?: DLQResendFailure[];
+  failuresTruncated?: boolean;
+}
+
+export interface DLQResendFailure {
+  msgId: string;
+  targetTopic: string | null;
+  reason: string;
 }
 
 export interface DLQMessage {
