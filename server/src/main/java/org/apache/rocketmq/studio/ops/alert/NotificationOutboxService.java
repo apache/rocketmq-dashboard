@@ -262,6 +262,21 @@ public class NotificationOutboxService {
         return new NotificationDeliveryBulkRetryResult(succeeded, failures);
     }
 
+    public NotificationDeliveryBulkRetryResult retryFilteredDeliveries(String channel, String instanceId,
+            int limit) {
+        if (limit < 1 || limit > 100) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Limit must be between 1 and 100");
+        }
+        String normalizedChannel = normalizeFilter(channel);
+        String normalizedInstanceId = normalizeTrim(instanceId);
+        List<Long> failedIds = mapper.findFailedIds(normalizedChannel, normalizedInstanceId, limit);
+        if (failedIds.isEmpty()) {
+            return new NotificationDeliveryBulkRetryResult(List.of(), Map.of());
+        }
+        return retryFailedDeliveries(failedIds);
+    }
+
     private static String normalizeFilter(String value) {
         String normalized = normalizeTrim(value);
         return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);

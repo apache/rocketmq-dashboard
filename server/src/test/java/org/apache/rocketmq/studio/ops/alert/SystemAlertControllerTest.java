@@ -159,6 +159,51 @@ class SystemAlertControllerTest {
     }
 
     @Test
+    void retryFilteredDeliveriesShouldForwardChannelInstanceAndLimitTest() throws Exception {
+        NotificationDeliveryBulkRetryResult result = new NotificationDeliveryBulkRetryResult(
+                List.of(8L), Map.of());
+        when(notificationOutboxService.retryFilteredDeliveries("dingtalk", "local", 50)).thenReturn(result);
+
+        mockMvc.perform(post("/api/system-alerts/deliveries/retry-filtered")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("channel", "dingtalk", "instanceId", "local", "limit", 50))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.succeededIds[0]").value(8));
+
+        verify(notificationOutboxService).retryFilteredDeliveries("dingtalk", "local", 50);
+    }
+
+    @Test
+    void retryFilteredDeliveriesShouldDefaultTheLimitTest() throws Exception {
+        NotificationDeliveryBulkRetryResult result = new NotificationDeliveryBulkRetryResult(
+                List.of(), Map.of());
+        when(notificationOutboxService.retryFilteredDeliveries("dingtalk", null, 100)).thenReturn(result);
+
+        mockMvc.perform(post("/api/system-alerts/deliveries/retry-filtered")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("channel", "dingtalk"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.succeededIds").isEmpty());
+
+        verify(notificationOutboxService).retryFilteredDeliveries("dingtalk", null, 100);
+    }
+
+    @Test
+    void retryFilteredDeliveriesShouldRejectOutOfRangeLimitTest() throws Exception {
+        mockMvc.perform(post("/api/system-alerts/deliveries/retry-filtered")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("limit", 101))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("limit must be between 1 and 100"));
+
+        verifyNoInteractions(notificationOutboxService);
+    }
+
+    @Test
     void acknowledgeAlertShouldPassValidatedRequestTest() throws Exception {
         SystemAlertVO acknowledged = SystemAlertVO.builder()
                 .id(1L)

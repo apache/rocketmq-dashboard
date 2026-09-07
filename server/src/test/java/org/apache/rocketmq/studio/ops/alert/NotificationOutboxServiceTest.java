@@ -531,6 +531,78 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void retriesFailedDeliveriesMatchingTheNormalizedFiltersTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        RmqAlertNotificationOutbox failed = new RmqAlertNotificationOutbox();
+        failed.setId(8L);
+        failed.setAlertId(9L);
+        failed.setChannel("dingtalk");
+        failed.setStatus(NotificationOutboxStatus.FAILED.name());
+        when(mapper.findFailedIds("dingtalk", "local", 50)).thenReturn(List.of(8L));
+        when(mapper.selectById(8L)).thenReturn(failed);
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        NotificationDeliveryBulkRetryResult result = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).retryFilteredDeliveries(" DingTalk ", "local", 50);
+
+        verify(mapper).findFailedIds("dingtalk", "local", 50);
+        assertThat(result.getSucceededIds()).containsExactly(8L);
+        assertThat(result.getFailures()).isEmpty();
+    }
+
+    @Test
+    void reusesThePerDeliveryRetryPathForFilteredRetriesTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        RmqAlertNotificationOutbox failed = new RmqAlertNotificationOutbox();
+        failed.setId(8L);
+        failed.setAlertId(9L);
+        failed.setChannel("dingtalk");
+        failed.setStatus(NotificationOutboxStatus.FAILED.name());
+        when(mapper.findFailedIds("dingtalk", "local", 100)).thenReturn(List.of(8L, 9L));
+        when(mapper.selectById(8L)).thenReturn(failed);
+        when(mapper.selectById(9L)).thenReturn(null);
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        NotificationDeliveryBulkRetryResult result = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).retryFilteredDeliveries("dingtalk", "local", 100);
+
+        assertThat(result.getSucceededIds()).containsExactly(8L);
+        assertThat(result.getFailures()).containsEntry(9L, "Only failed notification deliveries can be retried");
+    }
+
+    @Test
+    void shortCircuitsFilteredRetryWhenNoFailedDeliveriesMatchTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        when(mapper.findFailedIds("dingtalk", "local", 100)).thenReturn(List.of());
+
+        NotificationDeliveryBulkRetryResult result = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).retryFilteredDeliveries("dingtalk", "local", 100);
+
+        assertThat(result.getSucceededIds()).isEmpty();
+        assertThat(result.getFailures()).isEmpty();
+        verify(mapper, never()).selectById(anyLong());
+        verify(mapper, never()).update(any(), any());
+    }
+
+    @Test
+    void rejectsFilteredRetryWhenLimitIsOutOfRangeTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        NotificationOutboxService service = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class));
+
+        for (int limit : new int[] {0, 101}) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(
+                            () -> service.retryFilteredDeliveries("dingtalk", "local", limit))
+                    .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                    .hasMessage("Limit must be between 1 and 100");
+        }
+        verify(mapper, never()).findFailedIds(anyString(), anyString(), any(Integer.class));
+    }
+
+    @Test
     void renewsClaimWhileEmailDeliveryIsStillInFlightTest() throws Exception {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         SettingsRepository settings = mock(SettingsRepository.class);

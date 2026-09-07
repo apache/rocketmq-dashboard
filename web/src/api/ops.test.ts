@@ -43,6 +43,7 @@ import {
   acknowledgeAlert,
   clearAcknowledgedAlerts,
   listAlertDeliveries,
+  retryFilteredDeliveries,
   listAlertSilences,
   listAlertSilencesPage,
   createAlertSilence,
@@ -358,6 +359,21 @@ describe('Ops API - System Alerts & Audit', () => {
     await expect(listAlertDeliveries(1)).resolves.toEqual([
       { id: 1, channel: 'dingtalk', status: 'DELIVERED', attemptCount: 1 },
     ]);
+  });
+
+  it('retries failed deliveries matching the channel and instance filters', async () => {
+    mock.onPost('/system-alerts/deliveries/retry-filtered').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        channel: 'dingtalk',
+        instanceId: 'local',
+        limit: 50,
+      });
+      return [200, { code: 200, data: { succeededIds: [8], failures: { 9: 'not failed' } } }];
+    });
+
+    await expect(
+      retryFilteredDeliveries({ channel: 'dingtalk', instanceId: 'local', limit: 50 }),
+    ).resolves.toEqual({ succeededIds: [8], failures: { 9: 'not failed' } });
   });
 
   it('manages alert silences', async () => {
