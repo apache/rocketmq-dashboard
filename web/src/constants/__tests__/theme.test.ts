@@ -95,3 +95,20 @@ describe('theme constants', () => {
     });
   });
 });
+
+describe('theme constants completeness', () => {
+  it('keeps every theme color a six-digit hex value', () => {
+    for (const color of Object.values(THEME_COLORS)) {
+      expect(color).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
+  });
+
+  it('keeps topic and protocol labels scoped to the theme i18n namespace', () => {
+    for (const value of Object.values(TOPIC_TYPE_MAP)) {
+      expect(value.labelKey.startsWith('theme.')).toBe(true);
+    }
+    for (const value of Object.values(PROTOCOL_MAP)) {
+      expect(value.labelKey.startsWith('theme.')).toBe(true);
+    }
+  });
+});
