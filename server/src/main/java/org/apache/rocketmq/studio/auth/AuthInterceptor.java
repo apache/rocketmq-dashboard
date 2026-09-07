@@ -125,11 +125,15 @@ public class AuthInterceptor implements HandlerInterceptor {
         String normalizedPath = normalizePath(stripPathParameters(path));
         return "/api/llm/config".equals(normalizedPath)
                 || "/api/llm/models".equals(normalizedPath)
-                || "/api/studio-users".equals(normalizedPath)
+                || isStudioUserPath(normalizedPath)
                 || isCloudCatalogPath(normalizedPath)
                 || "/api/acl/remote/rules".equals(normalizedPath)
                 || isCredentialRevealPath(normalizedPath, "/api/acl/users/")
                 || isCredentialRevealPath(normalizedPath, "/api/cloud-credentials/");
+    }
+
+    private boolean isStudioUserPath(String path) {
+        return "/api/studio-users".equals(path) || path.startsWith("/api/studio-users/");
     }
 
     private boolean isCloudCatalogPath(String path) {
