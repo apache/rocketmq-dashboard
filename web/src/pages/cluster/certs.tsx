@@ -31,10 +31,11 @@ import {
   Popconfirm,
   message,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
+import { useLang } from '../../i18n/LangContext';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { formatDateTime } from '../../utils/format';
@@ -45,6 +46,12 @@ const { Text } = Typography;
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message ? error.message : '请求失败，请稍后重试';
 
+const formatClockTime = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 interface CreateCertFormValues {
   k8sId: string;
   cluster: string;
@@ -54,8 +61,10 @@ interface CreateCertFormValues {
 }
 
 const K8sCertsPage = () => {
+  const { t } = useLang();
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -67,7 +76,10 @@ const K8sCertsPage = () => {
     let active = true;
     listK8sCerts()
       .then((data) => {
-        if (active) setCerts(data);
+        if (active) {
+          setCerts(data);
+          setLastUpdated(Date.now());
+        }
       })
       .catch((error: unknown) => {
         if (active) message.error(getErrorMessage(error));
@@ -79,6 +91,19 @@ const K8sCertsPage = () => {
       active = false;
     };
   }, []);
+
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      const data = await listK8sCerts();
+      setCerts(data);
+      setLastUpdated(Date.now());
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const normalizedCertSearch = certSearch.trim().toLowerCase();
   const filteredCerts = certs.filter((cert) => {
@@ -276,9 +301,19 @@ const K8sCertsPage = () => {
             ]}
           />
         </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-          新增证书
-        </Button>
+        <Space size={12}>
+          {lastUpdated !== null && (
+            <Text type="secondary" data-testid="certs-last-updated">
+              {t('common.lastUpdated')} {formatClockTime(lastUpdated)}
+            </Text>
+          )}
+          <Button icon={<ReloadOutlined />} onClick={() => void handleRefresh()}>
+            {t('common.refresh')}
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+            新增证书
+          </Button>
+        </Space>
       </Flex>
       <Card styles={{ body: { padding: 0 } }}>
         <Table
