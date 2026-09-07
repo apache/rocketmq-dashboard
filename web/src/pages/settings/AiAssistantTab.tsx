@@ -44,6 +44,11 @@ import {
   type LlmTestResult,
 } from '../../api/llm';
 import { fallbackModelOptions } from '../studio/llmModelOptions';
+import LlmModelReadinessDrawer from '../../components/LlmModelReadinessDrawer';
+import {
+  buildLlmModelReadiness,
+  type LlmModelReadinessReport,
+} from '../../utils/llmModelReadiness';
 
 const DEFAULT_BASE_URL: Record<string, string> = {
   tongyi: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -116,8 +121,41 @@ export const AiAssistantTab = () => {
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [testResult, setTestResult] = useState<TestState | null>(null);
+  const [readinessOpen, setReadinessOpen] = useState(false);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [readinessReport, setReadinessReport] = useState<LlmModelReadinessReport>();
   const testRequestIdRef = useRef(0);
   const configGenerationRef = useRef(0);
+  const readinessRequestRef = useRef(0);
+
+  const refreshReadiness = async () => {
+    const requestId = ++readinessRequestRef.current;
+    setReadinessLoading(true);
+    try {
+      const [config, models] = await Promise.all([getLlmConfig(), getLlmModels()]);
+      if (readinessRequestRef.current === requestId) {
+        setReadinessReport(buildLlmModelReadiness(config, models));
+      }
+    } catch {
+      if (readinessRequestRef.current === requestId) {
+        setReadinessReport(undefined);
+        message.error(t('llmReadiness.loadFailed'));
+      }
+    } finally {
+      if (readinessRequestRef.current === requestId) setReadinessLoading(false);
+    }
+  };
+
+  const openReadiness = () => {
+    setReadinessOpen(true);
+    void refreshReadiness();
+  };
+
+  const closeReadiness = () => {
+    readinessRequestRef.current += 1;
+    setReadinessLoading(false);
+    setReadinessOpen(false);
+  };
 
   const buildModelOptions = (
     nextProvider: string,
@@ -169,6 +207,7 @@ export const AiAssistantTab = () => {
       cancelled = true;
       testRequestIdRef.current += 1;
       configGenerationRef.current += 1;
+      readinessRequestRef.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -345,6 +384,7 @@ export const AiAssistantTab = () => {
                 {t('settings.aiEngineModel')}
               </Space>
             }
+            extra={<Button onClick={openReadiness}>{t('llmReadiness.open')}</Button>}
           >
             <Row gutter={16}>
               <Col span={12}>
@@ -538,6 +578,13 @@ export const AiAssistantTab = () => {
           </Space>
         </Flex>
       </Form>
+      <LlmModelReadinessDrawer
+        open={readinessOpen}
+        loading={readinessLoading}
+        report={readinessReport}
+        onRefresh={() => void refreshReadiness()}
+        onClose={closeReadiness}
+      />
     </Flex>
   );
 };
