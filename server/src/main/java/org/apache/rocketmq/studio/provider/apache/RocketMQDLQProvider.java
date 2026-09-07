@@ -34,6 +34,7 @@ import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
@@ -395,6 +396,10 @@ public class RocketMQDLQProvider implements DLQProvider {
     }
 
     private DLQMessageVO toExportVO(MessageExt message) {
+        // Show only user-defined properties: broker-set system keys (REAL_TOPIC, UNIQ_KEY, ...)
+        // would otherwise crowd out real user entries under the entry cap and alphabetical order.
+        Map<String, String> userProperties = MessagePropertyDisplay.userProperties(message.getProperties());
+        Map<String, String> displayProperties = MessagePropertyDisplay.limitProperties(userProperties);
         return DLQMessageVO.builder()
                 .msgId(message.getMsgId())
                 .topic(message.getTopic())
@@ -405,6 +410,9 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .body(toUtf8Text(message.getBody()))
                 .bodyBase64(message.getBody() == null ? null
                         : Base64.getEncoder().encodeToString(message.getBody()))
+                .properties(displayProperties)
+                .propertiesTruncated(displayProperties.size() < userProperties.size()
+                        || MessagePropertyDisplay.hasOversizedProperty(userProperties))
                 .build();
     }
 
