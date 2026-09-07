@@ -77,8 +77,11 @@ public class ConsumerGroupController {
     @PostMapping("/settings")
     public Result<ConsumerGroupSettingsVO> updateConsumerGroupSettings(
             @Valid @RequestBody UpdateConsumerGroupSettingsDTO request) {
+        ConsumerGroupSettingsCommand command = new ConsumerGroupSettingsCommand(
+                request.getRetryQueueNums(), request.getRetryMaxTimes(), request.getConsumeEnable(),
+                request.getConsumeMessageOrderly(), request.getConsumeBroadcastEnable());
         return Result.ok(metadataService.updateConsumerGroupSettings(request.getInstanceId(), request.getName(),
-                request.getRetryQueueNums(), request.getRetryMaxTimes()));
+                command));
     }
 
     @GetMapping("/{name}/refresh")

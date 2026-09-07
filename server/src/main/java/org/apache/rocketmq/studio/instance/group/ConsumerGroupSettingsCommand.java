@@ -16,24 +16,15 @@
  */
 package org.apache.rocketmq.studio.instance.group;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
-import lombok.Data;
-
-@Data
-public class UpdateConsumerGroupSettingsDTO {
-    @NotBlank(message = "instanceId is required")
-    private String instanceId;
-    @NotBlank(message = "name is required")
-    private String name;
-    @NotNull(message = "retryQueueNums is required")
-    @Positive(message = "retryQueueNums must be positive")
-    private Integer retryQueueNums;
-    @NotNull(message = "retryMaxTimes is required")
-    @Positive(message = "retryMaxTimes must be positive")
-    private Integer retryMaxTimes;
-    private Boolean consumeEnable;
-    private Boolean consumeMessageOrderly;
-    private Boolean consumeBroadcastEnable;
+/**
+ * Carries the consumer-group settings update fields, replacing the long positional parameter list
+ * on the update path. {@code retryQueueNums}/{@code retryMaxTimes} are always applied; a null
+ * consumption switch means "preserve the current broker value".
+ */
+public record ConsumerGroupSettingsCommand(
+        int retryQueueNums,
+        int retryMaxTimes,
+        Boolean consumeEnable,
+        Boolean consumeMessageOrderly,
+        Boolean consumeBroadcastEnable) {
 }

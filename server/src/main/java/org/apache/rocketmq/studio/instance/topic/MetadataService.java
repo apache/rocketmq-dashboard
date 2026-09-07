@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
 import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsCommand;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
@@ -291,12 +292,12 @@ public class MetadataService {
         return adminClient.getConsumerGroupSettings(instanceId, requireName(name, "consumer group name"));
     }
 
-    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name, int retryQueueNums,
-                                                                 int retryMaxTimes) {
+    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name,
+                                                                 ConsumerGroupSettingsCommand command) {
         instanceId = normalizeInstanceId(instanceId);
         requireApacheInstance(instanceId);
         String groupName = requireName(name, "consumer group name");
-        return adminClient.updateConsumerGroupSettings(instanceId, groupName, retryQueueNums, retryMaxTimes);
+        return adminClient.updateConsumerGroupSettings(instanceId, groupName, command);
     }
 
 

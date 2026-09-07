@@ -14,34 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.dlq;
-
-import java.util.Map;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+package org.apache.rocketmq.studio.common.util;
 
 /**
- * A dead-letter message as exported by the DLQ export endpoint. {@code body} carries the
- * UTF-8-decoded payload (best effort) while {@code bodyBase64} preserves the exact bytes
- * so binary messages can be exported losslessly.
+ * Maps a subscription filter expression type to the studio {@code filterMode} display value.
+ * Shared by the Apache and Aliyun providers so consumer-group subscription tables render the
+ * same values across instance types: {@code SQL92} is normalized to {@code SQL}, {@code CLASS_FILTER}
+ * is kept, and anything else (including a null/unknown type) defaults to {@code TAG}.
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class DLQMessageVO {
+public final class SubscriptionFilterModes {
 
-    private String msgId;
-    private String topic;
-    private int queueId;
-    private long offset;
-    private long storeTime;
-    private String keys;
-    private String body;
-    private String bodyBase64;
-    private Map<String, String> properties;
-    private boolean propertiesTruncated;
+    private SubscriptionFilterModes() {
+    }
+
+    public static String fromExpressionType(String expressionType) {
+        if ("SQL92".equals(expressionType)) {
+            return "SQL";
+        }
+        if ("CLASS_FILTER".equals(expressionType)) {
+            return "CLASS_FILTER";
+        }
+        return "TAG";
+    }
 }

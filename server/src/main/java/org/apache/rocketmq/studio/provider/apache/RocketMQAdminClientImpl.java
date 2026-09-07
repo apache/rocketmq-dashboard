@@ -38,6 +38,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsCommand;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetQueuePreviewVO;
@@ -520,7 +521,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     throw new BusinessException(404, "Consumer group not found: " + name);
                 }
                 return ConsumerGroupSettingsVO.builder().groupName(name).retryQueueNums(config.getRetryQueueNums())
-                        .retryMaxTimes(config.getRetryMaxTimes()).build();
+                        .retryMaxTimes(config.getRetryMaxTimes()).consumeEnable(config.isConsumeEnable())
+                        .consumeMessageOrderly(config.isConsumeMessageOrderly())
+                        .consumeBroadcastEnable(config.isConsumeBroadcastEnable()).build();
             } catch (BusinessException exception) {
                 throw exception;
             } catch (Exception exception) {
@@ -530,45 +533,77 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name, int retryQueueNums,
-                                                                 int retryMaxTimes) {
+    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name,
+                                                                 ConsumerGroupSettingsCommand command) {
         return executeForInstance(instanceId, admin -> {
+            int totalBrokers = 0;
+            int updatedBrokers = 0;
             try {
                 String clusterName = getClusterName(admin);
                 Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
                 if (brokerAddrs.isEmpty()) {
                     throw new BusinessException(502, "No broker available to update consumer group settings");
                 }
+                totalBrokers = brokerAddrs.size();
+                SubscriptionGroupConfig applied = null;
                 for (String brokerAddr : brokerAddrs) {
                     SubscriptionGroupConfig config = admin.examineSubscriptionGroupConfig(brokerAddr, name);
                     if (config == null) {
                         throw new BusinessException(404, "Consumer group not found: " + name);
                     }
-                    config.setRetryQueueNums(retryQueueNums);
-                    config.setRetryMaxTimes(retryMaxTimes);
+                    config.setRetryQueueNums(command.retryQueueNums());
+                    config.setRetryMaxTimes(command.retryMaxTimes());
+                    if (command.consumeEnable() != null) {
+                        config.setConsumeEnable(command.consumeEnable());
+                    }
+                    if (command.consumeMessageOrderly() != null) {
+                        config.setConsumeMessageOrderly(command.consumeMessageOrderly());
+                    }
+                    if (command.consumeBroadcastEnable() != null) {
+                        config.setConsumeBroadcastEnable(command.consumeBroadcastEnable());
+                    }
                     admin.createAndUpdateSubscriptionGroupConfig(brokerAddr, config);
+                    updatedBrokers++;
+                    if (applied == null) {
+                        applied = config;
+                    }
                 }
                 RmqGroup group = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
                         .eq(RmqGroup::getClusterId, clusterName)
                         .eq(RmqGroup::getInstanceId, metadataScope(instanceId))
                         .eq(RmqGroup::getName, name));
                 if (group != null) {
-                    group.setMaxRetry(retryMaxTimes);
+                    group.setMaxRetry(command.retryMaxTimes());
                     group.setGmtModified(LocalDateTime.now());
                     groupMapper.updateById(group);
                 }
-                recordAudit("UPDATE_GROUP_SETTINGS", name, "retryQueueNums=" + retryQueueNums
-                        + ", retryMaxTimes=" + retryMaxTimes, "SUCCESS");
-                return ConsumerGroupSettingsVO.builder().groupName(name).retryQueueNums(retryQueueNums)
-                        .retryMaxTimes(retryMaxTimes).build();
+                recordAudit("UPDATE_GROUP_SETTINGS", name, "retryQueueNums=" + command.retryQueueNums()
+                        + ", retryMaxTimes=" + command.retryMaxTimes()
+                        + ", consumeEnable=" + describeSwitch(command.consumeEnable())
+                        + ", consumeMessageOrderly=" + describeSwitch(command.consumeMessageOrderly())
+                        + ", consumeBroadcastEnable=" + describeSwitch(command.consumeBroadcastEnable())
+                        + ", brokersUpdated=" + updatedBrokers + "/" + totalBrokers, "SUCCESS");
+                return ConsumerGroupSettingsVO.builder().groupName(name)
+                        .retryQueueNums(applied.getRetryQueueNums())
+                        .retryMaxTimes(applied.getRetryMaxTimes())
+                        .consumeEnable(applied.isConsumeEnable())
+                        .consumeMessageOrderly(applied.isConsumeMessageOrderly())
+                        .consumeBroadcastEnable(applied.isConsumeBroadcastEnable())
+                        .build();
             } catch (BusinessException exception) {
-                recordAudit("UPDATE_GROUP_SETTINGS", name, exception.getMessage(), "FAILED");
+                recordAudit("UPDATE_GROUP_SETTINGS", name, "updated " + updatedBrokers + "/" + totalBrokers
+                        + " brokers before failure: " + exception.getMessage(), "FAILED");
                 throw exception;
             } catch (Exception exception) {
-                recordAudit("UPDATE_GROUP_SETTINGS", name, exception.getMessage(), "FAILED");
+                recordAudit("UPDATE_GROUP_SETTINGS", name, "updated " + updatedBrokers + "/" + totalBrokers
+                        + " brokers before failure: " + exception.getMessage(), "FAILED");
                 throw classifyBrokerFailure(exception, "update consumer group settings");
             }
         });
+    }
+
+    private static String describeSwitch(Boolean value) {
+        return value == null ? "preserved" : value.toString();
     }
 
     private ConsumerGroupVO createConsumerGroup(MQAdminExt admin, ConsumerGroupVO group) {
@@ -883,14 +918,19 @@ public class RocketMQAdminClientImpl implements AdminClient {
             throw new BusinessException(400, "topic is required for offset reset");
         }
         try {
+            // resetOffsetNew applies the searched offset even when it is ahead of the
+            // current offset (the preview offers "skip unconsumed messages") and falls
+            // back to direct offset writes when the group is offline; the non-forcing
+            // resetOffsetByTimestamp silently capped forward targets to the current
+            // offset and failed with CONSUMER_NOT_ONLINE for offline groups.
             if (StringUtils.hasText(instanceId)) {
                 runtimeAdminClientResolver.execute(instanceId, admin -> {
-                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    admin.resetOffsetNew(name, topic, timestamp);
                     return null;
                 });
             } else {
                 adminFactory.execute(namesrvAddr(), null, admin -> {
-                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    admin.resetOffsetNew(name, topic, timestamp);
                     return null;
                 });
             }

@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.common.config;
 
 import java.util.Arrays;
 
+import org.apache.rocketmq.studio.common.util.DlqExportHeaders;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -42,6 +43,10 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedOrigins(allowedOrigins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
+                // Without exposedHeaders, browsers hide the DLQ export scan-completeness
+                // headers from cross-origin JavaScript and the export truncation warning
+                // in the web UI is silently lost.
+                .exposedHeaders(DlqExportHeaders.ALL.toArray(new String[0]))
                 .allowCredentials(true);
     }
 }

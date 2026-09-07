@@ -170,6 +170,7 @@ const ClusterPage = () => {
   const registryClustersRequestRef = useRef(0);
   const k8sCertsRequestRef = useRef(0);
   const nsConfigDiffRequestRef = useRef(0);
+  const brokerConfigDiffRequestRef = useRef(0);
   const connectionTestRequestRef = useRef(0);
 
   const loadRegistryClusters = useCallback(async () => {
@@ -230,6 +231,7 @@ const ClusterPage = () => {
       registryClustersRequestRef.current += 1;
       k8sCertsRequestRef.current += 1;
       nsConfigDiffRequestRef.current += 1;
+      brokerConfigDiffRequestRef.current += 1;
       connectionTestRequestRef.current += 1;
     },
     [],
@@ -359,6 +361,7 @@ const ClusterPage = () => {
 
   const openBrokerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
+      const requestId = ++brokerConfigDiffRequestRef.current;
       setBrokerConfigDiffState({
         open: true,
         loading: true,
@@ -367,6 +370,7 @@ const ClusterPage = () => {
       });
       try {
         const result = await getBrokerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        if (requestId !== brokerConfigDiffRequestRef.current) return;
         setBrokerConfigDiffState({
           open: true,
           loading: false,
@@ -374,6 +378,7 @@ const ClusterPage = () => {
           result,
         });
       } catch {
+        if (requestId !== brokerConfigDiffRequestRef.current) return;
         setBrokerConfigDiffState((current) => ({ ...current, loading: false }));
         message.error(t('cluster.brokerConfigDiffFailed'));
       }
@@ -994,14 +999,26 @@ const ClusterPage = () => {
       <Modal
         title={t('cluster.brokerConfigDiffTitle', { name: titleName })}
         open={open}
-        onCancel={() =>
-          setBrokerConfigDiffState({ open: false, loading: false, cluster: null, result: null })
-        }
+        onCancel={() => {
+          brokerConfigDiffRequestRef.current += 1;
+          setBrokerConfigDiffState({
+            open: false,
+            loading: false,
+            cluster: null,
+            result: null,
+          });
+        }}
         footer={
           <Button
-            onClick={() =>
-              setBrokerConfigDiffState({ open: false, loading: false, cluster: null, result: null })
-            }
+            onClick={() => {
+              brokerConfigDiffRequestRef.current += 1;
+              setBrokerConfigDiffState({
+                open: false,
+                loading: false,
+                cluster: null,
+                result: null,
+              });
+            }}
           >
             {t('common.close')}
           </Button>

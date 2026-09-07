@@ -21,6 +21,7 @@ import client from './client';
 import {
   createCloudCredential,
   deleteCloudCredential,
+  exportCloudCredentials,
   listCloudCredentials,
   updateCloudCredential,
 } from './cloudCredential';
@@ -112,5 +113,17 @@ describe('cloudCredential API', () => {
 
     await deleteCloudCredential(1);
     expect(JSON.parse(mock.history.post[1].data)).toEqual({ id: '1' });
+  });
+
+  it('returns the backend CSV export with the active filters', async () => {
+    mock.onGet('/cloud-credentials/export').reply(200, {
+      code: 200,
+      data: '"Name","Vendor"\r\n"aliyun-test","ALIYUN"\r\n',
+    });
+
+    const csv = await exportCloudCredentials('ALIYUN', 'prod');
+
+    expect(csv).toContain('aliyun-test');
+    expect(mock.history.get[0].params).toMatchObject({ vendor: 'ALIYUN', search: 'prod' });
   });
 });

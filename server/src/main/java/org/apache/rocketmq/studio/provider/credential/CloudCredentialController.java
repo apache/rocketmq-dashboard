@@ -49,6 +49,12 @@ public class CloudCredentialController {
         return Result.ok(credentialService.listMasked(vendor, search, page, pageSize));
     }
 
+    @GetMapping("/export")
+    public Result<String> exportCredentials(@RequestParam(required = false) InstanceVendor vendor,
+            @RequestParam(required = false) String search) {
+        return Result.ok(credentialService.exportMaskedCsv(vendor, search));
+    }
+
     @PostMapping("/create")
     public Result<CloudCredentialVO> createCredential(
             @Valid @RequestBody(required = false) CreateCloudCredentialDTO request) {

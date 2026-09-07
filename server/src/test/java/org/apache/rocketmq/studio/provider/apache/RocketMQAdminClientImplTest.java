@@ -38,6 +38,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsCommand;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
@@ -280,6 +281,39 @@ class RocketMQAdminClientImplTest {
         verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
         verify(auditService).record("RESET_OFFSET", "GROUP", "cg-orders", null,
                 "instanceId=instance-a, topic=orders, timestamp=1784246400000", "SUCCESS");
+    }
+
+    @Test
+    void resetOffsetShouldApplyPreviewedTargetsAndSupportOfflineGroups() throws Exception {
+        // resetOffsetNew is the API the classic console uses: it forces the broker to
+        // apply the searched offset even when the target is ahead of the current offset
+        // (the preview explicitly offers "skip unconsumed messages"), and it falls back
+        // to direct offset writes when the group is offline instead of failing with
+        // CONSUMER_NOT_ONLINE.
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+        long timestamp = 1784246400000L;
+
+        adminClient.resetOffset("instance-a", "cg-orders", timestamp, "orders");
+
+        verify(selectedAdmin).resetOffsetNew("cg-orders", "orders", timestamp);
+        verify(selectedAdmin, never()).resetOffsetByTimestamp(
+                anyString(), anyString(), anyString(), anyLong(), anyBoolean());
+    }
+
+    @Test
+    void resetOffsetWithoutInstanceShouldUseForceAndOfflineFallbackSemantics() throws Exception {
+        long timestamp = 1784246400000L;
+
+        adminClient.resetOffset(null, "cg-orders", timestamp, "orders");
+
+        verify(adminExt).resetOffsetNew("cg-orders", "orders", timestamp);
+        verify(adminExt, never()).resetOffsetByTimestamp(
+                anyString(), anyString(), anyString(), anyLong(), anyBoolean());
     }
 
     @Test
@@ -748,7 +782,8 @@ class RocketMQAdminClientImplTest {
                     return action.apply(selectedAdmin);
                 });
 
-        ConsumerGroupSettingsVO settings = adminClient.updateConsumerGroupSettings("instance-a", "cg-orders", 2, 8);
+        ConsumerGroupSettingsVO settings = adminClient.updateConsumerGroupSettings("instance-a", "cg-orders",
+                new ConsumerGroupSettingsCommand(2, 8, null, null, null));
 
         assertThat(settings.getRetryQueueNums()).isEqualTo(2);
         assertThat(settings.getRetryMaxTimes()).isEqualTo(8);
@@ -758,6 +793,82 @@ class RocketMQAdminClientImplTest {
         assertThat(captor.getValue().isConsumeEnable()).isFalse();
         assertThat(captor.getValue().getRetryQueueNums()).isEqualTo(2);
         assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
+    }
+
+    @Test
+    void updateConsumerGroupSettingsAppliesConsumptionSwitches() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of("cluster-1", new HashSet<>(List.of("broker-1")))));
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
+        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+        config.setGroupName("cg-orders");
+        config.setConsumeEnable(true);
+        config.setConsumeMessageOrderly(false);
+        config.setConsumeBroadcastEnable(false);
+        config.setRetryQueueNums(1);
+        config.setRetryMaxTimes(16);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(selectedAdmin.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(config);
+        when(groupMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(selectedAdmin).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+
+        ConsumerGroupSettingsVO settings = adminClient.updateConsumerGroupSettings("instance-a", "cg-orders",
+                new ConsumerGroupSettingsCommand(2, 8, false, true, null));
+
+        assertThat(settings.isConsumeEnable()).isFalse();
+        assertThat(settings.isConsumeMessageOrderly()).isTrue();
+        assertThat(settings.isConsumeBroadcastEnable()).isFalse();
+        ArgumentCaptor<SubscriptionGroupConfig> captor = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), captor.capture());
+        assertThat(captor.getValue().isConsumeEnable()).isFalse();
+        assertThat(captor.getValue().isConsumeMessageOrderly()).isTrue();
+        assertThat(captor.getValue().isConsumeBroadcastEnable()).isFalse();
+        assertThat(captor.getValue().getRetryQueueNums()).isEqualTo(2);
+        assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
+    }
+
+    @Test
+    void getConsumerGroupSettingsReturnsConsumptionSwitches() throws Exception {
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of("cluster-1", new HashSet<>(List.of("broker-1")))));
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
+        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+        config.setGroupName("cg-orders");
+        config.setConsumeEnable(false);
+        config.setConsumeMessageOrderly(true);
+        config.setConsumeBroadcastEnable(false);
+        config.setRetryQueueNums(1);
+        config.setRetryMaxTimes(16);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(selectedAdmin.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(config);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+
+        ConsumerGroupSettingsVO settings = adminClient.getConsumerGroupSettings("instance-a", "cg-orders");
+
+        assertThat(settings.isConsumeEnable()).isFalse();
+        assertThat(settings.isConsumeMessageOrderly()).isTrue();
+        assertThat(settings.isConsumeBroadcastEnable()).isFalse();
+        assertThat(settings.getRetryQueueNums()).isEqualTo(1);
+        assertThat(settings.getRetryMaxTimes()).isEqualTo(16);
     }
 
     @Test

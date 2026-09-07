@@ -42,6 +42,7 @@ import {
   Tooltip,
   Spin,
   Progress,
+  Switch,
   message,
 } from 'antd';
 import {
@@ -273,7 +274,13 @@ const ConsumerPageContent = ({
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
-  const [settingsForm] = Form.useForm<{ retryQueueNums: number; retryMaxTimes: number }>();
+  const [settingsForm] = Form.useForm<{
+    retryQueueNums: number;
+    retryMaxTimes: number;
+    consumeEnable?: boolean;
+    consumeMessageOrderly?: boolean;
+    consumeBroadcastEnable?: boolean;
+  }>();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [dataTypeValue, setDataTypeValue] = useState<string | undefined>(undefined);
@@ -312,6 +319,12 @@ const ConsumerPageContent = ({
   const groupRequestIdRef = useRef(0);
   const stackRequestIdRef = useRef(0);
   const settingsRequestIdRef = useRef(0);
+  // Consumption switches as loaded from the broker, used to detect high-risk changes
+  // (disabling consumption / toggling ordered consumption) that need a confirm before saving.
+  const originalSettingsRef = useRef<{
+    consumeEnable?: boolean;
+    consumeMessageOrderly?: boolean;
+  } | null>(null);
 
   const [autoRefresh, setAutoRefresh] = useState(false);
   const silentRefreshRef = useRef(false);
@@ -496,6 +509,10 @@ const ConsumerPageContent = ({
       const settings = await getConsumerGroupSettings(group.name, selectedInstanceId);
       if (requestId === settingsRequestIdRef.current) {
         settingsForm.setFieldsValue(settings);
+        originalSettingsRef.current = {
+          consumeEnable: settings.consumeEnable,
+          consumeMessageOrderly: settings.consumeMessageOrderly,
+        };
       }
     } catch {
       if (requestId === settingsRequestIdRef.current) {
@@ -522,6 +539,32 @@ const ConsumerPageContent = ({
   const saveSettings = async () => {
     if (!settingsGroup || !selectedInstanceId) return;
     const values = await settingsForm.validateFields();
+    const original = originalSettingsRef.current;
+    const risks: string[] = [];
+    if (original && values.consumeEnable === false && original.consumeEnable !== false) {
+      risks.push('关闭「启用消费」会立即停止该消费组的消息消费，可能导致消息堆积');
+    }
+    if (
+      original &&
+      values.consumeMessageOrderly !== undefined &&
+      values.consumeMessageOrderly !== original.consumeMessageOrderly
+    ) {
+      risks.push('切换「顺序消费」会改变该消费组的消费语义，可能影响消息顺序与吞吐');
+    }
+    if (risks.length > 0) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: '确认修改高危消费配置？',
+          content: `${risks.join('；')}。`,
+          okText: '确认修改',
+          okButtonProps: { danger: true },
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
     setSettingsSubmitting(true);
     try {
       const saved = await updateConsumerGroupSettings({
@@ -2050,6 +2093,23 @@ const ConsumerPageContent = ({
                       >
                         <InputNumber min={1} max={128} style={{ width: '100%' }} />
                       </Form.Item>
+                      <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
+                        <Switch />
+                      </Form.Item>
+                      <Form.Item
+                        label="顺序消费"
+                        name="consumeMessageOrderly"
+                        valuePropName="checked"
+                      >
+                        <Switch />
+                      </Form.Item>
+                      <Form.Item
+                        label="广播消费"
+                        name="consumeBroadcastEnable"
+                        valuePropName="checked"
+                      >
+                        <Switch />
+                      </Form.Item>
                       <Form.Item style={{ marginBottom: 0 }}>
                         <Button
                           type="primary"
@@ -2465,6 +2525,15 @@ const ConsumerPageContent = ({
                 快捷选择
               </Text>
               <Space wrap>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setResetTime(dayjs());
+                    clearResetPreview();
+                  }}
+                >
+                  跳过积压（重置到最新）
+                </Button>
                 <Button
                   size="small"
                   onClick={() => {
