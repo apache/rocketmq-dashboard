@@ -356,4 +356,51 @@ describe('Message page query history', () => {
       );
     });
   });
+it('copies message properties as JSON from the detail modal', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      writable: true,
+      value: { writeText },
+    });
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-PROPS'), properties: { KEYS: 'abc', TAGS: 'vip' } },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-PROPS');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-PROPS')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    const copyButton = await screen.findByRole('button', { name: /复制属性 JSON/ });
+    await user.click(copyButton);
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const copied = JSON.parse(vi.mocked(writeText).mock.calls[0][0]);
+    expect(copied).toEqual({ KEYS: 'abc', TAGS: 'vip' });
+  });
+
+  it('disables the properties copy action when a message has no properties', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-NO-PROPS')]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-NO-PROPS');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-NO-PROPS')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    expect(await screen.findByRole('button', { name: /复制属性 JSON/ })).toBeDisabled();
+    expect(screen.getByText('该消息无属性')).toBeInTheDocument();
+  });
 });
+
