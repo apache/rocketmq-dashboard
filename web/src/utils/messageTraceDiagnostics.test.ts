@@ -202,3 +202,15 @@ describe('message trace diagnostics', () => {
     );
   });
 });
+
+describe('message trace delivery counting', () => {
+  it('counts distinct consumer groups from delivery statuses', () => {
+    const diagnostics = analyzeMessageTrace(
+      baseTrace({
+        consumerStatus: [delivery('cg-orders'), delivery('cg-billing')],
+      }),
+    );
+
+    expect(diagnostics.summary.consumerGroupCount).toBe(2);
+  });
+});
