@@ -7,7 +7,7 @@
 import { App } from 'antd';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listInstances } from '../../../services/instanceService';
 import { listAlertDeliveriesPage, retryAlertDelivery } from '../../../services/opsService';
@@ -64,6 +64,10 @@ describe('NotificationDeliveriesPage', () => {
       page: 1,
       size: 20,
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('retries a failed delivery from the list and refreshes its status', async () => {
@@ -168,5 +172,73 @@ describe('NotificationDeliveriesPage', () => {
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
     );
+  });
+
+  it('shows the time of the last successful list load in the header', async () => {
+    vi.setSystemTime(new Date('2026-03-07T09:15:42'));
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('Broker disk usage')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+  });
+
+  it('keeps the previous successful load time when a reload fails', async () => {
+    vi.setSystemTime(new Date('2026-03-07T09:15:42'));
+    vi.mocked(listAlertDeliveriesPage).mockResolvedValue({
+      items: [
+        {
+          id: 7,
+          alertId: 3,
+          alertTitle: 'Broker disk usage',
+          channel: 'dingtalk',
+          status: 'FAILED',
+          attemptCount: 5,
+          createdAt: '2026-08-23T10:00:00',
+          lastError: 'Webhook rejected the request',
+        },
+        {
+          id: 8,
+          alertId: 4,
+          alertTitle: 'CPU usage',
+          channel: 'email',
+          status: 'DELIVERED',
+          attemptCount: 1,
+          createdAt: '2026-08-23T10:00:00',
+          deliveredAt: '2026-08-23T10:01:00',
+        },
+      ],
+      total: 25,
+      page: 1,
+      size: 20,
+    });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('Broker disk usage')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+
+    vi.setSystemTime(new Date('2026-03-07T10:30:00'));
+    vi.mocked(listAlertDeliveriesPage).mockRejectedValueOnce(new Error('network down'));
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle('2'));
+
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+    expect(screen.queryByText('最近更新 10:30:00')).not.toBeInTheDocument();
   });
 });
