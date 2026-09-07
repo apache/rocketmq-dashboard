@@ -168,6 +168,7 @@ export interface ConsumerGroupQuery {
   instanceId?: string;
   clusterId?: string;
   search?: string;
+  subscriptionMode?: string;
 }
 
 export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
@@ -177,7 +178,6 @@ export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
 
 export interface ConsumerGroupExportQuery extends ConsumerGroupQuery {
   names?: string[];
-  subscriptionMode?: string;
 }
 
 export interface ImportConsumerGroupsRequest {

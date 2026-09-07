@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
+import org.apache.rocketmq.studio.common.util.SubscriptionModeFilters;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
@@ -210,14 +211,20 @@ public class MetadataService {
 
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
                                                               int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
+                                                              String subscriptionMode, int page, int pageSize) {
         validatePagination(page, pageSize);
         instanceId = normalizeInstanceId(instanceId);
+        String mode = SubscriptionModeFilters.normalize(subscriptionMode);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
-            return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
-                    normalizeFilter(search), page, pageSize);
+            return metadataProvider.listConsumerGroupsPage(null, normalizeFilter(clusterId),
+                    normalizeFilter(search), mode, page, pageSize);
         }
         return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(search),
-                page, pageSize);
+                mode, page, pageSize);
     }
 
 
