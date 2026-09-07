@@ -5,17 +5,23 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import MessageQueryHistoryDrawer from '../MessageQueryHistoryDrawer';
 import {
+  clearTraceQueryHistory,
+  deleteMessageQueryHistory,
   getQueryHistorySummary,
   listMessageQueryHistory,
   listTraceQueryHistory,
 } from '../../api/messageHistory';
 
 vi.mock('../../api/messageHistory', () => ({
+  clearMessageQueryHistory: vi.fn(),
+  clearTraceQueryHistory: vi.fn(),
+  deleteMessageQueryHistory: vi.fn(),
+  deleteTraceQueryHistory: vi.fn(),
   getQueryHistorySummary: vi.fn(),
   listMessageQueryHistory: vi.fn(),
   listTraceQueryHistory: vi.fn(),
@@ -89,6 +95,44 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(await screen.findByText('msg-1')).toBeInTheDocument();
     expect(screen.getByText('CUSTOM_TRACE')).toBeInTheDocument();
     await waitFor(() => expect(listTraceQueryHistory).toHaveBeenCalled());
+  });
+
+  it('deletes one message history row after confirmation and refreshes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(deleteMessageQueryHistory).mockResolvedValue(undefined);
+    render(
+      <App>
+        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: /删\s*除/ })[0]);
+    const confirmPopover = await screen.findByRole('tooltip');
+    await user.click(within(confirmPopover).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() => expect(deleteMessageQueryHistory).toHaveBeenCalledWith(1));
+    expect(listMessageQueryHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the trace history after confirmation and refreshes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(clearTraceQueryHistory).mockResolvedValue(3);
+    render(
+      <App>
+        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: '轨迹查询' }));
+    expect(await screen.findByText('msg-1')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '清空轨迹查询历史' }));
+    const confirmPopover = await screen.findByRole('tooltip');
+    await user.click(within(confirmPopover).getByRole('button', { name: /清\s*空/ }));
+
+    await waitFor(() => expect(clearTraceQueryHistory).toHaveBeenCalledWith('instance-a'));
+    expect(listTraceQueryHistory).toHaveBeenCalledTimes(2);
   });
 
   it('clears stale rows and offers retry when a new instance load fails', async () => {

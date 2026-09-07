@@ -29,6 +29,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMessageQueryMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTraceQueryMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -242,6 +243,58 @@ public class QueryHistoryService {
                 .traceQueries(traceCount)
                 .latestQueryAt(latest)
                 .build();
+    }
+
+    /**
+     * Deletes a single message-query history record. Only the operator who recorded the row may
+     * delete it; rows owned by anyone else (including legacy rows without an owner) are reported
+     * as not found so ownership information is never leaked.
+     */
+    public void deleteMessageQuery(long id) {
+        RmqMessageQuery query = messageQueryMapper.selectById(id);
+        if (query == null || !isOwnedByCurrentOperator(query.getQueriedBy())) {
+            throw new BusinessException(404, "Query history record not found");
+        }
+        messageQueryMapper.deleteById(id);
+    }
+
+    /**
+     * Deletes a single trace-query history record owned by the current operator.
+     */
+    public void deleteTraceQuery(long id) {
+        RmqTraceQuery query = traceQueryMapper.selectById(id);
+        if (query == null || !isOwnedByCurrentOperator(query.getQueriedBy())) {
+            throw new BusinessException(404, "Query history record not found");
+        }
+        traceQueryMapper.deleteById(id);
+    }
+
+    /**
+     * Clears every message-query history record recorded by the current operator, optionally
+     * scoped to one cluster. Records owned by other operators are never touched.
+     *
+     * @return the number of deleted rows
+     */
+    public int clearMessageQueries(String clusterId) {
+        return messageQueryMapper.delete(new QueryWrapper<RmqMessageQuery>()
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq("queried_by", AuthenticatedUserContext.currentUsernameOrSystem()));
+    }
+
+    /**
+     * Clears every trace-query history record recorded by the current operator, optionally
+     * scoped to one cluster. Records owned by other operators are never touched.
+     *
+     * @return the number of deleted rows
+     */
+    public int clearTraceQueries(String clusterId) {
+        return traceQueryMapper.delete(new QueryWrapper<RmqTraceQuery>()
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq("queried_by", AuthenticatedUserContext.currentUsernameOrSystem()));
+    }
+
+    private static boolean isOwnedByCurrentOperator(String queriedBy) {
+        return Objects.equals(AuthenticatedUserContext.currentUsernameOrSystem(), queriedBy);
     }
 
     @Scheduled(fixedDelayString = "${studio.query-history.cleanup-interval:PT24H}")

@@ -5,9 +5,26 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Flex, Input, Statistic, Table, Tabs, Tag } from 'antd';
+import {
+  Alert,
+  Button,
+  Drawer,
+  Flex,
+  Input,
+  Popconfirm,
+  Space,
+  Statistic,
+  Table,
+  Tabs,
+  Tag,
+  message,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
+  clearMessageQueryHistory,
+  clearTraceQueryHistory,
+  deleteMessageQueryHistory,
+  deleteTraceQueryHistory,
   getQueryHistorySummary,
   listMessageQueryHistory,
   listTraceQueryHistory,
@@ -47,6 +64,7 @@ const MessageQueryHistoryDrawer = ({
   const [messageRows, setMessageRows] = useState<MessageQueryHistory[]>([]);
   const [traceRows, setTraceRows] = useState<TraceQueryHistory[]>([]);
   const [total, setTotal] = useState(0);
+  const [removing, setRemoving] = useState(false);
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
@@ -98,6 +116,49 @@ const MessageQueryHistoryDrawer = ({
     };
   }, [load]);
 
+  const handleDeleteRow = async (row: { id: number }) => {
+    setRemoving(true);
+    try {
+      if (tab === 'messages') {
+        await deleteMessageQueryHistory(row.id);
+      } else {
+        await deleteTraceQueryHistory(row.id);
+      }
+      message.success('查询历史已删除');
+    } catch (deleteError) {
+      message.error(deleteError instanceof Error ? deleteError.message : '删除查询历史失败');
+    } finally {
+      setRemoving(false);
+    }
+    void load();
+  };
+
+  const handleClear = async () => {
+    setRemoving(true);
+    try {
+      if (tab === 'messages') {
+        await clearMessageQueryHistory(clusterId);
+      } else {
+        await clearTraceQueryHistory(clusterId);
+      }
+      message.success('查询历史已清空');
+    } catch (clearError) {
+      message.error(clearError instanceof Error ? clearError.message : '清空查询历史失败');
+    } finally {
+      setRemoving(false);
+    }
+    void load();
+  };
+
+  const actionColumn = <T extends { id: number }>(
+    renderDelete: (record: T) => React.ReactNode,
+  ): ColumnsType<T>[number] => ({
+    title: '操作',
+    key: 'actions',
+    width: 90,
+    render: (_, record) => renderDelete(record),
+  });
+
   const messageColumns: ColumnsType<MessageQueryHistory> = [
     { title: '类型', dataIndex: 'queryType', width: 90, render: (value) => <Tag>{value}</Tag> },
     { title: 'Topic', dataIndex: 'topic', ellipsis: true },
@@ -105,6 +166,19 @@ const MessageQueryHistoryDrawer = ({
     { title: '结果数', dataIndex: 'resultCount', width: 80 },
     { title: '操作者', dataIndex: 'queriedBy', width: 110 },
     { title: '查询时间', dataIndex: 'queriedAt', width: 180, render: formatTime },
+    actionColumn((record) => (
+      <Popconfirm
+        title="确定删除这条查询历史吗？"
+        okText="删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        onConfirm={() => void handleDeleteRow(record)}
+      >
+        <Button type="link" size="small" danger loading={removing}>
+          删除
+        </Button>
+      </Popconfirm>
+    )),
   ];
   const traceColumns: ColumnsType<TraceQueryHistory> = [
     { title: 'Message ID', dataIndex: 'msgId', ellipsis: true },
@@ -119,14 +193,41 @@ const MessageQueryHistoryDrawer = ({
     { title: '消费者', dataIndex: 'consumerCount', width: 90 },
     { title: '操作者', dataIndex: 'queriedBy', width: 110 },
     { title: '查询时间', dataIndex: 'queriedAt', width: 180, render: formatTime },
+    actionColumn((record) => (
+      <Popconfirm
+        title="确定删除这条查询历史吗？"
+        okText="删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        onConfirm={() => void handleDeleteRow(record)}
+      >
+        <Button type="link" size="small" danger loading={removing}>
+          删除
+        </Button>
+      </Popconfirm>
+    )),
   ];
 
   return (
     <Drawer title="服务端查询历史" width={900} open={open} onClose={onClose} destroyOnHidden>
-      <Flex gap={32} style={{ marginBottom: 16 }}>
-        <Statistic title="消息查询" value={summary?.messageQueries ?? 0} />
-        <Statistic title="轨迹查询" value={summary?.traceQueries ?? 0} />
-        <Statistic title="最近查询" value={formatTime(summary?.latestQueryAt)} />
+      <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
+        <Flex gap={32}>
+          <Statistic title="消息查询" value={summary?.messageQueries ?? 0} />
+          <Statistic title="轨迹查询" value={summary?.traceQueries ?? 0} />
+          <Statistic title="最近查询" value={formatTime(summary?.latestQueryAt)} />
+        </Flex>
+        <Space>
+          <Popconfirm
+            title={tab === 'messages' ? '确定清空全部消息查询历史吗？' : '确定清空全部轨迹查询历史吗？'}
+            description="清空后不可恢复"
+            okText="清空"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => void handleClear()}
+          >
+            <Button danger loading={removing}>清空{tab === 'messages' ? '消息查询' : '轨迹查询'}历史</Button>
+          </Popconfirm>
+        </Space>
       </Flex>
       <Input.Search
         allowClear

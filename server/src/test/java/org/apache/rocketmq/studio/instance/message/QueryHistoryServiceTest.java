@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
@@ -36,6 +37,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -265,6 +267,59 @@ class QueryHistoryServiceTest {
         verify(traceQueryMapper).selectCount(traceCountCaptor.capture());
         assertThat(messageCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
+    }
+
+    @Test
+    void deleteMessageQueryShouldDeleteOwnRecord() {
+        AuthenticatedUserContext.setUsername("alice");
+        RmqMessageQuery query = messageQuery(7L);
+        query.setQueriedBy("alice");
+        when(messageQueryMapper.selectById(7L)).thenReturn(query);
+
+        service.deleteMessageQuery(7L);
+
+        verify(messageQueryMapper).deleteById(7L);
+    }
+
+    @Test
+    void deleteMessageQueryShouldRejectRecordOwnedByAnotherOperator() {
+        AuthenticatedUserContext.setUsername("alice");
+        RmqMessageQuery query = messageQuery(7L);
+        query.setQueriedBy("bob");
+        when(messageQueryMapper.selectById(7L)).thenReturn(query);
+
+        assertThatThrownBy(() -> service.deleteMessageQuery(7L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Query history record not found");
+
+        verify(messageQueryMapper, never()).deleteById(org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void deleteTraceQueryShouldRejectUnknownRecord() {
+        AuthenticatedUserContext.setUsername("alice");
+        when(traceQueryMapper.selectById(9L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.deleteTraceQuery(9L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Query history record not found");
+
+        verify(traceQueryMapper, never()).deleteById(org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void clearMessageQueriesShouldDeleteOnlyCurrentOperatorRowsInCluster() {
+        AuthenticatedUserContext.setUsername("alice");
+        when(messageQueryMapper.delete(any(Wrapper.class))).thenReturn(3);
+
+        int deleted = service.clearMessageQueries("cluster-a");
+
+        assertThat(deleted).isEqualTo(3);
+        ArgumentCaptor<Wrapper<RmqMessageQuery>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(messageQueryMapper).delete(captor.capture());
+        String sql = captor.getValue().getCustomSqlSegment();
+        assertThat(sql).contains("queried_by");
+        assertThat(sql).contains("cluster_id");
     }
 
     private static RmqMessageQuery messageQuery(Long id) {
