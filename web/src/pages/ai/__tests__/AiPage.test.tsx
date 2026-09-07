@@ -536,4 +536,79 @@ describe('AiPage tool runner', () => {
     expect(await screen.findByText('工具参数必须是有效的 JSON 对象')).toBeInTheDocument();
     expect(executeTool).not.toHaveBeenCalled();
   });
+
+  it('exports the active conversation as Markdown in message order', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'conv-1',
+              messages: [
+                { id: 'm1', role: 'user', text: 'How many brokers?' },
+                { id: 'm2', role: 'ai', text: '**3** brokers.' },
+                { id: 'm3', role: 'user', text: 'Show details.' },
+              ],
+              updatedAt: 0,
+            },
+          ],
+          activeConversationId: 'conv-1',
+        },
+      },
+    });
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:ai-conversation';
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      renderPage();
+
+      await screen.findByText('How many brokers?');
+      await user.click(screen.getByRole('button', { name: '导出 Markdown' }));
+
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      expect(blob.type).toBe('text/markdown;charset=utf-8');
+      await expect(blob.text()).resolves.toBe(
+        [
+          '## User',
+          '',
+          'How many brokers?',
+          '',
+          '## Assistant',
+          '',
+          '**3** brokers.',
+          '',
+          '## User',
+          '',
+          'Show details.',
+        ].join('\n'),
+      );
+      const anchor = clickSpy.mock.instances[0] as unknown as HTMLAnchorElement;
+      expect(anchor.download).toMatch(/^rocketmq-ai-conversation-.*\.md$/);
+      expect(document.querySelector('a[download^="rocketmq-ai-conversation-"]')).toBeNull();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:ai-conversation');
+    } finally {
+      clickSpy.mockRestore();
+    }
+  });
+
+  it('disables the Markdown export button for an empty conversation', async () => {
+    renderPage();
+
+    await screen.findByRole('button', { name: '工具' });
+    expect(screen.getByRole('button', { name: '导出 Markdown' })).toBeDisabled();
+  });
 });
