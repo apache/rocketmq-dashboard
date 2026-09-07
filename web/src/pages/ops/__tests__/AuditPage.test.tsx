@@ -121,6 +121,7 @@ describe('Audit page', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     clickSpy.mockRestore();
     vi.clearAllMocks();
   });
@@ -326,4 +327,65 @@ describe('Audit page', () => {
 
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
   });
+
+  it('shows the time of the last successful record load in the header', async () => {
+    vi.setSystemTime(new Date('2026-03-07T09:15:42'));
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+  });
+
+  it('keeps the previous successful load time when a reload fails', async () => {
+    vi.setSystemTime(new Date('2026-03-07T09:15:42'));
+    vi.mocked(opsService.listAuditRecords).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          timestamp: '2026-08-01 10:00:00',
+          operator: 'admin',
+          operationType: 'DELETE_TOPIC',
+          resourceType: 'TOPIC',
+          target: 'topic-a',
+          clusterId: 'prod-cn',
+          detail: 'removed topic-a',
+          result: 'SUCCESS',
+          errorMessage: '',
+        },
+        {
+          id: 2,
+          timestamp: '2026-08-01 11:00:00',
+          operator: 'admin',
+          operationType: 'CREATE_TOPIC',
+          resourceType: 'TOPIC',
+          target: 'topic-b',
+          clusterId: 'prod-cn',
+          detail: 'created topic-b',
+          result: 'SUCCESS',
+          errorMessage: '',
+        },
+      ],
+      total: 25,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+
+    vi.setSystemTime(new Date('2026-03-07T10:30:00'));
+    vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(new Error('network down'));
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle('2'));
+
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+    expect(screen.queryByText('最近更新 10:30:00')).not.toBeInTheDocument();
+  });
 });
+
