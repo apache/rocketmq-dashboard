@@ -204,7 +204,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     return Collections.emptyList();
                 }
                 for (QueueData queueData : route.getQueueDatas()) {
-                    for (int queueId = 0; queueId < queueData.getWriteQueueNums(); queueId++) {
+                    for (int queueId = 0; queueId < queueData.getReadQueueNums(); queueId++) {
                         MessageQueue queue = new MessageQueue(topic, queueData.getBrokerName(), queueId);
                         result.add(QueueOffsetVO.builder()
                                 .brokerName(queue.getBrokerName())
