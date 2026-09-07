@@ -536,4 +536,41 @@ describe('AiPage tool runner', () => {
     expect(await screen.findByText('工具参数必须是有效的 JSON 对象')).toBeInTheDocument();
     expect(executeTool).not.toHaveBeenCalled();
   });
+
+  it('copies the latest assistant answer to the clipboard', async () => {
+    vi.mocked(chatStream).mockImplementation(async (_request, onChunk) => {
+      onChunk('集群状态正常');
+    });
+    // userEvent.setup() replaces navigator.clipboard with its own stub, so install
+    // the mocked writeText afterwards (and restore the stub when the test ends).
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    try {
+      renderPage({ prompt: '检查集群状态' });
+
+      const copyButton = await screen.findByRole('button', { name: '复制最新回答' });
+      await waitFor(() => expect(copyButton).not.toBeDisabled());
+      await user.click(copyButton);
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('集群状态正常'));
+      expect(await screen.findByText('回答已复制')).toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    }
+  });
+
+  it('disables the copy button when there is no assistant answer', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: '复制最新回答' })).toBeDisabled();
+  });
 });
