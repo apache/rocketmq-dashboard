@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertNotificationOutbox;
@@ -63,6 +64,7 @@ import jakarta.mail.internet.InternetAddress;
 public class NotificationOutboxService {
     private static final int MAX_ATTEMPTS = 5;
     private static final int BATCH_SIZE = 20;
+    private static final int MAX_EXPORT_ROWS = 10_000;
     private static final Duration DEFAULT_CLAIM_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration DEFAULT_CLAIM_RENEWAL_INTERVAL = Duration.ofSeconds(20);
     private static final int DEFAULT_HEARTBEAT_THREADS = 2;
@@ -220,6 +222,29 @@ public class NotificationOutboxService {
         }
         return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId, safePageSize,
                 (long) (safePage - 1) * safePageSize), total, safePage, safePageSize);
+    }
+
+    public String exportDeliveries(String channel, String status, String instanceId) {
+        String normalizedChannel = normalizeFilter(channel);
+        String normalizedStatus = normalizeStatus(status);
+        String normalizedInstanceId = normalizeTrim(instanceId);
+        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId);
+        StringBuilder csv = new StringBuilder("\uFEFF");
+        CsvUtil.appendRow(csv, "Delivery ID", "Alert ID", "Alert Title", "Alert Domain", "Transition",
+                "Instance ID", "Channel", "Status", "Attempt Count", "Created At", "Delivered At",
+                "Next Attempt At", "Last Error");
+        if (total == 0) {
+            return csv.toString();
+        }
+        int limit = (int) Math.min(total, MAX_EXPORT_ROWS);
+        for (NotificationDeliveryPageVO row : mapper.findPage(
+                normalizedChannel, normalizedStatus, normalizedInstanceId, limit, 0)) {
+            CsvUtil.appendRow(csv, row.getId(), row.getAlertId(), row.getAlertTitle(), row.getAlertDomain(),
+                    row.getTransition(), row.getInstanceId(), row.getChannel(), row.getStatus(),
+                    row.getAttemptCount(), row.getCreatedAt(), row.getDeliveredAt(), row.getNextAttemptAt(),
+                    row.getLastError());
+        }
+        return csv.toString();
     }
 
     public void retryFailedDelivery(Long deliveryId) {

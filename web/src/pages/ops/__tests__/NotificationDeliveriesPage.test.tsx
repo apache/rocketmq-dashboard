@@ -7,10 +7,14 @@
 import { App } from 'antd';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listInstances } from '../../../services/instanceService';
-import { listAlertDeliveriesPage, retryAlertDelivery } from '../../../services/opsService';
+import {
+  listAlertDeliveriesPage,
+  retryAlertDelivery,
+  exportNotificationDeliveries,
+} from '../../../services/opsService';
 import NotificationDeliveriesPage from '../notificationDeliveries';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -20,6 +24,7 @@ vi.mock('../../../services/opsService', () => ({
   listAlertDeliveriesPage: vi.fn(),
   retryAlertDeliveries: vi.fn(),
   retryAlertDelivery: vi.fn(),
+  exportNotificationDeliveries: vi.fn(),
 }));
 
 const deferred = <T,>() => {
@@ -29,6 +34,10 @@ const deferred = <T,>() => {
   });
   return { promise, resolve };
 };
+
+let createObjectURL: ReturnType<typeof vi.fn>;
+let revokeObjectURL: ReturnType<typeof vi.fn>;
+let clickSpy: ReturnType<typeof vi.spyOn>;
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -41,6 +50,25 @@ beforeAll(() => {
       removeEventListener: vi.fn(),
     })),
   });
+  createObjectURL = vi.fn().mockReturnValue('blob:deliveries');
+  revokeObjectURL = vi.fn();
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    value: createObjectURL,
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    configurable: true,
+    value: revokeObjectURL,
+  });
+});
+
+beforeEach(() => {
+  clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  clickSpy.mockRestore();
+  vi.clearAllMocks();
 });
 
 describe('NotificationDeliveriesPage', () => {
@@ -81,6 +109,35 @@ describe('NotificationDeliveriesPage', () => {
 
     await waitFor(() => expect(retryAlertDelivery).toHaveBeenCalledWith(7));
     await waitFor(() => expect(listAlertDeliveriesPage).toHaveBeenCalledTimes(2));
+  });
+
+  it('exports the current filtered deliveries as a CSV download', async () => {
+    vi.mocked(exportNotificationDeliveries).mockResolvedValue(
+      '"Delivery ID","Channel"\r\n"7","dingtalk"\r\n',
+    );
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: /导\s*出/ }));
+
+    await waitFor(() =>
+      expect(exportNotificationDeliveries).toHaveBeenCalledWith({
+        channel: undefined,
+        status: undefined,
+        instanceId: undefined,
+      }),
+    );
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    await expect(blob.text()).resolves.toContain('"Delivery ID"');
+    expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
   it('queues one retry when the action is clicked twice before rendering', async () => {
