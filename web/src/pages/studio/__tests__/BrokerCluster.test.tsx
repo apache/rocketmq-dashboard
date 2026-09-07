@@ -402,4 +402,40 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('N/A')).toBeInTheDocument();
     expect(screen.queryByText('运行中')).not.toBeInTheDocument();
   });
+
+  it('filters the broker table by broker name', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.type(screen.getByPlaceholderText('搜索 Broker 名称或地址'), 'api-b');
+
+    expect(screen.getByText('broker-api-b')).toBeInTheDocument();
+    expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument();
+  });
+
+  it('filters the broker table by broker address', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.type(screen.getByPlaceholderText('搜索 Broker 名称或地址'), '10.0.1.10');
+
+    expect(screen.getByText('broker-api-a')).toBeInTheDocument();
+    expect(screen.queryByText('broker-api-b')).not.toBeInTheDocument();
+  });
+
+  it('exports only the filtered broker rows', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.type(screen.getByPlaceholderText('搜索 Broker 名称或地址'), 'api-b');
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const brokerCsv = vi.mocked(downloadCsv).mock.calls[0][1];
+    expect(brokerCsv).toContain('"broker-api-b"');
+    expect(brokerCsv).not.toContain('"broker-api-a"');
+  });
 });
