@@ -108,4 +108,56 @@ class AlertSilenceControllerTest {
                         && request.getRecurrenceDays().equals(Set.of(1, 3, 5))
                         && "Asia/Shanghai".equals(request.getTimeZone())));
     }
+
+    @Test
+    void updateShouldBindAndReturnUpdatedScheduleTest() throws Exception {
+        AlertSilenceVO silence = AlertSilenceVO.builder().id(13L)
+                .startsAt(LocalDateTime.of(2026, 9, 7, 1, 0))
+                .endsAt(LocalDateTime.of(2026, 9, 7, 2, 0))
+                .recurrence(AlertSilenceRecurrence.WEEKLY).timeZone("Asia/Shanghai")
+                .recurrenceDays(Set.of(1, 3, 5))
+                .recurrenceUntil(LocalDateTime.of(2026, 10, 1, 0, 0)).createdBy("admin").build();
+        when(silenceService.update(any(UpdateAlertSilenceDTO.class))).thenReturn(silence);
+
+        mockMvc.perform(post("/api/alert-silences/update")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "id": 13,
+                                  "startsAt": "2026-09-07T09:00:00+08:00",
+                                  "endsAt": "2026-09-07T10:00:00+08:00",
+                                  "recurrence": "WEEKLY",
+                                  "timeZone": "Asia/Shanghai",
+                                  "recurrenceDays": [1, 3, 5],
+                                  "recurrenceUntil": "2026-10-01T08:00:00+08:00"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.data.id").value(13))
+                .andExpect(jsonPath("$.data.recurrence").value("WEEKLY"))
+                .andExpect(jsonPath("$.data.createdBy").value("admin"));
+
+        verify(silenceService).update(org.mockito.ArgumentMatchers.argThat(request ->
+                request.getId() == 13L
+                        && request.getRecurrence() == AlertSilenceRecurrence.WEEKLY
+                        && request.getRecurrenceDays().equals(Set.of(1, 3, 5))
+                        && "Asia/Shanghai".equals(request.getTimeZone())));
+    }
+
+    @Test
+    void updateShouldRejectMissingIdTest() throws Exception {
+        mockMvc.perform(post("/api/alert-silences/update")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "startsAt": "2026-09-07T09:00:00+08:00",
+                                  "endsAt": "2026-09-07T10:00:00+08:00"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(silenceService, org.mockito.Mockito.never()).update(any());
+    }
 }

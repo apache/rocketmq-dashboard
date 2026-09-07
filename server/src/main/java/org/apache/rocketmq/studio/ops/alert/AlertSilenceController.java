@@ -53,6 +53,11 @@ public class AlertSilenceController {
         return Result.ok(silenceService.create(request));
     }
 
+    @PostMapping("/update")
+    public Result<AlertSilenceVO> update(@Valid @RequestBody UpdateAlertSilenceDTO request) {
+        return Result.ok(silenceService.update(request));
+    }
+
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         silenceService.delete(id);

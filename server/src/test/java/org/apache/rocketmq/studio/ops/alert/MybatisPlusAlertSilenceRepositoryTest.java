@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -107,6 +108,57 @@ class MybatisPlusAlertSilenceRepositoryTest {
                 .containsValue(AlertDomain.CLUSTER.name())
                 .containsValue(5L)
                 .containsValue("local");
+    }
+
+    @Test
+    void findByIdShouldRestoreEntityToVoTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        RmqAlertSilence entity = new RmqAlertSilence();
+        entity.setId(9L);
+        entity.setDomain("BUSINESS");
+        entity.setInstanceId("local");
+        entity.setLabelsJson("{\"brokerName\":\"broker-a\"}");
+        entity.setStartsAt(LocalDateTime.of(2026, 9, 1, 10, 0));
+        entity.setEndsAt(LocalDateTime.of(2026, 9, 1, 11, 0));
+        entity.setRecurrence("ONCE");
+        entity.setCreatedBy("alice");
+        when(mapper.selectById(9L)).thenReturn(entity);
+
+        java.util.Optional<AlertSilenceVO> found = repository.findById(9L);
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getId()).isEqualTo(9L);
+        assertThat(found.get().getDomain()).isEqualTo(AlertDomain.BUSINESS);
+        assertThat(found.get().getLabels()).containsEntry("brokerName", "broker-a");
+        assertThat(found.get().getCreatedBy()).isEqualTo("alice");
+    }
+
+    @Test
+    void updateShouldExplicitlySetEditableColumnsAndKeepCreatorUntouchedTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        AlertSilenceVO silence = AlertSilenceVO.builder().id(9L)
+                .domain(null).startsAt(LocalDateTime.of(2026, 9, 2, 10, 0))
+                .endsAt(LocalDateTime.of(2026, 9, 2, 11, 0)).recurrence(AlertSilenceRecurrence.ONCE)
+                .createdBy("alice").build();
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        AlertSilenceVO updated = repository.update(silence);
+
+        ArgumentCaptor<UpdateWrapper<RmqAlertSilence>> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(mapper).update(org.mockito.ArgumentMatchers.isNull(), captor.capture());
+        assertThat(updated.getId()).isEqualTo(9L);
+        assertThat(captor.getValue().getSqlSet())
+                .contains("domain")
+                .contains("labels_json")
+                .contains("time_zone")
+                .contains("recurrence_days_json")
+                .contains("recurrence_until")
+                .contains("reason")
+                .doesNotContain("created_by")
+                .doesNotContain("gmt_create");
+        assertThat(captor.getValue().getTargetSql()).contains("id");
     }
 
     @Test

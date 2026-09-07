@@ -52,30 +52,27 @@ public class AlertSilenceService {
     }
 
     public AlertSilenceVO create(CreateAlertSilenceDTO request) {
-        if (request == null || request.getStartsAt() == null || request.getEndsAt() == null) {
-            throw new BusinessException(400, "Silence start and end times are required");
-        }
-        if (!request.getEndsAt().toInstant().isAfter(request.getStartsAt().toInstant())) {
-            throw new BusinessException(400, "Silence end time must be after start time");
-        }
-        if (request.getReason() != null && request.getReason().length() > 512) {
-            throw new BusinessException(400, "Silence reason must not exceed 512 characters");
-        }
+        validateSilence(request);
         RecurrenceConfiguration recurrence = validateRecurrence(request);
-        AlertSilenceVO silence = AlertSilenceVO.builder().domain(request.getDomain())
-                .ruleId(request.getRuleId()).instanceId(trimToNull(request.getInstanceId()))
-                .labels(normalizeLabels(request.getLabels()))
-                .startsAt(LocalDateTime.ofInstant(request.getStartsAt().toInstant(), ZoneOffset.UTC))
-                .endsAt(LocalDateTime.ofInstant(request.getEndsAt().toInstant(), ZoneOffset.UTC))
-                .recurrence(recurrence.type()).timeZone(recurrence.timeZone())
-                .recurrenceDays(recurrence.days()).recurrenceUntil(recurrence.until())
-                .reason(trimToNull(request.getReason()))
-                .createdBy(AuthenticatedUserContext.currentUsernameOrSystem()).build();
+        AlertSilenceVO silence = buildSilence(request, null,
+                AuthenticatedUserContext.currentUsernameOrSystem(), recurrence);
         AlertSilenceVO saved = repository.save(silence);
-        operationAuditService.record("CREATE_ALERT_SILENCE", "ALERT_SILENCE", String.valueOf(saved.getId()),
-                saved.getInstanceId(), "ruleId=" + saved.getRuleId() + ", recurrence=" + saved.getRecurrence(),
-                "SUCCESS", null);
+        recordAudit("CREATE_ALERT_SILENCE", saved);
         return saved;
+    }
+
+    public AlertSilenceVO update(UpdateAlertSilenceDTO request) {
+        if (request == null || request.getId() == null) {
+            throw new BusinessException(400, "Silence ID is required");
+        }
+        AlertSilenceVO existing = repository.findById(request.getId())
+                .orElseThrow(() -> new BusinessException(404, "Alert silence not found: " + request.getId()));
+        validateSilence(request);
+        RecurrenceConfiguration recurrence = validateRecurrence(request);
+        AlertSilenceVO silence = buildSilence(request, existing.getId(), existing.getCreatedBy(), recurrence);
+        AlertSilenceVO updated = repository.update(silence);
+        recordAudit("UPDATE_ALERT_SILENCE", updated);
+        return updated;
     }
 
     public void delete(Long id) {
@@ -86,6 +83,37 @@ public class AlertSilenceService {
             throw new BusinessException(404, "Alert silence not found: " + id);
         }
         operationAuditService.record("DELETE_ALERT_SILENCE", "ALERT_SILENCE", String.valueOf(id), null, null,
+                "SUCCESS", null);
+    }
+
+    private static void validateSilence(CreateAlertSilenceDTO request) {
+        if (request == null || request.getStartsAt() == null || request.getEndsAt() == null) {
+            throw new BusinessException(400, "Silence start and end times are required");
+        }
+        if (!request.getEndsAt().toInstant().isAfter(request.getStartsAt().toInstant())) {
+            throw new BusinessException(400, "Silence end time must be after start time");
+        }
+        if (request.getReason() != null && request.getReason().length() > 512) {
+            throw new BusinessException(400, "Silence reason must not exceed 512 characters");
+        }
+    }
+
+    private static AlertSilenceVO buildSilence(CreateAlertSilenceDTO request, Long id, String createdBy,
+            RecurrenceConfiguration recurrence) {
+        return AlertSilenceVO.builder().id(id).domain(request.getDomain())
+                .ruleId(request.getRuleId()).instanceId(trimToNull(request.getInstanceId()))
+                .labels(normalizeLabels(request.getLabels()))
+                .startsAt(LocalDateTime.ofInstant(request.getStartsAt().toInstant(), ZoneOffset.UTC))
+                .endsAt(LocalDateTime.ofInstant(request.getEndsAt().toInstant(), ZoneOffset.UTC))
+                .recurrence(recurrence.type()).timeZone(recurrence.timeZone())
+                .recurrenceDays(recurrence.days()).recurrenceUntil(recurrence.until())
+                .reason(trimToNull(request.getReason()))
+                .createdBy(createdBy).build();
+    }
+
+    private void recordAudit(String operation, AlertSilenceVO silence) {
+        operationAuditService.record(operation, "ALERT_SILENCE", String.valueOf(silence.getId()),
+                silence.getInstanceId(), "ruleId=" + silence.getRuleId() + ", recurrence=" + silence.getRecurrence(),
                 "SUCCESS", null);
     }
 

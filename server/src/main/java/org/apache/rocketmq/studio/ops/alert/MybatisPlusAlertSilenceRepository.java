@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -30,6 +31,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -45,6 +47,32 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
         RmqAlertSilence entity = toEntity(silence);
         mapper.insert(entity);
         silence.setId(entity.getId());
+        return silence;
+    }
+
+    @Override
+    public Optional<AlertSilenceVO> findById(Long id) {
+        return Optional.ofNullable(mapper.selectById(id)).map(this::toVo);
+    }
+
+    @Override
+    public AlertSilenceVO update(AlertSilenceVO silence) {
+        RmqAlertSilence entity = toEntity(silence);
+        // Set every editable column explicitly so that clearing a scope field (null in the VO)
+        // is persisted as SQL NULL instead of being skipped by MyBatis-Plus updateById.
+        mapper.update(null, new UpdateWrapper<RmqAlertSilence>()
+                .eq("id", silence.getId())
+                .set("domain", entity.getDomain())
+                .set("rule_id", entity.getRuleId())
+                .set("instance_id", entity.getInstanceId())
+                .set("labels_json", entity.getLabelsJson())
+                .set("starts_at", entity.getStartsAt())
+                .set("ends_at", entity.getEndsAt())
+                .set("recurrence", entity.getRecurrence())
+                .set("time_zone", entity.getTimeZone())
+                .set("recurrence_days_json", entity.getRecurrenceDaysJson())
+                .set("recurrence_until", entity.getRecurrenceUntil())
+                .set("reason", entity.getReason()));
         return silence;
     }
 

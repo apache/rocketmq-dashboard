@@ -16,24 +16,13 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
-import org.apache.rocketmq.studio.common.domain.PageResult;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-
-public interface AlertSilenceRepository {
-    AlertSilenceVO save(AlertSilenceVO silence);
-
-    Optional<AlertSilenceVO> findById(Long id);
-
-    AlertSilenceVO update(AlertSilenceVO silence);
-
-    List<AlertSilenceVO> findAll();
-
-    PageResult<AlertSilenceVO> findPage(int page, int pageSize);
-
-    List<AlertSilenceVO> findActiveCandidates(AlertDomain domain, Long ruleId, String instanceId, LocalDateTime now);
-
-    boolean deleteById(Long id);
+@Data
+@EqualsAndHashCode(callSuper = true)
+public class UpdateAlertSilenceDTO extends CreateAlertSilenceDTO {
+    @NotNull(message = "id is required")
+    private Long id;
 }
