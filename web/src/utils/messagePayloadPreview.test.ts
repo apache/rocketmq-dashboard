@@ -254,3 +254,11 @@ describe('messagePayloadPreview', () => {
     );
   });
 });
+
+describe('message reserved property detection', () => {
+  it('recognizes reserved message properties case-insensitively after trimming', () => {
+    expect(isReservedMessageProperty('  UNIQ_KEY  ')).toBe(true);
+    expect(isReservedMessageProperty('wait')).toBe(true);
+    expect(isReservedMessageProperty('tenant')).toBe(false);
+  });
+});
