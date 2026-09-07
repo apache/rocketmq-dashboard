@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, USE_MOCK } from './config';
 
 describe('config API base url', () => {
   it('defaults to a relative /api path when no env override is set', () => {
@@ -31,5 +31,11 @@ describe('config API base url', () => {
 
   it('strips a single trailing slash', () => {
     expect(API_BASE_URL.endsWith('/')).toBe(false);
+  });
+});
+
+describe('config deprecated static mock flag', () => {
+  it('remains disabled so the legacy mock-data code path stays off', () => {
+    expect(USE_MOCK).toBe(false);
   });
 });
