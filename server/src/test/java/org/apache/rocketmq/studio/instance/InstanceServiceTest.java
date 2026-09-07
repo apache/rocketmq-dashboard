@@ -53,6 +53,8 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -856,6 +858,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("1")).thenReturn(0);
         when(instanceProvider.countGroups("1")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "missing"));
 
@@ -878,6 +881,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("2")).thenReturn(0);
         when(instanceProvider.countGroups("2")).thenReturn(0);
         when(instanceRepository.deleteById(2L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "inst-b"));
 
@@ -899,6 +903,7 @@ class InstanceServiceTest {
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
         when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException(oversizedMessage));
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a"));
 
@@ -925,6 +930,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("1")).thenReturn(0);
         when(instanceProvider.countGroups("1")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", " inst-a ", "inst-a"));
 
