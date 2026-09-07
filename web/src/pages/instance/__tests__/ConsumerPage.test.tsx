@@ -295,6 +295,7 @@ describe('Consumer page', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     Modal.destroyAll();
     message.destroy();
@@ -1510,5 +1511,36 @@ describe('Consumer page', () => {
     });
     expect(within(secondDialog).getByLabelText('重试队列数')).toHaveValue('4');
     expect(within(secondDialog).getByLabelText('最大重试次数')).toHaveValue('12');
+  });
+
+  it('shows the time of the last successful list load next to the auto refresh button', async () => {
+    vi.setSystemTime(new Date('2026-03-07T09:15:42'));
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+  });
+
+  it('keeps the previous successful load time when a reload fails', async () => {
+    vi.setSystemTime(new Date('2026-03-07T09:15:42'));
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+
+    vi.setSystemTime(new Date('2026-03-07T10:30:00'));
+    vi.mocked(consumerService.listConsumerGroupPage).mockRejectedValueOnce(
+      new Error('network down'),
+    );
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText('搜索 Group 名称或 Topic'), 'x');
+
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'x' }),
+      ),
+    );
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+    expect(screen.queryByText('最近更新 10:30:00')).not.toBeInTheDocument();
   });
 });
