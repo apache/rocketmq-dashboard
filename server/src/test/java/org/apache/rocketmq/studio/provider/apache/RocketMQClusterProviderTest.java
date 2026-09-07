@@ -24,6 +24,7 @@ import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
@@ -147,6 +148,22 @@ class RocketMQClusterProviderTest {
                         org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesToday,
                         org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesYesterday)
                 .containsExactly(0L, 0L, 0L, 0L);
+    }
+
+    @Test
+    void discoverClustersShouldMapBrokerBootTimestampToStartTimestamp() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        KVTable runtime = runtimeStats();
+        runtime.getTable().put("bootTimestamp", "1729209600000");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(BrokerVO::getStartTimestamp)
+                .isEqualTo(1729209600000L);
     }
 
     @Test

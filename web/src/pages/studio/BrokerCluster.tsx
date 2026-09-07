@@ -32,6 +32,7 @@ import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { formatDateTime } from '../../utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
@@ -50,6 +51,7 @@ interface BrokerRecord {
   address: string;
   tpsIn: number | null;
   tpsOut: number | null;
+  startTime: number | null;
 }
 
 interface NameServerRecord {
@@ -82,6 +84,7 @@ const BROKER_EXPORT_COLUMNS: CsvColumn<BrokerRecord>[] = [
   { header: 'Address', value: (broker) => broker.address },
   { header: 'TPS In', value: (broker) => broker.tpsIn },
   { header: 'TPS Out', value: (broker) => broker.tpsOut },
+  { header: 'Start Time', value: (broker) => formatDateTime(startTimeDate(broker)) },
 ];
 
 const NAMESERVER_EXPORT_COLUMNS: CsvColumn<NameServerRecord>[] = [
@@ -123,6 +126,9 @@ const hostOf = (addr: string): string => {
   return firstColon >= 0 && firstColon === lastColon ? value.slice(0, lastColon) : value;
 };
 
+const startTimeDate = (broker: { startTime: number | null }): Date | undefined =>
+  broker.startTime == null || Number.isNaN(broker.startTime) ? undefined : new Date(broker.startTime);
+
 function mapClusters(clusters: ClusterInfo[]): {
   brokers: BrokerRecord[];
   nameServers: NameServerRecord[];
@@ -147,6 +153,10 @@ function mapClusters(clusters: ClusterInfo[]): {
         address: broker.addr,
         tpsIn: broker.runtimeStatsAvailable === false ? null : (broker.tpsIn ?? 0),
         tpsOut: broker.runtimeStatsAvailable === false ? null : (broker.tpsOut ?? 0),
+        startTime:
+          broker.runtimeStatsAvailable === false
+            ? null
+            : (broker.startTimestamp ?? null),
       });
     });
 
@@ -385,6 +395,12 @@ const BrokerClusterPage = () => {
         <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>
       ),
       sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsOut ?? -1) - (b.tpsOut ?? -1),
+    },
+    {
+      title: t('brokerCluster.startTime'),
+      dataIndex: 'startTime',
+      key: 'startTime',
+      render: (_: number | null, record: BrokerRecord) => formatDateTime(startTimeDate(record)),
     },
   ];
 

@@ -117,6 +117,7 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .name(broker.getName())
                 .addr(broker.getAddr())
                 .version(broker.getVersion())
+                .startTimestamp(broker.getStartTimestamp())
                 .status(broker.getStatus())
                 .diskUsage(broker.getDiskUsage())
                 .tpsIn(broker.getTpsIn())

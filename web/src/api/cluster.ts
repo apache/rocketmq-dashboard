@@ -50,6 +50,7 @@ export interface BrokerInfo {
   getMessagesYesterday?: number;
   version?: string | null;
   runtimeStatsAvailable?: boolean;
+  startTimestamp?: number | null;
 }
 
 export interface ProxyInfo {
