@@ -74,6 +74,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.yes': { zh: '是', en: 'Yes' },
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
+  'common.lastUpdated': { zh: '最近更新', en: 'Last Updated' },
 
   // ─── Global layout controls ───
   'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
