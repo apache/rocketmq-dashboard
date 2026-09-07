@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.tool;
 
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -60,7 +61,7 @@ public class ConsumerGroupListToolHandler implements ToolHandler {
         result.put("consumeType", requiredEnumName(
                 group.getConsumeType(), "consumeType", group.getName()));
         result.put("onlineInstances", group.getOnlineInstances());
-        result.put("totalLag", group.getTotalLag());
+        result.put("totalLag", group.getTotalLag() == ConsumerLagResolver.UNKNOWN ? null : group.getTotalLag());
         result.put("subscribedTopics", copyList(group.getSubscribedTopics()));
         result.put("retryMaxTimes", group.getRetryMaxTimes());
         return result;

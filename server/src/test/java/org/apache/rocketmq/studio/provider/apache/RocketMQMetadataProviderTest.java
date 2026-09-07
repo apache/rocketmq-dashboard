@@ -726,6 +726,37 @@ class RocketMQMetadataProviderTest {
         assertThat(groups.get(0).getDelaySeconds()).isBetween(4, 30);
     }
 
+    @Test
+    void listConsumerGroupsShouldReportUnknownTotalLagWhenAnyQueueOffsetIsUnknownTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-unknown");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        connection.setConnectionSet(new java.util.HashSet<>());
+        when(admin.examineConsumerConnectionInfo("cg-unknown")).thenReturn(connection);
+
+        org.apache.rocketmq.remoting.protocol.admin.ConsumeStats stats =
+                new org.apache.rocketmq.remoting.protocol.admin.ConsumeStats();
+        stats.getOffsetTable().put(new MessageQueue("studio-normal", "broker-a", 0), offset(100, 60));
+        stats.getOffsetTable().put(new MessageQueue("studio-normal", "broker-b", 1), offset(0, 1));
+        when(admin.examineConsumeStats("cg-unknown")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).isConsumeStatsAvailable()).isTrue();
+        assertThat(groups.get(0).getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
     private RocketMQMetadataProvider newLiveProvider(MQAdminExt admin) throws Exception {
         MqAdminExtFactory factory = mock(MqAdminExtFactory.class);
         RocketMQProperties liveProperties = new RocketMQProperties();

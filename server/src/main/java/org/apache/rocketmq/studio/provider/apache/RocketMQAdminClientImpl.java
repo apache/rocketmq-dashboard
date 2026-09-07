@@ -158,7 +158,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
      * Fills totalLag and delaySeconds from the broker consume stats. Proxy-connected groups
      * still maintain broker-side offset tables (the proxy forwards offset updates), so this
      * works even when the connection lookup reports the group offline; groups without any
-     * offset table (e.g. pure POP) simply keep the zero defaults.
+     * offset table (e.g. pure POP) simply keep the zero defaults. A queue whose offsets
+     * resolve to the unknown sentinel marks totalLag unknown instead of summing it away as
+     * zero lag.
      *
      * <p>delaySeconds is derived from the newest consumed-message timestamp (the consumption
      * frontier). Using the oldest timestamp is misleading for POP groups, where untouched
@@ -175,18 +177,24 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 return;
             }
             long totalLag = 0;
+            boolean lagUnknown = false;
             long newestConsumedTimestamp = 0;
             for (OffsetWrapper wrapper : stats.getOffsetTable().values()) {
-                long diff = wrapper.getBrokerOffset() - wrapper.getConsumerOffset();
-                if (diff > 0) {
-                    totalLag += diff;
+                long queueDiff = ConsumerLagResolver.resolve(
+                        wrapper.getBrokerOffset() - wrapper.getConsumerOffset(), null);
+                if (queueDiff == ConsumerLagResolver.UNKNOWN) {
+                    // a queue with the -1 sentinel (5.0 gRPC consumers) must not be summed
+                    // away as zero lag; report the whole total as unknown instead
+                    lagUnknown = true;
+                } else {
+                    totalLag += queueDiff;
                 }
                 long lastTimestamp = wrapper.getLastTimestamp();
                 if (lastTimestamp > newestConsumedTimestamp) {
                     newestConsumedTimestamp = lastTimestamp;
                 }
             }
-            vo.setTotalLag(totalLag);
+            vo.setTotalLag(lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag);
             if (newestConsumedTimestamp > 0) {
                 long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
