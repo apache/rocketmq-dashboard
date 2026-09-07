@@ -446,8 +446,9 @@ class NotificationOutboxServiceTest {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         NotificationDeliveryPageVO delivery = NotificationDeliveryPageVO.builder().id(8L).alertId(9L)
                 .channel("dingtalk").status(NotificationOutboxStatus.DELIVERED).attemptCount(0).build();
-        when(mapper.countPage("dingtalk", "DELIVERED", "Local")).thenReturn(1L);
-        when(mapper.findPage("dingtalk", "DELIVERED", "Local", 20, 0)).thenReturn(List.of(delivery));
+        when(mapper.countPage("dingtalk", "DELIVERED", "Local", null, null, null)).thenReturn(1L);
+        when(mapper.findPage("dingtalk", "DELIVERED", "Local", null, null, null, 20, 0))
+                .thenReturn(List.of(delivery));
 
         PageResult<NotificationDeliveryPageVO> result = new NotificationOutboxService(mapper,
                 mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
@@ -463,13 +464,13 @@ class NotificationOutboxServiceTest {
         try {
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
             RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
-            when(mapper.countPage("dingtalk", "PENDING", "Local")).thenReturn(0L);
+            when(mapper.countPage("dingtalk", "PENDING", "Local", null, null, null)).thenReturn(0L);
 
             new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
                     mock(AlertRepository.class), mock(OperationAuditService.class))
                     .listDeliveries(" DINGTALK ", "pending", "Local", 1, 20);
 
-            verify(mapper).countPage("dingtalk", "PENDING", "Local");
+            verify(mapper).countPage("dingtalk", "PENDING", "Local", null, null, null);
         } finally {
             Locale.setDefault(previous);
         }

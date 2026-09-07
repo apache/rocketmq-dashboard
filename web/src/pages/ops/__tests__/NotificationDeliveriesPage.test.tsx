@@ -169,4 +169,24 @@ describe('NotificationDeliveriesPage', () => {
       expect.objectContaining({ status: 'DELIVERED' }),
     );
   });
+
+  it('sends alert text and time-range filters to the backend', async () => {
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    await user.type(screen.getByPlaceholderText('搜索告警标题或错误信息'), 'disk');
+
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'disk' }),
+      ),
+    );
+  });
 });

@@ -8,9 +8,11 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
+  DatePicker,
   Descriptions,
   Drawer,
   Flex,
+  Input,
   Select,
   Table,
   Tag,
@@ -18,6 +20,7 @@ import {
   Typography,
   message,
 } from 'antd';
+import type { Dayjs } from 'dayjs';
 import { ArrowClockwise, Eye } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
@@ -52,6 +55,8 @@ const NotificationDeliveriesPage = () => {
   const [channel, setChannel] = useState<string>();
   const [status, setStatus] = useState<NotificationDeliveryRecord['status']>();
   const [instanceId, setInstanceId] = useState<string>();
+  const [search, setSearch] = useState('');
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
   const [retryingVisible, setRetryingVisible] = useState(false);
@@ -122,7 +127,16 @@ const NotificationDeliveriesPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void listAlertDeliveriesPage({ channel, status, instanceId, page, pageSize })
+    void listAlertDeliveriesPage({
+      channel,
+      status,
+      instanceId,
+      search: search.trim() || undefined,
+      from: dateRange?.[0]?.format('YYYY-MM-DDTHH:mm:ss'),
+      to: dateRange?.[1]?.format('YYYY-MM-DDTHH:mm:ss'),
+      page,
+      pageSize,
+    })
       .then((result) => {
         if (cancelled) return;
         setItems(result.items);
@@ -137,7 +151,7 @@ const NotificationDeliveriesPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [channel, status, instanceId, page, pageSize, refreshNonce, t]);
+  }, [channel, status, instanceId, search, dateRange, page, pageSize, refreshNonce, t]);
 
   const resetPage = (change: () => void) => {
     setLoading(true);
@@ -268,6 +282,27 @@ const NotificationDeliveriesPage = () => {
                 label: instance.name,
               }))}
               onChange={(value) => resetPage(() => setInstanceId(value))}
+            />
+            <Input.Search
+              allowClear
+              placeholder={t('deliveries.searchPlaceholder')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onSearch={(value) => {
+                setSearch(value);
+                resetPage(() => undefined);
+              }}
+              style={{ width: 260, flex: '1 1 260px' }}
+            />
+            <DatePicker.RangePicker
+              showTime
+              value={dateRange}
+              onChange={(values) => {
+                setLoading(true);
+                setDateRange(values as [Dayjs | null, Dayjs | null] | null);
+                setPage(1);
+              }}
+              style={{ width: 360, flex: '1 1 360px' }}
             />
           </Flex>
           <Table

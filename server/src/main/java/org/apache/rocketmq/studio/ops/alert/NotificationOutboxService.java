@@ -209,17 +209,29 @@ public class NotificationOutboxService {
 
     public PageResult<NotificationDeliveryPageVO> listDeliveries(String channel, String status, String instanceId,
             int page, int pageSize) {
+        return listDeliveries(channel, status, instanceId, null, null, null, page, pageSize);
+    }
+
+    public PageResult<NotificationDeliveryPageVO> listDeliveries(String channel, String status, String instanceId,
+            String search, LocalDateTime from, LocalDateTime to, int page, int pageSize) {
         int safePage = Math.max(1, page);
         int safePageSize = Math.min(100, Math.max(1, pageSize));
         String normalizedChannel = normalizeFilter(channel);
         String normalizedStatus = normalizeStatus(status);
         String normalizedInstanceId = normalizeTrim(instanceId);
-        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId);
+        String normalizedSearch = normalizeTrim(search);
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "from must not be after to");
+        }
+        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId,
+                normalizedSearch, from, to);
         if (total == 0) {
             return PageResult.empty(safePage, safePageSize);
         }
-        return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId, safePageSize,
-                (long) (safePage - 1) * safePageSize), total, safePage, safePageSize);
+        return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId,
+                normalizedSearch, from, to, safePageSize, (long) (safePage - 1) * safePageSize),
+                total, safePage, safePageSize);
     }
 
     public void retryFailedDelivery(Long deliveryId) {

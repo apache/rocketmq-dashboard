@@ -82,9 +82,13 @@ public class SystemAlertController {
             @RequestParam(required = false) String channel,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) LocalDateTime from,
+            @RequestParam(required = false) LocalDateTime to,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return Result.ok(notificationOutboxService.listDeliveries(channel, status, instanceId, page, pageSize));
+        return Result.ok(notificationOutboxService.listDeliveries(channel, status, instanceId,
+                search, from, to, page, pageSize));
     }
 
     @PostMapping("/deliveries/{deliveryId}/retry")
