@@ -446,7 +446,7 @@ class MetadataServiceTest {
     void listConsumerGroupsPageShouldPaginateFromOneBasedIndexes() {
         ConsumerGroupVO third = new ConsumerGroupVO();
         third.setName("cg-c");
-        when(apacheProvider.listConsumerGroupsPage("instance-a", "order", 2, 2))
+        when(apacheProvider.listConsumerGroupsPage("instance-a", "order", null, 2, 2))
                 .thenReturn(PageResult.of(List.of(third), 3, 2, 2));
 
         PageResult<ConsumerGroupVO> result =
@@ -456,13 +456,13 @@ class MetadataServiceTest {
         assertThat(result.getTotal()).isEqualTo(3);
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(2);
-        verify(apacheProvider).listConsumerGroupsPage("instance-a", "order", 2, 2);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", "order", null, 2, 2);
         verify(apacheProvider, org.mockito.Mockito.never()).listConsumerGroups("instance-a", "order");
     }
 
     @Test
     void listConsumerGroupsPageShouldReturnEmptyItemsWhenPageStartsPastFilteredTotal() {
-        when(metadataProvider.listConsumerGroupsPage("cluster-1", "order", 2, 1))
+        when(metadataProvider.listConsumerGroupsPage(null, "cluster-1", "order", null, 2, 1))
                 .thenReturn(PageResult.empty(2, 1));
 
         PageResult<ConsumerGroupVO> result =
@@ -472,7 +472,43 @@ class MetadataServiceTest {
         assertThat(result.getTotal()).isZero();
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(1);
-        verify(metadataProvider).listConsumerGroupsPage("cluster-1", "order", 2, 1);
+        verify(metadataProvider).listConsumerGroupsPage(null, "cluster-1", "order", null, 2, 1);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldForwardSubscriptionModeToClusterMetadataProvider() {
+        when(metadataProvider.listConsumerGroupsPage(null, "cluster-1", "order", "Pop", 2, 2))
+                .thenReturn(PageResult.of(List.of(), 1, 2, 2));
+
+        PageResult<ConsumerGroupVO> result =
+                metadataService.listConsumerGroupsPage(null, "cluster-1", "order", "Pop", 2, 2);
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        verify(metadataProvider).listConsumerGroupsPage(null, "cluster-1", "order", "Pop", 2, 2);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldForwardSubscriptionModeToInstanceProvider() {
+        when(apacheProvider.listConsumerGroupsPage("instance-a", "order", "Push", 2, 2))
+                .thenReturn(PageResult.of(List.of(), 5, 2, 2));
+
+        PageResult<ConsumerGroupVO> result =
+                metadataService.listConsumerGroupsPage("instance-a", null, "order", "Push", 2, 2);
+
+        assertThat(result.getTotal()).isEqualTo(5);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", "order", "Push", 2, 2);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldIgnoreBlankAndUnknownSubscriptionModes() {
+        when(metadataProvider.listConsumerGroupsPage(null, "cluster-1", null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        metadataService.listConsumerGroupsPage(null, "cluster-1", null, " ALL ", 1, 20);
+        metadataService.listConsumerGroupsPage(null, "cluster-1", null, "unknown-mode", 1, 20);
+
+        verify(metadataProvider, org.mockito.Mockito.times(2))
+                .listConsumerGroupsPage(null, "cluster-1", null, null, 1, 20);
     }
 
     @Test

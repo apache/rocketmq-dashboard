@@ -235,6 +235,33 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldAddSubscriptionModeConditionToDatabaseQuery() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        Page<RmqGroup> databasePage = new Page<>(1, 20, 4);
+        databasePage.setRecords(List.of());
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(databasePage);
+        RocketMQMetadataProvider provider = newProvider();
+
+        PageResult<ConsumerGroupVO> popPage = provider.listConsumerGroupsPage(
+                "instance-a", "cluster-1", "group", "Pop", 1, 20);
+        PageResult<ConsumerGroupVO> pushPage = provider.listConsumerGroupsPage(
+                "instance-a", "cluster-1", "group", "Push", 1, 20);
+
+        assertThat(popPage.getTotal()).isEqualTo(4);
+        assertThat(pushPage.getTotal()).isEqualTo(4);
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper, times(2)).selectPage(any(Page.class), captor.capture());
+        // Pop rows carry message_model = 'Pop'; every other value (including NULL) is Push.
+        assertThat(captor.getAllValues().get(0).getSqlSegment())
+                .contains("message_model = ")
+                .doesNotContain("IS NULL");
+        assertThat(captor.getAllValues().get(1).getSqlSegment())
+                .contains("message_model IS NULL", "message_model <> ");
+    }
+
+    @Test
     void getTopicRoutesShouldUseSelectedInstanceRuntimeClient() {
         List<BrokerRouteVO> routes = List.of(BrokerRouteVO.builder().brokerName("broker-a").build());
         when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(routes);
