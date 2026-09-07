@@ -155,3 +155,13 @@ describe('consumer group diagnostics', () => {
     );
   });
 });
+
+describe('consumer group diagnostics empty queue inventory', () => {
+  it('reports zero queue count when no queue progress is supplied', () => {
+    const diagnostics = analyzeConsumerGroupHealth(group(), [], [], {
+      now: '2026-08-31T12:01:00Z',
+    });
+
+    expect(diagnostics.summary.queueCount).toBe(0);
+  });
+});
