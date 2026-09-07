@@ -57,8 +57,10 @@ import {
   reloadProxyConfig,
   type ProxyHomePageData,
   type ProxyNode,
+  type ProxyTopologyNode,
 } from '../../api/proxy';
 import { readLocalStorage, writeLocalStorage } from '../../utils/browserStorage';
+import ProxyTopologyDrawer from './ProxyTopologyDrawer';
 
 const { Text } = Typography;
 
@@ -73,6 +75,8 @@ const ProxyPage: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
+  const [topologyNodes, setTopologyNodes] = useState<ProxyTopologyNode[]>([]);
+  const [topologyDrawerOpen, setTopologyDrawerOpen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [newProxyAddress, setNewProxyAddress] = useState('');
@@ -112,6 +116,7 @@ const ProxyPage: React.FC = () => {
       try {
         const topology = await getProxyTopology();
         if (requestId !== loadRequestId.current) return false;
+        setTopologyNodes(topology);
         const statusByAddr = new Map(topology.map((node) => [node.proxyAddr, node.status]));
         nodes = baseNodes.map((node) => {
           const probeStatus = statusByAddr.get(node.address);
@@ -127,6 +132,7 @@ const ProxyPage: React.FC = () => {
         });
       } catch {
         // Health probing is best-effort; keep the unknown status when it is unavailable.
+        setTopologyNodes([]);
       }
       setProxyNodes(nodes);
 
@@ -501,6 +507,9 @@ const ProxyPage: React.FC = () => {
             <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
               {t('common.refresh')}
             </Button>
+            <Button icon={<Gauge size={14} />} onClick={() => setTopologyDrawerOpen(true)}>
+              {t('proxy.topologyAction')}
+            </Button>
           </Space>
         }
       />
@@ -594,6 +603,12 @@ const ProxyPage: React.FC = () => {
           </Descriptions.Item>
         </Descriptions>
       </Modal>
+      <ProxyTopologyDrawer
+        open={topologyDrawerOpen}
+        registeredNodes={proxyNodes}
+        topologyNodes={topologyNodes}
+        onClose={() => setTopologyDrawerOpen(false)}
+      />
     </div>
   );
 };
