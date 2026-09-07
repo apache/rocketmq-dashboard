@@ -259,7 +259,8 @@ const ConsumerPageContent = ({
   const hasSelectedInstance = Boolean(selectedInstanceId);
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
   const [totalGroups, setTotalGroups] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [groupLoading, setGroupLoading] = useState(hasSelectedInstance);
+  const loading = hasSelectedInstance ? groupLoading : instancesLoading;
   const [submitting, setSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -331,7 +332,7 @@ const ConsumerPageContent = ({
     async (pageToLoad: number, pageSizeToLoad: number, silent = false) => {
       if (!selectedInstanceId) return undefined;
       const requestId = ++groupRequestIdRef.current;
-      if (!silent) setLoading(true);
+      if (!silent) setGroupLoading(true);
       try {
         const result = await listConsumerGroupPage({
           instanceId: selectedInstanceId,
@@ -351,7 +352,7 @@ const ConsumerPageContent = ({
         if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
         return undefined;
       } finally {
-        if (requestId === groupRequestIdRef.current) setLoading(false);
+        if (requestId === groupRequestIdRef.current) setGroupLoading(false);
       }
     },
     [t, selectedInstanceId, search],
@@ -364,15 +365,7 @@ const ConsumerPageContent = ({
   useEffect(() => {
     if (!selectedInstanceId) {
       groupRequestIdRef.current += 1;
-      const resetTimer = window.setTimeout(() => {
-        setGroups([]);
-        setTotalGroups(0);
-        setSelectedRowKeys([]);
-        setLoading(instancesLoading);
-      }, 0);
-      return () => {
-        window.clearTimeout(resetTimer);
-      };
+      return undefined;
     }
     const silent = silentRefreshRef.current;
     silentRefreshRef.current = false;
@@ -382,7 +375,7 @@ const ConsumerPageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId, page, pageSize, instancesLoading, refreshKey, loadConsumerGroupPage]);
+  }, [selectedInstanceId, page, pageSize, refreshKey, loadConsumerGroupPage]);
 
   useEffect(() => {
     if (!autoRefresh || !selectedInstanceId) {
