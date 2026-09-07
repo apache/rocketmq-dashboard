@@ -937,6 +937,53 @@ describe('Consumer page', () => {
     );
   });
 
+  it('clears instance-local groups before the next instance request resolves', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 2,
+        name: 'instance-a',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-07-23T00:00:00Z',
+        gmtModified: '2026-07-23T00:00:00Z',
+      },
+      {
+        id: 3,
+        name: 'instance-b',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.2:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-07-23T00:00:00Z',
+        gmtModified: '2026-07-23T00:00:00Z',
+      },
+    ]);
+    const nextPage = deferred<ReturnType<typeof groupPage>>();
+    vi.mocked(consumerService.listConsumerGroupPage).mockImplementation((params) =>
+      params?.instanceId === 'instance-b'
+        ? nextPage.promise
+        : Promise.resolve(groupPage([{ ...group, name: 'instance-a-group' }])),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />, '/instance/instance-a/consumer');
+
+    expect(await screen.findByText('instance-a-group')).toBeInTheDocument();
+    await user.click(screen.getByText('instance-a'));
+    await user.click(
+      await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.queryByText('instance-a-group')).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-spin-spinning')).not.toBeNull();
+
+    nextPage.resolve(groupPage([{ ...group, name: 'instance-b-group' }]));
+    expect(await screen.findByText('instance-b-group')).toBeInTheDocument();
+  });
+
   it('keeps the latest client stack when an older request resolves last', async () => {
     const firstStack = {
       groupName: 'remote-cg',
