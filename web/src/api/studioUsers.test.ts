@@ -18,7 +18,13 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import client from './client';
-import { listAllStudioUsers as loadStudioUsersForExport, listStudioUsers } from './studioUsers';
+import {
+  createStudioUser,
+  listAllStudioUsers as loadStudioUsersForExport,
+  listStudioUsers,
+  resetStudioUserPassword,
+  setStudioUserEnabled,
+} from './studioUsers';
 
 const mock = new MockAdapter(client);
 const exportQuery = { search: 'op', admin: false };
@@ -88,5 +94,36 @@ describe('studio users API', () => {
       exportRequestParams[0],
       exportRequestParams[1],
     ]);
+  });
+
+  it('creates a studio user with the supplied credentials', async () => {
+    mock.onPost('/studio-users').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ username: 'operator', admin: false, password: 'pw' });
+      return [200, { code: 200, data: { id: 9, username: 'operator', admin: false, enabled: true } }];
+    });
+
+    const created = await createStudioUser({ username: 'operator', admin: false, password: 'pw' });
+
+    expect(created.id).toBe(9);
+  });
+
+  it('updates the enabled flag through the status endpoint', async () => {
+    mock.onPost('/studio-users/7/status').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ enabled: false });
+      return [200, { code: 200, data: { id: 7, username: 'operator', admin: false, enabled: false } }];
+    });
+
+    const updated = await setStudioUserEnabled(7, false);
+
+    expect(updated.enabled).toBe(false);
+  });
+
+  it('resets the password through the password endpoint', async () => {
+    mock.onPost('/studio-users/7/password').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ newPassword: 'rotated' });
+      return [200, { code: 200, data: {} }];
+    });
+
+    await expect(resetStudioUserPassword(7, 'rotated')).resolves.toBeUndefined();
   });
 });
