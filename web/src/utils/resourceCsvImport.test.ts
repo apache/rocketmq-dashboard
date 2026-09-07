@@ -200,3 +200,19 @@ describe('resourceCsvImport', () => {
     },
   );
 });
+
+describe('validateResourceName', () => {
+  it('accepts supported topic and group names and reports unsupported characters', () => {
+    expect(validateResourceName('orders-topic_%|1', 'topic')).toBeNull();
+    expect(validateResourceName('cg_orders', 'group')).toBeNull();
+    expect(validateResourceName('bad name', 'topic')).toBe(
+      'Name 仅支持字母、数字、下划线、短横线、% 和 |',
+    );
+  });
+
+  it('rejects empty names and names beyond the per-resource length limit', () => {
+    expect(validateResourceName('', 'topic')).toBe('Name 不能为空');
+    expect(validateResourceName('a'.repeat(128), 'topic')).toBe('Name 长度不能超过 127 个字符');
+    expect(validateResourceName('a'.repeat(121), 'group')).toBe('Name 长度不能超过 120 个字符');
+  });
+});
