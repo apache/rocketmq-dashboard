@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import client from './client';
-import { listAllStudioUsers as loadStudioUsersForExport, listStudioUsers } from './studioUsers';
+import { listAllStudioUsers as loadStudioUsersForExport, listStudioUsers, createStudioUser, setStudioUserEnabled, resetStudioUserPassword } from './studioUsers';
 
 const mock = new MockAdapter(client);
 const exportQuery = { search: 'op', admin: false };
@@ -88,5 +88,55 @@ describe('studio users API', () => {
       exportRequestParams[0],
       exportRequestParams[1],
     ]);
+  });
+
+  it('stops exporting when the first page is empty', async () => {
+    mock.onGet('/studio-users').reply(200, {
+      code: 200,
+      data: { items: [], total: 0, page: 1, size: 100 },
+    });
+
+    await expect(loadStudioUsersForExport({ search: 'none' })).resolves.toEqual([]);
+    expect(mock.history.get).toHaveLength(1);
+  });
+
+  it('creates a studio user with the provided credentials', async () => {
+    mock.onPost('/studio-users').reply(200, {
+      code: 200,
+      data: { id: 9, username: 'new-operator', admin: true, enabled: true },
+    });
+
+    const created = await createStudioUser({
+      username: 'new-operator',
+      password: 'secret-pass-1',
+      admin: true,
+    });
+
+    expect(created.id).toBe(9);
+    expect(JSON.parse(mock.history.post[0].data)).toEqual({
+      username: 'new-operator',
+      password: 'secret-pass-1',
+      admin: true,
+    });
+  });
+
+  it('toggles the enabled state through the status endpoint', async () => {
+    mock.onPost('/studio-users/7/status').reply(200, {
+      code: 200,
+      data: { id: 7, username: 'operator', admin: false, enabled: false },
+    });
+
+    const updated = await setStudioUserEnabled(7, false);
+
+    expect(updated.enabled).toBe(false);
+    expect(JSON.parse(mock.history.post[0].data)).toEqual({ enabled: false });
+  });
+
+  it('resets the password through the password endpoint', async () => {
+    mock.onPost('/studio-users/7/password').reply(200, { code: 200 });
+
+    await resetStudioUserPassword(7, 'new-secret-pass');
+
+    expect(JSON.parse(mock.history.post[0].data)).toEqual({ newPassword: 'new-secret-pass' });
   });
 });
