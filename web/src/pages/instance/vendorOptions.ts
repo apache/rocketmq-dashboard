@@ -24,28 +24,36 @@ export type InstanceVendor = 'APACHE' | 'ALIYUN' | 'TENCENT';
 export interface VendorOption {
   key: InstanceVendor;
   label: string;
+  labelKey?: string;
   logo: string;
   description: string;
+  descKey?: string;
 }
 
 export const VENDOR_OPTIONS: VendorOption[] = [
   {
     key: 'APACHE',
     label: '开源版',
+    labelKey: 'instance.vendorApache',
     logo: apacheFeatherLogo,
     description: '接入自建 Apache RocketMQ 开源集群，支持 Proxy / Direct 两种接入方式',
+    descKey: 'instance.vendorApacheDesc',
   },
   {
     key: 'ALIYUN',
     label: 'Aliyun 版',
+    labelKey: 'instance.vendorAliyun',
     logo: alibabaCloudLogo,
     description: '选择已录入的云凭据与云上实例完成接入，接入点自动解析',
+    descKey: 'instance.vendorAliyunDesc',
   },
   {
     key: 'TENCENT',
     label: 'Tencent 版',
+    labelKey: 'instance.vendorTencent',
     logo: tencentCloudLogo,
     description: '接入腾讯云 TDMQ RocketMQ 版实例，接入地址填写实例的接入点',
+    descKey: 'instance.vendorTencentDesc',
   },
 ];
 
