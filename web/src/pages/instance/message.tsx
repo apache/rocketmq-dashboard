@@ -46,6 +46,7 @@ import {
   CheckCircleOutlined,
   DownloadOutlined,
   HistoryOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -80,6 +81,7 @@ import {
   type MessageTraceDiagnostics,
   type TraceDiagnosticStatus,
 } from '../../utils/messageTraceDiagnostics';
+import MessageResultInsightsDrawer from '../../components/MessageResultInsightsDrawer';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -404,6 +406,7 @@ const MessagePageContent = ({
     readMessageTraceTopic(selectedInstanceId),
   );
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [insightsDrawerOpen, setInsightsDrawerOpen] = useState(false);
   const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
@@ -1134,6 +1137,13 @@ const MessagePageContent = ({
               <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
                 服务端历史
               </Button>
+              <Button
+                icon={<BarChartOutlined />}
+                disabled={messages.length === 0}
+                onClick={() => setInsightsDrawerOpen(true)}
+              >
+                结果分析
+              </Button>
             </Space>
           )}
 
@@ -1170,6 +1180,13 @@ const MessagePageContent = ({
         onClose={() => setHistoryDrawerOpen(false)}
         onSelectMessage={replayHistoryRecord}
         onSelectTrace={replayTraceRecord}
+      />
+      <MessageResultInsightsDrawer
+        open={insightsDrawerOpen}
+        messages={messages}
+        serverTotal={messageTotal}
+        truncated={resultMayBeTruncated}
+        onClose={() => setInsightsDrawerOpen(false)}
       />
 
       {queryError && (
