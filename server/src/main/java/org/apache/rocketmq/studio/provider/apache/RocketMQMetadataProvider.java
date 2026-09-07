@@ -43,6 +43,7 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
+import org.apache.rocketmq.studio.common.util.SubscriptionModeFilters;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.common.topic.TopicValidator;
@@ -252,6 +253,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
@@ -261,12 +268,32 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
+        applySubscriptionMode(query, SubscriptionModeFilters.normalize(subscriptionMode));
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
                 .map(this::toConsumerGroupVO)
                 .toList();
         enrichLiveStats(instanceId, groups);
         return PageResult.of(groups, result.getTotal(), page, pageSize);
+    }
+
+    /**
+     * Pushes the normalized subscription-mode filter into the database condition. The stored
+     * {@code message_model} column mirrors the VO surface: Pop rows carry {@code "Pop"} while
+     * every other value (including legacy NULL / CLUSTERING defaults) is surfaced as Push, so
+     * the Push branch must match "anything but Pop" to stay consistent with the old in-memory
+     * client filter.
+     */
+    private void applySubscriptionMode(LambdaQueryWrapper<RmqGroup> query, String subscriptionMode) {
+        if (subscriptionMode == null) {
+            return;
+        }
+        if (SubscriptionMode.Pop.name().equalsIgnoreCase(subscriptionMode)) {
+            query.eq(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
+        } else if (SubscriptionMode.Push.name().equalsIgnoreCase(subscriptionMode)) {
+            query.and(wrapper -> wrapper.isNull(RmqGroup::getMessageModel)
+                    .or().ne(RmqGroup::getMessageModel, SubscriptionMode.Pop.name()));
+        }
     }
 
     private static final int ONLINE_ENRICHMENT_THREADS = 8;

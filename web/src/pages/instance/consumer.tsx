@@ -151,16 +151,6 @@ const formatDelay = (totalSeconds: number): string => {
   return parts.length > 0 ? parts.join('') : '0秒';
 };
 
-const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): ConsumerGroup[] => {
-  let data = groups;
-
-  if (modeFilter !== 'ALL') {
-    data = data.filter((group) => group.subscriptionMode === modeFilter);
-  }
-
-  return data;
-};
-
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
 
 const isConsistentValue = (value?: string | null): boolean =>
@@ -349,6 +339,7 @@ const ConsumerPageContent = ({
         const result = await listConsumerGroupPage({
           instanceId: selectedInstanceId,
           search: search.trim() || undefined,
+          subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
           page: pageToLoad,
           pageSize: pageSizeToLoad,
         });
@@ -367,7 +358,7 @@ const ConsumerPageContent = ({
         if (requestId === groupRequestIdRef.current) setLoading(false);
       }
     },
-    [t, selectedInstanceId, search],
+    [t, selectedInstanceId, search, modeFilter],
   );
 
   const reloadConsumerGroupPageAfterDelete = useCallback(async () => {
@@ -465,11 +456,7 @@ const ConsumerPageContent = ({
     return () => window.clearInterval(interval);
   }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress]);
 
-  /* ─── Filtered & sorted data ─── */
-  const filtered = useMemo(() => {
-    return visibleConsumerGroups(groups, modeFilter);
-  }, [groups, modeFilter]);
-
+  /* ─── Export ─── */
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -1444,7 +1431,10 @@ const ConsumerPageContent = ({
           />
           <Select
             value={modeFilter}
-            onChange={setModeFilter}
+            onChange={(value) => {
+              setModeFilter(value);
+              setPage(1);
+            }}
             style={{ width: 140 }}
             options={[
               { value: 'ALL', label: '全部模式' },
@@ -1539,7 +1529,7 @@ const ConsumerPageContent = ({
       <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
-          dataSource={filtered}
+          dataSource={groups}
           loading={loading}
           rowKey="name"
           rowSelection={{

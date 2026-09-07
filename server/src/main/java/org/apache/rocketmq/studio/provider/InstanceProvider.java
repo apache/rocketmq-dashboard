@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SubscriptionModeFilters;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
@@ -93,7 +94,13 @@ public interface InstanceProvider {
 
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
             int page, int pageSize) {
-        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, search);
+        return listConsumerGroupsPage(instanceId, search, null, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
+            String subscriptionMode, int page, int pageSize) {
+        List<ConsumerGroupVO> groups = SubscriptionModeFilters.filter(
+                listConsumerGroups(instanceId, search), subscriptionMode);
         int total = groups.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);

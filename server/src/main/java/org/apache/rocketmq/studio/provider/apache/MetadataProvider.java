@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SubscriptionModeFilters;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
@@ -58,17 +59,23 @@ public interface MetadataProvider {
 
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String clusterId, String search,
             int page, int pageSize) {
-        List<ConsumerGroupVO> groups = listConsumerGroups(clusterId, search);
+        return listConsumerGroupsPage(null, clusterId, search, null, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
+        List<ConsumerGroupVO> groups = SubscriptionModeFilters.filter(
+                listConsumerGroups(instanceId, clusterId, search), subscriptionMode);
         int total = groups.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
         int to = from + (int) Math.min(pageSize, total - from);
         return PageResult.of(groups.subList(from, to), total, page, pageSize);
-    }
-
-    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
-            String search, int page, int pageSize) {
-        return listConsumerGroupsPage(clusterId, search, page, pageSize);
     }
 
     List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);
