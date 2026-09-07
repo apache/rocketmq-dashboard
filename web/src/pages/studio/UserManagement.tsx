@@ -45,6 +45,7 @@ import {
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { useLang } from '../../i18n/LangContext';
 
 interface CreateFormValues {
   username: string;
@@ -73,6 +74,7 @@ const STUDIO_USER_EXPORT_COLUMNS: CsvColumn<StudioUser>[] = [
   { header: 'Modified At', value: (user) => dateTime(user.gmtModified) },
 ];
 const UserManagementPage = () => {
+  const { t } = useLang();
   const navigate = useNavigate();
   const admin = useAuthStore((state) => state.admin);
   const userId = useAuthStore((state) => state.userId);
@@ -130,11 +132,11 @@ const UserManagementPage = () => {
       setUsers(result.items);
       setTotal(result.total);
     } catch {
-      if (requestId === requestSeqRef.current) message.error('加载用户列表失败');
+      if (requestId === requestSeqRef.current) message.error(t('users.loadFailed'));
     } finally {
       if (requestId === requestSeqRef.current) setLoading(false);
     }
-  }, [admin, debouncedSearch, page, pageSize, roleFilter, statusFilter]);
+  }, [admin, debouncedSearch, page, pageSize, roleFilter, statusFilter, t]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -154,13 +156,13 @@ const UserManagementPage = () => {
     const values = await createForm.validateFields();
     try {
       await createStudioUser(values);
-      message.success('用户已创建');
+      message.success(t('users.created'));
       setCreateOpen(false);
       createForm.resetFields();
       if (page === 1) await loadUsers();
       else setPage(1);
     } catch {
-      message.error('创建用户失败');
+      message.error(t('users.createFailed'));
     }
   };
 
@@ -170,10 +172,10 @@ const UserManagementPage = () => {
     setMutatingUserIds(new Set(mutatingUserIdsRef.current));
     try {
       await setStudioUserEnabled(record.id, enabled);
-      message.success(enabled ? '用户已启用' : '用户已禁用，全部会话已注销');
+      message.success(enabled ? t('users.enabledToast') : t('users.disabledToast'));
       await loadUsers();
     } catch {
-      message.error('更新用户状态失败');
+      message.error(t('users.updateFailed'));
     } finally {
       mutatingUserIdsRef.current.delete(record.id);
       setMutatingUserIds(new Set(mutatingUserIdsRef.current));
@@ -188,15 +190,15 @@ const UserManagementPage = () => {
         await changePassword(values.currentPassword ?? '', values.newPassword);
         clearAuth();
         navigate('/login', { replace: true });
-        message.success('密码已修改，请使用新密码重新登录');
+        message.success(t('users.passwordChangedToast'));
       } else {
         await resetStudioUserPassword(passwordTarget.id, values.newPassword);
-        message.success('密码已重置，用户的现有会话已注销');
+        message.success(t('users.passwordResetToast'));
       }
       setPasswordTarget(null);
       passwordForm.resetFields();
     } catch {
-      message.error('修改密码失败');
+      message.error(t('users.passwordChangeFailed'));
     }
   };
   const openCreateUserModal = () => setCreateOpen(true);
@@ -214,40 +216,41 @@ const UserManagementPage = () => {
         `rocketmq-studio-users-${today}.csv`,
         buildCsv(STUDIO_USER_EXPORT_COLUMNS, exportedUsers),
       );
-      message.success(`已导出 ${exportedUsers.length} 个用户`);
+      message.success(t('users.exportedToast', { count: String(exportedUsers.length) }));
     } catch {
-      message.error('导出用户列表失败，请稍后重试');
+      message.error(t('users.exportFailed'));
     }
     setUserExporting(false);
-  }, [admin, roleFilter, search, statusFilter]);
+  }, [admin, roleFilter, search, statusFilter, t]);
   const columns: ColumnsType<StudioUser> = [
-    { title: '用户名', dataIndex: 'username' },
-    { title: '用户 ID', dataIndex: 'id', width: 100 },
+    { title: t('users.username'), dataIndex: 'username' },
+    { title: t('users.userId'), dataIndex: 'id', width: 100 },
     {
-      title: '权限',
+      title: t('users.role'),
       dataIndex: 'admin',
-      render: (value: boolean) => (value ? <Tag color="blue">管理员</Tag> : <Tag>普通用户</Tag>),
+      render: (value: boolean) =>
+        value ? <Tag color="blue">{t('users.roleAdmin')}</Tag> : <Tag>{t('users.roleReader')}</Tag>,
     },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'enabled',
       render: (value: boolean) =>
-        value ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>,
+        value ? <Tag color="green">{t('users.enabled')}</Tag> : <Tag color="default">{t('users.disabled')}</Tag>,
     },
-    { title: '创建时间', dataIndex: 'gmtCreate', render: dateTime },
+    { title: t('users.createdAt'), dataIndex: 'gmtCreate', render: dateTime },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       render: (_, record) => (
         <Space>
           <Button size="small" icon={<Key size={14} />} onClick={() => setPasswordTarget(record)}>
-            改密
+            {t('users.changePwdShort')}
           </Button>
           <Switch
             checked={record.enabled}
             loading={mutatingUserIds.has(record.id)}
-            checkedChildren="启用"
-            unCheckedChildren="禁用"
+            checkedChildren={t('users.switchEnable')}
+            unCheckedChildren={t('users.switchDisable')}
             onChange={(enabled) => void setEnabled(record, enabled)}
           />
         </Space>
@@ -258,8 +261,8 @@ const UserManagementPage = () => {
   return (
     <div style={{ padding: 24 }}>
       <PageHeader
-        title="用户管理"
-        subtitle="Studio 本地账号、会话与密码管理"
+        title={t('users.pageTitle')}
+        subtitle={t('users.pageSubtitle')}
         extra={
           admin ? (
             <Space>
@@ -269,22 +272,19 @@ const UserManagementPage = () => {
                 loading={userExporting}
                 onClick={() => void handleExportUsers()}
               >
-                导出
+                {t('users.export')}
               </Button>
               <Button type="primary" icon={<Plus size={16} />} onClick={openCreateUserModal}>
-                新建用户
+                {t('users.newUser')}
               </Button>
             </Space>
           ) : undefined
         }
       />
       {!admin && (
-        <InfoBanner
-          title="当前账号不是管理员"
-          description="你可以修改自己的密码；用户列表和账号状态仅对管理员开放。"
-        />
+        <InfoBanner title={t('users.notAdminTitle')} description={t('users.notAdminDesc')} />
       )}
-      <Card title="我的账号" style={{ marginBottom: 16 }}>
+      <Card title={t('users.myAccount')} style={{ marginBottom: 16 }}>
         <Button
           icon={<Key size={16} />}
           disabled={!userId}
@@ -300,7 +300,7 @@ const UserManagementPage = () => {
             })
           }
         >
-          修改我的密码
+          {t('users.changeMyPassword')}
         </Button>
       </Card>
       {admin && (
@@ -308,7 +308,7 @@ const UserManagementPage = () => {
           <Flex gap={12} wrap style={{ marginBottom: 16 }}>
             <Input.Search
               allowClear
-              placeholder="搜索用户名"
+              placeholder={t('users.searchPlaceholder')}
               style={{ width: 240 }}
               value={search}
               onChange={(event) => {
@@ -318,8 +318,8 @@ const UserManagementPage = () => {
             />
             <Select<RoleFilter>
               allowClear
-              aria-label="按权限筛选"
-              placeholder="全部权限"
+              aria-label={t('users.filterByRole')}
+              placeholder={t('users.allRoles')}
               style={{ width: 140 }}
               value={roleFilter}
               onChange={(value) => {
@@ -327,14 +327,14 @@ const UserManagementPage = () => {
                 setPage(1);
               }}
               options={[
-                { label: '管理员', value: 'admin' },
-                { label: '普通用户', value: 'reader' },
+                { label: t('users.roleAdmin'), value: 'admin' },
+                { label: t('users.roleReader'), value: 'reader' },
               ]}
             />
             <Select<StatusFilter>
               allowClear
-              aria-label="按状态筛选"
-              placeholder="全部状态"
+              aria-label={t('users.filterByStatus')}
+              placeholder={t('users.allStatuses')}
               style={{ width: 140 }}
               value={statusFilter}
               onChange={(value) => {
@@ -342,8 +342,8 @@ const UserManagementPage = () => {
                 setPage(1);
               }}
               options={[
-                { label: '已启用', value: 'enabled' },
-                { label: '已禁用', value: 'disabled' },
+                { label: t('users.enabled'), value: 'enabled' },
+                { label: t('users.disabled'), value: 'disabled' },
               ]}
             />
           </Flex>
@@ -358,7 +358,7 @@ const UserManagementPage = () => {
               total,
               showSizeChanger: true,
               pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
-              showTotal: (count) => `共 ${count} 个用户`,
+              showTotal: (count) => `${t('common.total')} ${count} ${t('users.unit')}`,
               onChange: (nextPage, nextPageSize) => {
                 if (nextPageSize !== pageSize) {
                   setPage(1);
@@ -373,24 +373,31 @@ const UserManagementPage = () => {
       )}
 
       <Modal
-        title="新建 Studio 用户"
+        title={t('users.createTitle')}
         open={createOpen}
         onOk={() => void createUser()}
         onCancel={() => setCreateOpen(false)}
       >
         <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
-          <Form.Item name="username" label="用户名" rules={[{ required: true }, { max: 128 }]}>
+          <Form.Item
+            name="username"
+            label={t('users.username')}
+            rules={[{ required: true }, { max: 128 }]}
+          >
             <Input autoComplete="username" />
           </Form.Item>
           <Form.Item
             name="password"
-            label="初始密码"
-            rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}
+            label={t('users.initialPassword')}
+            rules={[{ required: true }, { min: 8, message: t('users.passwordMin') }]}
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Form.Item name="admin" label="管理员权限" valuePropName="checked">
-            <Switch checkedChildren="管理员" unCheckedChildren="普通用户" />
+          <Form.Item name="admin" label={t('users.adminRoleLabel')} valuePropName="checked">
+            <Switch
+              checkedChildren={t('users.roleAdmin')}
+              unCheckedChildren={t('users.roleReader')}
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -398,8 +405,8 @@ const UserManagementPage = () => {
       <Modal
         title={
           passwordTarget?.id === userId
-            ? '修改我的密码'
-            : `重置 ${passwordTarget?.username ?? ''} 的密码`
+            ? t('users.changeMyPassword')
+            : t('users.resetTitle', { name: passwordTarget?.username ?? '' })
         }
         open={passwordTarget !== null}
         onOk={() => void updatePassword()}
@@ -410,14 +417,14 @@ const UserManagementPage = () => {
       >
         <Form form={passwordForm} layout="vertical">
           {passwordTarget?.id === userId && (
-            <Form.Item name="currentPassword" label="当前密码" rules={[{ required: true }]}>
+            <Form.Item name="currentPassword" label={t('users.currentPassword')} rules={[{ required: true }]}>
               <Input.Password autoComplete="current-password" />
             </Form.Item>
           )}
           <Form.Item
             name="newPassword"
-            label="新密码"
-            rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}
+            label={t('users.newPassword')}
+            rules={[{ required: true }, { min: 8, message: t('users.passwordMin') }]}
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
