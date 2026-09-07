@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,6 +54,28 @@ public class QueryHistoryController {
     @GetMapping("/summary")
     public Result<QueryHistorySummaryVO> summary(@RequestParam(required = false) String clusterId) {
         return Result.ok(queryHistoryService.summarize(normalizeFilter(clusterId)));
+    }
+
+    @DeleteMapping("/messages/{id}")
+    public Result<Void> deleteMessageQuery(@PathVariable long id) {
+        queryHistoryService.deleteMessageQuery(id);
+        return Result.ok();
+    }
+
+    @DeleteMapping("/traces/{id}")
+    public Result<Void> deleteTraceQuery(@PathVariable long id) {
+        queryHistoryService.deleteTraceQuery(id);
+        return Result.ok();
+    }
+
+    @DeleteMapping("/messages")
+    public Result<Integer> clearMessageQueries(@RequestParam(required = false) String clusterId) {
+        return Result.ok(queryHistoryService.clearMessageQueries(normalizeFilter(clusterId)));
+    }
+
+    @DeleteMapping("/traces")
+    public Result<Integer> clearTraceQueries(@RequestParam(required = false) String clusterId) {
+        return Result.ok(queryHistoryService.clearTraceQueries(normalizeFilter(clusterId)));
     }
 
     @GetMapping("/messages/{id}/results")

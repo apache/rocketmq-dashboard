@@ -5,9 +5,26 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Flex, Input, Statistic, Table, Tabs, Tag } from 'antd';
+import {
+  Alert,
+  Button,
+  Drawer,
+  Flex,
+  Input,
+  Popconfirm,
+  Space,
+  Statistic,
+  Table,
+  Tabs,
+  Tag,
+  message,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
+  clearMessageQueryHistory,
+  clearTraceQueryHistory,
+  deleteMessageQueryHistory,
+  deleteTraceQueryHistory,
   getQueryHistorySummary,
   listMessageQueryHistory,
   listTraceQueryHistory,
@@ -49,6 +66,7 @@ const MessageQueryHistoryDrawer = ({
   const [messageRows, setMessageRows] = useState<MessageQueryHistory[]>([]);
   const [traceRows, setTraceRows] = useState<TraceQueryHistory[]>([]);
   const [total, setTotal] = useState(0);
+  const [removing, setRemoving] = useState(false);
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
@@ -100,6 +118,49 @@ const MessageQueryHistoryDrawer = ({
     };
   }, [load]);
 
+  const handleDeleteRow = async (row: { id: number }) => {
+    setRemoving(true);
+    try {
+      if (tab === 'messages') {
+        await deleteMessageQueryHistory(row.id);
+      } else {
+        await deleteTraceQueryHistory(row.id);
+      }
+      message.success(t('messageHistory.deleted'));
+    } catch (deleteError) {
+      message.error(deleteError instanceof Error ? deleteError.message : t('messageHistory.deleteFailed'));
+    } finally {
+      setRemoving(false);
+    }
+    void load();
+  };
+
+  const handleClear = async () => {
+    setRemoving(true);
+    try {
+      if (tab === 'messages') {
+        await clearMessageQueryHistory(clusterId);
+      } else {
+        await clearTraceQueryHistory(clusterId);
+      }
+      message.success(t('messageHistory.cleared'));
+    } catch (clearError) {
+      message.error(clearError instanceof Error ? clearError.message : t('messageHistory.clearFailed'));
+    } finally {
+      setRemoving(false);
+    }
+    void load();
+  };
+
+  const actionColumn = <T extends { id: number }>(
+    renderDelete: (record: T) => React.ReactNode,
+  ): ColumnsType<T>[number] => ({
+    title: '操作',
+    key: 'actions',
+    width: 90,
+    render: (_, record) => renderDelete(record),
+  });
+
   const messageColumns: ColumnsType<MessageQueryHistory> = [
     {
       title: t('common.type'),
@@ -117,6 +178,19 @@ const MessageQueryHistoryDrawer = ({
       width: 180,
       render: formatTime,
     },
+    actionColumn((record) => (
+      <Popconfirm
+        title={t('messageHistory.deleteConfirm')}
+        okText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ danger: true }}
+        onConfirm={() => void handleDeleteRow(record)}
+      >
+        <Button type="link" size="small" danger loading={removing}>
+          {t('common.delete')}
+        </Button>
+      </Popconfirm>
+    )),
   ];
   const traceColumns: ColumnsType<TraceQueryHistory> = [
     { title: 'Message ID', dataIndex: 'msgId', ellipsis: true },
@@ -136,6 +210,19 @@ const MessageQueryHistoryDrawer = ({
       width: 180,
       render: formatTime,
     },
+    actionColumn((record) => (
+      <Popconfirm
+        title={t('messageHistory.deleteConfirm')}
+        okText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ danger: true }}
+        onConfirm={() => void handleDeleteRow(record)}
+      >
+        <Button type="link" size="small" danger loading={removing}>
+          {t('common.delete')}
+        </Button>
+      </Popconfirm>
+    )),
   ];
 
   return (
@@ -146,16 +233,38 @@ const MessageQueryHistoryDrawer = ({
       onClose={onClose}
       destroyOnHidden
     >
-      <Flex gap={32} style={{ marginBottom: 16 }}>
-        <Statistic
-          title={t('messageHistory.messageQueries')}
-          value={summary?.messageQueries ?? 0}
-        />
-        <Statistic title={t('messageHistory.traceQueries')} value={summary?.traceQueries ?? 0} />
-        <Statistic
-          title={t('messageHistory.latestQuery')}
-          value={formatTime(summary?.latestQueryAt)}
-        />
+      <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
+        <Flex gap={32}>
+          <Statistic
+            title={t('messageHistory.messageQueries')}
+            value={summary?.messageQueries ?? 0}
+          />
+          <Statistic title={t('messageHistory.traceQueries')} value={summary?.traceQueries ?? 0} />
+          <Statistic
+            title={t('messageHistory.latestQuery')}
+            value={formatTime(summary?.latestQueryAt)}
+          />
+        </Flex>
+        <Space>
+          <Popconfirm
+            title={
+              tab === 'messages'
+                ? t('messageHistory.clearMessagesConfirm')
+                : t('messageHistory.clearTracesConfirm')
+            }
+            description={t('messageHistory.clearIrreversible')}
+            okText={t('messageHistory.clear')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => void handleClear()}
+          >
+            <Button danger loading={removing}>
+              {tab === 'messages'
+                ? t('messageHistory.clearMessages')
+                : t('messageHistory.clearTraces')}
+            </Button>
+          </Popconfirm>
+        </Space>
       </Flex>
       <Input.Search
         allowClear

@@ -525,6 +525,17 @@ const translations: Record<string, Record<Lang, string>> = {
   'messageHistory.traceTopic': { zh: '轨迹 Topic', en: 'Trace Topic' },
   'messageHistory.traceNodes': { zh: '轨迹节点', en: 'Trace Nodes' },
   'messageHistory.consumers': { zh: '消费者', en: 'Consumers' },
+  'messageHistory.deleteConfirm': { zh: '确定删除这条查询历史吗？', en: 'Delete this query history entry?' },
+  'messageHistory.deleted': { zh: '查询历史已删除', en: 'Query history entry deleted' },
+  'messageHistory.deleteFailed': { zh: '删除查询历史失败', en: 'Failed to delete the query history entry' },
+  'messageHistory.clear': { zh: '清空', en: 'Clear' },
+  'messageHistory.clearMessages': { zh: '清空消息查询历史', en: 'Clear message query history' },
+  'messageHistory.clearTraces': { zh: '清空轨迹查询历史', en: 'Clear trace query history' },
+  'messageHistory.clearMessagesConfirm': { zh: '确定清空全部消息查询历史吗？', en: 'Clear all message query history?' },
+  'messageHistory.clearTracesConfirm': { zh: '确定清空全部轨迹查询历史吗？', en: 'Clear all trace query history?' },
+  'messageHistory.clearIrreversible': { zh: '清空后不可恢复', en: 'This cannot be undone' },
+  'messageHistory.cleared': { zh: '查询历史已清空', en: 'Query history cleared' },
+  'messageHistory.clearFailed': { zh: '清空查询历史失败', en: 'Failed to clear the query history' },
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },

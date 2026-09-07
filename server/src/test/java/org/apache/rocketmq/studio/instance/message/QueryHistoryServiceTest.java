@@ -312,6 +312,59 @@ class QueryHistoryServiceTest {
         assertThat(traceCountCaptor.getValue().getCustomSqlSegment()).contains("queried_by");
     }
 
+    @Test
+    void deleteMessageQueryShouldDeleteOwnRecord() {
+        AuthenticatedUserContext.setUsername("alice");
+        RmqMessageQuery query = messageQuery(7L);
+        query.setQueriedBy("alice");
+        when(messageQueryMapper.selectById(7L)).thenReturn(query);
+
+        service.deleteMessageQuery(7L);
+
+        verify(messageQueryMapper).deleteById(7L);
+    }
+
+    @Test
+    void deleteMessageQueryShouldRejectRecordOwnedByAnotherOperator() {
+        AuthenticatedUserContext.setUsername("alice");
+        RmqMessageQuery query = messageQuery(7L);
+        query.setQueriedBy("bob");
+        when(messageQueryMapper.selectById(7L)).thenReturn(query);
+
+        assertThatThrownBy(() -> service.deleteMessageQuery(7L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Query history record not found");
+
+        verify(messageQueryMapper, never()).deleteById(org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void deleteTraceQueryShouldRejectUnknownRecord() {
+        AuthenticatedUserContext.setUsername("alice");
+        when(traceQueryMapper.selectById(9L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.deleteTraceQuery(9L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Query history record not found");
+
+        verify(traceQueryMapper, never()).deleteById(org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void clearMessageQueriesShouldDeleteOnlyCurrentOperatorRowsInCluster() {
+        AuthenticatedUserContext.setUsername("alice");
+        when(messageQueryMapper.delete(any(Wrapper.class))).thenReturn(3);
+
+        int deleted = service.clearMessageQueries("cluster-a");
+
+        assertThat(deleted).isEqualTo(3);
+        ArgumentCaptor<Wrapper<RmqMessageQuery>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(messageQueryMapper).delete(captor.capture());
+        String sql = captor.getValue().getCustomSqlSegment();
+        assertThat(sql).contains("queried_by");
+        assertThat(sql).contains("cluster_id");
+    }
+
     private static RmqMessageQuery messageQuery(Long id) {
         RmqMessageQuery query = new RmqMessageQuery();
         query.setId(id);
