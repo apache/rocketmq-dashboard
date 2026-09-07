@@ -106,3 +106,12 @@ describe('navigation search helpers', () => {
     }
   });
 });
+
+describe('navigation search blank queries', () => {
+  it('returns entries unchanged for empty and whitespace-only queries', () => {
+    const entries = [{ key: '/cluster', label: 'RocketMQ 集群' }];
+
+    expect(filterNavigationEntries(entries, '')).toEqual(entries);
+    expect(filterNavigationEntries(entries, '   ')).toEqual(entries);
+  });
+});
