@@ -20,7 +20,12 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { formatTimeMs, useQueueBrowser } from '../QueueBrowser';
+import {
+  formatTimeMs,
+  QueueBrowserResults,
+  useQueueBrowser,
+  type QueueBrowserState,
+} from '../QueueBrowser';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
@@ -214,5 +219,103 @@ describe('QueueBrowser request ownership', () => {
 
     expect(getQueueOffsets).toHaveBeenCalledTimes(1);
     await act(async () => queues.resolve([queue('broker-a')]));
+  });
+});
+describe('QueueBrowser results filtering', () => {
+  beforeAll(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  });
+
+  const browserState = (queues: QueueOffset[]): QueueBrowserState => ({
+    topic: 'topic-a',
+    setTopic: vi.fn(),
+    queues,
+    loading: false,
+    offsets: {},
+    setOffsets: vi.fn(),
+    pulling: new Set<string>(),
+    entries: [],
+    loadQueues: vi.fn(),
+    handlePull: vi.fn(),
+    closeEntry: vi.fn(),
+  });
+
+  const rows = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('tbody tr')).map((row) => row.textContent ?? '');
+
+  it('filters queues by broker name as the operator types', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <QueueBrowserResults state={browserState([queue('broker-a'), queue('broker-b')])} />,
+    );
+    expect(rows(container)).toHaveLength(2);
+
+    await user.type(screen.getByPlaceholderText('搜索 Broker / Queue ID'), 'broker-b');
+
+    expect(rows(container)).toHaveLength(1);
+    expect(rows(container)[0]).toContain('broker-b');
+  });
+
+  it('filters queues by exact queue id', async () => {
+    const user = userEvent.setup();
+    const q0 = { ...queue('broker-a'), queueId: 0, minOffset: 1, maxOffset: 5 };
+    const q1 = { ...queue('broker-a'), queueId: 1, minOffset: 1, maxOffset: 5 };
+    const { container } = render(<QueueBrowserResults state={browserState([q0, q1])} />);
+
+    await user.type(screen.getByPlaceholderText('搜索 Broker / Queue ID'), '1');
+
+    expect(rows(container)).toHaveLength(1);
+    expect(rows(container)[0]).toContain('1');
+  });
+
+  it('hides empty queues when the non-empty toggle is enabled', async () => {
+    const user = userEvent.setup();
+    const empty = { ...queue('broker-a'), minOffset: 2, maxOffset: 2 };
+    const busy = { ...queue('broker-b'), minOffset: 0, maxOffset: 10 };
+    const { container } = render(<QueueBrowserResults state={browserState([empty, busy])} />);
+    expect(rows(container)).toHaveLength(2);
+
+    await user.click(screen.getByRole('switch', { name: '仅显示非空队列' }));
+
+    expect(rows(container)).toHaveLength(1);
+    expect(rows(container)[0]).toContain('broker-b');
+  });
+
+  it('sorts queues by message backlog in descending order', async () => {
+    const user = userEvent.setup();
+    const small = { ...queue('broker-a'), minOffset: 0, maxOffset: 3 };
+    const large = { ...queue('broker-b'), minOffset: 0, maxOffset: 12 };
+    const { container } = render(<QueueBrowserResults state={browserState([small, large])} />);
+
+    await user.click(screen.getByRole('combobox', { name: '排序' }));
+    await user.click(
+      await screen.findByText('排序: 积压 ↓', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(rows(container)[0]).toContain('broker-b');
+    expect(rows(container)[1]).toContain('broker-a');
+  });
+
+  it('reports displayed count separately from the unfiltered totals', async () => {
+    const user = userEvent.setup();
+    const empty = { ...queue('broker-a'), minOffset: 2, maxOffset: 2 };
+    const busy = { ...queue('broker-b'), minOffset: 0, maxOffset: 10 };
+    render(<QueueBrowserResults state={browserState([empty, busy])} />);
+
+    await user.click(screen.getByRole('switch', { name: '仅显示非空队列' }));
+
+    expect(screen.getByText(/显示 1 \/ 共 2 个队列，总消息量/)).toBeInTheDocument();
   });
 });
