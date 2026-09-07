@@ -205,3 +205,22 @@ describe('metrics API', () => {
     await expect(result.text()).resolves.toContain('zip-content');
   });
 });
+
+describe('metrics data-source query optional credentials', () => {
+  it('omits optional credential fields when none are supplied', async () => {
+    const result = { resultType: 'matrix', series: [], warnings: [] };
+    const query = { metric: 'up', start: 1, end: 2, step: '1m' };
+
+    mock.onPost('/metrics/query/datasource').reply((config) => {
+      const body = JSON.parse(config.data);
+
+      expect(body.query).toEqual(query);
+      expect(body.username).toBeUndefined();
+      expect(body.password).toBeUndefined();
+      expect(body.bearerToken).toBeUndefined();
+      return [200, { code: 200, data: result }];
+    });
+
+    await expect(queryByDataSource({ key: 'ds-prom-1', query })).resolves.toEqual(result);
+  });
+});
