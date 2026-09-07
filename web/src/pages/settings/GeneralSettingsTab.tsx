@@ -35,6 +35,7 @@ import type { GeneralSettings, GeneralSettingsUpdate } from '../../api/settings'
 import { useTheme } from '../../theme/useTheme';
 import type { ThemeMode } from '../../theme/themePreference';
 import { useLang } from '../../i18n/LangContext';
+import NotificationReadinessDrawer from '../../components/NotificationReadinessDrawer';
 
 const { Text } = Typography;
 
@@ -68,6 +69,7 @@ export const GeneralSettingsTab = () => {
   const [savingSecurity, setSavingSecurity] = useState(false);
   const [savingNotification, setSavingNotification] = useState(false);
   const [testingChannel, setTestingChannel] = useState<string>();
+  const [readinessOpen, setReadinessOpen] = useState(false);
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
   const [securityForm] = Form.useForm();
@@ -257,6 +259,11 @@ export const GeneralSettingsTab = () => {
           </Space>
         }
         loading={loading}
+        extra={
+          <Button disabled={!settings} onClick={() => setReadinessOpen(true)}>
+            {t('settings.notifyReadinessAction')}
+          </Button>
+        }
       >
         <Form form={securityForm} layout="vertical" onFinish={handleSecurityFinish}>
           <Form.Item
@@ -373,6 +380,12 @@ export const GeneralSettingsTab = () => {
           </Form.Item>
         </Form>
       </Card>
+
+      <NotificationReadinessDrawer
+        open={readinessOpen}
+        settings={settings}
+        onClose={() => setReadinessOpen(false)}
+      />
     </Flex>
   );
 };
