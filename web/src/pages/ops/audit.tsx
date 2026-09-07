@@ -67,6 +67,12 @@ const emptyFilterOptions: AuditFilterOptions = {
   results: [],
 };
 
+const formatClock = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 const buildAuditFilter = (
   searchText: string,
   selectedType: string | undefined,
@@ -88,6 +94,7 @@ const AuditPage: React.FC = () => {
   const { t } = useLang();
   const [records, setRecords] = useState<AuditRecord[]>([]);
   const [total, setTotal] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
@@ -151,6 +158,7 @@ const AuditPage: React.FC = () => {
         if (recordsRequestRef.current !== requestId) return;
         setRecords(result.items);
         setTotal(result.total);
+        setLastUpdated(Date.now());
         if (result.items.length === 0 && result.total > 0 && page > 1) {
           setPage(Math.max(1, Math.ceil(result.total / pageSize)));
           return;
@@ -384,7 +392,17 @@ const AuditPage: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* ─── Header ─── */}
-      <PageHeader title={t('audit.title')} subtitle={t('audit.subtitle')} />
+      <PageHeader
+        title={t('audit.title')}
+        subtitle={t('audit.subtitle')}
+        extra={
+          lastUpdated !== null && (
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              {t('common.lastUpdated')} {formatClock(lastUpdated)}
+            </Text>
+          )
+        }
+      />
 
       {/* ─── Filter Bar ─── */}
       <Flex justify="space-between" align="center" gap={12} wrap style={{ marginBottom: 16 }}>
