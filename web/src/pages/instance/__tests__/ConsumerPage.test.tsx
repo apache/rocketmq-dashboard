@@ -291,7 +291,28 @@ describe('Consumer page', () => {
       page: 1,
       pageSize: 20,
       search: undefined,
+      subscriptionMode: undefined,
     });
+  });
+
+  it('refetches the server page when the Push/Pop mode filter changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+
+    await user.click(screen.getByText('全部模式'));
+    await user.click(await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }));
+
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        instanceId: 'instance-1',
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+        subscriptionMode: 'Pop',
+      }),
+    );
   });
 
   afterEach(() => {
