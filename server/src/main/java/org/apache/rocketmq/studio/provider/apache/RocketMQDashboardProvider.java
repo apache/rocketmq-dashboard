@@ -44,6 +44,7 @@ import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardProvider;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
+import org.apache.rocketmq.studio.common.util.BrokerRuntimeStats;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -342,7 +343,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                         Map<String, String> table = runtimeInfo.getTable();
                         tpsIn += parseTps(table.get("putTps"));
-                        tpsOut += parseTps(table.get("getTransferredTps"));
+                        tpsOut += parseTps(BrokerRuntimeStats.outboundTps(table));
 
                         messagesToday += parseMessagesToday(table);
                     }
@@ -374,7 +375,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                             KVTable runtimeInfo = runtimeStatsByBroker.get(masterAddr);
                             if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                                 clusterTpsIn += parseTps(runtimeInfo.getTable().get("putTps"));
-                                clusterTpsOut += parseTps(runtimeInfo.getTable().get("getTransferredTps"));
+                                clusterTpsOut += parseTps(BrokerRuntimeStats.outboundTps(runtimeInfo.getTable()));
                                 String value = runtimeInfo.getTable().get("brokerVersionDesc");
                                 if (value != null && "unknown".equals(version)) {
                                     String brokerVersion = value.trim();

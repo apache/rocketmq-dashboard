@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.util.BrokerRuntimeStats;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -266,7 +267,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 builder.tpsIn(parseTpsValue(putTps));
             }
 
-            String getTransferredTps = table.get("getTransferredTps");
+            String getTransferredTps = BrokerRuntimeStats.outboundTps(table);
             if (getTransferredTps != null && !getTransferredTps.isEmpty()) {
                 builder.tpsOut(parseTpsValue(getTransferredTps));
             }
