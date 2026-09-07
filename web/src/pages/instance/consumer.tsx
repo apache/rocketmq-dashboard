@@ -113,6 +113,12 @@ import {
 
 const { Text } = Typography;
 
+const formatClock = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 /* ─── Helpers ─── */
 
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
@@ -261,6 +267,7 @@ const ConsumerPageContent = ({
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
   const [totalGroups, setTotalGroups] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -355,6 +362,7 @@ const ConsumerPageContent = ({
         if (requestId === groupRequestIdRef.current) {
           setGroups(result.items);
           setTotalGroups(result.total);
+          setLastUpdated(Date.now());
           if (result.items.length === 0 && result.total > 0 && pageToLoad > 1) {
             setPage(Math.max(1, Math.ceil(result.total / pageSizeToLoad)));
           }
@@ -1510,6 +1518,11 @@ const ConsumerPageContent = ({
           >
             创建 Group
           </Button>
+          {lastUpdated !== null && (
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              {t('common.lastUpdated')} {formatClock(lastUpdated)}
+            </Text>
+          )}
           <Tooltip title="开启后每 2 秒自动刷新列表">
             <Button
               icon={<SyncOutlined spin={autoRefresh} />}
