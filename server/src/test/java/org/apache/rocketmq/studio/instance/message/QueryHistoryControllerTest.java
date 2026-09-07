@@ -19,6 +19,7 @@ import java.util.List;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -72,6 +73,44 @@ class QueryHistoryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.messageQueries").value(7))
                 .andExpect(jsonPath("$.data.traceQueries").value(3));
+    }
+
+    @Test
+    void deletesOwnMessageQueryRecord() throws Exception {
+        mockMvc.perform(delete("/api/query-history/messages/7"))
+                .andExpect(status().isOk());
+
+        verify(queryHistoryService).deleteMessageQuery(7);
+    }
+
+    @Test
+    void deletesOwnTraceQueryRecord() throws Exception {
+        mockMvc.perform(delete("/api/query-history/traces/9"))
+                .andExpect(status().isOk());
+
+        verify(queryHistoryService).deleteTraceQuery(9);
+    }
+
+    @Test
+    void clearsMessageQueriesForNormalizedCluster() throws Exception {
+        when(queryHistoryService.clearMessageQueries("instance-a")).thenReturn(3);
+
+        mockMvc.perform(delete("/api/query-history/messages").param("clusterId", " instance-a "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(3));
+
+        verify(queryHistoryService).clearMessageQueries("instance-a");
+    }
+
+    @Test
+    void clearsTraceQueriesForCluster() throws Exception {
+        when(queryHistoryService.clearTraceQueries("instance-a")).thenReturn(2);
+
+        mockMvc.perform(delete("/api/query-history/traces").param("clusterId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(2));
+
+        verify(queryHistoryService).clearTraceQueries("instance-a");
     }
 
     @Test

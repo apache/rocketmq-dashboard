@@ -81,6 +81,28 @@ export async function getQueryHistorySummary(clusterId?: string) {
   return response.data.data;
 }
 
+export async function deleteMessageQueryHistory(id: number) {
+  await client.delete(`/query-history/messages/${id}`);
+}
+
+export async function deleteTraceQueryHistory(id: number) {
+  await client.delete(`/query-history/traces/${id}`);
+}
+
+export async function clearMessageQueryHistory(clusterId?: string) {
+  const response = await client.delete<{ data: number }>('/query-history/messages', {
+    params: clusterId ? { clusterId } : undefined,
+  });
+  return response.data.data;
+}
+
+export async function clearTraceQueryHistory(clusterId?: string) {
+  const response = await client.delete<{ data: number }>('/query-history/traces', {
+    params: clusterId ? { clusterId } : undefined,
+  });
+  return response.data.data;
+}
+
 export interface MessageResultSnapshot {
   msgId: string;
   topic: string;
