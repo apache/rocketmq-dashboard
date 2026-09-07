@@ -104,6 +104,12 @@ import {
 
 const { Text } = Typography;
 
+const formatClock = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 const INSTANCE_ACCESS_LABEL: Record<Instance['type'], string> = {
   CLOUD: '云服务',
   PROXY_LOCAL: 'Proxy Local',
@@ -353,6 +359,7 @@ const TopicPage = () => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [totalTopics, setTotalTopics] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
   const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -437,6 +444,7 @@ const TopicPage = () => {
         if (requestId === topicRequestIdRef.current) {
           setTopics(result.items);
           setTotalTopics(result.total);
+          setLastUpdated(Date.now());
           if (result.items.length === 0 && result.total > 0 && pageToLoad > 1) {
             setTablePage(Math.max(1, Math.ceil(result.total / pageSizeToLoad)));
           }
@@ -1400,7 +1408,17 @@ const TopicPage = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <PageHeader title={t('topic.title')} subtitle={`共 ${totalTopics} 个 Topic`} />
+      <PageHeader
+        title={t('topic.title')}
+        subtitle={`共 ${totalTopics} 个 Topic`}
+        extra={
+          lastUpdated !== null && (
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              {t('common.lastUpdated')} {formatClock(lastUpdated)}
+            </Text>
+          )
+        }
+      />
 
       {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (

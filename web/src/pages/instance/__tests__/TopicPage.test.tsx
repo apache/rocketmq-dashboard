@@ -203,6 +203,7 @@ describe('TopicPage', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     Modal.destroyAll();
     cleanup();
     vi.clearAllMocks();
@@ -915,5 +916,35 @@ describe('TopicPage', () => {
 
     const groupLink = await screen.findByText('cg-orders');
     expect(groupLink.closest('a')).not.toBeNull();
+  });
+
+  it('shows the time of the last successful list load in the header', async () => {
+    vi.setSystemTime(new Date('2026-03-07T09:15:42'));
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+  });
+
+  it('keeps the previous successful load time when a reload fails', async () => {
+    vi.setSystemTime(new Date('2026-03-07T09:15:42'));
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+
+    vi.setSystemTime(new Date('2026-03-07T10:30:00'));
+    topicServiceMocks.listTopicsPage.mockRejectedValueOnce(new Error('network down'));
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText('搜索 Topic 名称'), 'orders');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'orders' }),
+      ),
+    );
+    expect(screen.getByText('最近更新 09:15:42')).toBeInTheDocument();
+    expect(screen.queryByText('最近更新 10:30:00')).not.toBeInTheDocument();
   });
 });
