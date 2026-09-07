@@ -206,6 +206,29 @@ describe('DLQ page', () => {
     );
   });
 
+  it('debounces DLQ search requests while the user types', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    const callsAfterInitialLoad = vi.mocked(messageService.listDLQGroups).mock.calls.length;
+    const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+    await user.type(searchInput, 'o');
+    await user.type(searchInput, 'rd');
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
+    expect(vi.mocked(messageService.listDLQGroups).mock.calls.length).toBe(callsAfterInitialLoad);
+
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20),
+    );
+    expect(vi.mocked(messageService.listDLQGroups).mock.calls.length).toBe(
+      callsAfterInitialLoad + 1,
+    );
+  });
+
   it('surfaces unavailable DLQ provider errors when loading groups', async () => {
     vi.mocked(messageService.listDLQGroups).mockRejectedValue(
       new Error('DLQ provider is not configured'),

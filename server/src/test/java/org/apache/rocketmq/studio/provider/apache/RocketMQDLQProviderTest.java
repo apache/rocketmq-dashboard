@@ -136,6 +136,29 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void listDLQGroupsShouldRunPageStatsWithBoundedParallelismTest() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-b",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-c"));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        when(adminExt.examineTopicStats(anyString())).thenAnswer(invocation -> {
+            TimeUnit.MILLISECONDS.sleep(150);
+            return new TopicStatsTable();
+        });
+
+        long startedAt = System.nanoTime();
+        PageResult<DLQGroupVO> page = provider.listDLQGroups("instance-a", null, 1, 3);
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+        assertThat(page.getItems()).extracting(DLQGroupVO::getGroupName)
+                .containsExactly("group-a", "group-b", "group-c");
+        assertThat(elapsedMillis).isLessThan(3 * 150);
+        verify(adminExt, times(3)).examineTopicStats(anyString());
+    }
+
+    @Test
     void keepsEmptyStatusWhenTopicStatsAreSuccessfullyRead() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         TopicList topicList = new TopicList();
