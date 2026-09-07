@@ -84,6 +84,7 @@ const clusterFixture: ClusterInfo[] = [
         diskUsage: 62,
         tpsIn: 12580,
         tpsOut: 8340,
+        startTimestamp: new Date(2026, 6, 23, 10, 30, 0).getTime(),
       },
       {
         name: 'broker-api-b',
@@ -401,5 +402,13 @@ describe('BrokerCluster Page', () => {
     await screen.findByText('broker-api-a');
     expect(screen.getByText('N/A')).toBeInTheDocument();
     expect(screen.queryByText('运行中')).not.toBeInTheDocument();
+  });
+
+  it('renders broker start time when runtime stats carry a start timestamp', async () => {
+    renderWithProviders(<BrokerCluster />);
+
+    await screen.findByText('broker-api-a');
+    expect(screen.getByText('启动时间')).toBeInTheDocument();
+    expect(screen.getByText('2026-07-23 10:30:00')).toBeInTheDocument();
   });
 });

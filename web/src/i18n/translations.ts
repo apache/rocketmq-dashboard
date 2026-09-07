@@ -2111,6 +2111,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'brokerCluster.diskUsage': { zh: '磁盘使用', en: 'Disk Usage' },
   'brokerCluster.tpsIn': { zh: '入站 TPS', en: 'TPS In' },
   'brokerCluster.tpsOut': { zh: '出站 TPS', en: 'TPS Out' },
+  'brokerCluster.startTime': { zh: '启动时间', en: 'Start Time' },
   'brokerCluster.config': { zh: '配置', en: 'Config' },
   'brokerCluster.restart': { zh: '重启', en: 'Restart' },
   'brokerCluster.manual': { zh: '手动', en: 'Manual' },

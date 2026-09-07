@@ -261,6 +261,16 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 builder.version(version);
             }
 
+            // RocketMQ exposes the broker boot time as epoch millis in the runtime stats.
+            String bootTimestamp = table.get("bootTimestamp");
+            if (bootTimestamp != null && !bootTimestamp.isEmpty()) {
+                try {
+                    builder.startTimestamp(Long.parseLong(bootTimestamp.trim()));
+                } catch (NumberFormatException ignored) {
+                    // keep startTimestamp null when the broker reports an unparsable value
+                }
+            }
+
             // Parse TPS from runtime stats
             String putTps = table.get("putTps");
             if (putTps != null && !putTps.isEmpty()) {

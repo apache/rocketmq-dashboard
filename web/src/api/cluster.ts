@@ -46,6 +46,7 @@ export interface BrokerInfo {
   diskUsage: number;
   version?: string | null;
   runtimeStatsAvailable?: boolean;
+  startTimestamp?: number | null;
 }
 
 export interface ProxyInfo {

@@ -30,6 +30,8 @@ public class BrokerVO {
     private String name;
     private String addr;
     private String version;
+    /** Broker start time in epoch milliseconds; null when runtime stats do not carry it. */
+    private Long startTimestamp;
     private BrokerStatus status;
     private double diskUsage;
     private long tpsIn;
