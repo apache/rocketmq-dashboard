@@ -49,6 +49,7 @@ import { STATUS_MAP } from '../../constants/theme';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import DataSourceConnectivityDrawer from '../../components/DataSourceConnectivityDrawer';
 
 const { Text } = Typography;
 
@@ -133,6 +134,7 @@ export const DataSourceTab = () => {
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [connectivityOpen, setConnectivityOpen] = useState(false);
   const requestSeqRef = useRef(0);
 
   useEffect(() => {
@@ -420,6 +422,13 @@ export const DataSourceTab = () => {
         </Flex>
         <Space>
           <Button
+            icon={<ApiOutlined />}
+            disabled={loading || total === 0}
+            onClick={() => setConnectivityOpen(true)}
+          >
+            {t('settings.connectivityAction')}
+          </Button>
+          <Button
             icon={<DownloadSimple size={14} />}
             onClick={() => void handleExport()}
             loading={exporting}
@@ -460,6 +469,12 @@ export const DataSourceTab = () => {
           },
         }}
         size="middle"
+      />
+      <DataSourceConnectivityDrawer
+        open={connectivityOpen}
+        search={debouncedSearch}
+        type={typeFilter}
+        onClose={() => setConnectivityOpen(false)}
       />
 
       <Modal
