@@ -42,6 +42,10 @@ public class ConsumerGroupListToolHandler implements ToolHandler {
 
     @Override
     public Object execute(Map<String, Object> input) {
+        if (input == null) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(
+                    400, "tool input is required");
+        }
         String clusterId = (String) input.get("cluster");
         String search = (String) input.get("search");
         PageResult<ConsumerGroupVO> page = metadataService.listConsumerGroupsPage(
