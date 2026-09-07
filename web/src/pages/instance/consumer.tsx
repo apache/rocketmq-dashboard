@@ -207,10 +207,13 @@ const issueSeverityTagColor = (severity: ConsumerGroupHealthIssue['severity']) =
   return 'blue';
 };
 
-const issueSeverityLabel = (severity: ConsumerGroupHealthIssue['severity']) => {
-  if (severity === 'critical') return '风险';
-  if (severity === 'warning') return '关注';
-  return '提示';
+const issueSeverityLabel = (
+  severity: ConsumerGroupHealthIssue['severity'],
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string => {
+  if (severity === 'critical') return t('consumer.healthSeverityRisk');
+  if (severity === 'warning') return t('consumer.healthSeverityWatch');
+  return t('consumer.healthSeverityInfo');
 };
 
 const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
@@ -1188,16 +1191,16 @@ const ConsumerPageContent = ({
 
   const healthIssueColumns: ColumnsType<ConsumerGroupHealthIssue> = [
     {
-      title: '级别',
+      title: t('consumer.healthIssueLevel'),
       dataIndex: 'severity',
       key: 'severity',
       width: 84,
       render: (severity: ConsumerGroupHealthIssue['severity']) => (
-        <Tag color={issueSeverityTagColor(severity)}>{issueSeverityLabel(severity)}</Tag>
+        <Tag color={issueSeverityTagColor(severity)}>{issueSeverityLabel(severity, t)}</Tag>
       ),
     },
     {
-      title: '诊断项',
+      title: t('consumer.healthIssueTitle'),
       dataIndex: 'title',
       key: 'title',
       width: 180,
@@ -1209,7 +1212,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '说明',
+      title: t('consumer.healthIssueDetail'),
       dataIndex: 'description',
       key: 'description',
       render: (description: string) => <Text>{description}</Text>,
@@ -1593,7 +1596,7 @@ const ConsumerPageContent = ({
               </Text>
             </Flex>
           ) : (
-            'Group 详情'
+            t('consumer.detailTitle')
           )
         }
         open={modalOpen}
@@ -1621,7 +1624,7 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <Info size={14} />
-                    <span>概览</span>
+                    <span>{t('consumer.tabOverview')}</span>
                   </Space>
                 ),
                 children: (
@@ -1637,7 +1640,7 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="在线实例"
+                            title={t('consumer.onlineInstances')}
                             value={selectedGroup.onlineInstances}
                             prefix={<Users size={18} color="#52c41a" />}
                             valueStyle={{ color: '#52c41a' }}
@@ -1653,9 +1656,11 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="总堆积"
+                            title={t('consumer.totalLagShort')}
                             value={selectedGroup.totalLag}
-                            formatter={(value) => formatLag(Number(value), UNAVAILABLE_LAG_LABEL)}
+                            formatter={(value) =>
+                              formatLag(Number(value), t('groupMgmt.lagUnavailable'))
+                            }
                             prefix={
                               <ArrowsClockwise size={18} color={lagColor(selectedGroup.totalLag)} />
                             }
@@ -1674,7 +1679,7 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="订阅 Topic 数"
+                            title={t('consumer.subscribedTopicsCount')}
                             value={(selectedGroup.subscribedTopics ?? []).length}
                             prefix={<ListBullets size={18} color="#1677ff" />}
                             valueStyle={{ color: '#1677ff' }}
@@ -1690,25 +1695,25 @@ const ConsumerPageContent = ({
                       size="small"
                       styles={{ label: { fontWeight: 500, width: 140 } }}
                     >
-                      <Descriptions.Item label="Group 名称">
+                      <Descriptions.Item label={t('consumer.name')}>
                         <Text strong>{selectedGroup.name}</Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label="所属集群">
+                      <Descriptions.Item label={t('consumer.clusterId')}>
                         {selectedGroup.clusterId}
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅模式">
+                      <Descriptions.Item label={t('consumer.subMode')}>
                         <Tag color={selectedGroup.subscriptionMode === 'Push' ? 'blue' : 'green'}>
                           {selectedGroup.subscriptionMode}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="消费类型">
+                      <Descriptions.Item label={t('consumer.detailConsumeType')}>
                         <Tag
                           color={selectedGroup.consumeType === 'CLUSTERING' ? 'geekblue' : 'purple'}
                         >
                           {selectedGroup.consumeType}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅组类型">
+                      <Descriptions.Item label={t('consumer.subGroupType')}>
                         <Tag
                           color={
                             TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]?.color || 'default'
@@ -1719,19 +1724,20 @@ const ConsumerPageContent = ({
                             : selectedGroup.subscriptionDataType}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="消费延迟">
+                      <Descriptions.Item label={t('consumer.delay')}>
                         <Text strong>{formatDelay(selectedGroup.delaySeconds)}</Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label="最大重试次数">
-                        <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
+                      <Descriptions.Item label={t('consumer.maxRetry')}>
+                        <Text strong>{selectedGroup.retryMaxTimes}</Text>
+                        {t('consumer.times')}
                       </Descriptions.Item>
-                      <Descriptions.Item label="创建时间" span={2}>
+                      <Descriptions.Item label={t('consumer.createdAt')} span={2}>
                         <Space size={4}>
                           <Clock size={13} color="#9CA3AF" />
                           <Text type="secondary">{selectedGroup.gmtCreate}</Text>
                         </Space>
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅 Topic" span={2}>
+                      <Descriptions.Item label={t('consumer.subscribedTopics')} span={2}>
                         <Space size={4} wrap>
                           {(selectedGroup.subscribedTopics ?? []).map((t) => (
                             <Tag key={t} color="blue">
@@ -1747,7 +1753,7 @@ const ConsumerPageContent = ({
                       <Flex align="center" gap={6} style={{ marginBottom: 12 }}>
                         <Users size={15} color="#52c41a" />
                         <Text strong style={{ fontSize: 14 }}>
-                          在线实例 ({(selectedGroup.instances ?? []).length})
+                          {t('consumer.onlineInstances')} ({(selectedGroup.instances ?? []).length})
                         </Text>
                       </Flex>
                       <Table
@@ -1766,7 +1772,7 @@ const ConsumerPageContent = ({
                         <Flex align="center" gap={6}>
                           <ListBullets size={15} color="#1677ff" />
                           <Text strong style={{ fontSize: 14 }}>
-                            订阅一致性检查
+                            {t('consumer.consistencyCheck')}
                           </Text>
                         </Flex>
                         <Button
@@ -1778,7 +1784,7 @@ const ConsumerPageContent = ({
                             void loadSubscriptions(selectedGroup.name, true);
                           }}
                         >
-                          重新检查
+                          {t('consumer.recheckConsistency')}
                         </Button>
                       </Flex>
                       <Alert
@@ -1795,17 +1801,23 @@ const ConsumerPageContent = ({
                         }
                         message={
                           subscriptionErrorByGroup[selectedDiagnosticKey]
-                            ? '订阅一致性检查失败，当前保留上次检查结果'
+                            ? t('consumer.consistencyFailed')
                             : subscriptionLoadingByGroup[selectedDiagnosticKey] &&
                                 selectedSubscriptions.length === 0
-                              ? '正在检查订阅一致性'
+                              ? t('consumer.consistencyChecking')
                               : inconsistentSubscriptions.length > 0
-                                ? `发现 ${inconsistentSubscriptions.length} 个订阅配置不一致`
+                                ? t('consumer.inconsistentFound', {
+                                    count: String(inconsistentSubscriptions.length),
+                                  })
                                 : unknownSubscriptions.length > 0
-                                  ? `${unknownSubscriptions.length} 个订阅配置状态未知`
+                                  ? t('consumer.unknownCount', {
+                                      count: String(unknownSubscriptions.length),
+                                    })
                                   : selectedSubscriptions.length > 0
-                                    ? `全部 ${selectedSubscriptions.length} 个订阅配置一致`
-                                    : '暂无订阅关系可检查'
+                                    ? t('consumer.allConsistent', {
+                                        count: String(selectedSubscriptions.length),
+                                      })
+                                    : t('consumer.noSubscriptions')
                         }
                         action={
                           <Checkbox
@@ -1813,7 +1825,7 @@ const ConsumerPageContent = ({
                             disabled={inconsistentSubscriptions.length === 0}
                             onChange={(event) => setShowOnlyInconsistent(event.target.checked)}
                           >
-                            仅看不一致
+                            {t('consumer.onlyInconsistent')}
                           </Checkbox>
                         }
                         style={{ marginBottom: 12 }}
@@ -1838,7 +1850,7 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <Info size={14} />
-                    <span>健康诊断</span>
+                    <span>{t('consumer.tabHealth')}</span>
                   </Space>
                 ),
                 children: selectedGroupHealth && (
@@ -1850,10 +1862,10 @@ const ConsumerPageContent = ({
                             {selectedGroupHealth.statusText}
                           </Tag>
                           <Text type="secondary">
-                            汇总订阅、队列进度和在线客户端，定位消费风险。
+                            {t('consumer.healthSummaryText')}
                           </Text>
                         </Space>
-                        <Text type="secondary">诊断结果随详情弹窗每 2 秒自动刷新。</Text>
+                        <Text type="secondary">{t('consumer.healthAutoRefreshNote')}</Text>
                       </Space>
                       <Button
                         size="small"
@@ -1864,7 +1876,7 @@ const ConsumerPageContent = ({
                           void loadProgress(selectedGroup.name, true);
                         }}
                       >
-                        重新诊断
+                        {t('consumer.rediagnose')}
                       </Button>
                     </Flex>
 
@@ -1872,7 +1884,7 @@ const ConsumerPageContent = ({
                       <Alert
                         type="warning"
                         showIcon
-                        message="订阅一致性检查失败，诊断仍使用当前可用的进度和客户端数据。"
+                        message={t('consumer.healthUsingAvailableData')}
                       />
                     )}
 
@@ -1880,7 +1892,7 @@ const ConsumerPageContent = ({
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
                           <Statistic
-                            title="健康分"
+                            title={t('consumer.healthScore')}
                             value={selectedGroupHealth.summary.healthScore}
                             suffix="/ 100"
                             valueStyle={{
@@ -1908,16 +1920,16 @@ const ConsumerPageContent = ({
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
                           <Statistic
-                            title="已知堆积"
+                            title={t('consumer.knownLag')}
                             value={selectedGroupHealth.summary.totalKnownLag}
                             valueStyle={{
                               color: lagColor(selectedGroupHealth.summary.totalKnownLag),
                             }}
                           />
                           <Text type="secondary">
-                            报告堆积：
+                            {t('consumer.reportedLagPrefix')}
                             {selectedGroupHealth.summary.reportedLag === null
-                              ? UNAVAILABLE_LAG_LABEL
+                              ? t('groupMgmt.lagUnavailable')
                               : selectedGroupHealth.summary.reportedLag.toLocaleString()}
                           </Text>
                         </Card>
@@ -1925,27 +1937,31 @@ const ConsumerPageContent = ({
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
                           <Statistic
-                            title="Queue 覆盖"
+                            title={t('consumer.queueCoverage')}
                             value={selectedGroupHealth.summary.queueCount}
                             suffix={`/${selectedGroupHealth.summary.subscribedTopicCount} Topic`}
                           />
                           <Text type="secondary">
                             {selectedGroupHealth.summary.unknownQueueCount > 0
-                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个 Queue 堆积不可用`
-                              : 'Queue 堆积均可计算'}
+                              ? t('consumer.unknownQueues', {
+                                  count: String(selectedGroupHealth.summary.unknownQueueCount),
+                                })
+                              : t('consumer.allQueuesComputable')}
                           </Text>
                         </Card>
                       </Col>
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
                           <Statistic
-                            title="客户端"
+                            title={t('consumer.clientsCard')}
                             value={selectedGroupHealth.summary.onlineInstances}
                           />
                           <Text type="secondary">
                             {selectedGroupHealth.summary.staleClientCount > 0
-                              ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                              : '心跳状态正常'}
+                              ? t('consumer.staleClients', {
+                                  count: String(selectedGroupHealth.summary.staleClientCount),
+                                })
+                              : t('consumer.heartbeatOk')}
                           </Text>
                         </Card>
                       </Col>
@@ -1961,14 +1977,14 @@ const ConsumerPageContent = ({
                         scroll={{ x: tableScrollX(healthIssueColumns) }}
                       />
                     ) : (
-                      <Alert type="success" showIcon message="未发现消费组健康风险" />
+                      <Alert type="success" showIcon message={t('consumer.noHealthRisks')} />
                     )}
 
                     {selectedGroupHealth.recommendations.length > 0 && (
                       <Alert
                         type="info"
                         showIcon
-                        message="处理建议"
+                        message={t('consumer.recommendations')}
                         description={
                           <Space direction="vertical" size={4}>
                             {selectedGroupHealth.recommendations.map((recommendation) => (
