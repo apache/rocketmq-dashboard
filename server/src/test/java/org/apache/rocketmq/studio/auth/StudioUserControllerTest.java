@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -35,6 +36,7 @@ import java.util.List;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -97,5 +99,62 @@ class StudioUserControllerTest {
                 .andExpect(jsonPath("$.data.items").isEmpty())
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(20));
+    }
+
+    @Test
+    void createUserDelegatesAndReturnsAMaskedView() throws Exception {
+        RmqStudioUser created = new RmqStudioUser();
+        created.setId(8L);
+        created.setUsername("alice");
+        created.setPasswordHash("must-not-be-exposed");
+        created.setAdmin(true);
+        created.setEnabled(true);
+        when(authService.createUser("alice", "password123", true)).thenReturn(created);
+
+        mockMvc.perform(post("/api/studio-users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"alice\",\"password\":\"password123\",\"admin\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.username").value("alice"))
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
+
+        verify(authService).createUser("alice", "password123", true);
+    }
+
+    @Test
+    void updateStatusDelegatesWithThePathUserId() throws Exception {
+        RmqStudioUser updated = new RmqStudioUser();
+        updated.setId(7L);
+        updated.setUsername("operator");
+        updated.setEnabled(false);
+        when(authService.setUserEnabled(7L, false)).thenReturn(updated);
+
+        mockMvc.perform(post("/api/studio-users/7/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        verify(authService).setUserEnabled(7L, false);
+    }
+
+    @Test
+    void resetPasswordDelegates() throws Exception {
+        mockMvc.perform(post("/api/studio-users/7/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\":\"newpassword1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(authService).changePassword(7L, null, "newpassword1", false);
+    }
+
+    @Test
+    void rejectsUsersWithTooShortPasswords() throws Exception {
+        mockMvc.perform(post("/api/studio-users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"alice\",\"password\":\"short\"}"))
+                .andExpect(status().isBadRequest());
     }
 }
