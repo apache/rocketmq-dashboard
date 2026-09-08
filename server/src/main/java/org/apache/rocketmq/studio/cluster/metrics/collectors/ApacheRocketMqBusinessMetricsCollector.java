@@ -129,6 +129,15 @@ public class ApacheRocketMqBusinessMetricsCollector implements BusinessMetricsCo
         Map<String, String> labels = Map.of("consumerGroup", group.getName());
         try {
             List<QueueProgressVO> progress = provider.getGroupProgress(instance.getName(), group.getName());
+            if (progress.stream().anyMatch(row -> row.getDiffTotal() == ConsumerLagResolver.UNKNOWN)) {
+                // diffTotal carries the -1 unknown sentinel (RocketMQ 5.0 gRPC consumers); clamping
+                // it would feed max-queue/backlog alerts a fabricated zero-lag AVAILABLE sample,
+                // the same way consumer.lag.total did before it was fixed.
+                return List.of(unavailable(CONSUMER_LAG_MAX_QUEUE, instance, labels, collectedAt,
+                        "CONSUMER_LAG_UNKNOWN"),
+                        unavailable(TOPIC_BACKLOG_TOTAL, instance, labels, collectedAt,
+                                "CONSUMER_LAG_UNKNOWN"));
+            }
             long maxLag = progress.stream().mapToLong(QueueProgressVO::getDiffTotal)
                     .map(value -> Math.max(0, value)).max().orElse(0);
             List<MetricSample> samples = new ArrayList<>();
