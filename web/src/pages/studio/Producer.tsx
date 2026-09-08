@@ -43,6 +43,7 @@ import {
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import ProducerGroupCompositionDrawer from '../../components/ProducerGroupCompositionDrawer';
 
 const readinessConfig: Record<ProducerReadiness, { color: string; type: 'success' | 'warning' }> = {
   READY: { color: 'success', type: 'success' },
@@ -83,6 +84,7 @@ const ProducerPage = () => {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const [compositionOpen, setCompositionOpen] = useState(false);
   const { t } = useLang();
   const { message } = App.useApp();
   const fetchTopicFailedMessage = t('producer.fetchTopicFailed');
@@ -303,6 +305,9 @@ const ProducerPage = () => {
         }}
       >
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>{t('producer.title')}</h2>
+        <Button disabled={connectionList.length === 0} onClick={() => setCompositionOpen(true)}>
+          {t('producerComposition.open')}
+        </Button>
       </div>
 
       <Card
@@ -446,6 +451,15 @@ const ProducerPage = () => {
           size="middle"
         />
       </Card>
+      {compositionOpen && (
+        <ProducerGroupCompositionDrawer
+          open
+          instanceId={selectedInstanceId ?? ''}
+          topic={form.getFieldValue('selectedTopic') ?? ''}
+          connections={connectionList}
+          onClose={() => setCompositionOpen(false)}
+        />
+      )}
     </div>
   );
 };
