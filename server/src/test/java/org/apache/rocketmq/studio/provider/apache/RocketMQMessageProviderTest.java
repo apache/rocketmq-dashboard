@@ -456,6 +456,20 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void discardedMessageKeepsPhysicalIdSeparateFromClientId() {
+        var message = new org.apache.rocketmq.common.message.MessageClientExt();
+        message.setOffsetMsgId("7F00000100002A9F000000000000002A");
+        org.apache.rocketmq.common.message.MessageAccessor.putProperty(message,
+                org.apache.rocketmq.common.message.MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, "client-id");
+        message.setTopic(org.apache.rocketmq.common.topic.TopicValidator.RMQ_SYS_TRANS_CHECK_MAX_TIME_TOPIC);
+
+        MessageRecordVO record = provider.toRecordVO(message);
+
+        assertThat(record.getMsgId()).isEqualTo("client-id");
+        assertThat(record.getOffsetMsgId()).isEqualTo("7F00000100002A9F000000000000002A");
+    }
+
+    @Test
     void toRecordVOBoundsMessageBodyAndProperties() {
         MessageExt message = new MessageExt();
         message.setMsgId("msg-1");
@@ -467,6 +481,7 @@ class RocketMQMessageProviderTest {
         }
 
         MessageRecordVO record = provider.toRecordVO(message);
+        assertThat(record.getOffsetMsgId()).isEqualTo("msg-1");
 
         assertThat(record.isBodyTruncated()).isTrue();
         assertThat(record.getBody()).hasSize(64 * 1024);

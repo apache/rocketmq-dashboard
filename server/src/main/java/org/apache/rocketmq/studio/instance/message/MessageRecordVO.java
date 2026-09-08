@@ -29,6 +29,7 @@ import java.util.Map;
 @AllArgsConstructor
 public class MessageRecordVO {
     private String msgId;
+    private String offsetMsgId;
     private String topic;
     private String tag;
     private String key;
