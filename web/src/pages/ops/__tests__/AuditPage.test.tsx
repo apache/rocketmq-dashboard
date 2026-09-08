@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, message } from 'antd';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -325,5 +325,52 @@ describe('Audit page', () => {
     await user.click(await screen.findByRole('button', { name: '确认清理' }));
 
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
+  });
+
+  it('copies the row audit record as pretty-printed JSON', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const successSpy = vi.spyOn(message, 'success').mockImplementation(vi.fn());
+    const record = {
+      id: 1,
+      timestamp: '2026-08-01 10:00:00',
+      operator: 'admin',
+      operationType: 'DELETE_TOPIC',
+      resourceType: 'TOPIC',
+      target: 'topic-a',
+      clusterId: 'prod-cn',
+      detail: 'removed topic-a',
+      result: 'SUCCESS',
+      errorMessage: '',
+    };
+    try {
+      renderWithProviders(<AuditPage />);
+
+      await user.click(await screen.findByRole('button', { name: '复制 JSON' }));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      expect(writeText).toHaveBeenCalledWith(JSON.stringify(record, null, 2));
+      expect(successSpy).toHaveBeenCalledWith('已复制到剪贴板');
+    } finally {
+      successSpy.mockRestore();
+    }
+  });
+
+  it('falls back to a hidden textarea when the clipboard API is unavailable', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+    try {
+      renderWithProviders(<AuditPage />);
+
+      await user.click(await screen.findByRole('button', { name: '复制 JSON' }));
+
+      await waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'));
+      expect(document.querySelector('textarea')).toBeNull();
+    } finally {
+      delete (document as { execCommand?: unknown }).execCommand;
+    }
   });
 });
