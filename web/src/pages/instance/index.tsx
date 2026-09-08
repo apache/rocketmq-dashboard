@@ -74,6 +74,12 @@ const typeLabel: Record<string, { text: string; color: string }> = {
   DIRECT: { text: 'Direct', color: 'orange' },
 };
 
+const formatClock = (timestamp: number): string => {
+  const d = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 function describeApiError(error: unknown, fallback: string): string {
   const serverMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
     ?.message;
@@ -108,6 +114,7 @@ const InstancePage = () => {
   const navigate = useNavigate();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<InstanceTypeFilter>('ALL');
@@ -148,6 +155,7 @@ const InstancePage = () => {
       const nextInstances = await listInstances(query);
       if (requestId === requestIdRef.current) {
         setInstances(nextInstances);
+        setLastLoadedAt(Date.now());
         const availableNames = new Set(nextInstances.map((instance) => instance.name));
         setSelectedRowKeys((keys) => keys.filter((key) => availableNames.has(String(key))));
       }
@@ -646,6 +654,13 @@ const InstancePage = () => {
         <div style={{ marginTop: 6, fontSize: 14, color: '#9CA3AF' }}>
           接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {instances.length} 个实例
         </div>
+        {lastLoadedAt !== null && (
+          <div style={{ marginTop: 2 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {t('instance.lastUpdated', { time: formatClock(lastLoadedAt) })}
+            </Text>
+          </div>
+        )}
       </div>
 
       {/* Filter bar */}
