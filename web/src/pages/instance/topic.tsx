@@ -39,7 +39,6 @@ import {
   Typography,
   Spin,
   message,
-  App,
   Progress,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
@@ -62,6 +61,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import TopicConfigComparisonDrawer from '../../components/TopicConfigComparisonDrawer';
+import TopicDeleteImpactModal from '../../components/TopicDeleteImpactModal';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -101,6 +101,11 @@ import {
   type MessagePayloadPreviewStatus,
   type MessagePropertyInput,
 } from '../../utils/messagePayloadPreview';
+import {
+  analyzeTopicDeleteImpact,
+  summarizeTopicDeleteImpacts,
+  type TopicDeleteImpactAssessment,
+} from '../../utils/topicDeleteImpact';
 
 const { Text } = Typography;
 
@@ -164,6 +169,11 @@ type SendMessageFormValues = {
   body: string;
   propsText?: string;
   properties?: MessagePropertyInput[];
+};
+
+type DeleteImpactTarget = {
+  mode: 'single' | 'batch';
+  topics: Topic[];
 };
 
 const visibleTopics = (
@@ -384,7 +394,6 @@ const TopicPage = () => {
   const sendPropsTextValue = Form.useWatch('propsText', sendForm);
   const sendPropertiesValue = Form.useWatch('properties', sendForm) as
     MessagePropertyInput[] | undefined;
-  const { modal } = App.useApp();
   const importInputRef = useRef<HTMLInputElement>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFilename, setImportFilename] = useState('');
@@ -393,11 +402,20 @@ const TopicPage = () => {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [comparisonOpen, setComparisonOpen] = useState(false);
+  const [deleteImpactOpen, setDeleteImpactOpen] = useState(false);
+  const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
+  const [deleteImpactError, setDeleteImpactError] = useState<string | null>(null);
+  const [deleteImpactTarget, setDeleteImpactTarget] = useState<DeleteImpactTarget | null>(null);
+  const [deleteImpactAssessments, setDeleteImpactAssessments] = useState<
+    TopicDeleteImpactAssessment[]
+  >([]);
+  const [deletingTopics, setDeletingTopics] = useState(false);
 
   const topicRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
   const consumersRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
+  const deleteImpactRequestIdRef = useRef(0);
 
   const sendPayloadPreview = useMemo(
     () =>
@@ -420,6 +438,17 @@ const TopicPage = () => {
       sendTopic?.name,
     ],
   );
+  const deleteImpactSummary = useMemo(
+    () =>
+      deleteImpactAssessments.length > 0
+        ? summarizeTopicDeleteImpacts(deleteImpactAssessments)
+        : null,
+    [deleteImpactAssessments],
+  );
+  const deleteImpactTitle =
+    deleteImpactTarget?.mode === 'batch'
+      ? `删除影响预检（${deleteImpactTarget.topics.length} 个 Topic）`
+      : `删除影响预检：${deleteImpactTarget?.topics[0]?.name ?? ''}`;
 
   const loadTopicPage = useCallback(
     async (pageToLoad: number, pageSizeToLoad: number) => {
@@ -624,6 +653,129 @@ const TopicPage = () => {
     }
   };
 
+  const loadDeleteImpact = useCallback(
+    async (target: DeleteImpactTarget) => {
+      const requestId = ++deleteImpactRequestIdRef.current;
+      setDeleteImpactLoading(true);
+      setDeleteImpactError(null);
+      setDeleteImpactAssessments([]);
+
+      try {
+        const assessments = await Promise.all(
+          target.topics.map(async (topic) => {
+            const instanceId = topic.instanceId || selectedInstanceId || undefined;
+            let consumers: ConsumerGroupInfo[] = [];
+            let consumerTotal: number | undefined;
+            let consumerLookupFailed = false;
+            let routes: BrokerRoute[] = [];
+            let routeLookupFailed = false;
+
+            try {
+              const consumerPage = await getTopicConsumerPage(topic.name, instanceId, 1, 100);
+              consumers = consumerPage.items;
+              consumerTotal = consumerPage.total;
+            } catch {
+              consumerLookupFailed = true;
+            }
+
+            if (!isCloudInstance) {
+              try {
+                routes = await getTopicRoutes(topic.name, instanceId);
+              } catch {
+                routeLookupFailed = true;
+              }
+            }
+
+            return analyzeTopicDeleteImpact({
+              topic,
+              consumers,
+              consumerTotal,
+              routes,
+              consumerLookupFailed,
+              routeLookupFailed,
+              isCloudInstance,
+            });
+          }),
+        );
+
+        if (requestId === deleteImpactRequestIdRef.current) {
+          setDeleteImpactAssessments(assessments);
+        }
+      } catch (error) {
+        if (requestId === deleteImpactRequestIdRef.current) {
+          setDeleteImpactError(error instanceof Error ? error.message : '删除影响预检失败');
+        }
+      } finally {
+        if (requestId === deleteImpactRequestIdRef.current) {
+          setDeleteImpactLoading(false);
+        }
+      }
+    },
+    [isCloudInstance, selectedInstanceId],
+  );
+
+  const openDeleteImpact = useCallback(
+    (mode: DeleteImpactTarget['mode'], targetTopics: Topic[]) => {
+      if (targetTopics.length === 0) {
+        message.warning('请选择要删除的 Topic');
+        return;
+      }
+      const target = { mode, topics: targetTopics };
+      setDeleteImpactTarget(target);
+      setDeleteImpactOpen(true);
+      void loadDeleteImpact(target);
+    },
+    [loadDeleteImpact],
+  );
+
+  const closeDeleteImpact = () => {
+    if (deletingTopics) return;
+    deleteImpactRequestIdRef.current += 1;
+    setDeleteImpactOpen(false);
+    setDeleteImpactTarget(null);
+    setDeleteImpactAssessments([]);
+    setDeleteImpactError(null);
+    setDeleteImpactLoading(false);
+  };
+
+  const handleDeleteImpactConfirm = async () => {
+    if (!deleteImpactTarget || !deleteImpactSummary?.canDelete) return;
+    const names = deleteImpactTarget.topics.map((topic) => topic.name);
+    setDeletingTopics(true);
+    try {
+      if (deleteImpactTarget.mode === 'single') {
+        const topic = deleteImpactTarget.topics[0];
+        await deleteTopic(topic.name, topic.instanceId || selectedInstanceId || undefined);
+        await reloadTopicPageAfterDelete();
+        setSelectedRowKeys((previous) => previous.filter((key) => key !== topic.name));
+        message.success(`Topic「${topic.name}」已删除`);
+      } else {
+        const { deleted, failed } = await batchDeleteTopics(names, selectedInstanceId || undefined);
+        if (deleted.length > 0) await reloadTopicPageAfterDelete();
+        setSelectedRowKeys(failed);
+
+        if (failed.length === 0) {
+          message.success(`已删除 ${deleted.length} 个 Topic`);
+        } else if (deleted.length > 0) {
+          message.warning(`已删除 ${deleted.length} 个 Topic，${failed.length} 个删除失败`);
+        } else {
+          message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
+        }
+      }
+      setDeleteImpactOpen(false);
+      setDeleteImpactTarget(null);
+      setDeleteImpactAssessments([]);
+    } catch {
+      message.error(
+        deleteImpactTarget.mode === 'single'
+          ? '删除 Topic 失败，请稍后重试'
+          : '批量删除 Topic 失败，请稍后重试',
+      );
+    } finally {
+      setDeletingTopics(false);
+    }
+  };
+
   const handleAction = (key: string, topic: Topic) => {
     if (key === 'detail') {
       void openDetail(topic);
@@ -635,22 +787,7 @@ const TopicPage = () => {
       sendForm.setFieldsValue({ topic: topic.name, tag: '', key: '', body: '', properties: [] });
       setSendModalOpen(true);
     } else if (key === 'delete') {
-      modal.confirm({
-        title: '确认删除',
-        content: `确定要删除 Topic「${topic.name}」吗？此操作不可撤销。`,
-        okText: '删除',
-        okType: 'danger',
-        cancelText: '取消',
-        onOk: async () => {
-          try {
-            await deleteTopic(topic.name, selectedInstanceId || undefined);
-            await reloadTopicPageAfterDelete();
-            message.success(`Topic「${topic.name}」已删除`);
-          } catch {
-            message.error('删除 Topic 失败，请稍后重试');
-          }
-        },
-      });
+      openDeleteImpact('single', [topic]);
     }
   };
 
@@ -1491,36 +1628,13 @@ const TopicPage = () => {
               danger
               icon={<DeleteOutlined />}
               onClick={() => {
-                Modal.confirm({
-                  title: '确认批量删除',
-                  content: `确定要删除选中的 ${selectedRowKeys.length} 个 Topic 吗？此操作不可撤销。`,
-                  okText: '删除',
-                  okType: 'danger',
-                  cancelText: '取消',
-                  onOk: async () => {
-                    try {
-                      const names = selectedRowKeys.map(String);
-                      const { deleted, failed } = await batchDeleteTopics(
-                        names,
-                        selectedInstanceId || undefined,
-                      );
-                      if (deleted.length > 0) await reloadTopicPageAfterDelete();
-                      setSelectedRowKeys(failed);
-
-                      if (failed.length === 0) {
-                        message.success(`已删除 ${deleted.length} 个 Topic`);
-                      } else if (deleted.length > 0) {
-                        message.warning(
-                          `已删除 ${deleted.length} 个 Topic，${failed.length} 个删除失败`,
-                        );
-                      } else {
-                        message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
-                      }
-                    } catch {
-                      message.error('批量删除 Topic 失败，请稍后重试');
-                    }
-                  },
-                });
+                const names = new Set(selectedRowKeys.map(String));
+                const selectedTopics = topics.filter((topic) => names.has(topic.name));
+                if (selectedTopics.length !== selectedRowKeys.length) {
+                  message.warning('选中 Topic 不在当前列表，请刷新后重试');
+                  return;
+                }
+                openDeleteImpact('batch', selectedTopics);
               }}
             >
               删除 ({selectedRowKeys.length})
@@ -2030,6 +2144,21 @@ const TopicPage = () => {
           </>
         )}
       </Modal>
+
+      <TopicDeleteImpactModal
+        open={deleteImpactOpen}
+        loading={deleteImpactLoading}
+        deleting={deletingTopics}
+        title={deleteImpactTitle}
+        assessments={deleteImpactAssessments}
+        summary={deleteImpactSummary}
+        error={deleteImpactError}
+        onCancel={closeDeleteImpact}
+        onRetry={() => {
+          if (deleteImpactTarget) void loadDeleteImpact(deleteImpactTarget);
+        }}
+        onConfirm={() => void handleDeleteImpactConfirm()}
+      />
     </div>
   );
 };

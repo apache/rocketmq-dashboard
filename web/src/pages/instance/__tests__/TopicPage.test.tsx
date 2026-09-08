@@ -439,16 +439,86 @@ describe('TopicPage', () => {
 
     const row = await screen.findByRole('row', { name: /topic-01/ });
     await user.click(within(row).getByRole('button', { name: /删除/ }));
-    const dialog = (await screen.findByText(/确定要删除 Topic「topic-01」/)).closest(
+    const dialog = (await screen.findByText('删除影响预检：topic-01')).closest(
       '.ant-modal',
     ) as HTMLElement;
-    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    expect(await within(dialog).findByText('未发现明显消费者或路由依赖。')).toBeInTheDocument();
+    expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenCalledWith(
+      'topic-01',
+      'instance-proxy-1',
+      1,
+      100,
+    );
+    await user.click(within(dialog).getByRole('button', { name: /确认删除/ }));
 
     await waitFor(() =>
       expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
     );
     await waitFor(() => expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(2));
     expect(screen.getByText('共 0 个 Topic')).toBeInTheDocument();
+  });
+
+  it('previews topic delete impact from consumers and routes before deleting', async () => {
+    const user = userEvent.setup();
+    const topic = {
+      ...buildTopics(1)[0],
+      consumerGroupCount: 1,
+      messageCount: 1200,
+      tps: 15,
+    };
+    mockTopicsList([topic]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'GID_orders',
+          consumeType: 'CONSUME_PASSIVELY',
+          messageModel: '集群消费',
+          consumeTps: 6,
+          diffTotal: 450,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+    });
+    topicServiceMocks.getTopicRoutes.mockResolvedValue([
+      {
+        brokerName: 'broker-a',
+        brokerAddr: '10.0.0.1:10911',
+        masterAddr: '10.0.0.1:10911',
+        brokerAddrs: { '0': '10.0.0.1:10911' },
+        brokerIds: [0],
+        replicaCount: 0,
+        writeQueues: 8,
+        readQueues: 8,
+        perm: 'RW',
+        readable: true,
+        writable: true,
+        topicSysFlag: 0,
+      },
+    ]);
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    renderWithProviders();
+
+    const row = await screen.findByRole('row', { name: /topic-01/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+    const dialog = (await screen.findByText('删除影响预检：topic-01')).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+
+    expect(await within(dialog).findByText(/发现 1 个高风险 Topic/)).toBeInTheDocument();
+    expect(within(dialog).getAllByText('高风险').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText('仍有关联消费者组')).toBeInTheDocument();
+    expect(within(dialog).getByText('存在活跃消费')).toBeInTheDocument();
+    expect(within(dialog).getByText('仍有消费堆积')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('可写路由').length).toBeGreaterThan(0);
+    expect(topicServiceMocks.deleteTopic).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: /确认删除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
   });
 
   it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
@@ -562,12 +632,17 @@ describe('TopicPage', () => {
     await user.click(screen.getAllByRole('checkbox')[0]);
     await user.click(screen.getByRole('button', { name: /删除 \(3\)$/ }));
 
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    const dialog = (await screen.findByText('删除影响预检（3 个 Topic）')).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    expect(await within(dialog).findByText(/发现 2 个需要确认的 Topic/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /确认删除/ }));
 
-    await waitFor(() => expect(screen.queryByText('topic-01')).not.toBeInTheDocument());
-    expect(screen.getByText('topic-02')).toBeInTheDocument();
-    expect(screen.queryByText('topic-03')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument(),
+    );
+    expect(within(getTableBody()).getByText('topic-02')).toBeInTheDocument();
+    expect(within(getTableBody()).queryByText('topic-03')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
     expect(screen.getByText('已删除 2 个 Topic，1 个删除失败')).toBeInTheDocument();
     expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith({
@@ -614,10 +689,11 @@ describe('TopicPage', () => {
     expect(await screen.findByText('topic-21')).toBeInTheDocument();
     await user.click(screen.getAllByRole('checkbox')[0]);
     await user.click(screen.getByRole('button', { name: /删除 \(1\)$/ }));
-    const dialog = (await screen.findByText(/确定要删除选中的 1 个 Topic/)).closest(
+    const dialog = (await screen.findByText('删除影响预检（1 个 Topic）')).closest(
       '.ant-modal',
     ) as HTMLElement;
-    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+    expect(await within(dialog).findByText(/发现 1 个需要确认的 Topic/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /确认删除/ }));
 
     await waitFor(() =>
       expect(topicServiceMocks.batchDeleteTopics).toHaveBeenCalledWith(
@@ -625,8 +701,10 @@ describe('TopicPage', () => {
         'instance-proxy-1',
       ),
     );
-    await waitFor(() => expect(screen.queryByText('topic-21')).not.toBeInTheDocument());
-    expect(screen.getByText('topic-01')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(getTableBody()).queryByText('topic-21')).not.toBeInTheDocument(),
+    );
+    expect(within(getTableBody()).getByText('topic-01')).toBeInTheDocument();
     expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith({
       instanceId: 'instance-proxy-1',
       type: undefined,
