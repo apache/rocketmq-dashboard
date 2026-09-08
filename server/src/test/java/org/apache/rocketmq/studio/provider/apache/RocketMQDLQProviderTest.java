@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
@@ -28,6 +29,7 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -520,6 +522,30 @@ class RocketMQDLQProviderTest {
                 isNull(),
                 contains("scanFailedQueues=all"),
                 eq("FAILED"));
+    }
+
+    @Test
+    void resendMessagesReturnsEmptyWhenDlqTopicNotExist() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: " + dlqTopic));
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+
+        provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
+
+        verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
+        verify(pullConsumer).fetchSubscribeMessageQueues(dlqTopic);
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verify(auditService).record(
+                eq("RESEND_DLQ"),
+                eq("DLQ"),
+                eq("group-a"),
+                isNull(),
+                contains("matched=0, resent=0, failed=0"),
+                eq("NO_MESSAGES"));
     }
 
     @Test

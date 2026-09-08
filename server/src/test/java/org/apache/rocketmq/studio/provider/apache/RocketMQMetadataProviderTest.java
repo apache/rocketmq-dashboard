@@ -22,6 +22,8 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
@@ -412,6 +414,15 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicRoutesReturnsEmptyListWhenTopicNotExist() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: TopicA"));
+
+        assertThat(newLiveProvider(admin).getTopicRoutes(null, "TopicA")).isEmpty();
+    }
+
+    @Test
     void getTopicConsumersSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new IllegalStateException("broker unavailable"));
@@ -420,6 +431,18 @@ class RocketMQMetadataProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to get consumers for topic TopicA: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getTopicConsumersReturnsEmptyPageWhenTopicNotExist() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: TopicA"));
+
+        TopicConsumerPageVO result = newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isZero();
     }
 
     @Test

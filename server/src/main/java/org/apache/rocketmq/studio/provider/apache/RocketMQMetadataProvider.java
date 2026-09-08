@@ -31,9 +31,11 @@ import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
@@ -447,6 +449,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             }
             return routes;
         } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                log.info("getTopicRoutes(topic={}) not found ({}), returning empty list", name, e.getMessage());
+                return Collections.emptyList();
+            }
             log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get routes for topic " + name + ": " + e.getMessage());
         }
@@ -574,6 +580,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     .pageSize(pageSize)
                     .build();
         } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                log.info("getTopicConsumersPage(topic={}) not found ({}), returning empty page", name, e.getMessage());
+                return TopicConsumerPageVO.builder().items(List.of()).total(0).page(page).pageSize(pageSize).build();
+            }
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
         }
