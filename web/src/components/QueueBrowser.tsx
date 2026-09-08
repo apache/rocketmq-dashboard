@@ -197,7 +197,13 @@ export const QueueBrowserControls = ({
   </Flex>
 );
 
-export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => (
+export const QueueBrowserResults = ({
+  state,
+  onInspectIndex,
+}: {
+  state: QueueBrowserState;
+  onInspectIndex?: (queue: QueueOffset) => void;
+}) => (
   <Card>
     {state.loading ? (
       <Flex justify="center" style={{ padding: 32 }}>
@@ -280,14 +286,21 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                 render: (_: unknown, record: QueueOffset) => {
                   const key = `${record.brokerName}-${record.queueId}`;
                   return (
-                    <Button
-                      size="small"
-                      type="primary"
-                      loading={state.pulling.has(key)}
-                      onClick={() => void state.handlePull(record)}
-                    >
-                      查看
-                    </Button>
+                    <Space direction="vertical">
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={state.pulling.has(key)}
+                        onClick={() => void state.handlePull(record)}
+                      >
+                        查看
+                      </Button>
+                      {onInspectIndex && (
+                        <Button size="small" onClick={() => onInspectIndex(record)}>
+                          Inspect index
+                        </Button>
+                      )}
+                    </Space>
                   );
                 },
               },
