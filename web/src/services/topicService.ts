@@ -42,6 +42,8 @@ const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] =>
   }));
 const cloneConsumers = (consumers: ConsumerGroupInfo[]): ConsumerGroupInfo[] =>
   consumers.map((consumer) => ({ ...consumer }));
+const matchesTopicInstance = (topic: Topic, instanceId?: string): boolean =>
+  !instanceId || topic.instanceId === instanceId;
 
 function filterMockTopics(params?: TopicQuery): Topic[] {
   let result = [...mockTopics];
@@ -107,7 +109,10 @@ export const listAllTopics = async (params: TopicQuery = {}): Promise<Topic[]> =
 export async function createTopic(data: Partial<Topic>): Promise<Topic> {
   if (isMockMode()) {
     const duplicate = mockTopics.some(
-      (topic) => topic.name === data.name && topic.clusterId === data.clusterId,
+      (topic) =>
+        topic.name === data.name &&
+        topic.clusterId === data.clusterId &&
+        matchesTopicInstance(topic, data.instanceId),
     );
     if (duplicate) throw new Error(`Topic already exists: ${data.name}`);
 
@@ -158,7 +163,9 @@ export async function exportTopics(params: TopicExportQuery = {}): Promise<strin
 
 export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
   if (isMockMode()) {
-    const idx = mockTopics.findIndex((t) => t.name === data.name);
+    const idx = mockTopics.findIndex(
+      (t) => t.name === data.name && matchesTopicInstance(t, data.instanceId),
+    );
     if (idx < 0) throw new Error(`Topic not found: ${data.name}`);
     Object.assign(mockTopics[idx], data, { gmtModified: new Date().toISOString() });
     return cloneTopic(mockTopics[idx] as unknown as Topic);
@@ -168,7 +175,9 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
 
 export async function deleteTopic(name: string, instanceId?: string): Promise<void> {
   if (isMockMode()) {
-    const idx = mockTopics.findIndex((t) => t.name === name);
+    const idx = mockTopics.findIndex(
+      (t) => t.name === name && matchesTopicInstance(t, instanceId),
+    );
     if (idx >= 0) mockTopics.splice(idx, 1);
     return;
   }
