@@ -58,6 +58,7 @@ import type {
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
+import SystemAlertIncidentExplorerDrawer from '../../components/SystemAlertIncidentExplorerDrawer';
 
 const { Text } = Typography;
 
@@ -167,6 +168,7 @@ const SystemAlertsPage = () => {
   const [relatedAlerts, setRelatedAlerts] = useState<Record<number, SystemAlert[]>>({});
   const [loadingRelatedIds, setLoadingRelatedIds] = useState<Set<number>>(() => new Set());
   const [silencesVisible, setSilencesVisible] = useState(false);
+  const [incidentExplorerOpen, setIncidentExplorerOpen] = useState(false);
   const [silences, setSilences] = useState<AlertSilence[]>([]);
   const [loadingSilences, setLoadingSilences] = useState(false);
   const [silencePage, setSilencePage] = useState(1);
@@ -455,6 +457,9 @@ const SystemAlertsPage = () => {
         subtitle={t('sysAlerts.subtitle', { n: unackCount })}
         extra={
           <Flex gap={8}>
+            <Button onClick={() => setIncidentExplorerOpen(true)}>
+              {t('incidentExplorer.open')}
+            </Button>
             <Button
               icon={<DownloadSimple size={14} />}
               onClick={() => void exportAlerts()}
@@ -474,6 +479,10 @@ const SystemAlertsPage = () => {
           </Flex>
         }
       />
+
+      {incidentExplorerOpen && (
+        <SystemAlertIncidentExplorerDrawer open onClose={() => setIncidentExplorerOpen(false)} />
+      )}
 
       <Flex gap={8} style={{ marginBottom: 16 }}>
         {['all', 'error', 'warning', 'info'].map((level) => (
