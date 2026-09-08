@@ -432,6 +432,8 @@ tools:
           minLength: 1
         topic:
           type: string
+        traceTopic:
+          type: string
     outputSchema:
       type: object
       required:
