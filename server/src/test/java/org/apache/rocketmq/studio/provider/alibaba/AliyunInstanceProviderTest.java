@@ -28,6 +28,7 @@ import com.aliyun.sdk.service.rocketmq20220801.models.GetTraceResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsRequest;
@@ -45,6 +46,7 @@ import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
@@ -422,6 +424,73 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesDetailedShouldReportTruncationAtPageBudgetTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenAnswer(invocation -> {
+            ListMessagesRequest request = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(messagesResponse(
+                    101L, request.getPageNumber(), AliyunConverters.MESSAGE_PAGE_SIZE, "tagA"));
+        });
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+
+        assertThat(result.messages()).hasSize(100);
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(asyncClient, times(AliyunConverters.MESSAGE_MAX_PAGES)).listMessages(any());
+    }
+
+    @Test
+    void queryMessagesDetailedShouldPreserveTruncationAfterLocalTagFilterTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenAnswer(invocation -> {
+            ListMessagesRequest request = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(messagesResponse(
+                    null, request.getPageNumber(), AliyunConverters.MESSAGE_PAGE_SIZE, "other-tag"));
+        });
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, "wanted-tag", null, null, null);
+
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isTrue();
+    }
+
+    @Test
+    void queryMessagesDetailedShouldRemainCompleteWhenTotalCountEndsAtBudgetTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenAnswer(invocation -> {
+            ListMessagesRequest request = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(messagesResponse(
+                    100L, request.getPageNumber(), AliyunConverters.MESSAGE_PAGE_SIZE, "tagA"));
+        });
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+
+        assertThat(result.messages()).hasSize(100);
+        assertThat(result.mayBeTruncated()).isFalse();
+    }
+
+    @Test
+    void queryMessagesDetailedShouldRemainCompleteOnShortPageTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenReturn(CompletableFuture.completedFuture(
+                messagesResponse(null, 1, 3, "tagA")));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+
+        assertThat(result.messages()).hasSize(3);
+        assertThat(result.mayBeTruncated()).isFalse();
+        verify(asyncClient).listMessages(any());
+    }
+
+    @Test
     void createConsumerGroupShouldApplyDefaultsTest() {
         stubInstance();
         stubCallThrough();
@@ -684,6 +753,27 @@ class AliyunInstanceProviderTest {
                 .topicName(name)
                 .messageType(messageType)
                 .remark("remark-" + name)
+                .build();
+    }
+
+    private static ListMessagesResponse messagesResponse(Long totalCount, int pageNumber, int count, String tag) {
+        List<ListMessagesResponseBody.List> rows = IntStream.range(0, count)
+                .mapToObj(index -> ListMessagesResponseBody.List.builder()
+                        .messageId("msg-" + pageNumber + "-" + index)
+                        .topicName("topic-a")
+                        .messageTag(tag)
+                        .build())
+                .toList();
+        return ListMessagesResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListMessagesResponseBody.builder()
+                        .data(ListMessagesResponseBody.Data.builder()
+                                .list(rows)
+                                .pageNumber((long) pageNumber)
+                                .pageSize((long) AliyunConverters.MESSAGE_PAGE_SIZE)
+                                .totalCount(totalCount)
+                                .build())
+                        .build())
                 .build();
     }
 
