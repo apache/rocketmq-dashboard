@@ -256,6 +256,11 @@ const SystemAlertsPage = () => {
     try {
       await acknowledgeAlert(id);
       setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)));
+      setAlertSummary((current) =>
+        current && current.unacknowledged > 0
+          ? { ...current, unacknowledged: current.unacknowledged - 1 }
+          : current,
+      );
       message.success(t('sysAlerts.acknowledged'));
     } catch {
       message.error(t('sysAlerts.acknowledgeFailed'));

@@ -128,6 +128,21 @@ describe('SystemAlertsPage', () => {
     expect(screen.getByText(/3 unacknowledged/i)).toBeInTheDocument();
   });
 
+  it('decrements the header count immediately after acknowledging an alert', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(acknowledgeAlert).mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker unavailable');
+    expect(screen.getByText(/3 unacknowledged/i)).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: /^Acknowledge$/ })[0]);
+
+    await waitFor(() => expect(acknowledgeAlert).toHaveBeenCalledWith(1));
+    expect(await screen.findByText(/2 unacknowledged/i)).toBeInTheDocument();
+  });
+
   it('finishes an export when a later page is empty after the result set shrinks', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     vi.mocked(listSystemAlertsPage)
