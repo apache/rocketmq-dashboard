@@ -22,6 +22,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
+import org.apache.rocketmq.studio.common.util.JdbcRowValues;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
@@ -219,8 +220,8 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         List<Map<String, Object>> rows = alertMapper.selectMaps(conditions);
         Map<String, Object> row = rows.isEmpty() ? Map.of() : rows.get(0);
         return SystemAlertSummaryVO.builder()
-                .total(asLong(row, "total_count"))
-                .unacknowledged(asLong(row, "unacknowledged_count"))
+                .total(JdbcRowValues.longValueOrZero(row, "total_count"))
+                .unacknowledged(JdbcRowValues.longValueOrZero(row, "unacknowledged_count"))
                 .build();
     }
 
