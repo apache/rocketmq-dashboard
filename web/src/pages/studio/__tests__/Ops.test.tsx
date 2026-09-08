@@ -22,7 +22,12 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
-import { addNameSvrAddr, deleteNameSvrAddr, queryOpsHomePage, updateIsVIPChannel } from '../../../api/ops';
+import {
+  addNameSvrAddr,
+  deleteNameSvrAddr,
+  queryOpsHomePage,
+  updateIsVIPChannel,
+} from '../../../api/ops';
 import useAuthStore from '../../../stores/authStore';
 
 vi.mock('../../../api/ops', () => ({
@@ -80,9 +85,66 @@ describe('OpsPage', () => {
       expect(queryOpsHomePage).toHaveBeenCalledTimes(1);
     });
 
-    expect(await screen.findByText('127.0.0.1:9876')).toBeInTheDocument();
+    expect((await screen.findAllByText('127.0.0.1:9876')).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('switch')[0]).toBeChecked();
     expect(screen.getAllByRole('switch')[1]).not.toBeChecked();
+  });
+
+  it('renders NameServer configuration preflight details', async () => {
+    renderWithProviders(<OpsPage />);
+
+    expect(await screen.findByText('NameServer 配置预检')).toBeInTheDocument();
+    expect(await screen.findByText('配置预检通过')).toBeInTheDocument();
+    expect(screen.getByText('待确认变更')).toBeInTheDocument();
+    expect(screen.getByText('VIP 通道已启用')).toBeInTheDocument();
+    expect(screen.getByText('当前 NameServer 配置可直接更新')).toBeInTheDocument();
+  });
+
+  it('surfaces pending NameServer switches and additions before saving', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<OpsPage />);
+
+    await screen.findAllByText('127.0.0.1:9876');
+    fireEvent.mouseDown(container.querySelector('.ant-select-selector') as Element);
+    fireEvent.click(
+      await screen.findByText('127.0.0.2:9876', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await user.type(await screen.findByPlaceholderText('NamesrvAddr'), '127.0.0.3:9876');
+
+    expect(screen.getByText('待切换当前 NameServer')).toBeInTheDocument();
+    expect(screen.getByText('127.0.0.1:9876 -> 127.0.0.2:9876')).toBeInTheDocument();
+    expect(screen.getByText('待新增 NameServer')).toBeInTheDocument();
+    expect(screen.getAllByText('127.0.0.3:9876').length).toBeGreaterThan(0);
+  });
+
+  it('blocks duplicate NameServer additions on the client side', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<OpsPage />);
+
+    await user.type(await screen.findByPlaceholderText('NamesrvAddr'), '127.0.0.1:9876');
+    const addButton = screen.getByRole('button', { name: /新增|添加/ });
+
+    expect(addButton).toBeDisabled();
+    fireEvent.click(addButton);
+    expect(addNameSvrAddr).not.toHaveBeenCalled();
+    expect(screen.getByText('待新增地址已存在')).toBeInTheDocument();
+  });
+
+  it('shows a blocked preflight when the current NameServer is missing from the list', async () => {
+    vi.mocked(queryOpsHomePage).mockResolvedValue({
+      namesvrAddrList: ['127.0.0.2:9876'],
+      configurationAvailable: true,
+      useVIPChannel: false,
+      useTLS: false,
+      currentNamesrv: '127.0.0.1:9876',
+    });
+    renderWithProviders(<OpsPage />);
+
+    expect(await screen.findByText('需要先处理阻断项')).toBeInTheDocument();
+    expect(screen.getByText('当前使用地址不在候选列表中')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '更新' })[0]).toBeDisabled();
   });
 
   it('prevents overlapping NameServer mutations', async () => {
