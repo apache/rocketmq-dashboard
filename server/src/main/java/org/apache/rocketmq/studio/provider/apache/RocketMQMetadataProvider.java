@@ -22,6 +22,7 @@ import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -40,6 +41,7 @@ import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
@@ -447,6 +449,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             }
             return routes;
         } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                // A record created in the metadata database without a broker route is a
+                // normal "not synced yet" state — surface an empty route list, not a 502.
+                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                return Collections.emptyList();
+            }
             log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get routes for topic " + name + ": " + e.getMessage());
         }
@@ -574,6 +582,17 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     .pageSize(pageSize)
                     .build();
         } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                // Same as routes: a metadata record without a broker route is a normal
+                // "not synced yet" state, so the consumer page comes back empty.
+                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                return TopicConsumerPageVO.builder()
+                        .items(List.of())
+                        .total(0)
+                        .page(page)
+                        .pageSize(pageSize)
+                        .build();
+            }
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
         }
