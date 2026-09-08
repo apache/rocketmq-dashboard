@@ -85,44 +85,51 @@
 | 42 | POST | `/api/acl/users/create` | 创建 ACL 用户 |
 | 43 | POST | `/api/acl/users/delete` | 删除 ACL 用户 |
 | 44 | GET | `/api/messages` | 消息查询 |
-| 45 | GET | `/api/messages/:msgId/trace` | 消息轨迹 |
-| 46 | GET | `/api/dlq` | 死信队列列表 |
-| 47 | POST | `/api/dlq/resend` | 重发死信 |
-| 48 | GET | `/api/clients` | 客户端连接列表 |
-| 49 | GET | `/api/alert-rules` | 告警规则列表 |
-| 50 | POST | `/api/alert-rules/create` | 创建告警规则 |
-| 51 | POST | `/api/alert-rules/update` | 更新告警规则 |
-| 52 | POST | `/api/alert-rules/toggle` | 切换启用状态 |
-| 53 | POST | `/api/alert-rules/delete` | 删除告警规则 |
-| 54 | GET | `/api/system-alerts` | 系统告警列表 |
-| 55 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
-| 56 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
-| 57 | GET | `/api/audit-logs` | 审计日志列表 |
-| 58 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
-| 59 | GET | `/api/audit-logs/export` | 导出审计日志 |
-| 60 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
-| 61 | GET | `/api/settings/general` | 获取通用设置 |
-| 62 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 63 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
-| 64 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
-| 65 | POST | `/api/settings/datasources/create` | 创建数据源 |
-| 66 | POST | `/api/settings/datasources/update` | 更新数据源 |
-| 67 | POST | `/api/settings/datasources/delete` | 删除数据源 |
-| 68 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 69 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 70 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 71 | GET | `/api/ai/tools` | 可用工具列表 |
-| 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 74 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
-| 75 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
-| 76 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
-| 77 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 78 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 79 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 80 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
-| 81 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
-| 82 | GET | `/api/topics/page` | Topic 分页列表 |
+| 45 | GET | `/api/messages/page` | 分页消息查询 |
+| 46 | GET | `/api/messages/:msgId/trace` | 按消息 ID 查询轨迹 |
+| 47 | GET | `/api/messages/trace-by-key` | 按业务 Key 查询轨迹 |
+| 48 | GET | `/api/messages/queues` | Topic 队列位点范围 |
+| 49 | GET | `/api/messages/queue-message` | 按队列位点读取消息 |
+| 50 | POST | `/api/messages/direct-consume` | 指定客户端直接消费消息 |
+| 51 | GET | `/api/dlq` | 死信队列列表 |
+| 52 | POST | `/api/dlq/resend` | 重发死信 |
+| 53 | GET | `/api/clients` | 客户端连接列表 |
+| 54 | GET | `/api/producer/groups` | Producer Group 候选列表 |
+| 55 | GET | `/api/producer/connection` | Producer 连接详情 |
+| 56 | GET | `/api/alert-rules` | 告警规则列表 |
+| 57 | POST | `/api/alert-rules/create` | 创建告警规则 |
+| 58 | POST | `/api/alert-rules/update` | 更新告警规则 |
+| 59 | POST | `/api/alert-rules/toggle` | 切换启用状态 |
+| 60 | POST | `/api/alert-rules/delete` | 删除告警规则 |
+| 61 | GET | `/api/system-alerts` | 系统告警列表 |
+| 62 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
+| 63 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
+| 64 | GET | `/api/audit-logs` | 审计日志列表 |
+| 65 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
+| 66 | GET | `/api/audit-logs/export` | 导出审计日志 |
+| 67 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
+| 68 | GET | `/api/settings/general` | 获取通用设置 |
+| 69 | POST | `/api/settings/general/save` | 保存通用设置 |
+| 70 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
+| 71 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
+| 72 | POST | `/api/settings/datasources/create` | 创建数据源 |
+| 73 | POST | `/api/settings/datasources/update` | 更新数据源 |
+| 74 | POST | `/api/settings/datasources/delete` | 删除数据源 |
+| 75 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
+| 76 | POST | `/api/ai/chat` | AI 对话（SSE） |
+| 77 | POST | `/api/ai/execute` | 执行 AI 指令 |
+| 78 | GET | `/api/ai/tools` | 可用工具列表 |
+| 79 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 80 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 81 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 82 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 83 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 84 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 85 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 86 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 87 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 88 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 89 | GET | `/api/topics/page` | Topic 分页列表 |
 
 ## 通用响应格式
 
@@ -135,6 +142,9 @@
   "data": {}
 }
 ```
+
+兼容接口 `GET /api/producer/connection` 直接返回 `ProducerConnectionResult`，
+不使用上述 `Result.data` 包装；详见 10.3。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -1267,20 +1277,26 @@ GET /api/acl/users/:id/credentials
 ### 8.1 查询消息列表
 
 ```
-GET /api/messages?topic={topic}&msgId={msgId}&key={key}&startTime={startTime}&endTime={endTime}
+GET /api/messages
 ```
 
 **Query Parameters:**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `topic` | `string` | 否 | Topic 名称 |
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `topic` | `string` | 条件必填 | Topic 名称；按 `msgId` 或 `key` 查询时也必须提供 |
 | `msgId` | `string` | 否 | 消息 ID（精确查询） |
-| `key` | `string` | 否 | 消息 Key |
-| `startTime` | `string` | 否 | 开始时间 (ISO 8601) |
-| `endTime` | `string` | 否 | 结束时间 (ISO 8601) |
+| `tag` | `string` | 否 | 消息 Tag |
+| `key` | `string` | 否 | 业务 Key |
+| `startTime` | `number` | 否 | 开始时间（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
+
+未指定 `msgId` 或 `key` 的 Topic 扫描默认查询最近 1 小时，时间范围最大 7 天。
 
 **Response `data`:** `MessageRecord[]`
+
+#### MessageRecord
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -1288,18 +1304,61 @@ GET /api/messages?topic={topic}&msgId={msgId}&key={key}&startTime={startTime}&en
 | `topic` | `string` | Topic 名称 |
 | `tag` | `string` | 消息 Tag |
 | `key` | `string` | 消息 Key |
-| `body` | `string` | 消息体（JSON 字符串） |
-| `storeTime` | `string` | 存储时间 (ISO 8601) |
+| `brokerName` | `string` | 所属 Broker 名称 |
+| `queueId` | `number` | 队列 ID |
+| `queueOffset` | `number` | 队列位点 |
+| `body` | `string` | UTF-8 文本或 Base64 编码后的消息体 |
+| `bodyEncoding` | `string` | 消息体编码，如 `UTF-8` / `BASE64` |
+| `bodyTruncated` | `boolean` | 消息体是否被截断 |
+| `storeTime` | `number` | Broker 存储时间（Unix 毫秒时间戳） |
 | `bornHost` | `string` | 发送方地址 |
 | `storeHost` | `string` | 存储 Broker 地址 |
 | `properties` | `Record<string, string>` | 消息属性键值对 |
+| `propertiesTruncated` | `boolean` | 消息属性是否被截断 |
 | `size` | `number` | 消息大小（字节） |
 
-### 8.2 获取消息轨迹
+### 8.2 分页查询消息
+
+```
+GET /api/messages/page
+```
+
+除 8.1 的查询参数外，还支持：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `50`，范围 `1..200` |
+
+**Response `data`:** `MessageQueryPage`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `MessageRecord[]` | 当前页消息 |
+| `total` | `number` | 当前 Broker 查询结果集大小；可能受 Provider 上限约束 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 当前页大小 |
+| `resultMayBeTruncated` | `boolean` | `true` 表示 Provider 结果可能已达到扫描上限，不能视为完整总量 |
+
+### 8.3 按消息 ID 获取轨迹
 
 ```
 GET /api/messages/:msgId/trace
 ```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `msgId` | `string` | 是 | 消息 ID |
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID |
+| `topic` | `string` | 否 | 原始 Topic；Tencent Provider 要求非空 |
+| `traceTopic` | `string` | 否 | 自定义轨迹 Topic；空值使用 `RMQ_SYS_TRACE_TOPIC` |
 
 **Response `data`:** `TraceRecord`
 
@@ -1307,32 +1366,18 @@ GET /api/messages/:msgId/trace
 {
   "nodes": [
     {
-      "title": "Producer 发送",
-      "timestamp": "2026-07-01T10:23:45.100Z",
+      "title": "produce",
+      "timestamp": 1782901425100,
       "status": "finish",
       "costTime": 3,
-      "description": "order-service (10.0.1.12:54321) → broker-hz-01"
-    },
-    {
-      "title": "Broker 存储",
-      "timestamp": "2026-07-01T10:23:45.115Z",
-      "status": "finish",
-      "costTime": 8,
-      "description": "broker-hz-01 (10.0.2.3:10911) CommitLog 写入成功"
-    },
-    {
-      "title": "Consumer 消费",
-      "timestamp": "2026-07-01T10:23:45.230Z",
-      "status": "finish",
-      "costTime": 107,
-      "description": "cg-order-processor → 消费成功 (23ms)"
+      "description": "producer=order-service, storeHost=10.0.2.3:10911"
     }
   ],
   "consumerStatus": [
     {
       "group": "cg-order-processor",
       "deliveryStatus": "success",
-      "consumeTime": "2026-07-01T10:23:45.230Z",
+      "consumeTime": 1782901425230,
       "retryCount": 0
     }
   ]
@@ -1343,9 +1388,9 @@ GET /api/messages/:msgId/trace
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `title` | `string` | 节点标题: `Producer 发送` / `Broker 存储` / `Consumer 消费` |
-| `timestamp` | `string` | 时间戳 (ISO 8601) |
-| `status` | `string` | 状态: `finish` / `process` / `wait` |
+| `title` | `string` | 节点类型，如 `produce` / `consume` / `endTransaction` / `recall` |
+| `timestamp` | `number` | 事件时间（Unix 毫秒时间戳） |
+| `status` | `string` | 状态，如 `finish` / `failed` |
 | `costTime` | `number` | 耗时（毫秒） |
 | `description` | `string` | 详细描述 |
 
@@ -1355,8 +1400,85 @@ GET /api/messages/:msgId/trace
 |------|------|------|
 | `group` | `string` | 消费组名称 |
 | `deliveryStatus` | `string` | 投递状态: `success` / `failed` / `pending` |
-| `consumeTime` | `string` | 消费时间（`-` 表示未消费） |
+| `consumeTime` | `number` | 消费时间（Unix 毫秒时间戳；无时间时为 `0`） |
 | `retryCount` | `number` | 重试次数 |
+
+### 8.4 按业务 Key 获取轨迹
+
+```
+GET /api/messages/trace-by-key
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID |
+| `key` | `string` | 是 | 业务 Key |
+| `topic` | `string` | 否 | 原始 Topic |
+| `traceTopic` | `string` | 否 | 自定义轨迹 Topic；空值使用默认轨迹 Topic |
+
+**Response `data`:** `TraceRecord`，字段见 8.3。
+
+### 8.5 获取 Topic 队列位点范围
+
+```
+GET /api/messages/queues
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID |
+| `topic` | `string` | 是 | Topic 名称 |
+
+**Response `data`:** `QueueOffset[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `brokerName` | `string` | Broker 名称 |
+| `queueId` | `number` | 队列 ID |
+| `minOffset` | `number` | 当前最小可读位点 |
+| `maxOffset` | `number` | 当前最大位点 |
+
+### 8.6 按队列位点读取消息
+
+```
+GET /api/messages/queue-message
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID |
+| `topic` | `string` | 是 | Topic 名称 |
+| `brokerName` | `string` | 是 | Broker 名称 |
+| `queueId` | `number` | 是 | 队列 ID，必须非负 |
+| `offset` | `number` | 是 | 精确队列位点，必须非负 |
+
+**Response `data`:** `MessageRecord | null`
+
+### 8.7 指定客户端直接消费消息
+
+```
+POST /api/messages/direct-consume
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID |
+| `topic` | `string` | 是 | Topic 名称 |
+| `msgId` | `string` | 是 | 消息 ID |
+| `consumerGroup` | `string` | 是 | 消费组名称 |
+| `clientId` | `string` | 是 | 在线消费客户端 ID |
+
+**Response `data`:** `DirectConsumeMessageResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `consumeResult` | `string` | Broker 返回的直接消费结果 |
+| `remark` | `string` | Broker 返回的说明 |
+| `spentTimeMillis` | `number` | Broker 执行耗时（毫秒） |
+| `order` | `boolean` | 是否为顺序消费 |
+| `autoCommit` | `boolean` | 客户端是否启用自动提交 |
 
 ---
 
@@ -1451,6 +1573,70 @@ GET /api/clients?clusterId={clusterId}&type={type}
 | `version` | `string` | SDK 版本号 |
 | `connectedAt` | `string` | 连接时间 |
 | `clusterName` | `string` | 所属集群名称（显示在第一列） |
+
+### 10.2 获取 Producer Group 候选列表
+
+```
+GET /api/producer/groups
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID |
+| `topic` | `string` | 否 | 按 Topic 过滤 Producer Group |
+| `query` | `string` | 否 | 按 Group 名称搜索 |
+| `limit` | `number` | 否 | 返回上限，默认 `20`；小于 `1` 时按 `1`，大于 `100` 时按 `100` |
+
+**Response `data`:** `string[]`
+
+### 10.3 获取 Producer 连接详情
+
+```
+GET /api/producer/connection
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID |
+| `topic` | `string` | 是 | Topic 名称 |
+| `producerGroup` | `string` | 否 | Producer Group；省略时返回该 Topic 的全部 Producer 连接 |
+
+该兼容接口不使用通用 `Result.data` 包装，直接返回 `ProducerConnectionResult`：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `connectionSet` | `ProducerConnection[]` | 匹配的 Producer 连接 |
+| `summary` | `ProducerConnectionSummary` | 连接完整性和分布摘要 |
+
+#### ProducerConnection
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `clientId` | `string` | 客户端 ID |
+| `clientAddr` | `string` | 客户端地址 |
+| `topic` | `string` | Topic 名称 |
+| `producerGroup` | `string` | Producer Group |
+| `language` | `string` | 客户端语言 |
+| `versionDesc` | `string` | 客户端版本 |
+
+#### ProducerConnectionSummary
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `totalConnections` | `number` | 连接总数 |
+| `uniqueClientCount` | `number` | 唯一客户端数 |
+| `uniqueAddressCount` | `number` | 唯一地址数 |
+| `uniqueLanguageCount` | `number` | 客户端语言种类数 |
+| `uniqueVersionCount` | `number` | 客户端版本种类数 |
+| `languages` | `{ value: string, count: number }[]` | 按客户端语言统计的分布 |
+| `versions` | `{ value: string, count: number }[]` | 按客户端版本统计的分布 |
+| `duplicateClientIds` | `string[]` | 重复出现的客户端 ID |
+| `warnings` | `string[]` | `NO_CONNECTIONS` / `DUPLICATE_CLIENT_ID` / `MIXED_CLIENT_VERSION` / `INCOMPLETE_CLIENT_METADATA` |
+| `readiness` | `string` | `READY` / `WARNING` / `UNAVAILABLE` |
 
 ---
 
