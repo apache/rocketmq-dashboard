@@ -51,4 +51,29 @@ public final class BrokerRuntimeStats {
         }
         return runtimeStats.get(OUTBOUND_TPS_4X);
     }
+
+    /**
+     * Computes a daily counter from the morning-snapshot pair a broker publishes in its runtime
+     * stats (e.g. {@code msgPutTotalTodayMorning}/{@code msgPutTotalTodayNow}): the delta is the
+     * current value minus the morning snapshot, clamped at zero so a broker restart (which resets
+     * the counters) yields 0 instead of a negative number. Returns 0 when either key is missing,
+     * negative, or unparseable.
+     */
+    public static long dailyCounterDelta(Map<String, String> runtimeStats, String morningKey, String nowKey) {
+        String morningValue = runtimeStats == null ? null : runtimeStats.get(morningKey);
+        String nowValue = runtimeStats == null ? null : runtimeStats.get(nowKey);
+        if (morningValue == null || nowValue == null) {
+            return 0L;
+        }
+        try {
+            long morning = Long.parseLong(morningValue.trim());
+            long now = Long.parseLong(nowValue.trim());
+            if (morning < 0 || now < 0) {
+                return 0L;
+            }
+            return Math.max(0L, now - morning);
+        } catch (NumberFormatException exception) {
+            return 0L;
+        }
+    }
 }
