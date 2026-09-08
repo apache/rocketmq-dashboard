@@ -22,7 +22,7 @@ import { App } from 'antd';
 import type { AlertRule, NativeAlertMetricInfo, PageResult } from '../../../api/ops';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
-import { formatDateTime } from '../../../utils/format';
+import { formatUtcDateTime } from '../../../utils/format';
 import AlertsPage, { formatThresholdCondition, supportsUnavailableOperator } from '../alerts';
 import { listInstances } from '../../../services/instanceService';
 import {
@@ -217,8 +217,19 @@ describe('AlertsPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText(formatDateTime(lastTriggered))).toBeInTheDocument();
+    expect(await screen.findByText(formatUtcDateTime(lastTriggered))).toBeInTheDocument();
     expect(screen.queryByText(lastTriggered)).not.toBeInTheDocument();
+  });
+
+  it('interprets the last triggered timestamp as UTC, not the browser zone', async () => {
+    const lastTriggered = '2026-08-23T23:30:00';
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([{ ...cloneRule(alertRules[0]), lastTriggered }]),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText(formatUtcDateTime(lastTriggered))).toBeInTheDocument();
   });
 
   it('allows the unavailable operator only for availability metrics', () => {
