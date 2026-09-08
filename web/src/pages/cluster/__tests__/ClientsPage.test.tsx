@@ -581,4 +581,53 @@ describe('Clients page', () => {
     expect(within(dialog).getByText('5.0.7')).toBeInTheDocument();
     expect(within(dialog).getByText('2026-07-01 08:30:00')).toBeInTheDocument();
   });
+
+  it('shows the last successful connection load time and updates it after a reload', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 6, 1, 8, 30, 45).getTime());
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    expect(screen.getByTestId('clients-last-updated')).toHaveTextContent('最近更新 08:30:45');
+
+    nowSpy.mockReturnValue(new Date(2026, 6, 1, 9, 0, 0).getTime());
+    await user.click(screen.getByRole('combobox', { name: 'NameServer' }));
+    await user.click(
+      await screen.findByText('rocketmq2 (namesrv-2:9876)', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-2:9876',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('clients-last-updated')).toHaveTextContent('最近更新 09:00:00'),
+    );
+    nowSpy.mockRestore();
+  });
+
+  it('keeps the previous load time when a connection reload fails', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 6, 1, 8, 30, 45).getTime());
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    expect(screen.getByTestId('clients-last-updated')).toHaveTextContent('最近更新 08:30:45');
+
+    vi.mocked(connectionsService.listConnections).mockRejectedValueOnce(new Error('boom'));
+    nowSpy.mockReturnValue(new Date(2026, 6, 1, 9, 0, 0).getTime());
+    await user.click(screen.getByRole('combobox', { name: 'NameServer' }));
+    await user.click(
+      await screen.findByText('rocketmq2 (namesrv-2:9876)', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(screen.getByTestId('clients-last-updated')).toHaveTextContent('最近更新 08:30:45');
+    nowSpy.mockRestore();
+  });
 });
