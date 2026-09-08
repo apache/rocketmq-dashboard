@@ -92,6 +92,12 @@ const APACHE_ACCESS_TYPE_OPTIONS = [
   { value: 'DIRECT', labelKey: 'instance.directMode' },
 ] as const;
 
+const formatClock = (timestamp: number): string => {
+  const d = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 function describeApiError(error: unknown, fallback: string): string {
   const serverMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
     ?.message;
@@ -126,6 +132,7 @@ const InstancePage = () => {
   const navigate = useNavigate();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<InstanceTypeFilter>('ALL');
@@ -166,6 +173,7 @@ const InstancePage = () => {
       const nextInstances = await listInstances(query);
       if (requestId === requestIdRef.current) {
         setInstances(nextInstances);
+        setLastLoadedAt(Date.now());
         const availableNames = new Set(nextInstances.map((instance) => instance.name));
         setSelectedRowKeys((keys) => keys.filter((key) => availableNames.has(String(key))));
       }
@@ -706,6 +714,13 @@ const InstancePage = () => {
         <div style={{ marginTop: 6, fontSize: 14, color: '#9CA3AF' }}>
           {t('instance.managementSubtitle', { count: instances.length })}
         </div>
+        {lastLoadedAt !== null && (
+          <div style={{ marginTop: 2 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {t('instance.lastUpdated', { time: formatClock(lastLoadedAt) })}
+            </Text>
+          </div>
+        )}
       </div>
 
       {/* Filter bar */}

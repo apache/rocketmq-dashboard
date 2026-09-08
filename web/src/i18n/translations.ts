@@ -501,6 +501,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '例：production-admin',
     en: 'e.g. production-admin',
   },
+  'instance.lastUpdated': { zh: '最近更新 {time}', en: 'Last updated {time}' },
   'topic.title': { zh: 'Topic 管理', en: 'Topic Management' },
   'group.title': { zh: 'Group 管理', en: 'Group Management' },
   'acl.title': { zh: 'ACL 管理', en: 'ACL Management' },
