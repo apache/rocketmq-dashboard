@@ -55,6 +55,7 @@ interface AiChatHistoryState {
   histories: Record<AiChatDataMode, AiChatHistory>;
   startConversation: (mode: AiChatDataMode, conversationId: string) => void;
   selectConversation: (mode: AiChatDataMode, conversationId: string) => void;
+  deleteConversation: (mode: AiChatDataMode, conversationId: string) => void;
   setMessages: (
     mode: AiChatDataMode,
     conversationId: string,
@@ -253,6 +254,23 @@ export const useAiChatHistoryStore = create<AiChatHistoryState>()(
             [mode]: { ...state.histories[mode], activeConversationId: conversationId },
           },
         })),
+      deleteConversation: (mode, conversationId) =>
+        set((state) => {
+          const history = state.histories[mode];
+          const conversations = history.conversations.filter(
+            (conversation) => conversation.id !== conversationId,
+          );
+          const activeConversationId =
+            history.activeConversationId === conversationId
+              ? (conversations[0]?.id ?? null)
+              : history.activeConversationId;
+          return {
+            histories: {
+              ...state.histories,
+              [mode]: { conversations, activeConversationId },
+            },
+          };
+        }),
       setMessages: (mode, conversationId, messages) =>
         set((state) => {
           const history = state.histories[mode];

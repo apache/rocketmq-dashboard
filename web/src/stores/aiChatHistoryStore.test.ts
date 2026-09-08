@@ -114,6 +114,38 @@ describe('aiChatHistoryStore', () => {
     expect(store.getState().histories.real.conversations).toHaveLength(2);
   });
 
+  it('deletes one conversation and selects the next remaining conversation', async () => {
+    const store = await loadStore();
+    store.getState().startConversation('real', 'first');
+    store
+      .getState()
+      .setMessages('real', 'first', [{ id: 'm1', role: 'user', text: 'First prompt' }]);
+    store.getState().startConversation('real', 'second');
+    store
+      .getState()
+      .setMessages('real', 'second', [{ id: 'm2', role: 'user', text: 'Second prompt' }]);
+    store.getState().selectConversation('real', 'second');
+
+    store.getState().deleteConversation('real', 'second');
+
+    expect(store.getState().histories.real.conversations.map((item) => item.id)).toEqual(['first']);
+    expect(store.getState().histories.real.activeConversationId).toBe('first');
+    expect(store.getState().histories.mock.conversations).toEqual([]);
+  });
+
+  it('clears the active conversation when the last conversation is deleted', async () => {
+    const store = await loadStore();
+    store.getState().startConversation('real', 'only');
+    store.getState().setMessages('real', 'only', [{ id: 'm1', role: 'user', text: 'Only prompt' }]);
+
+    store.getState().deleteConversation('real', 'only');
+
+    expect(store.getState().histories.real).toEqual({
+      conversations: [],
+      activeConversationId: null,
+    });
+  });
+
   it('bounds persisted conversations and messages', async () => {
     const store = await loadStore();
     for (let index = 0; index < 21; index += 1) {
