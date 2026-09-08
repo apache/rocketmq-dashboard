@@ -45,7 +45,7 @@ public class ConsumerGroupListToolHandler implements ToolHandler {
         String clusterId = (String) input.get("cluster");
         String search = (String) input.get("search");
         PageResult<ConsumerGroupVO> page = metadataService.listConsumerGroupsPage(
-                clusterId, null, search, ToolListPagination.page(input), ToolListPagination.pageSize(input));
+                null, clusterId, search, ToolListPagination.page(input), ToolListPagination.pageSize(input));
         return ToolListPagination.pagedResult(page, page.getItems().stream()
                 .map(ConsumerGroupListToolHandler::safeProjection)
                 .toList());
