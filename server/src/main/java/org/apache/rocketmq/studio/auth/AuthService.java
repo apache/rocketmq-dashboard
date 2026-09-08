@@ -327,7 +327,18 @@ public class AuthService {
             activeTokens.remove(token);
             return Optional.empty();
         }
-        return Optional.of(session.user());
+        // Verify the user is still present in the configured user list. Without this
+        // check, a user removed from authProperties (e.g. config hot-reload) retains
+        // a valid session until the token expires — matching the database path that
+        // checks user.getEnabled() on every request.
+        LoginVO.UserInfo user = session.user();
+        String username = user.getUsername();
+        if (username == null || authProperties.configuredUsers().stream()
+                .noneMatch(u -> username.equals(u.getUsername()))) {
+            activeTokens.remove(token);
+            return Optional.empty();
+        }
+        return Optional.of(user);
     }
 
     private void ensureBootstrapUsers() {
