@@ -86,6 +86,25 @@ class ClusterAlertRuleControllerTest {
     }
 
     @Test
+    void summarizeRulesShouldUseClusterDomainTest() throws Exception {
+        when(alertService.summarizeRules(eq(AlertDomain.CLUSTER), eq("broker"), eq(true),
+                any(java.time.LocalDateTime.class)))
+                .thenReturn(AlertRuleSummaryVO.builder()
+                        .total(9).enabled(5).triggeredSince(2).build());
+
+        mockMvc.perform(get("/api/cluster-alert-rules/summary")
+                        .param("search", "broker")
+                        .param("enabled", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(9))
+                .andExpect(jsonPath("$.data.enabled").value(5))
+                .andExpect(jsonPath("$.data.triggeredSince").value(2));
+
+        verify(alertService).summarizeRules(eq(AlertDomain.CLUSTER), eq("broker"), eq(true),
+                any(java.time.LocalDateTime.class));
+    }
+
+    @Test
     void listRuntimeShouldUseClusterDomainTest() throws Exception {
         when(alertService.listRuleRuntime(AlertDomain.CLUSTER)).thenReturn(List.of(
                 AlertRuleRuntimeVO.builder().ruleId(7L).fingerprint("broker-a")
