@@ -14,6 +14,7 @@ export interface MessageRecord {
   bornHost: string;
   storeHost: string;
   properties: Record<string, string>;
+  propertiesTruncated?: boolean;
   size: number;
 }
 
