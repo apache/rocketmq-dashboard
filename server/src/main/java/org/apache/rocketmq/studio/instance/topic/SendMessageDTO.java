@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import jakarta.validation.constraints.NotBlank;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -37,4 +38,7 @@ public class SendMessageDTO {
     private String key;
     private String body;
     private Map<String, String> properties;
+    private TopicType messageType;
+    private String messageGroup;
+    private Long deliveryTimestamp;
 }
