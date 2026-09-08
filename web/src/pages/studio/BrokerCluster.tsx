@@ -31,6 +31,7 @@ import type { ClusterInfo } from '../../api/cluster';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
+import { ControllerReplicaDialog } from '../../components/ControllerReplicaDialog';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -190,6 +191,10 @@ const BrokerClusterPage = () => {
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+  const [controllerTarget, setControllerTarget] = useState<{
+    instanceId: string;
+    brokerName: string;
+  }>();
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
@@ -325,6 +330,25 @@ const BrokerClusterPage = () => {
     (activeTab === 'broker' && brokerData.length === 0);
 
   const brokerColumns = [
+    {
+      title: 'Controller',
+      key: 'controller',
+      render: (_: unknown, record: BrokerRecord) => (
+        <Button
+          size="small"
+          disabled={!selectedInstanceId || isMockMode()}
+          onClick={() => {
+            if (selectedInstanceId)
+              setControllerTarget({
+                instanceId: selectedInstanceId,
+                brokerName: record.brokerName,
+              });
+          }}
+        >
+          Replica membership
+        </Button>
+      ),
+    },
     {
       title: t('brokerCluster.k8sCluster'),
       dataIndex: 'k8sCluster',
@@ -521,7 +545,10 @@ const BrokerClusterPage = () => {
           <Select
             aria-label="选择实例"
             value={selectedInstanceId}
-            onChange={setSelectedInstanceId}
+            onChange={(value) => {
+              setControllerTarget(undefined);
+              setSelectedInstanceId(value);
+            }}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
@@ -614,6 +641,13 @@ const BrokerClusterPage = () => {
           />
         </Card>
       </Spin>
+      {controllerTarget && controllerTarget.instanceId === selectedInstanceId && (
+        <ControllerReplicaDialog
+          key={controllerTarget.instanceId + controllerTarget.brokerName}
+          {...controllerTarget}
+          onClose={() => setControllerTarget(undefined)}
+        />
+      )}
     </div>
   );
 };
