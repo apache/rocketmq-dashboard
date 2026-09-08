@@ -9,6 +9,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import MessageQueryHistoryDrawer from '../MessageQueryHistoryDrawer';
+import { LangProvider } from '../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../i18n/languagePreference';
 import {
   getQueryHistorySummary,
   listMessageQueryHistory,
@@ -37,6 +39,7 @@ beforeAll(() => {
 describe('MessageQueryHistoryDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     vi.mocked(getQueryHistorySummary).mockResolvedValue({ messageQueries: 4, traceQueries: 2 });
     vi.mocked(listMessageQueryHistory).mockResolvedValue({
       items: [
@@ -77,7 +80,9 @@ describe('MessageQueryHistoryDrawer', () => {
     const user = userEvent.setup();
     render(
       <App>
-        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        <LangProvider>
+          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
       </App>,
     );
 
@@ -94,7 +99,9 @@ describe('MessageQueryHistoryDrawer', () => {
   it('clears stale rows and offers retry when a new instance load fails', async () => {
     const view = render(
       <App>
-        <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        <LangProvider>
+          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
       </App>,
     );
     expect(await screen.findByText('order-1')).toBeInTheDocument();
@@ -102,12 +109,33 @@ describe('MessageQueryHistoryDrawer', () => {
 
     view.rerender(
       <App>
-        <MessageQueryHistoryDrawer open clusterId="instance-b" onClose={vi.fn()} />
+        <LangProvider>
+          <MessageQueryHistoryDrawer open clusterId="instance-b" onClose={vi.fn()} />
+        </LangProvider>
       </App>,
     );
 
     expect(await screen.findByText('查询历史加载失败')).toBeInTheDocument();
     expect(screen.queryByText('order-1')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled();
+  });
+
+  it('renders query history drawer copy in English mode', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    expect(screen.getByText('Server Query History')).toBeInTheDocument();
+    expect(screen.getAllByText('Message Queries').length).toBeGreaterThan(1);
+    expect(
+      screen.getByPlaceholderText('Search Topic, trace Topic, Message ID, Key or operator'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('服务端查询历史')).not.toBeInTheDocument();
   });
 });
