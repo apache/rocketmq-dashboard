@@ -991,4 +991,43 @@ describe('InstancePage', () => {
     expect(deleteButton).toBeDisabled();
     confirmSpy.mockRestore();
   });
+
+  it('shows the last successful load time and keeps it when a reload fails', async () => {
+    const firstTime = new Date(2026, 7, 23, 9, 15, 30).getTime();
+    const secondTime = new Date(2026, 7, 23, 10, 5, 42).getTime();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(firstTime);
+
+    renderPage();
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:30')).toBeInTheDocument();
+
+    // A failed reload must not refresh the timestamp.
+    vi.mocked(instanceService.listInstances).mockRejectedValue(new Error('unavailable'));
+    nowSpy.mockReturnValue(secondTime);
+    fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
+      target: { value: 'failed-search' },
+    });
+    await waitFor(
+      () =>
+        expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'failed-search' }),
+      { timeout: 1000 },
+    );
+    expect(await screen.findByText('实例列表加载失败，请稍后重试')).toBeInTheDocument();
+    expect(screen.getByText('最近更新 09:15:30')).toBeInTheDocument();
+    expect(screen.queryByText('最近更新 10:05:42')).not.toBeInTheDocument();
+
+    // The next successful load updates the timestamp.
+    vi.mocked(instanceService.listInstances).mockResolvedValue([instance(1, 'production-proxy')]);
+    fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
+      target: { value: 'success-search' },
+    });
+    await waitFor(
+      () =>
+        expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'success-search' }),
+      { timeout: 1000 },
+    );
+    expect(await screen.findByText('最近更新 10:05:42')).toBeInTheDocument();
+
+    nowSpy.mockRestore();
+  });
 });
