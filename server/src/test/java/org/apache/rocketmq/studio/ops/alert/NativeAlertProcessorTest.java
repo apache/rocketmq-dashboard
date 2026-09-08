@@ -550,6 +550,44 @@ class NativeAlertProcessorTest {
         verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
     }
 
+    @Test
+    void doesNotResolveActiveProxyAlertsWhenProxyDiscoveryFailsTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = AlertRuleVO.builder().id(1L).domain(AlertDomain.CLUSTER).name("Proxy down")
+                .metric("proxy.availability").operator("UNAVAILABLE").enabled(true)
+                .instanceId("local").consecutiveSamples(1).build();
+        when(service.listRules(AlertDomain.CLUSTER)).thenReturn(List.of(rule));
+        Map<String, String> proxyLabels = Map.of("proxyAddr", "proxy-a:8080");
+        AlertStateKey proxyKey = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), "local", proxyLabels));
+        ActiveAlertState active = new ActiveAlertState(proxyKey,
+                new AlertRuleState(AlertStateStatus.FIRING, 1, null, Instant.now().minusSeconds(60),
+                        Instant.now().minusSeconds(60), Instant.now().minusSeconds(60), null),
+                "local", proxyLabels);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.find(any(AlertStateKey.class))).thenReturn(Optional.empty());
+        when(states.save(any(AlertStateKey.class), any(AlertRuleState.class))).thenReturn(true);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+
+        // the sample ApacheRocketMqProxyMetricsCollector emits when proxy discovery fails:
+        // one unavailable sample with empty labels, no real proxy is known
+        MetricSample discoveryFailure = new MetricSample("proxy.availability", AlertDomain.CLUSTER, "local",
+                null, Map.of(), null, MetricAvailability.UNAVAILABLE, Instant.now());
+
+        new NativeAlertProcessor(service,
+                new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                        mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
+                new AlertStateMachine(), states, alerts, outbox, suppression())
+                .processSuccessfulCollection(new MetricCollectionScope(AlertDomain.CLUSTER, "local",
+                        java.util.Set.of("proxy.availability")), List.of(discoveryFailure));
+
+        // the firing state of the real proxy must survive the discovery outage
+        verify(states, never()).save(eq(proxyKey), any(AlertRuleState.class));
+    }
+
     private static AlertNotificationSuppressionService suppression() {
         AlertNotificationSuppressionService service = mock(AlertNotificationSuppressionService.class);
         when(service.findSuppressingClusterAlert(any(SystemAlertVO.class))).thenReturn(Optional.empty());
