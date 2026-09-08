@@ -66,7 +66,7 @@ public class NotificationOutboxService {
     private static final int BATCH_SIZE = 20;
     private static final int MAX_EXPORT_DELIVERIES = 10_000;
     private static final String EXPORT_CSV_HEADER = "deliveryId,alertId,alertTitle,alertDomain,transition,"
-            + "instanceId,channel,status,attempts,createdAt,deliveredAt,nextRetryAt,lastError\r\n";
+            + "instanceId,channel,status,attemptCount,createdAt,deliveredAt,nextRetryAt,lastError\r\n";
     private static final Duration DEFAULT_CLAIM_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration DEFAULT_CLAIM_RENEWAL_INTERVAL = Duration.ofSeconds(20);
     private static final int DEFAULT_HEARTBEAT_THREADS = 2;
