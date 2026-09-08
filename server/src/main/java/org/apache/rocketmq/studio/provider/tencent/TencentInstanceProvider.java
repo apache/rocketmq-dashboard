@@ -48,6 +48,7 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -944,6 +945,9 @@ public class TencentInstanceProvider implements InstanceProvider {
         group.setClusterId(item.getClusterIdV4());
         group.setNamespace(item.getNamespaceV4());
         group.setConsumeType(toConsumeType(item.getConsumeMessageOrderly()));
+        // Tencent consumer groups are TCP push consumers; read paths (web detail,
+        // AI rmq.group.list) require a non-null subscriptionMode.
+        group.setSubscriptionMode(SubscriptionMode.Push);
         group.setDeliveryOrderType(item.getConsumeMessageOrderly() == null || !item.getConsumeMessageOrderly()
                 ? "Concurrently" : "Orderly");
         group.setRetryMaxTimes(toInt(item.getMaxRetryTimes()));
