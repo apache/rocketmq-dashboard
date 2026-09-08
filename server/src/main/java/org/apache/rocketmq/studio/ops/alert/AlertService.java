@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.cluster.metrics.MetricProfileService;
 import org.apache.rocketmq.studio.cluster.metrics.SemanticMetric;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -38,6 +39,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
@@ -61,6 +63,7 @@ public class AlertService {
     private final AlertRuleAssetService alertRuleAssetService;
     private final OperationAuditService operationAuditService;
     private final MetricProfileService metricProfileService;
+    private final AlertingProperties alertingProperties;
 
 
     public List<AlertRuleVO> listRules() {
@@ -169,6 +172,7 @@ public class AlertService {
         }
         rule.setName(rule.getName().trim());
         NativeAlertRulePolicy.validate(rule);
+        validateAggregationWindow(rule);
         rejectDuplicateSemanticRule(rule, null);
         log.info("Creating alert rule: {}", rule.getName());
         AlertRuleVO saved = saveNewRule(rule);
@@ -199,6 +203,7 @@ public class AlertService {
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
         NativeAlertRulePolicy.validate(rule);
+        validateAggregationWindow(rule);
         rejectDuplicateSemanticRule(rule, id);
         if (!replaceRuleWithoutDuplicate(rule)) {
             throw ruleNotFound(id);
@@ -223,6 +228,20 @@ public class AlertService {
 
     private AlertDomain resolveDomain(AlertRuleVO rule) {
         return rule.getDomain() == null ? AlertDomain.BUSINESS : rule.getDomain();
+    }
+
+    private void validateAggregationWindow(AlertRuleVO rule) {
+        if (!NativeAlertRulePolicy.isNativeMetric(rule.getMetric()) || rule.getWindowSeconds() <= 0) {
+            return;
+        }
+        Duration retention = Duration.parse(alertingProperties.getSnapshotRetention());
+        if (retention.isZero() || retention.isNegative()) {
+            return;
+        }
+        if (Duration.ofSeconds(rule.getWindowSeconds()).compareTo(retention) > 0) {
+            throw new BusinessException(400, "Native alert windowSeconds must not exceed snapshot retention "
+                    + retention);
+        }
     }
 
     private void rejectDuplicateSemanticRule(AlertRuleVO rule, Long excludedId) {
