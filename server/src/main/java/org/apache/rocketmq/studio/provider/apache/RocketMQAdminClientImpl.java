@@ -23,9 +23,11 @@ import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
+import org.apache.rocketmq.client.producer.selector.SelectMessageQueueByHash;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -490,6 +492,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String tag = request.getTag() != null ? request.getTag() : "";
         String key = request.getKey() != null ? request.getKey() : "";
         String body = request.getBody() != null ? request.getBody() : "";
+        TopicType messageType = request.getMessageType() == null ? TopicType.NORMAL : request.getMessageType();
         byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
         if (bodyBytes.length > MAX_MESSAGE_SIZE) {
             String message = "Message body size " + bodyBytes.length
@@ -521,15 +524,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 }
             }
 
-            // Timer delivery is a system property; it must be set through the typed API,
-            // never forwarded via user properties.
-            if (request.getDeliveryTimestamp() != null) {
+            if (messageType == TopicType.DELAY) {
                 msg.setDeliverTimeMs(request.getDeliveryTimestamp());
+            } else if (messageType == TopicType.FIFO) {
+                MessageAccessor.putProperty(msg, MessageConst.PROPERTY_SHARDING_KEY, request.getMessageGroup());
             }
-
-            SendResult sendResult = StringUtils.hasText(request.getMessageGroup())
-                    ? producer.send(msg, (queues, message, arg) ->
-                            queues.get(Math.floorMod(arg.hashCode(), queues.size())), request.getMessageGroup())
+            SendResult sendResult = messageType == TopicType.FIFO
+                    ? producer.send(msg, new SelectMessageQueueByHash(), request.getMessageGroup())
                     : producer.send(msg);
             if (sendResult == null || sendResult.getSendStatus() != SendStatus.SEND_OK) {
                 String status = sendResult == null ? "null" : String.valueOf(sendResult.getSendStatus());
@@ -539,7 +540,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
             // The message is already delivered by now; an audit write failure must not turn a
             // successful send into an error, or callers would retry and duplicate the message.
             recordAudit("SEND_MESSAGE", topic,
-                    "tag=" + tag + ", key=" + key + ", msgId=" + sendResult.getMsgId(), "SUCCESS");
+                    "tag=" + tag + ", key=" + key + ", msgId=" + sendResult.getMsgId()
+                            + ", messageType=" + messageType + ", messageGroup=" + request.getMessageGroup()
+                            + ", deliveryTimestamp=" + request.getDeliveryTimestamp(), "SUCCESS");
 
             return SendMessageVO.builder()
                     .msgId(sendResult.getMsgId())
@@ -548,6 +551,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .build();
         };
         try {
+            validateSendOptions(request, messageType);
             return StringUtils.hasText(request.getInstanceId())
                     ? runtimeAdminClientResolver.executeProducer(request.getInstanceId(), sendAction)
                     : clientPool.withProducer(namesrvAddr(), null, null, sendAction);
@@ -565,6 +569,29 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 || MessageConst.STRING_HASH_SET.contains(key)
                 || key.startsWith("%RETRY%")
                 || key.startsWith("%DLQ%");
+    }
+
+    private void validateSendOptions(SendMessageDTO request, TopicType messageType) {
+        if (messageType == TopicType.TRANSACTION) {
+            throw new BusinessException(400, "Transaction messages require an application transaction producer");
+        }
+        if (messageType == TopicType.LITE) {
+            throw new BusinessException(400, "Lite messages require a Lite topic producer");
+        }
+        if (messageType == TopicType.FIFO) {
+            if (!StringUtils.hasText(request.getMessageGroup())) {
+                throw new BusinessException(400, "messageGroup is required for FIFO messages");
+            }
+        } else if (request.getMessageGroup() != null) {
+            throw new BusinessException(400, "messageGroup is only supported for FIFO messages");
+        }
+        if (messageType == TopicType.DELAY) {
+            if (request.getDeliveryTimestamp() == null || request.getDeliveryTimestamp() <= System.currentTimeMillis()) {
+                throw new BusinessException(400, "deliveryTimestamp must be in the future for DELAY messages");
+            }
+        } else if (request.getDeliveryTimestamp() != null) {
+            throw new BusinessException(400, "deliveryTimestamp is only supported for DELAY messages");
+        }
     }
 
     @Override

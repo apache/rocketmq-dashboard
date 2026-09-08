@@ -281,6 +281,9 @@ export interface SendTopicMessageRequest {
   key?: string;
   body: string;
   properties?: Record<string, string>;
+  messageType?: 'NORMAL' | 'FIFO' | 'DELAY' | 'TRANSACTION';
+  messageGroup?: string;
+  deliveryTimestamp?: number;
 }
 
 export interface SendTopicMessageResult {
