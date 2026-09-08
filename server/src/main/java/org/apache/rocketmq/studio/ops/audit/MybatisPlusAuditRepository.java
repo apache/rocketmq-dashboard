@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.audit;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.JdbcRowValues;
 import org.apache.rocketmq.studio.persistence.entity.RmqOperationAudit;
 import org.apache.rocketmq.studio.persistence.mapper.RmqOperationAuditMapper;
 import org.springframework.stereotype.Repository;
@@ -146,8 +147,8 @@ public class MybatisPlusAuditRepository implements AuditRepository {
         filters.accept(query);
         Map<String, Long> counts = new LinkedHashMap<>();
         for (Map<String, Object> row : auditMapper.selectMaps(query)) {
-            String key = mapValue(row, "result");
-            counts.merge(key, parseCount(row, "result_count"), Long::sum);
+            String key = JdbcRowValues.stringValue(row, "result");
+            counts.merge(key, JdbcRowValues.longValueOrZero(row, "result_count"), Long::sum);
         }
         return counts;
     }
@@ -161,8 +162,7 @@ public class MybatisPlusAuditRepository implements AuditRepository {
         if (rows.isEmpty()) {
             return 0L;
         }
-        String value = mapValue(rows.get(0), "operator_count");
-        return value.isEmpty() ? 0L : Long.parseLong(value);
+        return JdbcRowValues.longValueOrZero(rows.get(0), "operator_count");
     }
 
     private LocalDateTime latestOperatedAt(Consumer<QueryWrapper<RmqOperationAudit>> filters) {
@@ -182,8 +182,8 @@ public class MybatisPlusAuditRepository implements AuditRepository {
         filters.accept(query);
         return auditMapper.selectMaps(query).stream()
                 .map(row -> AuditSummaryBucketVO.builder()
-                        .name(mapValue(row, "bucket_name"))
-                        .count(parseCount(row, "bucket_count"))
+                        .name(JdbcRowValues.stringValue(row, "bucket_name"))
+                        .count(JdbcRowValues.longValueOrZero(row, "bucket_count"))
                         .build())
                 .filter(bucket -> StringUtils.hasText(bucket.getName()))
                 .sorted((left, right) -> {
@@ -192,28 +192,6 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 })
                 .limit(HOTSPOT_LIMIT)
                 .toList();
-    }
-
-    /**
-     * Reads an aggregate column value from a result row using case-insensitive key
-     * matching, because JDBC drivers are free to return label casing differently.
-     */
-    private long parseCount(Map<String, Object> row, String key) {
-        String value = mapValue(row, key);
-        if (value.isEmpty()) {
-            return 0L;
-        }
-        return Long.parseLong(value);
-    }
-
-    private String mapValue(Map<String, Object> row, String key) {
-        return row.entrySet().stream()
-                .filter(entry -> key.equalsIgnoreCase(entry.getKey()))
-                .map(Map.Entry::getValue)
-                .filter(Objects::nonNull)
-                .map(Object::toString)
-                .findFirst()
-                .orElse("");
     }
 
     private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,

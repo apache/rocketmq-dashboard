@@ -31,10 +31,12 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -69,6 +71,13 @@ class StudioUserControllerTest {
         user.setGmtCreate(LocalDateTime.parse("2026-08-22T08:00:00"));
         when(authService.listUsers("oper", false, true, 2, 20))
                 .thenReturn(PageResult.of(List.of(user), 21, 2, 20));
+        when(authService.listActiveSessionSummaries(List.of(7L)))
+                .thenReturn(Map.of(7L, StudioUserSessionSummaryVO.builder()
+                        .userId(7L)
+                        .activeSessionCount(2)
+                        .lastSessionSeenAt(LocalDateTime.parse("2026-08-22T09:30:00"))
+                        .nearestSessionExpiresAt(LocalDateTime.parse("2026-08-22T10:00:00"))
+                        .build()));
 
         mockMvc.perform(get("/api/studio-users")
                         .param("search", "oper")
@@ -80,22 +89,63 @@ class StudioUserControllerTest {
                 .andExpect(jsonPath("$.data.items[0].id").value(7))
                 .andExpect(jsonPath("$.data.items[0].username").value("operator"))
                 .andExpect(jsonPath("$.data.items[0].passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].activeSessionCount").value(2))
+                .andExpect(jsonPath("$.data.items[0].lastSessionSeenAt")
+                        .value("2026-08-22T09:30:00"))
+                .andExpect(jsonPath("$.data.items[0].nearestSessionExpiresAt")
+                        .value("2026-08-22T10:00:00"))
                 .andExpect(jsonPath("$.data.total").value(21))
                 .andExpect(jsonPath("$.data.page").value(2))
                 .andExpect(jsonPath("$.data.size").value(20));
 
         verify(authService).listUsers("oper", false, true, 2, 20);
+        verify(authService).listActiveSessionSummaries(List.of(7L));
     }
 
     @Test
     void listUsesBoundedDefaults() throws Exception {
         when(authService.listUsers(null, null, null, 1, 20))
                 .thenReturn(PageResult.empty(1, 20));
+        when(authService.listActiveSessionSummaries(List.of()))
+                .thenReturn(Map.of());
 
         mockMvc.perform(get("/api/studio-users"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items").isEmpty())
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(20));
+    }
+
+    @Test
+    void sessionOverviewReturnsActiveSessionCounts() throws Exception {
+        when(authService.getSessionOverview()).thenReturn(StudioUserSessionOverviewVO.builder()
+                .activeSessionCount(5)
+                .activeUserCount(3)
+                .expiringSoonSessionCount(1)
+                .staleSessionCount(2)
+                .expiringSoonWindowMinutes(5)
+                .staleSessionThresholdMinutes(15)
+                .build());
+
+        mockMvc.perform(get("/api/studio-users/sessions/overview"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.activeSessionCount").value(5))
+                .andExpect(jsonPath("$.data.activeUserCount").value(3))
+                .andExpect(jsonPath("$.data.expiringSoonSessionCount").value(1))
+                .andExpect(jsonPath("$.data.staleSessionCount").value(2));
+
+        verify(authService).getSessionOverview();
+    }
+
+    @Test
+    void revokeSessionsReturnsTheRevokedSessionCount() throws Exception {
+        when(authService.revokeSessionsForUser(7L)).thenReturn(3);
+
+        mockMvc.perform(post("/api/studio-users/7/sessions/revoke"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value(7))
+                .andExpect(jsonPath("$.data.revokedSessionCount").value(3));
+
+        verify(authService).revokeSessionsForUser(7L);
     }
 }

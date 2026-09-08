@@ -315,6 +315,36 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/studio-users",
+        "/api/studio-users/",
+        "/api/studio-users/sessions/overview"
+    })
+    void shouldRejectStudioUserReadsForNonAdminUser(String path) throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest("GET", path, session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("Admin permission required");
+    }
+
+    @Test
+    void shouldAllowStudioSessionOverviewForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/studio-users/sessions/overview", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
     @Test
     void shouldRejectLlmModelDiscoveryForNonAdminUser() throws Exception {
         TestSession session = login(false);
