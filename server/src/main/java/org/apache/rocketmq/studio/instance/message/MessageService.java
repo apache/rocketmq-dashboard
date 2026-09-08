@@ -104,6 +104,10 @@ public class MessageService {
         return messageProvider.getQueueOffsets(instanceId, topic);
     }
 
+    public QueueFilterPageVO previewQueueFilter(QueueFilterPreviewDTO request) {
+        return messageProvider.previewQueueFilter(request);
+    }
+
     public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
                                                 int queueId, long offset) {
         if (!StringUtils.hasText(topic)) {

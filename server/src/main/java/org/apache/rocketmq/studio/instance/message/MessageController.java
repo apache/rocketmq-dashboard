@@ -16,9 +16,11 @@
  */
 package org.apache.rocketmq.studio.instance.message;
 
+import jakarta.validation.Valid;
 import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -89,6 +91,12 @@ public class MessageController {
                                                        @RequestParam int queueId,
                                                        @RequestParam long offset) {
         return Result.ok(messageService.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset));
+    }
+
+    @GetMapping("/queue-filter-preview")
+    public Result<QueueFilterPageVO> previewQueueFilter(
+            @Valid @ModelAttribute QueueFilterPreviewDTO request) {
+        return Result.ok(messageService.previewQueueFilter(request));
     }
 
     @PostMapping("/direct-consume")

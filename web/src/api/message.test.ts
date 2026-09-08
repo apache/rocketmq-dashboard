@@ -21,6 +21,7 @@ import client from './client';
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  previewQueueFilter,
   queryMessagePage,
   queryMessages,
 } from './message';
@@ -28,6 +29,35 @@ import {
 const mock = new MockAdapter(client);
 
 describe('message API', () => {
+  it('forwards the filter expression, queue cursor and cancellation signal', async () => {
+    const params = {
+      instanceId: 'instance-a',
+      topic: 'orders',
+      brokerName: 'broker-a',
+      queueId: 0,
+      offset: 10,
+      expressionType: 'SQL92' as const,
+      expression: 'amount > 100',
+    };
+    const controller = new AbortController();
+    const page = {
+      items: [],
+      startOffset: 10,
+      nextOffset: 50,
+      minOffset: 10,
+      maxOffset: 100,
+      hasMore: true,
+      offsetAdjusted: false,
+      status: 'NO_MATCHED_MSG',
+    };
+    mock.onGet('/messages/queue-filter-preview').reply((config) => {
+      expect(config.params).toEqual(params);
+      expect(config.signal).toBe(controller.signal);
+      return [200, { code: 200, data: page }];
+    });
+    await expect(previewQueueFilter(params, controller.signal)).resolves.toEqual(page);
+  });
+
   beforeEach(() => {
     mock.reset();
     vi.stubGlobal('localStorage', { getItem: vi.fn().mockReturnValue(null) });

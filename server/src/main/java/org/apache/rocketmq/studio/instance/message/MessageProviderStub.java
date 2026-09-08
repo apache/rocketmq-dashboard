@@ -57,4 +57,9 @@ public class MessageProviderStub implements MessageProvider {
     private BusinessException unsupported() {
         return new BusinessException(501, "Message query provider is not configured");
     }
+
+    @Override
+    public QueueFilterPageVO previewQueueFilter(QueueFilterPreviewDTO request) {
+        throw unsupported();
+    }
 }
