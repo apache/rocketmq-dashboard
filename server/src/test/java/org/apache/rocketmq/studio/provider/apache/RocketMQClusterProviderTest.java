@@ -107,6 +107,47 @@ class RocketMQClusterProviderTest {
     }
 
     @Test
+    void discoverClustersShouldParseDailyMessageCounters() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        KVTable runtime = runtimeStats();
+        runtime.getTable().put("msgPutTotalYesterdayMorning", "1000");
+        runtime.getTable().put("msgPutTotalTodayMorning", "1400");
+        runtime.getTable().put("msgPutTotalTodayNow", "2000");
+        runtime.getTable().put("msgGetTotalYesterdayMorning", "800");
+        runtime.getTable().put("msgGetTotalTodayMorning", "1200");
+        runtime.getTable().put("msgGetTotalTodayNow", "1500");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(org.apache.rocketmq.studio.cluster.broker.BrokerVO::getPutMessagesToday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getPutMessagesYesterday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesToday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesYesterday)
+                .containsExactly(600L, 400L, 300L, 400L);
+    }
+
+    @Test
+    void discoverClustersShouldDefaultDailyMessageCountersWhenKeysAreMissing() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(org.apache.rocketmq.studio.cluster.broker.BrokerVO::getPutMessagesToday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getPutMessagesYesterday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesToday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesYesterday)
+                .containsExactly(0L, 0L, 0L, 0L);
+    }
+
+    @Test
     void discoverClustersShouldPopulateSafeDefaults() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = newProvider(adminExt);

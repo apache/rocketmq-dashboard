@@ -286,6 +286,16 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     // keep default
                 }
             }
+
+            // Daily message counters, mirroring the runtime stat keys the broker publishes.
+            builder.putMessagesToday(BrokerRuntimeStats.dailyCounterDelta(table,
+                    "msgPutTotalTodayMorning", "msgPutTotalTodayNow"));
+            builder.putMessagesYesterday(BrokerRuntimeStats.dailyCounterDelta(table,
+                    "msgPutTotalYesterdayMorning", "msgPutTotalTodayMorning"));
+            builder.getMessagesToday(BrokerRuntimeStats.dailyCounterDelta(table,
+                    "msgGetTotalTodayMorning", "msgGetTotalTodayNow"));
+            builder.getMessagesYesterday(BrokerRuntimeStats.dailyCounterDelta(table,
+                    "msgGetTotalYesterdayMorning", "msgGetTotalTodayMorning"));
             return true;
         } catch (Exception e) {
             log.warn("Failed to get runtime info for broker at {}: {}", brokerAddr, e.getMessage());
