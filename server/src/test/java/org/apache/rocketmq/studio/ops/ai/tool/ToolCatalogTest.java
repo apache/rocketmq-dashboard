@@ -53,6 +53,25 @@ class ToolCatalogTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void messageQueryAdvertisesBoundedPagingAndOptionalBodies() {
+        ToolDefinition query = ToolCatalog.load(canonicalCatalog(), canonicalSchema())
+                .find("rmq.message.query")
+                .orElseThrow();
+        Map<String, Object> inputProperties =
+                (Map<String, Object>) query.inputSchema().get("properties");
+        Map<String, Object> outputProperties =
+                (Map<String, Object>) query.outputSchema().get("properties");
+
+        assertThat(inputProperties).containsKeys("page", "pageSize", "includeBody");
+        assertThat((Map<String, Object>) inputProperties.get("pageSize"))
+                .containsEntry("maximum", 100);
+        assertThat(query.outputSchema()).containsEntry("type", "object");
+        assertThat(outputProperties)
+                .containsKeys("items", "total", "page", "size", "resultMayBeTruncated");
+    }
+
+    @Test
     void rejectsCatalogThatDoesNotMatchItsJsonSchema() {
         Resource invalid = utf8Resource("""
                 version: 1.0.0

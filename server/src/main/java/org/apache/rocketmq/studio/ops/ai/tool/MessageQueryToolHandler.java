@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.message.MessageQueryPageVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import lombok.RequiredArgsConstructor;
@@ -52,12 +53,23 @@ public class MessageQueryToolHandler implements ToolHandler {
         String key = (String) input.get("key");
         Long startTime = asLong(input.get("startTime"));
         Long endTime = asLong(input.get("endTime"));
-        return messageService.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime).stream()
-                .map(MessageQueryToolHandler::safeProjection)
-                .toList();
+        int pageNumber = ToolListPagination.page(input);
+        int pageSize = ToolListPagination.pageSize(input);
+        boolean includeBody = Boolean.TRUE.equals(input.get("includeBody"));
+        MessageQueryPageVO page = messageService.queryMessagesPage(
+                instanceId, topic, msgId, tag, key, startTime, endTime, pageNumber, pageSize);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("items", page.getItems().stream()
+                .map(message -> safeProjection(message, includeBody))
+                .toList());
+        result.put("total", page.getTotal());
+        result.put("page", page.getPage());
+        result.put("size", page.getSize());
+        result.put("resultMayBeTruncated", page.isResultMayBeTruncated());
+        return result;
     }
 
-    private static Map<String, Object> safeProjection(MessageRecordVO message) {
+    private static Map<String, Object> safeProjection(MessageRecordVO message, boolean includeBody) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("msgId", require(message.getMsgId(), "msgId"));
         result.put("topic", blankIfNull(message.getTopic()));
@@ -66,9 +78,11 @@ public class MessageQueryToolHandler implements ToolHandler {
         result.put("storeTime", message.getStoreTime());
         result.put("storeHost", blankIfNull(message.getStoreHost()));
         result.put("bornHost", blankIfNull(message.getBornHost()));
-        result.put("body", blankIfNull(message.getBody()));
-        result.put("bodyEncoding", blankIfNull(message.getBodyEncoding()));
-        result.put("bodyTruncated", message.isBodyTruncated());
+        if (includeBody) {
+            result.put("body", blankIfNull(message.getBody()));
+            result.put("bodyEncoding", blankIfNull(message.getBodyEncoding()));
+            result.put("bodyTruncated", message.isBodyTruncated());
+        }
         result.put("size", message.getSize());
         return result;
     }
