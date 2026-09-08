@@ -1041,6 +1041,9 @@ const InstancePage = () => {
             extra={getEndpointExtra(editInstanceType)}
           >
             <Input
+              // Cloud vendors resolve the endpoint from the catalog; the backend ignores
+              // endpoint changes for them, so editing would only fake a successful save.
+              disabled={editingInstance?.vendor != null && editingInstance.vendor !== 'APACHE'}
               placeholder={
                 editInstanceType === 'DIRECT'
                   ? t('instance.directEndpointPlaceholder')
