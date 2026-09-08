@@ -113,6 +113,10 @@ const buildCluster = ({
       diskUsage: 62,
       tpsIn,
       tpsOut,
+      putMessagesToday: 1234,
+      putMessagesYesterday: 1100,
+      getMessagesToday: 980,
+      getMessagesYesterday: 900,
     },
     {
       name: 'rocketmq-prod-1',
@@ -409,6 +413,20 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('10.101.2.11:10911')).toBeInTheDocument();
     expect(within(dialog).getByText('defaultTopicQueueNums=16')).toBeInTheDocument();
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
+  });
+
+  it('renders per-broker daily message counters in the broker tab', async () => {
+    renderWithProviders(<ClusterPage />);
+
+    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '今日写入' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '昨日写入' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '今日消费' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '昨日消费' })).toBeInTheDocument();
+    expect(screen.getByText('1,234')).toBeInTheDocument();
+    expect(screen.getByText('1,100')).toBeInTheDocument();
+    expect(screen.getByText('980')).toBeInTheDocument();
+    expect(screen.getByText('900')).toBeInTheDocument();
   });
 
   it('keeps cluster tabs usable when address fields are missing', async () => {
