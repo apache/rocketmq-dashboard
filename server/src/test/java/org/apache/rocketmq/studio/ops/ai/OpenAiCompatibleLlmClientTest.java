@@ -23,6 +23,8 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -153,6 +155,55 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(tokens).containsExactly("hel", "lo");
         assertThat(requestBody.get().path("model").asText()).isEqualTo("gpt-test");
         assertThat(requestBody.get().path("stream").asBoolean()).isTrue();
+    }
+
+    @Test
+    void streamShouldIgnoreNonContentDeltasAndStopAtDoneTest() {
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200, """
+                data: {"choices":[{"delta":{"role":"assistant"}}]}
+
+                data: {"choices":[{"delta":{"content":""}}]}
+
+                data: {"choices":[{"delta":{"content":null}}]}
+
+                data: {"choices":[{"delta":{"content":"hello"}}]}
+
+                data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+                data: {"choices":[],"usage":{"completion_tokens":1}}
+
+                data: [DONE]
+
+                data: {"choices":[{"delta":{"content":"ignored"}}]}
+
+                """, "text/event-stream"));
+
+        List<String> tokens = new ArrayList<>();
+        client.stream(config("openai", "sk-test"), "hello", null, tokens::add);
+
+        assertThat(tokens).containsExactly("hello");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {" ", "\n", "\r\n", "\t", "    ", "\n\n"})
+    void streamShouldPreserveWhitespaceOnlyDeltasTest(String whitespace) throws Exception {
+        String whitespaceJson = objectMapper.writeValueAsString(whitespace);
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200, """
+                data: {"choices":[{"delta":{"content":"hello"}}]}
+
+                data: {"choices":[{"delta":{"content":%s}}]}
+
+                data: {"choices":[{"delta":{"content":"world"}}]}
+
+                data: [DONE]
+
+                """.formatted(whitespaceJson), "text/event-stream"));
+
+        List<String> tokens = new ArrayList<>();
+        client.stream(config("openai", "sk-test"), "hello", null, tokens::add);
+
+        assertThat(tokens).containsExactly("hello", whitespace, "world");
+        assertThat(String.join("", tokens)).isEqualTo("hello" + whitespace + "world");
     }
 
     @Test

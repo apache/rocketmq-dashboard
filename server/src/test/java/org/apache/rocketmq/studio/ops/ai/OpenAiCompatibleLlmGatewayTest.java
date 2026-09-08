@@ -266,6 +266,42 @@ class OpenAiCompatibleLlmGatewayTest {
         }
     }
 
+    @Test
+    void httpEnhanceShouldPreserveWhitespaceOnlyChunksTest() throws Exception {
+        ExecutorService executor = singleChatExecutor();
+        List<RecordingSseEmitter> emitters = new CopyOnWriteArrayList<>();
+        OpenAiCompatibleLlmGateway testedGateway = gateway(executor, emitters);
+        LlmConfigVO config = config("openai", "sk-test");
+        when(configService.getConfig()).thenReturn(config);
+        when(llmClient.supports(config)).thenReturn(true);
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<String> consumer = invocation.getArgument(3, Consumer.class);
+            List.of("", "hello", " ", "world", "\n", "\r\n", "\t", "    ", "next").forEach(consumer);
+            return null;
+        }).doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<String> consumer = invocation.getArgument(3, Consumer.class);
+            consumer.accept("answer");
+            return null;
+        }).when(llmClient).stream(any(), any(), any(), any());
+        try {
+            testedGateway.chat(ChatDTO.builder().message("raw prompt").enhance(true).build());
+            RecordingSseEmitter emitter = emitters.get(0);
+            assertThat(emitter.completedLatch.await(5, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(emitter.eventCount("event:enhance")).isEqualTo(8);
+            assertThat(emitter.eventText())
+                    .contains("{\"delta\":\" \"}", "{\"delta\":\"\\n\"}", "{\"delta\":\"\\r\\n\"}",
+                            "{\"delta\":\"\\t\"}", "{\"delta\":\"    \"}", "{\"text\":\"answer\"}")
+                    .doesNotContain("{\"delta\":\"\"}", "event:error");
+            assertThat(emitter.eventCount("event:done")).isEqualTo(1);
+            verify(llmClient).stream(eq(config), eq("hello world\n\r\n\t    next"), any(), any());
+        } finally {
+            testedGateway.destroy();
+        }
+    }
+
     private OpenAiCompatibleLlmGateway gateway(ExecutorService executor,
                                                 List<RecordingSseEmitter> emitters) {
         return new OpenAiCompatibleLlmGateway(
