@@ -21,6 +21,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import {
+  createStudioUser,
   listAllStudioUsers as downloadStudioUsers,
   listStudioUsers,
   setStudioUserEnabled,
@@ -29,7 +30,7 @@ import {
 import { downloadCsv } from '../../../utils/download';
 import UserManagementPage from '../UserManagement';
 
-type MockAuthState = { admin: boolean; userId: number; logout: () => void };
+type MockAuthState = { admin: boolean; user: string; userId: number; logout: () => void };
 vi.mock('../../../api/studioUsers', () => ({
   createStudioUser: vi.fn(),
   listAllStudioUsers: vi.fn(),
@@ -40,7 +41,7 @@ vi.mock('../../../api/studioUsers', () => ({
 
 vi.mock('../../../stores/authStore', () => ({
   default: (selector: (state: MockAuthState) => unknown) =>
-    selector({ admin: true, userId: 1, logout: vi.fn() }),
+    selector({ admin: true, user: 'admin', userId: 1, logout: vi.fn() }),
 }));
 
 vi.mock('../../../utils/download', async () => {
@@ -124,6 +125,45 @@ describe('UserManagementPage', () => {
       pageSize: 20,
     });
     expect(screen.getByText('共 21 个用户')).toBeInTheDocument();
+    expect(screen.getByText('当前页账号安全摘要')).toBeInTheDocument();
+    expect(screen.getAllByText('密码状态').length).toBeGreaterThan(0);
+    expect(screen.getByText('正常')).toBeInTheDocument();
+  });
+
+  it('renders account security risks from the visible user page', async () => {
+    vi.mocked(listStudioUsers).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          username: 'root-admin',
+          admin: true,
+          enabled: true,
+          passwordChangedAt: '2025-01-01T00:00:00Z',
+          gmtCreate: '2025-01-01T00:00:00Z',
+          gmtModified: '2025-01-01T00:00:00Z',
+        },
+        {
+          id: 2,
+          username: 'disabled-admin',
+          admin: true,
+          enabled: false,
+          passwordChangedAt: '',
+          gmtCreate: '2026-01-01T00:00:00Z',
+          gmtModified: '2026-01-01T00:00:00Z',
+        },
+      ],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('root-admin')).toBeInTheDocument();
+    expect(screen.getByText('账号安全存在高风险')).toBeInTheDocument();
+    expect(screen.getByText(/管理员密码长期未轮换/)).toBeInTheDocument();
+    expect(screen.getByText('需轮换')).toBeInTheDocument();
+    expect(screen.getByText('未知')).toBeInTheDocument();
   });
 
   it('debounces username search and sends role and status filters', async () => {
@@ -158,6 +198,29 @@ describe('UserManagementPage', () => {
     expect(exportedCsv).toContain('"operator"');
     expect(exportedCsv).toContain('"User"');
     expect(exportedCsv).toContain('"Enabled"');
+  });
+
+  it('shows password strength guidance while creating a user', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(createStudioUser).mockResolvedValue({
+      id: 10,
+      username: 'operator',
+      admin: false,
+      enabled: true,
+      passwordChangedAt: '2026-09-01T00:00:00',
+      gmtCreate: '2026-09-01T00:00:00',
+      gmtModified: '2026-09-01T00:00:00',
+    });
+    renderPage();
+    await screen.findByText('operator');
+
+    await user.click(screen.getByRole('button', { name: '新建用户' }));
+    expect(screen.getByTestId('studio-password-strength')).toHaveTextContent('待输入');
+    await user.type(screen.getByLabelText('用户名'), 'operator');
+    await user.type(screen.getByLabelText('初始密码'), 'operator123');
+
+    expect(screen.getByTestId('studio-password-strength')).toHaveTextContent('弱');
+    expect(screen.getByText('不包含用户名')).toBeInTheDocument();
   });
 
   it('does not overlap status updates for the same user', async () => {

@@ -45,6 +45,12 @@ import {
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import {
+  StudioPasswordStrengthPanel,
+  StudioUserSecurityOverview,
+} from '../../components/StudioUserSecurityPanel';
+import { getStudioUserPasswordRotation } from '../../utils/studioUserSecurity';
+import { tableScrollX } from '../../utils/table';
 
 interface CreateFormValues {
   username: string;
@@ -75,6 +81,7 @@ const STUDIO_USER_EXPORT_COLUMNS: CsvColumn<StudioUser>[] = [
 const UserManagementPage = () => {
   const navigate = useNavigate();
   const admin = useAuthStore((state) => state.admin);
+  const userName = useAuthStore((state) => state.user);
   const userId = useAuthStore((state) => state.userId);
   const clearAuth = useAuthStore((state) => state.logout);
   const [users, setUsers] = useState<StudioUser[]>([]);
@@ -92,6 +99,10 @@ const UserManagementPage = () => {
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
+  const createUsername = Form.useWatch('username', createForm);
+  const createPassword = Form.useWatch('password', createForm);
+  const currentPassword = Form.useWatch('currentPassword', passwordForm);
+  const newPassword = Form.useWatch('newPassword', passwordForm);
   const requestSeqRef = useRef(0);
   const mutatingUserIdsRef = useRef(new Set<number>());
 
@@ -200,6 +211,14 @@ const UserManagementPage = () => {
     }
   };
   const openCreateUserModal = () => setCreateOpen(true);
+  const closeCreateUserModal = () => {
+    setCreateOpen(false);
+    createForm.resetFields();
+  };
+  const closePasswordModal = () => {
+    setPasswordTarget(null);
+    passwordForm.resetFields();
+  };
   const handleExportUsers = useCallback(async () => {
     if (!admin) return;
     setUserExporting(true);
@@ -220,24 +239,48 @@ const UserManagementPage = () => {
     }
     setUserExporting(false);
   }, [admin, roleFilter, search, statusFilter]);
+
+  const renderPasswordRotationStatus = (record: StudioUser) => {
+    const rotation = getStudioUserPasswordRotation(record);
+    const suffix = rotation.daysSinceChange === null ? '' : `（${rotation.daysSinceChange} 天前）`;
+    return (
+      <Space direction="vertical" size={0}>
+        <Tag color={rotation.color} style={{ marginInlineEnd: 0 }}>
+          {rotation.label}
+        </Tag>
+        <span style={{ color: '#8c8c8c', fontSize: 12 }}>{suffix || '缺少改密时间'}</span>
+      </Space>
+    );
+  };
+
   const columns: ColumnsType<StudioUser> = [
-    { title: '用户名', dataIndex: 'username' },
+    { title: '用户名', dataIndex: 'username', width: 180 },
     { title: '用户 ID', dataIndex: 'id', width: 100 },
     {
       title: '权限',
       dataIndex: 'admin',
+      width: 120,
       render: (value: boolean) => (value ? <Tag color="blue">管理员</Tag> : <Tag>普通用户</Tag>),
     },
     {
       title: '状态',
       dataIndex: 'enabled',
+      width: 120,
       render: (value: boolean) =>
         value ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>,
     },
-    { title: '创建时间', dataIndex: 'gmtCreate', render: dateTime },
+    {
+      title: '密码状态',
+      dataIndex: 'passwordChangedAt',
+      width: 150,
+      render: (_: string, record) => renderPasswordRotationStatus(record),
+    },
+    { title: '改密时间', dataIndex: 'passwordChangedAt', width: 190, render: dateTime },
+    { title: '创建时间', dataIndex: 'gmtCreate', width: 190, render: dateTime },
     {
       title: '操作',
       key: 'actions',
+      width: 180,
       render: (_, record) => (
         <Space>
           <Button size="small" icon={<Key size={14} />} onClick={() => setPasswordTarget(record)}>
@@ -291,7 +334,7 @@ const UserManagementPage = () => {
           onClick={() =>
             setPasswordTarget({
               id: userId ?? 0,
-              username: '',
+              username: userName ?? '',
               admin: !!admin,
               enabled: true,
               passwordChangedAt: '',
@@ -305,6 +348,7 @@ const UserManagementPage = () => {
       </Card>
       {admin && (
         <Card>
+          <StudioUserSecurityOverview users={users} total={total} loading={loading} />
           <Flex gap={12} wrap style={{ marginBottom: 16 }}>
             <Input.Search
               allowClear
@@ -368,6 +412,7 @@ const UserManagementPage = () => {
                 }
               },
             }}
+            scroll={{ x: tableScrollX(columns) }}
           />
         </Card>
       )}
@@ -376,7 +421,7 @@ const UserManagementPage = () => {
         title="新建 Studio 用户"
         open={createOpen}
         onOk={() => void createUser()}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={closeCreateUserModal}
       >
         <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
           <Form.Item name="username" label="用户名" rules={[{ required: true }, { max: 128 }]}>
@@ -389,6 +434,10 @@ const UserManagementPage = () => {
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
+          <StudioPasswordStrengthPanel
+            username={typeof createUsername === 'string' ? createUsername : ''}
+            password={typeof createPassword === 'string' ? createPassword : ''}
+          />
           <Form.Item name="admin" label="管理员权限" valuePropName="checked">
             <Switch checkedChildren="管理员" unCheckedChildren="普通用户" />
           </Form.Item>
@@ -403,10 +452,7 @@ const UserManagementPage = () => {
         }
         open={passwordTarget !== null}
         onOk={() => void updatePassword()}
-        onCancel={() => {
-          setPasswordTarget(null);
-          passwordForm.resetFields();
-        }}
+        onCancel={closePasswordModal}
       >
         <Form form={passwordForm} layout="vertical">
           {passwordTarget?.id === userId && (
@@ -421,6 +467,11 @@ const UserManagementPage = () => {
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
+          <StudioPasswordStrengthPanel
+            username={passwordTarget?.username}
+            currentPassword={typeof currentPassword === 'string' ? currentPassword : ''}
+            password={typeof newPassword === 'string' ? newPassword : ''}
+          />
         </Form>
       </Modal>
     </div>
