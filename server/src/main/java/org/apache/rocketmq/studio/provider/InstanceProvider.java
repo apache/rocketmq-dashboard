@@ -33,6 +33,7 @@ import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Set;
@@ -92,8 +93,15 @@ public interface InstanceProvider {
     List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search);
 
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
-            int page, int pageSize) {
+            String subscriptionMode, int page, int pageSize) {
         List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, search);
+        if (StringUtils.hasText(subscriptionMode)) {
+            String normalizedMode = subscriptionMode.trim();
+            groups = groups.stream()
+                    .filter(group -> group != null && group.getSubscriptionMode() != null
+                            && normalizedMode.equalsIgnoreCase(group.getSubscriptionMode().name()))
+                    .toList();
+        }
         int total = groups.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);

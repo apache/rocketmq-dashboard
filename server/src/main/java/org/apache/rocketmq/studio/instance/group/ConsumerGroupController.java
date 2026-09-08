@@ -56,9 +56,11 @@ public class ConsumerGroupController {
             @RequestParam(required = false) String instanceId,
             @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String subscriptionMode,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return Result.ok(metadataService.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize));
+        return Result.ok(metadataService.listConsumerGroupsPage(
+                instanceId, clusterId, search, subscriptionMode, page, pageSize));
     }
 
     @GetMapping("/{name}")

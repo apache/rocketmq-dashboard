@@ -58,17 +58,29 @@ public interface MetadataProvider {
 
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String clusterId, String search,
             int page, int pageSize) {
-        List<ConsumerGroupVO> groups = listConsumerGroups(clusterId, search);
+        return listConsumerGroupsPage(null, clusterId, search, null, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String clusterId, String search,
+            String subscriptionMode, int page, int pageSize) {
+        return listConsumerGroupsPage(null, clusterId, search, subscriptionMode, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, clusterId, search);
+        if (subscriptionMode != null && !subscriptionMode.isBlank()) {
+            String normalizedMode = subscriptionMode.trim();
+            groups = groups.stream()
+                    .filter(group -> group != null && group.getSubscriptionMode() != null
+                            && normalizedMode.equalsIgnoreCase(group.getSubscriptionMode().name()))
+                    .toList();
+        }
         int total = groups.size();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, total);
         int to = from + (int) Math.min(pageSize, total - from);
         return PageResult.of(groups.subList(from, to), total, page, pageSize);
-    }
-
-    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
-            String search, int page, int pageSize) {
-        return listConsumerGroupsPage(clusterId, search, page, pageSize);
     }
 
     List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);

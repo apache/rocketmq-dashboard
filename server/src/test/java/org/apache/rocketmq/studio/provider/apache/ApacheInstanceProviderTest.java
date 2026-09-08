@@ -110,10 +110,10 @@ class ApacheInstanceProviderTest {
     @Test
     void listConsumerGroupsPageShouldRouteThroughDatabasePaginationTest() {
         PageResult<ConsumerGroupVO> page = PageResult.of(java.util.List.of(), 0, 1, 20);
-        when(metadataProvider.listConsumerGroupsPage("inst-1", null, "orders", 1, 20)).thenReturn(page);
+        when(metadataProvider.listConsumerGroupsPage("inst-1", null, "orders", "Pop", 1, 20)).thenReturn(page);
 
-        assertThat(provider.listConsumerGroupsPage("inst-1", "orders", 1, 20)).isSameAs(page);
+        assertThat(provider.listConsumerGroupsPage("inst-1", "orders", "Pop", 1, 20)).isSameAs(page);
 
-        verify(metadataProvider).listConsumerGroupsPage("inst-1", null, "orders", 1, 20);
+        verify(metadataProvider).listConsumerGroupsPage("inst-1", null, "orders", "Pop", 1, 20);
     }
 }
