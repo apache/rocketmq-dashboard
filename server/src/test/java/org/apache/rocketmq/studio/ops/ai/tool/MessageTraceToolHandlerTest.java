@@ -32,6 +32,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,7 +62,8 @@ class MessageTraceToolHandlerTest {
                         .retryCount(0)
                         .build()))
                 .build();
-        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-1"), eq("TopicA")))
+        when(messageService.getMessageTrace(
+                        eq("instance-a"), eq("msg-1"), eq("TopicA"), isNull()))
                 .thenReturn(trace);
 
         Object result = handler.execute(Map.of(
@@ -81,6 +83,25 @@ class MessageTraceToolHandlerTest {
         assertThat(status.get("group")).isEqualTo("group-a");
         assertThat(status.get("deliveryStatus")).isEqualTo("success");
 
-        verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
+        verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA", null);
+    }
+
+    @Test
+    void executeShouldForwardCustomTraceTopic() {
+        TraceRecordVO trace = TraceRecordVO.builder()
+                .nodes(List.of())
+                .consumerStatus(List.of())
+                .build();
+        when(messageService.getMessageTrace(
+                        eq("instance-a"), eq("msg-1"), eq("TopicA"), eq("CUSTOM_TRACE")))
+                .thenReturn(trace);
+
+        handler.execute(Map.of(
+                "cluster", "instance-a",
+                "msgId", "msg-1",
+                "topic", "TopicA",
+                "traceTopic", "CUSTOM_TRACE"));
+
+        verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA", "CUSTOM_TRACE");
     }
 }

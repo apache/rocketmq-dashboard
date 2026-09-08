@@ -47,7 +47,8 @@ public class MessageTraceToolHandler implements ToolHandler {
         String instanceId = (String) input.get("cluster");
         String msgId = (String) input.get("msgId");
         String topic = (String) input.get("topic");
-        TraceRecordVO trace = messageService.getMessageTrace(instanceId, msgId, topic);
+        String traceTopic = (String) input.get("traceTopic");
+        TraceRecordVO trace = messageService.getMessageTrace(instanceId, msgId, topic, traceTopic);
         return project(msgId, trace);
     }
 

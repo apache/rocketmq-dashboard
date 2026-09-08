@@ -72,6 +72,23 @@ class ToolCatalogTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void messageTraceAdvertisesOptionalCustomTraceTopic() {
+        ToolDefinition trace = ToolCatalog.load(canonicalCatalog(), canonicalSchema())
+                .find("rmq.message.trace")
+                .orElseThrow();
+        Map<String, Object> properties =
+                (Map<String, Object>) trace.inputSchema().get("properties");
+        List<String> required =
+                (List<String>) trace.inputSchema().get("required");
+
+        assertThat(properties).containsKey("traceTopic");
+        assertThat((Map<String, Object>) properties.get("traceTopic"))
+                .containsEntry("type", "string");
+        assertThat(required).doesNotContain("traceTopic");
+    }
+
+    @Test
     void rejectsCatalogThatDoesNotMatchItsJsonSchema() {
         Resource invalid = utf8Resource("""
                 version: 1.0.0
