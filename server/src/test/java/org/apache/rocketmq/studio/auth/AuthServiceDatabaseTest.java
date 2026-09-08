@@ -439,6 +439,46 @@ class AuthServiceDatabaseTest {
         return row;
     }
 
+    @Test
+    void loginShouldNotRevealDisabledAccountsBeforeThePasswordIsVerified() {
+        RmqStudioUser disabledUser = user(3L, "suspended", false, false, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(disabledUser);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("suspended");
+        request.setPassword("wrong-password");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid username or password")
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401));
+    }
+
+    @Test
+    void disabledAccountLoginsAreRateLimitedLikeWrongPasswords() {
+        RmqStudioUser disabledUser = user(3L, "suspended", false, false, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(disabledUser);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("suspended");
+        request.setPassword("wrong-password");
+
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            assertThatThrownBy(() -> authService.login(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Invalid username or password");
+        }
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(429))
+                .hasMessageStartingWith("Too many failed login attempts");
+    }
+
     private RmqStudioUser user(Long id, String username, boolean admin, boolean enabled, String password) {
         RmqStudioUser user = new RmqStudioUser();
         user.setId(id);

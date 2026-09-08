@@ -351,11 +351,11 @@ public class AuthService {
         ensureBootstrapUsers();
         RmqStudioUser user = findUserByUsername(request.getUsername())
                 .orElseThrow(() -> new BusinessException(401, "Invalid username or password"));
-        if (!Boolean.TRUE.equals(user.getEnabled())) {
-            throw new BusinessException(403, "User account is disabled");
-        }
         if (!passwordHasher.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BusinessException(401, "Invalid username or password");
+        }
+        if (!Boolean.TRUE.equals(user.getEnabled())) {
+            throw new BusinessException(403, "User account is disabled");
         }
         int tokenTtlSeconds = sessionTimeoutSeconds();
         String token = newBearerToken();
