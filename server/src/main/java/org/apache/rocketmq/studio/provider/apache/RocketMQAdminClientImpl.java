@@ -759,10 +759,24 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         "No consume offset data found for topic " + topic);
             }
 
-            long currentTotalLag = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getCurrentLag).sum();
-            long projectedTotalLag = queues.stream()
-                    .mapToLong(ResetConsumerOffsetQueuePreviewVO::getProjectedLag)
-                    .sum();
+            long currentTotalLag = 0;
+            boolean currentLagUnknown = false;
+            long projectedTotalLag = 0;
+            boolean projectedLagUnknown = false;
+            for (ResetConsumerOffsetQueuePreviewVO queue : queues) {
+                if (queue.getCurrentLag() == ConsumerLagResolver.UNKNOWN) {
+                    currentLagUnknown = true;
+                } else {
+                    currentTotalLag += queue.getCurrentLag();
+                }
+                if (queue.getProjectedLag() == ConsumerLagResolver.UNKNOWN) {
+                    projectedLagUnknown = true;
+                } else {
+                    projectedTotalLag += queue.getProjectedLag();
+                }
+            }
+            currentTotalLag = currentLagUnknown ? ConsumerLagResolver.UNKNOWN : currentTotalLag;
+            projectedTotalLag = projectedLagUnknown ? ConsumerLagResolver.UNKNOWN : projectedTotalLag;
             long totalOffsetDelta = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getOffsetDelta).sum();
             int rewindQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() < 0).count();
             int fastForwardQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() > 0).count();
@@ -888,7 +902,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     private long resolveLag(long brokerOffset, long consumerOffset) {
-        return Math.max(0L, brokerOffset - consumerOffset);
+        return ConsumerLagResolver.resolve(brokerOffset - consumerOffset, null);
     }
 
     private long clampOffset(long offset, long minOffset, long maxOffset) {
