@@ -365,8 +365,11 @@ export async function listAlertDeliveriesPage(params: NotificationDeliveryQuery 
 export async function exportAlertDeliveries(
   params: Omit<NotificationDeliveryQuery, 'page' | 'pageSize'>,
 ) {
-  const res = await client.get<{ data: string }>('/system-alerts/deliveries/export', { params });
-  return res.data.data;
+  const res = await client.get<Blob>('/system-alerts/deliveries/export', {
+    params,
+    responseType: 'blob',
+  });
+  return res.data;
 }
 
 export async function listAlertSilences() {

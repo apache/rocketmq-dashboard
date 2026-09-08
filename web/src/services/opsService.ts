@@ -444,9 +444,11 @@ export async function listAlertDeliveriesPage(
 
 export async function exportAlertDeliveries(
   params: Omit<NotificationDeliveryQuery, 'page' | 'pageSize'>,
-): Promise<string> {
+): Promise<Blob> {
   if (isMockMode()) {
-    return '\uFEFFdeliveryId,alertId,alertTitle,alertDomain,transition,instanceId,channel,status,attempts,createdAt,deliveredAt,nextRetryAt,lastError\r\n';
+    const header =
+      'deliveryId,alertId,alertTitle,alertDomain,transition,instanceId,channel,status,attemptCount,createdAt,deliveredAt,nextRetryAt,lastError\r\n';
+    return new Blob(['\uFEFF' + header], { type: 'text/csv;charset=utf-8' });
   }
   return opsApi.exportAlertDeliveries(params);
 }

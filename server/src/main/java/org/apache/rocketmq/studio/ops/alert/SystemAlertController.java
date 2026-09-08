@@ -21,6 +21,8 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -87,12 +90,17 @@ public class SystemAlertController {
         return Result.ok(notificationOutboxService.listDeliveries(channel, status, instanceId, page, pageSize));
     }
 
-    @GetMapping("/deliveries/export")
-    public Result<String> exportDeliveries(
+    @GetMapping(value = "/deliveries/export", produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<byte[]> exportDeliveries(
             @RequestParam(required = false) String channel,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String instanceId) {
-        return Result.ok(notificationOutboxService.exportDeliveries(channel, status, instanceId));
+        byte[] csv = notificationOutboxService.exportDeliveries(channel, status, instanceId)
+                .getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"notification-deliveries.csv\"")
+                .body(csv);
     }
 
     @PostMapping("/deliveries/{deliveryId}/retry")

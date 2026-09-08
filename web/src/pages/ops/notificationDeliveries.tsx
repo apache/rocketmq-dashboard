@@ -33,6 +33,7 @@ import {
 } from '../../services/opsService';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { downloadBlob } from '../../utils/download';
 
 const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   PENDING: 'default',
@@ -69,20 +70,15 @@ const NotificationDeliveriesPage = () => {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const csv = await exportAlertDeliveries({
+      const blob = await exportAlertDeliveries({
         channel,
         status,
         instanceId,
       });
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `rocketmq-notification-deliveries-${new Date()
-        .toISOString()
-        .slice(0, 10)}.csv`;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(
+        blob,
+        `rocketmq-notification-deliveries-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
     } catch {
       message.error(t('deliveries.exportFailed'));
     } finally {

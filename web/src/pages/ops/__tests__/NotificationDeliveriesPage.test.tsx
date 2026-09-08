@@ -175,8 +175,13 @@ describe('NotificationDeliveriesPage', () => {
     );
   });
 
-  it('exports deliveries using the current filters', async () => {
-    vi.mocked(exportAlertDeliveries).mockResolvedValue('\uFEFFdeliveryId\r\n');
+  it('exports deliveries using the current filters and downloads the blob', async () => {
+    const blob = new Blob(['\uFEFFdeliveryId\r\n'], { type: 'text/csv;charset=utf-8' });
+    vi.mocked(exportAlertDeliveries).mockResolvedValue(blob);
+    const createObjectURL = vi.fn(() => 'blob:delivery-export');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: revokeObjectURL });
     const user = userEvent.setup();
     render(
       <App>
@@ -190,5 +195,7 @@ describe('NotificationDeliveriesPage', () => {
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
     await waitFor(() => expect(exportAlertDeliveries).toHaveBeenCalledWith({}));
+    expect(createObjectURL).toHaveBeenCalledWith(blob);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:delivery-export');
   });
 });
