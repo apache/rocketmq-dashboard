@@ -313,17 +313,41 @@ class AliyunInstanceProviderTest {
 
         List<QueueProgressVO> rows = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
 
-        assertThat(rows).hasSize(2);
+        // with a topic breakdown the aggregate total row is dropped, otherwise callers
+        // that sum the rows would report the same lag twice
+        assertThat(rows).hasSize(1);
         QueueProgressVO topicRow = rows.stream()
                 .filter(row -> "topic:topic-a".equals(row.getBroker()))
                 .findFirst()
                 .orElseThrow();
         assertThat(topicRow.getDiffTotal()).isEqualTo(42L);
-        QueueProgressVO totalRow = rows.stream()
-                .filter(row -> "total".equals(row.getBroker()))
-                .findFirst()
-                .orElseThrow();
-        assertThat(totalRow.getDiffTotal()).isEqualTo(100L);
+        assertThat(rows).noneMatch(row -> "total".equals(row.getBroker()));
+    }
+
+    @Test
+    void getGroupProgressShouldFallBackToTotalRowWithoutTopicBreakdownTest() {
+        stubInstance();
+        stubCallThrough();
+        GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetConsumerGroupLagResponseBody.builder()
+                        .data(GetConsumerGroupLagResponseBody.Data.builder()
+                                .consumerGroupId("GID_test")
+                                .totalLag(GetConsumerGroupLagResponseBody.TotalLag.builder()
+                                        .readyCount(100L)
+                                        .build())
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.getConsumerGroupLag(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        List<QueueProgressVO> rows = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.getBroker()).isEqualTo("total");
+            assertThat(row.getDiffTotal()).isEqualTo(100L);
+        });
     }
 
     @Test
