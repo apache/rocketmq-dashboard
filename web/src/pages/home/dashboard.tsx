@@ -14,7 +14,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { ClusterOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { ClusterOutlined, DownloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { ListDashes, ArrowDown } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import StatusBadge from '../../components/StatusBadge';
@@ -25,6 +25,8 @@ import { getDashboard } from '../../services/dashboardService';
 import type { DashboardData } from '../../api/metrics';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import dayjs from 'dayjs';
 import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
@@ -139,6 +141,26 @@ const DashboardPage = () => {
   }
 
   const { stats, clusters } = visibleDashboard;
+
+  const handleExportClusters = () => {
+    const columns: CsvColumn<DashboardData['clusters'][number]>[] = [
+      { header: t('dashboard.clusterName'), value: (cluster) => cluster.name },
+      { header: t('common.status'), value: (cluster) => cluster.status },
+      { header: t('common.type'), value: (cluster) => cluster.type },
+      { header: t('common.version'), value: (cluster) => cluster.version },
+      { header: t('dashboard.broker'), value: (cluster) => cluster.brokers },
+      { header: t('dashboard.proxy'), value: (cluster) => cluster.proxies },
+      { header: t('dashboard.topic'), value: (cluster) => cluster.topics },
+      { header: t('dashboard.group'), value: (cluster) => cluster.groups },
+      { header: t('dashboard.tpsIn'), value: (cluster) => cluster.tpsIn },
+      { header: t('dashboard.tpsOut'), value: (cluster) => cluster.tpsOut },
+    ];
+    const instancePart = selectedInstanceId ?? 'all';
+    downloadCsv(
+      `rocketmq-clusters-${instancePart}-${dayjs().format('YYYY-MM-DD')}.csv`,
+      buildCsv(columns, clusters),
+    );
+  };
 
   const statCards = [
     {
@@ -299,7 +321,19 @@ const DashboardPage = () => {
 
       <Card
         title={t('dashboard.clusterHealth')}
-        extra={<a onClick={() => navigate(clusterPagePath)}>{t('common.viewAll')}</a>}
+        extra={
+          <Space>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              disabled={clusters.length === 0}
+              onClick={handleExportClusters}
+            >
+              {t('common.export')}
+            </Button>
+            <a onClick={() => navigate(clusterPagePath)}>{t('common.viewAll')}</a>
+          </Space>
+        }
         styles={{ body: { padding: '0 20px 16px' } }}
       >
         <Table
