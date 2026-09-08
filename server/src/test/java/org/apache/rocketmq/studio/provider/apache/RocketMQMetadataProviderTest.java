@@ -218,7 +218,7 @@ class RocketMQMetadataProviderTest {
         RocketMQMetadataProvider provider = newProvider();
 
         PageResult<ConsumerGroupVO> result = provider.listConsumerGroupsPage(
-                "instance-a", "cluster-1", "group", 2, 1);
+                "instance-a", "cluster-1", "group", null, 2, 1);
 
         assertThat(result.getItems()).hasSize(1);
         assertThat(result.getItems().get(0).getName()).isEqualTo("group-b");
@@ -234,6 +234,21 @@ class RocketMQMetadataProviderTest {
                 .contains("instance_id", "cluster_id", "ORDER BY name ASC,id ASC");
         verify(groupMapper, never()).selectList(any());
         verify(runtimeAdminClientResolver, times(2)).execute(eq("instance-a"), any());
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPushSubscriptionModeFilterIntoTheDatabaseQuery() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(new Page<>(1, 20, 0));
+        RocketMQMetadataProvider provider = newProvider();
+
+        provider.listConsumerGroupsPage("instance-a", null, "group", "Pop", 1, 20);
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).selectPage(any(Page.class), captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("message_model");
+        assertThat(captor.getValue().getParamNameValuePairs().values()).contains("Pop");
     }
 
     @Test

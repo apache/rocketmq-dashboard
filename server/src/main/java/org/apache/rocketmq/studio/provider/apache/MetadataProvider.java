@@ -71,6 +71,16 @@ public interface MetadataProvider {
         return listConsumerGroupsPage(clusterId, search, page, pageSize);
     }
 
+    /**
+     * Paged group list filtered by subscription mode. Cloud providers keep the in-memory
+     * default; the Apache provider pushes the filter into the database query so counts stay
+     * consistent with the filtered rows.
+     */
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
+        return listConsumerGroupsPage(clusterId, search, page, pageSize);
+    }
+
     List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);
     List<TopicConsumerVO> getTopicConsumers(String instanceId, String name);
 

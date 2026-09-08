@@ -82,7 +82,7 @@ class ConsumerGroupControllerTest {
     @Test
     void listConsumerGroupsPageShouldPassSelectedInstanceFiltersAndPaging() throws Exception {
         PageResult<ConsumerGroupVO> page = PageResult.of(List.of(), 3, 2, 20);
-        when(metadataService.listConsumerGroupsPage("instance-a", "cluster-a", "orders", 2, 20))
+        when(metadataService.listConsumerGroupsPage("instance-a", "cluster-a", "orders", null, 2, 20))
                 .thenReturn(page);
 
         mockMvc.perform(get("/api/groups/page")
@@ -96,7 +96,22 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.data.page").value(2))
                 .andExpect(jsonPath("$.data.size").value(20));
 
-        verify(metadataService).listConsumerGroupsPage("instance-a", "cluster-a", "orders", 2, 20);
+        verify(metadataService).listConsumerGroupsPage("instance-a", "cluster-a", "orders", null, 2, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPassSubscriptionModeFilterThrough() throws Exception {
+        PageResult<ConsumerGroupVO> page = PageResult.of(List.of(), 1, 1, 20);
+        when(metadataService.listConsumerGroupsPage("instance-a", null, null, "Pop", 1, 20))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/groups/page")
+                        .param("instanceId", "instance-a")
+                        .param("subscriptionMode", "Pop"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1));
+
+        verify(metadataService).listConsumerGroupsPage("instance-a", null, null, "Pop", 1, 20);
     }
 
     @Test

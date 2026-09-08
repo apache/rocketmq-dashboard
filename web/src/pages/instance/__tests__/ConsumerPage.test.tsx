@@ -294,6 +294,34 @@ describe('Consumer page', () => {
     });
   });
 
+  it('passes the subscription mode filter to the server query and resets the page', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith({
+      instanceId: 'instance-1',
+      page: 1,
+      pageSize: 20,
+      search: undefined,
+    });
+
+    const modeSelect = screen
+      .getAllByRole('combobox')
+      .find((element) => element.closest('.ant-select')?.textContent?.includes('全部模式'));
+    expect(modeSelect).toBeTruthy();
+    await user.click(modeSelect as HTMLElement);
+    await user.click(
+      await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ subscriptionMode: 'Pop', page: 1 }),
+      ),
+    );
+  });
+
   afterEach(() => {
     cleanup();
     Modal.destroyAll();

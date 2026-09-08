@@ -101,6 +101,27 @@ public interface InstanceProvider {
         return PageResult.of(groups.subList(from, to), total, page, pageSize);
     }
 
+    /**
+     * Paged group list filtered by subscription mode. Providers that cannot push the filter
+     * into their source keep the in-memory default; the mode is matched against the VO's
+     * textual subscription mode ("Push"/"Pop") so the visible rows and the total agree.
+     */
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
+            String subscriptionMode, int page, int pageSize) {
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, search);
+        if (subscriptionMode != null && !subscriptionMode.isBlank() && !"ALL".equals(subscriptionMode)) {
+            groups = groups.stream()
+                    .filter(group -> subscriptionMode.equals(
+                            group.getSubscriptionMode() == null ? null : group.getSubscriptionMode().name()))
+                    .toList();
+        }
+        int total = groups.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+    }
+
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
 
     void deleteConsumerGroup(String instanceId, String groupName);

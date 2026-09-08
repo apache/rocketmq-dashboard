@@ -239,11 +239,15 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
-            String search, int page, int pageSize) {
+            String search, String subscriptionMode, int page, int pageSize) {
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                // messageModel stores the subscription mode ("Push"/"Pop"), the same column
+                // toConsumerGroupVO reads; filter server-side so total matches the rows.
+                .eq(StringUtils.hasText(subscriptionMode) && !"ALL".equals(subscriptionMode),
+                        RmqGroup::getMessageModel, subscriptionMode)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
