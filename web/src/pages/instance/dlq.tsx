@@ -49,6 +49,7 @@ import {
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
 import { tableScrollX } from '../../utils/table';
+import DLQBacklogPortfolioDrawer from '../../components/DLQBacklogPortfolioDrawer';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -112,6 +113,7 @@ const DLQPage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [search, setSearch] = useState('');
+  const [portfolioOpen, setPortfolioOpen] = useState(false);
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [retryGroup, setRetryGroup] = useState<DLQGroup | null>(null);
   const [retryRange, setRetryRange] = useState<[Dayjs, Dayjs]>([
@@ -629,14 +631,19 @@ const DLQPage = () => {
             />
           </Space>
         </Space>
-        <Button
-          icon={<Download size={16} />}
-          disabled={selectedGroups.length === 0}
-          onClick={handleBatchExport}
-        >
-          {t('message.batchExport')}
-          {selectedGroups.length > 0 ? ` (${selectedGroups.length})` : ''}
-        </Button>
+        <Space>
+          <Button disabled={!selectedInstanceId} onClick={() => setPortfolioOpen(true)}>
+            全量积压分析
+          </Button>
+          <Button
+            icon={<Download size={16} />}
+            disabled={selectedGroups.length === 0}
+            onClick={handleBatchExport}
+          >
+            {t('message.batchExport')}
+            {selectedGroups.length > 0 ? ` (${selectedGroups.length})` : ''}
+          </Button>
+        </Space>
       </Flex>
 
       {loadError && (
@@ -675,6 +682,11 @@ const DLQPage = () => {
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
+      <DLQBacklogPortfolioDrawer
+        open={portfolioOpen}
+        instanceId={selectedInstanceId}
+        onClose={() => setPortfolioOpen(false)}
+      />
 
       {/* ═══════════════════════════════════════════
          Retry Modal
