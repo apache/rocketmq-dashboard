@@ -135,44 +135,52 @@ describe('Message page query history', () => {
     expect(queryButton).toBeDisabled();
     await waitFor(() => expect(queryButton).toHaveAttribute('title', '请选择 Topic'));
 
+    const queryButtonElement = () => screen.getByRole('button', { name: /^search查询$/ });
     await user.click(lastElement(screen.getAllByRole('combobox')));
     await user.click(lastElement(await screen.findAllByText('order-create')));
-    expect(queryButton).toBeEnabled();
-    expect(queryButton).not.toHaveAttribute('title');
+    await waitFor(() => expect(queryButtonElement()).toBeEnabled());
+    expect(queryButtonElement()).not.toHaveAttribute('title');
 
     await user.click(screen.getByText('按 Message Key'));
-    expect(queryButton).toBeDisabled();
-    expect(queryButton).toHaveAttribute('title', '请输入 Message Key');
+    await waitFor(() => {
+      expect(queryButtonElement()).toBeDisabled();
+      expect(queryButtonElement()).toHaveAttribute('title', '请输入 Message Key');
+    });
 
     const keyInput = screen.getByPlaceholderText('输入 Message Key');
     await user.type(keyInput, '   ');
-    expect(queryButton).toBeDisabled();
+    await waitFor(() => expect(queryButtonElement()).toBeDisabled());
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
 
     await user.clear(keyInput);
     await user.type(keyInput, '  ORDER-001  ');
-    expect(queryButton).toBeEnabled();
-    await user.click(queryButton);
+    await waitFor(() => expect(queryButtonElement()).toBeEnabled());
+    await user.click(queryButtonElement());
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
-        topic: 'order-create',
-        key: 'ORDER-001',
-        instanceId: 1,
-      });
+      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          topic: 'order-create',
+          key: 'ORDER-001',
+          instanceId: 1,
+          startTime: expect.any(Number),
+          endTime: expect.any(Number),
+        }),
+      );
     });
-
     await user.click(screen.getByText('按 Message ID'));
-    expect(queryButton).toBeDisabled();
-    expect(queryButton).toHaveAttribute('title', '请输入 Message ID');
+    await waitFor(() => {
+      expect(queryButtonElement()).toBeDisabled();
+      expect(queryButtonElement()).toHaveAttribute('title', '请输入 Message ID');
+    });
 
     const messageIdInput = screen.getByPlaceholderText('输入 Message ID');
     await user.type(messageIdInput, '   ');
-    expect(queryButton).toBeDisabled();
+    await waitFor(() => expect(queryButtonElement()).toBeDisabled());
 
     await user.clear(messageIdInput);
     await user.type(messageIdInput, '  MID-001  ');
-    expect(queryButton).toBeEnabled();
-    await user.click(queryButton);
+    await waitFor(() => expect(queryButtonElement()).toBeEnabled());
+    await user.click(queryButtonElement());
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
         topic: 'order-create',
