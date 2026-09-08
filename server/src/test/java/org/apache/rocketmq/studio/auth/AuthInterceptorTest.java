@@ -573,6 +573,22 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
     }
 
+    @Test
+    void rocksdbCheckRequiresAdmin() throws Exception {
+        var session = login(false);
+        var response = new MockHttpServletResponse();
+        assertThat(session.interceptor().preHandle(authenticatedRequest("POST", "/api/brokers/rocksdb-check",
+                session.token()), response, new Object())).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void rocksdbCheckAllowsAdmin() throws Exception {
+        var session = login(true);
+        assertThat(session.interceptor().preHandle(authenticatedRequest("POST", "/api/brokers/rocksdb-check",
+                session.token()), new MockHttpServletResponse(), new Object())).isTrue();
+    }
+
     private TestSession login(boolean admin) {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
