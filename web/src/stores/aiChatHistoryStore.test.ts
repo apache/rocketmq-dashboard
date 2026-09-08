@@ -202,4 +202,34 @@ describe('aiChatHistoryStore', () => {
 
     expect(recent).toEqual([expect.objectContaining({ id: 'prompt', prompt: 'Inspect lag' })]);
   });
+
+  it('searches conversations by any message text case-insensitively', async () => {
+    const { searchAiChatConversations } = await import('./aiChatHistoryStore');
+    const conversations = [
+      {
+        id: 'lag',
+        messages: [
+          { id: 'p1', role: 'user' as const, text: 'Inspect broker status' },
+          { id: 'a1', role: 'ai' as const, text: 'Consumer lag is high' },
+        ],
+        updatedAt: 3,
+      },
+      {
+        id: 'topology',
+        messages: [{ id: 'p2', role: 'user' as const, text: 'Show cluster topology' }],
+        updatedAt: 2,
+      },
+    ];
+
+    expect(searchAiChatConversations(conversations, '  LAG  ').map((item) => item.id)).toEqual([
+      'lag',
+    ]);
+    expect(searchAiChatConversations(conversations, 'show').map((item) => item.id)).toEqual([
+      'topology',
+    ]);
+    expect(searchAiChatConversations(conversations, '').map((item) => item.id)).toEqual([
+      'lag',
+      'topology',
+    ]);
+  });
 });
