@@ -104,6 +104,17 @@ public class MessageService {
         return messageProvider.getQueueOffsets(instanceId, topic);
     }
 
+    public QueueTimestampVO locateQueueByTime(String instanceId, String topic, String brokerName,
+                                               int queueId, long timestamp) {
+        if (!StringUtils.hasText(instanceId) || !StringUtils.hasText(topic) || !StringUtils.hasText(brokerName)) {
+            throw new BusinessException(400, "instanceId, topic and brokerName are required");
+        }
+        if (queueId < 0 || timestamp < 0) {
+            throw new BusinessException(400, "queueId and timestamp must not be negative");
+        }
+        return messageProvider.locateQueueByTime(instanceId, topic, brokerName, queueId, timestamp);
+    }
+
     public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
                                                 int queueId, long offset) {
         if (!StringUtils.hasText(topic)) {

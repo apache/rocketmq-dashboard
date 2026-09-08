@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
+  DatePicker,
   Descriptions,
   Empty,
   Flex,
@@ -32,8 +33,9 @@ import {
   message,
 } from 'antd';
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import type { MessageRecord, QueueOffset } from '../api/message';
-import { getQueueOffsets, pullMessageAtOffset } from '../api/message';
+import { getQueueOffsets, locateQueueByTime, pullMessageAtOffset } from '../api/message';
 
 const { Text, Paragraph } = Typography;
 
@@ -61,11 +63,21 @@ export const useQueueBrowser = (instanceId?: string) => {
   const [offsets, setOffsets] = useState<Record<string, number>>({});
   const [pulling, setPulling] = useState<Set<string>>(() => new Set());
   const [entries, setEntries] = useState<PulledEntry[]>([]);
+  const [timestamp, setTimestampValue] = useState<number | null>(null);
+  const [locating, setLocating] = useState<Set<string>>(() => new Set());
+  const locateRequestsRef = useRef(new Map<string, symbol>());
   const requestSeqRef = useRef(0);
   const loadingRef = useRef(false);
   const pullingRef = useRef(new Set<string>());
 
+  const setTimestamp = (value: number | null) => {
+    setTimestampValue(value);
+    locateRequestsRef.current.clear();
+    setLocating(new Set());
+  };
+
   useEffect(() => {
+    const sequence = requestSeqRef;
     const requestId = ++requestSeqRef.current;
     void Promise.resolve().then(() => {
       if (requestId !== requestSeqRef.current) return;
@@ -76,7 +88,12 @@ export const useQueueBrowser = (instanceId?: string) => {
       setLoading(false);
       pullingRef.current.clear();
       setPulling(new Set());
+      locateRequestsRef.current.clear();
+      setLocating(new Set());
     });
+    return () => {
+      sequence.current++;
+    };
   }, [instanceId, topic]);
 
   const loadQueues = useCallback(async () => {
@@ -87,6 +104,8 @@ export const useQueueBrowser = (instanceId?: string) => {
     setQueues([]);
     setOffsets({});
     setEntries([]);
+    locateRequestsRef.current.clear();
+    setLocating(new Set());
     try {
       const result = await getQueueOffsets({ instanceId, topic });
       if (requestId !== requestSeqRef.current) return;
@@ -140,6 +159,43 @@ export const useQueueBrowser = (instanceId?: string) => {
     }
   };
 
+  const handleLocate = async (queue: QueueOffset) => {
+    if (!instanceId || !topic || timestamp === null) return;
+    const key = `${queue.brokerName}-${queue.queueId}`;
+    if (locateRequestsRef.current.has(key)) return;
+    const requestId = requestSeqRef.current;
+    const token = Symbol(key);
+    locateRequestsRef.current.set(key, token);
+    setLocating(new Set(locateRequestsRef.current.keys()));
+    try {
+      const result = await locateQueueByTime({
+        instanceId,
+        topic,
+        brokerName: queue.brokerName,
+        queueId: queue.queueId,
+        timestamp,
+      });
+      if (requestId !== requestSeqRef.current || locateRequestsRef.current.get(key) !== token)
+        return;
+      setQueues((previous) =>
+        previous.map((item) => (`${item.brokerName}-${item.queueId}` === key ? result : item)),
+      );
+      setOffsets((previous) => ({ ...previous, [key]: result.offset ?? result.minOffset }));
+      setEntries((previous) => previous.filter((entry) => entry.key !== key));
+      if (result.offset === null) message.info('This queue is empty; no message can be located.');
+    } catch (error) {
+      if (requestId === requestSeqRef.current && locateRequestsRef.current.get(key) === token) {
+        message.error(error instanceof Error ? error.message : 'Failed to locate queue by time');
+      }
+    } finally {
+      // An old request must not release a newer request for the same queue after a reload.
+      if (locateRequestsRef.current.get(key) === token) {
+        locateRequestsRef.current.delete(key);
+        setLocating(new Set(locateRequestsRef.current.keys()));
+      }
+    }
+  };
+
   const closeEntry = (key: string) => {
     setEntries((prev) => prev.filter((entry) => entry.key !== key));
   };
@@ -155,6 +211,10 @@ export const useQueueBrowser = (instanceId?: string) => {
     entries,
     loadQueues,
     handlePull,
+    timestamp,
+    setTimestamp,
+    locating,
+    handleLocate,
     closeEntry,
   };
 };
@@ -174,7 +234,7 @@ export const QueueBrowserControls = ({
   topicOptions,
   topicLoading,
 }: ControlsProps) => (
-  <Flex gap={12} align="center">
+  <Flex gap={12} align="center" wrap>
     <Select
       showSearch
       allowClear
@@ -194,6 +254,16 @@ export const QueueBrowserControls = ({
     >
       加载队列
     </Button>
+    <Tooltip title="Choose a local time, then locate an approximate offset in a queue. Use View to inspect its stored time.">
+      <DatePicker
+        showTime
+        aria-label="Queue lookup time"
+        placeholder="Locate time (local)"
+        value={state.timestamp === null ? null : dayjs(state.timestamp)}
+        onChange={(value) => state.setTimestamp(value?.valueOf() ?? null)}
+        disabled={!instanceId || !state.topic}
+      />
+    </Tooltip>
   </Flex>
 );
 
@@ -210,14 +280,15 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
         style={{ padding: '32px 0' }}
       />
     ) : (
-      <Flex gap={16} align="flex-start">
+      <Flex gap={16} align="flex-start" wrap>
         {/* 左侧：队列表格 */}
-        <div style={{ width: '50%', flexShrink: 0 }}>
+        <div style={{ flex: '1 1 550px', minWidth: 0 }}>
           <Table<QueueOffset>
             rowKey={(r) => `${r.brokerName}-${r.queueId}`}
             dataSource={state.queues}
             size="small"
             pagination={false}
+            scroll={{ x: 550 }}
             columns={[
               {
                 title: 'Broker',
@@ -275,19 +346,32 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
               {
                 title: '操作',
                 key: 'action',
-                width: 70,
+                width: 150,
                 align: 'center',
                 render: (_: unknown, record: QueueOffset) => {
                   const key = `${record.brokerName}-${record.queueId}`;
                   return (
-                    <Button
-                      size="small"
-                      type="primary"
-                      loading={state.pulling.has(key)}
-                      onClick={() => void state.handlePull(record)}
-                    >
-                      查看
-                    </Button>
+                    <Space size={4}>
+                      <Button
+                        size="small"
+                        disabled={state.timestamp === null || state.pulling.has(key)}
+                        loading={state.locating.has(key)}
+                        onClick={() => void state.handleLocate(record)}
+                        aria-label={`Locate ${record.brokerName} queue ${record.queueId} by time`}
+                      >
+                        Locate
+                      </Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        aria-label={`View ${record.brokerName} queue ${record.queueId}`}
+                        loading={state.pulling.has(key)}
+                        disabled={state.locating.has(key) || record.maxOffset <= record.minOffset}
+                        onClick={() => void state.handlePull(record)}
+                      >
+                        查看
+                      </Button>
+                    </Space>
                   );
                 },
               },
@@ -300,7 +384,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
         </div>
 
         {/* 右侧：消息详情（2 列，可多条并存） */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: '1 1 320px', minWidth: 0 }}>
           {state.entries.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}

@@ -269,6 +269,21 @@ export async function pullMessageAtOffset(params: {
   return res.data.data;
 }
 
+export interface QueueTimestamp extends QueueOffset {
+  offset: number | null;
+}
+
+export async function locateQueueByTime(params: {
+  instanceId: string;
+  topic: string;
+  brokerName: string;
+  queueId: number;
+  timestamp: number;
+}) {
+  const res = await client.get<{ data: QueueTimestamp }>('/messages/queue-position', { params });
+  return res.data.data;
+}
+
 export async function listDLQMessages(params: {
   instanceId: string;
   groupName: string;

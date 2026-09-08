@@ -57,4 +57,10 @@ public class MessageProviderStub implements MessageProvider {
     private BusinessException unsupported() {
         return new BusinessException(501, "Message query provider is not configured");
     }
+
+    @Override
+    public QueueTimestampVO locateQueueByTime(String instanceId, String topic, String brokerName,
+                                              int queueId, long timestamp) {
+        throw unsupported();
+    }
 }
