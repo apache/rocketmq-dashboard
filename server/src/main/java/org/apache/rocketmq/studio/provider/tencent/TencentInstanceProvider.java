@@ -1036,12 +1036,15 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     private static TopicType toTopicType(String raw) {
         if (!StringUtils.hasText(raw)) {
-            return null;
+            return TopicType.NORMAL;
         }
         try {
             return TopicType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException ignored) {
-            return null;
+        } catch (IllegalArgumentException ex) {
+            // Unknown topic types fall back to NORMAL so read paths (web detail,
+            // AI rmq.topic.list) never see a null type, matching the Apache
+            // provider's parseTopicType fallback.
+            return TopicType.NORMAL;
         }
     }
 

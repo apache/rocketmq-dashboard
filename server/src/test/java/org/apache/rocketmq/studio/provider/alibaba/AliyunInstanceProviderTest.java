@@ -38,6 +38,7 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -129,16 +130,35 @@ class AliyunInstanceProviderTest {
         assertThat(all).hasSize(3);
         assertThat(all.get(0).getName()).isEqualTo("topic-normal");
         assertThat(all.get(0).getType()).isEqualTo(TopicType.NORMAL);
+        assertThat(all.get(0).getPerm()).isEqualTo(TopicPerm.RW);
         assertThat(all.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(all.get(0).getWriteQueues()).isZero();
         assertThat(all.get(0).getReadQueues()).isZero();
         assertThat(all.get(0).getRemark()).isEqualTo("remark-topic-normal");
-        assertThat(all.get(2).getType()).isNull();
+        assertThat(all.get(2).getType()).isEqualTo(TopicType.NORMAL);
 
         List<TopicVO> fifos = provider.listTopics(STUDIO_INSTANCE_ID, "FIFO", null);
 
         assertThat(fifos).hasSize(1);
         assertThat(fifos.get(0).getType()).isEqualTo(TopicType.FIFO);
+    }
+
+    @Test
+    void listTopicsShouldGuaranteeTypeAndPermForAiToolProjectionTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any(ListTopicsRequest.class))).thenReturn(CompletableFuture.completedFuture(
+                topicsResponse(
+                        topicRow("topic-untyped", null),
+                        topicRow("topic-unknown", "NEW_TYPE"))));
+
+        List<TopicVO> topics = provider.listTopics(STUDIO_INSTANCE_ID, null, null);
+
+        assertThat(topics).hasSize(2);
+        assertThat(topics).allSatisfy(topic -> {
+            assertThat(topic.getType()).isEqualTo(TopicType.NORMAL);
+            assertThat(topic.getPerm()).isEqualTo(TopicPerm.RW);
+        });
     }
 
     @Test
