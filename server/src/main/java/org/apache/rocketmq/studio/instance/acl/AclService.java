@@ -208,6 +208,7 @@ public class AclService {
                 .secretKey(existing.getSecretKey())
                 .admin(user.getAdmin() == null ? existing.isAdmin() : user.getAdmin())
                 .clusters(user.getClusters() == null ? existing.getClusters() : user.getClusters())
+                .whiteRemoteAddress(existing.getWhiteRemoteAddress())
                 .gmtCreate(existing.getGmtCreate())
                 .build();
         AclUserVO saved = aclRepository.replaceUser(merged)
