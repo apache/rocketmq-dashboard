@@ -488,6 +488,84 @@ describe('ProducerPage', () => {
     expect(screen.queryByText('生产者连接健康')).not.toBeInTheDocument();
   });
 
+  it('clears stale connection results when the topic changes', async () => {
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-1',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    expect(await screen.findByText('producer-1')).toBeInTheDocument();
+
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('payment-events', { selector: '.ant-select-item-option-content' }),
+    );
+
+    // scope to the page container: antd keeps closed dropdown portals in document.body
+    expect(within(container).queryByText('producer-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('生产者连接健康')).not.toBeInTheDocument();
+    expect(screen.queryByText('READY')).not.toBeInTheDocument();
+  });
+
+  it('exports connections with the form topic after switching topics', async () => {
+    const createObjectURL = vi.fn((_blob: Blob | MediaSource) => 'blob:producer-connections');
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-1',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    expect(await screen.findByText('producer-1')).toBeInTheDocument();
+
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('payment-events', { selector: '.ant-select-item-option-content' }),
+    );
+
+    const exportButton = screen.getByRole('button', { name: /导出/ });
+
+    // After the topic switch the stale results must not be re-labelled with
+    // the newly selected topic: the export is disabled without fresh results.
+    expect(exportButton).toBeDisabled();
+    expect(clickSpy).not.toHaveBeenCalled();
+  });
+
   it('ignores duplicate producer queries while the first request is pending', async () => {
     const user = userEvent.setup();
     let resolveQuery: ((value: ProducerConnectionResult) => void) | undefined;
