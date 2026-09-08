@@ -84,14 +84,5 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build frontend Docker image (cached)
-        uses: docker/build-push-action@v6
-        with:
-          context: ./web
-          push: false
-          tags: rocketmq-studio-web-ci:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build frontend Docker image
+        run: docker build -t rocketmq-studio-web-ci:latest ./web
