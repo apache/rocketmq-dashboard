@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /** Domain-limited rule API for the Cluster Alerts menu. */
@@ -53,6 +54,14 @@ public class ClusterAlertRuleController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
         return Result.ok(alertService.listRules(AlertDomain.CLUSTER, search, enabled, page, pageSize));
+    }
+
+    @GetMapping("/summary")
+    public Result<AlertRuleSummaryVO> summarizeRules(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean enabled) {
+        return Result.ok(alertService.summarizeRules(AlertDomain.CLUSTER, search, enabled,
+                LocalDateTime.now().minusDays(1)));
     }
 
     @GetMapping("/runtime")
