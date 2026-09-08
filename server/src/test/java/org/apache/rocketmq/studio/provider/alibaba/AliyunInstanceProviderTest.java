@@ -37,6 +37,7 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -242,6 +243,37 @@ class AliyunInstanceProviderTest {
         assertThat(groups.get(0).getName()).isEqualTo("GID_test");
         assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+        assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
+    }
+
+    @Test
+    void listConsumerGroupsShouldFallBackWhenMessageModelMissingTest() {
+        stubInstance();
+        stubCallThrough();
+        ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListConsumerGroupsResponseBody.builder()
+                        .data(ListConsumerGroupsResponseBody.Data.builder()
+                                .list(java.util.Arrays.asList(ListConsumerGroupsResponseBody.List.builder()
+                                        .consumerGroupId("GID_plain")
+                                        .status("RUNNING")
+                                        .build()))
+                                .pageNumber(1L)
+                                .pageSize(100L)
+                                .totalCount(1L)
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.listConsumerGroups(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            // read paths (web detail, AI rmq.group.list) require both enums to be non-null
+            assertThat(group.getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+            assertThat(group.getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
+        });
     }
 
     @Test

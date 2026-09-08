@@ -44,6 +44,7 @@ import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
@@ -556,6 +557,7 @@ class TencentInstanceProviderTest {
         assertThat(groups.get(0).getRetryMaxTimes()).isEqualTo(16);
         assertThat(groups.get(0).getGmtCreate()).isNotNull();
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+        assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
         assertThat(groups.get(0).getInstances()).isNotNull().isEmpty();
     }
 
