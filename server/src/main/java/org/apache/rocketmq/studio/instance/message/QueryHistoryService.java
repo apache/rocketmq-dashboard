@@ -129,7 +129,10 @@ public class QueryHistoryService {
     }
 
     /**
-     * Retrieves the stored result snapshot for a given history record.
+     * Retrieves the stored result snapshot for a history record owned by the authenticated operator.
+     *
+     * <p>The lookup is scoped to the current authenticated operator. A record owned by another
+     * operator is deliberately reported as not found (404) to prevent history id enumeration.
      */
     public List<MessageRecordVO> getMessageQueryResults(long id) {
         String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();

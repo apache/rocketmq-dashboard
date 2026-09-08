@@ -20,9 +20,9 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMessageQueryMapper;
@@ -38,6 +38,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -271,9 +272,11 @@ class QueryHistoryServiceTest {
         AuthenticatedUserContext.setUsername("bob");
         when(messageQueryMapper.selectOne(any())).thenReturn(null);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.getMessageQueryResults(9L))
+        assertThatThrownBy(() -> service.getMessageQueryResults(9L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Query history record not found");
+                .hasMessage("Query history record not found")
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(404);
 
         ArgumentCaptor<QueryWrapper<RmqMessageQuery>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(messageQueryMapper).selectOne(queryCaptor.capture());
