@@ -192,4 +192,42 @@ describe('K8sCertsPage', () => {
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
   });
+
+  it('exports the filtered certificate inventory without PEM content', async () => {
+    const createObjectURL = vi.fn(() => 'blob:cert-export');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: revokeObjectURL });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    let exportedBlob: Blob | undefined;
+    vi.mocked(URL.createObjectURL).mockImplementation((blob) => {
+      exportedBlob = blob as Blob;
+      return 'blob:cert-export';
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:cert-export');
+
+    expect(exportedBlob).toBeDefined();
+    const csv = await exportedBlob!.text();
+    expect(csv).toContain('"K8s ID"');
+    expect(csv).toContain('"rocketmq-prod-tls"');
+    expect(csv).toContain('"rocketmq-staging-tls"');
+    expect(csv).toContain('"broker.prod.example.com"');
+    expect(csv).toContain('"365"');
+    expect(csv).toContain('metadata-only-tls');
+    expect(csv).not.toContain('certPem');
+    expect(csv).not.toContain('keyPem');
+    expect(
+      document.querySelector('a[download^="rocketmq-k8s-certificates-"]'),
+    ).not.toBeInTheDocument();
+    clickSpy.mockRestore();
+  });
 });
