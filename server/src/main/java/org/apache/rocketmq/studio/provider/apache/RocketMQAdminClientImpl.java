@@ -570,6 +570,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     if (command.consumeBroadcastEnable() != null) {
                         config.setConsumeBroadcastEnable(command.consumeBroadcastEnable());
                     }
+                    // Broker attributes use a +/- patch protocol. An empty patch preserves
+                    // existing attributes; replaying plain stored keys is not a valid update.
+                    config.setAttributes(Map.of());
                     admin.createAndUpdateSubscriptionGroupConfig(brokerAddr, config);
                     updatedBrokers++;
                     if (applied == null) {
@@ -616,6 +619,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private ConsumerGroupVO createConsumerGroup(MQAdminExt admin, ConsumerGroupVO group) {
         String groupName = group.getName();
+        int totalBrokers = 0;
+        int updatedBrokers = 0;
 
         try {
             String groupClusterName = getClusterName(admin);
@@ -624,15 +629,22 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw new BusinessException(500, "No broker available to create consumer group");
             }
 
-            SubscriptionGroupConfig config = new SubscriptionGroupConfig();
-            config.setGroupName(groupName);
-            config.setConsumeEnable(true);
-            config.setConsumeBroadcastEnable(true);
-            config.setRetryQueueNums(1);
-            config.setRetryMaxTimes(group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : 16);
-
-            for (String addr : brokerAddrs) {
+            totalBrokers = brokerAddrs.size();
+            SubscriptionGroupConfig applied = null;
+            for (String addr : brokerAddrs.stream().sorted().toList()) {
+                SubscriptionGroupConfig config = consumerGroupConfigForCreate(admin, addr, groupName);
+                // Re-creation is an upsert, not a reset of broker-side consumption policy.
+                // Zero is also the legacy VO's omitted value, so preserve existing retries
+                // unless a positive retry setting was supplied. The settings API supports zero.
+                if (group.getRetryMaxTimes() > 0) {
+                    config.setRetryMaxTimes(group.getRetryMaxTimes());
+                }
+                config.setAttributes(Map.of());
                 admin.createAndUpdateSubscriptionGroupConfig(addr, config);
+                updatedBrokers++;
+                if (applied == null) {
+                    applied = config;
+                }
             }
 
             // Persist to DB, upserting so re-creating an existing group stays scoped to the
@@ -652,7 +664,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             entity.setInstanceId(metadataScope(group.getInstanceId()));
             entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
             entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");
-            entity.setMaxRetry(config.getRetryMaxTimes());
+            entity.setMaxRetry(applied.getRetryMaxTimes());
             entity.setStatus("ACTIVE");
             entity.setGmtModified(LocalDateTime.now());
             if (isNewGroup) {
@@ -662,17 +674,45 @@ public class RocketMQAdminClientImpl implements AdminClient {
             }
 
             recordAudit("CREATE_GROUP", groupName,
-                    "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
+                    "retryMaxTimes=" + applied.getRetryMaxTimes()
+                            + ", brokersUpdated=" + updatedBrokers + "/" + totalBrokers, "SUCCESS");
 
             group.setId(entity.getId());
+            group.setRetryMaxTimes(applied.getRetryMaxTimes());
             return group;
         } catch (BusinessException e) {
-            recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
+            recordAudit("CREATE_GROUP", groupName,
+                    "updated " + updatedBrokers + "/" + totalBrokers + " brokers before failure: " + e.getMessage(),
+                    "FAILED");
             throw e;
         } catch (Exception e) {
-            recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
+            recordAudit("CREATE_GROUP", groupName,
+                    "updated " + updatedBrokers + "/" + totalBrokers + " brokers before failure: " + e.getMessage(),
+                    "FAILED");
             throw classifyBrokerFailure(e, "create consumer group");
         }
+    }
+
+    private SubscriptionGroupConfig consumerGroupConfigForCreate(MQAdminExt admin, String address, String name)
+            throws Exception {
+        SubscriptionGroupConfig config;
+        try {
+            config = admin.examineSubscriptionGroupConfig(address, name);
+        } catch (MQBrokerException exception) {
+            if (exception.getResponseCode() != ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST) {
+                throw exception;
+            }
+            config = null;
+        }
+        if (config == null) {
+            config = new SubscriptionGroupConfig();
+            config.setGroupName(name);
+            config.setConsumeEnable(true);
+            config.setConsumeBroadcastEnable(true);
+            config.setRetryQueueNums(1);
+            config.setRetryMaxTimes(16);
+        }
+        return config;
     }
 
     @Override
