@@ -740,4 +740,119 @@ describe('MessagePage async request ownership', () => {
     expect(screen.getAllByText('message-b trace')).not.toHaveLength(0);
     expect(screen.queryByText('message-a stale trace')).not.toBeInTheDocument();
   });
+
+  it('copies the loaded trace steps as multi-line text', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockResolvedValue(createTrace('cached-trace'));
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(await within(dialog).findByText('cached-trace description')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /复制轨迹/ }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const copied = writeText.mock.calls[0]![0] as string;
+    expect(copied).toContain('1. cached-trace');
+    expect(copied).toMatch(/时间: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}/);
+    expect(copied).toContain('状态: finish');
+    expect(copied).toContain('耗时: 1ms');
+    expect(copied).toContain('详情: cached-trace description');
+    expect(message.success).toHaveBeenCalledWith('已复制到剪贴板');
+  });
+
+  it('serializes every step of a multi-node trace in order', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 2,
+          status: 'finish',
+          description: '发送成功',
+        },
+        {
+          title: 'Broker 存储',
+          timestamp: '2026-07-31T00:00:00.100Z',
+          costTime: 3,
+          status: 'finish',
+          description: '已持久化',
+        },
+      ],
+      consumerStatus: [],
+    });
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(await within(dialog).findByText('发送成功')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /复制轨迹/ }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const copied = writeText.mock.calls[0]![0] as string;
+    const lines = copied.split('\n');
+    expect(lines[0]).toBe('1. Producer 发送');
+    expect(lines[1]).toMatch(/^时间: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
+    expect(copied).toContain('2. Broker 存储');
+    expect(copied.indexOf('1. Producer 发送')).toBeLessThan(copied.indexOf('2. Broker 存储'));
+  });
+
+  it('disables the copy trace button while no trace data is loaded', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockResolvedValue(null);
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(await within(dialog).findByText('暂无轨迹数据')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /复制轨迹/ })).toBeDisabled();
+  });
+
+  it('falls back to a hidden textarea when the clipboard API is unavailable', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+    try {
+      serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+      serviceMocks.getMessageTrace.mockResolvedValue(createTrace('fallback-trace'));
+      renderPage();
+      await selectTopic(user);
+
+      await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+      const row = await screen.findByRole('row', { name: /message-a/ });
+      await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+      const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+      expect(await within(dialog).findByText('fallback-trace description')).toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: /复制轨迹/ }));
+
+      await waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'));
+      expect(message.success).toHaveBeenCalledWith('已复制到剪贴板');
+      expect(document.querySelector('textarea')).toBeNull();
+    } finally {
+      delete (document as { execCommand?: unknown }).execCommand;
+    }
+  });
 });
