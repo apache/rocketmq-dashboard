@@ -57,6 +57,11 @@ public class ProxyController {
         return Result.ok(proxyAddressService.getHomePage());
     }
 
+    @PostMapping("/addresses/batch")
+    public Result<ProxyAddressBatchResultVO> addProxyAddresses(@Valid @RequestBody ProxyAddressBatchDTO request) {
+        return Result.ok(proxyAddressService.addProxyAddrs(request.getAddrs()));
+    }
+
     @DeleteMapping("/addresses")
     public Result<ProxyHomeVO> removeProxyAddress(@RequestParam String addr) {
         proxyAddressService.removeProxyAddr(addr);
