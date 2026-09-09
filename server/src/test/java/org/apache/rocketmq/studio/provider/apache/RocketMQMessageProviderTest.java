@@ -42,6 +42,7 @@ import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -301,6 +302,68 @@ class RocketMQMessageProviderTest {
         when(adminExtImpl.getMqClientInstance()).thenReturn(clientInstance);
         when(clientInstance.getMQAdminImpl()).thenReturn(mqAdmin);
         return mqAdmin;
+    }
+
+    @Test
+    void queryByKeyReportsTruncationWhenTheBrokerBudgetIsReachedTest() throws Exception {
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenReturn(new QueryResult(0L, keyQueryMatches(64)));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).hasSize(64);
+    }
+
+    @Test
+    void queryByKeyStaysCompleteBelowTheBrokerBudgetTest() throws Exception {
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenReturn(new QueryResult(0L, keyQueryMatches(63)));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isFalse();
+        assertThat(result.messages()).hasSize(63);
+    }
+
+    @Test
+    void queryByKeyKeepsTheTruncationSignalWhenTagFilteringDropsEveryRowTest() throws Exception {
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenReturn(new QueryResult(0L, keyQueryMatches(64)));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, "TagA", "order-1", 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    @Test
+    void queryByKeyReportsCompleteWhenTheClientReportsNoMessageTest() throws Exception {
+        // The NO_MESSAGE degradation must travel through the Detailed path too, otherwise a
+        // key that matches nothing would surface as possibly truncated instead of complete.
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isFalse();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    private static List<MessageExt> keyQueryMatches(int count) {
+        return IntStream.range(0, count)
+                .mapToObj(index -> {
+                    MessageExt message = new MessageExt();
+                    message.setTopic("TopicA");
+                    message.setMsgId("msg-" + index);
+                    return message;
+                })
+                .toList();
     }
 
     @Test
