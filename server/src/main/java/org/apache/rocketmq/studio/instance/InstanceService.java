@@ -36,10 +36,13 @@ import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.apache.rocketmq.studio.settings.SettingsService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -70,6 +73,7 @@ public class InstanceService {
     private final MqClientPool clientPool;
     private final OperationAuditService operationAuditService;
     private final SettingsRepository settingsRepository;
+    private final CacheManager cacheManager;
     private final RegionNames regionNames;
 
     // @Lazy self-injection: Spring AOP proxies intercept @Transactional calls only when they
@@ -639,20 +643,29 @@ public class InstanceService {
         removeDataSourceBindings(existing.getName());
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing));
-        releaseApacheEndpointAfterCommit(existing);
+        completeInstanceDeletionAfterCommit(existing);
     }
 
-    private void releaseApacheEndpointAfterCommit(InstanceVO existing) {
+    private void completeInstanceDeletionAfterCommit(InstanceVO existing) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            evictDataSourceCache();
             releaseApacheEndpointIfUnused(existing, null);
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
+                evictDataSourceCache();
                 releaseApacheEndpointIfUnused(existing, null);
             }
         });
+    }
+
+    private void evictDataSourceCache() {
+        Cache cache = cacheManager.getCache(SettingsService.DATA_SOURCE_CACHE);
+        if (cache != null) {
+            cache.clear();
+        }
     }
 
     /**
