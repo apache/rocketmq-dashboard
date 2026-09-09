@@ -208,6 +208,34 @@ describe('MetricsExplorer', () => {
     );
   });
 
+  it('reuses the selected range when the instance prop changes', async () => {
+    const user = userEvent.setup();
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByText('6h'));
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+    expect(queryMetrics).toHaveBeenLastCalledWith(
+      expect.objectContaining({ start: 1_799_978_400, step: '2m' }),
+    );
+
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+
+    // The instance switch re-runs the profiles effect; wait for the reload call
+    // to actually land, then assert it reused the picked 6h window instead of
+    // silently falling back to the default 1h window.
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(3));
+    expect(queryMetrics).toHaveBeenLastCalledWith(
+      expect.objectContaining({ start: 1_799_978_400, step: '2m' }),
+    );
+  });
+
   it('renders one panel per metric in the selected profile', async () => {
     vi.mocked(listMetricProfiles).mockResolvedValue([
       {

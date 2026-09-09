@@ -433,6 +433,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   // the source uses the new key instead of a stale closure value.
   const dataSourceKeyRef = useRef(dataSourceKey);
   const dataSourceCredentialsRef = useRef<DataSourceCredentials | null>(null);
+  // Keeps the latest range readable from the mount effect so an instance-switch
+  // reload uses the user's picked range instead of a stale initial value.
+  const rangeIdRef = useRef(rangeId);
+  useEffect(() => {
+    rangeIdRef.current = rangeId;
+  }, [rangeId]);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === profileId),
@@ -530,7 +536,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         const initialProfile =
           nextProfiles.find((profile) => profile.id === storedProfileId) ?? nextProfiles[0];
         setProfileId(initialProfile?.id ?? '');
-        void loadAll(initialProfile, RANGE_OPTIONS[0]);
+        // The effect re-runs when the instance prop changes (via loadAll's runQuery
+        // dependency). Reuse the selected range there; resetting to RANGE_OPTIONS[0]
+        // would query 1h while the Segmented control still shows the picked range.
+        const selectedRange =
+          RANGE_OPTIONS.find((range) => range.value === rangeIdRef.current) ?? RANGE_OPTIONS[0];
+        void loadAll(initialProfile, selectedRange);
       })
       .catch(() => {
         if (!cancelled) setProfileError(true);
