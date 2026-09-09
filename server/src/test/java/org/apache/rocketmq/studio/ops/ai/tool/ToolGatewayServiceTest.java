@@ -17,6 +17,11 @@
 package org.apache.rocketmq.studio.ops.ai.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.cluster.metrics.MetricDataVO;
+import org.apache.rocketmq.studio.cluster.metrics.MetricProfileService;
+import org.apache.rocketmq.studio.cluster.metrics.MetricProfileVO;
+import org.apache.rocketmq.studio.cluster.metrics.MetricQueryDTO;
+import org.apache.rocketmq.studio.cluster.metrics.MetricsService;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
@@ -49,11 +54,13 @@ import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -64,6 +71,8 @@ class ToolGatewayServiceTest {
     private ToolCatalog catalog;
     private ClusterService clusterService;
     private DashboardService dashboardService;
+    private MetricsService metricsService;
+    private MetricProfileService metricProfileService;
     private MessageService messageService;
     private MetadataService metadataService;
     private AlertService alertService;
@@ -72,6 +81,8 @@ class ToolGatewayServiceTest {
     private ClusterListToolHandler clusterListHandler;
     private CapabilitiesToolHandler capabilitiesHandler;
     private DashboardSummaryToolHandler dashboardSummaryHandler;
+    private MetricProfileListToolHandler metricProfileListHandler;
+    private MetricsQueryToolHandler metricsQueryHandler;
     private TopicListToolHandler topicListHandler;
     private ConsumerGroupListToolHandler consumerGroupListHandler;
     private AlertRuleListToolHandler alertRuleListHandler;
@@ -86,6 +97,8 @@ class ToolGatewayServiceTest {
         catalog = canonicalCatalog();
         clusterService = mock(ClusterService.class);
         dashboardService = mock(DashboardService.class);
+        metricsService = mock(MetricsService.class);
+        metricProfileService = mock(MetricProfileService.class);
         messageService = mock(MessageService.class);
         metadataService = mock(MetadataService.class);
         alertService = mock(AlertService.class);
@@ -94,6 +107,8 @@ class ToolGatewayServiceTest {
         clusterListHandler = new ClusterListToolHandler(clusterService);
         capabilitiesHandler = new CapabilitiesToolHandler(clusterService, capabilityResolver);
         dashboardSummaryHandler = new DashboardSummaryToolHandler(dashboardService);
+        metricProfileListHandler = new MetricProfileListToolHandler(metricProfileService);
+        metricsQueryHandler = new MetricsQueryToolHandler(metricsService);
         topicListHandler = new TopicListToolHandler(metadataService);
         consumerGroupListHandler = new ConsumerGroupListToolHandler(metadataService);
         alertRuleListHandler = new AlertRuleListToolHandler(alertService);
@@ -106,6 +121,8 @@ class ToolGatewayServiceTest {
                 clusterListHandler,
                 capabilitiesHandler,
                 dashboardSummaryHandler,
+                metricProfileListHandler,
+                metricsQueryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
@@ -137,6 +154,8 @@ class ToolGatewayServiceTest {
                         "rmq.cluster.list",
                         "rmq.capabilities",
                         "rmq.dashboard.summary",
+                        "rmq.metrics.profile.list",
+                        "rmq.metrics.query",
                         "rmq.topic.list",
                         "rmq.group.list",
                         "rmq.message.query",
@@ -156,6 +175,8 @@ class ToolGatewayServiceTest {
                         "rmq.cluster.list",
                         "rmq.capabilities",
                         "rmq.dashboard.summary",
+                        "rmq.metrics.profile.list",
+                        "rmq.metrics.query",
                         "rmq.topic.list",
                         "rmq.group.list",
                         "rmq.alert.rule.list",
@@ -345,6 +366,92 @@ class ToolGatewayServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("input validation failed");
         verifyNoInteractions(dashboardService);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void executesMetricProfileListWithADataMinimizingProjection() {
+        when(metricProfileService.listProfiles()).thenReturn(List.of(metricProfile()));
+
+        Object output = gateway.execute("rmq.metrics.profile.list", Map.of("cluster", "cluster-v5"));
+
+        assertThat(output).isInstanceOf(List.class);
+        List<Map<String, Object>> profiles = (List<Map<String, Object>>) output;
+        assertThat(profiles).hasSize(1);
+        Map<String, Object> profile = profiles.get(0);
+        assertThat(profile).containsEntry("id", "rocketmq5-native");
+        assertThat(profile).containsEntry("name", "RocketMQ 5.x Native");
+        assertThat(profile).containsEntry("description", "native metrics");
+        List<Map<String, Object>> metrics = (List<Map<String, Object>>) profile.get("metrics");
+        assertThat(metrics.get(0)).containsAllEntriesOf(Map.of(
+                "semanticMetric", "consumer_lag_messages",
+                "name", "Consumer Lag",
+                "unit", "messages",
+                "prometheusMetric", "rocketmq_consumer_lag_messages",
+                "promql", "sum(rocketmq_consumer_lag_messages) by (cluster, topic, consumer_group)"));
+        assertThat(metrics.get(0)).containsEntry("labels", List.of("cluster", "topic", "consumer_group"));
+        verify(metricProfileService).listProfiles();
+    }
+
+    @Test
+    void rejectsMetricProfileListWithoutRequiredClusterBeforeHandlerRuns() {
+        assertThatThrownBy(() -> gateway.execute("rmq.metrics.profile.list", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("input validation failed");
+        verifyNoInteractions(metricProfileService);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void executesMetricsQueryWithAValidatedOutputContract() {
+        when(metricsService.query(any(MetricQueryDTO.class))).thenReturn(metricData());
+
+        Object output = gateway.execute("rmq.metrics.query", Map.of(
+                "cluster", "cluster-v5",
+                "profileId", "rocketmq5-native",
+                "semanticMetric", "consumer_lag_messages",
+                "start", 1700000000L,
+                "end", 1700000300L,
+                "step", "30s"));
+
+        Map<String, Object> result = (Map<String, Object>) output;
+        assertThat(result).containsEntry("resultType", "matrix");
+        assertThat(result).containsEntry("warnings", List.of("partial response"));
+        List<Map<String, Object>> series = (List<Map<String, Object>>) result.get("series");
+        assertThat(series).hasSize(1);
+        assertThat(series.get(0)).containsEntry("labels", Map.of(
+                "cluster", "cluster-v5",
+                "topic", "TopicA"));
+        assertThat((List<?>) series.get(0).get("values")).hasSize(1);
+        verify(metricsService).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void rejectsMetricsQueryWithoutACompleteMetricSelectionBeforeHandlerRuns() {
+        assertThatThrownBy(() -> gateway.execute("rmq.metrics.query", Map.of(
+                "cluster", "cluster-v5",
+                "profileId", "rocketmq5-native",
+                "start", 1700000000L,
+                "end", 1700000300L,
+                "step", "30s")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("input validation failed");
+        verifyNoInteractions(metricsService);
+    }
+
+    @Test
+    void rejectsMetricsQueryWithMixedRawAndSemanticSelectionBeforeHandlerRuns() {
+        assertThatThrownBy(() -> gateway.execute("rmq.metrics.query", Map.of(
+                "cluster", "cluster-v5",
+                "metric", "up",
+                "profileId", "rocketmq5-native",
+                "semanticMetric", "broker_health",
+                "start", 1700000000L,
+                "end", 1700000300L,
+                "step", "30s")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("input validation failed");
+        verifyNoInteractions(metricsService);
     }
 
     @Test
@@ -570,6 +677,8 @@ class ToolGatewayServiceTest {
                 clusterListHandler,
                 capabilitiesHandler,
                 dashboardSummaryHandler,
+                metricProfileListHandler,
+                metricsQueryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
@@ -596,6 +705,8 @@ class ToolGatewayServiceTest {
                 clusterListHandler,
                 capabilitiesHandler,
                 dashboardSummaryHandler,
+                metricProfileListHandler,
+                metricsQueryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
@@ -650,6 +761,8 @@ class ToolGatewayServiceTest {
                 clusterListHandler,
                 capabilitiesHandler,
                 dashboardSummaryHandler,
+                metricProfileListHandler,
+                metricsQueryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
@@ -678,6 +791,8 @@ class ToolGatewayServiceTest {
                 clusterListHandler,
                 capabilitiesHandler,
                 dashboardSummaryHandler,
+                metricProfileListHandler,
+                metricsQueryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
@@ -707,6 +822,8 @@ class ToolGatewayServiceTest {
                 invalidClusterListHandler,
                 capabilitiesHandler,
                 dashboardSummaryHandler,
+                metricProfileListHandler,
+                metricsQueryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
                 alertRuleListHandler,
@@ -782,6 +899,38 @@ class ToolGatewayServiceTest {
         group.setSubscribedTopics(List.of("order-topic"));
         group.setRetryMaxTimes(16);
         return group;
+    }
+
+    private static MetricProfileVO metricProfile() {
+        return MetricProfileVO.builder()
+                .id("rocketmq5-native")
+                .name("RocketMQ 5.x Native")
+                .description("native metrics")
+                .metrics(List.of(MetricProfileVO.MetricMappingVO.builder()
+                        .semanticMetric("consumer_lag_messages")
+                        .name("Consumer Lag")
+                        .unit("messages")
+                        .prometheusMetric("rocketmq_consumer_lag_messages")
+                        .promql("sum(rocketmq_consumer_lag_messages) by (cluster, topic, consumer_group)")
+                        .labels(List.of("cluster", "topic", "consumer_group"))
+                        .build()))
+                .build();
+    }
+
+    private static MetricDataVO metricData() {
+        MetricDataVO.MetricSeriesVO series = MetricDataVO.MetricSeriesVO.builder()
+                .labels(Map.of("cluster", "cluster-v5", "topic", "TopicA"))
+                .values(List.of(MetricDataVO.MetricSampleVO.builder()
+                        .timestamp(1700000000D)
+                        .value("42")
+                        .build()))
+                .histograms(Collections.emptyList())
+                .build();
+        return MetricDataVO.builder()
+                .resultType("matrix")
+                .series(List.of(series))
+                .warnings(List.of("partial response"))
+                .build();
     }
 
     private static AlertRuleVO alertRule(Long id, String name, String metric, boolean enabled) {
