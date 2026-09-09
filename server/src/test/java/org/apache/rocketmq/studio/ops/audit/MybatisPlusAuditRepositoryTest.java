@@ -162,6 +162,48 @@ class MybatisPlusAuditRepositoryTest {
         verify(auditMapper).insert(any(RmqOperationAudit.class));
     }
 
+    @Test
+    void findPageEscapesLikeWildcardsInTheSearchTermTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()));
+
+        // "100%_ok" must match operators/details containing that literal text
+        // instead of acting as a LIKE pattern that matches far more rows.
+        repository.findPage("100%_ok", null, null, null, null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqOperationAudit> query = (QueryWrapper<RmqOperationAudit>) queryCaptor.getValue();
+        // Render the segment first: the nested and(...) conditions are applied lazily,
+        // and their bind parameters only show up in the wrapper afterwards.
+        query.getSqlSegment();
+        assertThat(query.getParamNameValuePairs())
+                .containsValue("%100\\%\\_ok%")
+                .doesNotContainValue("%100%_ok%");
+    }
+
+    @Test
+    void summarizeEscapesLikeWildcardsInEveryAggregateQueryTest() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        repository.summarize("100%", null, null, null, null, null, null);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> mapsCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper, times(4)).selectMaps(mapsCaptor.capture());
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> listCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectList(listCaptor.capture());
+        List<Wrapper<RmqOperationAudit>> queries = new java.util.ArrayList<>(mapsCaptor.getAllValues());
+        queries.add(listCaptor.getValue());
+        for (Wrapper<RmqOperationAudit> query : queries) {
+            assertThat(query.getSqlSegment()).contains("operator LIKE", "resource_name LIKE");
+            assertThat(((QueryWrapper<RmqOperationAudit>) query).getParamNameValuePairs())
+                    .containsValue("%100\\%%")
+                    .doesNotContainValue("%100%%");
+        }
+    }
+
     private static RmqOperationAudit auditRecord(Long id) {
         RmqOperationAudit audit = new RmqOperationAudit();
         audit.setId(id);
