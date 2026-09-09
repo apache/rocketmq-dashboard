@@ -55,7 +55,6 @@ import {
   bulkToggleAlertRules,
   deleteAlertRule,
   exportAlertRulesTransfer,
-  importAlertRulesTransfer,
   listAlertRulesPage,
   listAlertRuleRuntime,
   listNativeAlertMetrics,
@@ -76,6 +75,7 @@ import {
   type AlertTemplatePreviewIssue,
 } from '../../utils/alertTemplatePreview';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
+import AlertRuleImportModal from './AlertRuleImportModal';
 const { TextArea } = Input;
 
 const channelColors: Record<string, string> = {
@@ -171,6 +171,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [actionId, setActionId] = useState<string | null>(null);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Key[]>([]);
   const [bulkAction, setBulkAction] = useState<'enable' | 'disable' | 'delete' | null>(null);
+  const [importTransfer, setImportTransfer] = useState<AlertRuleTransfer | null>(null);
   const [form] = Form.useForm();
   // The same component instance serves /ops/alerts and /ops/business-alerts, so the
   // list state from the previous domain must be dropped when the route switches
@@ -188,6 +189,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     setTotalRules(0);
     setRuntime([]);
     setLoading(true);
+    setImportTransfer(null);
   }
   const selectedMetric = Form.useWatch('metric', form);
   const selectedOperator = Form.useWatch('operator', form);
@@ -438,20 +440,19 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    setTransferringRules(true);
     try {
-      const transfer = JSON.parse(await file.text()) as AlertRuleTransfer;
-      if (transfer.version !== 1 || transfer.domain !== domain || !Array.isArray(transfer.rules)) {
+      const transfer = JSON.parse(await file.text()) as Partial<AlertRuleTransfer> | null;
+      if (
+        !transfer ||
+        transfer.version !== 1 ||
+        transfer.domain !== domain ||
+        !Array.isArray(transfer.rules)
+      ) {
         throw new Error('invalid transfer document');
       }
-      const imported = await importAlertRulesTransfer(transfer, domain);
-      setPage(1);
-      refreshRules();
-      message.success(t('alerts.importSuccess', { count: imported.length }));
+      setImportTransfer(transfer as AlertRuleTransfer);
     } catch {
       message.error(t('alerts.importFailed'));
-    } finally {
-      setTransferringRules(false);
     }
   };
 
@@ -1022,6 +1023,17 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           />
         </Flex>
       </Card>
+
+      <AlertRuleImportModal
+        open={importTransfer !== null}
+        transfer={importTransfer}
+        domain={domain}
+        onClose={() => setImportTransfer(null)}
+        onApplied={() => {
+          setPage(1);
+          refreshRules();
+        }}
+      />
 
       <Modal
         title={editingRule ? t('common.edit') : t('alerts.newRule')}

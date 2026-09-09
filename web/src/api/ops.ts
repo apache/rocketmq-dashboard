@@ -16,6 +16,9 @@ export interface AlertRule {
   enabled: boolean;
   lastTriggered: string | null;
   description: string;
+  brokerName?: string;
+  clusterName?: string;
+  severity?: string;
   instanceId?: string;
   consumerGroup?: string;
   topic?: string;
@@ -49,6 +52,35 @@ export interface AlertRuleTransfer {
   version: number;
   domain: AlertRuleDomain;
   rules: Array<Omit<AlertRule, 'id' | 'lastTriggered'>>;
+}
+
+export type AlertRuleImportConflictStrategy = 'FAIL' | 'SKIP' | 'REPLACE';
+export type AlertRuleImportStatus = 'NEW' | 'DUPLICATE' | 'INVALID';
+
+export interface AlertRuleImportPreviewItem {
+  rowNumber: number;
+  status: AlertRuleImportStatus;
+  name?: string | null;
+  metric?: string | null;
+  existingRuleId?: number | null;
+  existingRuleName?: string | null;
+  error?: string | null;
+}
+
+export interface AlertRuleImportPreview {
+  totalCount: number;
+  newCount: number;
+  duplicateCount: number;
+  invalidCount: number;
+  items: AlertRuleImportPreviewItem[];
+}
+
+export interface AlertRuleImportResult {
+  strategy: AlertRuleImportConflictStrategy;
+  createdCount: number;
+  replacedCount: number;
+  skippedCount: number;
+  changedRules: AlertRule[];
 }
 
 export interface AlertRuleTestResult {
@@ -240,6 +272,29 @@ export async function importAlertRulesTransfer(
   domain: AlertRuleDomain = 'CLUSTER',
 ) {
   const res = await client.post<{ data: AlertRule[] }>(`${alertRulePath(domain)}/import`, data);
+  return res.data.data;
+}
+
+export async function previewAlertRulesImport(
+  data: AlertRuleTransfer,
+  domain: AlertRuleDomain = 'CLUSTER',
+) {
+  const res = await client.post<{ data: AlertRuleImportPreview }>(
+    `${alertRulePath(domain)}/import/preview`,
+    data,
+  );
+  return res.data.data;
+}
+
+export async function applyAlertRulesImport(
+  transfer: AlertRuleTransfer,
+  strategy: AlertRuleImportConflictStrategy,
+  domain: AlertRuleDomain = 'CLUSTER',
+) {
+  const res = await client.post<{ data: AlertRuleImportResult }>(
+    `${alertRulePath(domain)}/import/apply`,
+    { transfer, strategy },
+  );
   return res.data.data;
 }
 

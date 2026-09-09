@@ -94,35 +94,39 @@
 | 51 | POST | `/api/alert-rules/update` | 更新告警规则 |
 | 52 | POST | `/api/alert-rules/toggle` | 切换启用状态 |
 | 53 | POST | `/api/alert-rules/delete` | 删除告警规则 |
-| 54 | GET | `/api/system-alerts` | 系统告警列表 |
-| 55 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
-| 56 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
-| 57 | GET | `/api/audit-logs` | 审计日志列表 |
-| 58 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
-| 59 | GET | `/api/audit-logs/export` | 导出审计日志 |
-| 60 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
-| 61 | GET | `/api/settings/general` | 获取通用设置 |
-| 62 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 63 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
-| 64 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
-| 65 | POST | `/api/settings/datasources/create` | 创建数据源 |
-| 66 | POST | `/api/settings/datasources/update` | 更新数据源 |
-| 67 | POST | `/api/settings/datasources/delete` | 删除数据源 |
-| 68 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 69 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 70 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 71 | GET | `/api/ai/tools` | 可用工具列表 |
-| 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 74 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
-| 75 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
-| 76 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
-| 77 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 78 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 79 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 80 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
-| 81 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
-| 82 | GET | `/api/topics/page` | Topic 分页列表 |
+| 54 | GET | `/api/cluster-alert-rules/transfer`<br>`/api/business-alert-rules/transfer` | 导出可移植的告警规则文件 |
+| 55 | POST | `/api/cluster-alert-rules/import`<br>`/api/business-alert-rules/import` | 兼容模式导入告警规则 |
+| 56 | POST | `/api/cluster-alert-rules/import/preview`<br>`/api/business-alert-rules/import/preview` | 预览告警规则导入 |
+| 57 | POST | `/api/cluster-alert-rules/import/apply`<br>`/api/business-alert-rules/import/apply` | 按冲突策略应用告警规则导入 |
+| 58 | GET | `/api/system-alerts` | 系统告警列表 |
+| 59 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
+| 60 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
+| 61 | GET | `/api/audit-logs` | 审计日志列表 |
+| 62 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
+| 63 | GET | `/api/audit-logs/export` | 导出审计日志 |
+| 64 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
+| 65 | GET | `/api/settings/general` | 获取通用设置 |
+| 66 | POST | `/api/settings/general/save` | 保存通用设置 |
+| 67 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
+| 68 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
+| 69 | POST | `/api/settings/datasources/create` | 创建数据源 |
+| 70 | POST | `/api/settings/datasources/update` | 更新数据源 |
+| 71 | POST | `/api/settings/datasources/delete` | 删除数据源 |
+| 72 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
+| 73 | POST | `/api/ai/chat` | AI 对话（SSE） |
+| 74 | POST | `/api/ai/execute` | 执行 AI 指令 |
+| 75 | GET | `/api/ai/tools` | 可用工具列表 |
+| 76 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 77 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 78 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 79 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 80 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 81 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 82 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 83 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 84 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 85 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 86 | GET | `/api/topics/page` | Topic 分页列表 |
 
 ## 通用响应格式
 
@@ -1547,6 +1551,86 @@ POST /api/alert-rules/delete
 | `id` | `string` | 是 | 规则 ID |
 
 **Response `data`:** `null`
+
+### 11.6 导出可移植规则文件
+
+```
+GET /api/cluster-alert-rules/transfer
+GET /api/business-alert-rules/transfer
+```
+
+**Response `data`:** `AlertRuleTransfer`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `version` | `number` | 文件格式版本，当前为 `1` |
+| `domain` | `string` | 规则域：`CLUSTER` / `BUSINESS` |
+| `rules` | `AlertRule[]` | 不包含 ID 和运行时状态的规则列表 |
+
+### 11.7 兼容模式导入规则
+
+```
+POST /api/cluster-alert-rules/import
+POST /api/business-alert-rules/import
+```
+
+请求体为 `AlertRuleTransfer`。该接口为已有客户端保留，等同使用 `FAIL` 策略应用导入：
+文件内存在无效规则或语义重复规则、或者目标域已存在相同评估条件的规则时，整次导入失败。
+
+**Response `data`:** `AlertRule[]`，本次创建的规则。
+
+### 11.8 预览规则导入
+
+```
+POST /api/cluster-alert-rules/import/preview
+POST /api/business-alert-rules/import/preview
+```
+
+请求体为 `AlertRuleTransfer`。文件版本和 `domain` 必须与接口对应的规则域一致，每次最多导入 200 条规则。
+预览不会写入规则。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `totalCount` | `number` | 文件内规则总数 |
+| `newCount` | `number` | 可创建的新规则数 |
+| `duplicateCount` | `number` | 与现有规则评估条件相同的规则数 |
+| `invalidCount` | `number` | 校验失败或在文件内语义重复的规则数 |
+| `items` | `ImportPreviewItem[]` | 按文件顺序返回的逐条结果 |
+
+`ImportPreviewItem.status` 可为 `NEW`、`DUPLICATE` 或 `INVALID`。重复项包含
+`existingRuleId` 和 `existingRuleName`；无效项包含 `error`。
+
+### 11.9 应用规则导入
+
+```
+POST /api/cluster-alert-rules/import/apply
+POST /api/business-alert-rules/import/apply
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `transfer` | `AlertRuleTransfer` | 是 | 预览过的规则文件内容 |
+| `strategy` | `string` | 是 | 冲突策略：`FAIL` / `SKIP` / `REPLACE` |
+
+- `FAIL`：存在目标域重复规则时不写入任何规则。
+- `SKIP`：创建新规则并跳过目标域中的重复规则。
+- `REPLACE`：创建新规则，并更新与重复评估条件匹配的现有规则；不会删除其他规则。
+
+无效行在所有策略下都会阻止导入。服务端会在事务内重新校验文件并计算冲突，避免使用过期的预览结果。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `strategy` | `string` | 实际使用的冲突策略 |
+| `createdCount` | `number` | 创建数量 |
+| `replacedCount` | `number` | 覆盖数量 |
+| `skippedCount` | `number` | 跳过数量 |
+| `changedRules` | `AlertRule[]` | 本次创建或更新的规则 |
 
 ---
 

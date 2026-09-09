@@ -16,9 +16,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AuditRecord } from '../api/ops';
+import type { AlertRule, AlertRuleTransfer, AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
+  applyAlertRulesImport,
   createAlertRule,
   deleteAlertRule,
   exportAlertRulesTransfer,
@@ -30,6 +31,7 @@ import {
   listAuditRecords,
   listSystemAlerts,
   listSystemAlertsPage,
+  previewAlertRulesImport,
   toggleAlertRule,
   updateAlertRule,
 } from './opsService';
@@ -41,6 +43,61 @@ vi.mock('../config', () => ({
 
 describe('ops service mock data', () => {
   const auditRecords = mockAuditRecords as unknown as AuditRecord[];
+
+  it('previews and skips duplicate alert rules before applying new rows', async () => {
+    const domain = 'CLUSTER';
+    const existing = (await listAlertRules(domain))[0];
+    const portableExisting: AlertRuleTransfer['rules'][number] = {
+      name: existing.name,
+      metric: existing.metric,
+      operator: existing.operator,
+      threshold: existing.threshold,
+      thresholdUnit: existing.thresholdUnit,
+      duration: existing.duration,
+      reminderInterval: existing.reminderInterval,
+      aggregation: existing.aggregation,
+      windowSeconds: existing.windowSeconds,
+      channels: [...existing.channels],
+      enabled: existing.enabled,
+      description: existing.description,
+      brokerName: existing.brokerName,
+      clusterName: existing.clusterName,
+      severity: existing.severity,
+      instanceId: existing.instanceId,
+      consumerGroup: existing.consumerGroup,
+      topic: existing.topic,
+      consecutiveSamples: existing.consecutiveSamples,
+      notificationTemplate: existing.notificationTemplate,
+    };
+    const fresh = {
+      ...portableExisting,
+      name: 'Imported fresh rule',
+      threshold: portableExisting.threshold + 7,
+    };
+    const transfer: AlertRuleTransfer = {
+      version: 1,
+      domain,
+      rules: [portableExisting, fresh],
+    };
+    await expect(previewAlertRulesImport(transfer, domain)).resolves.toMatchObject({
+      newCount: 1,
+      duplicateCount: 1,
+      invalidCount: 0,
+    });
+    const result = await applyAlertRulesImport(transfer, 'SKIP', domain);
+    expect(result).toMatchObject({
+      createdCount: 1,
+      replacedCount: 0,
+      skippedCount: 1,
+    });
+    try {
+      expect((await listAlertRules(domain)).map((rule) => rule.name)).toContain(
+        'Imported fresh rule',
+      );
+    } finally {
+      for (const rule of result.changedRules) await deleteAlertRule(rule.id, domain);
+    }
+  });
   const insertedRecords: AuditRecord[] = [];
 
   afterEach(() => {
@@ -60,6 +117,20 @@ describe('ops service mock data', () => {
     expect(second[0].name).toBe(originalName);
     expect(second[0].channels).not.toContain('mutated-channel');
     expect(second[0]).not.toBe(first[0]);
+  });
+
+  it('assigns distinct IDs to consecutive mock alert rule creates', async () => {
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(12345);
+    const created: AlertRule[] = [];
+    try {
+      created.push(await createAlertRule({ name: 'first-id-rule' }));
+      created.push(await createAlertRule({ name: 'second-id-rule' }));
+
+      expect(created[0].id).not.toBe(created[1].id);
+    } finally {
+      dateNow.mockRestore();
+      for (const rule of created) await deleteAlertRule(rule.id);
+    }
   });
 
   it('filters and pages mock alert rules without exposing mutable rows', async () => {

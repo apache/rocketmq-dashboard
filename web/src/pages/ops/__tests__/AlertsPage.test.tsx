@@ -28,9 +28,11 @@ import { listInstances } from '../../../services/instanceService';
 import {
   bulkDeleteAlertRules,
   bulkToggleAlertRules,
+  applyAlertRulesImport,
   listAlertRulesPage,
   listAlertRuleRuntime,
   listNativeAlertMetrics,
+  previewAlertRulesImport,
   toggleAlertRule,
 } from '../../../services/opsService';
 
@@ -48,6 +50,8 @@ vi.mock('../../../services/opsService', () => ({
   bulkToggleAlertRules: vi.fn(),
   bulkDeleteAlertRules: vi.fn(),
   exportAlertRulesTransfer: vi.fn(),
+  previewAlertRulesImport: vi.fn(),
+  applyAlertRulesImport: vi.fn(),
   importAlertRulesTransfer: vi.fn(),
   updateAlertRule: vi.fn(),
 }));
@@ -186,6 +190,134 @@ describe('AlertsPage', () => {
       failures: {},
       updatedRules: [],
     });
+    vi.mocked(previewAlertRulesImport).mockResolvedValue({
+      totalCount: 2,
+      newCount: 1,
+      duplicateCount: 1,
+      invalidCount: 0,
+      items: [
+        {
+          rowNumber: 1,
+          status: 'NEW',
+          name: 'New broker alert',
+          metric: 'broker.availability',
+        },
+        {
+          rowNumber: 2,
+          status: 'DUPLICATE',
+          name: 'Existing disk alert',
+          metric: 'broker.disk.usage_ratio',
+          existingRuleId: 1,
+          existingRuleName: 'Broker disk usage',
+        },
+      ],
+    });
+    vi.mocked(applyAlertRulesImport).mockResolvedValue({
+      strategy: 'SKIP',
+      createdCount: 1,
+      replacedCount: 0,
+      skippedCount: 1,
+      changedRules: [],
+    });
+  });
+
+  it('previews an import and applies the selected conflict strategy', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    const transfer = {
+      version: 1,
+      domain: 'CLUSTER',
+      rules: [
+        { name: 'New broker alert', metric: 'broker.availability' },
+        { name: 'Existing disk alert', metric: 'broker.disk.usage_ratio' },
+      ],
+    };
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error('Import input not found');
+
+    await user.upload(
+      input,
+      new File([JSON.stringify(transfer)], 'alert-rules.json', { type: 'application/json' }),
+    );
+
+    await waitFor(() => expect(previewAlertRulesImport).toHaveBeenCalledWith(transfer, 'CLUSTER'));
+    expect(await screen.findByText('导入预览')).toBeInTheDocument();
+    expect(screen.getByText('New broker alert')).toBeInTheDocument();
+    expect(screen.getByText('Broker disk usage')).toBeInTheDocument();
+    expect(applyAlertRulesImport).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('跳过重复'));
+    await user.click(screen.getByRole('button', { name: '应用导入' }));
+
+    await waitFor(() =>
+      expect(applyAlertRulesImport).toHaveBeenCalledWith(transfer, 'SKIP', 'CLUSTER'),
+    );
+    expect(await screen.findByText('新增 1 条，覆盖 0 条，跳过 1 条')).toBeInTheDocument();
+    expect(listAlertRulesPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores an outdated preview when another import is selected', async () => {
+    const user = userEvent.setup();
+    let resolveFirst!: (value: {
+      totalCount: number;
+      newCount: number;
+      duplicateCount: number;
+      invalidCount: number;
+      items: Array<{ rowNumber: number; status: 'NEW'; name: string; metric: string }>;
+    }) => void;
+    let resolveSecond!: typeof resolveFirst;
+    const firstPreview = new Promise<Parameters<typeof resolveFirst>[0]>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondPreview = new Promise<Parameters<typeof resolveSecond>[0]>((resolve) => {
+      resolveSecond = resolve;
+    });
+    vi.mocked(previewAlertRulesImport)
+      .mockImplementationOnce(() => firstPreview)
+      .mockImplementationOnce(() => secondPreview);
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error('Import input not found');
+
+    await user.upload(
+      input,
+      new File(
+        [JSON.stringify({ version: 1, domain: 'CLUSTER', rules: [{ name: 'First file' }] })],
+        'first.json',
+        { type: 'application/json' },
+      ),
+    );
+    await waitFor(() => expect(previewAlertRulesImport).toHaveBeenCalledTimes(1));
+
+    await user.upload(
+      input,
+      new File(
+        [JSON.stringify({ version: 1, domain: 'CLUSTER', rules: [{ name: 'Second file' }] })],
+        'second.json',
+        { type: 'application/json' },
+      ),
+    );
+    await waitFor(() => expect(previewAlertRulesImport).toHaveBeenCalledTimes(2));
+
+    resolveSecond({
+      totalCount: 1,
+      newCount: 1,
+      duplicateCount: 0,
+      invalidCount: 0,
+      items: [{ rowNumber: 1, status: 'NEW', name: 'Second file', metric: 'metric.second' }],
+    });
+    expect(await screen.findByText('Second file')).toBeInTheDocument();
+
+    resolveFirst({
+      totalCount: 1,
+      newCount: 1,
+      duplicateCount: 0,
+      invalidCount: 0,
+      items: [{ rowNumber: 1, status: 'NEW', name: 'First file', metric: 'metric.first' }],
+    });
+    await waitFor(() => expect(screen.queryByText('First file')).not.toBeInTheDocument());
   });
 
   it('renders unavailable conditions without placeholder threshold values', async () => {

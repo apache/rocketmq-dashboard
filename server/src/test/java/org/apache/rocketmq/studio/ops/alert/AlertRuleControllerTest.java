@@ -170,6 +170,34 @@ class AlertRuleControllerTest {
     }
 
     @Test
+    void previewsAndAppliesBusinessRuleTransferTest() throws Exception {
+        when(transferService.previewRules(eq(AlertDomain.BUSINESS), any(AlertRuleTransferDTO.class)))
+                .thenReturn(new AlertRuleImportPreviewVO(2, 1, 1, 0, List.of()));
+        when(transferService.applyRules(eq(AlertDomain.BUSINESS), any(AlertRuleImportApplyDTO.class)))
+                .thenReturn(new AlertRuleImportResultVO(AlertRuleImportConflictStrategy.SKIP,
+                        1, 0, 1, List.of()));
+        String transfer = "{\"version\":1,\"domain\":\"BUSINESS\",\"rules\":[{\"name\":\"Lag\"}]}";
+
+        mockMvc.perform(post("/api/business-alert-rules/import/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(transfer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.duplicateCount").value(1));
+
+        mockMvc.perform(post("/api/business-alert-rules/import/apply")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"strategy\":\"SKIP\",\"transfer\":" + transfer + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.strategy").value("SKIP"))
+                .andExpect(jsonPath("$.data.createdCount").value(1))
+                .andExpect(jsonPath("$.data.skippedCount").value(1));
+
+        verify(transferService).previewRules(eq(AlertDomain.BUSINESS), any(AlertRuleTransferDTO.class));
+        verify(transferService).applyRules(eq(AlertDomain.BUSINESS), any(AlertRuleImportApplyDTO.class));
+    }
+
+    @Test
     void createRuleShouldReturnCreatedRuleTest() throws Exception {
         AlertRuleVO request = AlertRuleVO.builder()
                 .name("High Lag")

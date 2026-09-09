@@ -70,6 +70,18 @@ public class ClusterAlertRuleController {
         return Result.ok(transferService.importRules(AlertDomain.CLUSTER, transfer));
     }
 
+    @PostMapping("/import/preview")
+    public Result<AlertRuleImportPreviewVO> previewImport(
+            @RequestBody(required = false) AlertRuleTransferDTO transfer) {
+        return Result.ok(transferService.previewRules(AlertDomain.CLUSTER, transfer));
+    }
+
+    @PostMapping("/import/apply")
+    public Result<AlertRuleImportResultVO> applyImport(
+            @Valid @RequestBody(required = false) AlertRuleImportApplyDTO request) {
+        return Result.ok(transferService.applyRules(AlertDomain.CLUSTER, request));
+    }
+
     @PostMapping("/create")
     public Result<AlertRuleVO> createRule(@Valid @RequestBody(required = false) AlertRuleRequestDTO rule) {
         AlertRuleVO candidate = requireRule(rule).toAlertRuleVO();
