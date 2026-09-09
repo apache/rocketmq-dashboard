@@ -137,6 +137,18 @@ function getRuleRow(ruleName: string) {
   return row;
 }
 
+// antd's Spin keys its `.ant-spin-blur` class on an internal `spinning` state that follows the
+// Table's `loading` prop one commit behind (see the effect in antd/es/spin/index.js), and that
+// class sets `pointer-events: none` over the whole table body. Because antd keeps the previous
+// rows rendered while loading, `findByText` on a rule name resolves during that window, so a
+// click straight afterwards is rejected. Tests that poll anything else first absorb the extra
+// commit and never see it; these waits make the same guarantee explicit.
+async function expectRuleRowInteractive(ruleName: string) {
+  await waitFor(() =>
+    expect(getComputedStyle(getRuleRow(ruleName)).pointerEvents).not.toBe('none'),
+  );
+}
+
 function getSelectOption(label: string) {
   const option = screen
     .getAllByText(label)
@@ -437,6 +449,7 @@ describe('AlertsPage', () => {
     renderPage();
 
     await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
     await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
     await waitFor(() => expect(listNativeAlertMetrics).toHaveBeenCalledWith('local', 'CLUSTER'));
 
@@ -474,6 +487,7 @@ describe('AlertsPage', () => {
     renderPage('BUSINESS');
 
     await screen.findByText('Legacy disk usage');
+    await expectRuleRowInteractive('Legacy disk usage');
     await user.click(within(getRuleRow('Legacy disk usage')).getByRole('button', { name: '编辑' }));
 
     expect(await screen.findByRole('combobox', { name: '监控指标' })).toBeEnabled();
@@ -733,6 +747,7 @@ describe('AlertsPage', () => {
     renderPage();
 
     await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
     await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: '批量启用' }));
 
