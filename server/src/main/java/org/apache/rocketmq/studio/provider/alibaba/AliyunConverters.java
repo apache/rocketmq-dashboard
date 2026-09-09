@@ -29,6 +29,8 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResp
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -118,6 +120,9 @@ final class AliyunConverters {
         vo.setName(data.getTopicName());
         vo.setInstanceId(studioInstanceId);
         vo.setType(toTopicType(data.getMessageType()));
+        // Aliyun's ListTopics API does not return permissions; console-created cloud
+        // topics are read-write, matching the Tencent provider's mapping.
+        vo.setPerm(TopicPerm.RW);
         vo.setRemark(data.getRemark());
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
         vo.setGmtModified(parseDateTime(data.getUpdateTime()));
@@ -127,8 +132,8 @@ final class AliyunConverters {
     }
 
     static TopicType toTopicType(String messageType) {
-        if (messageType == null) {
-            return null;
+        if (messageType == null || messageType.isBlank()) {
+            return TopicType.NORMAL;
         }
         switch (messageType.toUpperCase(Locale.ROOT)) {
             case "NORMAL":
@@ -140,7 +145,10 @@ final class AliyunConverters {
             case "TRANSACTION":
                 return TopicType.TRANSACTION;
             default:
-                return null;
+                // Unknown message types fall back to NORMAL so read paths (web
+                // detail, AI rmq.topic.list) never see a null type, matching the
+                // Apache provider's parseTopicType fallback.
+                return TopicType.NORMAL;
         }
     }
 
@@ -157,22 +165,20 @@ final class AliyunConverters {
         vo.setName(data.getConsumerGroupId());
         vo.setInstanceId(studioInstanceId);
         vo.setConsumeType(toConsumeType(data.getMessageModel()));
+        // Aliyun's messageModel carries the consume model, not the subscription mode; cloud TCP
+        // consumer groups are push consumers. Read paths (web detail, AI rmq.group.list) require
+        // a non-null subscriptionMode, mirroring the Apache provider invariant.
+        vo.setSubscriptionMode(SubscriptionMode.Push);
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
         vo.setGmtModified(parseDateTime(data.getUpdateTime()));
         return vo;
     }
 
     static ConsumeType toConsumeType(String messageModel) {
-        if (messageModel == null) {
-            return null;
-        }
-        if ("Clustering".equalsIgnoreCase(messageModel)) {
-            return ConsumeType.CLUSTERING;
-        }
         if ("Broadcasting".equalsIgnoreCase(messageModel)) {
             return ConsumeType.BROADCASTING;
         }
-        return null;
+        return ConsumeType.CLUSTERING;
     }
 
     static List<QueueProgressVO> toQueueProgressRows(GetConsumerGroupLagResponseBody.Data data) {

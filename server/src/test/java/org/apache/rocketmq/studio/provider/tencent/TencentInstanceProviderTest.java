@@ -44,8 +44,10 @@ import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -208,6 +210,25 @@ class TencentInstanceProviderTest {
                 .containsExactly("TopicName", "TopicType");
         assertThat(captor.getValue().getFilters()[0].getValues()).containsExactly("fifo");
         assertThat(captor.getValue().getFilters()[1].getValues()).containsExactly("FIFO");
+    }
+
+    @Test
+    void listTopicsShouldFallBackToNormalTypeWhenTopicTypeMissingTest() throws Exception {
+        when(client.DescribeTopicList(any())).thenAnswer(invocation -> {
+            DescribeTopicListResponse response = new DescribeTopicListResponse();
+            response.setData(new TopicItem[]{
+                    topicItem("orders-untyped", null, 4L),
+                    topicItem("orders-unknown", "NEW_TYPE", 4L)});
+            return response;
+        });
+        DescribeTopicResponse detail = new DescribeTopicResponse();
+        when(client.DescribeTopic(any())).thenReturn(detail);
+
+        List<TopicVO> topics = provider.listTopics(STUDIO_INSTANCE_ID, null, null);
+
+        assertThat(topics).hasSize(2);
+        assertThat(topics).allSatisfy(topic -> assertThat(topic.getType()).isEqualTo(TopicType.NORMAL));
+        assertThat(topics).allSatisfy(topic -> assertThat(topic.getPerm()).isEqualTo(TopicPerm.RW));
     }
 
     @Test
@@ -536,6 +557,7 @@ class TencentInstanceProviderTest {
         assertThat(groups.get(0).getRetryMaxTimes()).isEqualTo(16);
         assertThat(groups.get(0).getGmtCreate()).isNotNull();
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+        assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
         assertThat(groups.get(0).getInstances()).isNotNull().isEmpty();
     }
 
