@@ -498,6 +498,26 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void executesAlertRuleListWhenARuleHasNoMetric() {
+        when(alertService.listRules(null, null, 1, 20)).thenReturn(PageResult.of(
+                List.of(
+                        alertRule(1L, "High Lag", "rocketmq_consumer_lag_messages", true),
+                        alertRule(2L, "Manual rule", null, false)),
+                2, 1, 20));
+
+        Object output = gateway.execute("rmq.alert.rule.list", Map.of("cluster", "cluster-v5"));
+
+        Map<String, Object> result = (Map<String, Object>) output;
+        List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
+        assertThat(items).hasSize(2);
+        assertThat(items.get(0)).containsEntry("metric", "rocketmq_consumer_lag_messages");
+        assertThat(items.get(1))
+                .containsEntry("name", "Manual rule")
+                .containsEntry("metric", "");
+    }
+
+    @Test
     void rejectsAlertRuleListWithoutAClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.alert.rule.list", Map.of()))
                 .isInstanceOf(BusinessException.class)
