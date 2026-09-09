@@ -511,6 +511,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     [profileId, profiles],
   );
   const selectedRange = RANGE_OPTIONS.find((range) => range.value === rangeId) ?? RANGE_OPTIONS[0];
+  const selectedRangeRef = useRef(selectedRange);
+  useEffect(() => {
+    selectedRangeRef.current = selectedRange;
+  }, [selectedRange]);
   const anyLoading =
     Object.values(panels).some((panel) => panel.loading) || Boolean(customPanel?.loading);
   const availableDataSources = useMemo(
@@ -649,7 +653,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         const initialProfile =
           nextProfiles.find((profile) => profile.id === storedProfileId) ?? nextProfiles[0];
         setProfileId(initialProfile?.id ?? '');
-        void loadAll(initialProfile, RANGE_OPTIONS[0]);
+        void loadAll(initialProfile, selectedRangeRef.current);
       })
       .catch(() => {
         if (!cancelled) setProfileError(true);
