@@ -59,6 +59,7 @@ import {
   parseAuditDetail,
 } from './auditPresentation';
 import AuditSummaryCards from './AuditSummaryCards';
+import AuditRiskInsights from './AuditRiskInsights';
 
 const emptyFilterOptions: AuditFilterOptions = {
   operationTypes: [],
@@ -489,6 +490,7 @@ const AuditPage: React.FC = () => {
       </Flex>
 
       <AuditSummaryCards summary={summary} loading={summaryLoading} />
+      <AuditRiskInsights summary={summary} records={records} loading={loading || summaryLoading} />
 
       {/* ─── Table ─── */}
       <Card styles={{ body: { padding: 0 } }}>

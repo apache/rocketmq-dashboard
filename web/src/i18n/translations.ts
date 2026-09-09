@@ -112,6 +112,63 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.consumerGroups': { zh: '{n} 消费组', en: '{n} Groups' },
   'dashboard.healthy': { zh: '健康', en: 'Healthy' },
   'dashboard.last12h': { zh: '近 12 小时', en: 'Last 12 hours' },
+  'dashboardTraffic.title': { zh: '流量洞察', en: 'Traffic Insights' },
+  'dashboardTraffic.activeClusters': { zh: '活跃集群', en: 'Active Clusters' },
+  'dashboardTraffic.topClusterShare': { zh: '最高流量占比', en: 'Top Traffic Share' },
+  'dashboardTraffic.balanceScore': { zh: '均衡评分', en: 'Balance Score' },
+  'dashboardTraffic.unhealthyTraffic': { zh: '异常流量', en: 'Unhealthy Traffic' },
+  'dashboardTraffic.findings': { zh: '需要关注的流量信号', en: 'Traffic signals to review' },
+  'dashboardTraffic.noCluster': { zh: '暂无集群流量数据', en: 'No cluster traffic data' },
+  'dashboardTraffic.allClusters': { zh: '全部集群', en: 'all clusters' },
+  'dashboardTraffic.totalTps': { zh: '总 TPS', en: 'Total TPS' },
+  'dashboardTraffic.share': { zh: '占比', en: 'Share' },
+  'dashboardTraffic.perBroker': { zh: '单 Broker TPS', en: 'TPS per Broker' },
+  'dashboardTraffic.inOutRatio': { zh: '出入比', en: 'Out/In Ratio' },
+  'dashboardTraffic.trendRising': { zh: '上升', en: 'Rising' },
+  'dashboardTraffic.trendFalling': { zh: '下降', en: 'Falling' },
+  'dashboardTraffic.trendStable': { zh: '平稳', en: 'Stable' },
+  'dashboardTraffic.trendUnknown': { zh: '未知', en: 'Unknown' },
+  'dashboardTraffic.level.healthy': { zh: '健康', en: 'Healthy' },
+  'dashboardTraffic.level.notice': { zh: '提示', en: 'Notice' },
+  'dashboardTraffic.level.warning': { zh: '告警', en: 'Warning' },
+  'dashboardTraffic.level.critical': { zh: '严重', en: 'Critical' },
+  'dashboardTraffic.issueNoActiveTraffic': {
+    zh: '未检测到活跃流量',
+    en: 'No active traffic detected',
+  },
+  'dashboardTraffic.issueTrafficConcentration': {
+    zh: '{cluster} 承载 {value} 流量',
+    en: '{cluster} carries {value} of traffic',
+  },
+  'dashboardTraffic.issueUnhealthyTraffic': {
+    zh: '非健康集群承载 {value} 流量',
+    en: 'Unhealthy clusters carry {value} of traffic',
+  },
+  'dashboardTraffic.issueUnhealthyClusterTraffic': {
+    zh: '{cluster} 在非健康状态下承载流量',
+    en: '{cluster} carries traffic while unhealthy',
+  },
+  'dashboardTraffic.issueBrokerLoadSkew': {
+    zh: '{cluster} 单 Broker 流量偏高',
+    en: '{cluster} has high per-broker traffic',
+  },
+  'dashboardTraffic.issueRecentDrop': {
+    zh: '近期总流量下降 {value}',
+    en: 'Recent total traffic dropped by {value}',
+  },
+  'dashboardTraffic.issueRecentSpike': {
+    zh: '近期总流量上升 {value}',
+    en: 'Recent total traffic increased by {value}',
+  },
+  'dashboardTraffic.issueTopologyUnavailable': {
+    zh: '{cluster} 拓扑数量不可用',
+    en: '{cluster} has unavailable topology counts',
+  },
+  'dashboardTraffic.issueIdleCluster': {
+    zh: '{cluster} 当前无流量',
+    en: '{cluster} is currently idle',
+  },
+  'dashboardTraffic.issueUnknown': { zh: '未知流量信号', en: 'Unknown traffic signal' },
 
   // ─── Cluster Page ───
   'cluster.title': { zh: 'RocketMQ 集群', en: 'RocketMQ Cluster' },
@@ -1168,6 +1225,63 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
+  'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
+  'auditInsights.level.notice': { zh: '提示', en: 'Notice' },
+  'auditInsights.level.warning': { zh: '告警', en: 'Warning' },
+  'auditInsights.level.critical': { zh: '严重', en: 'Critical' },
+  'auditInsights.controlPlaneFailures': {
+    zh: '控制面异常',
+    en: 'Control-plane Failures',
+  },
+  'auditInsights.topOperator': { zh: '最高频操作人', en: 'Top Operator' },
+  'auditInsights.currentPageRecords': {
+    zh: '当前页 {count} 条记录',
+    en: '{count} records on this page',
+  },
+  'auditInsights.operatorShare': { zh: '当前页占比 {value}', en: '{value} of this page' },
+  'auditInsights.findings': { zh: '需要关注的审计信号', en: 'Audit signals to review' },
+  'auditInsights.hotTargets': { zh: '重复异常对象', en: 'Repeated Failed Targets' },
+  'auditInsights.riskyRecords': { zh: '高风险记录', en: 'Risky Records' },
+  'auditInsights.noHotTargets': {
+    zh: '当前页没有重复失败或部分成功的对象',
+    en: 'No repeated failed or partial targets on this page',
+  },
+  'auditInsights.noRiskyRecords': {
+    zh: '当前页没有异常或高风险审计记录',
+    en: 'No failed or high-risk audit records on this page',
+  },
+  'auditInsights.target': { zh: '对象', en: 'Target' },
+  'auditInsights.failPartial': { zh: '失败 / 部分成功', en: 'Failed / Partial' },
+  'auditInsights.issue.noMatchingRecords': {
+    zh: '当前筛选没有匹配的审计记录',
+    en: 'No audit records match the current filters',
+  },
+  'auditInsights.issue.highFailureRate': {
+    zh: '当前筛选失败率 {value}，高于 {threshold} 阈值',
+    en: 'Filtered failure rate is {value}, above the {threshold} threshold',
+  },
+  'auditInsights.issue.partialOutcomes': {
+    zh: '当前筛选有 {count} 条部分成功记录',
+    en: '{count} filtered audit records are partially successful',
+  },
+  'auditInsights.issue.controlPlaneFailures': {
+    zh: '当前页有 {count} 条控制面操作失败或部分成功',
+    en: '{count} control-plane operations failed or partially succeeded on this page',
+  },
+  'auditInsights.issue.highRiskFailures': {
+    zh: '当前页有 {count} 条高风险操作失败',
+    en: '{count} high-risk operations failed on this page',
+  },
+  'auditInsights.issue.repeatedTargetFailures': {
+    zh: '{target} 在当前页出现 {count} 次失败或部分成功',
+    en: '{target} has {count} failed or partial audit events on this page',
+  },
+  'auditInsights.issue.operatorConcentration': {
+    zh: '{operator} 占当前页 {value} 操作',
+    en: '{operator} owns {value} of operations on this page',
+  },
+  'auditInsights.issue.unknown': { zh: '未知审计风险信号', en: 'Unknown audit risk signal' },
 
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
