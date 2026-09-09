@@ -247,6 +247,36 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByMsgIdAcceptsRegisteredBrokerHostname() throws Exception {
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("127.0.0.1", 10911), 12345L);
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic("TopicA");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("localhost:10911"));
+        when(adminExt.viewMessage("TopicA", msgId)).thenReturn(message);
+
+        assertThat(provider.queryMessages("instance-a", "TopicA", msgId, null, null, null, null))
+                .singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo(msgId);
+        verify(adminExt).viewMessage("TopicA", msgId);
+    }
+
+    @Test
+    void queryByMsgIdUsesDecodedIpForHostnameBrokerFallback() throws Exception {
+        String msgId = MessageDecoder.createMessageId(new InetSocketAddress("127.0.0.1", 10911), 12345L);
+        MQClientAPIImpl clientApi = mockOffsetLookupClient();
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic("TopicA");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("localhost:10911"));
+        when(adminExt.viewMessage("TopicA", msgId)).thenThrow(new IllegalStateException("primary lookup failed"));
+        when(clientApi.viewMessage("127.0.0.1:10911", "TopicA", 12345L, 3000L)).thenReturn(message);
+
+        assertThat(provider.queryMessages("instance-a", "TopicA", msgId, null, null, null, null))
+                .singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo(msgId);
+        verify(clientApi).viewMessage("127.0.0.1:10911", "TopicA", 12345L, 3000L);
+    }
+
+    @Test
     void queryByMsgIdIgnoresUnrelatedTimeBounds() throws Exception {
         MessageExt message = new MessageExt();
         message.setMsgId("msg-1");
