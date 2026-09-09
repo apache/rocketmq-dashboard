@@ -171,6 +171,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [actionId, setActionId] = useState<string | null>(null);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Key[]>([]);
   const [bulkAction, setBulkAction] = useState<'enable' | 'disable' | 'delete' | null>(null);
+  const [transferringRules, setTransferringRules] = useState(false);
   const [form] = Form.useForm();
   // The same component instance serves /ops/alerts and /ops/business-alerts, so the
   // list state from the previous domain must be dropped when the route switches
@@ -188,6 +189,14 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     setTotalRules(0);
     setRuntime([]);
     setLoading(true);
+    setModalVisible(false);
+    setEditingRule(null);
+    setSubmitting(false);
+    setTesting(false);
+    setTestResult(null);
+    setActionId(null);
+    setBulkAction(null);
+    setTransferringRules(false);
   }
   const selectedMetric = Form.useWatch('metric', form);
   const selectedOperator = Form.useWatch('operator', form);
@@ -205,7 +214,6 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [metricLoading, setMetricLoading] = useState(false);
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [transferringRules, setTransferringRules] = useState(false);
   const metricRequestVersion = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
   const notificationTemplateRef = useRef<TextAreaRef>(null);
