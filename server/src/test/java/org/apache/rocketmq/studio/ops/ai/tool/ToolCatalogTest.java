@@ -42,6 +42,8 @@ class ToolCatalogTest {
                         "rmq.cluster.list",
                         "rmq.capabilities",
                         "rmq.dashboard.summary",
+                        "rmq.metrics.profile.list",
+                        "rmq.metrics.query",
                         "rmq.topic.list",
                         "rmq.group.list",
                         "rmq.message.query",

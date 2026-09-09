@@ -181,6 +181,182 @@ tools:
               type: integer
     viewHint: object
     deprecated: false
+  - name: rmq.metrics.profile.list
+    cli:
+      resource: metrics-profile
+      verb: list
+    description: List RocketMQ metric profiles and semantic PromQL mappings.
+    riskLevel: L1
+    permission: metrics:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: array
+      items:
+        type: object
+        required:
+          - id
+          - name
+          - description
+          - metrics
+        additionalProperties: false
+        properties:
+          id:
+            type: string
+          name:
+            type: string
+          description:
+            type: string
+          metrics:
+            type: array
+            items:
+              type: object
+              required:
+                - semanticMetric
+                - name
+                - unit
+                - prometheusMetric
+                - promql
+                - labels
+              additionalProperties: false
+              properties:
+                semanticMetric:
+                  type: string
+                name:
+                  type: string
+                unit:
+                  type: string
+                prometheusMetric:
+                  type: string
+                promql:
+                  type: string
+                labels:
+                  type: array
+                  items:
+                    type: string
+    viewHint: object
+    deprecated: false
+  - name: rmq.metrics.query
+    cli:
+      resource: metrics
+      verb: query
+    description: Query Prometheus range metrics through the configured RocketMQ Studio metrics source.
+    riskLevel: L1
+    permission: metrics:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - start
+        - end
+        - step
+      oneOf:
+        - required:
+            - metric
+          not:
+            anyOf:
+              - required:
+                  - profileId
+              - required:
+                  - semanticMetric
+        - required:
+            - profileId
+            - semanticMetric
+          not:
+            required:
+              - metric
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        metric:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        profileId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        semanticMetric:
+          type: string
+          minLength: 1
+          maxLength: 128
+        start:
+          type: integer
+          minimum: 1
+        end:
+          type: integer
+          minimum: 1
+        step:
+          type: string
+          minLength: 1
+          maxLength: 32
+    outputSchema:
+      type: object
+      required:
+        - resultType
+        - series
+        - warnings
+      additionalProperties: false
+      properties:
+        resultType:
+          type: string
+        series:
+          type: array
+          items:
+            type: object
+            required:
+              - labels
+              - values
+              - histograms
+            additionalProperties: false
+            properties:
+              labels:
+                type: object
+                additionalProperties:
+                  type: string
+              values:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - timestamp
+                    - value
+                  additionalProperties: false
+                  properties:
+                    timestamp:
+                      type: number
+                    value:
+                      type: string
+              histograms:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - timestamp
+                    - histogram
+                  additionalProperties: false
+                  properties:
+                    timestamp:
+                      type: number
+                    histogram:
+                      type: object
+        warnings:
+          type: array
+          items:
+            type: string
+    viewHint: object
+    deprecated: false
   - name: rmq.topic.list
     cli:
       resource: topic
