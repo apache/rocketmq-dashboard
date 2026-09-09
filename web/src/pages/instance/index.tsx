@@ -1037,7 +1037,13 @@ const InstancePage = () => {
               </span>
             }
             name="endpoint"
-            rules={[{ required: true, message: t('instance.endpointRequired') }]}
+            rules={
+              // A cloud endpoint is resolved from the catalog and the input is disabled below,
+              // so a stored blank value must not make this dialog impossible to submit.
+              editingInstance?.vendor != null && editingInstance.vendor !== 'APACHE'
+                ? []
+                : [{ required: true, message: t('instance.endpointRequired') }]
+            }
             extra={getEndpointExtra(editInstanceType)}
           >
             <Input
