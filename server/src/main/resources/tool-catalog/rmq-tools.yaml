@@ -126,7 +126,9 @@ tools:
             brokers:
               type: integer
             proxies:
-              type: integer
+              type:
+                - integer
+                - 'null'
             topics:
               type: integer
             groups:
@@ -164,9 +166,13 @@ tools:
             totalBrokers:
               type: integer
             totalProxies:
-              type: integer
+              type:
+                - integer
+                - 'null'
             totalNameServers:
-              type: integer
+              type:
+                - integer
+                - 'null'
             totalTopics:
               type: integer
             totalConsumerGroups:

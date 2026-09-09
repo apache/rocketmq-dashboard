@@ -340,6 +340,51 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void executesDashboardSummaryWhenTopologyCountsAreUnavailable() {
+        when(dashboardService.getDashboard()).thenReturn(DashboardDataVO.builder()
+                .stats(DashboardStatsVO.builder()
+                        .totalClusters(1)
+                        .healthyClusters(1)
+                        .totalBrokers(2)
+                        .totalTopics(3)
+                        .totalConsumerGroups(4)
+                        .totalMessagesToday(500L)
+                        .messagesPerSecond(6L)
+                        .tpsIn(7L)
+                        .tpsOut(8L)
+                        .build())
+                .clusters(List.of(ClusterOverviewVO.builder()
+                        .id("cluster-v5")
+                        .name("test")
+                        .type(ClusterType.V5_PROXY_CLUSTER)
+                        .status(ClusterStatus.healthy)
+                        .brokers(2)
+                        .topics(3)
+                        .groups(4)
+                        .tpsIn(7)
+                        .tpsOut(8)
+                        .version("5.3.1")
+                        .throughput(List.of())
+                        .build()))
+                .build());
+
+        Object output = gateway.execute(
+                "rmq.dashboard.summary", Map.of("cluster", "cluster-v5"));
+
+        Map<String, Object> result = (Map<String, Object>) output;
+        Map<String, Object> cluster = (Map<String, Object>) result.get("cluster");
+        assertThat(cluster).containsKey("proxies");
+        assertThat(cluster.get("proxies")).isNull();
+        Map<String, Object> stats = (Map<String, Object>) result.get("stats");
+        assertThat(stats).containsKey("totalProxies");
+        assertThat(stats.get("totalProxies")).isNull();
+        assertThat(stats).containsKey("totalNameServers");
+        assertThat(stats.get("totalNameServers")).isNull();
+        assertThat(stats).containsEntry("totalBrokers", 2);
+    }
+
+    @Test
     void rejectsDashboardSummaryWithoutRequiredClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.dashboard.summary", Map.of()))
                 .isInstanceOf(BusinessException.class)
