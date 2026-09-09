@@ -47,13 +47,14 @@ public class AuditService {
 
     public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search,
                                              String operationType, String resourceType,
-                                             String clusterId, String startDate,
+                                             String target, String clusterId, boolean clusterIdMissing,
+                                             String startDate,
                                              String endDate, String result) {
         validatePagination(page, pageSize);
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
-        return findPage(search, operationType, resourceType, clusterId,
+        return findPage(search, operationType, resourceType, target, clusterId, clusterIdMissing,
                 startDate, endDate, result, page, pageSize);
     }
 
@@ -69,9 +70,10 @@ public class AuditService {
     }
 
     public String exportLogs(String search, String operationType, String resourceType,
-                             String clusterId, String startDate, String endDate, String result) {
+                             String target, String clusterId, boolean clusterIdMissing, String startDate,
+                             String endDate, String result) {
         PageResult<AuditRecordVO> page = findPage(
-                search, operationType, resourceType, clusterId,
+                search, operationType, resourceType, target, clusterId, clusterIdMissing,
                 startDate, endDate, result, 1, MAX_EXPORT_RECORDS);
         if (page.getTotal() > MAX_EXPORT_RECORDS) {
             throw new BusinessException(400,
@@ -140,11 +142,13 @@ public class AuditService {
     }
 
     private PageResult<AuditRecordVO> findPage(String search, String operationType,
-                                               String resourceType, String clusterId,
+                                               String resourceType, String target, String clusterId,
+                                               boolean clusterIdMissing,
                                                String startDate, String endDate,
                                                String result, int page, int pageSize) {
         DateRange range = parseDateRange(startDate, endDate);
-        return auditRepository.findPage(search, operationType, resourceType, clusterId,
+        return auditRepository.findPage(search, operationType, resourceType, target, clusterId,
+                clusterIdMissing,
                 range.start(), range.end(), result, page, pageSize);
     }
 

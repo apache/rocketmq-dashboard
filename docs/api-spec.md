@@ -1608,7 +1608,7 @@ POST /api/system-alerts/clear-acknowledged
 ### 13.1 获取审计日志列表
 
 ```
-GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationType={type}&resourceType={resourceType}&clusterId={clusterId}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
 ```
 
 **Query Parameters:**
@@ -1617,15 +1617,20 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 |------|------|------|------|
 | `page` | `number` | 否 | 页码，默认 1 |
 | `pageSize` | `number` | 否 | 每页条数，默认 20 |
-| `search` | `string` | 否 | 搜索（匹配 operator / target） |
+| `search` | `string` | 否 | 模糊搜索（匹配 operator / target / detail） |
 | `operationType` | `string` | 否 | 操作类型过滤 |
 | `resourceType` | `string` | 否 | 资源类型过滤 |
+| `target` | `string` | 否 | 操作对象精确过滤，使用等值匹配而非模糊搜索 |
 | `clusterId` | `string` | 否 | 集群 ID 过滤 |
+| `clusterIdMissing` | `boolean` | 否 | 默认 `false`；为 `true` 时只返回集群 ID 为 null 或空字符串的记录，并忽略 `clusterId` |
 | `startDate` | `string` | 否 | 开始日期 (YYYY-MM-DD) |
 | `endDate` | `string` | 否 | 结束日期 (YYYY-MM-DD) |
 | `result` | `string` | 否 | 结果过滤，传入筛选项接口返回的原始值 |
 
 `startDate` 或 `endDate` 格式错误，以及 `startDate` 晚于 `endDate` 时，接口返回 HTTP 400。
+
+资源操作时间线使用 `resourceType + target + clusterId` 作为资源身份。对于没有集群范围的记录，
+省略 `clusterId` 并传入 `clusterIdMissing=true`。
 
 **Response `data`:**
 
@@ -1645,8 +1650,8 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `operator` | `string` | 操作人（如 `admin`, `ops-zhang`, `system`） |
 | `operationType` | `string` | 持久化的操作类型代码，如 `CREATE_TOPIC` / `RESET_OFFSET` |
 | `resourceType` | `string` | 资源类型代码，如 `TOPIC` / `GROUP` / `CLUSTER` |
-| `target` | `string` | 操作对象 |
-| `clusterId` | `string` | 所属集群 ID，无集群上下文时为 `null` |
+| `target` | `string \| null` | 操作对象，无操作对象时为 `null` |
+| `clusterId` | `string \| null` | 所属集群 ID，无集群上下文时为 `null` |
 | `detail` | `string` | 详细描述 |
 | `result` | `string` | 持久化的结果代码，如 `SUCCESS` / `FAILED` / `FAILURE` / `PARTIAL` |
 | `errorMessage` | `string` | 失败或部分成功时的错误信息 |
@@ -1671,7 +1676,7 @@ GET /api/audit-logs/filter-options
 ### 13.3 导出审计日志
 
 ```
-GET /api/audit-logs/export?search={search}&operationType={type}&resourceType={resourceType}&clusterId={clusterId}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs/export?search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
 ```
 
 查询参数与列表接口相同，但不包含 `page` 和 `pageSize`。接口返回全部匹配记录，不受当前表格分页影响。

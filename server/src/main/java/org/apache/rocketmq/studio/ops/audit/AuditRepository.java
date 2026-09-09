@@ -21,7 +21,8 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 
 public interface AuditRepository {
     PageResult<AuditRecordVO> findPage(String search, String operationType,
-                                       String resourceType, String clusterId,
+                                       String resourceType, String target, String clusterId,
+                                       boolean clusterIdMissing,
                                        LocalDateTime startDate, LocalDateTime endDate,
                                        String result, int page, int pageSize);
 

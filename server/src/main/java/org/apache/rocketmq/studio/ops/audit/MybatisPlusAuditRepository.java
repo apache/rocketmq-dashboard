@@ -54,7 +54,8 @@ public class MybatisPlusAuditRepository implements AuditRepository {
 
     @Override
     public PageResult<AuditRecordVO> findPage(String search, String operationType,
-                                              String resourceType, String clusterId,
+                                              String resourceType, String target, String clusterId,
+                                              boolean clusterIdMissing,
                                               LocalDateTime startDate, LocalDateTime endDate,
                                               String result, int page, int pageSize) {
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
@@ -64,7 +65,9 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                         .or().like("detail", search))
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
-                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq(StringUtils.hasText(target), "resource_name", target)
+                .eq(!clusterIdMissing && StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .and(clusterIdMissing, scope -> scope.isNull("cluster_id").or().eq("cluster_id", ""))
                 .ge(startDate != null, "gmt_create", startDate)
                 .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result)

@@ -1215,6 +1215,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cluster': { zh: '集群', en: 'Cluster' },
   'audit.result': { zh: '结果', en: 'Result' },
   'audit.error': { zh: '失败原因', en: 'Error' },
+  'audit.timelineTitle': { zh: '资源操作时间线', en: 'Resource Operation Timeline' },
+  'audit.timelineView': {
+    zh: '查看 {target} 操作时间线',
+    en: 'View operation timeline for {target}',
+  },
+  'audit.timelineDateRange': { zh: '时间线日期范围', en: 'Timeline date range' },
+  'audit.timelineNoCluster': { zh: '无集群范围', en: 'No cluster scope' },
+  'audit.timelineExport': { zh: '导出时间线', en: 'Export Timeline' },
+  'audit.timelineLoadFailed': {
+    zh: '资源操作时间线加载失败，请稍后重试',
+    en: 'Failed to load the resource operation timeline. Try again later.',
+  },
+  'audit.timelineExportFailed': {
+    zh: '资源操作时间线导出失败，请稍后重试',
+    en: 'Failed to export the resource operation timeline. Try again later.',
+  },
+  'audit.timelineEmpty': { zh: '该资源暂无操作记录', en: 'No operations found for this resource' },
   'audit.searchPlaceholder': { zh: '搜索操作人或操作对象', en: 'Search operator or target' },
   'audit.cleanup': { zh: '清理日志', en: 'Cleanup' },
   'audit.cleanupTitle': { zh: '清理审计日志', en: 'Cleanup Audit Log' },
