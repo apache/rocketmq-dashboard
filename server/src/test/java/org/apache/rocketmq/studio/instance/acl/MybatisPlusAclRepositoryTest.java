@@ -551,6 +551,28 @@ class MybatisPlusAclRepositoryTest {
         assertThat(captor.getValue().getClusters()).isEqualTo("cluster-a,cluster-b");
     }
 
+    @Test
+    void examineShouldNotAbsorbRulesOfAccountsWhoseAccessKeysOverlap() {
+        RmqAclUser user = userEntity(1L, "svc-a", CredentialUtils.encodeBase64("secret-a-value"));
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(user));
+        RmqAclRule ownRule = plainRuleEntity("svc-a", "orders", "Topic", "PUB");
+        RmqAclRule otherAccountRule = plainRuleEntity("svc-a-v2", "payments", "Topic", "SUB");
+        // Simulate SQL semantics: a substring LIKE on the principal matches both
+        // accounts, an exact equality only the requested one.
+        when(ruleMapper.selectList(any(QueryWrapper.class))).thenAnswer(invocation -> {
+            QueryWrapper<RmqAclRule> query = invocation.getArgument(0);
+            return query.getSqlSegment().contains("LIKE")
+                    ? List.of(ownRule, otherAccountRule)
+                    : List.of(ownRule);
+        });
+
+        AclClusterConfigVO config = repository.examineBrokerClusterAclConfig("cluster-a");
+
+        assertThat(config.getAccounts()).hasSize(1);
+        PlainAccessConfigVO account = config.getAccounts().get(0);
+        assertThat(account.getTopicPerms()).containsExactly("orders=PUB");
+    }
+
     private static RmqAclUser userEntity(Long id, String accessKey, String encodedSecret) {
         RmqAclUser entity = new RmqAclUser();
         entity.setId(id);
@@ -560,5 +582,20 @@ class MybatisPlusAclRepositoryTest {
         entity.setAdmin(false);
         entity.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
         return entity;
+    }
+
+    private static RmqAclRule plainRuleEntity(String principal, String resource,
+            String resourceType, String actions) {
+        RmqAclRule rule = new RmqAclRule();
+        rule.setPrincipal(principal);
+        rule.setResource(resource);
+        rule.setResourceType(resourceType);
+        rule.setResourcePattern("LITERAL");
+        rule.setActions(actions);
+        rule.setDecision("ALLOW");
+        rule.setScope("*");
+        rule.setAclVersion("2.0");
+        rule.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        return rule;
     }
 }
