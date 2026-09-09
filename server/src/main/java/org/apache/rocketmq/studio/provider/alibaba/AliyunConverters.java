@@ -30,6 +30,7 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -212,6 +213,7 @@ final class AliyunConverters {
                 .topic(data.getTopicName())
                 .expression(data.getFilterExpression())
                 .type(data.getFilterExpressionType())
+                .filterMode(SubscriptionFilterModes.fromExpressionType(data.getFilterExpressionType()))
                 .consistency(data.getConsistency() == null ? null : String.valueOf(data.getConsistency()))
                 .build();
     }

@@ -315,6 +315,54 @@ describe('AlertsPage', () => {
     expect(screen.getByText('21')).toBeInTheDocument();
   });
 
+  it('resets page, search and status filters when the domain switches', async () => {
+    vi.mocked(listAlertRulesPage).mockClear();
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: [cloneRule(alertRules[0])],
+      total: 21,
+      page: 2,
+      size: 20,
+    });
+    const user = userEvent.setup();
+    const { rerender } = renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await user.type(screen.getByPlaceholderText('搜索规则名称或指标'), 'disk');
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith(
+        'CLUSTER',
+        expect.objectContaining({ search: 'disk' }),
+      ),
+    );
+    const secondPage = document.querySelector('.ant-pagination-item-2') as HTMLElement | null;
+    if (!secondPage) throw new Error('Pagination page 2 not found');
+    await user.click(secondPage);
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith(
+        'CLUSTER',
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+
+    rerender(
+      <App>
+        <LangProvider>
+          <AlertsPage domain="BUSINESS" />
+        </LangProvider>
+      </App>,
+    );
+
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith('BUSINESS', {
+        enabled: undefined,
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+      }),
+    );
+    expect(screen.getByPlaceholderText('搜索规则名称或指标')).toHaveValue('');
+  });
+
   it('uses the business rule API and loads only business metrics for the selected instance', async () => {
     vi.mocked(listNativeAlertMetrics).mockResolvedValue([
       {

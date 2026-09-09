@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditConstants.ResourceType;
 import org.apache.rocketmq.studio.audit.OperationAuditConstants.Result;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -32,6 +33,7 @@ import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
 import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsCommand;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
@@ -291,12 +293,12 @@ public class MetadataService {
         return adminClient.getConsumerGroupSettings(instanceId, requireName(name, "consumer group name"));
     }
 
-    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name, int retryQueueNums,
-                                                                 int retryMaxTimes) {
+    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name,
+                                                                 ConsumerGroupSettingsCommand command) {
         instanceId = normalizeInstanceId(instanceId);
         requireApacheInstance(instanceId);
         String groupName = requireName(name, "consumer group name");
-        return adminClient.updateConsumerGroupSettings(instanceId, groupName, retryQueueNums, retryMaxTimes);
+        return adminClient.updateConsumerGroupSettings(instanceId, groupName, command);
     }
 
 
@@ -453,12 +455,16 @@ public class MetadataService {
         for (ConsumerGroupVO group : groups) {
             CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
                     toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
-                    group.getOnlineInstances(), group.getTotalLag(), group.getDelaySeconds(),
+                    group.getOnlineInstances(), lagText(group.getTotalLag()), group.getDelaySeconds(),
                     group.getSubscriptionDataType(), group.getDeliveryOrderType(), group.getRetryMaxTimes(),
                     String.join(";", group.getSubscribedTopics() == null ? List.of() : group.getSubscribedTopics()),
                     group.getGmtCreate(), group.getGmtModified());
         }
         return csv.toString();
+    }
+
+    private static String lagText(long totalLag) {
+        return totalLag == ConsumerLagResolver.UNKNOWN ? "unknown" : String.valueOf(totalLag);
     }
 
     private String toText(Object value) {

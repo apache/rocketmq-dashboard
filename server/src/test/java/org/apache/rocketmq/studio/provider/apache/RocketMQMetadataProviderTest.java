@@ -27,6 +27,8 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
@@ -412,6 +414,60 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicRoutesShouldReturnEmptyListWhenTopicHasNoBrokerRoute() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // Exception shape captured against a live RocketMQ 5.5.0 name server:
+        // MQClientException(responseCode=17, errorMessage="No topic route info in name
+        // server for the topic: <topic>").
+        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: TopicA"));
+
+        assertThat(newLiveProvider(admin).getTopicRoutes(null, "TopicA")).isEmpty();
+    }
+
+    @Test
+    void getTopicRoutesGradesByResponseCodeOnly() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // A failure carrying route-absent-looking text but a different response code is
+        // a real error and must surface, proving grading no longer keys on the message.
+        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.SYSTEM_ERROR,
+                "No topic route info in name server for the topic: TopicA"));
+
+        assertThatThrownBy(() -> newLiveProvider(admin).getTopicRoutes(null, "TopicA"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getTopicConsumersShouldReturnEmptyPageWhenTopicHasNoBrokerRoute() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: TopicA"));
+
+        TopicConsumerPageVO page = newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20);
+
+        assertThat(page.getItems()).isEmpty();
+        assertThat(page.getTotal()).isZero();
+        assertThat(page.getPage()).isEqualTo(1);
+        assertThat(page.getPageSize()).isEqualTo(20);
+    }
+
+    @Test
+    void getTopicConsumersGradesByResponseCodeOnly() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.SYSTEM_ERROR,
+                "No topic route info in name server for the topic: TopicA"));
+
+        assertThatThrownBy(() -> newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void getTopicConsumersSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new IllegalStateException("broker unavailable"));
@@ -724,6 +780,37 @@ class RocketMQMetadataProviderTest {
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getTotalLag()).isEqualTo(40);
         assertThat(groups.get(0).getDelaySeconds()).isBetween(4, 30);
+    }
+
+    @Test
+    void listConsumerGroupsShouldReportUnknownTotalLagWhenAnyQueueOffsetIsUnknownTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-unknown");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        connection.setConnectionSet(new java.util.HashSet<>());
+        when(admin.examineConsumerConnectionInfo("cg-unknown")).thenReturn(connection);
+
+        org.apache.rocketmq.remoting.protocol.admin.ConsumeStats stats =
+                new org.apache.rocketmq.remoting.protocol.admin.ConsumeStats();
+        stats.getOffsetTable().put(new MessageQueue("studio-normal", "broker-a", 0), offset(100, 60));
+        stats.getOffsetTable().put(new MessageQueue("studio-normal", "broker-b", 1), offset(0, 1));
+        when(admin.examineConsumeStats("cg-unknown")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).isConsumeStatsAvailable()).isTrue();
+        assertThat(groups.get(0).getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
     }
 
     private RocketMQMetadataProvider newLiveProvider(MQAdminExt admin) throws Exception {

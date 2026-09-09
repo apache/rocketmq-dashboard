@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.credential;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -39,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -292,5 +294,35 @@ class CloudCredentialServiceTest {
     @Test
     void repositoryShouldTolerateLegacyPlainSecretTest() {
         assertThat(CredentialUtils.decodeBase64("not base64 !!!")).isEqualTo("not base64 !!!");
+    }
+
+    @Test
+    void exportShouldRenderMaskedCsvWithoutSecretsTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(1L);
+        stored.setName("aliyun-test");
+        stored.setVendor(InstanceVendor.ALIYUN);
+        stored.setAccessKey("LTAI5tUnitTestKey000000001");
+        stored.setSecretKey("secret-value");
+        stored.setRemark("rotation pending");
+        when(credentialRepository.findPage(InstanceVendor.ALIYUN, "prod", 1, 10_000))
+                .thenReturn(PageResult.of(List.of(stored), 1, 1, 10_000));
+
+        String csv = service.exportMaskedCsv(InstanceVendor.ALIYUN, "prod");
+
+        assertThat(csv).startsWith("\uFEFFName,Vendor,Access Key,Remark,Created,Modified\r\n");
+        assertThat(csv).contains("\"aliyun-test\",\"ALIYUN\",\"LTAI****0001\",\"rotation pending\"");
+        assertThat(csv).doesNotContain("secret-value");
+        assertThat(csv).doesNotContain("LTAI5tUnitTestKey000000001");
+    }
+
+    @Test
+    void exportShouldRejectResultBeyondBoundTest() {
+        when(credentialRepository.findPage(isNull(), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
+
+        assertThatThrownBy(() -> service.exportMaskedCsv(null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("narrow the filters");
     }
 }

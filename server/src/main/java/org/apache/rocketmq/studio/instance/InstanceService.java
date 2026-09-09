@@ -39,9 +39,13 @@ import org.apache.rocketmq.studio.settings.SettingsRepository;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -67,6 +71,14 @@ public class InstanceService {
     private final OperationAuditService operationAuditService;
     private final SettingsRepository settingsRepository;
     private final RegionNames regionNames;
+
+    // @Lazy self-injection: Spring AOP proxies intercept @Transactional calls only when they
+    // originate from outside the bean. Calling deleteInstance() directly from within this class
+    // bypasses the proxy, so @Transactional is silently ignored. Injecting ourselves via @Lazy
+    // ensures the call goes through the proxy and the transaction boundary is honored.
+    @Lazy
+    @Autowired
+    private InstanceService self;
 
     static final int COUNT_PARALLELISM = 8;
     static final int COUNT_QUEUE_CAPACITY = 128;
@@ -625,9 +637,22 @@ public class InstanceService {
             throw new BusinessException(404, "InstanceVO not found: " + id);
         }
         removeDataSourceBindings(existing.getName());
-        releaseApacheEndpointIfUnused(existing, null);
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing));
+        releaseApacheEndpointAfterCommit(existing);
+    }
+
+    private void releaseApacheEndpointAfterCommit(InstanceVO existing) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            releaseApacheEndpointIfUnused(existing, null);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                releaseApacheEndpointIfUnused(existing, null);
+            }
+        });
     }
 
     /**
@@ -651,7 +676,7 @@ public class InstanceService {
         List<String> failed = new ArrayList<>();
         for (String instanceId : normalizedIds) {
             try {
-                deleteInstance(resolveInstanceId(instanceId));
+                self.deleteInstance(resolveInstanceId(instanceId));
                 deleted++;
             } catch (BusinessException ex) {
                 failed.add(instanceId + ": " + ex.getMessage());

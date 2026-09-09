@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.ops.alert.AlertDomain;
 import org.springframework.stereotype.Component;
 
@@ -84,7 +85,14 @@ public class ApacheRocketMqBusinessMetricsCollector implements BusinessMetricsCo
                             "CONSUMER_STATS_UNAVAILABLE"));
                     continue;
                 }
-                samples.add(totalLagSample(instance, group, collectedAt));
+                if (group.getTotalLag() == ConsumerLagResolver.UNKNOWN) {
+                    // totalLag now carries the -1 unknown sentinel; do not clamp it into a fabricated
+                    // zero-lag AVAILABLE sample that would feed consumer.lag.total alerts a fake 0.
+                    samples.add(unavailable(CONSUMER_LAG_TOTAL, instance,
+                            Map.of("consumerGroup", group.getName()), collectedAt, "CONSUMER_LAG_UNKNOWN"));
+                } else {
+                    samples.add(totalLagSample(instance, group, collectedAt));
+                }
                 if (group.isConsumptionTimestampAvailable()) {
                     samples.add(delaySample(instance, group, collectedAt));
                 }

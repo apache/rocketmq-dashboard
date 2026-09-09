@@ -152,6 +152,7 @@ final class PlainAclRemoteAddressValidator {
         }
         String[] segments = expression.split(":", -1);
         int nonEmptySegments = 0;
+        int prefixGroups = 0;
         int firstVariable = -1;
         for (int i = 0; i < segments.length; i++) {
             String segment = segments[i];
@@ -166,6 +167,7 @@ final class PlainAclRemoteAddressValidator {
                 continue;
             }
             if (firstVariable < 0 && ("*".equals(segment) || isValidRange(segment, 16, 0xffff))) {
+                prefixGroups = nonEmptySegments - 1;
                 firstVariable = i;
                 continue;
             }
@@ -174,7 +176,10 @@ final class PlainAclRemoteAddressValidator {
             }
             return false;
         }
-        if (firstVariable <= 0 || nonEmptySegments > 8) {
+        // split(":", -1) keeps the empty tokens of a leading "::", so the variable's array index
+        // alone cannot prove a concrete prefix exists. Expressions like "::*" or "::1-20" anchor
+        // the range on the first group and cannot be used by the plain ACL address parser.
+        if (prefixGroups < 1 || nonEmptySegments > 8) {
             return false;
         }
         String variable = segments[firstVariable];

@@ -44,6 +44,10 @@ export interface BrokerInfo {
   tpsIn: number;
   tpsOut: number;
   diskUsage: number;
+  putMessagesToday?: number;
+  putMessagesYesterday?: number;
+  getMessagesToday?: number;
+  getMessagesYesterday?: number;
   version?: string | null;
   runtimeStatsAvailable?: boolean;
 }
@@ -354,11 +358,6 @@ export async function createK8sCert(data: Partial<K8sCertInfo>) {
 
 export async function updateK8sCert(data: Partial<K8sCertInfo>) {
   const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/update', data);
-  return res.data.data;
-}
-
-export async function renewK8sCert(id: number) {
-  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', { id });
   return res.data.data;
 }
 

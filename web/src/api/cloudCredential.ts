@@ -63,3 +63,13 @@ export async function updateCloudCredential(request: UpdateCloudCredentialReques
 export async function deleteCloudCredential(id: number) {
   await client.post('/cloud-credentials/delete', { id: String(id) });
 }
+
+export async function exportCloudCredentials(
+  vendor?: InstanceVendor,
+  search?: string,
+): Promise<string> {
+  const res = await client.get<{ data: string }>('/cloud-credentials/export', {
+    params: { vendor, search },
+  });
+  return res.data.data;
+}

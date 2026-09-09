@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.auth;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -34,7 +35,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -112,6 +115,113 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void listActiveSessionSummariesReturnsOnlyActiveSessionRollups() {
+        when(sessionMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
+                row("user_id", 1L,
+                        "active_session_count", 2L,
+                        "last_session_seen_at", LocalDateTime.parse("2026-08-13T00:05:00"),
+                        "nearest_session_expires_at", LocalDateTime.parse("2026-08-13T00:20:00")),
+                row("userId", 2L,
+                        "activeSessionCount", "1",
+                        "lastSessionSeenAt", "2026-08-13T00:02:00",
+                        "nearestSessionExpiresAt", "2026-08-13T00:25:00")));
+
+        Map<Long, StudioUserSessionSummaryVO> summaries =
+                authService.listActiveSessionSummaries(java.util.Arrays.asList(1L, 2L, 1L, null));
+
+        assertThat(summaries).containsOnlyKeys(1L, 2L);
+        assertThat(summaries.get(1L).getActiveSessionCount()).isEqualTo(2);
+        assertThat(summaries.get(1L).getLastSessionSeenAt())
+                .isEqualTo(LocalDateTime.parse("2026-08-13T00:05:00"));
+        assertThat(summaries.get(2L).getNearestSessionExpiresAt())
+                .isEqualTo(LocalDateTime.parse("2026-08-13T00:25:00"));
+        org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioSession>> queryCaptor =
+                org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sessionMapper).selectMaps(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSelect()).contains("COUNT(*)");
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("user_id", "revoked_at IS NULL", "expires_at", "GROUP BY user_id");
+    }
+
+    @Test
+    void listActiveSessionSummariesSkipsDatabaseWhenThereAreNoUsers() {
+        assertThat(authService.listActiveSessionSummaries(List.of())).isEmpty();
+
+        verifyNoInteractions(userMapper, sessionMapper);
+    }
+
+    @Test
+    void getSessionOverviewCountsActiveSessionRiskBucketsInOneQuery() {
+        when(sessionMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
+                row("active_session_count", 5L,
+                        "active_user_count", 3L,
+                        "expiring_soon_session_count", 1L,
+                        "stale_session_count", 2L)));
+
+        StudioUserSessionOverviewVO overview = authService.getSessionOverview();
+
+        assertThat(overview.getActiveSessionCount()).isEqualTo(5);
+        assertThat(overview.getActiveUserCount()).isEqualTo(3);
+        assertThat(overview.getExpiringSoonSessionCount()).isEqualTo(1);
+        assertThat(overview.getStaleSessionCount()).isEqualTo(2);
+        assertThat(overview.getExpiringSoonWindowMinutes()).isEqualTo(5);
+        assertThat(overview.getStaleSessionThresholdMinutes()).isEqualTo(15);
+
+        // The overview is one aggregate statement, not four separate COUNT(*) round trips.
+        verify(sessionMapper, never()).selectCount(any(Wrapper.class));
+        org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioSession>> queryCaptor =
+                org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(sessionMapper).selectMaps(queryCaptor.capture());
+        QueryWrapper<RmqStudioSession> query = queryCaptor.getValue();
+        assertThat(query.getSqlSelect())
+                .contains("COUNT(*) AS active_session_count",
+                        "COUNT(DISTINCT user_id) AS active_user_count",
+                        "CASE WHEN expires_at <=",
+                        "CASE WHEN last_seen_at <");
+        assertThat(query.getSqlSegment()).contains("revoked_at IS NULL", "expires_at");
+        // The bucket boundaries stay bound parameters instead of literals inlined into the SQL.
+        assertThat(query.getParamNameValuePairs())
+                .containsEntry("expiringSoonCutoff", LocalDateTime.parse("2026-08-13T00:05:00"))
+                .containsEntry("staleCutoff", LocalDateTime.parse("2026-08-12T23:45:00"));
+        assertThat(query.getSqlSelect()).doesNotContain("2026-08-13");
+    }
+
+    @Test
+    void getSessionOverviewReadsAggregateLabelsWhateverCasingTheDriverReturns() {
+        // JDBC drivers are free to return result-set label casing differently, and MyBatis may
+        // hand the map back with camelCase keys; neither may change the reported numbers.
+        when(sessionMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
+                row("ACTIVE_SESSION_COUNT", "5",
+                        "activeUserCount", 3L,
+                        "Expiring_Soon_Session_Count", 1L,
+                        "stale_session_count", 2L)));
+
+        StudioUserSessionOverviewVO overview = authService.getSessionOverview();
+
+        assertThat(overview.getActiveSessionCount()).isEqualTo(5);
+        assertThat(overview.getActiveUserCount()).isEqualTo(3);
+        assertThat(overview.getExpiringSoonSessionCount()).isEqualTo(1);
+        assertThat(overview.getStaleSessionCount()).isEqualTo(2);
+    }
+
+    @Test
+    void getSessionOverviewReportsZeroesWhenNoSessionIsActive() {
+        // COUNT(*) over an empty set is 0, while both SUM(...) buckets come back as SQL NULL.
+        when(sessionMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
+                row("active_session_count", 0L,
+                        "active_user_count", 0L,
+                        "expiring_soon_session_count", null,
+                        "stale_session_count", null)));
+
+        StudioUserSessionOverviewVO overview = authService.getSessionOverview();
+
+        assertThat(overview.getActiveSessionCount()).isZero();
+        assertThat(overview.getActiveUserCount()).isZero();
+        assertThat(overview.getExpiringSoonSessionCount()).isZero();
+        assertThat(overview.getStaleSessionCount()).isZero();
+    }
+
+    @Test
     void databaseLoginPersistsOnlyTokenHashAndReturnsImmutableUserId() {
         RmqStudioUser user = user(1L, "operator", true, true, "password-1");
         when(userMapper.selectCount(isNull())).thenReturn(1L);
@@ -142,6 +252,33 @@ class AuthServiceDatabaseTest {
 
         verify(userMapper).update(isNull(), any(Wrapper.class));
         verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokeSessionsForUserRevokesOnlyTheSelectedUsersOpenSessions() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+        when(sessionMapper.update(isNull(), any(Wrapper.class))).thenReturn(3);
+
+        int revoked = authService.revokeSessionsForUser(1L);
+
+        assertThat(revoked).isEqualTo(3);
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("user_id", "revoked_at IS NULL", "expires_at");
+    }
+
+    @Test
+    void revokeSessionsForUserRejectsMissingUsersBeforeSessionUpdate() {
+        when(userMapper.selectById(404L)).thenReturn(null);
+
+        assertThatThrownBy(() -> authService.revokeSessionsForUser(404L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("User not found");
+
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
     }
 
     @Test
@@ -292,6 +429,14 @@ class AuthServiceDatabaseTest {
         session.setLastSeenAt(lastSeenAt);
         session.setExpiresAt(LocalDateTime.parse("2026-08-14T00:00:00"));
         return session;
+    }
+
+    private Map<String, Object> row(Object... values) {
+        Map<String, Object> row = new HashMap<>();
+        for (int index = 0; index < values.length; index += 2) {
+            row.put((String) values[index], values[index + 1]);
+        }
+        return row;
     }
 
     private RmqStudioUser user(Long id, String username, boolean admin, boolean enabled, String password) {

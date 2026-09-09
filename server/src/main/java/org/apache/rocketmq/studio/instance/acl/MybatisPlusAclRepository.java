@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -79,6 +80,7 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
+    @Transactional
     public Optional<AclRuleVO> replaceRule(AclRuleVO rule) {
         RmqAclRule existing = ruleMapper.selectById(rule.getId());
         if (existing == null) {
@@ -88,6 +90,10 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setGmtCreate(existing.getGmtCreate());
         if (ruleMapper.updateById(entity) == 0) {
             return Optional.empty();
+        }
+        if (rule.getActions() != null && entity.getActions() == null) {
+            // Clearing the actions list must persist as a null column; updateById skips null fields.
+            clearColumn(ruleMapper, entity.getId(), "actions");
         }
         rule.setGmtCreate(existing.getGmtCreate());
         return Optional.of(rule);
@@ -144,6 +150,7 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
+    @Transactional
     public Optional<AclUserVO> replaceUser(AclUserVO user) {
         RmqAclUser existing = userMapper.selectById(user.getId());
         if (existing == null) {
@@ -153,6 +160,10 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setGmtCreate(existing.getGmtCreate());
         if (userMapper.updateById(entity) == 0) {
             return Optional.empty();
+        }
+        if (user.getClusters() != null && entity.getClusters() == null) {
+            // Clearing the cluster bindings must persist as a null column; updateById skips null fields.
+            clearColumn(userMapper, entity.getId(), "clusters");
         }
         user.setGmtCreate(existing.getGmtCreate());
         return Optional.of(user);
@@ -231,11 +242,8 @@ public class MybatisPlusAclRepository implements AclRepository {
         if (existing != null) {
             userMapper.updateById(entity);
             if (entity.getWhiteRemoteAddress() == null) {
-                // MyBatis-Plus omits null entity fields from updateById. Assign this column
-                // explicitly so clearing the whitelist does not silently retain its old value.
-                userMapper.update(null, new UpdateWrapper<RmqAclUser>()
-                        .eq("id", entity.getId())
-                        .set("white_remote_address", null));
+                // Clearing the whitelist must persist as a null column; updateById skips null fields.
+                clearColumn(userMapper, entity.getId(), "white_remote_address");
             }
         } else {
             try {
@@ -272,6 +280,15 @@ public class MybatisPlusAclRepository implements AclRepository {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * MyBatis-Plus {@code updateById} omits null entity fields, so an update that clears a column
+     * to null is silently skipped and the previous value is retained. Assign the column explicitly
+     * so emptied list/whitelist columns persist as null.
+     */
+    private static <T> void clearColumn(BaseMapper<T> mapper, Long id, String column) {
+        mapper.update(null, new UpdateWrapper<T>().eq("id", id).set(column, null));
     }
 
     private void upsertPlainAccessRules(PlainAccessConfigVO config) {
@@ -325,7 +342,13 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     private PlainAccessConfigVO toPlainAccessConfig(AclUserVO user) {
-        List<AclRuleVO> userRules = ruleMapper.selectList(ruleQuery(user.getAccessKey(), null, null, null, null))
+        // Exact principal match, mirroring the delete in upsertPlainAccessRules: the
+        // substring LIKE in ruleQuery would also absorb rules of other accounts whose
+        // accessKey contains this one (e.g. "svc-a" also matching "svc-a-v2").
+        List<AclRuleVO> userRules = ruleMapper.selectList(new QueryWrapper<RmqAclRule>()
+                        .eq("principal", user.getAccessKey())
+                        .orderByDesc("gmt_create")
+                        .orderByDesc("id"))
                 .stream()
                 .map(MybatisPlusAclRepository::toRuleVO)
                 .collect(Collectors.toList());

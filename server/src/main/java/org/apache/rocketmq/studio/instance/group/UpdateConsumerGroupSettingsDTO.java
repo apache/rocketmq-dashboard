@@ -33,4 +33,7 @@ public class UpdateConsumerGroupSettingsDTO {
     @NotNull(message = "retryMaxTimes is required")
     @Positive(message = "retryMaxTimes must be positive")
     private Integer retryMaxTimes;
+    private Boolean consumeEnable;
+    private Boolean consumeMessageOrderly;
+    private Boolean consumeBroadcastEnable;
 }

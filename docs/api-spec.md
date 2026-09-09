@@ -61,69 +61,68 @@
 | 18 | GET | `/api/k8s-certs` | K8s 证书列表 |
 | 19 | POST | `/api/k8s-certs/create` | 添加证书 |
 | 20 | POST | `/api/k8s-certs/update` | 更新证书 |
-| 21 | POST | `/api/k8s-certs/renew` | 续期证书 |
-| 22 | POST | `/api/k8s-certs/delete` | 删除证书 |
-| 23 | GET | `/api/topics` | Topic 列表 |
-| 24 | POST | `/api/topics/create` | 创建 Topic |
-| 25 | POST | `/api/topics/update` | 更新 Topic |
-| 26 | POST | `/api/topics/delete` | 删除 Topic |
-| 27 | GET | `/api/topics/:name/routes` | Topic 路由 |
-| 28 | GET | `/api/topics/:name/consumers` | Topic 消费者 |
-| 29 | POST | `/api/topics/send` | 发送消息到 Topic |
-| 30 | GET | `/api/groups` | 消费组列表 |
-| 31 | GET | `/api/groups/:name` | 消费组详情 |
-| 32 | GET | `/api/groups/:name/progress` | 消费进度 |
-| 33 | GET | `/api/groups/:name/subscriptions` | 订阅详情 |
-| 34 | POST | `/api/groups/create` | 创建消费组 |
-| 35 | POST | `/api/groups/delete` | 删除消费组 |
-| 36 | POST | `/api/groups/reset-offset` | 重置位点 |
-| 37 | POST | `/api/groups/import` | 导入配置 |
-| 38 | GET | `/api/groups/export` | 导出配置 |
-| 39 | GET | `/api/acl/rules` | ACL 规则列表 |
-| 40 | POST | `/api/acl/rules/create` | 创建 ACL 规则 |
-| 41 | POST | `/api/acl/rules/delete` | 删除 ACL 规则 |
-| 42 | GET | `/api/acl/users` | ACL 用户列表 |
-| 43 | POST | `/api/acl/users/create` | 创建 ACL 用户 |
-| 44 | POST | `/api/acl/users/delete` | 删除 ACL 用户 |
-| 45 | GET | `/api/messages` | 消息查询 |
-| 46 | GET | `/api/messages/:msgId/trace` | 消息轨迹 |
-| 47 | GET | `/api/dlq` | 死信队列列表 |
-| 48 | POST | `/api/dlq/resend` | 重发死信 |
-| 49 | GET | `/api/clients` | 客户端连接列表 |
-| 50 | GET | `/api/alert-rules` | 告警规则列表 |
-| 51 | POST | `/api/alert-rules/create` | 创建告警规则 |
-| 52 | POST | `/api/alert-rules/update` | 更新告警规则 |
-| 53 | POST | `/api/alert-rules/toggle` | 切换启用状态 |
-| 54 | POST | `/api/alert-rules/delete` | 删除告警规则 |
-| 55 | GET | `/api/system-alerts` | 系统告警列表 |
-| 56 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
-| 57 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
-| 58 | GET | `/api/audit-logs` | 审计日志列表 |
-| 59 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
-| 60 | GET | `/api/audit-logs/export` | 导出审计日志 |
-| 61 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
-| 62 | GET | `/api/settings/general` | 获取通用设置 |
-| 63 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 64 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
-| 65 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
-| 66 | POST | `/api/settings/datasources/create` | 创建数据源 |
-| 67 | POST | `/api/settings/datasources/update` | 更新数据源 |
-| 68 | POST | `/api/settings/datasources/delete` | 删除数据源 |
-| 69 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 70 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 71 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 72 | GET | `/api/ai/tools` | 可用工具列表 |
-| 73 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 74 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 75 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
-| 76 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
-| 77 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
-| 78 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 79 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 80 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 81 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
-| 82 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
-| 83 | GET | `/api/topics/page` | Topic 分页列表 |
+| 21 | POST | `/api/k8s-certs/delete` | 删除证书 |
+| 22 | GET | `/api/topics` | Topic 列表 |
+| 23 | POST | `/api/topics/create` | 创建 Topic |
+| 24 | POST | `/api/topics/update` | 更新 Topic |
+| 25 | POST | `/api/topics/delete` | 删除 Topic |
+| 26 | GET | `/api/topics/:name/routes` | Topic 路由 |
+| 27 | GET | `/api/topics/:name/consumers` | Topic 消费者 |
+| 28 | POST | `/api/topics/send` | 发送消息到 Topic |
+| 29 | GET | `/api/groups` | 消费组列表 |
+| 30 | GET | `/api/groups/:name` | 消费组详情 |
+| 31 | GET | `/api/groups/:name/progress` | 消费进度 |
+| 32 | GET | `/api/groups/:name/subscriptions` | 订阅详情 |
+| 33 | POST | `/api/groups/create` | 创建消费组 |
+| 34 | POST | `/api/groups/delete` | 删除消费组 |
+| 35 | POST | `/api/groups/reset-offset` | 重置位点 |
+| 36 | POST | `/api/groups/import` | 导入配置 |
+| 37 | GET | `/api/groups/export` | 导出配置 |
+| 38 | GET | `/api/acl/rules` | ACL 规则列表 |
+| 39 | POST | `/api/acl/rules/create` | 创建 ACL 规则 |
+| 40 | POST | `/api/acl/rules/delete` | 删除 ACL 规则 |
+| 41 | GET | `/api/acl/users` | ACL 用户列表 |
+| 42 | POST | `/api/acl/users/create` | 创建 ACL 用户 |
+| 43 | POST | `/api/acl/users/delete` | 删除 ACL 用户 |
+| 44 | GET | `/api/messages` | 消息查询 |
+| 45 | GET | `/api/messages/:msgId/trace` | 消息轨迹 |
+| 46 | GET | `/api/dlq` | 死信队列列表 |
+| 47 | POST | `/api/dlq/resend` | 重发死信 |
+| 48 | GET | `/api/clients` | 客户端连接列表 |
+| 49 | GET | `/api/alert-rules` | 告警规则列表 |
+| 50 | POST | `/api/alert-rules/create` | 创建告警规则 |
+| 51 | POST | `/api/alert-rules/update` | 更新告警规则 |
+| 52 | POST | `/api/alert-rules/toggle` | 切换启用状态 |
+| 53 | POST | `/api/alert-rules/delete` | 删除告警规则 |
+| 54 | GET | `/api/system-alerts` | 系统告警列表 |
+| 55 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
+| 56 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
+| 57 | GET | `/api/audit-logs` | 审计日志列表 |
+| 58 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
+| 59 | GET | `/api/audit-logs/export` | 导出审计日志 |
+| 60 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
+| 61 | GET | `/api/settings/general` | 获取通用设置 |
+| 62 | POST | `/api/settings/general/save` | 保存通用设置 |
+| 63 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
+| 64 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
+| 65 | POST | `/api/settings/datasources/create` | 创建数据源 |
+| 66 | POST | `/api/settings/datasources/update` | 更新数据源 |
+| 67 | POST | `/api/settings/datasources/delete` | 删除数据源 |
+| 68 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
+| 69 | POST | `/api/ai/chat` | AI 对话（SSE） |
+| 70 | POST | `/api/ai/execute` | 执行 AI 指令 |
+| 71 | GET | `/api/ai/tools` | 可用工具列表 |
+| 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 74 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 75 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 76 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 77 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 78 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 79 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 80 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 81 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 82 | GET | `/api/topics/page` | Topic 分页列表 |
 
 ## 通用响应格式
 
@@ -624,6 +623,8 @@ POST /api/proxies/restart
 
 ### 4.12 获取 K8s 证书列表
 
+K8s 证书接口仅管理 Studio 本地配置记录，不会连接 Kubernetes API，也不会创建、修改或删除集群中的 Secret 或证书资源。
+
 ```
 GET /api/k8s-certs
 ```
@@ -681,21 +682,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 续期 K8s 证书
-
-```
-POST /api/k8s-certs/renew
-```
-
-**Request Body:**
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `id` | `string` | 是 | 证书 ID |
-
-**Response `data`:** `K8sCertInfo`
-
-### 4.16 删除 K8s 证书
+### 4.15 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete

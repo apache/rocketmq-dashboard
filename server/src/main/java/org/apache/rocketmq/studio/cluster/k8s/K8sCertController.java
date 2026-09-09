@@ -52,12 +52,6 @@ public class K8sCertController {
         return Result.ok(k8sCertService.updateCert(command));
     }
 
-    @PostMapping("/renew")
-    public Result<K8sCertVO> renewCert(@Valid @RequestBody(required = false) RenewCertDTO command) {
-        requireCommand(command);
-        return Result.ok(k8sCertService.renewCert(command));
-    }
-
     @PostMapping("/delete")
     public Result<Void> deleteCert(@Valid @RequestBody(required = false) DeleteCertDTO command) {
         requireCommand(command);
