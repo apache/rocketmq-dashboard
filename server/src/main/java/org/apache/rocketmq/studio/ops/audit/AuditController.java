@@ -43,12 +43,14 @@ public class AuditController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String operationType,
             @RequestParam(required = false) String resourceType,
+            @RequestParam(required = false) String target,
             @RequestParam(required = false) String clusterId,
+            @RequestParam(defaultValue = "false") boolean clusterIdMissing,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
         return Result.ok(auditService.queryLogs(page, pageSize, search, operationType,
-                resourceType, clusterId, startDate, endDate, result));
+                resourceType, target, clusterId, clusterIdMissing, startDate, endDate, result));
     }
 
     @GetMapping("/filter-options")
@@ -74,12 +76,14 @@ public class AuditController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String operationType,
             @RequestParam(required = false) String resourceType,
+            @RequestParam(required = false) String target,
             @RequestParam(required = false) String clusterId,
+            @RequestParam(defaultValue = "false") boolean clusterIdMissing,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
         return Result.ok(auditService.exportLogs(search, operationType, resourceType,
-                clusterId, startDate, endDate, result));
+                target, clusterId, clusterIdMissing, startDate, endDate, result));
     }
 
     @PostMapping("/cleanup")
