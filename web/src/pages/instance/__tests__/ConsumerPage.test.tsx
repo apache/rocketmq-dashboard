@@ -127,6 +127,24 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/c
 
 beforeAll(installBrowserMocks);
 
+// antd's Spin keys its `.ant-spin-blur` class on internal state that follows the Table's
+// `loading` prop one commit behind, and that class sets `pointer-events: none` over the whole
+// table body — including the pagination, which antd renders inside the same spin container.
+// Rows are kept rendered while loading, so `findByText` on a row resolves during that window and
+// a click straight afterwards is rejected. Wait for the target to accept pointer events first.
+async function expectInteractive(element: Element) {
+  await waitFor(() => expect(getComputedStyle(element).pointerEvents).not.toBe('none'));
+}
+
+async function findInteractivePageItem(selector: string) {
+  return waitFor(() => {
+    const element = document.querySelector<HTMLElement>(selector);
+    expect(element).not.toBeNull();
+    expect(getComputedStyle(element as HTMLElement).pointerEvents).not.toBe('none');
+    return element as HTMLElement;
+  });
+}
+
 describe('Consumer page', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -318,9 +336,8 @@ describe('Consumer page', () => {
 
     expect(await screen.findByText('remote-cg-01')).toBeInTheDocument();
 
-    const secondPage = document.querySelector('.ant-pagination-item-2');
-    expect(secondPage).not.toBeNull();
-    await user.click(secondPage as HTMLElement);
+    const secondPage = await findInteractivePageItem('.ant-pagination-item-2');
+    await user.click(secondPage);
 
     // The empty out-of-range page is corrected: the list reloads page 1.
     await waitFor(() =>
@@ -385,9 +402,11 @@ describe('Consumer page', () => {
     renderWithProviders(<ConsumerPage />);
 
     expect(await screen.findByText('cg-01')).toBeInTheDocument();
-    await user.click(document.querySelector('.ant-pagination-item-2') as HTMLElement);
+    await user.click(await findInteractivePageItem('.ant-pagination-item-2'));
     expect(await screen.findByText('cg-21')).toBeInTheDocument();
-    await user.click(screen.getAllByRole('checkbox')[0]);
+    const firstCheckbox = screen.getAllByRole('checkbox')[0];
+    await expectInteractive(firstCheckbox);
+    await user.click(firstCheckbox);
     await user.click(screen.getByRole('button', { name: /删除 \(1\)$/ }));
 
     await waitFor(() =>
