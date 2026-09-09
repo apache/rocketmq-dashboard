@@ -134,9 +134,31 @@ class MetricProfileServiceTest {
         MetricProfileVO profile = findProfile("rocketmq5-native");
         MetricProfileVO.MetricMappingVO messageOut = mapping(profile, SemanticMetric.MESSAGE_OUT_TPS);
 
-        assertThat(messageOut.getLabels()).contains("cluster", "node_id", "topic", "consumer_group");
+        assertThat(messageOut.getLabels()).contains("cluster", "node_id", "consumer_group");
         assertThat(messageOut.getUnit()).isEqualTo("messages/s");
         assertThat(messageOut.getName()).isEqualTo("Message Out TPS");
+    }
+
+    @Test
+    void everyMappingShouldAdvertiseExactlyTheLabelsItsPromqlAggregatesByTest() {
+        // After sum(...) by (...), the returned series only carry the by-clause labels:
+        // the advertised labels must match them or clients render empty columns.
+        for (MetricProfileVO profile : service.listProfiles()) {
+            for (MetricProfileVO.MetricMappingVO metric : profile.getMetrics()) {
+                java.util.regex.Matcher matcher = java.util.regex.Pattern
+                        .compile("by \\(([^)]*)\\)").matcher(metric.getPromql());
+                assertThat(matcher.find())
+                        .as("%s/%s promql aggregates by a label set",
+                                profile.getId(), metric.getSemanticMetric())
+                        .isTrue();
+                List<String> aggregatedLabels = java.util.Arrays.stream(matcher.group(1).split(","))
+                        .map(String::trim).toList();
+                assertThat(metric.getLabels())
+                        .as("%s/%s labels match the promql by-clause",
+                                profile.getId(), metric.getSemanticMetric())
+                        .containsExactlyElementsOf(aggregatedLabels);
+            }
+        }
     }
 
     @Test
