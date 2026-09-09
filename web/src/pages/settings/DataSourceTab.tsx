@@ -17,7 +17,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
+  Divider,
   Flex,
   Form,
   Input,
@@ -49,6 +51,15 @@ import { STATUS_MAP } from '../../constants/theme';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import {
+  analyzeDataSourceCoverage,
+  type DataSourceCoverageIssue,
+  type DataSourceCoverageSeverity,
+  type DataSourceCoverageStatus,
+  type DataSourceInstanceCoverage,
+  type DataSourceReference,
+  type DataSourceTypeCoverage,
+} from '../../utils/dataSourceCoverage';
 
 const { Text } = Typography;
 
@@ -93,6 +104,25 @@ const DATA_SOURCE_EXPORT_COLUMNS: CsvColumn<DataSourceExportRow>[] = [
 const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
 const authNeedsSecret = (auth?: string) => auth === 'Basic Auth' || auth === 'Bearer Token';
 
+const coverageAlertType = (status: DataSourceCoverageStatus) => {
+  if (status === 'critical') return 'error';
+  if (status === 'warning') return 'warning';
+  return 'info';
+};
+
+const coverageStatusColor = (status: DataSourceCoverageStatus) => {
+  if (status === 'critical') return 'red';
+  if (status === 'warning') return 'orange';
+  if (status === 'empty') return 'default';
+  return 'green';
+};
+
+const coverageSeverityColor = (severity: DataSourceCoverageSeverity) => {
+  if (severity === 'critical') return 'red';
+  if (severity === 'warning') return 'orange';
+  return 'blue';
+};
+
 const testFieldNames = (auth?: string) => {
   if (auth === 'Basic Auth') return ['type', 'url', 'auth', 'username', 'password'];
   if (auth === 'Bearer Token') return ['type', 'url', 'auth', 'bearerToken'];
@@ -133,7 +163,10 @@ export const DataSourceTab = () => {
   const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [coverageModalOpen, setCoverageModalOpen] = useState(false);
   const requestSeqRef = useRef(0);
+
+  const coverage = analyzeDataSourceCoverage(dataSources, instances);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -303,6 +336,140 @@ export const DataSourceTab = () => {
     return t(STATUS_MAP[status].labelKey);
   };
 
+  const coverageStatusLabel = (status: DataSourceCoverageStatus) => {
+    if (status === 'critical') return t('settings.dataSourceCoverageCritical');
+    if (status === 'warning') return t('settings.dataSourceCoverageWarning');
+    if (status === 'empty') return t('settings.dataSourceCoverageEmpty');
+    return t('settings.dataSourceCoverageHealthy');
+  };
+
+  const coverageIssueLabel = (issue: DataSourceCoverageIssue) => {
+    const labels: Record<DataSourceCoverageIssue['code'], string> = {
+      NO_INSTANCES: t('settings.dataSourceCoverageNoInstances'),
+      NO_DATA_SOURCES: t('settings.dataSourceCoverageNoSources'),
+      INSTANCE_UNCOVERED: t('settings.dataSourceCoverageUncovered'),
+      INSTANCE_NO_USABLE_SOURCE: t('settings.dataSourceCoverageNoUsable'),
+      INSTANCE_MULTIPLE_SAME_TYPE: t('settings.dataSourceCoverageConflict'),
+      INSTANCE_ONLY_UNTESTED: t('settings.dataSourceCoverageOnlyUntested'),
+      SOURCE_STALE_INSTANCE: t('settings.dataSourceCoverageStaleInstance'),
+      SOURCE_UNHEALTHY: t('settings.dataSourceCoverageUnhealthySource'),
+      DUPLICATE_SOURCE_TARGET: t('settings.dataSourceCoverageDuplicateTarget'),
+    };
+    return labels[issue.code] ?? issue.code;
+  };
+
+  const sourceLabel = (source: DataSourceReference) =>
+    `${source.name} (${source.type}${source.scope === 'global' ? `, ${t('settings.global')}` : ''})`;
+
+  const coverageIssueSummary = coverage.issues
+    .filter((issue) => issue.severity !== 'info')
+    .slice(0, 3);
+
+  const coverageInstanceColumns: ColumnsType<DataSourceInstanceCoverage> = [
+    {
+      title: t('settings.dataSourceCoverageInstance'),
+      dataIndex: 'instanceName',
+      key: 'instanceName',
+      width: 180,
+      render: (name: string, record) => (
+        <Flex vertical gap={2}>
+          <Text strong>{name}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {record.endpoint || '-'}
+          </Text>
+        </Flex>
+      ),
+    },
+    {
+      title: t('settings.dataSourceCoverageEffectiveSources'),
+      key: 'sources',
+      render: (_, record) =>
+        record.sourceRefs.length === 0 ? (
+          <Text type="danger">{t('settings.dataSourceCoverageUncovered')}</Text>
+        ) : (
+          <Flex gap={4} wrap>
+            {record.sourceRefs.map((source) => (
+              <Tag key={source.key} color={source.scope === 'global' ? 'blue' : 'geekblue'}>
+                {sourceLabel(source)}
+              </Tag>
+            ))}
+          </Flex>
+        ),
+    },
+    {
+      title: t('common.status'),
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      render: (status: DataSourceCoverageStatus) => (
+        <Tag color={coverageStatusColor(status)}>{coverageStatusLabel(status)}</Tag>
+      ),
+    },
+    {
+      title: t('settings.dataSourceCoverageIssues'),
+      key: 'issues',
+      width: 260,
+      render: (_, record) =>
+        record.issues.length === 0 ? (
+          <Text type="secondary">{t('settings.dataSourceCoverageNoIssues')}</Text>
+        ) : (
+          <Flex gap={4} wrap>
+            {record.issues.map((issue) => (
+              <Tag
+                key={`${issue.code}-${issue.type ?? ''}`}
+                color={coverageSeverityColor(issue.severity)}
+              >
+                {coverageIssueLabel(issue)}
+              </Tag>
+            ))}
+          </Flex>
+        ),
+    },
+  ];
+
+  const coverageTypeColumns: ColumnsType<DataSourceTypeCoverage> = [
+    { title: t('common.type'), dataIndex: 'type', key: 'type' },
+    { title: t('common.total'), dataIndex: 'total', key: 'total', width: 80 },
+    {
+      title: t('settings.global'),
+      dataIndex: 'global',
+      key: 'global',
+      width: 80,
+    },
+    {
+      title: t('settings.dataSourceCoverageScoped'),
+      dataIndex: 'scoped',
+      key: 'scoped',
+      width: 90,
+    },
+    {
+      title: t('settings.dataSourceCoverageInstanceCount'),
+      dataIndex: 'instanceCount',
+      key: 'instanceCount',
+      width: 130,
+    },
+    {
+      title: t('settings.dataSourceCoverageHealth'),
+      key: 'health',
+      render: (_, record) => (
+        <Flex gap={4} wrap>
+          <Tag color="green">
+            {t('settings.dataSourceCoverageHealthy')}: {record.healthy}
+          </Tag>
+          <Tag color="orange">
+            {t('settings.dataSourceCoverageWarning')}: {record.warning}
+          </Tag>
+          <Tag color="red">
+            {t('settings.dataSourceCoverageUnhealthy')}: {record.unhealthy}
+          </Tag>
+          <Tag>
+            {t('settings.dataSourceNotTested')}: {record.untested}
+          </Tag>
+        </Flex>
+      ),
+    },
+  ];
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -438,6 +605,64 @@ export const DataSourceTab = () => {
         </Space>
       </Flex>
 
+      <Alert
+        showIcon
+        type={coverageAlertType(coverage.status)}
+        style={{ marginBottom: 16 }}
+        message={
+          <Flex justify="space-between" align="center" gap={12} wrap>
+            <Space size="small">
+              <span>{t('settings.dataSourceCoverageTitle')}</span>
+              <Tag color={coverageStatusColor(coverage.status)}>
+                {coverageStatusLabel(coverage.status)}
+              </Tag>
+            </Space>
+            <Button size="small" onClick={() => setCoverageModalOpen(true)}>
+              {t('settings.dataSourceCoverageViewDetails')}
+            </Button>
+          </Flex>
+        }
+        description={
+          <Flex vertical gap={8}>
+            <Space size={[8, 4]} wrap>
+              <Tag>
+                {t('settings.dataSourceCoverageCovered')}: {coverage.coveredInstanceCount}/
+                {coverage.instanceCount}
+              </Tag>
+              <Tag>
+                {t('settings.dataSourceCoverageVerified')}: {coverage.verifiedInstanceCount}/
+                {coverage.instanceCount}
+              </Tag>
+              <Tag>
+                {t('settings.dataSourceCoverageGlobalSources')}: {coverage.globalDataSourceCount}
+              </Tag>
+              <Tag>
+                {t('settings.dataSourceCoverageScopedSources')}: {coverage.scopedDataSourceCount}
+              </Tag>
+              <Tag color={coverage.uncoveredInstanceCount > 0 ? 'red' : 'default'}>
+                {t('settings.dataSourceCoverageMissing')}: {coverage.uncoveredInstanceCount}
+              </Tag>
+              <Tag color={coverage.conflictedInstanceCount > 0 ? 'orange' : 'default'}>
+                {t('settings.dataSourceCoverageConflicts')}: {coverage.conflictedInstanceCount}
+              </Tag>
+            </Space>
+            {coverageIssueSummary.length > 0 && (
+              <Space size={[8, 4]} wrap>
+                {coverageIssueSummary.map((issue) => (
+                  <Tag
+                    key={`${issue.code}-${issue.instanceId ?? issue.dataSourceKey ?? ''}`}
+                    color={coverageSeverityColor(issue.severity)}
+                  >
+                    {coverageIssueLabel(issue)}
+                    {issue.instanceId ? `: ${issue.instanceId}` : ''}
+                  </Tag>
+                ))}
+              </Space>
+            )}
+          </Flex>
+        }
+      />
+
       <Table<DataSource>
         columns={columns}
         dataSource={dataSources}
@@ -461,6 +686,63 @@ export const DataSourceTab = () => {
         }}
         size="middle"
       />
+
+      <Modal
+        title={t('settings.dataSourceCoverageTitle')}
+        open={coverageModalOpen}
+        onCancel={() => setCoverageModalOpen(false)}
+        footer={<Button onClick={() => setCoverageModalOpen(false)}>{t('common.close')}</Button>}
+        width={980}
+        destroyOnHidden
+      >
+        <Flex vertical gap={16}>
+          <Alert
+            type={coverageAlertType(coverage.status)}
+            showIcon
+            message={
+              <Space size="small">
+                <span>{t('settings.dataSourceCoverageOverview')}</span>
+                <Tag color={coverageStatusColor(coverage.status)}>
+                  {coverageStatusLabel(coverage.status)}
+                </Tag>
+              </Space>
+            }
+            description={
+              <Space size={[8, 4]} wrap>
+                <Tag>
+                  {t('settings.dataSourceCoverageSources')}: {coverage.dataSourceCount}
+                </Tag>
+                <Tag>
+                  {t('settings.dataSourceCoverageInstances')}: {coverage.instanceCount}
+                </Tag>
+                <Tag>
+                  {t('settings.dataSourceCoverageUntestedSources')}:{' '}
+                  {coverage.untestedDataSourceCount}
+                </Tag>
+                <Tag>
+                  {t('settings.dataSourceCoverageUnhealthySources')}:{' '}
+                  {coverage.unhealthyDataSourceCount}
+                </Tag>
+              </Space>
+            }
+          />
+          <Table<DataSourceInstanceCoverage>
+            rowKey="instanceId"
+            columns={coverageInstanceColumns}
+            dataSource={coverage.instanceCoverage}
+            pagination={false}
+            size="small"
+          />
+          <Divider style={{ margin: 0 }} />
+          <Table<DataSourceTypeCoverage>
+            rowKey="type"
+            columns={coverageTypeColumns}
+            dataSource={coverage.typeCoverage}
+            pagination={false}
+            size="small"
+          />
+        </Flex>
+      </Modal>
 
       <Modal
         title={t(editingDataSource ? 'settings.editDataSource' : 'settings.addDataSource')}

@@ -20,6 +20,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { DataSource, DataSourcePage } from '../../../api/settings';
+import type { Instance } from '../../../api/instance';
 import {
   createDataSource,
   listAllDataSources,
@@ -30,6 +31,7 @@ import {
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { downloadCsv } from '../../../utils/download';
+import { listInstances } from '../../../services/instanceService';
 import { DataSourceTab } from '../DataSourceTab';
 
 vi.mock('../../../api/settings', () => ({
@@ -52,6 +54,10 @@ vi.mock('../../../utils/download', async () => {
   };
 });
 
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
+}));
+
 const sources: DataSource[] = [
   {
     key: 'prom-prod',
@@ -67,6 +73,33 @@ const sources: DataSource[] = [
     url: 'http://thanos:10902',
     auth: 'Bearer Token',
     status: 'healthy',
+  },
+];
+
+const instances: Instance[] = [
+  {
+    id: 1,
+    name: 'instance-1',
+    remark: '',
+    type: 'DIRECT',
+    endpoint: '127.0.0.1:9876',
+    vendor: 'APACHE',
+    topicCount: 0,
+    consumerGroupCount: 0,
+    gmtCreate: '2026-08-01T00:00:00',
+    gmtModified: '2026-08-01T00:00:00',
+  },
+  {
+    id: 2,
+    name: 'instance-2',
+    remark: '',
+    type: 'PROXY_CLUSTER',
+    endpoint: '127.0.0.2:8081',
+    vendor: 'APACHE',
+    topicCount: 0,
+    consumerGroupCount: 0,
+    gmtCreate: '2026-08-01T00:00:00',
+    gmtModified: '2026-08-01T00:00:00',
   },
 ];
 
@@ -109,6 +142,7 @@ describe('DataSourceTab', () => {
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     vi.mocked(listDataSourcesPage).mockResolvedValue(sourcePage);
     vi.mocked(listAllDataSources).mockResolvedValue(sources);
+    vi.mocked(listInstances).mockResolvedValue(instances);
   });
 
   it('keeps data source creation disabled until the initial list is ready', async () => {
@@ -283,6 +317,44 @@ describe('DataSourceTab', () => {
     expect(csv).not.toContain('hidden-user');
     expect(csv).not.toContain('hidden-password');
     expect(csv).not.toContain('hidden-token');
+  });
+
+  it('summarizes instance coverage gaps for scoped data sources', async () => {
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      ...sourcePage,
+      items: [
+        {
+          key: 'prom-instance-1',
+          name: 'Prometheus instance 1',
+          type: 'Prometheus',
+          url: 'http://prometheus:9090',
+          auth: 'None',
+          status: 'healthy',
+          instanceIds: ['instance-1'],
+        },
+      ],
+      total: 1,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <LangProvider>
+        <App>
+          <DataSourceTab />
+        </App>
+      </LangProvider>,
+    );
+
+    expect(await screen.findByText('Prometheus instance 1')).toBeInTheDocument();
+    expect(screen.getByText('存在缺口')).toBeInTheDocument();
+    expect(screen.getByText(/已覆盖实例:\s*1\/2/)).toBeInTheDocument();
+    expect(screen.getByText(/未覆盖: instance-2/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '查看覆盖明细' }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByText('instance-2')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('未覆盖').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText('Prometheus instance 1 (Prometheus)')).toBeInTheDocument();
   });
 
   it('submits basic auth credentials when testing from the modal', async () => {
