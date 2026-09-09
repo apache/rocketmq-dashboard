@@ -82,7 +82,7 @@ class ApacheRocketMqProxyMetricsCollectorTest {
     }
 
     @Test
-    void recordsUnavailableSampleWhenProxyDiscoveryFailsTest() {
+    void recordsWholeScopeFailureSampleWhenProxyDiscoveryFailsTest() {
         ClusterService clusterService = mock(ClusterService.class);
         InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
         doThrow(new IllegalStateException("nameserver unavailable")).when(clusterService).listClusters("local");
@@ -93,7 +93,9 @@ class ApacheRocketMqProxyMetricsCollectorTest {
         assertThat(samples).singleElement().satisfies(sample -> {
             assertThat(sample.metricKey()).isEqualTo("proxy.availability");
             assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
-            assertThat(sample.labels()).containsEntry("proxyAddr", "unknown");
+            // empty labels mark the whole-scope failure, keeping NativeAlertProcessor
+            // from reconciling (and falsely resolving) active proxy alerts
+            assertThat(sample.labels()).isEmpty();
         });
     }
 }

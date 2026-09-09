@@ -103,7 +103,7 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
                 .filter(rule -> rule.getId() != null)
                 .filter(AlertRuleVO::isEnabled)
                 .filter(rule -> ruleDomain(rule) == scope.domain())
-                .filter(rule -> metricKeys.contains(rule.getMetric()))
+                .filter(rule -> metricKeys.contains(StringUtils.trimWhitespace(rule.getMetric())))
                 .filter(rule -> !StringUtils.hasText(rule.getInstanceId())
                         || scope.instanceId().equals(rule.getInstanceId()))
                 .collect(Collectors.toMap(AlertRuleVO::getId, rule -> rule, (left, right) -> left));

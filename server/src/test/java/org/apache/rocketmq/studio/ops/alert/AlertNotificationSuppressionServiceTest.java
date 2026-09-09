@@ -130,6 +130,22 @@ class AlertNotificationSuppressionServiceTest {
         verify(repository).findAlertsPage(org.mockito.ArgumentMatchers.argThat(query -> query.page() == 2));
     }
 
+    @Test
+    void suppressesWhileTheSameClusterIncidentOnlyReminderRemainsTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        LocalDateTime now = LocalDateTime.now();
+        // The original FIRING fell out of the 30-minute correlation window; only the
+        // REMINDER the state machine emits while the incident stays FIRING is visible.
+        SystemAlertVO reminder = event(2L, AlertDomain.CLUSTER, "REMINDER", "broker-1", now.minusMinutes(5));
+        reminder.setFingerprint("broker-1-availability");
+        when(repository.findAlertsPage(any())).thenReturn(PageResult.of(List.of(reminder), 1, 1, 100));
+
+        Optional<SystemAlertVO> result = new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(event(3L, AlertDomain.BUSINESS, "FIRING", "broker-1", now));
+
+        assertThat(result).contains(reminder);
+    }
+
     private static SystemAlertVO event(Long id, AlertDomain domain, String transition, String brokerName,
             LocalDateTime time) {
         return SystemAlertVO.builder().id(id).domain(domain).transition(transition).instanceId("local")
