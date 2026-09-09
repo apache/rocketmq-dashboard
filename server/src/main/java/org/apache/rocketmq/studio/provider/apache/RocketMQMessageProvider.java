@@ -35,6 +35,7 @@ import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
@@ -99,17 +100,23 @@ public class RocketMQMessageProvider implements MessageProvider {
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
                                                Long startTime, Long endTime) {
+        return queryMessagesDetailed(instanceId, topic, msgId, tag, key, startTime, endTime).messages();
+    }
+
+    @Override
+    public MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId, String tag,
+                                                    String key, Long startTime, Long endTime) {
         return runtimeAdminClientResolver.execute(instanceId,
                 adminExt -> queryMessages(instanceId, (DefaultMQAdminExt) adminExt, topic, msgId, tag, key,
                         startTime, endTime));
     }
 
-    private List<MessageRecordVO> queryMessages(String instanceId, DefaultMQAdminExt adminExt,
-                                                 String topic, String msgId, String tag, String key,
-                                                 Long startTime, Long endTime) {
+    private MessageQueryResult queryMessages(String instanceId, DefaultMQAdminExt adminExt,
+                                             String topic, String msgId, String tag, String key,
+                                             Long startTime, Long endTime) {
 
         if (StringUtils.hasText(msgId)) {
-            return queryByMsgId(adminExt, topic, msgId);
+            return MessageQueryResult.complete(queryByMsgId(adminExt, topic, msgId));
         }
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
@@ -124,11 +131,12 @@ public class RocketMQMessageProvider implements MessageProvider {
             if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
                 throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
             }
-            return queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
+            return MessageQueryResult.complete(
+                    queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT));
         }
 
         log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
-        return Collections.emptyList();
+        return MessageQueryResult.complete(Collections.emptyList());
     }
 
     private List<MessageRecordVO> queryByMsgId(DefaultMQAdminExt adminExt, String topic, String msgId) {
@@ -172,27 +180,32 @@ public class RocketMQMessageProvider implements MessageProvider {
         }
     }
 
-    private List<MessageRecordVO> queryByKey(DefaultMQAdminExt adminExt, String topic, String key,
-                                             String tag, long begin, long end) {
+    private MessageQueryResult queryByKey(DefaultMQAdminExt adminExt, String topic, String key,
+                                          String tag, long begin, long end) {
         try {
             QueryResult queryResult = adminExt.queryMessage(topic, key, KEY_QUERY_MAX, begin, end);
             if (queryResult == null || queryResult.getMessageList() == null) {
-                return Collections.emptyList();
+                return MessageQueryResult.complete(Collections.emptyList());
             }
+            // MQAdminImpl fans the key query out to every route broker with a per-broker
+            // budget of KEY_QUERY_MAX and merges the responses without a client-side cap,
+            // so a merged count at or above the budget means some broker may have stopped
+            // at its cap. Surface that instead of silently dropping further matches.
+            boolean mayBeTruncated = queryResult.getMessageList().size() >= KEY_QUERY_MAX;
             List<MessageRecordVO> result = new ArrayList<>();
             for (MessageExt messageExt : queryResult.getMessageList()) {
                 if (matchesTag(messageExt, tag)) {
                     result.add(toRecordVO(messageExt));
                 }
             }
-            return result;
+            return mayBeTruncated ? MessageQueryResult.truncated(result) : MessageQueryResult.complete(result);
         } catch (Exception e) {
             if (MqResponseCodes.hasResponseCode(e, ResponseCode.NO_MESSAGE)) {
                 // MQAdminImpl.queryMessage throws MQClientException(NO_MESSAGE) instead of
                 // returning an empty QueryResult when the key matches nothing: the query
                 // completed, so the correct response is an empty list, not a gateway error.
                 log.info("queryMessage(topic={}, key={}) matched nothing", topic, key);
-                return Collections.emptyList();
+                return MessageQueryResult.complete(Collections.emptyList());
             }
             log.warn("queryMessage(topic={}, key={}) failed: {}", topic, key, e.getMessage());
             throw new BusinessException(502, "Failed to query messages by key: " + e.getMessage());

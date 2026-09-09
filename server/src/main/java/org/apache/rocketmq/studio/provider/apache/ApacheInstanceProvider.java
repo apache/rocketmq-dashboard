@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
@@ -164,6 +165,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                                String tag, String key, Long startTime, Long endTime) {
         return messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime);
+    }
+
+    @Override
+    public MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId,
+                                                    String tag, String key, Long startTime, Long endTime) {
+        return messageProvider.queryMessagesDetailed(instanceId, topic, msgId, tag, key, startTime, endTime);
     }
 
     @Override
