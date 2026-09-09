@@ -65,7 +65,7 @@ import {
 } from '../../services/opsService';
 import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
-import { formatDateTime } from '../../utils/format';
+import { formatUtcDateTime } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
@@ -696,7 +696,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
       render: (_, record) =>
         record.lastTriggered ? (
-          formatDateTime(record.lastTriggered)
+          formatUtcDateTime(record.lastTriggered)
         ) : (
           <span style={{ color: '#999' }}>{t('alerts.neverTriggered')}</span>
         ),
