@@ -62,11 +62,12 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
 
     @Override
     public List<InstanceVO> search(String keyword) {
+        String pattern = escapeLike(keyword);
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
-                        .and(w -> w.like("name", keyword)
-                                .or().like("endpoint", keyword)
-                                .or().like("remark", keyword))
+                        .and(w -> w.like("name", pattern)
+                                .or().like("endpoint", pattern)
+                                .or().like("remark", pattern))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
@@ -74,12 +75,13 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
 
     @Override
     public List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword) {
+        String pattern = escapeLike(keyword);
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
                         .eq("type", type.name())
-                        .and(w -> w.like("name", keyword)
-                                .or().like("endpoint", keyword)
-                                .or().like("remark", keyword))
+                        .and(w -> w.like("name", pattern)
+                                .or().like("endpoint", pattern)
+                                .or().like("remark", pattern))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
@@ -193,6 +195,19 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     private BusinessException invalidPersistedValue(Long instanceId, String field, String value) {
         return new BusinessException(500, "Invalid persisted instance " + field
                 + " for instance " + instanceId + ": " + value);
+    }
+
+    /**
+     * Escapes the SQL LIKE wildcards in a user-supplied keyword so instance
+     * names, endpoints and remarks are matched literally. Instance names
+     * commonly contain underscores, which would otherwise match any single
+     * character (mirrors QueryHistoryService).
+     */
+    private static String escapeLike(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return keyword;
+        }
+        return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private RmqInstance toEntity(InstanceVO vo) {
