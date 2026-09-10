@@ -17,6 +17,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LiteTopicQuotaTest {
 
     @Test
+    void usageRateShouldComputeTopicRatio() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxTopicCount(10);
+        quota.setCurrentTopicCount(4);
+
+        assertThat(quota.getUsageRate()).isEqualTo(0.4);
+    }
+
+    @Test
+    void sessionUsageRateShouldComputeRatio() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxSessionCount(10);
+        quota.setCurrentSessionCount(4);
+
+        assertThat(quota.getSessionUsageRate()).isEqualTo(0.4);
+    }
+
+    @Test
+    void nearQuotaLimitShouldCompareAgainstTheThreshold() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxTopicCount(10);
+        quota.setCurrentTopicCount(8);
+
+        assertThat(quota.isNearQuotaLimit(0.7)).isTrue();
+        assertThat(quota.isNearQuotaLimit(0.9)).isFalse();
+
+        LiteTopicQuota unconfigured = new LiteTopicQuota();
+        assertThat(unconfigured.isNearQuotaLimit(0.1)).isFalse();
+    }
+
+    @Test
     void quotaShouldNotBeExceededWhenMaxIsUnset() {
         LiteTopicQuota quota = new LiteTopicQuota();
         quota.setCurrentTopicCount(10);
