@@ -80,15 +80,16 @@ public class ProxyConsumerResolver {
      * reachable.
      */
     public ConsumerConnection resolveConsumerConnection(String instanceId, String group) {
+        String normalizedGroup = group == null ? null : group.trim();
         for (String addr : discoverProxyAddresses(instanceId)) {
             try {
-                ConsumerConnection connection = queryProxy(addr, group);
+                ConsumerConnection connection = queryProxy(addr, normalizedGroup);
                 if (connection != null) {
                     return connection;
                 }
             } catch (Exception e) {
                 log.debug("Proxy consumer connection query failed for {} via {}: {}",
-                        group, addr, e.getMessage());
+                        normalizedGroup, addr, e.getMessage());
             }
         }
         return null;
@@ -113,15 +114,17 @@ public class ProxyConsumerResolver {
      * answer, letting the caller fall back to the broker for directly connected clients.
      */
     public ConsumerRunningInfo resolveConsumerRunningInfo(String instanceId, String group, String clientId) {
+        String normalizedGroup = group == null ? null : group.trim();
+        String normalizedClientId = clientId == null ? null : clientId.trim();
         for (String addr : discoverProxyAddresses(instanceId)) {
             try {
-                ConsumerRunningInfo runningInfo = queryProxyRunningInfo(addr, group, clientId);
+                ConsumerRunningInfo runningInfo = queryProxyRunningInfo(addr, normalizedGroup, normalizedClientId);
                 if (runningInfo != null) {
                     return runningInfo;
                 }
             } catch (Exception e) {
                 log.debug("Proxy consumer running info query failed for {}/{} via {}: {}",
-                        group, clientId, addr, e.getMessage());
+                        normalizedGroup, normalizedClientId, addr, e.getMessage());
             }
         }
         return null;
