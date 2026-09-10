@@ -335,7 +335,7 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -1161,13 +1161,15 @@ const TopicPage = () => {
     setImporting(false);
     setImportModalOpen(true);
     try {
-      const records = parseCsvTable(await file.text());
-      const validation = validateTopicCsvImport(records, selectedInstanceId || undefined);
+      const records = parseCsvTable(await file.text(), lang);
+      const validation = validateTopicCsvImport(records, selectedInstanceId || undefined, lang);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
       setImportRows([]);
-      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+      setImportErrors([
+        error instanceof Error ? error.message : lang === 'zh' ? 'CSV 解析失败' : 'Failed to parse CSV',
+      ]);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
