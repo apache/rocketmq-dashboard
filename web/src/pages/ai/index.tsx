@@ -115,13 +115,15 @@ interface Message {
 
 /* ─── Quick Actions ─── */
 
-const quickActions = [
-  '查看集群状态',
-  'Topic 堆积 Top10',
-  '诊断消费延迟',
-  '创建 Topic',
-  '消息轨迹查询',
-  '扩缩容评估',
+// Quick-action prompts are localized via translation keys; the tag shows (and
+// sends) the active-language phrase.
+const QUICK_ACTION_KEYS = [
+  'ai.action.clusterStatus',
+  'ai.action.topicBacklogTop',
+  'ai.action.diagnoseLag',
+  'ai.action.createTopic',
+  'ai.action.traceMessage',
+  'ai.action.scaleEvaluation',
 ];
 
 const GLOBAL_TOOL_SCOPE = '__global__';
@@ -220,6 +222,7 @@ const UserBubble = ({ text, createdAt }: Pick<Message, 'text' | 'createdAt'>) =>
 
 export const AiMessage = ({ msg }: { msg: Message }) => {
   const { token } = theme.useToken();
+  const { t } = useLang();
 
   return (
     <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
@@ -345,7 +348,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
                 userSelect: 'none',
               }}
             >
-              思维链：Prompt 增强改写
+              {t('ai.thinkingLabel')}
             </summary>
             <div
               style={{
@@ -399,7 +402,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
               }}
             />
             <Text type="secondary" style={{ fontSize: 14, marginLeft: 8 }}>
-              正在思考…
+              {t('ai.thinking')}
             </Text>
           </Flex>
         )}
@@ -874,11 +877,11 @@ const AiPage = () => {
     try {
       parsedInput = JSON.parse(toolInput || '{}');
     } catch {
-      message.error('工具参数必须是有效的 JSON 对象');
+      message.error(t('ai.toolInputInvalid'));
       return;
     }
     if (!isRecord(parsedInput)) {
-      message.error('工具参数必须是有效的 JSON 对象');
+      message.error(t('ai.toolInputInvalid'));
       return;
     }
 
@@ -886,13 +889,13 @@ const AiPage = () => {
     setToolResult(undefined);
     try {
       setToolResult(await executeTool(selectedToolName, parsedInput));
-      message.success('工具执行成功');
+      message.success(t('ai.toolExecuted'));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '工具执行失败');
+      message.error(error instanceof Error ? error.message : t('ai.toolExecutionFailed'));
     } finally {
       setToolExecuting(false);
     }
-  }, [selectedToolName, toolExecuting, toolInput]);
+  }, [selectedToolName, toolExecuting, toolInput, t]);
 
   const selectedTool = tools.find((tool) => tool.name === selectedToolName);
 
@@ -960,9 +963,9 @@ const AiPage = () => {
           <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
             {t('ai.commonCommands')}
           </Text>
-          {quickActions.map((action) => (
+          {QUICK_ACTION_KEYS.map((key) => (
             <Tag
-              key={action}
+              key={key}
               style={{
                 cursor: 'pointer',
                 borderRadius: 6,
@@ -972,16 +975,16 @@ const AiPage = () => {
                 transition: 'all 0.2s',
               }}
               color="blue"
-              onClick={() => handleQuickAction(action)}
+              onClick={() => handleQuickAction(t(key))}
             >
-              {action}
+              {t(key)}
             </Tag>
           ))}
         </Flex>
 
         {llmConfig && !llmReady && (
           <InfoBanner
-            title="AI 助手未启用"
+            title={t('ai.notEnabled')}
             description={t('ai.providerNotReadyDescription')}
             style={{ marginBottom: 12 }}
             data-testid="ai-not-ready-banner"
@@ -992,7 +995,7 @@ const AiPage = () => {
               style={{ paddingLeft: 0, marginTop: 4 }}
               onClick={() => navigate('/settings?tab=ai')}
             >
-              去配置
+              {t('ai.goConfigure')}
             </Button>
           </InfoBanner>
         )}
@@ -1006,8 +1009,9 @@ const AiPage = () => {
             style={{ marginBottom: 12, borderRadius: 8 }}
             message={
               <span>
-                模型服务与执行引擎可在 <a onClick={() => navigate('/settings')}>设置 → AI 助手</a>{' '}
-                中配置
+                {t('ai.settingsHintPrefix')}{' '}
+                <a onClick={() => navigate('/settings')}>{t('ai.settingsHintLink')}</a>
+                {t('ai.settingsHintSuffix')}
               </span>
             }
           />
@@ -1035,7 +1039,7 @@ const AiPage = () => {
                 loading={modelsLoading}
                 disabled={!canInspectLlmRuntime}
                 variant="borderless"
-                placeholder={modelsLoading ? '加载模型中...' : '选择模型'}
+                placeholder={modelsLoading ? t('ai.loadingModels') : t('ai.selectModel')}
                 popupMatchSelectWidth={false}
                 suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
                 className="model-selector"
@@ -1049,13 +1053,13 @@ const AiPage = () => {
                 variant="borderless"
                 popupMatchSelectWidth={false}
                 suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
-                title="执行引擎"
+                title={t('ai.engine')}
                 style={{ fontSize: '0.893rem', minWidth: 110 }}
               />
               {llmConfig && (
                 <Tag color={llmReady ? 'green' : 'default'} style={{ borderRadius: 6 }}>
                   {llmConfig.provider || 'openai'}
-                  {llmReady ? ' 已就绪' : ' 未就绪'}
+                  {llmReady ? t('ai.readySuffix') : t('ai.notReadySuffix')}
                 </Tag>
               )}
             </div>
@@ -1078,7 +1082,7 @@ const AiPage = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟..."
+              placeholder={t('ai.inputPlaceholder')}
             />
             <Sparkle
               className="text-gray-400"
@@ -1099,7 +1103,7 @@ const AiPage = () => {
                   <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide max-w-full py-2">
                     <button className="tool-btn" onClick={() => void handleOpenTools()}>
                       <SlidersHorizontal size={17} />
-                      <span>工具</span>
+                      <span>{t('ai.tools')}</span>
                     </button>
                     <button
                       className="tool-btn"
@@ -1108,10 +1112,10 @@ const AiPage = () => {
                         borderColor: enhance ? '#1677ff' : undefined,
                         color: enhance ? '#1677ff' : undefined,
                       }}
-                      title="发送前增强 Prompt"
+                      title={t('ai.enhanceTitle')}
                     >
                       <Sparkle size={17} />
-                      <span>Prompt 增强</span>
+                      <span>{t('ai.enhance')}</span>
                     </button>
                   </div>
                 </div>
@@ -1135,7 +1139,7 @@ const AiPage = () => {
                       size="middle"
                       icon={<Stop size={16} weight="fill" />}
                       onClick={handleStop}
-                      title="停止生成"
+                      title={t('ai.stopGenerating')}
                       style={{
                         height: 36,
                         borderRadius: 8,
@@ -1143,7 +1147,7 @@ const AiPage = () => {
                         boxShadow: '0 2px 8px rgba(255, 77, 79, 0.24)',
                       }}
                     >
-                      停止生成
+                      {t('ai.stopGenerating')}
                     </Button>
                   )}
                 </div>
@@ -1206,7 +1210,7 @@ const AiPage = () => {
       </Drawer>
 
       <Modal
-        title="AI 工具"
+        title={t('ai.toolsModalTitle')}
         open={toolModalOpen}
         onCancel={() => {
           toolLoadRequestRef.current += 1;
@@ -1214,8 +1218,8 @@ const AiPage = () => {
           setToolModalOpen(false);
         }}
         onOk={() => void handleExecuteTool()}
-        okText="执行"
-        cancelText="关闭"
+        okText={t('ai.execute')}
+        cancelText={t('ai.close')}
         width={720}
         styles={{ body: { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' } }}
         okButtonProps={{
@@ -1225,19 +1229,19 @@ const AiPage = () => {
       >
         <Flex vertical gap={16} style={{ paddingTop: 8 }}>
           <Select
-            aria-label="选择集群"
+            aria-label={t('ai.selectCluster')}
             loading={clustersLoading}
             value={selectedClusterId || GLOBAL_TOOL_SCOPE}
             onChange={(scope) => void handleClusterChange(scope)}
-            options={[{ value: GLOBAL_TOOL_SCOPE, label: '全局工具' }, ...clusterOptions]}
+            options={[{ value: GLOBAL_TOOL_SCOPE, label: t('ai.globalTools') }, ...clusterOptions]}
           />
 
           <Select
-            aria-label="选择工具"
+            aria-label={t('ai.selectTool')}
             showSearch
             loading={toolsLoading}
             value={selectedToolName || undefined}
-            placeholder="选择工具"
+            placeholder={t('ai.selectTool')}
             optionFilterProp="label"
             onChange={(name) => selectTool(name)}
             options={tools.map((tool) => ({
@@ -1263,10 +1267,10 @@ const AiPage = () => {
 
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>
-              输入参数 (JSON)
+              {t('ai.inputParams')}
             </Text>
             <Input.TextArea
-              aria-label="工具参数 JSON"
+              aria-label={t('ai.toolParamsJson')}
               value={toolInput}
               onChange={(event) => setToolInput(event.target.value)}
               autoSize={{ minRows: 6, maxRows: 12 }}
@@ -1277,7 +1281,7 @@ const AiPage = () => {
           {toolResult !== undefined && (
             <div>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                执行结果
+                {t('ai.executionResult')}
               </Text>
               <pre
                 data-testid="tool-result"
