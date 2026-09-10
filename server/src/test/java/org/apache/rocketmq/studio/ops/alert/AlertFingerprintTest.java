@@ -46,4 +46,33 @@ class AlertFingerprintTest {
         assertThat(AlertFingerprint.of(7L, "local", embeddedLabel))
                 .isNotEqualTo(AlertFingerprint.of(7L, "local", separateLabels));
     }
+
+    @Test
+    void treatsNullLabelsLikeEmptyLabelsTest() {
+        assertThat(AlertFingerprint.of(7L, "local", null))
+                .isEqualTo(AlertFingerprint.of(7L, "local", Map.of()))
+                .hasSize(64);
+    }
+
+    @Test
+    void distinguishesRulesInstancesAndLabelValuesTest() {
+        Map<String, String> labels = Map.of("broker", "a");
+        String baseline = AlertFingerprint.of(7L, "local", labels);
+
+        assertThat(AlertFingerprint.of(8L, "local", labels)).isNotEqualTo(baseline);
+        assertThat(AlertFingerprint.of(7L, "other", labels)).isNotEqualTo(baseline);
+        assertThat(AlertFingerprint.of(7L, "local", Map.of("broker", "b"))).isNotEqualTo(baseline);
+    }
+
+    @Test
+    void escapesBackslashesNewlinesAndEqualsSignsInValuesTest() {
+        String plain = AlertFingerprint.of(7L, "local", Map.of("k", "xy"));
+        String backslash = AlertFingerprint.of(7L, "local", Map.of("k", "x\\y"));
+        String newline = AlertFingerprint.of(7L, "local", Map.of("k", "x\ny"));
+        String equals = AlertFingerprint.of(7L, "local", Map.of("k", "x=y"));
+
+        assertThat(backslash).isNotEqualTo(plain).isNotEqualTo(newline).isNotEqualTo(equals);
+        assertThat(newline).isNotEqualTo(plain).isNotEqualTo(equals);
+        assertThat(equals).isNotEqualTo(plain);
+    }
 }
