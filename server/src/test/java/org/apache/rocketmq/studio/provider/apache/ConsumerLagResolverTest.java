@@ -56,4 +56,25 @@ class ConsumerLagResolverTest {
         Mockito.when(proxy.queryLag()).thenReturn(999L);
         assertThat(ConsumerLagResolver.resolve(7, proxy)).isEqualTo(7);
     }
+
+    @Test
+    void proxyReportedZeroLagIsReturned() {
+        ProxyStatsProvider proxy = Mockito.mock(ProxyStatsProvider.class);
+        Mockito.when(proxy.queryLag()).thenReturn(0L);
+        assertThat(ConsumerLagResolver.resolve(-1, proxy)).isEqualTo(0);
+    }
+
+    @Test
+    void proxyReportedUnknownIsReturnedVerbatim() {
+        ProxyStatsProvider proxy = Mockito.mock(ProxyStatsProvider.class);
+        Mockito.when(proxy.queryLag()).thenReturn(ConsumerLagResolver.UNKNOWN);
+        assertThat(ConsumerLagResolver.resolve(-1, proxy))
+                .isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
+    @Test
+    void largeValidDiffIsReturnedAsIs() {
+        assertThat(ConsumerLagResolver.resolve(Long.MAX_VALUE, null))
+                .isEqualTo(Long.MAX_VALUE);
+    }
 }
