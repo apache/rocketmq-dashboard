@@ -36,6 +36,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -155,5 +156,19 @@ class MybatisPlusAlertSilenceRepositoryTest {
         assertThat(restored.get(0).getRecurrenceDays()).containsExactlyInAnyOrder(1, 3, 5);
         assertThat(restored.get(1).getRecurrence()).isEqualTo(AlertSilenceRecurrence.ONCE);
         assertThat(restored.get(1).getRecurrenceDays()).isEmpty();
+    }
+
+    @Test
+    void deleteByIdShouldReportWhetherARowWasRemovedTest() {
+        RmqAlertSilenceMapper mapper = mock(RmqAlertSilenceMapper.class);
+        when(mapper.deleteById(1L)).thenReturn(1);
+        when(mapper.deleteById(2L)).thenReturn(0);
+        MybatisPlusAlertSilenceRepository repository =
+                new MybatisPlusAlertSilenceRepository(mapper, new ObjectMapper());
+
+        assertThat(repository.deleteById(1L)).isTrue();
+        assertThat(repository.deleteById(2L)).isFalse();
+        verify(mapper).deleteById(1L);
+        verify(mapper).deleteById(2L);
     }
 }
