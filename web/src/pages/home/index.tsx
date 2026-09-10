@@ -359,7 +359,7 @@ const HomePage = () => {
               }}
             >
               {t(getGreetingKey())}
-              {lang === 'zh' ? '，欢迎' : ', welcome'}
+              {t('home.welcomeSuffix')}
               <span
                 style={{
                   display: 'inline-block',
@@ -370,7 +370,7 @@ const HomePage = () => {
               >
                 🚀
               </span>
-              {lang === 'zh' ? t('home.welcomeTo') : 'to'}{' '}
+              {t('home.welcomeTo')}{' '}
               <span
                 className="bg-clip-text text-transparent bg-gradient-to-r from-violet-600 via-fuchsia-500 to-orange-500"
                 style={{ marginLeft: '0.15em' }}
@@ -440,15 +440,15 @@ const HomePage = () => {
                       value={selectedModel || undefined}
                       onChange={(val) => setSelectedModel(val)}
                       disabled={modelOptions.length === 0}
-                      placeholder={lang === 'zh' ? '选择模型' : 'Select model'}
-                      notFoundContent={lang === 'zh' ? '未配置模型' : 'No configured models'}
+                      placeholder={t('home.selectModel')}
+                      notFoundContent={t('home.noModels')}
                       options={modelOptions.map((m) => ({
                         value: m.value,
                         label: m.recommended ? (
                           <span className="inline-flex items-center gap-1.5">
                             {m.value}
                             <span className="px-1 py-0.5 rounded text-[0.625rem] leading-none bg-purple-50 text-purple-600 font-medium">
-                              {lang === 'zh' ? '推荐' : 'Rec.'}
+                              {t('home.recommended')}
                             </span>
                           </span>
                         ) : (
@@ -469,7 +469,7 @@ const HomePage = () => {
                       variant="borderless"
                       popupMatchSelectWidth={false}
                       suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
-                      title={lang === 'zh' ? '执行引擎' : 'Agent engine'}
+                      title={t('home.engineTitle')}
                       style={{ fontSize: '0.893rem', minWidth: 110 }}
                     />
                   </div>
@@ -491,7 +491,7 @@ const HomePage = () => {
                   <textarea
                     ref={textareaRef}
                     className="chat-input"
-                    placeholder="向 RocketMQ Bot 提问，全程加密、安全、可信"
+                    placeholder={t('home.placeholder')}
                     value={inputValue}
                     onChange={(event) => setInputValue(event.target.value)}
                     onKeyDown={handleKeyDown}
@@ -515,16 +515,12 @@ const HomePage = () => {
                         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide max-w-full py-2">
                           <button className="tool-btn">
                             <SlidersHorizontal size={17} />
-                            <span>工具</span>
+                            <span>{t('home.tools')}</span>
                           </button>
                           <button
                             className="tool-btn"
                             onClick={() => setPromoteOn((current) => !current)}
-                            title={
-                              lang === 'zh'
-                                ? '开启后，提交前用 LLM 把提问改写为结构化 prompt'
-                                : 'When enabled, rewrite your prompt with an LLM before sending'
-                            }
+                            title={t('home.enhanceTooltip')}
                             style={
                               promoteOn
                                 ? {
@@ -536,7 +532,7 @@ const HomePage = () => {
                             }
                           >
                             <Sparkle size={17} weight={promoteOn ? 'fill' : 'regular'} />
-                            <span>Prompt 增强</span>
+                            <span>{t('home.promptEnhance')}</span>
                           </button>
                           <button
                             className="tool-btn"
@@ -601,7 +597,7 @@ const HomePage = () => {
             <span>{t('home.brand')}</span>
             <span style={{ margin: '0 4px' }}>｜</span>
             <span>
-              当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})
+              {t('home.version')} {__BUILD_TIME__} build({__BUILD_COMMIT__})
             </span>
           </span>
         </footer>
