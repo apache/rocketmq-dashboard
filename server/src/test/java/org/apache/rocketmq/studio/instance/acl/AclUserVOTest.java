@@ -42,4 +42,44 @@ class AclUserVOTest {
         assertThat(value).doesNotContain("plain-access-key");
         assertThat(value).doesNotContain("plain-secret-key");
     }
+
+    @Test
+    void toStringOmitsCredentialFieldNamesEntirelyTest() {
+        AclUserVO user = AclUserVO.builder()
+            .username("ops-admin")
+            .accessKey("plain-access-key")
+            .secretKey("plain-secret-key")
+            .build();
+
+        String value = user.toString();
+
+        assertThat(value).doesNotContain("accessKey").doesNotContain("secretKey");
+    }
+
+    @Test
+    void dataEqualityCoversAllFieldsTest() {
+        AclUserVO first = AclUserVO.builder()
+            .id(1L)
+            .username("ops-admin")
+            .accessKey("ak-1")
+            .secretKey("sk-1")
+            .admin(true)
+            .clusters(List.of("prod", "dev"))
+            .permRead(true)
+            .permWrite(false)
+            .build();
+        AclUserVO same = AclUserVO.builder()
+            .id(1L)
+            .username("ops-admin")
+            .accessKey("ak-1")
+            .secretKey("sk-1")
+            .admin(true)
+            .clusters(List.of("prod", "dev"))
+            .permRead(true)
+            .permWrite(false)
+            .build();
+
+        assertThat(first).isEqualTo(same).hasSameHashCodeAs(same);
+        assertThat(first).isNotEqualTo(AclUserVO.builder().username("ops-admin").build());
+    }
 }
