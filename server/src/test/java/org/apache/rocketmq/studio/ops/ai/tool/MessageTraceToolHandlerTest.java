@@ -83,4 +83,57 @@ class MessageTraceToolHandlerTest {
 
         verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
     }
+
+    @Test
+    void executeShouldProjectNullLeafFieldsAsBlank() {
+        TraceRecordVO trace = TraceRecordVO.builder()
+                .nodes(List.of(TraceNodeVO.builder()
+                        .title(null)
+                        .timestamp(1L)
+                        .status(null)
+                        .costTime(2L)
+                        .description(null)
+                        .build()))
+                .consumerStatus(List.of(ConsumerStatusVO.builder()
+                        .group(null)
+                        .deliveryStatus(null)
+                        .consumeTime(3L)
+                        .retryCount(0)
+                        .build()))
+                .build();
+        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-2"), eq("TopicB")))
+                .thenReturn(trace);
+
+        Object result = handler.execute(Map.of("cluster", "instance-a", "msgId", "msg-2", "topic", "TopicB"));
+
+        Map<?, ?> row = (Map<?, ?>) result;
+        Map<?, ?> node = (Map<?, ?>) ((List<?>) row.get("nodes")).get(0);
+        assertThat(node.get("title")).isEqualTo("");
+        assertThat(node.get("status")).isEqualTo("");
+        assertThat(node.get("description")).isEqualTo("");
+        Map<?, ?> status = (Map<?, ?>) ((List<?>) row.get("consumerStatus")).get(0);
+        assertThat(status.get("group")).isEqualTo("");
+        assertThat(status.get("deliveryStatus")).isEqualTo("");
+    }
+
+    @Test
+    void executeShouldHandleEmptyTraceCollections() {
+        TraceRecordVO trace = TraceRecordVO.builder()
+                .nodes(List.of())
+                .consumerStatus(List.of())
+                .build();
+        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-3"), eq("TopicC")))
+                .thenReturn(trace);
+
+        Object result = handler.execute(Map.of("cluster", "instance-a", "msgId", "msg-3", "topic", "TopicC"));
+
+        Map<?, ?> row = (Map<?, ?>) result;
+        assertThat((List<?>) row.get("nodes")).isEmpty();
+        assertThat((List<?>) row.get("consumerStatus")).isEmpty();
+    }
+
+    @Test
+    void handlerNameShouldBeStable() {
+        assertThat(handler.name()).isEqualTo("rmq.message.trace");
+    }
 }
