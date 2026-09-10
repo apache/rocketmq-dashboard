@@ -25,10 +25,11 @@ import java.util.Map;
 
 /**
  * Shared rendering limits for message property maps, used by the message explorer and the DLQ
- * drawer so both apply the same {@value #MAX_PROPERTIES}-entry / {@value #MAX_PROPERTY_VALUE_CHARS}-char
- * caps instead of duplicating the logic. {@link #userProperties} additionally drops the broker-set
- * system keys ({@link MessageConst#STRING_HASH_SET}) so a view labelled "user properties" is not
- * crowded out by system entries once the cap and alphabetical ordering are applied.
+ * drawer so both apply the same {@value #MAX_PROPERTIES}-entry /
+ * {@value #MAX_PROPERTY_VALUE_CHARS}-code-point caps instead of duplicating the logic.
+ * {@link #userProperties} additionally drops the broker-set system keys
+ * ({@link MessageConst#STRING_HASH_SET}) so a view labelled "user properties" is not crowded out
+ * by system entries once the cap and alphabetical ordering are applied.
  */
 public final class MessagePropertyDisplay {
 
@@ -65,16 +66,22 @@ public final class MessagePropertyDisplay {
         return limited;
     }
 
-    /** True when any value exceeds {@link #MAX_PROPERTY_VALUE_CHARS} and would be abbreviated. */
+    /** True when any value exceeds {@link #MAX_PROPERTY_VALUE_CHARS} Unicode code points. */
     public static boolean hasOversizedProperty(Map<String, String> properties) {
         return properties != null && properties.values().stream()
-                .anyMatch(value -> value != null && value.length() > MAX_PROPERTY_VALUE_CHARS);
+                .anyMatch(value -> value != null
+                        && value.codePointCount(0, value.length()) > MAX_PROPERTY_VALUE_CHARS);
     }
 
     private static String abbreviate(String value) {
-        if (value == null || value.length() <= MAX_PROPERTY_VALUE_CHARS) {
+        if (value == null) {
             return value;
         }
-        return value.substring(0, MAX_PROPERTY_VALUE_CHARS) + "...";
+        int codePointCount = value.codePointCount(0, value.length());
+        if (codePointCount <= MAX_PROPERTY_VALUE_CHARS) {
+            return value;
+        }
+        int endIndex = value.offsetByCodePoints(0, MAX_PROPERTY_VALUE_CHARS);
+        return value.substring(0, endIndex) + "...";
     }
 }

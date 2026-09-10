@@ -59,9 +59,31 @@ class MessagePropertyDisplayTest {
     }
 
     @Test
+    void limitPropertiesShouldNotSplitSupplementaryUnicodeCharactersTest() {
+        String emoji = "\uD83D\uDE80";
+        String value = "x".repeat(1023) + emoji + "tail";
+
+        Map<String, String> limited = MessagePropertyDisplay.limitProperties(Map.of("mixed", value));
+
+        assertThat(limited.get("mixed")).isEqualTo("x".repeat(1023) + emoji + "...");
+    }
+
+    @Test
     void hasOversizedPropertyShouldDetectLongValuesTest() {
         assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("big", "x".repeat(1500)))).isTrue();
         assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("k", "short"))).isFalse();
         assertThat(MessagePropertyDisplay.hasOversizedProperty(null)).isFalse();
+    }
+
+    @Test
+    void propertyLimitShouldCountUnicodeCodePointsTest() {
+        String emoji = "\uD83D\uDE80";
+        String exact = emoji.repeat(MessagePropertyDisplay.MAX_PROPERTY_VALUE_CHARS);
+        String oversized = exact + emoji;
+
+        assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("exact", exact))).isFalse();
+        assertThat(MessagePropertyDisplay.limitProperties(Map.of("exact", exact)).get("exact"))
+                .isEqualTo(exact);
+        assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("oversized", oversized))).isTrue();
     }
 }
