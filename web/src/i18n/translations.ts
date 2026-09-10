@@ -1374,6 +1374,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'acl.addUser': { zh: '添加用户', en: 'Add User' },
   'acl.ruleTab': { zh: 'ACL 规则', en: 'ACL Rules' },
   'acl.userTab': { zh: '用户管理', en: 'Users' },
+  'acl.userStatusFilter': { zh: '状态', en: 'Status' },
+  'acl.regularUser': { zh: '普通用户', en: 'Regular user' },
   'acl.principal': { zh: '主体', en: 'Principal' },
   'acl.resource': { zh: '资源', en: 'Resource' },
   'acl.permissions': { zh: '操作权限', en: 'Permissions' },

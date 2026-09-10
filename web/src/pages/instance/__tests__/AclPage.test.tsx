@@ -961,4 +961,60 @@ describe('ACL page', () => {
       expect.objectContaining({ accessKey: 'new-svc' }),
     );
   });
+
+  it('filters ACL users by status on the user tab', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 11,
+          username: 'remote-admin',
+          accessKey: 'acce****3456',
+          secretKey: 'secr****7654',
+          admin: true,
+          clusters: ['cluster-a'],
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+        {
+          id: 12,
+          username: 'remote-regular',
+          accessKey: 'acce****1111',
+          secretKey: 'secr****2222',
+          admin: false,
+          clusters: ['cluster-a'],
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    expect(screen.getByText('remote-regular')).toBeInTheDocument();
+
+    const statusSelect = screen.getByRole('combobox', { name: '状态' });
+    await user.click(statusSelect);
+    await user.click(
+      await screen.findByText('管理员', { selector: '.ant-select-item-option-content' }),
+    );
+    expect(screen.getByText('remote-admin')).toBeInTheDocument();
+    expect(screen.queryByText('remote-regular')).not.toBeInTheDocument();
+
+    await user.click(statusSelect);
+    await user.click(
+      await screen.findByText('普通用户', { selector: '.ant-select-item-option-content' }),
+    );
+    expect(screen.queryByText('remote-admin')).not.toBeInTheDocument();
+    expect(screen.getByText('remote-regular')).toBeInTheDocument();
+
+    await user.click(statusSelect);
+    await user.click(
+      await screen.findByText('全部', { selector: '.ant-select-item-option-content' }),
+    );
+    expect(screen.getByText('remote-admin')).toBeInTheDocument();
+    expect(screen.getByText('remote-regular')).toBeInTheDocument();
+  });
 });

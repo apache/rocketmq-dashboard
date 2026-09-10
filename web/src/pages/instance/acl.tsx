@@ -138,6 +138,7 @@ const AclPageContent = ({
   const [userPageSize, setUserPageSize] = useState(20);
   const [userTotal, setUserTotal] = useState(0);
   const [userKeyword, setUserKeyword] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'admin' | 'regular'>('all');
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
@@ -184,6 +185,11 @@ const AclPageContent = ({
   const [editingPlain, setEditingPlain] = useState<PlainAccessConfig | null>(null);
   const [plainSubmitting, setPlainSubmitting] = useState(false);
   const [plainForm] = Form.useForm();
+
+  const visibleUsers =
+    userStatusFilter === 'all'
+      ? users
+      : users.filter((user) => (userStatusFilter === 'admin') === user.admin);
 
   useEffect(() => {
     let mounted = true;
@@ -1242,12 +1248,29 @@ const AclPageContent = ({
                         allowClear
                         style={{ width: 240 }}
                       />
+                      <Typography.Text type="secondary" style={{ fontSize: 14 }}>
+                        {t('acl.userStatusFilter')}
+                      </Typography.Text>
+                      <Select
+                        aria-label={t('acl.userStatusFilter')}
+                        value={userStatusFilter}
+                        onChange={(value) => {
+                          setUserPage(1);
+                          setUserStatusFilter(value);
+                        }}
+                        style={{ width: 130 }}
+                        options={[
+                          { value: 'all', label: t('common.all') },
+                          { value: 'admin', label: t('acl.admin') },
+                          { value: 'regular', label: t('acl.regularUser') },
+                        ]}
+                      />
                     </Space>
                   </div>
 
                   <Table
                     columns={userColumns}
-                    dataSource={users}
+                    dataSource={visibleUsers}
                     rowKey="id"
                     loading={usersLoading}
                     pagination={{
