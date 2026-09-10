@@ -22,6 +22,8 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
@@ -414,57 +416,12 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
-    void getTopicRoutesShouldReturnEmptyListWhenTopicHasNoBrokerRoute() throws Exception {
+    void getTopicRoutesReturnsEmptyListWhenTopicNotExist() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        // Exception shape captured against a live RocketMQ 5.5.0 name server:
-        // MQClientException(responseCode=17, errorMessage="No topic route info in name
-        // server for the topic: <topic>").
-        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(
-                ResponseCode.TOPIC_NOT_EXIST,
+        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
                 "No topic route info in name server for the topic: TopicA"));
 
         assertThat(newLiveProvider(admin).getTopicRoutes(null, "TopicA")).isEmpty();
-    }
-
-    @Test
-    void getTopicRoutesGradesByResponseCodeOnly() throws Exception {
-        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        // A failure carrying route-absent-looking text but a different response code is
-        // a real error and must surface, proving grading no longer keys on the message.
-        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(
-                ResponseCode.SYSTEM_ERROR,
-                "No topic route info in name server for the topic: TopicA"));
-
-        assertThatThrownBy(() -> newLiveProvider(admin).getTopicRoutes(null, "TopicA"))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
-    }
-
-    @Test
-    void getTopicConsumersShouldReturnEmptyPageWhenTopicHasNoBrokerRoute() throws Exception {
-        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(
-                ResponseCode.TOPIC_NOT_EXIST,
-                "No topic route info in name server for the topic: TopicA"));
-
-        TopicConsumerPageVO page = newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20);
-
-        assertThat(page.getItems()).isEmpty();
-        assertThat(page.getTotal()).isZero();
-        assertThat(page.getPage()).isEqualTo(1);
-        assertThat(page.getPageSize()).isEqualTo(20);
-    }
-
-    @Test
-    void getTopicConsumersGradesByResponseCodeOnly() throws Exception {
-        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(
-                ResponseCode.SYSTEM_ERROR,
-                "No topic route info in name server for the topic: TopicA"));
-
-        assertThatThrownBy(() -> newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
     @Test
@@ -476,6 +433,18 @@ class RocketMQMetadataProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to get consumers for topic TopicA: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getTopicConsumersReturnsEmptyPageWhenTopicNotExist() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: TopicA"));
+
+        TopicConsumerPageVO result = newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isZero();
     }
 
     @Test

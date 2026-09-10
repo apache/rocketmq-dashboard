@@ -344,6 +344,16 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByTopicReturnsEmptyListWhenTopicNotExist() throws Exception {
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA"))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: TopicA"));
+
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L)).isEmpty();
+    }
+
+    @Test
     @Timeout(value = 1, unit = TimeUnit.SECONDS)
     void queryByTopicStopsWhenPullOffsetDoesNotAdvance() throws Exception {
         MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
@@ -855,6 +865,15 @@ class RocketMQMessageProviderTest {
 
         assertThat(offsets).extracting(QueueOffsetVO::getQueueId)
                 .containsExactly(0, 1);
+    }
+
+    @Test
+    void getQueueOffsetsReturnsEmptyListWhenTopicNotExist() throws Exception {
+        when(adminExt.examineTopicRouteInfo("TopicA"))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: TopicA"));
+
+        assertThat(provider.getQueueOffsets("instance-a", "TopicA")).isEmpty();
     }
 
     private MQClientAPIImpl mockOffsetLookupClient() {

@@ -31,9 +31,11 @@ import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
@@ -513,6 +515,10 @@ public class RocketMQDLQProvider implements DLQProvider {
         } catch (Exception e) {
             if (e instanceof BusinessException businessException) {
                 throw businessException;
+            }
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
+                log.info("scanDeadLetters(dlqTopic={}) matched nothing ({}), returning empty result", dlqTopic, e.getMessage());
+                return new DeadLetterScanResult(result, 0, false);
             }
             log.warn("Failed to collect dead letters from {}: {}", dlqTopic, e.getMessage());
             throw new BusinessException(502, "Failed to scan DLQ topic " + dlqTopic + ": " + e.getMessage());

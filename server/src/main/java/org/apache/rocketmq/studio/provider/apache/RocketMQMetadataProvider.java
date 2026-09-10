@@ -32,9 +32,11 @@ import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
@@ -450,9 +452,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return routes;
         } catch (Exception e) {
             if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
-                // A record created in the metadata database without a broker route is a
-                // normal "not synced yet" state — surface an empty route list, not a 502.
-                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                log.info("getTopicRoutes(topic={}) not found ({}), returning empty list", name, e.getMessage());
                 return Collections.emptyList();
             }
             log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
@@ -583,15 +583,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     .build();
         } catch (Exception e) {
             if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
-                // Same as routes: a metadata record without a broker route is a normal
-                // "not synced yet" state, so the consumer page comes back empty.
-                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
-                return TopicConsumerPageVO.builder()
-                        .items(List.of())
-                        .total(0)
-                        .page(page)
-                        .pageSize(pageSize)
-                        .build();
+                log.info("getTopicConsumersPage(topic={}) not found ({}), returning empty page", name, e.getMessage());
+                return TopicConsumerPageVO.builder().items(List.of()).total(0).page(page).pageSize(pageSize).build();
             }
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
