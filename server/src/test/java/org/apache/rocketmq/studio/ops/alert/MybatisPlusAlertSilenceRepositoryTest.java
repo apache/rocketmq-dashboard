@@ -156,4 +156,15 @@ class MybatisPlusAlertSilenceRepositoryTest {
         assertThat(restored.get(1).getRecurrence()).isEqualTo(AlertSilenceRecurrence.ONCE);
         assertThat(restored.get(1).getRecurrenceDays()).isEmpty();
     }
+
+    @Test
+    void deleteByIdShouldReflectTheMapperOutcomeTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        when(mapper.deleteById(12L)).thenReturn(1);
+        assertThat(repository.deleteById(12L)).isTrue();
+
+        when(mapper.deleteById(13L)).thenReturn(0);
+        assertThat(repository.deleteById(13L)).isFalse();
+    }
 }
