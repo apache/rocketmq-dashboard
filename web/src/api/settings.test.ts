@@ -21,9 +21,12 @@ import client from './client';
 import {
   createDataSource,
   deleteDataSource,
+  getGeneralSettings,
   listAllDataSources,
   listDataSources,
+  saveGeneralSettings,
   testDataSource,
+  testNotification,
   updateDataSource,
 } from './settings';
 import type { DataSource } from './settings';
@@ -111,5 +114,49 @@ describe('data sources API', () => {
     await expect(
       testDataSource({ type: source.type, url: source.url, auth: source.auth }),
     ).resolves.toEqual({ success: true, message: 'Connection successful' });
+  });
+
+  it('loads the general settings', async () => {
+    mock.onGet('/settings/general').reply(200, {
+      code: 200,
+      data: { theme: 'dark', compact: true, apiKeyConfigured: false },
+    });
+
+    await expect(getGeneralSettings()).resolves.toMatchObject({ theme: 'dark' });
+  });
+
+  it('saves general settings without read-only flags or a blank api key', async () => {
+    mock.onPost('/settings/general/save').reply((config) => {
+      const body = JSON.parse(config.data);
+      expect(body).not.toHaveProperty('apiKeyConfigured');
+      expect(body).not.toHaveProperty('dingtalkWebhookConfigured');
+      expect(body).not.toHaveProperty('dingtalkSigningSecretConfigured');
+      expect(body).not.toHaveProperty('smsWebhookConfigured');
+      expect(body).not.toHaveProperty('apiKey');
+      expect(body.theme).toBe('light');
+      return [200, { code: 200, data: null }];
+    });
+
+    await saveGeneralSettings({
+      theme: 'light',
+      compact: false,
+      desktopNotify: true,
+      notifySound: false,
+      sessionTimeout: 30,
+      requireLogin: true,
+      llmProvider: 'openai',
+      model: 'gpt-4o',
+      baseUrl: '',
+      apiKey: '  ',
+    });
+  });
+
+  it('posts the notification channel for a test', async () => {
+    mock.onPost('/settings/general/test-notification').reply((config) => {
+      expect(config.params).toEqual({ channel: 'dingtalk' });
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(testNotification('dingtalk')).resolves.toBeUndefined();
   });
 });
