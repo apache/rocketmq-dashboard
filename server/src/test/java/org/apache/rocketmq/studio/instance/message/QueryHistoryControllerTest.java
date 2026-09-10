@@ -97,4 +97,35 @@ class QueryHistoryControllerTest {
         verify(queryHistoryService).listTraceQueries("instance-a", null, 1, 20);
         verify(queryHistoryService).summarize(null);
     }
+    @Test
+    void listsTraceQueriesWithDefaults() throws Exception {
+        when(queryHistoryService.listTraceQueries(null, null, 1, 20))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 20));
+
+        mockMvc.perform(get("/api/query-history/traces"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.page").value(1));
+
+        verify(queryHistoryService).listTraceQueries(null, null, 1, 20);
+    }
+
+    @Test
+    void returnsMessageQueryResultsById() throws Exception {
+        when(queryHistoryService.getMessageQueryResults(7L)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/query-history/messages/7/results"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        verify(queryHistoryService).getMessageQueryResults(7L);
+    }
+
+    @Test
+    void rejectsPageBelowOne() throws Exception {
+        mockMvc.perform(get("/api/query-history/messages").param("page", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("page must be at least 1"));
+    }
+
 }
