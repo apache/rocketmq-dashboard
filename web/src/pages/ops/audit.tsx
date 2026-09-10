@@ -33,7 +33,7 @@ import {
   Tooltip,
 } from 'antd';
 import { Trash } from '@phosphor-icons/react';
-import { DownloadOutlined } from '@ant-design/icons';
+import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -49,6 +49,7 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
+import { copyTextToClipboard } from '../../utils/clipboard';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -379,6 +380,28 @@ const AuditPage: React.FC = () => {
       title: t('audit.error'),
       dataIndex: 'errorMessage',
       ellipsis: true,
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 110,
+      align: 'center',
+      render: (_: unknown, record) => (
+        <Tooltip title={t('audit.copyJson')}>
+          <Button
+            type="text"
+            size="small"
+            icon={<CopyOutlined />}
+            aria-label={t('audit.copyJson')}
+            onClick={() => {
+              void copyTextToClipboard(JSON.stringify(record, null, 2)).then(
+                () => message.success(t('common.copied')),
+                () => message.error(t('common.copyFailed')),
+              );
+            }}
+          />
+        </Tooltip>
+      ),
     },
   ];
 
