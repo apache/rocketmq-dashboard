@@ -50,4 +50,9 @@ describe('topic service batch deletion', () => {
       'topic-03',
     ]);
   });
+
+  it('resolves immediately when the batch is empty', async () => {
+    await expect(batchDeleteTopics([])).resolves.toEqual({ deleted: [], failed: [] });
+    expect(metadataApiMocks.deleteTopic).not.toHaveBeenCalled();
+  });
 });
