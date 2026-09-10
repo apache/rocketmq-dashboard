@@ -91,4 +91,22 @@ describe('SettingsPage', () => {
       );
     });
   });
+
+  it('switches to the data source tab and updates the query', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage('/settings?tab=general');
+
+    await user.click(screen.getByRole('tab', { name: '数据源管理' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('location-search')).toHaveTextContent('?tab=datasource');
+    });
+  });
+
+  it('falls back to the general tab for an unknown tab parameter', async () => {
+    renderPage('/settings?tab=unknown');
+
+    expect(await screen.findByText('general settings tab')).toBeInTheDocument();
+    expect(screen.getByLabelText('location-search')).toHaveTextContent('?tab=unknown');
+  });
 });
