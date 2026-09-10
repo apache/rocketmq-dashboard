@@ -41,4 +41,48 @@ class AgentProviderRegistryTest {
             Locale.setDefault(original);
         }
     }
+
+    @Test
+    void shouldRejectUnsupportedEngineWithGuidance() {
+        AgentProviderRegistry registry = new AgentProviderRegistry(List.of(provider("claude-code")));
+
+        LlmGatewayException error = org.assertj.core.api.Assertions.catchThrowableOfType(
+                () -> registry.forEngine("qoder"), LlmGatewayException.class);
+
+        assertThat(error).isNotNull();
+        assertThat(error.getStatusCode()).isEqualTo(400);
+        assertThat(error.getCode()).isEqualTo("llm.config.unsupported_engine");
+        assertThat(error.getMessage()).contains("Agent engine is not supported: qoder");
+        assertThat(error.getHint()).contains("claude-code");
+    }
+
+    @Test
+    void shouldRejectNullAndBlankEngineWithGuidance() {
+        AgentProviderRegistry registry = new AgentProviderRegistry(List.of(provider("claude-code")));
+
+        LlmGatewayException nullEngine = org.assertj.core.api.Assertions.catchThrowableOfType(
+                () -> registry.forEngine(null), LlmGatewayException.class);
+        LlmGatewayException blankEngine = org.assertj.core.api.Assertions.catchThrowableOfType(
+                () -> registry.forEngine("   "), LlmGatewayException.class);
+
+        assertThat(nullEngine).isNotNull();
+        assertThat(nullEngine.getStatusCode()).isEqualTo(400);
+        assertThat(blankEngine).isNotNull();
+        assertThat(blankEngine.getStatusCode()).isEqualTo(400);
+    }
+
+    @Test
+    void shouldFailFastOnDuplicateProviderEngine() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> new AgentProviderRegistry(
+                                List.of(provider("claude-code"), provider("claude-code"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Duplicate key claude-code");
+    }
+
+    private static AgentProvider provider(String engine) {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(provider.engine()).thenReturn(engine);
+        return provider;
+    }
 }
