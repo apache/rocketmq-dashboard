@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -63,5 +64,25 @@ class PlainAclRemoteAddressValidatorTest {
     })
     void shouldRejectExpressionsThePlainAclParserCannotUse(String expression) {
         assertThat(PlainAclRemoteAddressValidator.isValid(expression)).isFalse();
+    }
+
+    @Test
+    void shouldTreatNullOrBlankAsUnrestricted() {
+        assertThat(PlainAclRemoteAddressValidator.isValid(null)).isTrue();
+        assertThat(PlainAclRemoteAddressValidator.isValid("")).isTrue();
+        assertThat(PlainAclRemoteAddressValidator.isValid("   ")).isTrue();
+    }
+
+    @Test
+    void shouldRejectExpressionsWithSurroundingWhitespace() {
+        assertThat(PlainAclRemoteAddressValidator.isValid(" 127.0.0.1 ")).isFalse();
+        assertThat(PlainAclRemoteAddressValidator.isValid("10.0.0.1 ")).isFalse();
+        assertThat(PlainAclRemoteAddressValidator.isValid(" 2001:db8::1")).isFalse();
+    }
+
+    @Test
+    void shouldAcceptIpv6AddressLists() {
+        assertThat(PlainAclRemoteAddressValidator.isValid("2001:db8::1,2001:db8::2")).isTrue();
+        assertThat(PlainAclRemoteAddressValidator.isValid("::1,::2,::3")).isTrue();
     }
 }
