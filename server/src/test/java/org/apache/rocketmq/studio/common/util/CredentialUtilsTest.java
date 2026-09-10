@@ -79,6 +79,43 @@ class CredentialUtilsTest {
         assertThat(hasIsolatedSurrogate(masked)).isFalse();
     }
 
+    @Test
+    void encodeBase64ShouldRoundTripAsciiSecrets() {
+        String secret = "AKIAIOSFODNN7EXAMPLE";
+
+        String encoded = CredentialUtils.encodeBase64(secret);
+
+        assertThat(encoded).isNotEqualTo(secret);
+        assertThat(CredentialUtils.decodeBase64(encoded)).isEqualTo(secret);
+    }
+
+    @Test
+    void encodeBase64ShouldRoundTripMultibyteText() {
+        String secret = "accessKey\u4e2d\u6587\u5bc6\u94a5\ud83d\ude80";
+
+        String encoded = CredentialUtils.encodeBase64(secret);
+
+        assertThat(encoded).isNotEqualTo(secret);
+        assertThat(CredentialUtils.decodeBase64(encoded)).isEqualTo(secret);
+    }
+
+    @Test
+    void encodeBase64ShouldPreserveNull() {
+        assertThat(CredentialUtils.encodeBase64(null)).isNull();
+    }
+
+    @Test
+    void decodeBase64ShouldPreserveNull() {
+        assertThat(CredentialUtils.decodeBase64(null)).isNull();
+    }
+
+    @Test
+    void decodeBase64ShouldReturnInvalidPlaintextAsIs() {
+        String legacy = "plain-text-access-key!";
+
+        assertThat(CredentialUtils.decodeBase64(legacy)).isEqualTo(legacy);
+    }
+
     private static boolean hasIsolatedSurrogate(String value) {
         for (int index = 0; index < value.length(); index++) {
             char current = value.charAt(index);
