@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -40,5 +41,44 @@ class AgentProviderRegistryTest {
         } finally {
             Locale.setDefault(original);
         }
+    }
+
+    @Test
+    void resolvesEnginesCaseInsensitivelyTest() {
+        AgentProvider claude = mock(AgentProvider.class);
+        when(claude.engine()).thenReturn("claude-code");
+        AgentProvider qoder = mock(AgentProvider.class);
+        when(qoder.engine()).thenReturn("qoder");
+        AgentProviderRegistry registry =
+                new AgentProviderRegistry(List.of(claude, qoder));
+
+        assertThat(registry.forEngine("  Claude-Code ")).isSameAs(claude);
+        assertThat(registry.forEngine("QODER")).isSameAs(qoder);
+    }
+
+    @Test
+    void rejectsUnsupportedAndNullEnginesTest() {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(provider.engine()).thenReturn("claude-code");
+        AgentProviderRegistry registry = new AgentProviderRegistry(List.of(provider));
+
+        assertThatThrownBy(() -> registry.forEngine("qoder"))
+                .isInstanceOfSatisfying(LlmGatewayException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(400))
+                .hasMessageContaining("not supported")
+                .hasMessageContaining("qoder");
+        assertThatThrownBy(() -> registry.forEngine(null))
+                .isInstanceOf(LlmGatewayException.class);
+    }
+
+    @Test
+    void rejectsDuplicateEngineRegistrationsTest() {
+        AgentProvider first = mock(AgentProvider.class);
+        when(first.engine()).thenReturn("claude-code");
+        AgentProvider duplicate = mock(AgentProvider.class);
+        when(duplicate.engine()).thenReturn("claude-code");
+
+        assertThatThrownBy(() -> new AgentProviderRegistry(List.of(first, duplicate)))
+                .isInstanceOf(IllegalStateException.class);
     }
 }
