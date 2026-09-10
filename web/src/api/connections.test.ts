@@ -63,4 +63,38 @@ describe('client connections API', () => {
       }),
     ).resolves.toEqual([connection]);
   });
+
+  it('sends only the required namesrvAddr when optional filters are omitted', async () => {
+    mock.onGet('/clients').reply((config) => {
+      expect(config.params).toEqual({ namesrvAddr: '10.0.1.33:9876' });
+      return [200, { code: 200, data: [] }];
+    });
+
+    await expect(listConnections({ namesrvAddr: '10.0.1.33:9876' })).resolves.toEqual([]);
+  });
+
+  it('resolves an empty inventory when no client is connected', async () => {
+    mock.onGet('/clients').reply(200, { code: 200, data: [] });
+
+    await expect(listConnections()).resolves.toEqual([]);
+  });
+
+  it('passes partial connection rows through unchanged', async () => {
+    const partialConnection = {
+      type: 'Producer',
+      groupOrTopic: 'orders',
+      protocol: 'gRPC',
+      language: 'Java',
+      version: '5.1.0',
+      clusterName: 'production-cluster',
+      partial: true,
+    };
+    mock.onGet('/clients').reply(200, { code: 200, data: [partialConnection] });
+
+    const result = await listConnections({ namesrvAddr: '10.0.1.33:9876' });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ type: 'Producer', clusterName: 'production-cluster' });
+    expect(result[0].clientId).toBeUndefined();
+    expect(result[0].address).toBeUndefined();
+  });
 });
