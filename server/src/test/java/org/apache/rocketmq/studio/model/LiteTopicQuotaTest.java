@@ -65,4 +65,29 @@ class LiteTopicQuotaTest {
         assertThat(quota.getSessionUsageRate()).isZero();
         assertThat(quota.getRemainingQuota()).isEqualTo(10);
     }
+
+    @Test
+    void usageRatesReflectCurrentOverMaxFractions() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxTopicCount(10);
+        quota.setCurrentTopicCount(5);
+        quota.setMaxSessionCount(8);
+        quota.setCurrentSessionCount(2);
+
+        assertThat(quota.getUsageRate()).isEqualTo(0.5);
+        assertThat(quota.getSessionUsageRate()).isEqualTo(0.25);
+    }
+
+    @Test
+    void nearQuotaLimitUsesTheUsageRateThreshold() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxTopicCount(10);
+        quota.setCurrentTopicCount(9);
+
+        assertThat(quota.isNearQuotaLimit(0.9)).isTrue();
+        assertThat(quota.isNearQuotaLimit(0.91)).isFalse();
+
+        quota.setCurrentTopicCount(5);
+        assertThat(quota.isNearQuotaLimit(0.5)).isTrue();
+    }
 }
