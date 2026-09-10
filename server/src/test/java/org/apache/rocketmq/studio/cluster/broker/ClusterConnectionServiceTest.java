@@ -76,4 +76,32 @@ class ClusterConnectionServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Failed to connect NameServer");
     }
+
+    @Test
+    void connectionSummarisesClustersWithoutBrokerListsTest() {
+        when(clusterProvider.describeCluster(eq("10.0.0.2:9876")))
+                .thenReturn(ClusterVO.builder().name("DefaultCluster").brokers(null).build());
+
+        ClusterProbeResult result = service.testConnection(
+                TestConnectionDTO.builder().namesrvAddr("10.0.0.2:9876").build());
+
+        assertThat(result.isConnected()).isTrue();
+        assertThat(result.getClusterName()).isEqualTo("DefaultCluster");
+        assertThat(result.getBrokerCount()).isZero();
+        assertThat(result.getBrokerNames()).isEmpty();
+        assertThat(result.getMessage()).contains("0 broker(s)");
+    }
+
+    @Test
+    void connectionReportsTheBrokerSummaryInItsMessageTest() {
+        when(clusterProvider.describeCluster(eq("10.0.0.3:9876")))
+                .thenReturn(clusterWith("broker-a", "broker-b"));
+
+        ClusterProbeResult result = service.testConnection(
+                TestConnectionDTO.builder().namesrvAddr("10.0.0.3:9876").build());
+
+        assertThat(result.getMessage())
+                .startsWith("Connected to 2 broker(s) in ")
+                .endsWith("ms");
+    }
 }
