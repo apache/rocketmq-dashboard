@@ -21,6 +21,7 @@ import client from './client';
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  getMessageTraceByKey,
   queryMessagePage,
   queryMessages,
 } from './message';
@@ -187,6 +188,22 @@ describe('message API', () => {
     await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-1', 'orders')).resolves.toEqual(
       trace,
     );
+  });
+
+  it('traces messages by business key with trimmed optional filters', async () => {
+    mock.onGet('/messages/trace-by-key').reply((config) => {
+      expect(config.params).toEqual({
+        key: 'order-1',
+        instanceId: 'instance-1',
+        topic: 'orders',
+        traceTopic: 'rmq_sys_TRACE_DATA',
+      });
+      return [200, { code: 200, data: { msgId: 'msg-1' } }];
+    });
+
+    await expect(
+      getMessageTraceByKey('order-1', 'instance-1', 'orders', '  rmq_sys_TRACE_DATA  '),
+    ).resolves.toEqual({ msgId: 'msg-1' });
   });
 
   it('posts direct consumption to the message API', async () => {
