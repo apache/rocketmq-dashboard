@@ -46,4 +46,31 @@ class SystemTopicFilterTest {
         assertThat(SystemTopicFilter.isSystem("BenchmarkTestOrders", brokerNames)).isFalse();
         assertThat(SystemTopicFilter.isSystem("SCHEDULE_TOPIC_orders", brokerNames)).isFalse();
     }
+
+    @Test
+    void convenienceOverloadRecognizesSystemTopicsTest() {
+        assertThat(SystemTopicFilter.isSystem(null)).isTrue();
+        assertThat(SystemTopicFilter.isSystem("")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("RMQ_SYS_TRANS_HALF_TOPIC")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("%RETRY%consumer-a")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("%DLQ%consumer-a")).isTrue();
+
+        assertThat(SystemTopicFilter.isSystem("orders")).isFalse();
+        assertThat(SystemTopicFilter.isSystem("broker-prod-a")).isFalse();
+    }
+
+    @Test
+    void brokerNamesCountOnlyWhenProvidedInTheSetTest() {
+        assertThat(SystemTopicFilter.isSystem("orders", Set.of("orders"))).isTrue();
+        assertThat(SystemTopicFilter.isSystem("orders", null)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("orders", Set.of())).isFalse();
+        assertThat(SystemTopicFilter.isSystem("orders", Set.of("broker-prod-a"))).isFalse();
+    }
+
+    @Test
+    void nullTopicRemainsSystemRegardlessOfBrokerSetTest() {
+        assertThat(SystemTopicFilter.isSystem(null, null)).isTrue();
+        assertThat(SystemTopicFilter.isSystem("", Set.of())).isTrue();
+        assertThat(SystemTopicFilter.isSystem("broker-prod-a", null)).isFalse();
+    }
 }
