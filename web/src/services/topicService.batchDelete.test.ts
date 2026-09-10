@@ -50,4 +50,54 @@ describe('topic service batch deletion', () => {
       'topic-03',
     ]);
   });
+
+  it('resolves with empty buckets for an empty selection without touching the api', async () => {
+    await expect(batchDeleteTopics([])).resolves.toEqual({ deleted: [], failed: [] });
+    expect(metadataApiMocks.deleteTopic).not.toHaveBeenCalled();
+  });
+
+  it('forwards the instance id to every deletion attempt', async () => {
+    metadataApiMocks.deleteTopic.mockResolvedValue(undefined);
+
+    await expect(batchDeleteTopics(['topic-01', 'topic-02'], 'cluster-pre')).resolves.toEqual({
+      deleted: ['topic-01', 'topic-02'],
+      failed: [],
+    });
+    expect(metadataApiMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'cluster-pre');
+    expect(metadataApiMocks.deleteTopic).toHaveBeenCalledWith('topic-02', 'cluster-pre');
+  });
+
+  it('reports an all-successful selection in the original order', async () => {
+    metadataApiMocks.deleteTopic.mockResolvedValue(undefined);
+
+    await expect(batchDeleteTopics(['alpha', 'beta', 'gamma'])).resolves.toEqual({
+      deleted: ['alpha', 'beta', 'gamma'],
+      failed: [],
+    });
+    expect(metadataApiMocks.deleteTopic.mock.calls.map(([name]) => name)).toEqual([
+      'alpha',
+      'beta',
+      'gamma',
+    ]);
+  });
+
+  it('keeps attempting later topics when the api rejects with a non-Error value', async () => {
+    metadataApiMocks.deleteTopic.mockImplementation((name: string) =>
+      name === 'topic-02' ? Promise.reject('topic gone') : Promise.resolve(),
+    );
+
+    await expect(batchDeleteTopics(['topic-01', 'topic-02', 'topic-03'])).resolves.toEqual({
+      deleted: ['topic-01', 'topic-03'],
+      failed: ['topic-02'],
+    });
+  });
+
+  it('reports every topic as failed when the api rejects for each one', async () => {
+    metadataApiMocks.deleteTopic.mockRejectedValue(new Error('cluster offline'));
+
+    await expect(
+      batchDeleteTopics(['topic-01', 'topic-02']),
+    ).resolves.toEqual({ deleted: [], failed: ['topic-01', 'topic-02'] });
+    expect(metadataApiMocks.deleteTopic).toHaveBeenCalledTimes(2);
+  });
 });
