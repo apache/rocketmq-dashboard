@@ -153,4 +153,47 @@ class ClusterAlertRuleControllerTest {
 
         verify(alertService).toggleRule(AlertDomain.CLUSTER, 7L, false);
     }
+
+    @Test
+    void updateRuleShouldRequireAnId() throws Exception {
+        mockMvc.perform(post("/api/cluster-alert-rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Broker unavailable\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("id is required"));
+    }
+
+    @Test
+    void updateRuleShouldForceClusterDomain() throws Exception {
+        AlertRuleVO updated = AlertRuleVO.builder().id(7L).name("Broker unavailable")
+                .domain(AlertDomain.CLUSTER).build();
+        when(alertService.updateRule(eq(AlertDomain.CLUSTER), any(AlertRuleVO.class)))
+                .thenReturn(updated);
+
+        mockMvc.perform(post("/api/cluster-alert-rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":7,\"name\":\"Broker unavailable\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.domain").value("CLUSTER"));
+
+        verify(alertService).updateRule(eq(AlertDomain.CLUSTER), any(AlertRuleVO.class));
+    }
+
+    @Test
+    void deleteAndBulkToggleShouldUseClusterDomain() throws Exception {
+        mockMvc.perform(post("/api/cluster-alert-rules/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":7}"))
+                .andExpect(status().isOk());
+        verify(alertService).deleteRule(AlertDomain.CLUSTER, 7L);
+
+        AlertRuleBulkResultVO bulkResult = AlertRuleBulkResultVO.builder().build();
+        when(alertService.bulkToggleRules(AlertDomain.CLUSTER, java.util.List.of(7L, 8L), true))
+                .thenReturn(bulkResult);
+        mockMvc.perform(post("/api/cluster-alert-rules/bulk-toggle")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[7,8],\"enabled\":true}"))
+                .andExpect(status().isOk());
+        verify(alertService).bulkToggleRules(AlertDomain.CLUSTER, java.util.List.of(7L, 8L), true);
+    }
 }
