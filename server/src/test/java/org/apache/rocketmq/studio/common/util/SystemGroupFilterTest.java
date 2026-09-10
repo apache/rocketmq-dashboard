@@ -45,4 +45,32 @@ class SystemGroupFilterTest {
         assertThat(SystemGroupFilter.isSystem("FILTERSRV_CONSUMER_filter")).isFalse();
         assertThat(SystemGroupFilter.isSystem("SELF_TEST_GROUP")).isFalse();
     }
+
+    @Test
+    void embeddedTokensDoNotMarkUserGroupsAsSystemTest() {
+        for (String group : new String[] {
+            "app_TOOLS_CONSUMER",
+            "xCID_SYS_custom",
+            "xCID_HOUSEKEEPING_x",
+            "orders-CID_RMQ_SYS_TRANS",
+            "yrmq_sys_custom",
+            "pre%RETRY%consumer",
+            "suffix_%DLQ%consumer"}) {
+            assertThat(SystemGroupFilter.isSystem(group))
+                    .as("user group %s", group)
+                    .isFalse();
+        }
+    }
+
+    @Test
+    void prefixMatchingRequiresTheTokenAtTheStartTest() {
+        assertThat(SystemGroupFilter.isSystem("CID_SYS_RMQ_TRANS")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("rmq_sys_TRACE_DATA")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("%RETRY%consumer-a")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("%DLQ%consumer-a")).isTrue();
+
+        assertThat(SystemGroupFilter.isSystem("CID_SYS_")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("rmq_sys_")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("%RETRY%")).isTrue();
+    }
 }
