@@ -45,4 +45,21 @@ class SystemGroupFilterTest {
         assertThat(SystemGroupFilter.isSystem("FILTERSRV_CONSUMER_filter")).isFalse();
         assertThat(SystemGroupFilter.isSystem("SELF_TEST_GROUP")).isFalse();
     }
+
+    @Test
+    void markerPrefixesRequireTheirFullMarkerTest() {
+        assertThat(SystemGroupFilter.isSystem("CID_SYS")).isFalse();
+        assertThat(SystemGroupFilter.isSystem("rmq_sys")).isFalse();
+        assertThat(SystemGroupFilter.isSystem("%RETRY%")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("CID_HOUSEKEEPING")).isTrue();
+        assertThat(SystemGroupFilter.isSystem("rmq_sys_EXTRA")).isTrue();
+    }
+
+    @Test
+    void prefixMatchingIsCaseSensitiveAndNotMidWordTest() {
+        assertThat(SystemGroupFilter.isSystem("cid_sys_owner")).isFalse();
+        assertThat(SystemGroupFilter.isSystem("XCID_SYS_OWNER")).isFalse();
+        assertThat(SystemGroupFilter.isSystem("rmq_sysx")).isFalse();
+        assertThat(SystemGroupFilter.isSystem("CID_ONSAPI_OWNER")).isTrue();
+    }
 }
