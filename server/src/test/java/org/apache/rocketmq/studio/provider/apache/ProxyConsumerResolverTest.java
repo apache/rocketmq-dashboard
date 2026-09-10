@@ -134,4 +134,47 @@ class ProxyConsumerResolverTest {
         // 192.0.2.1 (TEST-NET) is unreachable, so the remoting query must degrade to null
         assertThat(resolver.resolveConsumerConnection("instance-a", "cg-orders")).isNull();
     }
+
+    @Test
+    void discoverProxyAddressesShouldShareCacheForBlankInstanceKeys() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        syncer.setConnectionSet(new HashSet<>());
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(syncer);
+
+        resolver.discoverProxyAddresses(null);
+        resolver.discoverProxyAddresses("   ");
+
+        org.mockito.Mockito.verify(adminExt, org.mockito.Mockito.times(1))
+                .examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic");
+    }
+
+    @Test
+    void discoverProxyAddressesShouldSkipBlankClientAddresses() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        Connection blank = new Connection();
+        blank.setClientId("proxy-blank");
+        blank.setClientAddr("  ");
+        Connection noAddr = new Connection();
+        noAddr.setClientId("proxy-no-addr");
+        noAddr.setClientAddr(null);
+        Connection valid = new Connection();
+        valid.setClientId("proxy-a");
+        valid.setClientAddr("10.0.4.66:10911");
+        syncer.setConnectionSet(new HashSet<>(List.of(blank, noAddr, valid)));
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(syncer);
+
+        assertThat(resolver.discoverProxyAddresses("instance-a"))
+                .containsExactly("10.0.4.66:8080");
+    }
+
+    @Test
+    void resolveConsumerRunningInfoShouldReturnNullWhenNoProxyDiscovered() throws Exception {
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenThrow(new IllegalStateException("syncer group missing"));
+
+        assertThat(resolver.resolveConsumerRunningInfo("instance-a", "cg-orders", "client-1"))
+                .isNull();
+    }
 }
