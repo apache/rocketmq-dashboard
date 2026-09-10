@@ -39,4 +39,36 @@ class CreateCloudCredentialDTOTest {
 
         assertThat(vendor).isEqualTo(InstanceVendor.ALIYUN);
     }
+
+    @Test
+    void parseVendorShouldTrimAndNormalizeCase() {
+        assertThat(CreateCloudCredentialDTO.parseVendor(" ALIYUN ")).isEqualTo(InstanceVendor.ALIYUN);
+        assertThat(CreateCloudCredentialDTO.parseVendor("tencent")).isEqualTo(InstanceVendor.TENCENT);
+        assertThat(CreateCloudCredentialDTO.parseVendor("APACHE")).isEqualTo(InstanceVendor.APACHE);
+    }
+
+    @Test
+    void parseVendorShouldReturnNullForBlankAndUnknownValues() {
+        assertThat(CreateCloudCredentialDTO.parseVendor(null)).isNull();
+        assertThat(CreateCloudCredentialDTO.parseVendor("  ")).isNull();
+        assertThat(CreateCloudCredentialDTO.parseVendor("alibaba")).isNull();
+    }
+
+    @Test
+    void toCloudCredentialVOShouldCarryEveryInputField() {
+        CreateCloudCredentialDTO request = new CreateCloudCredentialDTO();
+        request.setName("production");
+        request.setVendor(" aliyun ");
+        request.setAccessKey("ak-1");
+        request.setSecretKey("sk-1");
+        request.setRemark("primary account");
+
+        CloudCredentialVO vo = request.toCloudCredentialVO();
+
+        assertThat(vo.getName()).isEqualTo("production");
+        assertThat(vo.getVendor()).isEqualTo(InstanceVendor.ALIYUN);
+        assertThat(vo.getAccessKey()).isEqualTo("ak-1");
+        assertThat(vo.getSecretKey()).isEqualTo("sk-1");
+        assertThat(vo.getRemark()).isEqualTo("primary account");
+    }
 }
