@@ -30,7 +30,6 @@ import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -82,8 +81,11 @@ public class K8sCertService {
         List<String> san = command.getSan();
         if (command.getCertPem() != null && !command.getCertPem().isBlank()) {
             X509Certificate parsed = parseCertificate(command.getCertPem());
-            notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneId.systemDefault());
-            notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneId.systemDefault());
+            // Certificate validity instants are absolute; render them in the service clock's
+            // zone so they stay comparable with the LocalDateTime.now(clock) values used by
+            // refreshExpirationState, even when the JVM default zone differs from the clock.
+            notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), clock.getZone());
+            notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), clock.getZone());
             issuer = parsed.getIssuerX500Principal().getName();
             san = extractSubjectAlternativeNames(parsed);
         }
