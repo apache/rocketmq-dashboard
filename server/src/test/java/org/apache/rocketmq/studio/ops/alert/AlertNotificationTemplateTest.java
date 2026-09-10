@@ -64,4 +64,32 @@ class AlertNotificationTemplateTest {
         assertThat(AlertNotificationTemplate.render("${title}", alert, null))
                 .isEqualTo("${description}");
     }
+
+    @Test
+    void missingAlertFieldsRenderAsEmptyValues() {
+        SystemAlertVO alert = SystemAlertVO.builder().build();
+
+        String rendered = AlertNotificationTemplate.render(
+                "${ruleName}|${title}|${description}|${value}|${time}|${labels}|${level}", alert, null);
+
+        assertThat(rendered).isEqualTo("||||||");
+    }
+
+    @Test
+    void rawCurrentValueIsUsedForNonRatioMetrics() {
+        AlertRuleVO rule = AlertRuleVO.builder().metric("consumer.lag.total")
+                .thresholdUnit("%").threshold(85).build();
+        SystemAlertVO alert = SystemAlertVO.builder().currentValue(0.865).build();
+
+        assertThat(AlertNotificationTemplate.render("${value}", alert, rule))
+                .isEqualTo("0.865");
+    }
+
+    @Test
+    void whitespaceAroundTemplateIsTrimmed() {
+        SystemAlertVO alert = SystemAlertVO.builder().title("T").build();
+
+        assertThat(AlertNotificationTemplate.render("   ${title}   ", alert, null))
+                .isEqualTo("T");
+    }
 }
