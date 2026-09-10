@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.metrics.grafana;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -96,5 +97,27 @@ class GrafanaDashboardControllerTest {
                 .andExpect(header().string("Content-Disposition",
                         "attachment; filename=\"rocketmq-grafana-dashboards.zip\""))
                 .andExpect(content().bytes(archive));
+    }
+
+    @Test
+    void listDashboardsShouldReturnEmptyArrayWhenNoneExist() throws Exception {
+        when(grafanaDashboardService.listDashboards()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/metrics/grafana/dashboards"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void getDashboardShouldTranslateUnknownDashboardTo404() throws Exception {
+        when(grafanaDashboardService.getDashboard("unknown-dashboard"))
+                .thenThrow(new BusinessException(404, "Grafana dashboard not found: unknown-dashboard"));
+
+        mockMvc.perform(get("/api/metrics/grafana/dashboards/unknown-dashboard"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("Grafana dashboard not found: unknown-dashboard"));
     }
 }
