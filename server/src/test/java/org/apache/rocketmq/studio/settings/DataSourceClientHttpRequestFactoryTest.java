@@ -16,8 +16,8 @@
  */
 package org.apache.rocketmq.studio.settings;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpMethod;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.HttpURLConnection;
 import java.net.URI;
@@ -26,8 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class DataSourceClientHttpRequestFactoryTest {
 
-    @Test
-    void prepareConnectionShouldDisableRedirectsTest() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"GET", "POST", "PUT", "DELETE", "HEAD"})
+    void prepareConnectionShouldDisableRedirectsForEveryMethod(String method) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) URI.create("http://example.com")
                 .toURL().openConnection();
         TestableDataSourceClientHttpRequestFactory requestFactory =
@@ -35,8 +36,25 @@ class DataSourceClientHttpRequestFactoryTest {
 
         assertThat(connection.getInstanceFollowRedirects()).isTrue();
 
-        requestFactory.prepare(connection, HttpMethod.GET.name());
+        requestFactory.prepare(connection, method);
 
+        assertThat(connection.getInstanceFollowRedirects()).isFalse();
+        connection.disconnect();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"GET", "POST"})
+    void prepareConnectionShouldKeepTheConnectionUsableAfterSuper(String method) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) URI.create("http://example.com")
+                .toURL().openConnection();
+        TestableDataSourceClientHttpRequestFactory requestFactory =
+                new TestableDataSourceClientHttpRequestFactory();
+
+        requestFactory.prepare(connection, method);
+
+        // super.prepareConnection keeps the connection configured while the factory
+        // policy (no redirects) still wins.
+        assertThat(connection.getConnectTimeout()).isGreaterThanOrEqualTo(0);
         assertThat(connection.getInstanceFollowRedirects()).isFalse();
         connection.disconnect();
     }
