@@ -15,12 +15,13 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COMPACT_STORAGE_KEY,
   THEME_STORAGE_KEY,
   getStoredCompact,
   getStoredThemeMode,
+  getSystemDarkMode,
   persistCompact,
   persistThemeMode,
 } from './themePreference';
@@ -56,5 +57,25 @@ describe('theme preference', () => {
 
     persistCompact(false);
     expect(getStoredCompact()).toBe(false);
+  });
+
+  it('only treats the exact string true as compact', () => {
+    localStorage.setItem(COMPACT_STORAGE_KEY, 'TRUE');
+    expect(getStoredCompact()).toBe(false);
+
+    localStorage.setItem(COMPACT_STORAGE_KEY, '1');
+    expect(getStoredCompact()).toBe(false);
+  });
+
+  it('defaults to non-dark when the media query is unavailable', () => {
+    expect(getSystemDarkMode()).toBe(false);
+  });
+
+  it('reflects the prefers-color-scheme media query when available', () => {
+    const matchMediaMock = vi.fn().mockReturnValue({ matches: true });
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: matchMediaMock });
+
+    expect(getSystemDarkMode()).toBe(true);
+    expect(matchMediaMock).toHaveBeenCalledWith('(prefers-color-scheme: dark)');
   });
 });
