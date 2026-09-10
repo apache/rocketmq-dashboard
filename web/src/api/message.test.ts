@@ -21,6 +21,9 @@ import client from './client';
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  getMessageTraceByKey,
+  getQueueOffsets,
+  pullMessageAtOffset,
   queryMessagePage,
   queryMessages,
 } from './message';
@@ -206,5 +209,80 @@ describe('message API', () => {
     mock.onPost('/messages/direct-consume', request).reply(200, { code: 200, data: result });
 
     await expect(consumeMessageDirectly(request)).resolves.toEqual(result);
+  });
+
+  it('looks up trace records by message key with instance context', async () => {
+    const trace = { traceId: 'trace-key-1', nodes: [] };
+    mock.onGet('/messages/trace-by-key').reply((config) => {
+      expect(config.params).toEqual({
+        key: 'order-1',
+        instanceId: 'instance-1',
+        topic: 'orders',
+      });
+      return [200, { code: 200, data: trace }];
+    });
+
+    await expect(getMessageTraceByKey('order-1', 'instance-1', 'orders')).resolves.toEqual(trace);
+  });
+
+  it('returns the queue offsets for the selected topic', async () => {
+    const offsets = [
+      { brokerName: 'broker-0', queueId: 0, minOffset: 0, maxOffset: 128 },
+      { brokerName: 'broker-1', queueId: 0, minOffset: 0, maxOffset: 96 },
+    ];
+    mock.onGet('/messages/queues').reply((config) => {
+      expect(config.params).toEqual({ instanceId: 'instance-1', topic: 'orders' });
+      return [200, { code: 200, data: offsets }];
+    });
+
+    await expect(getQueueOffsets({ instanceId: 'instance-1', topic: 'orders' })).resolves.toEqual(
+      offsets,
+    );
+  });
+
+  it('pulls the message stored at a precise queue offset', async () => {
+    const record = {
+      msgId: 'msg-42',
+      topic: 'orders',
+      tag: '',
+      key: '',
+      body: '{"id":1}',
+      storeTime: '2026-07-23T10:00:00.000Z',
+      bornHost: '10.0.0.1:1000',
+    };
+    mock.onGet('/messages/queue-message').reply((config) => {
+      expect(config.params).toEqual({
+        instanceId: 'instance-1',
+        topic: 'orders',
+        brokerName: 'broker-0',
+        queueId: 3,
+        offset: 42,
+      });
+      return [200, { code: 200, data: record }];
+    });
+
+    await expect(
+      pullMessageAtOffset({
+        instanceId: 'instance-1',
+        topic: 'orders',
+        brokerName: 'broker-0',
+        queueId: 3,
+        offset: 42,
+      }),
+    ).resolves.toEqual(record);
+  });
+
+  it('resolves null when no message exists at the queue offset', async () => {
+    mock.onGet('/messages/queue-message').reply(200, { code: 200, data: null });
+
+    await expect(
+      pullMessageAtOffset({
+        instanceId: 'instance-1',
+        topic: 'orders',
+        brokerName: 'broker-0',
+        queueId: 0,
+        offset: 999,
+      }),
+    ).resolves.toBeNull();
   });
 });
