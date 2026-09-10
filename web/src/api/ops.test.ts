@@ -19,6 +19,7 @@ import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
 import {
+  applyAlertRulesImport,
   queryOpsHomePage,
   updateNameSvrAddr,
   addNameSvrAddr,
@@ -30,6 +31,7 @@ import {
   listAlertRuleRuntime,
   exportAlertRulesTransfer,
   importAlertRulesTransfer,
+  previewAlertRulesImport,
   listNativeAlertMetrics,
   createAlertRule,
   updateAlertRule,
@@ -49,6 +51,7 @@ import {
   deleteAlertSilence,
   listAuditRecords,
   cleanupAuditLogs,
+  type AlertRuleTransfer,
 } from './ops';
 
 const mock = new MockAdapter(client);
@@ -62,6 +65,58 @@ describe('Ops API - NameServer operations', () => {
   afterEach(() => {
     mock.reset();
     vi.unstubAllGlobals();
+  });
+
+  it('previews and applies alert rule imports in the selected domain', async () => {
+    const transfer: AlertRuleTransfer = {
+      version: 1,
+      domain: 'BUSINESS' as const,
+      rules: [
+        {
+          name: 'Lag',
+          metric: 'consumer.lag.total',
+          operator: '>',
+          threshold: 100,
+          duration: '5m',
+          channels: ['email'],
+          enabled: true,
+          description: '',
+        },
+      ],
+    };
+    mock.onPost('/business-alert-rules/import/preview').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(transfer);
+      return [
+        200,
+        {
+          code: 200,
+          data: { totalCount: 1, newCount: 1, duplicateCount: 0, invalidCount: 0, items: [] },
+        },
+      ];
+    });
+    mock.onPost('/business-alert-rules/import/apply').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ transfer, strategy: 'SKIP' });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            strategy: 'SKIP',
+            createdCount: 1,
+            replacedCount: 0,
+            skippedCount: 0,
+            changedRules: [],
+          },
+        },
+      ];
+    });
+    await expect(previewAlertRulesImport(transfer, 'BUSINESS')).resolves.toMatchObject({
+      newCount: 1,
+    });
+    await expect(applyAlertRulesImport(transfer, 'SKIP', 'BUSINESS')).resolves.toMatchObject({
+      strategy: 'SKIP',
+      createdCount: 1,
+    });
   });
 
   it('queries ops home page data', async () => {

@@ -14,6 +14,10 @@ import type {
   AlertRuleDomain,
   AlertRuleTestResult,
   AlertRuleTransfer,
+  AlertRuleImportConflictStrategy,
+  AlertRuleImportPreview,
+  AlertRuleImportPreviewItem,
+  AlertRuleImportResult,
   NativeAlertMetricInfo,
   CollectorStatus,
   SystemAlert,
@@ -41,10 +45,97 @@ const alertRulesState: Record<AlertRuleDomain, AlertRule[]> = {
 };
 let alertSilencesState: AlertSilence[] = [];
 
+const ratioAlertMetrics = new Set([
+  'broker.disk.usage_ratio',
+  'broker.jvm.heap.usage_ratio',
+  'broker.send_queue.usage_ratio',
+]);
+
 function copyAlertRule(rule: AlertRule): AlertRule {
   return {
     ...rule,
     channels: [...rule.channels],
+  };
+}
+
+function nextMockAlertRuleId(domain: AlertRuleDomain): number {
+  return Math.max(0, ...alertRulesState[domain].map((rule) => rule.id)) + 1;
+}
+
+function normalizedAlertRuleThreshold(rule: Partial<AlertRule>): number {
+  return rule.thresholdUnit === '%' && ratioAlertMetrics.has(rule.metric?.trim() ?? '')
+    ? (rule.threshold ?? 0) / 100
+    : (rule.threshold ?? 0);
+}
+
+function alertRuleSemanticKey(rule: Partial<AlertRule>, domain: AlertRuleDomain): string {
+  const text = (value?: string | null) => value?.trim() ?? '';
+  return JSON.stringify([
+    domain,
+    text(rule.instanceId),
+    text(rule.metric),
+    text(rule.operator).toUpperCase(),
+    normalizedAlertRuleThreshold(rule),
+    text(rule.duration).toLowerCase(),
+    text(rule.aggregation ?? 'LAST').toUpperCase(),
+    Math.max(0, rule.windowSeconds ?? 0),
+    text(rule.brokerName),
+    text(rule.clusterName),
+    text(rule.consumerGroup),
+    text(rule.topic),
+    Math.max(1, rule.consecutiveSamples ?? 1),
+  ]);
+}
+
+function mockAlertRuleImportPreview(
+  transfer: AlertRuleTransfer,
+  domain: AlertRuleDomain,
+): AlertRuleImportPreview {
+  const existingByKey = new Map(
+    alertRulesState[domain].map((rule) => [alertRuleSemanticKey(rule, domain), rule]),
+  );
+  const importedRowsByKey = new Map<string, number>();
+  const items: AlertRuleImportPreviewItem[] = transfer.rules.map((rule, index) => {
+    const rowNumber = index + 1;
+    if (!rule?.name?.trim()) {
+      return {
+        rowNumber,
+        status: 'INVALID',
+        name: rule?.name,
+        metric: rule?.metric,
+        error: 'name: name is required',
+      };
+    }
+    const key = alertRuleSemanticKey(rule, domain);
+    const firstRow = importedRowsByKey.get(key);
+    if (firstRow != null) {
+      return {
+        rowNumber,
+        status: 'INVALID',
+        name: rule.name,
+        metric: rule.metric,
+        error: `Duplicate evaluation conditions within import document; matches row ${firstRow}`,
+      };
+    }
+    importedRowsByKey.set(key, rowNumber);
+    const existing = existingByKey.get(key);
+    return {
+      rowNumber,
+      status: existing ? 'DUPLICATE' : 'NEW',
+      name: rule.name,
+      metric: rule.metric,
+      existingRuleId: existing?.id,
+      existingRuleName: existing?.name,
+    };
+  });
+  const count = (status: AlertRuleImportPreviewItem['status']) =>
+    items.filter((item) => item.status === status).length;
+  return {
+    totalCount: items.length,
+    newCount: count('NEW'),
+    duplicateCount: count('DUPLICATE'),
+    invalidCount: count('INVALID'),
+    items,
   };
 }
 
@@ -168,13 +259,64 @@ export async function importAlertRulesTransfer(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule[]> {
   if (!isMockMode()) return opsApi.importAlertRulesTransfer(data, domain);
-  const startId = Date.now();
+  const startId = nextMockAlertRuleId(domain);
   const imported = data.rules.map((rule, index) => ({
     ...copyAlertRule(rule as AlertRule),
     id: startId + index,
   }));
   alertRulesState[domain].push(...imported);
   return imported.map(copyAlertRule);
+}
+
+export async function previewAlertRulesImport(
+  data: AlertRuleTransfer,
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRuleImportPreview> {
+  if (!isMockMode()) return opsApi.previewAlertRulesImport(data, domain);
+  return mockAlertRuleImportPreview(data, domain);
+}
+
+export async function applyAlertRulesImport(
+  transfer: AlertRuleTransfer,
+  strategy: AlertRuleImportConflictStrategy,
+  domain: AlertRuleDomain = 'CLUSTER',
+): Promise<AlertRuleImportResult> {
+  if (!isMockMode()) return opsApi.applyAlertRulesImport(transfer, strategy, domain);
+  const preview = mockAlertRuleImportPreview(transfer, domain);
+  if (preview.invalidCount > 0) throw new Error('Alert rule import contains invalid rows');
+  if (strategy === 'FAIL' && preview.duplicateCount > 0) {
+    throw new Error('Alert rule import contains duplicate evaluation conditions');
+  }
+
+  const changedRules: AlertRule[] = [];
+  let createdCount = 0;
+  let replacedCount = 0;
+  let skippedCount = 0;
+  let nextId = nextMockAlertRuleId(domain);
+  for (const item of preview.items) {
+    const imported = transfer.rules[item.rowNumber - 1] as AlertRule;
+    if (item.status === 'NEW') {
+      const created = { ...copyAlertRule(imported), id: nextId++, lastTriggered: null };
+      alertRulesState[domain].push(created);
+      changedRules.push(copyAlertRule(created));
+      createdCount += 1;
+    } else if (strategy === 'SKIP') {
+      skippedCount += 1;
+    } else {
+      const existingIndex = alertRulesState[domain].findIndex(
+        (rule) => rule.id === item.existingRuleId,
+      );
+      const replacement = {
+        ...copyAlertRule(imported),
+        id: item.existingRuleId ?? alertRulesState[domain][existingIndex].id,
+        lastTriggered: null,
+      };
+      alertRulesState[domain][existingIndex] = replacement;
+      changedRules.push(copyAlertRule(replacement));
+      replacedCount += 1;
+    }
+  }
+  return { strategy, createdCount, replacedCount, skippedCount, changedRules };
 }
 
 export async function listNativeAlertMetrics(
@@ -233,7 +375,7 @@ export async function createAlertRule(
 ): Promise<AlertRule> {
   if (isMockMode()) {
     const rule: AlertRule = {
-      id: Date.now(),
+      id: nextMockAlertRuleId(domain),
       name: '',
       metric: '',
       operator: '>',

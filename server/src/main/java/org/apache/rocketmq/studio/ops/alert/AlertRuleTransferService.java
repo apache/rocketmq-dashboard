@@ -6,12 +6,20 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +28,7 @@ public class AlertRuleTransferService {
 
     private final AlertService alertService;
     private final NativeAlertMetricCatalogService metricCatalogService;
+    private final Validator validator;
 
     public AlertRuleTransferDTO exportRules(AlertDomain domain) {
         AlertRuleTransferDTO transfer = new AlertRuleTransferDTO();
@@ -29,20 +38,120 @@ public class AlertRuleTransferService {
         return transfer;
     }
 
+    public AlertRuleImportPreviewVO previewRules(AlertDomain domain, AlertRuleTransferDTO transfer) {
+        return buildPlan(domain, transfer).preview();
+    }
+
+    @Transactional
+    public AlertRuleImportResultVO applyRules(AlertDomain domain, AlertRuleImportApplyDTO request) {
+        if (request == null || request.getTransfer() == null) {
+            throw new BusinessException(400, "Alert rule import request is required");
+        }
+        if (request.getStrategy() == null) {
+            throw new BusinessException(400, "Alert rule import conflict strategy is required");
+        }
+        ImportPlan plan = buildPlan(domain, request.getTransfer());
+        if (plan.invalidCount() > 0) {
+            throw new BusinessException(400,
+                    "Alert rule import contains invalid rows; preview and correct the document before applying");
+        }
+        if (request.getStrategy() == AlertRuleImportConflictStrategy.FAIL && plan.duplicateCount() > 0) {
+            throw new BusinessException(409,
+                    "Alert rule import contains duplicate evaluation conditions");
+        }
+
+        List<AlertRuleVO> changed = new ArrayList<>();
+        int created = 0;
+        int replaced = 0;
+        int skipped = 0;
+        for (ImportPlanItem item : plan.items()) {
+            if (item.status() == AlertRuleImportPreviewItemVO.Status.NEW) {
+                changed.add(alertService.createRule(domain, item.candidate()));
+                created++;
+                continue;
+            }
+            if (request.getStrategy() == AlertRuleImportConflictStrategy.SKIP) {
+                skipped++;
+                continue;
+            }
+            AlertRuleVO replacement = item.candidate();
+            replacement.setId(item.existing().getId());
+            changed.add(alertService.updateRule(domain, replacement));
+            replaced++;
+        }
+        return new AlertRuleImportResultVO(request.getStrategy(), created, replaced, skipped,
+                List.copyOf(changed));
+    }
+
     @Transactional
     public List<AlertRuleVO> importRules(AlertDomain domain, AlertRuleTransferDTO transfer) {
+        AlertRuleImportApplyDTO request = new AlertRuleImportApplyDTO();
+        request.setTransfer(transfer);
+        request.setStrategy(AlertRuleImportConflictStrategy.FAIL);
+        return applyRules(domain, request).changedRules();
+    }
+
+    private ImportPlan buildPlan(AlertDomain domain, AlertRuleTransferDTO transfer) {
         validateEnvelope(domain, transfer);
-        List<AlertRuleVO> candidates = transfer.getRules().stream().map(request -> {
-            AlertRuleVO candidate = request.toAlertRuleVO();
+        Map<String, AlertRuleVO> existingByFingerprint = new LinkedHashMap<>();
+        List<AlertRuleVO> existingRules = alertService.listRules(domain);
+        if (existingRules != null) {
+            for (AlertRuleVO existing : existingRules) {
+                existingByFingerprint.putIfAbsent(AlertRuleSemanticFingerprint.of(existing), existing);
+            }
+        }
+
+        Map<String, Integer> importedFingerprintRows = new HashMap<>();
+        List<ImportPlanItem> items = new ArrayList<>();
+        for (int index = 0; index < transfer.getRules().size(); index++) {
+            int rowNumber = index + 1;
+            AlertRuleRequestDTO rule = transfer.getRules().get(index);
+            String validationError = validateRequest(rule);
+            if (validationError != null) {
+                items.add(ImportPlanItem.invalid(rowNumber, rule, validationError));
+                continue;
+            }
+
+            AlertRuleVO candidate = rule.toAlertRuleVO();
             candidate.setId(null);
             candidate.setDomain(domain);
-            if (candidate.getMetric() != null) {
-                candidate.setMetric(candidate.getMetric().trim());
+            candidate.setName(candidate.getName().trim());
+            try {
+                NativeAlertRulePolicy.validate(candidate);
+                metricCatalogService.validate(candidate);
+            } catch (BusinessException error) {
+                items.add(ImportPlanItem.invalid(rowNumber, rule, error.getMessage()));
+                continue;
             }
-            metricCatalogService.validate(candidate);
-            return candidate;
-        }).toList();
-        return candidates.stream().map(candidate -> alertService.createRule(domain, candidate)).toList();
+
+            String fingerprint = AlertRuleSemanticFingerprint.of(candidate);
+            Integer firstRow = importedFingerprintRows.putIfAbsent(fingerprint, rowNumber);
+            if (firstRow != null) {
+                items.add(ImportPlanItem.invalid(rowNumber, rule,
+                        "Duplicate evaluation conditions within import document; matches row " + firstRow));
+                continue;
+            }
+            AlertRuleVO existing = existingByFingerprint.get(fingerprint);
+            items.add(existing == null
+                    ? ImportPlanItem.fresh(rowNumber, candidate)
+                    : ImportPlanItem.duplicate(rowNumber, candidate, existing));
+        }
+        return new ImportPlan(List.copyOf(items));
+    }
+
+    private String validateRequest(AlertRuleRequestDTO request) {
+        if (request == null) {
+            return "rule: must not be null";
+        }
+        Set<ConstraintViolation<AlertRuleRequestDTO>> violations = validator.validate(request);
+        if (violations.isEmpty()) {
+            return null;
+        }
+        return violations.stream()
+                .sorted(Comparator.comparing(violation -> violation.getPropertyPath().toString()))
+                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
+                .reduce((left, right) -> left + "; " + right)
+                .orElse("Invalid alert rule");
     }
 
     private static void validateEnvelope(AlertDomain domain, AlertRuleTransferDTO transfer) {
@@ -85,5 +194,57 @@ public class AlertRuleTransferService {
         request.setReminderInterval(rule.getReminderInterval());
         request.setNotificationTemplate(rule.getNotificationTemplate());
         return request;
+    }
+
+    private record ImportPlan(List<ImportPlanItem> items) {
+        private int count(AlertRuleImportPreviewItemVO.Status status) {
+            return Math.toIntExact(items.stream().filter(item -> item.status() == status).count());
+        }
+
+        private int invalidCount() {
+            return count(AlertRuleImportPreviewItemVO.Status.INVALID);
+        }
+
+        private int duplicateCount() {
+            return count(AlertRuleImportPreviewItemVO.Status.DUPLICATE);
+        }
+
+        private AlertRuleImportPreviewVO preview() {
+            return new AlertRuleImportPreviewVO(items.size(),
+                    count(AlertRuleImportPreviewItemVO.Status.NEW), duplicateCount(), invalidCount(),
+                    items.stream().map(ImportPlanItem::preview).toList());
+        }
+    }
+
+    private record ImportPlanItem(
+            int rowNumber,
+            AlertRuleImportPreviewItemVO.Status status,
+            AlertRuleVO candidate,
+            AlertRuleVO existing,
+            String error) {
+
+        private static ImportPlanItem fresh(int rowNumber, AlertRuleVO candidate) {
+            return new ImportPlanItem(rowNumber, AlertRuleImportPreviewItemVO.Status.NEW,
+                    candidate, null, null);
+        }
+
+        private static ImportPlanItem duplicate(int rowNumber, AlertRuleVO candidate, AlertRuleVO existing) {
+            return new ImportPlanItem(rowNumber, AlertRuleImportPreviewItemVO.Status.DUPLICATE,
+                    candidate, existing, null);
+        }
+
+        private static ImportPlanItem invalid(int rowNumber, AlertRuleRequestDTO request, String error) {
+            AlertRuleVO candidate = request == null ? null : request.toAlertRuleVO();
+            return new ImportPlanItem(rowNumber, AlertRuleImportPreviewItemVO.Status.INVALID,
+                    candidate, null, error);
+        }
+
+        private AlertRuleImportPreviewItemVO preview() {
+            return new AlertRuleImportPreviewItemVO(rowNumber, status,
+                    candidate == null ? null : candidate.getName(),
+                    candidate == null ? null : candidate.getMetric(),
+                    existing == null ? null : existing.getId(),
+                    existing == null ? null : existing.getName(), error);
+        }
     }
 }

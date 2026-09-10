@@ -125,6 +125,32 @@ class ClusterAlertRuleControllerTest {
     }
 
     @Test
+    void previewsAndAppliesClusterRuleTransferTest() throws Exception {
+        when(transferService.previewRules(eq(AlertDomain.CLUSTER), any(AlertRuleTransferDTO.class)))
+                .thenReturn(new AlertRuleImportPreviewVO(1, 0, 1, 0, List.of()));
+        when(transferService.applyRules(eq(AlertDomain.CLUSTER), any(AlertRuleImportApplyDTO.class)))
+                .thenReturn(new AlertRuleImportResultVO(AlertRuleImportConflictStrategy.REPLACE,
+                        0, 1, 0, List.of()));
+        String transfer = "{\"version\":1,\"domain\":\"CLUSTER\",\"rules\":[{\"name\":\"Broker\"}]}";
+
+        mockMvc.perform(post("/api/cluster-alert-rules/import/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(transfer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.duplicateCount").value(1));
+
+        mockMvc.perform(post("/api/cluster-alert-rules/import/apply")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"strategy\":\"REPLACE\",\"transfer\":" + transfer + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.strategy").value("REPLACE"))
+                .andExpect(jsonPath("$.data.replacedCount").value(1));
+
+        verify(transferService).previewRules(eq(AlertDomain.CLUSTER), any(AlertRuleTransferDTO.class));
+        verify(transferService).applyRules(eq(AlertDomain.CLUSTER), any(AlertRuleImportApplyDTO.class));
+    }
+
+    @Test
     void createRuleShouldForceClusterDomainTest() throws Exception {
         AlertRuleVO created = AlertRuleVO.builder().id(7L).name("Broker unavailable")
                 .domain(AlertDomain.CLUSTER).build();
