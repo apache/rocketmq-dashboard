@@ -95,4 +95,33 @@ class ConsumerDiagnosticsServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("clientId is required");
     }
+
+    @Test
+    void getConsumerStackShouldRejectNullGroupNameAndClientId() {
+        assertThatThrownBy(() -> diagnosticsService.getConsumerStack("instance-a", null, "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("groupName is required");
+        assertThatThrownBy(() -> diagnosticsService.getConsumerStack("instance-a", "cg-orders", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("clientId is required");
+    }
+
+    @Test
+    void blankInstanceIdShouldBeNormalizedToNullBeforeDelegating() {
+        ConsumerStackTraceVO stackTrace = ConsumerStackTraceVO.builder()
+                .groupName("cg-orders")
+                .clientId("client-1")
+                .capturedAt(LocalDateTime.now())
+                .threadCount(0)
+                .threads(List.of())
+                .build();
+        when(diagnosticsProvider.getConsumerStack(null, "cg-orders", "client-1"))
+                .thenReturn(stackTrace);
+
+        ConsumerStackTraceVO result = diagnosticsService.getConsumerStack(
+                "  ", "cg-orders", "client-1");
+
+        assertThat(result).isSameAs(stackTrace);
+        verify(diagnosticsProvider).getConsumerStack(null, "cg-orders", "client-1");
+    }
 }
