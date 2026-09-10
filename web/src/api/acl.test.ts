@@ -27,6 +27,8 @@ import {
   examineBrokerClusterAclConfig,
   getAclUserCredentials,
   listAclRules,
+  listAclUsers,
+  pageAclUsers,
   updateAclRule,
   updateAclUser,
 } from './acl';
@@ -214,5 +216,35 @@ describe('ACL API contract', () => {
     });
 
     await expect(createAndUpdatePlainAccessConfig(payload)).resolves.toEqual(payload);
+  });
+
+  it('lists ACL users with the supplied keyword filters', async () => {
+    const user = {
+      id: 1,
+      username: 'user-admin',
+      accessKey: 'LTAI****admin',
+      secretKey: 'HqWz****xK8P',
+      admin: true,
+      clusters: ['rmq-prod'],
+      gmtCreate: '2025-01-10T08:00:00Z',
+    };
+    mock.onGet('/acl/users').reply((config) => {
+      expect(config.params).toEqual({ keyword: 'admin' });
+      return [200, { code: 200, data: [user] }];
+    });
+
+    await expect(listAclUsers({ keyword: 'admin' })).resolves.toEqual([user]);
+  });
+
+  it('pages ACL users with page size and keyword', async () => {
+    const pageData = { items: [], total: 0, page: 2, size: 50 };
+    mock.onGet('/acl/users/page').reply((config) => {
+      expect(config.params).toEqual({ keyword: 'admin', page: 2, pageSize: 50 });
+      return [200, { code: 200, data: pageData }];
+    });
+
+    await expect(pageAclUsers({ keyword: 'admin', page: 2, pageSize: 50 })).resolves.toEqual(
+      pageData,
+    );
   });
 });
