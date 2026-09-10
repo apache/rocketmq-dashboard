@@ -143,4 +143,29 @@ class MessageControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.consumeResult").value("CR_SUCCESS"));
     }
+    @Test
+    void queueOffsetsShouldPassInstanceAndTopic() throws Exception {
+        mockMvc.perform(get("/api/messages/queues")
+                        .param("instanceId", "inst-1")
+                        .param("topic", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(messageService).getQueueOffsets("inst-1", "orders");
+    }
+
+    @Test
+    void queueMessageShouldPassBrokerQueueAndOffset() throws Exception {
+        mockMvc.perform(get("/api/messages/queue-message")
+                        .param("instanceId", "inst-1")
+                        .param("topic", "orders")
+                        .param("brokerName", "broker-a")
+                        .param("queueId", "3")
+                        .param("offset", "123456789012345"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(messageService).pullMessageAtOffset("inst-1", "orders", "broker-a", 3, 123456789012345L);
+    }
+
 }
