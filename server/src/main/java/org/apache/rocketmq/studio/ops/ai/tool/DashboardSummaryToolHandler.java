@@ -43,7 +43,13 @@ public class DashboardSummaryToolHandler implements ToolHandler {
 
     @Override
     public Object execute(Map<String, Object> input) {
+        if (input == null) {
+            throw new BusinessException(400, "tool input is required");
+        }
         String clusterId = (String) input.get("cluster");
+        if (clusterId == null || clusterId.isBlank()) {
+            throw new BusinessException(400, "cluster is required");
+        }
         DashboardDataVO dashboard = dashboardService.getDashboard();
         ClusterOverviewVO cluster = clusters(dashboard).stream()
                 .filter(item -> clusterId.equals(item.getId()))
