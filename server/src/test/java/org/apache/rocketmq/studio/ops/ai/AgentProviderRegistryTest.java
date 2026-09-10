@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -40,5 +41,50 @@ class AgentProviderRegistryTest {
         } finally {
             Locale.setDefault(original);
         }
+    }
+
+    @Test
+    void forEngineShouldTrimAndIgnoreCaseAcrossProviders() {
+        AgentProvider claude = mock(AgentProvider.class);
+        when(claude.engine()).thenReturn("claude-code");
+        AgentProvider qoder = mock(AgentProvider.class);
+        when(qoder.engine()).thenReturn("qoder");
+        AgentProviderRegistry registry = new AgentProviderRegistry(List.of(claude, qoder));
+
+        assertThat(registry.forEngine(" QODER ")).isSameAs(qoder);
+        assertThat(registry.forEngine("claude-code")).isSameAs(claude);
+    }
+
+    @Test
+    void forEngineShouldRejectUnsupportedEngine() {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(provider.engine()).thenReturn("cli");
+        AgentProviderRegistry registry = new AgentProviderRegistry(List.of(provider));
+
+        assertThatThrownBy(() -> registry.forEngine("unknown"))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(error -> assertThat(((LlmGatewayException) error).getStatusCode()).isEqualTo(400));
+    }
+
+    @Test
+    void forEngineShouldRejectNullEngine() {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(provider.engine()).thenReturn("cli");
+        AgentProviderRegistry registry = new AgentProviderRegistry(List.of(provider));
+
+        assertThatThrownBy(() -> registry.forEngine(null))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(error -> assertThat(((LlmGatewayException) error).getStatusCode()).isEqualTo(400));
+    }
+
+    @Test
+    void duplicateEngineRegistrationsShouldFailFast() {
+        AgentProvider first = mock(AgentProvider.class);
+        when(first.engine()).thenReturn("cli");
+        AgentProvider second = mock(AgentProvider.class);
+        when(second.engine()).thenReturn("cli");
+
+        assertThatThrownBy(() -> new AgentProviderRegistry(List.of(first, second)))
+                .isInstanceOf(IllegalStateException.class);
     }
 }
