@@ -6,6 +6,8 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
+
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
@@ -106,5 +108,25 @@ class RocketMQBrokerConfigServiceTest {
 
         assertThat(brokerConfigService.getBrokerConfig("broker-b:10911").getFlushDiskType())
                 .isEqualTo(FlushDiskType.ASYNC_FLUSH);
+    }
+
+    @Test
+    void configParsingFallsBackOnMissingAndMalformedNumericValues() throws Exception {
+        Properties malformed = new Properties();
+        malformed.setProperty("defaultTopicQueueNums", "abc");
+        when(adminExt.getBrokerConfig("broker-a:10911")).thenReturn(malformed);
+
+        ClusterConfigVO vo = brokerConfigService.getBrokerConfig("broker-a:10911");
+        assertThat(vo.getWriteQueueNums()).isEqualTo(8);
+        assertThat(vo.getReadQueueNums()).isEqualTo(8);
+        assertThat(vo.getMaxMessageSize()).isEqualTo(4194304);
+
+        Properties valid = new Properties();
+        valid.setProperty("defaultTopicQueueNums", "16");
+        valid.setProperty("maxMessageSize", "5242880");
+        when(adminExt.getBrokerConfig("broker-b:10911")).thenReturn(valid);
+        ClusterConfigVO parsed = brokerConfigService.getBrokerConfig("broker-b:10911");
+        assertThat(parsed.getWriteQueueNums()).isEqualTo(16);
+        assertThat(parsed.getMaxMessageSize()).isEqualTo(5242880);
     }
 }
