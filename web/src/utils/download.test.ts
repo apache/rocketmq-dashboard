@@ -16,7 +16,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildCsv, downloadBlob } from './download';
+import { buildCsv, downloadBlob, downloadCsv, escapeCsvCell } from './download';
 describe('buildCsv', () => {
   it('escapes quotes, empty values, and spreadsheet formulas', () => {
     const csv = buildCsv(
@@ -39,6 +39,64 @@ describe('buildCsv', () => {
         '"\'\'=literal","\'\'\'+two-apostrophes"',
       ].join('\n'),
     );
+  });
+
+  it('emits only the header row for an empty table', () => {
+    expect(buildCsv([{ header: 'Cluster', value: () => '' }], [])).toBe('"Cluster"');
+  });
+
+  it('stringifies typed cell values and treats null as empty', () => {
+    const csv = buildCsv(
+      [
+        { header: 'Count', value: (row: { count: unknown }) => row.count },
+        { header: 'Enabled', value: (row: { enabled: unknown }) => row.enabled },
+      ],
+      [
+        { count: 5, enabled: false },
+        { count: null, enabled: true },
+      ],
+    );
+
+    expect(csv).toBe('"Count","Enabled"\n"5","false"\n"","true"');
+  });
+
+  it('produces an empty document when neither columns nor rows exist', () => {
+    expect(buildCsv([], [])).toBe('');
+  });
+});
+
+describe('escapeCsvCell', () => {
+  it('wraps every value in quotes and doubles embedded quotes', () => {
+    expect(escapeCsvCell('plain')).toBe('"plain"');
+    expect(escapeCsvCell('a"b')).toBe('"a""b"');
+    expect(escapeCsvCell('  spaced  ')).toBe('"  spaced  "');
+  });
+
+  it('treats null and undefined as empty quoted cells', () => {
+    expect(escapeCsvCell(null)).toBe('""');
+    expect(escapeCsvCell(undefined)).toBe('""');
+  });
+
+  it('protects formulas introduced by = + - @ and lone apostrophes', () => {
+    expect(escapeCsvCell('=SUM(A1)')).toBe('"\'=SUM(A1)"');
+    expect(escapeCsvCell('+plus')).toBe('"\'+plus"');
+    expect(escapeCsvCell('-dash')).toBe('"\'-dash"');
+    expect(escapeCsvCell('@at')).toBe('"\'@at"');
+    expect(escapeCsvCell("'=lit")).toBe('"\'\'=lit"');
+    expect(escapeCsvCell('==double')).toBe('"\'==double"');
+    expect(escapeCsvCell('=')).toBe('"\'="');
+  });
+
+  it('keeps ordinary text with an apostrophe in the middle untouched', () => {
+    expect(escapeCsvCell("don't")).toBe('"don\'t"');
+    expect(escapeCsvCell("rocketmq's")).toBe('"rocketmq\'s"');
+  });
+
+  it('stringifies numbers and booleans', () => {
+    expect(escapeCsvCell(123)).toBe('"123"');
+    expect(escapeCsvCell(0)).toBe('"0"');
+    expect(escapeCsvCell(true)).toBe('"true"');
+    expect(escapeCsvCell(false)).toBe('"false"');
   });
 });
 
@@ -105,5 +163,42 @@ describe('downloadBlob', () => {
     vi.runAllTimers();
 
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:failed-download');
+  });
+});
+
+describe('downloadCsv', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  it('wraps the csv text in a text/csv blob and starts the download', async () => {
+    vi.useFakeTimers();
+    let capturedBlob: Blob | null = null;
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: vi.fn((blob: Blob) => {
+        capturedBlob = blob;
+        return 'blob:csv-export';
+      }),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      expect(this.download).toBe('instances.csv');
+    });
+
+    downloadCsv('instances.csv', '"id"\n"1"');
+
+    expect(capturedBlob).not.toBeNull();
+    expect(capturedBlob?.type).toBe('text/csv;charset=utf-8');
+    await expect(capturedBlob?.text()).resolves.toBe('"id"\n"1"');
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    vi.runAllTimers();
   });
 });
