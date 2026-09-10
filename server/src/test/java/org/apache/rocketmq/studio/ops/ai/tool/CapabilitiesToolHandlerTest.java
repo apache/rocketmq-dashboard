@@ -27,6 +27,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CapabilitiesToolHandlerTest {
@@ -56,5 +57,63 @@ class CapabilitiesToolHandlerTest {
         assertThat(result.get("type")).isEqualTo("V4_DIRECT");
         assertThat(result.get("version")).isEqualTo("");
         assertThat(result.get("capabilities")).isEqualTo(List.of("REMOTING"));
+    }
+
+    @Test
+    void populatedClusterIsProjectedVerbatim() {
+        ClusterVO cluster = ClusterVO.builder()
+                .name("production-cluster")
+                .type(ClusterType.V5_PROXY_CLUSTER)
+                .status(ClusterStatus.healthy)
+                .version("5.1.0")
+                .build();
+        cluster.setId("production-cluster");
+
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.getCluster("production-cluster")).thenReturn(cluster);
+        CapabilityResolver capabilityResolver = mock(CapabilityResolver.class);
+        when(capabilityResolver.resolve(cluster)).thenReturn(List.of("REMOTING", "gRPC"));
+
+        Object output = new CapabilitiesToolHandler(clusterService, capabilityResolver)
+                .execute(Map.of("cluster", "production-cluster"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) output;
+        assertThat(result.get("cluster")).isEqualTo("production-cluster");
+        assertThat(result.get("type")).isEqualTo("V5_PROXY_CLUSTER");
+        assertThat(result.get("version")).isEqualTo("5.1.0");
+        assertThat(result.get("capabilities")).isEqualTo(List.of("REMOTING", "gRPC"));
+        verify(capabilityResolver).resolve(cluster);
+    }
+
+    @Test
+    void nullClusterTypeIsEmittedAsBlankString() {
+        ClusterVO cluster = ClusterVO.builder()
+                .name("type-less-cluster")
+                .status(ClusterStatus.healthy)
+                .build();
+        cluster.setId("type-less-cluster");
+
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.getCluster("type-less-cluster")).thenReturn(cluster);
+        CapabilityResolver capabilityResolver = mock(CapabilityResolver.class);
+        when(capabilityResolver.resolve(cluster)).thenReturn(List.of());
+
+        Object output = new CapabilitiesToolHandler(clusterService, capabilityResolver)
+                .execute(Map.of("cluster", "type-less-cluster"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) output;
+        assertThat(result.get("type")).isEqualTo("");
+        assertThat(result.get("capabilities")).isEqualTo(List.of());
+    }
+
+    @Test
+    void handlerNameShouldBeStable() {
+        ClusterService clusterService = mock(ClusterService.class);
+        CapabilityResolver capabilityResolver = mock(CapabilityResolver.class);
+
+        assertThat(new CapabilitiesToolHandler(clusterService, capabilityResolver).name())
+                .isEqualTo("rmq.capabilities");
     }
 }
