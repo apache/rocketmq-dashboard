@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import java.net.InetAddress;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class UrlHostGuardTest {
 
@@ -62,5 +64,43 @@ class UrlHostGuardTest {
     @Test
     void isAllowedHostShouldRejectIpv6UlaLiteralEvenWhenLoopbackIsAllowed() {
         assertThat(UrlHostGuard.isAllowedHost("fd00:ec2::254", true)).isFalse();
+    }
+
+    @Test
+    void checkShouldRejectNullOrBlankUrl() {
+        assertThatThrownBy(() -> UrlHostGuard.check(null, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("URL is required");
+        assertThatThrownBy(() -> UrlHostGuard.check("   ", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("URL is required");
+    }
+
+    @Test
+    void checkShouldRejectNonHttpScheme() {
+        assertThatThrownBy(() -> UrlHostGuard.check("ftp://8.8.8.8/file", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("URL must start with http:// or https://");
+    }
+
+    @Test
+    void checkShouldRejectHostlessUrl() {
+        assertThatThrownBy(() -> UrlHostGuard.check("http:///no-host", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("URL must include a host");
+    }
+
+    @Test
+    void checkShouldAcceptPublicUrlAndTrimTrailingSlashes() {
+        assertThatCode(() -> UrlHostGuard.check(" https://8.8.8.8/// ", false))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void isAllowedHostShouldRejectLoopbackUnlessExplicitlyAllowed() {
+        assertThat(UrlHostGuard.isAllowedHost("127.0.0.1", false)).isFalse();
+        assertThat(UrlHostGuard.isAllowedHost("localhost", false)).isFalse();
+        assertThat(UrlHostGuard.isAllowedHost("127.0.0.1", true)).isTrue();
+        assertThat(UrlHostGuard.isAllowedHost("localhost", true)).isTrue();
     }
 }
