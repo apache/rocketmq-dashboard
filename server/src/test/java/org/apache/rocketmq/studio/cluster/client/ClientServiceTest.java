@@ -93,4 +93,29 @@ class ClientServiceTest {
 
         verifyNoInteractions(clientProvider);
     }
+
+    @Test
+    void listConnectionsShouldRejectNullInstanceId() {
+        assertThatThrownBy(() -> clientService.listConnections(null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("instanceId is required");
+
+        verifyNoInteractions(clientProvider);
+    }
+
+    @Test
+    void listConnectionsAtShouldReturnProviderResultsUnchanged() {
+        ClientConnectionVO connection = ClientConnectionVO.builder()
+                .clientId("client-9")
+                .clusterName("production-cluster")
+                .build();
+        when(clientProvider.findConnectionsAt("10.0.1.31:9876", null, "Consumer"))
+                .thenReturn(List.of(connection));
+
+        List<ClientConnectionVO> result =
+                clientService.listConnectionsAt(" 10.0.1.31:9876 ", " ", " Consumer ");
+
+        assertThat(result).containsExactly(connection);
+        verify(clientProvider).findConnectionsAt("10.0.1.31:9876", null, "Consumer");
+    }
 }
