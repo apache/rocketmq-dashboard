@@ -88,6 +88,19 @@ class ClientControllerTest {
     }
 
     @Test
+    void listConnectionsShouldRejectAMissingNamesrvAddr() throws Exception {
+        mockMvc.perform(get("/api/clients"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        org.mockito.Mockito.verify(clientService,
+                org.mockito.Mockito.never()).listConnectionsAt(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void listConnectionsShouldPassClusterAndTypeFilters() throws Exception {
         when(clientService.listConnectionsAt("10.0.1.31:9876", "production-cluster", "Consumer")).thenReturn(List.of());
 
