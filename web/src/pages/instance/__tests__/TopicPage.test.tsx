@@ -961,4 +961,36 @@ describe('TopicPage', () => {
     const groupLink = await screen.findByText('cg-orders');
     expect(groupLink.closest('a')).not.toBeNull();
   });
+
+  it('copies the row topic config as pretty-printed JSON', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const expected = buildTopics(1)[0];
+    mockTopicsList([expected]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /复制 JSON/ }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith(JSON.stringify(expected, null, 2));
+  });
+
+  it('falls back to a hidden textarea when the clipboard API is unavailable', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+    mockTopicsList([buildTopics(1)[0]]);
+    try {
+      renderWithProviders();
+
+      await user.click(await screen.findByRole('button', { name: /复制 JSON/ }));
+
+      await waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'));
+      expect(document.querySelector('textarea')).toBeNull();
+    } finally {
+      delete (document as { execCommand?: unknown }).execCommand;
+    }
+  });
 });

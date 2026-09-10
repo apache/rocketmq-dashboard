@@ -57,6 +57,7 @@ import {
   ExclamationCircleOutlined,
   WarningOutlined,
   DiffOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
@@ -86,6 +87,7 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
+import { copyTextToClipboard } from '../../utils/clipboard';
 import { formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -741,7 +743,7 @@ const TopicPage = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 280,
       render: (_: unknown, record: Topic) => (
         <Flex gap={6} onClick={(e) => e.stopPropagation()}>
           <Button
@@ -751,6 +753,18 @@ const TopicPage = () => {
             onClick={() => handleAction('detail', record)}
           >
             详情
+          </Button>
+          <Button
+            size="small"
+            icon={<CopyOutlined />}
+            onClick={() => {
+              void copyTextToClipboard(JSON.stringify(record, null, 2)).then(
+                () => message.success(t('common.copied')),
+                () => message.error(t('common.copyFailed')),
+              );
+            }}
+          >
+            {t('topic.copyJson')}
           </Button>
           {!isCloudInstance && (
             <Button
