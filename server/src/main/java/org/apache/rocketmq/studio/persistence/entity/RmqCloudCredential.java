@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 
@@ -34,8 +35,10 @@ public class RmqCloudCredential {
 
     private String vendor;
 
+    @ToString.Exclude
     private String accessKey;
 
+    @ToString.Exclude
     private String secretKey;
 
     private String remark;
