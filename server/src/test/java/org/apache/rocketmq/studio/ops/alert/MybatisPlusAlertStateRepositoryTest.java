@@ -153,6 +153,28 @@ class MybatisPlusAlertStateRepositoryTest {
         verify(alertMapper, never()).selectOne(any());
     }
 
+    @Test
+    void deleteByRuleIdShouldDeleteMatchingStatesAndIgnoreNull() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper,
+                mock(RmqSystemAlertMapper.class));
+
+        repository.deleteByRuleId(4L);
+        repository.deleteByRuleId(null);
+
+        verify(mapper, times(1)).delete(any());
+    }
+
+    @Test
+    void acknowledgeWithNullFiredAtIsIgnored() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper,
+                mock(RmqSystemAlertMapper.class));
+
+        assertThat(repository.acknowledge(new AlertStateKey(4L, "fingerprint"), null)).isFalse();
+        verify(mapper, never()).acknowledgeFiring(any(), any(), any(), any());
+    }
+
     private static RmqAlertState activeState(Long ruleId, String fingerprint, AlertStateStatus status) {
         RmqAlertState state = new RmqAlertState();
         state.setRuleId(ruleId);
