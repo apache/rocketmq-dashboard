@@ -119,4 +119,22 @@ class LlmControllerTest {
                 .andExpect(jsonPath("$.data.data[0].id").value("gpt-4o"))
                 .andExpect(jsonPath("$.data.data[1].name").value("GPT-4"));
     }
+
+    @Test
+    void saveConfigWithoutBodyIsRejected() throws Exception {
+        mockMvc.perform(post("/api/llm/config")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    void listModelsEmptyReturnsEmptyData() throws Exception {
+        when(llmConfigService.listModels()).thenReturn(new LlmModelsResultVO(0, List.of()));
+
+        mockMvc.perform(get("/api/llm/models"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value(0))
+                .andExpect(jsonPath("$.data.data").isEmpty());
+    }
 }
