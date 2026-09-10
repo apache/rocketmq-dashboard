@@ -46,4 +46,38 @@ class PasswordHasherTest {
                 "pbkdf2$210000$" + parts[2] + "$AA==")).isFalse();
     }
 
+    @Test
+    void matchesShouldRejectNullArguments() {
+        PasswordHasher hasher = new PasswordHasher();
+        String validHash = hasher.hash("a-long-enough-password");
+
+        assertThat(hasher.matches(null, validHash)).isFalse();
+        assertThat(hasher.matches("a-long-enough-password", null)).isFalse();
+    }
+
+    @Test
+    void matchesShouldRejectMalformedHashFormat() {
+        PasswordHasher hasher = new PasswordHasher();
+        String validHash = hasher.hash("a-long-enough-password");
+        String[] parts = validHash.split("\\$", -1);
+
+        assertThat(hasher.matches("a-long-enough-password", "not-a-hash")).isFalse();
+        assertThat(hasher.matches("a-long-enough-password",
+                "sha256$210000$" + parts[2] + "$" + parts[3])).isFalse();
+        assertThat(hasher.matches("a-long-enough-password",
+                "pbkdf2$not-a-number$" + parts[2] + "$" + parts[3])).isFalse();
+    }
+
+    @Test
+    void matchesShouldRejectIterationsOutsideAllowedBounds() {
+        PasswordHasher hasher = new PasswordHasher();
+        String validHash = hasher.hash("a-long-enough-password");
+        String[] parts = validHash.split("\\$", -1);
+
+        assertThat(hasher.matches("a-long-enough-password",
+                "pbkdf2$99999$" + parts[2] + "$" + parts[3])).isFalse();
+        assertThat(hasher.matches("a-long-enough-password",
+                "pbkdf2$2000000$" + parts[2] + "$" + parts[3])).isFalse();
+    }
+
 }
