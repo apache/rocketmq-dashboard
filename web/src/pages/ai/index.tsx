@@ -45,6 +45,7 @@ import {
   ArrowUp,
   CaretDown,
   ClockCounterClockwise,
+  Copy,
   SlidersHorizontal,
   Sparkle,
   Stop,
@@ -110,6 +111,27 @@ interface Message {
   pending?: boolean;
   actions?: { label: string; type?: 'primary' | 'default' }[];
 }
+
+/* ─── Clipboard helpers ─── */
+
+const writeClipboardText = async (text: string): Promise<void> => {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    if (!copied) {
+      throw new Error('Clipboard copy is not supported');
+    }
+  }
+};
 
 /* ─── Mock Data ─── */
 
@@ -459,6 +481,26 @@ const AiPage = () => {
   );
   const messages = useMemo(() => activeConversation?.messages ?? [], [activeConversation]);
   const legacyMessageTimestamp = activeConversation?.updatedAt || undefined;
+  const latestAssistantMessage = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const item = messages[index];
+      if (item.role === 'ai' && Boolean(item.summary || item.text)) {
+        return item;
+      }
+    }
+    return null;
+  }, [messages]);
+  const latestAnswerText = latestAssistantMessage?.summary || latestAssistantMessage?.text || '';
+
+  const handleCopyLatestAnswer = async () => {
+    if (!latestAnswerText) return;
+    try {
+      await writeClipboardText(latestAnswerText);
+      message.success(t('ai.copyAnswerSuccess'));
+    } catch {
+      message.error(t('ai.copyAnswerFailed'));
+    }
+  };
   const updateMessages = useAiChatHistoryStore((state) => state.setMessages);
   const startConversation = useAiChatHistoryStore((state) => state.startConversation);
   const selectConversation = useAiChatHistoryStore((state) => state.selectConversation);
@@ -1112,6 +1154,18 @@ const AiPage = () => {
                     >
                       <Sparkle size={17} />
                       <span>Prompt 增强</span>
+                    </button>
+                    <button
+                      className="tool-btn"
+                      disabled={!latestAnswerText}
+                      title={t('ai.copyLatestAnswer')}
+                      onClick={() => void handleCopyLatestAnswer()}
+                      style={
+                        latestAnswerText ? undefined : { opacity: 0.5, cursor: 'not-allowed' }
+                      }
+                    >
+                      <Copy size={17} />
+                      <span>{t('ai.copyLatestAnswer')}</span>
                     </button>
                   </div>
                 </div>

@@ -1288,6 +1288,9 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
   'ai.commonCommands': { zh: '常用指令', en: 'Common Commands' },
+  'ai.copyLatestAnswer': { zh: '复制最新回答', en: 'Copy Latest Answer' },
+  'ai.copyAnswerSuccess': { zh: '回答已复制', en: 'Answer copied' },
+  'ai.copyAnswerFailed': { zh: '复制失败', en: 'Copy failed' },
   'ai.mockProviderDisabled': {
     zh: 'Mock 模式已禁用 AI Provider 调用',
     en: 'Mock mode disables AI provider calls',
