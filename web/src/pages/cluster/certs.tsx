@@ -170,7 +170,9 @@ const K8sCertsPage = () => {
       title: '签发者',
       dataIndex: 'issuer',
       key: 'issuer',
-      width: 180,
+      // 唯一可伸展列：余量集中在此，其余列保持声明宽度。选签发者而非集群名，
+      // 是因为它的内容是 CN=...,OU=...,O=... 这种长 DN，真正需要额外宽度。
+      minWidth: 180,
       sorter: (a, b) => (a.issuer ?? '').localeCompare(b.issuer ?? ''),
       render: (issuer: string | null) => issuer || '-',
       ellipsis: true,
@@ -216,7 +218,7 @@ const K8sCertsPage = () => {
           expiring: { color: 'orange', label: '即将过期' },
           expired: { color: 'red', label: '已过期' },
         };
-        const cfg = status ? map[status] ?? { color: 'default', label: status } : null;
+        const cfg = status ? (map[status] ?? { color: 'default', label: status }) : null;
         return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : '-';
       },
     },
@@ -234,10 +236,9 @@ const K8sCertsPage = () => {
           okButtonProps={{ danger: true }}
         >
           <Button
-            type="link"
             size="small"
-            danger
             icon={<DeleteOutlined />}
+            style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             loading={deletingId === cert.id}
           >
             删除
@@ -288,6 +289,7 @@ const K8sCertsPage = () => {
           loading={loading}
           pagination={{ pageSize: 20 }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(certColumns) }}
         />
       </Card>

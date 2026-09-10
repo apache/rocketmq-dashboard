@@ -678,7 +678,9 @@ const TopicPage = () => {
       title: 'Topic 名称',
       dataIndex: 'name',
       key: 'name',
-      width: 220,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 220,
+      ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
         <Text strong style={{ fontSize: 14, display: 'block' }} ellipsis={{ tooltip: name }}>
@@ -690,7 +692,8 @@ const TopicPage = () => {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
-      width: 200,
+      minWidth: 200,
+      ellipsis: true,
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
       render: (remark: string) => (
         <Text
@@ -1076,6 +1079,7 @@ const TopicPage = () => {
           pagination={false}
           size="small"
           loading={detailLoading}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(routeColumns) }}
         />
       </>
@@ -1597,6 +1601,7 @@ const TopicPage = () => {
             },
           }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
           onRow={(record) => ({
             onClick: () => void openDetail(record),

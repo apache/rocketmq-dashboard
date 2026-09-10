@@ -390,7 +390,8 @@ const ClientsPage = () => {
       title: t('clients.clientId'),
       dataIndex: 'clientId',
       key: 'clientId',
-      width: 260,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 260,
       ellipsis: true,
       render: (id?: string | null) => (
         <Text
@@ -862,6 +863,7 @@ const ClientsPage = () => {
           rowKey="id"
           pagination={false}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(resourceColumns) }}
           locale={{ emptyText: t('common.noData') }}
           style={{ marginBottom: 12 }}
@@ -874,6 +876,7 @@ const ClientsPage = () => {
             rowKey="id"
             pagination={false}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(issueColumns) }}
             style={{ marginBottom: 12 }}
           />
@@ -911,6 +914,7 @@ const ClientsPage = () => {
             setCurrentPage(pagination.current ?? 1);
             setPageSize(pagination.pageSize ?? 20);
           }}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns) }}
           pagination={{
             current: clampedCurrentPage,

@@ -718,7 +718,8 @@ const MessagePageContent = ({
       title: 'Topic',
       dataIndex: 'topic',
       key: 'topic',
-      width: 170,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 170,
       ellipsis: true,
       sorter: (a, b) => a.topic.localeCompare(b.topic),
       render: (topic: string) => (
@@ -738,7 +739,7 @@ const MessagePageContent = ({
       title: 'Key',
       dataIndex: 'key',
       key: 'key',
-      width: 120,
+      minWidth: 120,
       ellipsis: true,
       render: (key: string | null) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{key || '-'}</span>
@@ -748,7 +749,7 @@ const MessagePageContent = ({
       title: 'Message ID',
       dataIndex: 'msgId',
       key: 'msgId',
-      width: 260,
+      minWidth: 260,
       render: (id: string) => (
         <Text
           copyable={{ text: id }}
@@ -1205,6 +1206,7 @@ const MessagePageContent = ({
               },
             }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(columns) }}
           />
         </Card>

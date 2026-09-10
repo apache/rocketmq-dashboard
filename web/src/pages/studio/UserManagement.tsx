@@ -484,6 +484,7 @@ const UserManagementPage = () => {
             loading={loading}
             columns={columns}
             dataSource={users}
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(columns) }}
             pagination={{
               current: page,

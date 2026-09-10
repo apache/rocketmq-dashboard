@@ -1299,6 +1299,7 @@ const ClusterPage = () => {
             rowKey="addr"
             pagination={{ pageSize: 20 }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(brokerColumns) }}
           />
         </Card>
@@ -1518,6 +1519,7 @@ const ClusterPage = () => {
             rowKey="id"
             pagination={{ pageSize: 20 }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(registryColumns) }}
           />
         </Card>
@@ -1552,7 +1554,7 @@ const ClusterPage = () => {
         title: t('cluster.brokerClusterName'),
         dataIndex: 'nsClusterName',
         key: 'nsClusterName',
-        width: 160,
+        minWidth: 160,
         sorter: (a, b) => a.nsClusterName.localeCompare(b.nsClusterName),
         render: (name: string) => (
           <Text strong style={{ fontSize: 14 }}>
@@ -1564,7 +1566,8 @@ const ClusterPage = () => {
         title: t('cluster.proxyAddr'),
         dataIndex: 'addr',
         key: 'addr',
-        width: 200,
+        // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+        minWidth: 200,
         sorter: (a, b) => compareText(a.addr, b.addr),
         render: (addr: string | null) => <Text style={{ fontSize: 14 }}>{safeText(addr)}</Text>,
       },
@@ -1673,6 +1676,7 @@ const ClusterPage = () => {
             rowKey={(r) => `${r.clusterName}-${r.addr}`}
             pagination={{ pageSize: 20 }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(proxyColumns) }}
           />
         </Card>

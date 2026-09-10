@@ -500,6 +500,7 @@ const AuditPage: React.FC = () => {
           dataSource={records}
           rowKey="id"
           loading={loading}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns) }}
           pagination={{
             current: page,

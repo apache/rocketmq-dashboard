@@ -1005,6 +1005,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           loading={loading}
           rowSelection={rowSelection}
           pagination={false}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
         <Flex justify="flex-end" style={{ padding: '16px' }}>
