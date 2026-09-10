@@ -156,4 +156,34 @@ class MybatisPlusAlertSilenceRepositoryTest {
         assertThat(restored.get(1).getRecurrence()).isEqualTo(AlertSilenceRecurrence.ONCE);
         assertThat(restored.get(1).getRecurrenceDays()).isEmpty();
     }
+
+    @Test
+    void deleteByIdShouldDelegateAndReportAffectedRows() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        when(mapper.deleteById(9L)).thenReturn(1);
+        when(mapper.deleteById(10L)).thenReturn(0);
+
+        assertThat(repository.deleteById(9L)).isTrue();
+        assertThat(repository.deleteById(10L)).isFalse();
+        verify(mapper, org.mockito.Mockito.times(2))
+                .deleteById(org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void findAllShouldRestoreLabelJsonAsAMap() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        RmqAlertSilence entity = new RmqAlertSilence();
+        entity.setId(5L);
+        entity.setLabelsJson("{\"broker\":\"broker-a\",\"env\":\"prod\"}");
+        when(mapper.selectList(any())).thenReturn(List.of(entity));
+
+        List<AlertSilenceVO> restored = repository.findAll();
+
+        assertThat(restored).singleElement().satisfies(silence -> {
+            assertThat(silence.getLabels()).containsEntry("broker", "broker-a");
+            assertThat(silence.getLabels()).containsEntry("env", "prod");
+        });
+    }
 }
