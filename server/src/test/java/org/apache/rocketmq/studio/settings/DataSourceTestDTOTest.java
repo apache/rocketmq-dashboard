@@ -40,4 +40,46 @@ class DataSourceTestDTOTest {
         assertThat(value).doesNotContain("plain-password");
         assertThat(value).doesNotContain("plain-token");
     }
+
+    @Test
+    void toStringOmitsCredentialFieldNamesEntirelyTest() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+            .url("http://prometheus:9090")
+            .type("prometheus")
+            .password("plain-password")
+            .bearerToken("plain-token")
+            .build();
+
+        String value = request.toString();
+
+        assertThat(value).doesNotContain("password").doesNotContain("bearerToken");
+    }
+
+    @Test
+    void dataEqualityCoversAllFieldsIncludingCredentialsTest() {
+        DataSourceTestDTO first = DataSourceTestDTO.builder()
+            .url("http://prometheus:9090")
+            .type("prometheus")
+            .auth("bearer")
+            .username("prometheus-user")
+            .password("plain-password")
+            .bearerToken("plain-token")
+            .build();
+        DataSourceTestDTO same = DataSourceTestDTO.builder()
+            .url("http://prometheus:9090")
+            .type("prometheus")
+            .auth("bearer")
+            .username("prometheus-user")
+            .password("plain-password")
+            .bearerToken("plain-token")
+            .build();
+
+        assertThat(first).isEqualTo(same).hasSameHashCodeAs(same);
+        assertThat(first).isNotEqualTo(DataSourceTestDTO.builder()
+            .url("http://prometheus:9090")
+            .type("prometheus")
+            .password("different-password")
+            .bearerToken("plain-token")
+            .build());
+    }
 }
