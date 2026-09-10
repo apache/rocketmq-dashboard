@@ -29,8 +29,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+
 
 @ExtendWith(MockitoExtension.class)
 class OperationAuditServiceTest {
@@ -73,10 +75,54 @@ class OperationAuditServiceTest {
     void recordShouldNotPropagateAuditPersistenceFailures() {
         OperationAuditService service = new OperationAuditService(auditMapper);
         doThrow(new IllegalStateException("audit database unavailable"))
-                .when(auditMapper).insert(org.mockito.ArgumentMatchers.any(RmqOperationAudit.class));
+                .when(auditMapper).insert(any(RmqOperationAudit.class));
 
         assertThatCode(() -> service.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", "msg-1",
                 "cluster-a", "result=SUCCESS", "SUCCESS", null))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void recordShouldPersistEveryProvidedField() {
+        OperationAuditService service = new OperationAuditService(auditMapper);
+        AuthenticatedUserContext.setUsername("ops-bot");
+
+        service.record("UPDATE", "CONSUMER_GROUP", "group-a", "cluster-a",
+                "updated read/write perm", "SUCCESS", null);
+
+        ArgumentCaptor<RmqOperationAudit> captor = ArgumentCaptor.forClass(RmqOperationAudit.class);
+        verify(auditMapper).insert(captor.capture());
+        RmqOperationAudit audit = captor.getValue();
+        assertThat(audit.getOperation()).isEqualTo("UPDATE");
+        assertThat(audit.getResourceType()).isEqualTo("CONSUMER_GROUP");
+        assertThat(audit.getResourceName()).isEqualTo("group-a");
+        assertThat(audit.getClusterId()).isEqualTo("cluster-a");
+        assertThat(audit.getDetail()).isEqualTo("updated read/write perm");
+        assertThat(audit.getResult()).isEqualTo("SUCCESS");
+        assertThat(audit.getErrorMessage()).isNull();
+        assertThat(audit.getOperator()).isEqualTo("ops-bot");
+        assertThat(audit.getGmtCreate()).isNotNull();
+        assertThat(audit.getGmtModified()).isEqualTo(audit.getGmtCreate());
+    }
+
+    @Test
+    void recordShouldCarryFailureReasonAndTolerateNullOptionalFields() {
+        OperationAuditService service = new OperationAuditService(auditMapper);
+
+        service.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", null, null,
+                "consumed 10 messages", "FAILED", "broker session timed out");
+
+        ArgumentCaptor<RmqOperationAudit> captor = ArgumentCaptor.forClass(RmqOperationAudit.class);
+        verify(auditMapper).insert(captor.capture());
+        RmqOperationAudit audit = captor.getValue();
+        assertThat(audit.getOperation()).isEqualTo("DIRECT_CONSUME_MESSAGE");
+        assertThat(audit.getResourceType()).isEqualTo("MESSAGE");
+        assertThat(audit.getResourceName()).isNull();
+        assertThat(audit.getClusterId()).isNull();
+        assertThat(audit.getResult()).isEqualTo("FAILED");
+        assertThat(audit.getErrorMessage()).isEqualTo("broker session timed out");
+        assertThat(audit.getOperator()).isEqualTo(AuthenticatedUserContext.SYSTEM_ACTOR);
+        assertThat(audit.getGmtCreate()).isNotNull();
+        assertThat(audit.getGmtModified()).isEqualTo(audit.getGmtCreate());
     }
 }
