@@ -161,6 +161,74 @@ class ApacheRocketMqBusinessMetricsCollectorTest {
         return group;
     }
 
+    @Test
+    void blankGroupNamesAreSkipped() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO blank = new ConsumerGroupVO();
+        blank.setName("   ");
+        blank.setConsumeStatsAvailable(true);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(blank));
+
+        List<MetricSample> samples = new ApacheRocketMqBusinessMetricsCollector(registry).collect(apacheInstance());
+
+        assertThat(samples).isEmpty();
+        org.mockito.Mockito.verify(provider, org.mockito.Mockito.never())
+                .getGroupProgress(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void queueProgressFailureKeepsTotalAndDegradesQueueMetrics() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO orders = group("orders", "cluster-a", 42);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(orders));
+        when(provider.getGroupProgress("local", "orders"))
+                .thenThrow(new IllegalStateException("progress api down"));
+
+        List<MetricSample> samples = new ApacheRocketMqBusinessMetricsCollector(registry).collect(apacheInstance());
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.CONSUMER_LAG_TOTAL))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+                    assertThat(sample.value()).isEqualTo(42D);
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.CONSUMER_LAG_MAX_QUEUE))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_PROGRESS_UNAVAILABLE");
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.TOPIC_BACKLOG_TOTAL))
+                .singleElement().satisfies(sample -> assertThat(sample.unavailableReason())
+                        .isEqualTo("CONSUMER_PROGRESS_UNAVAILABLE"));
+    }
+
+    @Test
+    void negativeTotalLagClampsToZero() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        group.setClusterId("cluster-a");
+        group.setTotalLag(-5);
+        group.setConsumeStatsAvailable(true);
+        group.setConsumptionTimestampAvailable(false);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("local", "orders")).thenReturn(List.of());
+
+        List<MetricSample> samples = new ApacheRocketMqBusinessMetricsCollector(registry).collect(apacheInstance());
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.CONSUMER_LAG_TOTAL))
+                .singleElement().extracting(MetricSample::value).isEqualTo(0D);
+    }
+
     private static InstanceVO apacheInstance() {
         return InstanceVO.builder().name("local").endpoint("localhost:9876").vendor(InstanceVendor.APACHE).build();
     }
