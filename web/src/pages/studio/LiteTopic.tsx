@@ -60,6 +60,7 @@ import {
   type LiteTopicSession,
 } from '../../api/liteTopic';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import LiteTopicCapacityInsights from './LiteTopicCapacityInsights';
 
 const formatDuration = (ms: number | undefined | null): string => {
   if (ms == null) return '-';
@@ -787,6 +788,10 @@ const LiteTopicPage: React.FC = () => {
 
       {/* Quota Panel */}
       {renderQuotaPanel()}
+
+      {quota && (
+        <LiteTopicCapacityInsights quota={quota} topics={filteredTopicList} loading={loading} />
+      )}
 
       {/* Search / Filter Bar */}
       <Card variant="borderless" style={{ marginBottom: 16, borderRadius: 8 }}>

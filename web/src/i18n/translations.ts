@@ -2732,6 +2732,128 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
   'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },
   'liteTopic.liteTopics': { zh: 'LiteTopic 列表', en: 'LiteTopics' },
+  'liteTopicInsights.title': { zh: '容量风险洞察', en: 'Capacity Risk Insights' },
+  'liteTopicInsights.level.healthy': { zh: '健康', en: 'Healthy' },
+  'liteTopicInsights.level.notice': { zh: '提示', en: 'Notice' },
+  'liteTopicInsights.level.warning': { zh: '关注', en: 'Warning' },
+  'liteTopicInsights.level.critical': { zh: '高风险', en: 'Critical' },
+  'liteTopicInsights.topicUsage': { zh: 'Topic 配额', en: 'Topic Quota' },
+  'liteTopicInsights.sessionUsage': { zh: 'Session 配额', en: 'Session Quota' },
+  'liteTopicInsights.ttlAttention': { zh: 'TTL 关注项', en: 'TTL Attention' },
+  'liteTopicInsights.totalBacklog': { zh: '总积压', en: 'Total Backlog' },
+  'liteTopicInsights.remainingTopics': {
+    zh: '剩余 {count} 个 Topic 名额',
+    en: '{count} topic slots remaining',
+  },
+  'liteTopicInsights.sessions': { zh: '{count} 个活跃 Session', en: '{count} active sessions' },
+  'liteTopicInsights.ttlBreakdown': {
+    zh: '{expired} 个已过期，{expiring} 个即将过期',
+    en: '{expired} expired, {expiring} expiring soon',
+  },
+  'liteTopicInsights.patterns': { zh: '{count} 个模式', en: '{count} patterns' },
+  'liteTopicInsights.findings': { zh: '需要处理的容量信号', en: 'Capacity signals to review' },
+  'liteTopicInsights.healthyMessage': {
+    zh: '当前筛选范围内未发现 LiteTopic 容量风险',
+    en: 'No LiteTopic capacity risk found in the current filter',
+  },
+  'liteTopicInsights.backlogHotspots': { zh: '积压热点', en: 'Backlog Hotspots' },
+  'liteTopicInsights.ttlAttentionPatterns': {
+    zh: 'TTL 与空闲模式',
+    en: 'TTL and Idle Patterns',
+  },
+  'liteTopicInsights.namespacePressure': { zh: '命名空间压力', en: 'Namespace Pressure' },
+  'liteTopicInsights.patternLabel': { zh: '模式：{pattern}', en: 'Pattern: {pattern}' },
+  'liteTopicInsights.namespaceLabel': { zh: '命名空间：{namespace}', en: 'Namespace: {namespace}' },
+  'liteTopicInsights.patternSummary': {
+    zh: '{patterns} 个模式 / {topics} 个 Topic',
+    en: '{patterns} patterns / {topics} topics',
+  },
+  'liteTopicInsights.noBacklog': { zh: '当前没有积压热点', en: 'No backlog hotspot' },
+  'liteTopicInsights.noTtlRisk': { zh: '当前没有 TTL 风险', en: 'No TTL risk' },
+  'liteTopicInsights.issue.topicQuotaCritical': {
+    zh: 'Topic 配额已使用 {value}，接近上限 {limit}',
+    en: 'Topic quota usage is {value}, close to limit {limit}',
+  },
+  'liteTopicInsights.issue.topicQuotaWarning': {
+    zh: 'Topic 配额已使用 {value}',
+    en: 'Topic quota usage is {value}',
+  },
+  'liteTopicInsights.issue.sessionQuotaCritical': {
+    zh: 'Session 配额已使用 {value}，接近上限 {limit}',
+    en: 'Session quota usage is {value}, close to limit {limit}',
+  },
+  'liteTopicInsights.issue.sessionQuotaWarning': {
+    zh: 'Session 配额已使用 {value}',
+    en: 'Session quota usage is {value}',
+  },
+  'liteTopicInsights.issue.creationRateCritical': {
+    zh: '创建速率已使用 {value}，接近上限 {limit}',
+    en: 'Creation rate usage is {value}, close to limit {limit}',
+  },
+  'liteTopicInsights.issue.creationRateWarning': {
+    zh: '创建速率已使用 {value}',
+    en: 'Creation rate usage is {value}',
+  },
+  'liteTopicInsights.issue.expiredPatterns': {
+    zh: '{namespace} 下有 {count} 个已过期模式，代表模式 {pattern}',
+    en: '{count} expired patterns in {namespace}, example {pattern}',
+  },
+  'liteTopicInsights.issue.expiringPatterns': {
+    zh: '{namespace} 下有 {count} 个即将过期模式，代表模式 {pattern}',
+    en: '{count} patterns expiring soon in {namespace}, example {pattern}',
+  },
+  'liteTopicInsights.issue.backlogHotspot': {
+    zh: '{namespace}/{pattern} 当前积压 {count} 条',
+    en: '{namespace}/{pattern} has {count} backlogged messages',
+  },
+  'liteTopicInsights.issue.unknownTtlStatus': {
+    zh: '{count} 个模式返回未知 TTL 状态，代表模式 {pattern}',
+    en: '{count} patterns returned unknown TTL status, example {pattern}',
+  },
+  'liteTopicInsights.issue.idlePatterns': {
+    zh: '{count} 个模式长期无活跃会话，代表模式 {pattern}',
+    en: '{count} patterns have been idle for a long time, example {pattern}',
+  },
+  'liteTopicInsights.issue.unknown': {
+    zh: '未知 LiteTopic 容量信号',
+    en: 'Unknown LiteTopic capacity signal',
+  },
+  'liteTopicInsights.recommendation.requestTopicQuota': {
+    zh: '评估扩容 Topic 配额或清理过期模式',
+    en: 'Evaluate increasing topic quota or cleaning expired patterns',
+  },
+  'liteTopicInsights.recommendation.requestSessionQuota': {
+    zh: '评估扩容 Session 配额或回收空闲会话',
+    en: 'Evaluate increasing session quota or reclaiming idle sessions',
+  },
+  'liteTopicInsights.recommendation.throttleCreation': {
+    zh: '限制短时间内的 LiteTopic 创建速率',
+    en: 'Throttle short-term LiteTopic creation rate',
+  },
+  'liteTopicInsights.recommendation.extendTtl': {
+    zh: '对仍在使用的模式延长 TTL',
+    en: 'Extend TTL for patterns that are still in use',
+  },
+  'liteTopicInsights.recommendation.cleanExpired': {
+    zh: '清理已过期且无业务流量的模式',
+    en: 'Clean expired patterns without business traffic',
+  },
+  'liteTopicInsights.recommendation.drainBacklog': {
+    zh: '优先排查积压热点的消费能力',
+    en: 'Prioritize consumer capacity for backlog hotspots',
+  },
+  'liteTopicInsights.recommendation.checkUnknownStatus': {
+    zh: '检查返回未知状态的提供方数据',
+    en: 'Check provider data that returned unknown status',
+  },
+  'liteTopicInsights.recommendation.reviewIdlePatterns': {
+    zh: '复核长期空闲模式是否可以回收',
+    en: 'Review long-idle patterns for reclamation',
+  },
+  'liteTopicInsights.recommendation.review': {
+    zh: '复核 LiteTopic 使用情况',
+    en: 'Review LiteTopic usage',
+  },
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
