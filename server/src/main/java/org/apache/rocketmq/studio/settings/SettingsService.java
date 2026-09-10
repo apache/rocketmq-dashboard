@@ -56,6 +56,8 @@ import java.util.Set;
 @Service
 public class SettingsService {
 
+    public static final String DATA_SOURCE_CACHE = "data-sources";
+
     private static final String REDACTED_NOTIFICATION_WEBHOOK = "******";
     private static final List<byte[]> CLOUD_METADATA_ADDRESSES = List.of(
             new byte[] {
@@ -212,13 +214,13 @@ public class SettingsService {
     // every time the datasource dropdown re-fetches. Caching it with the
     // write paths evicted below keeps the user-visible list correct while
     // removing a per-tab DB round trip.
-    @Cacheable("data-sources")
+    @Cacheable(DATA_SOURCE_CACHE)
     public List<DataSourceVO> listDataSources() {
         log.debug("Listing all data sources");
         return settingsRepository.findAllDataSources();
     }
 
-    @Cacheable("data-sources")
+    @Cacheable(DATA_SOURCE_CACHE)
     public PageResult<DataSourceVO> listDataSources(String search, String type, int page, int pageSize) {
         if (page < 1) {
             throw new BusinessException(400, "page must be greater than zero");
@@ -232,7 +234,7 @@ public class SettingsService {
     }
 
 
-    @CacheEvict(value = "data-sources", allEntries = true)
+    @CacheEvict(value = DATA_SOURCE_CACHE, allEntries = true)
     public DataSourceVO createDataSource(DataSourceVO dataSource) {
         if (dataSource == null) {
             throw new BusinessException(400, "Data source request is required");
@@ -245,7 +247,7 @@ public class SettingsService {
     }
 
 
-    @CacheEvict(value = "data-sources", allEntries = true)
+    @CacheEvict(value = DATA_SOURCE_CACHE, allEntries = true)
     public DataSourceVO updateDataSource(DataSourceVO dataSource) {
         if (dataSource == null) {
             throw new BusinessException(400, "Data source request is required");
@@ -270,7 +272,7 @@ public class SettingsService {
     }
 
 
-    @CacheEvict(value = "data-sources", allEntries = true)
+    @CacheEvict(value = DATA_SOURCE_CACHE, allEntries = true)
     public void deleteDataSource(String key) {
         String normalizedKey = normalizeDataSourceKey(key);
         log.info("Deleting data source: {}", normalizedKey);
