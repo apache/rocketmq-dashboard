@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 
@@ -32,6 +33,7 @@ public class RmqDataSource {
 
     private String dsKey;
 
+    @ToString.Exclude
     private String json;
 
     private LocalDateTime gmtCreate;
