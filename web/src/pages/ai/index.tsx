@@ -48,6 +48,7 @@ import {
   SlidersHorizontal,
   Sparkle,
   Stop,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
@@ -63,9 +64,11 @@ import {
   getRecentAiChatConversations,
   flushAiChatHistoryPersistence,
   type AiChatDataMode,
+  type AiChatMessage,
   useAiChatHistoryStore,
 } from '../../stores/aiChatHistoryStore';
 import { getChatDraft, shouldOpenChatHistory, type ChatMode } from './chatDraft';
+import { downloadBlob } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -123,6 +126,11 @@ const quickActions = [
   '消息轨迹查询',
   '扩缩容评估',
 ];
+
+const buildConversationMarkdown = (messages: AiChatMessage[]) =>
+  messages
+    .map((msg) => `${msg.role === 'user' ? '## User' : '## Assistant'}\n\n${msg.text ?? ''}`)
+    .join('\n\n');
 
 const GLOBAL_TOOL_SCOPE = '__global__';
 const ENGINE_OPTIONS = [
@@ -459,6 +467,13 @@ const AiPage = () => {
   );
   const messages = useMemo(() => activeConversation?.messages ?? [], [activeConversation]);
   const legacyMessageTimestamp = activeConversation?.updatedAt || undefined;
+
+  const handleExportMarkdown = () => {
+    const markdown = buildConversationMarkdown(messages);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `rocketmq-ai-conversation-${timestamp}.md`;
+    downloadBlob(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }), filename);
+  };
   const updateMessages = useAiChatHistoryStore((state) => state.setMessages);
   const startConversation = useAiChatHistoryStore((state) => state.startConversation);
   const selectConversation = useAiChatHistoryStore((state) => state.selectConversation);
@@ -1112,6 +1127,14 @@ const AiPage = () => {
                     >
                       <Sparkle size={17} />
                       <span>Prompt 增强</span>
+                    </button>
+                    <button
+                      className="tool-btn"
+                      onClick={handleExportMarkdown}
+                      disabled={messages.length === 0}
+                    >
+                      <DownloadSimple size={17} />
+                      <span>{t('ai.exportMarkdown')}</span>
                     </button>
                   </div>
                 </div>

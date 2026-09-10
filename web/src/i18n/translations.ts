@@ -1287,6 +1287,7 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
+  'ai.exportMarkdown': { zh: '导出 Markdown', en: 'Export Markdown' },
   'ai.commonCommands': { zh: '常用指令', en: 'Common Commands' },
   'ai.mockProviderDisabled': {
     zh: 'Mock 模式已禁用 AI Provider 调用',
