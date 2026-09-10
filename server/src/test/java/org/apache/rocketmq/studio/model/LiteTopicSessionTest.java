@@ -38,4 +38,57 @@ class LiteTopicSessionTest {
 
         assertThat(session.getConsumptionProgress()).isEqualTo(40.0);
     }
+
+    @Test
+    void hasActiveConsumptionShouldRequireActiveStatusAndPositiveRate() {
+        LiteTopicSession active = new LiteTopicSession();
+        active.setStatus("ACTIVE");
+        active.setConsumptionRate(5.0);
+        assertThat(active.hasActiveConsumption()).isTrue();
+
+        LiteTopicSession noRate = new LiteTopicSession();
+        noRate.setStatus("ACTIVE");
+        assertThat(noRate.hasActiveConsumption()).isFalse();
+
+        LiteTopicSession zeroRate = new LiteTopicSession();
+        zeroRate.setStatus("ACTIVE");
+        zeroRate.setConsumptionRate(0.0);
+        assertThat(zeroRate.hasActiveConsumption()).isFalse();
+
+        LiteTopicSession idle = new LiteTopicSession();
+        idle.setStatus("IDLE");
+        idle.setConsumptionRate(5.0);
+        assertThat(idle.hasActiveConsumption()).isFalse();
+    }
+
+    @Test
+    void isExpiredShouldReflectStatusAndRemainingTtl() {
+        LiteTopicSession expiredStatus = new LiteTopicSession();
+        expiredStatus.setStatus("EXPIRED");
+        assertThat(expiredStatus.isExpired()).isTrue();
+
+        LiteTopicSession zeroTtl = new LiteTopicSession();
+        zeroTtl.setStatus("ACTIVE");
+        zeroTtl.setTtlRemaining(0L);
+        assertThat(zeroTtl.isExpired()).isTrue();
+
+        LiteTopicSession negativeTtl = new LiteTopicSession();
+        negativeTtl.setStatus("ACTIVE");
+        negativeTtl.setTtlRemaining(-5L);
+        assertThat(negativeTtl.isExpired()).isTrue();
+
+        LiteTopicSession live = new LiteTopicSession();
+        live.setStatus("ACTIVE");
+        live.setTtlRemaining(300L);
+        assertThat(live.isExpired()).isFalse();
+    }
+
+    @Test
+    void consumptionProgressShouldNotClampOverConsumption() {
+        LiteTopicSession session = new LiteTopicSession();
+        session.setTotalMessages(10L);
+        session.setConsumedMessages(16L);
+
+        assertThat(session.getConsumptionProgress()).isEqualTo(160.0);
+    }
 }
