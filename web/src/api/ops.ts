@@ -145,6 +145,12 @@ export interface NotificationDeliveryQuery {
   pageSize?: number;
 }
 
+export interface RetryFilteredDeliveriesRequest {
+  channel?: string;
+  instanceId?: string;
+  limit?: number;
+}
+
 export interface AlertSilenceQuery {
   page?: number;
   pageSize?: number;
@@ -350,6 +356,14 @@ export async function retryAlertDeliveries(ids: number[]) {
   const res = await client.post<{ data: NotificationDeliveryBulkRetryResult }>(
     '/system-alerts/deliveries/retry',
     ids,
+  );
+  return res.data.data;
+}
+
+export async function retryFilteredDeliveries(params: RetryFilteredDeliveriesRequest = {}) {
+  const res = await client.post<{ data: NotificationDeliveryBulkRetryResult }>(
+    '/system-alerts/deliveries/retry-filtered',
+    params,
   );
   return res.data.data;
 }

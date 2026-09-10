@@ -25,6 +25,7 @@ import type {
   NotificationDeliveryBulkRetryResult,
   NotificationDeliveryQuery,
   NotificationDeliveryRecord,
+  RetryFilteredDeliveriesRequest,
   AlertSilenceQuery,
   AlertSilence,
   CreateAlertSilence,
@@ -431,6 +432,13 @@ export async function retryAlertDeliveries(
 ): Promise<NotificationDeliveryBulkRetryResult> {
   if (isMockMode()) return { succeededIds: ids, failures: {} };
   return opsApi.retryAlertDeliveries(ids);
+}
+
+export async function retryFilteredDeliveries(
+  params: RetryFilteredDeliveriesRequest = {},
+): Promise<NotificationDeliveryBulkRetryResult> {
+  if (isMockMode()) return { succeededIds: [], failures: {} };
+  return opsApi.retryFilteredDeliveries(params);
 }
 
 export async function listAlertDeliveriesPage(
