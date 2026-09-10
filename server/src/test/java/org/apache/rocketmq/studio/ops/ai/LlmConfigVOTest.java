@@ -36,4 +36,96 @@ class LlmConfigVOTest {
             Locale.setDefault(original);
         }
     }
+
+    @Test
+    void normalizeEngineShouldDefaultToHttpWhenBlank() {
+        assertThat(LlmConfigVO.builder().engine(null).build().normalizeEngine())
+                .isEqualTo("http");
+        assertThat(LlmConfigVO.builder().engine("  ").build().normalizeEngine())
+                .isEqualTo("http");
+    }
+
+    @Test
+    void shouldNotBeReadyWhenDisabled() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .engine("http")
+                .provider("openai")
+                .model("gpt-4o")
+                .apiBase("https://api.example.com")
+                .apiKey("secret")
+                .enabled(false)
+                .build();
+
+        assertThat(config.isReady()).isFalse();
+    }
+
+    @Test
+    void shouldNotBeReadyWithoutModel() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .engine("http")
+                .provider("openai")
+                .apiBase("https://api.example.com")
+                .apiKey("secret")
+                .enabled(true)
+                .build();
+
+        assertThat(config.isReady()).isFalse();
+    }
+
+    @Test
+    void cliEngineShouldBeReadyWithoutHttpCredentials() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .engine("claude-code")
+                .model("sonnet")
+                .enabled(true)
+                .build();
+
+        assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
+    void ollamaHttpEngineShouldNotRequireApiKey() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .engine("http")
+                .provider("ollama")
+                .model("llama3")
+                .apiBase("http://localhost:11434")
+                .enabled(true)
+                .build();
+
+        assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
+    void httpEngineShouldRequireApiBase() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .engine("http")
+                .provider("openai")
+                .model("gpt-4o")
+                .apiKey("secret")
+                .enabled(true)
+                .build();
+
+        assertThat(config.isReady()).isFalse();
+    }
+
+    @Test
+    void httpEngineShouldRequireApiKeyForNonOllamaProviders() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .engine("http")
+                .provider("openai")
+                .model("gpt-4o")
+                .apiBase("https://api.example.com")
+                .enabled(true)
+                .build();
+
+        assertThat(config.isReady()).isFalse();
+    }
+
+    @Test
+    void apiKeyConfiguredShouldReflectKeyPresence() {
+        assertThat(LlmConfigVO.builder().apiKey("secret").build().isApiKeyConfigured()).isTrue();
+        assertThat(LlmConfigVO.builder().apiKey(" ").build().isApiKeyConfigured()).isFalse();
+        assertThat(LlmConfigVO.builder().build().isApiKeyConfigured()).isFalse();
+    }
 }
