@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getAuthStatus, login, logout } from './auth';
+import { changePassword, getAuthStatus, login, logout } from './auth';
 
 const mock = new MockAdapter(client);
 
@@ -85,5 +85,14 @@ describe('Auth API', () => {
     mock.onPost('/auth/logout').reply(500);
 
     await expect(logout()).rejects.toThrow();
+  });
+
+  it('posts the current and new password', async () => {
+    mock.onPost('/auth/password').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ currentPassword: 'old', newPassword: 'new' });
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(changePassword('old', 'new')).resolves.toBeUndefined();
   });
 });
