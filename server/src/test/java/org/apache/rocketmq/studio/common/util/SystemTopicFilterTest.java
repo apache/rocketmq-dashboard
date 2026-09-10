@@ -46,4 +46,26 @@ class SystemTopicFilterTest {
         assertThat(SystemTopicFilter.isSystem("BenchmarkTestOrders", brokerNames)).isFalse();
         assertThat(SystemTopicFilter.isSystem("SCHEDULE_TOPIC_orders", brokerNames)).isFalse();
     }
+
+    @Test
+    void shouldTreatMissingOrEmptyBrokerNamesAsNoMatch() {
+        assertThat(SystemTopicFilter.isSystem("broker-prod-a", null)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("broker-prod-a", Set.of())).isFalse();
+        assertThat(SystemTopicFilter.isSystem("RMQ_SYS_TRANS_HALF_TOPIC", null)).isTrue();
+    }
+
+    @Test
+    void convenienceOverloadShouldClassifyByNameOnly() {
+        assertThat(SystemTopicFilter.isSystem("RMQ_SYS_TRANS_HALF_TOPIC")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("%DLQ%consumer-a")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("broker-prod-a")).isFalse();
+        assertThat(SystemTopicFilter.isSystem("orders")).isFalse();
+    }
+
+    @Test
+    void shouldTreatBareRetryAndDlqMarkersAsSystemTopics() {
+        assertThat(SystemTopicFilter.isSystem("%RETRY%")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("%DLQ%")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("%RETRY%consumer-orders")).isTrue();
+    }
 }
