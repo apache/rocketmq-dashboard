@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Col,
+  Descriptions,
   Flex,
   Progress,
   Row,
@@ -132,16 +133,16 @@ const DashboardPage = () => {
       extra={
         <Space>
           <Select
-            aria-label="Dashboard instance"
+            aria-label={t('dashboard.instanceFilter')}
             allowClear
-            placeholder="All configured instances"
+            placeholder={t('dashboard.allInstances')}
             value={selectedInstanceId}
             onChange={setSelectedInstanceId}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
             style={{ width: 220 }}
           />
           <Button onClick={() => void loadDashboard()} loading={loading}>
-            Refresh
+            {t('common.refresh')}
           </Button>
         </Space>
       }
@@ -216,11 +217,18 @@ const DashboardPage = () => {
     },
   ];
 
+  // Identity + topology only. The seven traffic columns this table used to carry pushed it to
+  // 1620px — a permanent horizontal scrollbar — and duplicated the 流量洞察 card above, so they
+  // now live in the expandable row instead.
   const clusterColumns: ColumnsType<ClusterRow> = [
     {
       title: t('dashboard.clusterName'),
       dataIndex: 'name',
       key: 'name',
+      // The one flexible column: it absorbs the surplus on a wide window so the fixed columns
+      // below keep their declared widths instead of all inflating proportionally.
+      minWidth: 220,
+      ellipsis: true,
       render: (name: string) => <Text strong>{name}</Text>,
     },
     {
@@ -234,6 +242,7 @@ const DashboardPage = () => {
       title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
+      width: 110,
       render: (type: string) => {
         const info = CLUSTER_TYPE_MAP[type];
         return info ? <Tag color={info.color}>{t(info.labelKey)}</Tag> : type;
@@ -243,13 +252,14 @@ const DashboardPage = () => {
       title: t('common.version'),
       dataIndex: 'version',
       key: 'version',
+      width: 110,
       render: (v: string) => <span style={{ fontSize: 14 }}>{v}</span>,
     },
     {
       title: t('dashboard.broker'),
       dataIndex: 'brokers',
       key: 'brokers',
-      width: 80,
+      width: 90,
       align: 'center' as const,
       render: renderTopologyCount,
     },
@@ -257,7 +267,7 @@ const DashboardPage = () => {
       title: t('dashboard.proxy'),
       dataIndex: 'proxies',
       key: 'proxies',
-      width: 80,
+      width: 90,
       align: 'center' as const,
       render: renderTopologyCount,
     },
@@ -265,89 +275,67 @@ const DashboardPage = () => {
       title: t('dashboard.topic'),
       dataIndex: 'topics',
       key: 'topics',
-      width: 80,
+      width: 90,
       align: 'center' as const,
     },
     {
       title: t('dashboard.group'),
       dataIndex: 'groups',
       key: 'groups',
-      width: 80,
+      width: 90,
       align: 'center' as const,
     },
-    {
-      title: t('dashboard.tpsIn'),
-      dataIndex: 'tpsIn',
-      key: 'tpsIn',
-      width: 90,
-      align: 'right' as const,
-      render: (v: number) => v.toLocaleString(),
-    },
-    {
-      title: t('dashboard.tpsOut'),
-      dataIndex: 'tpsOut',
-      key: 'tpsOut',
-      width: 90,
-      align: 'right' as const,
-      render: (v: number) => v.toLocaleString(),
-    },
-    {
-      title: t('dashboardTraffic.totalTps'),
-      key: 'trafficTotalTps',
-      width: 120,
-      align: 'right' as const,
-      render: (_, record) => {
-        const insight = trafficInsightByClusterId.get(record.id);
-        return insight ? `${formatTrafficTps(insight.totalTps)}/s` : '-';
+  ];
+
+  const renderClusterTraffic = (record: ClusterRow) => {
+    const insight = trafficInsightByClusterId.get(record.id);
+    const trendDirection = insight?.trendDirection ?? 'unknown';
+    const items = [
+      { key: 'tpsIn', label: t('dashboard.tpsIn'), children: `${record.tpsIn.toLocaleString()}/s` },
+      {
+        key: 'tpsOut',
+        label: t('dashboard.tpsOut'),
+        children: `${record.tpsOut.toLocaleString()}/s`,
       },
-    },
-    {
-      title: t('dashboardTraffic.share'),
-      key: 'trafficShare',
-      width: 150,
-      render: (_, record) => {
-        const insight = trafficInsightByClusterId.get(record.id);
-        if (!insight) return '-';
-        return (
-          <Flex vertical gap={4}>
+      {
+        key: 'totalTps',
+        label: t('dashboardTraffic.totalTps'),
+        children: insight ? `${formatTrafficTps(insight.totalTps)}/s` : '-',
+      },
+      {
+        key: 'perBroker',
+        label: t('dashboardTraffic.perBroker'),
+        children: insight ? `${formatTrafficTps(insight.perBrokerTps)}/s` : '-',
+      },
+      {
+        key: 'inOutRatio',
+        label: t('dashboardTraffic.inOutRatio'),
+        children: insight?.inOutRatio == null ? t('common.na') : `${insight.inOutRatio}:1`,
+      },
+      {
+        key: 'share',
+        label: t('dashboardTraffic.share'),
+        children: insight ? (
+          <Flex align="center" gap={8}>
             <Text>{formatTrafficPercent(insight.sharePercent)}</Text>
-            <Progress percent={Math.min(100, insight.sharePercent)} showInfo={false} size="small" />
+            <Progress
+              percent={Math.min(100, insight.sharePercent)}
+              showInfo={false}
+              size="small"
+              style={{ width: 90, margin: 0 }}
+            />
           </Flex>
-        );
+        ) : (
+          '-'
+        ),
       },
-    },
-    {
-      title: t('dashboardTraffic.perBroker'),
-      key: 'trafficPerBroker',
-      width: 130,
-      align: 'right' as const,
-      render: (_, record) => {
-        const insight = trafficInsightByClusterId.get(record.id);
-        return insight ? `${formatTrafficTps(insight.perBrokerTps)}/s` : '-';
-      },
-    },
-    {
-      title: t('dashboardTraffic.inOutRatio'),
-      key: 'trafficInOutRatio',
-      width: 110,
-      align: 'right' as const,
-      render: (_, record) => {
-        const insight = trafficInsightByClusterId.get(record.id);
-        return insight?.inOutRatio == null ? 'N/A' : `${insight.inOutRatio}:1`;
-      },
-    },
-    {
-      title: t('dashboard.trend'),
-      dataIndex: 'throughput',
-      key: 'throughput',
-      width: 150,
-      render: (data: number[], record) => {
-        const insight = trafficInsightByClusterId.get(record.id);
-        const trendDirection = insight?.trendDirection ?? 'unknown';
-        return (
-          <Space direction="vertical" size={2}>
+      {
+        key: 'trend',
+        label: t('dashboard.trend'),
+        children: (
+          <Flex align="center" gap={8}>
             <MiniBar
-              data={data}
+              data={record.throughput}
               color={
                 record.status === 'healthy'
                   ? '#52c41a'
@@ -358,15 +346,16 @@ const DashboardPage = () => {
               height={26}
               width={100}
             />
-            <Tag color={trafficTrendColor[trendDirection]}>
+            <Tag color={trafficTrendColor[trendDirection]} style={{ marginInlineEnd: 0 }}>
               {t(trafficTrendLabelKey[trendDirection])}
               {formatTrafficTrendDelta(insight?.trendDeltaPercent ?? null)}
             </Tag>
-          </Space>
-        );
+          </Flex>
+        ),
       },
-    },
-  ];
+    ];
+    return <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3, lg: 4 }} items={items} />;
+  };
 
   return (
     <div style={{ padding: 24 }}>
@@ -404,10 +393,14 @@ const DashboardPage = () => {
           rowKey="id"
           size="small"
           pagination={false}
-          scroll={{ x: tableScrollX(clusterColumns) }}
+          tableLayout="fixed"
+          scroll={{ x: tableScrollX(clusterColumns, { expandable: true }) }}
+          expandable={{
+            expandedRowRender: renderClusterTraffic,
+            rowExpandable: () => true,
+          }}
           onRow={() => ({
             style: { cursor: 'pointer' },
-            onClick: () => navigate(clusterPagePath),
           })}
         />
       </Card>

@@ -29,19 +29,25 @@ import {
   Input,
   List,
   Modal,
+  Popover,
   Segmented,
   Select,
   Skeleton,
   Space,
   Spin,
-  Statistic,
   Table,
   Tag,
   Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ArrowsClockwise, ClockCounterClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
+import {
+  ArrowsClockwise,
+  ClockCounterClockwise,
+  DownloadSimple,
+  Eye,
+  Info,
+} from '@phosphor-icons/react';
 
 import { listDataSources } from '../api/settings';
 import { listMetricProfiles, queryByDataSource, queryMetrics } from '../api/metrics';
@@ -1046,62 +1052,6 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             style={{ marginBottom: 8 }}
           />
         ))}
-        <Flex gap={16} wrap="wrap" style={{ marginBottom: 12 }}>
-          <Statistic
-            title={copy.series}
-            value={`${summary.visibleSeriesCount}/${summary.seriesCount}`}
-            style={{ minWidth: 96 }}
-          />
-          <Statistic title={copy.samples} value={summary.sampleCount} style={{ minWidth: 96 }} />
-          <Statistic
-            title={copy.scalarSamples}
-            value={summary.scalarSampleCount}
-            style={{ minWidth: 110 }}
-          />
-          <Statistic
-            title={copy.histogramSamples}
-            value={summary.histogramSampleCount}
-            style={{ minWidth: 130 }}
-          />
-          <Statistic title={copy.warnings} value={summary.warningCount} style={{ minWidth: 96 }} />
-        </Flex>
-        <Descriptions
-          size="small"
-          column={{ xs: 1, sm: 2, md: 3 }}
-          style={{ marginBottom: 12 }}
-          items={[
-            {
-              key: 'source',
-              label: copy.source,
-              children: state.query?.dataSourceName || copy.defaultDataSource,
-            },
-            {
-              key: 'query-window',
-              label: copy.queryWindow,
-              children: `${formatSeconds(state.query?.start)} - ${formatSeconds(state.query?.end)}`,
-            },
-            {
-              key: 'queried-at',
-              label: copy.queriedAt,
-              children: formatMillis(state.query?.queriedAt),
-            },
-            {
-              key: 'first-sample',
-              label: copy.firstSample,
-              children: formatSeconds(summary.earliestTimestamp),
-            },
-            {
-              key: 'last-sample',
-              label: copy.lastSample,
-              children: formatSeconds(summary.latestTimestamp),
-            },
-            {
-              key: 'result-type',
-              label: copy.resultType,
-              children: state.data.resultType,
-            },
-          ]}
-        />
         <MetricChart
           data={state.data}
           metric={metric}
@@ -1111,6 +1061,74 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           histogramTooltip={copy.histogramTooltip}
           hiddenSeriesText={copy.hiddenSeries}
         />
+        {/* The chart is the point of the panel, so the query metadata is condensed into one
+            secondary line with the full breakdown behind an info popover instead of a row of
+            Statistic blocks above the chart, which buried every chart on the dashboard. */}
+        <Flex align="center" gap={8} wrap="wrap" style={{ marginTop: 8 }}>
+          <Text type="secondary" style={{ fontSize: 14 }}>
+            {`${summary.visibleSeriesCount}/${summary.seriesCount} ${copy.series} · ${summary.sampleCount} ${copy.samples}`}
+            {summary.warningCount > 0 ? ` · ${summary.warningCount} ${copy.warnings}` : ''}
+          </Text>
+          <Popover
+            placement="topLeft"
+            content={
+              <Descriptions
+                size="small"
+                column={1}
+                style={{ maxWidth: 320 }}
+                items={[
+                  {
+                    key: 'source',
+                    label: copy.source,
+                    children: state.query?.dataSourceName || copy.defaultDataSource,
+                  },
+                  {
+                    key: 'query-window',
+                    label: copy.queryWindow,
+                    children: `${formatSeconds(state.query?.start)} - ${formatSeconds(state.query?.end)}`,
+                  },
+                  {
+                    key: 'queried-at',
+                    label: copy.queriedAt,
+                    children: formatMillis(state.query?.queriedAt),
+                  },
+                  {
+                    key: 'first-sample',
+                    label: copy.firstSample,
+                    children: formatSeconds(summary.earliestTimestamp),
+                  },
+                  {
+                    key: 'last-sample',
+                    label: copy.lastSample,
+                    children: formatSeconds(summary.latestTimestamp),
+                  },
+                  {
+                    key: 'scalar-samples',
+                    label: copy.scalarSamples,
+                    children: summary.scalarSampleCount,
+                  },
+                  {
+                    key: 'histogram-samples',
+                    label: copy.histogramSamples,
+                    children: summary.histogramSampleCount,
+                  },
+                  {
+                    key: 'result-type',
+                    label: copy.resultType,
+                    children: state.data.resultType,
+                  },
+                ]}
+              />
+            }
+          >
+            <Button
+              type="text"
+              size="small"
+              aria-label={`${metric.name} ${copy.queryWindow}`}
+              icon={<Info size={14} />}
+            />
+          </Popover>
+        </Flex>
       </>
     );
   };
@@ -1440,6 +1458,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           dataSource={detailRows}
           columns={detailColumns}
           pagination={{ pageSize: 8, showSizeChanger: false }}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(detailColumns) }}
         />
       </Drawer>

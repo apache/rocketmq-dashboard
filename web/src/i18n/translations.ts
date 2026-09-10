@@ -98,6 +98,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.todayMessages': { zh: '今日消息', en: "Today's Messages" },
   'dashboard.clusterHealth': { zh: '集群健康概览', en: 'Cluster Health' },
   'dashboard.clusterName': { zh: '集群名称', en: 'Cluster Name' },
+  'dashboard.allInstances': { zh: '全部已配置实例', en: 'All configured instances' },
+  'dashboard.instanceFilter': { zh: '实例筛选', en: 'Instance filter' },
   'dashboard.broker': { zh: 'Broker', en: 'Broker' },
   'dashboard.proxy': { zh: 'Proxy', en: 'Proxy' },
   'dashboard.topic': { zh: 'Topic', en: 'Topic' },
