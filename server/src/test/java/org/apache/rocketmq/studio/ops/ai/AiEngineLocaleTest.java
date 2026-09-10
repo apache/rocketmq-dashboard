@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AiEngineLocaleTest {
 
@@ -39,6 +40,62 @@ class AiEngineLocaleTest {
         } finally {
             Locale.setDefault(previous);
         }
+    }
+
+    @Test
+    void normalizeEngineShouldDefaultToHttpWhenBlank() {
+        assertThat(LlmConfigVO.builder().build().normalizeEngine()).isEqualTo("http");
+        assertThat(LlmConfigVO.builder().engine("   ").build().normalizeEngine())
+                .isEqualTo("http");
+    }
+
+    @Test
+    void readyShouldRequireEnabledAndModel() {
+        assertThat(LlmConfigVO.builder().enabled(false).model("gpt-5").build().isReady())
+                .isFalse();
+        assertThat(LlmConfigVO.builder().enabled(true).model("  ").build().isReady())
+                .isFalse();
+    }
+
+    @Test
+    void readyShouldTrustCliEnginesWithoutGatewayCredentials() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .enabled(true)
+                .model("gpt-5")
+                .engine("claude-code")
+                .build();
+
+        assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
+    void readyShouldRequireAnApiBaseForHttpGateways() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .enabled(true)
+                .model("qwen")
+                .engine("http")
+                .provider("ollama")
+                .build();
+
+        assertThat(config.isReady()).isFalse();
+
+        config.setApiBase("http://localhost:11434/v1");
+        assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
+    void registryShouldRejectUnsupportedEnginesWithAnActionableHint() {
+        AgentProviderRegistry registry = new AgentProviderRegistry(List.of(new StubProvider("qoder")));
+
+        assertThatThrownBy(() -> registry.forEngine("unknown-cli"))
+                .isInstanceOfSatisfying(LlmGatewayException.class,
+                        error -> {
+                            assertThat(error.getStatusCode()).isEqualTo(400);
+                            assertThat(error.getCode()).isEqualTo("llm.config.unsupported_engine");
+                        });
+        assertThatThrownBy(() -> registry.forEngine(null))
+                .isInstanceOfSatisfying(LlmGatewayException.class,
+                        error -> assertThat(error.getStatusCode()).isEqualTo(400));
     }
 
     private record StubProvider(String engine) implements AgentProvider {
