@@ -106,11 +106,21 @@ public class ClusterService {
 
     private List<ClusterVO> probeRegistryEntry(NameserverRegistryVO entry) {
         try {
-            List<ClusterVO> clusters = clusterProvider.discoverClustersAt(entry.getNamesrvAddr());
-            for (ClusterVO cluster : clusters) {
+            List<ClusterVO> discovered = clusterProvider.discoverClustersAt(entry.getNamesrvAddr());
+            if (discovered == null) {
+                return List.of();
+            }
+            List<ClusterVO> clusters = new ArrayList<>(discovered.size());
+            for (ClusterVO cluster : discovered) {
+                // A null element would NPE the rename loop and discard every valid cluster in
+                // this probe response through the catch-all below; skip it instead.
+                if (cluster == null) {
+                    continue;
+                }
                 cluster.setNsClusterName(cluster.getName());
                 cluster.setName(entry.getName());
                 cluster.setEndpoint(entry.getNamesrvAddr());
+                clusters.add(cluster);
             }
             return clusters;
         } catch (Exception e) {

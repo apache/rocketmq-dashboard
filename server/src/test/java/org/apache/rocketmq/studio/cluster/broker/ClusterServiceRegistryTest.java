@@ -27,6 +27,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -82,6 +83,38 @@ class ClusterServiceRegistryTest {
         assertThat(cluster.getName()).isEqualTo("rocketmq1");
         assertThat(cluster.getNsClusterName()).isEqualTo("DefaultCluster");
         assertThat(cluster.getEndpoint()).isEqualTo("rocketmq1-nameserver:9876");
+    }
+
+    @Test
+    void listRegistryClustersShouldKeepValidClustersWhenDiscoveryReturnsNullElementTest() {
+        when(registryService.list()).thenReturn(List.of(
+                NameserverRegistryVO.builder().id(1L).name("rocketmq1")
+                        .namesrvAddr("rocketmq1-nameserver:9876").build()));
+        ClusterVO valid = ClusterVO.builder().name("DefaultCluster").build();
+        List<ClusterVO> discovered = new ArrayList<>();
+        discovered.add(valid);
+        discovered.add(null);
+        when(clusterProvider.discoverClustersAt("rocketmq1-nameserver:9876"))
+                .thenReturn(discovered);
+
+        List<ClusterVO> result = clusterService.listRegistryClusters();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0)).isSameAs(valid);
+        assertThat(result.get(0).getName()).isEqualTo("rocketmq1");
+        assertThat(result.get(0).getNsClusterName()).isEqualTo("DefaultCluster");
+        assertThat(result.get(0).getEndpoint()).isEqualTo("rocketmq1-nameserver:9876");
+    }
+
+    @Test
+    void listRegistryClustersShouldTreatNullDiscoveryResultAsEmptyTest() {
+        when(registryService.list()).thenReturn(List.of(
+                NameserverRegistryVO.builder().id(1L).name("rocketmq1")
+                        .namesrvAddr("rocketmq1-nameserver:9876").build()));
+        when(clusterProvider.discoverClustersAt("rocketmq1-nameserver:9876"))
+                .thenReturn(null);
+
+        assertThat(clusterService.listRegistryClusters()).isEmpty();
     }
 
     @Test
