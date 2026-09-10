@@ -119,4 +119,34 @@ class MybatisPlusCloudCredentialRepositoryTest {
         entity.setSecretKey("c2VjcmV0");
         return entity;
     }
+
+    @Test
+    void deleteByIdGuardsNullAndReflectsTheMapperOutcome() {
+        assertThat(repository.deleteById(null)).isFalse();
+        verify(credentialMapper, never()).deleteById(
+                org.mockito.ArgumentMatchers.any(java.io.Serializable.class));
+
+        when(credentialMapper.deleteById(5L)).thenReturn(1);
+        assertThat(repository.deleteById(5L)).isTrue();
+
+        when(credentialMapper.deleteById(6L)).thenReturn(0);
+        assertThat(repository.deleteById(6L)).isFalse();
+    }
+
+    @Test
+    void replaceRequiresAnIdAndReflectsTheMapperOutcome() {
+        CloudCredentialVO withoutId = new CloudCredentialVO();
+        withoutId.setVendor(InstanceVendor.ALIYUN);
+        assertThat(repository.replace(withoutId)).isFalse();
+        verify(credentialMapper, never()).updateById(any(RmqCloudCredential.class));
+
+        CloudCredentialVO withId = new CloudCredentialVO();
+        withId.setId(7L);
+        withId.setVendor(InstanceVendor.TENCENT);
+        when(credentialMapper.updateById(any(RmqCloudCredential.class))).thenReturn(1);
+        assertThat(repository.replace(withId)).isTrue();
+
+        when(credentialMapper.updateById(any(RmqCloudCredential.class))).thenReturn(0);
+        assertThat(repository.replace(withId)).isFalse();
+    }
 }
