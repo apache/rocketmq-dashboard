@@ -100,6 +100,78 @@ class ApacheRocketMqClusterMetricsCollectorTest {
                 .isEmpty();
     }
 
+    @Test
+    void brokerWithoutMasterAddressIsMarkedUnavailable() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        InstanceVO instance = apacheInstance();
+        ClusterInfo topology = new ClusterInfo();
+        topology.setBrokerAddrTable(Map.of("broker-a", new BrokerData("cluster-a", "broker-a",
+                new HashMap<>(Map.of(2L, "broker-a:10911")))));
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+        when(resolver.execute(eq(instance), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(admin));
+
+        List<MetricSample> samples = new ApacheRocketMqClusterMetricsCollector(resolver).collect(instance);
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("broker.availability"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.labels()).containsEntry("brokerName", "broker-a");
+                    assertThat(sample.labels()).doesNotContainKey("brokerAddr");
+                });
+    }
+
+    @Test
+    void brokerWithoutRuntimeStatsIsMarkedUnavailable() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        InstanceVO instance = apacheInstance();
+        ClusterInfo topology = new ClusterInfo();
+        topology.setBrokerAddrTable(Map.of("broker-a", new BrokerData("cluster-a", "broker-a",
+                new HashMap<>(Map.of(0L, "broker-a:10911")))));
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+        when(admin.fetchBrokerRuntimeStats("broker-a:10911")).thenReturn(null);
+        when(resolver.execute(eq(instance), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(admin));
+
+        List<MetricSample> samples = new ApacheRocketMqClusterMetricsCollector(resolver).collect(instance);
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("broker.availability"))
+                .singleElement().satisfies(sample -> assertThat(sample.availability())
+                        .isEqualTo(MetricAvailability.UNAVAILABLE));
+        assertThat(samples).noneMatch(sample -> sample.metricKey().equals("broker.disk.usage_ratio"));
+    }
+
+    @Test
+    void outOfRangeRatioValuesAreOmitted() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        InstanceVO instance = apacheInstance();
+        ClusterInfo topology = new ClusterInfo();
+        topology.setBrokerAddrTable(Map.of("broker-a", new BrokerData("cluster-a", "broker-a",
+                new HashMap<>(Map.of(0L, "broker-a:10911")))));
+        KVTable runtime = new KVTable();
+        runtime.setTable(new HashMap<>(Map.of("commitLogDiskRatio", "150",
+                "jvmMemoryHeapUsed", "2000", "jvmMemoryHeapMax", "1024",
+                "sendThreadPoolQueueSize", "250", "sendThreadPoolQueueCapacity", "1000")));
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+        when(admin.fetchBrokerRuntimeStats("broker-a:10911")).thenReturn(runtime);
+        when(resolver.execute(eq(instance), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(admin));
+
+        List<MetricSample> samples = new ApacheRocketMqClusterMetricsCollector(resolver).collect(instance);
+
+        assertThat(samples).noneMatch(sample -> sample.metricKey().equals("broker.disk.usage_ratio"));
+        assertThat(samples).noneMatch(sample -> sample.metricKey().equals("broker.jvm.heap.usage_ratio"));
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("broker.send_queue.usage_ratio"))
+                .singleElement().extracting(MetricSample::value).isEqualTo(0.25D);
+    }
+
     private static InstanceVO apacheInstance() {
         return InstanceVO.builder().name("local").endpoint("localhost:9876").vendor(InstanceVendor.APACHE).build();
     }
