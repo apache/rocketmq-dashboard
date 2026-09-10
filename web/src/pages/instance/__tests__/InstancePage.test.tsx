@@ -81,6 +81,7 @@ const instance = (
   name: string,
   type: Instance['type'] = 'PROXY_CLUSTER',
   remark: Instance['remark'] = '',
+  vendor?: Instance['vendor'],
 ): Instance => ({
   id,
   name,
@@ -91,6 +92,7 @@ const instance = (
   consumerGroupCount: 1,
   gmtCreate: '2026-01-01T00:00:00Z',
   gmtModified: '2026-01-01T00:00:00Z',
+  ...(vendor ? { vendor } : {}),
 });
 
 const renderPage = () =>
@@ -367,6 +369,35 @@ describe('InstancePage', () => {
           instanceId: 'production-proxy',
           type: 'DIRECT',
           endpoint: 'namesrv-new:9876',
+        }),
+      ),
+    );
+  });
+
+  it('disables the endpoint field when editing a cloud instance', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      instance(3, 'aliyun-instance', 'CLOUD', '', 'ALIYUN'),
+    ]);
+    vi.mocked(instanceService.updateInstance).mockResolvedValue(
+      instance(3, 'aliyun-instance', 'CLOUD', '', 'ALIYUN'),
+    );
+    renderPage();
+
+    expect(await screen.findByText('aliyun-instance')).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /aliyun-instance/ });
+    await user.click(within(row).getByRole('button', { name: /编\s*辑/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    const endpointInput = within(dialog).getByLabelText('接入地址');
+    expect(endpointInput).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() =>
+      expect(instanceService.updateInstance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instanceId: 'aliyun-instance',
+          endpoint: 'aliyun-instance:8080',
         }),
       ),
     );
