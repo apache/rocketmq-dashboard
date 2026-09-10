@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.MetricProfileService;
+import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,7 +67,8 @@ class AlertServiceTest {
     @org.junit.jupiter.api.BeforeEach
     void setUpTest() {
         alertService = new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService, new MetricProfileService(new PrometheusProperties()));
+                operationAuditService, new MetricProfileService(new PrometheusProperties()),
+                new AlertingProperties());
     }
 
     @Test

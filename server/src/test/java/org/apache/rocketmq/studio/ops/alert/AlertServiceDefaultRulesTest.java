@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.MetricProfileService;
+import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusProperties;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -42,7 +43,7 @@ class AlertServiceDefaultRulesTest {
 
         AlertService service = new AlertService(repository, Mockito.mock(AlertStateRepository.class),
                 new AlertRuleAssetService(), Mockito.mock(OperationAuditService.class),
-                new MetricProfileService(new PrometheusProperties()));
+                new MetricProfileService(new PrometheusProperties()), new AlertingProperties());
         String yaml = service.exportPrometheusRulesYaml();
 
         int ruleCount = countRules(yaml);
@@ -56,7 +57,7 @@ class AlertServiceDefaultRulesTest {
 
         AlertService service = new AlertService(repository, Mockito.mock(AlertStateRepository.class),
                 new AlertRuleAssetService(), Mockito.mock(OperationAuditService.class),
-                new MetricProfileService(new PrometheusProperties()));
+                new MetricProfileService(new PrometheusProperties()), new AlertingProperties());
         String yaml = service.exportPrometheusRulesYaml();
 
         assertTrue(yaml.contains("rocketmq-broker.rules"));
