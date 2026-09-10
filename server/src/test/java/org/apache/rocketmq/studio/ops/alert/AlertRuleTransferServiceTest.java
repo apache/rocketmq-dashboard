@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -114,6 +115,63 @@ class AlertRuleTransferServiceTest {
         assertEquals(AlertDomain.CLUSTER, captor.getValue().getDomain());
         assertEquals("${transition} ${metric}", captor.getValue().getNotificationTemplate());
         assertEquals("Broker unavailable", imported.get(0).getName());
+    }
+
+    @Test
+    void rejectsNullImportDocument() {
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, null));
+
+        assertEquals(400, error.getCode());
+        verifyNoInteractions(alertService, metricCatalogService);
+    }
+
+    @Test
+    void rejectsUnsupportedImportVersion() {
+        AlertRuleTransferDTO transfer = transfer(AlertDomain.CLUSTER, request("Broker unavailable"));
+        transfer.setVersion(999);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, transfer));
+
+        assertEquals(400, error.getCode());
+        verifyNoInteractions(alertService, metricCatalogService);
+    }
+
+    @Test
+    void rejectsEmptyAndOversizedRuleLists() {
+        AlertRuleTransferDTO empty = new AlertRuleTransferDTO();
+        empty.setVersion(AlertRuleTransferDTO.VERSION);
+        empty.setDomain(AlertDomain.CLUSTER);
+        empty.setRules(List.of());
+
+        BusinessException emptyError = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, empty));
+        assertEquals(400, emptyError.getCode());
+
+        AlertRuleTransferDTO oversized = new AlertRuleTransferDTO();
+        oversized.setVersion(AlertRuleTransferDTO.VERSION);
+        oversized.setDomain(AlertDomain.CLUSTER);
+        oversized.setRules(IntStream.range(0, 201).mapToObj(i -> request("Rule-" + i)).toList());
+
+        BusinessException sizeError = assertThrows(BusinessException.class,
+                () -> transferService.importRules(AlertDomain.CLUSTER, oversized));
+        assertEquals(400, sizeError.getCode());
+        verifyNoInteractions(alertService, metricCatalogService);
+    }
+
+    @Test
+    void trimsImportedMetricBeforeValidationAndCreation() {
+        AlertRuleRequestDTO request = request("Broker unavailable");
+        request.setMetric("  broker.disk.usage  ");
+        when(alertService.createRule(eq(AlertDomain.CLUSTER), any(AlertRuleVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+
+        transferService.importRules(AlertDomain.CLUSTER, transfer(AlertDomain.CLUSTER, request));
+
+        ArgumentCaptor<AlertRuleVO> captor = ArgumentCaptor.forClass(AlertRuleVO.class);
+        verify(alertService).createRule(eq(AlertDomain.CLUSTER), captor.capture());
+        assertEquals("broker.disk.usage", captor.getValue().getMetric());
     }
 
     private static AlertRuleTransferDTO transfer(AlertDomain domain, AlertRuleRequestDTO... rules) {
