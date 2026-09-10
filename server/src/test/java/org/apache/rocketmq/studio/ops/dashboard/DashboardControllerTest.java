@@ -163,4 +163,22 @@ class DashboardControllerTest {
 
         verify(dashboardService).getDashboard("instance-prod");
     }
+
+    @Test
+    void getDashboardShouldForwardBlankInstanceValuesVerbatim() throws Exception {
+        DashboardDataVO blankData = DashboardDataVO.builder()
+                .stats(DashboardStatsVO.builder().totalClusters(0).build())
+                .clusters(List.of())
+                .build();
+        when(dashboardService.getDashboard("   ")).thenReturn(blankData);
+        when(dashboardService.getDashboard("")).thenReturn(blankData);
+
+        mockMvc.perform(get("/api/dashboard").param("instanceId", "   "))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/dashboard").param("instanceId", ""))
+                .andExpect(status().isOk());
+
+        verify(dashboardService).getDashboard("   ");
+        verify(dashboardService).getDashboard("");
+    }
 }
