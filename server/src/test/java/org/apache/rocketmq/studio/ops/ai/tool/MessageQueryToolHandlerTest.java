@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool;
 
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryPageVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,27 +44,21 @@ class MessageQueryToolHandlerTest {
     private MessageQueryToolHandler handler;
 
     @Test
-    void executeShouldDelegateToMessageServiceAndProject() {
-        MessageRecordVO message = MessageRecordVO.builder()
-                .msgId("msg-1")
-                .topic("TopicA")
-                .tag("tag1")
-                .key("key1")
-                .body("hello")
-                .bodyEncoding("UTF-8")
-                .bodyTruncated(false)
-                .storeTime(1000L)
-                .bornHost("10.0.0.1")
-                .storeHost("10.0.0.2")
-                .size(5)
-                .build();
-        when(messageService.queryMessages(eq("instance-a"), eq("TopicA"), any(), any(), any(), any(), any()))
-                .thenReturn(List.of(message));
+    void executeShouldForwardPagingAndProjectIncludedBodies() {
+        MessageRecordVO message = message("hello", "UTF-8", false);
+        when(messageService.queryMessagesPage(
+                        eq("instance-a"), eq("TopicA"), any(), any(), any(), any(), any(), eq(2), eq(5)))
+                .thenReturn(page(List.of(message), 2, 5));
 
-        Object result = handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA"));
+        Object result = handler.execute(Map.of(
+                "cluster", "instance-a",
+                "topic", "TopicA",
+                "page", 2,
+                "pageSize", 5,
+                "includeBody", true));
 
-        assertThat(result).isInstanceOf(List.class);
-        List<?> rows = (List<?>) result;
+        assertThat(result).isInstanceOf(Map.class);
+        List<?> rows = (List<?>) asMap(result).get("items");
         assertThat(rows).hasSize(1);
         Map<?, ?> row = (Map<?, ?>) rows.get(0);
         assertThat(row.get("msgId")).isEqualTo("msg-1");
@@ -72,18 +67,52 @@ class MessageQueryToolHandlerTest {
         assertThat(row.get("storeTime")).isEqualTo(1000L);
         assertThat(row.get("body")).isEqualTo("hello");
         assertThat(row.get("size")).isEqualTo(5);
+        verify(messageService).queryMessagesPage(
+                eq("instance-a"), eq("TopicA"), any(), any(), any(), any(), any(), eq(2), eq(5));
+    }
+
+    @Test
+    void executeShouldUseDefaultPageAndOmitBody() {
+        MessageRecordVO message = message("hello", "UTF-8", false);
+        MessageQueryPageVO page = MessageQueryPageVO.builder()
+                .items(List.of(message))
+                .total(42)
+                .page(1)
+                .size(20)
+                .resultMayBeTruncated(true)
+                .build();
+        when(messageService.queryMessagesPage(
+                        eq("instance-a"), eq("TopicA"), any(), any(), any(), any(), any(), eq(1), eq(20)))
+                .thenReturn(page);
+
+        Object result = handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA"));
+
+        assertThat(result).isInstanceOf(Map.class);
+        Map<String, Object> envelope = asMap(result);
+        assertThat(envelope).containsEntry("total", 42L)
+                .containsEntry("page", 1)
+                .containsEntry("size", 20)
+                .containsEntry("resultMayBeTruncated", true);
+        List<?> items = (List<?>) envelope.get("items");
+        assertThat(items).hasSize(1);
+        assertThat(asMap(items.get(0)))
+                .doesNotContainKeys("body", "bodyEncoding", "bodyTruncated");
+        verify(messageService).queryMessagesPage(
+                eq("instance-a"), eq("TopicA"), any(), any(), any(), any(), any(), eq(1), eq(20));
     }
 
     @Test
     void executeShouldConvertNumericTimeArguments() {
-        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(List.of());
+        when(messageService.queryMessagesPage(
+                        any(), any(), any(), any(), any(), any(), any(), eq(1), eq(20)))
+                .thenReturn(page(List.of(), 1, 20));
 
         handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA",
                 "startTime", 1000L, "endTime", 2000L));
 
         verify(messageService)
-                .queryMessages(eq("instance-a"), any(), any(), any(), any(), eq(1000L), eq(2000L));
+                .queryMessagesPage(
+                        eq("instance-a"), any(), any(), any(), any(), eq(1000L), eq(2000L), eq(1), eq(20));
     }
 
     @Test
@@ -120,14 +149,46 @@ class MessageQueryToolHandlerTest {
 
     @Test
     void executeShouldConvertInBigIntegerTimestampExactly() {
-        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(List.of());
+        when(messageService.queryMessagesPage(
+                        any(), any(), any(), any(), any(), any(), any(), eq(1), eq(20)))
+                .thenReturn(page(List.of(), 1, 20));
 
         handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA",
                 "startTime", java.math.BigInteger.valueOf(123456789L)));
 
         verify(messageService)
-                .queryMessages(eq("instance-a"), any(), any(), any(), any(),
-                        eq(123456789L), any());
+                .queryMessagesPage(eq("instance-a"), any(), any(), any(), any(),
+                        eq(123456789L), any(), eq(1), eq(20));
+    }
+
+    private static MessageRecordVO message(String body, String bodyEncoding, boolean bodyTruncated) {
+        return MessageRecordVO.builder()
+                .msgId("msg-1")
+                .topic("TopicA")
+                .tag("tag1")
+                .key("key1")
+                .body(body)
+                .bodyEncoding(bodyEncoding)
+                .bodyTruncated(bodyTruncated)
+                .storeTime(1000L)
+                .bornHost("10.0.0.1")
+                .storeHost("10.0.0.2")
+                .size(5)
+                .build();
+    }
+
+    private static MessageQueryPageVO page(List<MessageRecordVO> items, int page, int size) {
+        return MessageQueryPageVO.builder()
+                .items(items)
+                .total(items.size())
+                .page(page)
+                .size(size)
+                .resultMayBeTruncated(false)
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return (Map<String, Object>) value;
     }
 }
