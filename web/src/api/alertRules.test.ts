@@ -19,9 +19,14 @@ import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
 import {
+  bulkDeleteAlertRules,
+  bulkToggleAlertRules,
   createAlertRule,
   deleteAlertRule,
+  listAlertRuleRuntime,
   listAlertRules,
+  listAlertRulesPage,
+  testAlertRule,
   toggleAlertRule,
   updateAlertRule,
 } from './ops';
@@ -86,5 +91,40 @@ describe('alert rules API', () => {
     });
 
     await expect(deleteAlertRule(rule.id)).resolves.toBeUndefined();
+  });
+
+  it('loads the paged rules and runtime through the cluster path', async () => {
+    mock.onGet('/cluster-alert-rules/page').reply((config) => {
+      expect(config.params).toEqual({ search: 'disk', page: 2, pageSize: 20 });
+      return [200, { code: 200, data: { items: [rule], total: 1, page: 2, size: 20 } }];
+    });
+    mock.onGet('/cluster-alert-rules/runtime').reply(200, {
+      code: 200,
+      data: [{ ruleId: rule.id, status: 'FIRING' }],
+    });
+
+    await expect(
+      listAlertRulesPage('CLUSTER', { search: 'disk', page: 2, pageSize: 20 }),
+    ).resolves.toMatchObject({ total: 1 });
+    await expect(listAlertRuleRuntime()).resolves.toMatchObject([{ ruleId: 7 }]);
+  });
+
+  it('bulk toggles, bulk deletes and tests rules through the cluster path', async () => {
+    mock.onPost('/cluster-alert-rules/bulk-toggle').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ ids: [7, 8], enabled: false });
+      return [200, { code: 200, data: { success: 2, failed: 0 } }];
+    });
+    mock.onPost('/cluster-alert-rules/bulk-delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ ids: [7, 8] });
+      return [200, { code: 200, data: { success: 2, failed: 0 } }];
+    });
+    mock.onPost('/cluster-alert-rules/test').reply((config) => {
+      expect(JSON.parse(config.data)).toMatchObject({ name: rule.name });
+      return [200, { code: 200, data: { passed: true } }];
+    });
+
+    await expect(bulkToggleAlertRules([7, 8], false)).resolves.toMatchObject({ success: 2 });
+    await expect(bulkDeleteAlertRules([7, 8])).resolves.toMatchObject({ success: 2 });
+    await expect(testAlertRule({ name: rule.name })).resolves.toMatchObject({ passed: true });
   });
 });
