@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -26,6 +27,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -125,4 +128,20 @@ class AiControllerTest {
 
         verify(aiService).executeTool("rmq.cluster.list", Collections.emptyMap());
     }
+    @Test
+    void executeShouldDelegateTheCommand() throws Exception {
+        when(aiService.execute(any(AiCommandDTO.class))).thenReturn(AiExecuteResultVO.builder().build());
+
+        mockMvc.perform(post("/api/ai/execute")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"command\":\"list-topics\",\"mode\":\"single\",\"conversationId\":\"c1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        ArgumentCaptor<AiCommandDTO> captor = ArgumentCaptor.forClass(AiCommandDTO.class);
+        verify(aiService).execute(captor.capture());
+        assertEquals("list-topics", captor.getValue().getCommand());
+        assertEquals("c1", captor.getValue().getConversationId());
+    }
+
 }
