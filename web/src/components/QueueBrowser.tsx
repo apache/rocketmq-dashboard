@@ -14,17 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Card,
   Descriptions,
   Empty,
   Flex,
+  Input,
   Select,
   Slider,
   Space,
   Spin,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -197,200 +199,295 @@ export const QueueBrowserControls = ({
   </Flex>
 );
 
-export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => (
-  <Card>
-    {state.loading ? (
-      <Flex justify="center" style={{ padding: 32 }}>
-        <Spin />
-      </Flex>
-    ) : state.queues.length === 0 ? (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="选择 Topic 并点击「加载队列」，按队列浏览消息"
-        style={{ padding: '32px 0' }}
-      />
-    ) : (
-      <Flex gap={16} align="flex-start">
-        {/* 左侧：队列表格 */}
-        <div style={{ width: '50%', flexShrink: 0 }}>
-          <Table<QueueOffset>
-            rowKey={(r) => `${r.brokerName}-${r.queueId}`}
-            dataSource={state.queues}
-            size="small"
-            pagination={false}
-            columns={[
-              {
-                title: 'Broker',
-                dataIndex: 'brokerName',
-                width: 180,
-                ellipsis: { showTitle: false },
-                render: (v: string) => (
-                  <Tooltip title={v}>
-                    <Text strong style={{ fontSize: 14 }}>
-                      {v}
-                    </Text>
-                  </Tooltip>
-                ),
-              },
-              {
-                title: 'Queue',
-                dataIndex: 'queueId',
-                width: 50,
-                align: 'center',
-                render: (v: number) => <Text style={{ fontSize: 14 }}>{v}</Text>,
-              },
-              {
-                title: 'Offset 范围',
-                key: 'offset',
-                width: 170,
-                render: (_: unknown, record: QueueOffset) => {
-                  const key = `${record.brokerName}-${record.queueId}`;
-                  const currentOffset = state.offsets[key] ?? record.minOffset;
-                  return (
-                    <Flex align="center" gap={8}>
-                      <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
-                        {record.minOffset}
-                      </Text>
-                      <Slider
-                        style={{ flex: 1, margin: 0 }}
-                        min={record.minOffset}
-                        max={
-                          record.maxOffset > record.minOffset
-                            ? record.maxOffset - 1
-                            : record.minOffset
-                        }
-                        value={currentOffset}
-                        onChange={(value) =>
-                          state.setOffsets((prev) => ({ ...prev, [key]: value }))
-                        }
-                        tooltip={{ formatter: (v) => `offset: ${v}` }}
-                      />
-                      <Text code style={{ fontSize: 14, flexShrink: 0 }}>
-                        {currentOffset}
-                      </Text>
-                    </Flex>
-                  );
-                },
-              },
-              {
-                title: '操作',
-                key: 'action',
-                width: 70,
-                align: 'center',
-                render: (_: unknown, record: QueueOffset) => {
-                  const key = `${record.brokerName}-${record.queueId}`;
-                  return (
-                    <Button
-                      size="small"
-                      type="primary"
-                      loading={state.pulling.has(key)}
-                      onClick={() => void state.handlePull(record)}
-                    >
-                      查看
-                    </Button>
-                  );
-                },
-              },
-            ]}
-          />
-          <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 14 }}>
-            共 {state.queues.length} 个队列，总消息量{' '}
-            {state.queues.reduce((sum, q) => sum + (q.maxOffset - q.minOffset), 0)} 条
-          </Text>
-        </div>
+export type QueueSortValue =
+  'broker-asc' | 'broker-desc' | 'queue-asc' | 'queue-desc' | 'backlog-asc' | 'backlog-desc';
 
-        {/* 右侧：消息详情（2 列，可多条并存） */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {state.entries.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="点击左侧「查看」，消息详情将显示在这里"
-              style={{ padding: '32px 0' }}
-            />
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {state.entries.map((entry) => (
-                <Card
-                  key={entry.key}
-                  size="small"
-                  style={{ borderRadius: 8 }}
-                  title={
-                    <Space size={4}>
-                      <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                        {entry.key}
-                      </Tag>
-                      <Text type="secondary" style={{ fontSize: 14 }}>
-                        @ {entry.offset}
-                      </Text>
-                    </Space>
-                  }
-                  extra={
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<CloseOutlined />}
-                      onClick={() => state.closeEntry(entry.key)}
-                    />
-                  }
-                >
-                  {entry.message ? (
-                    <>
-                      <Descriptions column={1} size="small">
-                        <Descriptions.Item label="Message ID">
-                          <Paragraph
-                            copyable
-                            style={{ marginBottom: 0, fontFamily: 'monospace', fontSize: 14 }}
-                          >
-                            {entry.message.msgId}
-                          </Paragraph>
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Tag">
-                          <Tag>{entry.message.tag || '-'}</Tag>
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Key">
-                          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>
-                            {entry.message.key || '-'}
-                          </span>
-                        </Descriptions.Item>
-                        <Descriptions.Item label="存储时间">
-                          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>
-                            {formatTimeMs(entry.message.storeTime)}
-                          </span>
-                        </Descriptions.Item>
-                        <Descriptions.Item label="大小">
-                          {entry.message.size} bytes
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Born Host">
-                          {entry.message.bornHost || '-'}
-                        </Descriptions.Item>
-                      </Descriptions>
-                      {entry.message.body && (
-                        <Card size="small" title="Body" style={{ marginTop: 12 }}>
-                          <pre
-                            style={{
-                              maxHeight: 160,
-                              overflow: 'auto',
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-all',
-                              margin: 0,
-                            }}
-                          >
-                            {entry.message.body}
-                          </pre>
-                        </Card>
-                      )}
-                    </>
-                  ) : (
-                    <Text type="secondary">该 offset 处无消息</Text>
-                  )}
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      </Flex>
-    )}
-  </Card>
-);
+const backlogOf = (queue: QueueOffset): number => Math.max(0, queue.maxOffset - queue.minOffset);
+
+const compareQueues = (a: QueueOffset, b: QueueOffset, sort: QueueSortValue): number => {
+  switch (sort) {
+    case 'queue-asc':
+      return a.queueId - b.queueId;
+    case 'queue-desc':
+      return b.queueId - a.queueId;
+    case 'backlog-asc':
+      return backlogOf(a) - backlogOf(b);
+    case 'backlog-desc':
+      return backlogOf(b) - backlogOf(a);
+    case 'broker-desc':
+      return b.brokerName.localeCompare(a.brokerName);
+    case 'broker-asc':
+    default:
+      return a.brokerName.localeCompare(b.brokerName);
+  }
+};
+
+const QUEUE_SORT_OPTIONS = [
+  { value: 'broker-asc', label: '排序: Broker ↑' },
+  { value: 'broker-desc', label: '排序: Broker ↓' },
+  { value: 'queue-asc', label: '排序: Queue ↑' },
+  { value: 'queue-desc', label: '排序: Queue ↓' },
+  { value: 'backlog-asc', label: '排序: 积压 ↑' },
+  { value: 'backlog-desc', label: '排序: 积压 ↓' },
+];
+
+export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => {
+  const [searchText, setSearchText] = useState('');
+  const [onlyNonEmpty, setOnlyNonEmpty] = useState(false);
+  const [sortValue, setSortValue] = useState<QueueSortValue>('broker-asc');
+
+  const visibleQueues = useMemo(() => {
+    const term = searchText.trim().toLowerCase();
+    const filtered = state.queues.filter((queue) => {
+      if (onlyNonEmpty && backlogOf(queue) <= 0) return false;
+      if (!term) return true;
+      return queue.brokerName.toLowerCase().includes(term) || String(queue.queueId) === term;
+    });
+    return [...filtered].sort((a, b) => compareQueues(a, b, sortValue));
+  }, [state.queues, searchText, onlyNonEmpty, sortValue]);
+
+  const totalMessages = state.queues.reduce((sum, queue) => sum + backlogOf(queue), 0);
+
+  return (
+    <Card>
+      {state.loading ? (
+        <Flex justify="center" style={{ padding: 32 }}>
+          <Spin />
+        </Flex>
+      ) : state.queues.length === 0 ? (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="选择 Topic 并点击「加载队列」，按队列浏览消息"
+          style={{ padding: '32px 0' }}
+        />
+      ) : (
+        <Flex gap={16} align="flex-start">
+          {/* 左侧：队列表格 */}
+          <div style={{ width: '50%', flexShrink: 0 }}>
+            <Flex gap={8} align="center" wrap style={{ marginBottom: 12 }}>
+              <Input
+                allowClear
+                size="small"
+                prefix={<SearchOutlined />}
+                placeholder="搜索 Broker / Queue ID"
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                style={{ width: 220 }}
+              />
+              <Select<QueueSortValue>
+                aria-label="排序"
+                size="small"
+                value={sortValue}
+                onChange={setSortValue}
+                options={QUEUE_SORT_OPTIONS}
+                style={{ width: 170 }}
+              />
+              <Switch
+                aria-label="仅显示非空队列"
+                size="small"
+                checked={onlyNonEmpty}
+                onChange={setOnlyNonEmpty}
+              />
+              <Text type="secondary" style={{ fontSize: 14 }}>
+                仅非空
+              </Text>
+            </Flex>
+            {visibleQueues.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="没有符合条件的队列"
+                style={{ padding: '24px 0' }}
+              />
+            ) : (
+              <Table<QueueOffset>
+                rowKey={(r) => `${r.brokerName}-${r.queueId}`}
+                dataSource={visibleQueues}
+                size="small"
+                pagination={false}
+                columns={[
+                  {
+                    title: 'Broker',
+                    dataIndex: 'brokerName',
+                    width: 180,
+                    ellipsis: { showTitle: false },
+                    render: (v: string) => (
+                      <Tooltip title={v}>
+                        <Text strong style={{ fontSize: 14 }}>
+                          {v}
+                        </Text>
+                      </Tooltip>
+                    ),
+                  },
+                  {
+                    title: 'Queue',
+                    dataIndex: 'queueId',
+                    width: 50,
+                    align: 'center',
+                    render: (v: number) => <Text style={{ fontSize: 14 }}>{v}</Text>,
+                  },
+                  {
+                    title: '积压',
+                    key: 'backlog',
+                    width: 70,
+                    align: 'right',
+                    render: (_: unknown, record: QueueOffset) => (
+                      <Text style={{ fontSize: 14 }}>{backlogOf(record)}</Text>
+                    ),
+                  },
+                  {
+                    title: 'Offset 范围',
+                    key: 'offset',
+                    width: 170,
+                    render: (_: unknown, record: QueueOffset) => {
+                      const key = `${record.brokerName}-${record.queueId}`;
+                      const currentOffset = state.offsets[key] ?? record.minOffset;
+                      return (
+                        <Flex align="center" gap={8}>
+                          <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
+                            {record.minOffset}
+                          </Text>
+                          <Slider
+                            style={{ flex: 1, margin: 0 }}
+                            min={record.minOffset}
+                            max={
+                              record.maxOffset > record.minOffset
+                                ? record.maxOffset - 1
+                                : record.minOffset
+                            }
+                            value={currentOffset}
+                            onChange={(value) =>
+                              state.setOffsets((prev) => ({ ...prev, [key]: value }))
+                            }
+                            tooltip={{ formatter: (v) => `offset: ${v}` }}
+                          />
+                          <Text code style={{ fontSize: 14, flexShrink: 0 }}>
+                            {currentOffset}
+                          </Text>
+                        </Flex>
+                      );
+                    },
+                  },
+                  {
+                    title: '操作',
+                    key: 'action',
+                    width: 70,
+                    align: 'center',
+                    render: (_: unknown, record: QueueOffset) => {
+                      const key = `${record.brokerName}-${record.queueId}`;
+                      return (
+                        <Button
+                          size="small"
+                          type="primary"
+                          loading={state.pulling.has(key)}
+                          onClick={() => void state.handlePull(record)}
+                        >
+                          查看
+                        </Button>
+                      );
+                    },
+                  },
+                ]}
+              />
+            )}
+            <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 14 }}>
+              显示 {visibleQueues.length} / 共 {state.queues.length} 个队列，总消息量{' '}
+              {totalMessages} 条
+            </Text>
+          </div>
+
+          {/* 右侧：消息详情（2 列，可多条并存） */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {state.entries.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="点击左侧「查看」，消息详情将显示在这里"
+                style={{ padding: '32px 0' }}
+              />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {state.entries.map((entry) => (
+                  <Card
+                    key={entry.key}
+                    size="small"
+                    style={{ borderRadius: 8 }}
+                    title={
+                      <Space size={4}>
+                        <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                          {entry.key}
+                        </Tag>
+                        <Text type="secondary" style={{ fontSize: 14 }}>
+                          @ {entry.offset}
+                        </Text>
+                      </Space>
+                    }
+                    extra={
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<CloseOutlined />}
+                        onClick={() => state.closeEntry(entry.key)}
+                      />
+                    }
+                  >
+                    {entry.message ? (
+                      <>
+                        <Descriptions column={1} size="small">
+                          <Descriptions.Item label="Message ID">
+                            <Paragraph
+                              copyable
+                              style={{ marginBottom: 0, fontFamily: 'monospace', fontSize: 14 }}
+                            >
+                              {entry.message.msgId}
+                            </Paragraph>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Tag">
+                            <Tag>{entry.message.tag || '-'}</Tag>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Key">
+                            <span style={{ fontFamily: 'monospace', fontSize: 14 }}>
+                              {entry.message.key || '-'}
+                            </span>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="存储时间">
+                            <span style={{ fontFamily: 'monospace', fontSize: 14 }}>
+                              {formatTimeMs(entry.message.storeTime)}
+                            </span>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="大小">
+                            {entry.message.size} bytes
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Born Host">
+                            {entry.message.bornHost || '-'}
+                          </Descriptions.Item>
+                        </Descriptions>
+                        {entry.message.body && (
+                          <Card size="small" title="Body" style={{ marginTop: 12 }}>
+                            <pre
+                              style={{
+                                maxHeight: 160,
+                                overflow: 'auto',
+                                fontSize: 14,
+                                fontFamily: 'monospace',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-all',
+                                margin: 0,
+                              }}
+                            >
+                              {entry.message.body}
+                            </pre>
+                          </Card>
+                        )}
+                      </>
+                    ) : (
+                      <Text type="secondary">该 offset 处无消息</Text>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </Flex>
+      )}
+    </Card>
+  );
+};
