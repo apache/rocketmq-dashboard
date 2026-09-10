@@ -77,7 +77,10 @@ import {
   sendTopicMessage,
 } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
-import type { Instance } from '../../api/instance';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
+import { isMockMode } from '../../services/dataMode';
+import StaticTopicMappingDialog from '../../components/StaticTopicMappingDialog';
+import type { StaticMappingTarget } from '../../api/staticTopicMapping';
 import {
   parseCsvTable,
   RESOURCE_NAME_MAX_LENGTH,
@@ -350,6 +353,7 @@ const TopicPage = () => {
   const hasSelectedInstance = Boolean(selectedInstanceId);
 
   // ─── State ─────────────────────────────────────────────────────
+  const [mappingTarget, setMappingTarget] = useState<StaticMappingTarget>();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [totalTopics, setTotalTopics] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -741,7 +745,7 @@ const TopicPage = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 310,
       render: (_: unknown, record: Topic) => (
         <Flex gap={6} onClick={(e) => e.stopPropagation()}>
           <Button
@@ -752,6 +756,19 @@ const TopicPage = () => {
           >
             详情
           </Button>
+          {selectedInstanceId &&
+            selectedInstance &&
+            supportsApacheRuntime(selectedInstance) &&
+            !isMockMode() && (
+              <Button
+                size="small"
+                onClick={() =>
+                  setMappingTarget({ instanceId: selectedInstanceId, topic: record.name })
+                }
+              >
+                Static mapping
+              </Button>
+            )}
           {!isCloudInstance && (
             <Button
               size="small"
@@ -1456,6 +1473,7 @@ const TopicPage = () => {
             value={selectedInstanceId || undefined}
             onChange={(value) => {
               resetTablePage();
+              setMappingTarget(undefined);
               selectInstance(value);
             }}
             options={instanceOptions}
@@ -2035,6 +2053,13 @@ const TopicPage = () => {
           </>
         )}
       </Modal>
+      {mappingTarget && mappingTarget.instanceId === selectedInstanceId && (
+        <StaticTopicMappingDialog
+          key={`${mappingTarget.instanceId}/${mappingTarget.topic}`}
+          target={mappingTarget}
+          onClose={() => setMappingTarget(undefined)}
+        />
+      )}
     </div>
   );
 };
