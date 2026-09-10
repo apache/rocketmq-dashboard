@@ -170,3 +170,13 @@ describe('ACL risk diagnostics', () => {
     );
   });
 });
+
+describe('ACL risk diagnostics missing accounts', () => {
+  it('flags an enabled ACL with no plain access accounts as critical', () => {
+    const diagnostics = analyzeAclRisk(config({ accounts: [], accountCount: 0 }));
+
+    expect(diagnostics.status).toBe('critical');
+    expect(diagnostics.summary.accountCount).toBe(0);
+    expect(diagnostics.issues.map((issue) => issue.code)).toContain('NO_PLAIN_ACCESS_ACCOUNTS');
+  });
+});
