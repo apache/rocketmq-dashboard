@@ -110,6 +110,36 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
+    void searchShouldEscapeLikeWildcardsTest() {
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+
+        // "prod_cluster%" must match instances literally named that way instead of
+        // "_" standing in for any character and "%" for any suffix.
+        repository.search("prod_cluster%");
+
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        query.getValue().getSqlSegment();
+        assertThat(query.getValue().getParamNameValuePairs())
+                .containsValue("%prod\\_cluster\\%%")
+                .doesNotContainValue("%prod_cluster%");
+    }
+
+    @Test
+    void findByTypeAndSearchShouldEscapeLikeWildcardsTest() {
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+
+        repository.findByTypeAndSearch(InstanceType.DIRECT, "prod_cluster%");
+
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        query.getValue().getSqlSegment();
+        assertThat(query.getValue().getParamNameValuePairs())
+                .containsValue("%prod\\_cluster\\%%")
+                .doesNotContainValue("%prod_cluster%");
+    }
+
+    @Test
     void constructorShouldNotSeedDemoInstances() {
         when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
 
