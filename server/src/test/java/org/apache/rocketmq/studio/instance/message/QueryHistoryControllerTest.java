@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDateTime;
 import java.util.List;
 
+
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -96,5 +97,20 @@ class QueryHistoryControllerTest {
         verify(queryHistoryService).listMessageQueries("instance-a", "TOPIC", null, 1, 20);
         verify(queryHistoryService).listTraceQueries("instance-a", null, 1, 20);
         verify(queryHistoryService).summarize(null);
+    }
+
+    @Test
+    void returnsStoredMessageQueryResults() throws Exception {
+        MessageRecordVO message = MessageRecordVO.builder()
+                .msgId("msg-1").topic("orders").build();
+        when(queryHistoryService.getMessageQueryResults(12L)).thenReturn(List.of(message));
+
+        mockMvc.perform(get("/api/query-history/messages/12/results"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].msgId").value("msg-1"))
+                .andExpect(jsonPath("$.data[0].topic").value("orders"));
+
+        verify(queryHistoryService).getMessageQueryResults(12L);
     }
 }
