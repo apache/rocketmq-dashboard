@@ -57,4 +57,43 @@ class AliyunConvertersLagTest {
                     assertThat(row.getDiffTotal()).isEqualTo(100L);
                 });
     }
+
+    @Test
+    void nullTopicEntriesAndNullReadyCountsContributeZeroRows() {
+        Map<String, DataTopicLagMapValue> topicLagMap = new java.util.HashMap<>();
+        topicLagMap.put("orders", null);
+        topicLagMap.put("payments", DataTopicLagMapValue.builder().readyCount(null).build());
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .topicLagMap(topicLagMap)
+                .totalLag(GetConsumerGroupLagResponseBody.TotalLag.builder().readyCount(100L).build())
+                .build();
+
+        List<QueueProgressVO> rows = AliyunConverters.toQueueProgressRows(data);
+
+        assertThat(rows).extracting(QueueProgressVO::getTopic)
+                .containsExactlyInAnyOrder("orders", "payments");
+        assertThat(rows).allMatch(row -> row.getDiffTotal() == 0L);
+    }
+
+    @Test
+    void emptyTopicBreakdownUsesAggregateFallback() {
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .topicLagMap(Map.of())
+                .totalLag(GetConsumerGroupLagResponseBody.TotalLag.builder().readyCount(100L).build())
+                .build();
+
+        assertThat(AliyunConverters.toQueueProgressRows(data)).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getBroker()).isEqualTo("total");
+                    assertThat(row.getDiffTotal()).isEqualTo(100L);
+                });
+    }
+
+    @Test
+    void neitherBreakdownNorAggregateYieldsNoRows() {
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .build();
+
+        assertThat(AliyunConverters.toQueueProgressRows(data)).isEmpty();
+    }
 }
