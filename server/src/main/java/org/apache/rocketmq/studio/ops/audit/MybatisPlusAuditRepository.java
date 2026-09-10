@@ -57,11 +57,12 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                                               String resourceType, String clusterId,
                                               LocalDateTime startDate, LocalDateTime endDate,
                                               String result, int page, int pageSize) {
+        String searchPattern = escapeLike(search);
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
                 .and(StringUtils.hasText(search), w -> w
-                        .like("operator", search)
-                        .or().like("resource_name", search)
-                        .or().like("detail", search))
+                        .like("operator", searchPattern)
+                        .or().like("resource_name", searchPattern)
+                        .or().like("detail", searchPattern))
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
@@ -197,16 +198,29 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
                               String operationType, String resourceType, String clusterId,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
+        String searchPattern = escapeLike(search);
         query.and(StringUtils.hasText(search), w -> w
-                        .like("operator", search)
-                        .or().like("resource_name", search)
-                        .or().like("detail", search))
+                        .like("operator", searchPattern)
+                        .or().like("resource_name", searchPattern)
+                        .or().like("detail", searchPattern))
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
                 .ge(startDate != null, "gmt_create", startDate)
                 .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result);
+    }
+
+    /**
+     * Escapes the SQL LIKE wildcards in a user-supplied search term so the
+     * audit search matches operators, resource names and details literally
+     * instead of acting as a pattern (mirrors QueryHistoryService).
+     */
+    private static String escapeLike(String search) {
+        if (!StringUtils.hasText(search)) {
+            return search;
+        }
+        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override
