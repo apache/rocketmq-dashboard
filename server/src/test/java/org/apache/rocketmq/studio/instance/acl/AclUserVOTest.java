@@ -42,4 +42,47 @@ class AclUserVOTest {
         assertThat(value).doesNotContain("plain-access-key");
         assertThat(value).doesNotContain("plain-secret-key");
     }
+
+    @Test
+    void toStringShouldIncludePermissionAndWhitelistFields() {
+        AclUserVO user = AclUserVO.builder()
+            .username("tencent-role")
+            .accessKey("ak-secret")
+            .secretKey("sk-secret")
+            .permRead(true)
+            .permWrite(false)
+            .whiteRemoteAddress("10.0.0.0/8")
+            .build();
+
+        String value = user.toString();
+
+        assertThat(value).contains("username=tencent-role");
+        assertThat(value).contains("permRead=true");
+        assertThat(value).contains("permWrite=false");
+        assertThat(value).contains("whiteRemoteAddress=10.0.0.0/8");
+        assertThat(value).doesNotContain("ak-secret");
+        assertThat(value).doesNotContain("sk-secret");
+    }
+
+    @Test
+    void builderShouldRoundTripPermissionFieldsAndClusters() {
+        AclUserVO user = AclUserVO.builder()
+            .id(9L)
+            .username("plain-account")
+            .accessKey("ak-1")
+            .secretKey("sk-1")
+            .admin(false)
+            .clusters(List.of("prod", "staging"))
+            .permRead(null)
+            .permWrite(true)
+            .whiteRemoteAddress("192.168.1.0/24")
+            .build();
+
+        assertThat(user.getId()).isEqualTo(9L);
+        assertThat(user.getUsername()).isEqualTo("plain-account");
+        assertThat(user.getClusters()).containsExactly("prod", "staging");
+        assertThat(user.getPermWrite()).isTrue();
+        assertThat(user.getPermRead()).isNull();
+        assertThat(user.getWhiteRemoteAddress()).isEqualTo("192.168.1.0/24");
+    }
 }
