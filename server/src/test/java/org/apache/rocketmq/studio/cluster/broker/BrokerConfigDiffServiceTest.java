@@ -27,8 +27,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
@@ -205,10 +203,96 @@ class BrokerConfigDiffServiceTest {
                         .isEqualTo(400));
     }
 
+    @Test
+    void unconfiguredFieldOnOneBrokerIsReportedAsDifference() {
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                broker("broker-a", "10.0.0.1:10911"),
+                broker("broker-b", "10.0.0.2:10911")));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null))
+                .thenReturn(config(FlushDiskType.ASYNC_FLUSH, true, 8, 6, "04"));
+        when(brokerConfigService.getBrokerConfig("10.0.0.2:10911", null))
+                .thenReturn(ClusterConfigVO.builder()
+                        .autoCreateTopicEnable(true)
+                        .autoCreateSubscriptionGroup(true)
+                        .maxMessageSize(4194304)
+                        .msgTraceTopicName("RMQ_SYS_TRACE_TOPIC")
+                        .deleteWhen("04")
+                        .fileReservedTime(72)
+                        .writeQueueNums(8)
+                        .readQueueNums(8)
+                        .brokerPermission(6)
+                        .build());
+
+        BrokerConfigDiffVO result = service.compare("cluster-a", null);
+
+        assertThat(result.isDriftDetected()).isTrue();
+        BrokerConfigDiffVO.ConfigDifferenceVO flush = result.getDifferences().stream()
+                .filter(difference -> difference.getField().equals("flushDiskType"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(flush.getValues())
+                .extracting(
+                        BrokerConfigDiffVO.ConfigValueVO::getBrokerName,
+                        BrokerConfigDiffVO.ConfigValueVO::isConfigured,
+                        BrokerConfigDiffVO.ConfigValueVO::getValue)
+                .containsExactly(
+                        tuple("broker-a", true, "ASYNC_FLUSH"),
+                        tuple("broker-b", false, null));
+    }
+
+    @Test
+    void nullAndAddressLessBrokerEntriesAreSkipped() {
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                null,
+                broker("no-address", "  "),
+                broker("broker-a", "10.0.0.1:10911")));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null))
+                .thenReturn(config(FlushDiskType.ASYNC_FLUSH, true, 8, 6, "04"));
+
+        BrokerConfigDiffVO result = service.compare("cluster-a", null);
+
+        assertThat(result.getBrokerCount()).isEqualTo(1);
+        assertThat(result.isComplete()).isTrue();
+        assertThat(result.getBrokers()).singleElement().satisfies(status -> {
+            assertThat(status.getName()).isEqualTo("broker-a");
+            assertThat(status.isReachable()).isTrue();
+        });
+    }
+
+    @Test
+    void driftAcrossThreeBrokersExposesEveryValue() {
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                broker("broker-a", "10.0.0.1:10911"),
+                broker("broker-b", "10.0.0.2:10911"),
+                broker("broker-c", "10.0.0.3:10911")));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null))
+                .thenReturn(config(FlushDiskType.ASYNC_FLUSH, true, 8, 6, "04"));
+        when(brokerConfigService.getBrokerConfig("10.0.0.2:10911", null))
+                .thenReturn(config(FlushDiskType.SYNC_FLUSH, true, 8, 6, "04"));
+        when(brokerConfigService.getBrokerConfig("10.0.0.3:10911", null))
+                .thenReturn(config(FlushDiskType.ASYNC_FLUSH, true, 8, 6, "04"));
+
+        BrokerConfigDiffVO result = service.compare("cluster-a", null);
+
+        assertThat(result.isDriftDetected()).isTrue();
+        BrokerConfigDiffVO.ConfigDifferenceVO flush = result.getDifferences().stream()
+                .filter(difference -> difference.getField().equals("flushDiskType"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(flush.getValues())
+                .extracting(
+                        BrokerConfigDiffVO.ConfigValueVO::getBrokerName,
+                        BrokerConfigDiffVO.ConfigValueVO::getValue)
+                .containsExactly(
+                        tuple("broker-a", "ASYNC_FLUSH"),
+                        tuple("broker-b", "SYNC_FLUSH"),
+                        tuple("broker-c", "ASYNC_FLUSH"));
+    }
+
     private ClusterVO cluster(BrokerVO... brokers) {
         ClusterVO cluster = ClusterVO.builder()
                 .name("cluster-a")
-                .brokers(List.of(brokers))
+                .brokers(new java.util.ArrayList<>(java.util.Arrays.asList(brokers)))
                 .build();
         cluster.setId("cluster-a");
         return cluster;
