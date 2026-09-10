@@ -189,10 +189,13 @@ const resetPreviewRiskColor = (riskLevel: string) => {
   return 'green';
 };
 
-const resetPreviewRiskLabel = (riskLevel: string) => {
-  if (riskLevel === 'ERROR') return '失败';
-  if (riskLevel === 'WARNING') return '需确认';
-  return '正常';
+const resetPreviewRiskLabel = (
+  riskLevel: string,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string => {
+  if (riskLevel === 'ERROR') return t('consumer.resetRiskError');
+  if (riskLevel === 'WARNING') return t('consumer.resetRiskWarning');
+  return t('consumer.resetRiskOk');
 };
 
 const healthStatusTagColor = (status: ConsumerGroupHealthStatus) => {
@@ -213,28 +216,40 @@ const issueSeverityLabel = (severity: ConsumerGroupHealthIssue['severity']) => {
   return '提示';
 };
 
-const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
+const resetPreviewQueueMessage = (
+  queue: ResetConsumerOffsetQueuePreview,
+  t: (key: string, params?: Record<string, string | number>) => string,
+  lang: string,
+): string => {
   const messages: string[] = [];
   if (queue.riskLevel === 'ERROR') {
-    return queue.message || '预览失败';
+    return queue.message || t('consumer.previewFailed');
   }
   if (queue.targetOffset < 0 || queue.consumerOffset < 0) {
-    return queue.message || '目标位点不可用';
+    return queue.message || t('consumer.previewTargetUnavailable');
   }
   if (queue.offsetDelta < 0) {
-    messages.push(`将回放 ${Math.abs(queue.offsetDelta).toLocaleString()} 条消息`);
+    messages.push(
+      t('consumer.previewRewind', {
+        count: Math.abs(queue.offsetDelta).toLocaleString(),
+      }),
+    );
   } else if (queue.offsetDelta > 0) {
-    messages.push(`将跳过 ${queue.offsetDelta.toLocaleString()} 条未消费消息`);
+    messages.push(
+      t('consumer.previewFastForward', {
+        count: queue.offsetDelta.toLocaleString(),
+      }),
+    );
   } else {
-    messages.push('位点不变');
+    messages.push(t('consumer.previewUnchanged'));
   }
   if (queue.minOffset >= 0 && queue.targetOffset === queue.minOffset) {
-    messages.push('目标为最小保留位点');
+    messages.push(t('consumer.previewAtMin'));
   }
   if (queue.maxOffset >= 0 && queue.targetOffset === queue.maxOffset) {
-    messages.push('目标为最新位点');
+    messages.push(t('consumer.previewAtMax'));
   }
-  return messages.join('；');
+  return messages.join(lang === 'en' ? '; ' : '；');
 };
 
 // Shared helper exported alongside the page component; fast-refresh rule waived.
@@ -254,7 +269,7 @@ const ConsumerPageContent = ({
   instanceOptions,
   instancesLoading,
 }: ConsumerPageContentProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -664,7 +679,7 @@ const ConsumerPageContent = ({
 
   const handlePreviewResetOffset = async () => {
     if (!resetGroup || !resetTopic) {
-      message.warning('请先选择要重置的 Topic');
+      message.warning(t('consumer.selectTopicToReset'));
       return;
     }
     const previewKey = currentResetPreviewKey;
@@ -680,12 +695,12 @@ const ConsumerPageContent = ({
       setResetPreview(preview);
       setResetPreviewKey(previewKey);
       if (preview.complete && preview.queueCount > 0) {
-        message.success(`已预览 ${preview.queueCount} 个 Queue`);
+        message.success(t('consumer.previewDone', { count: String(preview.queueCount) }));
       } else {
-        message.warning('预览未覆盖可重置队列，请检查 Group/Topic 状态');
+        message.warning(t('consumer.previewNoQueuesWarning'));
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : '预览重置影响失败';
+      const reason = error instanceof Error ? error.message : t('consumer.previewFailedReason');
       setResetPreview(null);
       setResetPreviewKey('');
       setResetPreviewError(reason);
@@ -698,7 +713,7 @@ const ConsumerPageContent = ({
   const handleResetOffset = async () => {
     if (!resetGroup || !resetTopic) return;
     if (!resetPreviewCanApply) {
-      message.warning('请先预览并确认位点影响');
+      message.warning(t('consumer.previewNotConfirmedWarning'));
       return;
     }
     setResetSubmitting(true);
@@ -710,7 +725,11 @@ const ConsumerPageContent = ({
         timestamp: resetTimestamp,
       });
       message.success(
-        `${resetGroup.name} 在 ${resetTopic} 的消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
+        t('consumer.resetDone', {
+          name: resetGroup.name,
+          topic: resetTopic,
+          time: resetTime.format('YYYY-MM-DD HH:mm:ss'),
+        }),
       );
       setProgressByGroup((prev) => {
         const next = { ...prev };
@@ -1024,7 +1043,7 @@ const ConsumerPageContent = ({
               void loadSubscriptions(record.name);
             }}
           >
-            重置位点
+            {t('consumer.resetOffset')}
           </Button>
           <Button
             size="small"
@@ -1324,7 +1343,7 @@ const ConsumerPageContent = ({
       render: (id: number) => <Tag color="blue">Queue {id}</Tag>,
     },
     {
-      title: '当前位点',
+      title: t('consumer.currentOffset'),
       dataIndex: 'consumerOffset',
       key: 'consumerOffset',
       width: 120,
@@ -1334,7 +1353,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '目标位点',
+      title: t('consumer.targetOffset'),
       dataIndex: 'targetOffset',
       key: 'targetOffset',
       width: 120,
@@ -1346,7 +1365,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '变化',
+      title: t('consumer.change'),
       dataIndex: 'offsetDelta',
       key: 'offsetDelta',
       width: 100,
@@ -1364,7 +1383,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '当前堆积',
+      title: t('consumer.currentLagLabel'),
       dataIndex: 'currentLag',
       key: 'currentLag',
       width: 110,
@@ -1374,7 +1393,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '重置后堆积',
+      title: t('consumer.projectedLag'),
       dataIndex: 'projectedLag',
       key: 'projectedLag',
       width: 124,
@@ -1386,22 +1405,24 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '风险',
+      title: t('consumer.risk'),
       dataIndex: 'riskLevel',
       key: 'riskLevel',
       width: 86,
       render: (riskLevel: string) => (
-        <Tag color={resetPreviewRiskColor(riskLevel)}>{resetPreviewRiskLabel(riskLevel)}</Tag>
+        <Tag color={resetPreviewRiskColor(riskLevel)}>
+          {resetPreviewRiskLabel(riskLevel, t)}
+        </Tag>
       ),
     },
     {
-      title: '说明',
+      title: t('consumer.description'),
       key: 'message',
       width: 240,
       ellipsis: true,
       render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => (
-        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record)}>
-          {resetPreviewQueueMessage(record)}
+        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record, t, lang)}>
+          {resetPreviewQueueMessage(record, t, lang)}
         </Text>
       ),
     },
@@ -2456,7 +2477,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <ArrowsCounterClockwise size={18} color="#fa8c16" />
-            <span>重置消费位点</span>
+            <span>{t('consumer.resetOffsetTitle')}</span>
           </Space>
         }
         open={resetModalOpen}
@@ -2474,8 +2495,8 @@ const ConsumerPageContent = ({
             resetPreviewLoading ||
             Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
         }}
-        okText="确认重置"
-        cancelText="取消"
+        okText={t('consumer.confirmReset')}
+        cancelText={t('common.cancel')}
         width={1200}
         destroyOnHidden
       >
@@ -2484,12 +2505,12 @@ const ConsumerPageContent = ({
             <Alert
               showIcon
               type="warning"
-              message="此操作将影响消息消费进度"
-              description="请先预览每个 Queue 的目标位点和堆积变化，确认预览结果后再执行重置。预览为时点快照、属页面操作引导（非服务端控制），预览期间消息持续写入，实际效果以执行时 Broker 状态为准。"
+              message={t('consumer.resetImpactTitle')}
+              description={t('consumer.resetImpactDesc')}
             />
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                目标 Group
+                {t('consumer.resetTargetGroup')}
               </Text>
               <Text strong style={{ fontSize: 14 }}>
                 {resetGroup.name}
@@ -2497,31 +2518,31 @@ const ConsumerPageContent = ({
             </div>
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                目标 Topic
+                {t('consumer.resetTargetTopic')}
               </Text>
               <Select
-                aria-label="目标 Topic"
+                aria-label={t('consumer.resetTargetTopic')}
                 showSearch
                 optionFilterProp="label"
                 style={{ width: '100%' }}
                 value={resetTopic}
                 options={resetTopicOptions}
                 loading={subscriptionLoadingByGroup[resetDiagnosticKey]}
-                placeholder="选择要重置消费位点的 Topic"
+                placeholder={t('consumer.resetTopicPlaceholder')}
                 onChange={(value) => {
                   setResetTopic(value);
                   clearResetPreview();
                 }}
                 notFoundContent={
                   subscriptionErrorByGroup[resetDiagnosticKey]
-                    ? '订阅 Topic 加载失败'
-                    : '该 Group 暂无订阅 Topic'
+                    ? t('consumer.subTopicLoadFailed')
+                    : t('consumer.noSubTopics')
                 }
               />
             </div>
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                重置到以下时间点
+                {t('consumer.resetToTimeLabel')}
               </Text>
               <DatePicker
                 showTime
@@ -2534,12 +2555,12 @@ const ConsumerPageContent = ({
                   }
                 }}
                 format="YYYY-MM-DD HH:mm:ss"
-                placeholder="选择重置时间点"
+                placeholder={t('consumer.resetTimePlaceholder')}
               />
             </div>
             <div>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                快捷选择
+                {t('consumer.quickSelect')}
               </Text>
               <Space wrap>
                 <Button
@@ -2558,7 +2579,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  1 小时前
+                  {t('consumer.hoursAgo', { count: '1' })}
                 </Button>
                 <Button
                   size="small"
@@ -2567,7 +2588,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  3 小时前
+                  {t('consumer.hoursAgo', { count: '3' })}
                 </Button>
                 <Button
                   size="small"
@@ -2576,7 +2597,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  6 小时前
+                  {t('consumer.hoursAgo', { count: '6' })}
                 </Button>
                 <Button
                   size="small"
@@ -2585,7 +2606,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  12 小时前
+                  {t('consumer.hoursAgo', { count: '12' })}
                 </Button>
                 <Button
                   size="small"
@@ -2594,7 +2615,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  1 天前
+                  {t('consumer.daysAgo', { count: '1' })}
                 </Button>
                 <Button
                   size="small"
@@ -2603,13 +2624,13 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  3 天前
+                  {t('consumer.daysAgo', { count: '3' })}
                 </Button>
               </Space>
             </div>
             <Flex justify="space-between" align="center" gap={12}>
               <Text type="secondary" style={{ fontSize: 14 }}>
-                预览不会修改 broker 位点，仅计算目标时间对应的 Queue offset。
+                {t('consumer.previewNotice')}
               </Text>
               <Button
                 icon={<Eye size={14} />}
@@ -2621,38 +2642,49 @@ const ConsumerPageContent = ({
                 }
                 onClick={() => void handlePreviewResetOffset()}
               >
-                预览影响
+                {t('consumer.previewImpactButton')}
               </Button>
             </Flex>
             {resetPreviewError && (
-              <Alert showIcon type="error" message="位点预览失败" description={resetPreviewError} />
+              <Alert
+                showIcon
+                type="error"
+                message={t('consumer.previewFailedTitle')}
+                description={resetPreviewError}
+              />
             )}
             {hasCurrentResetPreview && resetPreview && (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Descriptions bordered size="small" column={4}>
-                  <Descriptions.Item label="Queue 数">{resetPreview.queueCount}</Descriptions.Item>
-                  <Descriptions.Item label="当前总堆积">
+                  <Descriptions.Item label={t('consumer.queueCountLabel')}>
+                    {resetPreview.queueCount}
+                  </Descriptions.Item>
+                  <Descriptions.Item label={t('consumer.currentTotalLagLabel')}>
                     {formatOffsetValue(resetPreview.currentTotalLag)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="重置后总堆积">
+                  <Descriptions.Item label={t('consumer.projectedTotalLagLabel')}>
                     {formatOffsetValue(resetPreview.projectedTotalLag)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="位点净变化">
+                  <Descriptions.Item label={t('consumer.netOffsetChange')}>
                     {formatOffsetDelta(resetPreview.totalOffsetDelta)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="回放 Queue">
+                  <Descriptions.Item label={t('consumer.rewindQueues')}>
                     {resetPreview.rewindQueueCount}
                   </Descriptions.Item>
-                  <Descriptions.Item label="跳过 Queue">
+                  <Descriptions.Item label={t('consumer.fastForwardQueues')}>
                     {resetPreview.fastForwardQueueCount}
                   </Descriptions.Item>
-                  <Descriptions.Item label="预览状态" span={2}>
+                  <Descriptions.Item label={t('consumer.previewStatus')} span={2}>
                     <Tag
                       color={
                         resetPreview.complete ? 'green' : resetPreview.allowReset ? 'orange' : 'red'
                       }
                     >
-                      {resetPreview.complete ? '完整' : resetPreview.allowReset ? '有限' : '不完整'}
+                      {resetPreview.complete
+                        ? t('consumer.previewComplete')
+                        : resetPreview.allowReset
+                          ? t('consumer.previewLimited')
+                          : t('consumer.previewIncomplete')}
                     </Tag>
                   </Descriptions.Item>
                 </Descriptions>
@@ -2660,8 +2692,8 @@ const ConsumerPageContent = ({
                   <Alert
                     showIcon
                     type={resetPreview.complete ? 'warning' : 'error'}
-                    message="请确认以下影响"
-                    description={resetPreviewWarnings.join('；')}
+                    message={t('consumer.confirmImpacts')}
+                    description={resetPreviewWarnings.join(lang === 'en' ? '; ' : '；')}
                   />
                 )}
                 <Table
@@ -2672,7 +2704,7 @@ const ConsumerPageContent = ({
                   size="small"
                   tableLayout="fixed"
                   scroll={{ x: tableScrollX(resetPreviewColumns), y: 260 }}
-                  locale={{ emptyText: '未找到可预览的 Queue 位点' }}
+                  locale={{ emptyText: t('consumer.noPreviewQueues') }}
                 />
               </Space>
             )}
