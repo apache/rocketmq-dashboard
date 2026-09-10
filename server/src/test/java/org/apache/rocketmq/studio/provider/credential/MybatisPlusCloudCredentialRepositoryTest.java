@@ -110,6 +110,24 @@ class MybatisPlusCloudCredentialRepositoryTest {
         assertThat(query.getParamNameValuePairs()).containsValue("%credential%");
     }
 
+    @Test
+    void findPageShouldEscapeLikeWildcardsInTheSearchTerm() {
+        when(credentialMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqCloudCredential>(1, 20));
+
+        // "aliyun_prod%" must match credentials literally named that way instead of
+        // "_" matching any character and "%" matching every suffix.
+        repository.findPage(null, "aliyun_prod%", 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqCloudCredential>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(credentialMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqCloudCredential> query = (QueryWrapper<RmqCloudCredential>) queryCaptor.getValue();
+        query.getCustomSqlSegment();
+        assertThat(query.getParamNameValuePairs())
+                .containsValue("%aliyun\\_prod\\%%")
+                .doesNotContainValue("%aliyun_prod%");
+    }
+
     private RmqCloudCredential entity(Long id, String name, String vendor) {
         RmqCloudCredential entity = new RmqCloudCredential();
         entity.setId(id);

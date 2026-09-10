@@ -52,9 +52,10 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
     @Override
     public PageResult<CloudCredentialVO> findPage(InstanceVendor vendor, String search, int page, int pageSize) {
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
+        String searchPattern = escapeLike(normalizedSearch);
         QueryWrapper<RmqCloudCredential> q = new QueryWrapper<RmqCloudCredential>()
                 .eq(vendor != null, "vendor", vendor == null ? null : vendor.name())
-                .like(normalizedSearch != null, "name", normalizedSearch)
+                .like(normalizedSearch != null, "name", searchPattern)
                 .orderByDesc("gmt_modified", "id");
         Page<RmqCloudCredential> result = credentialMapper.selectPage(new Page<>(page, pageSize), q);
         return PageResult.of(result.getRecords().stream()
@@ -142,5 +143,17 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
             throw new BusinessException(500, "Invalid persisted cloud credential vendor for credential "
                     + credentialId + ": " + vendor);
         }
+    }
+
+    /**
+     * Escapes the SQL LIKE wildcards in a credential-name search so % and _
+     * in the typed term are matched literally instead of acting as a pattern
+     * (mirrors QueryHistoryService).
+     */
+    private static String escapeLike(String search) {
+        if (search == null || search.isBlank()) {
+            return search;
+        }
+        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }
