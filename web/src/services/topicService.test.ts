@@ -17,12 +17,15 @@
 
 import {
   createTopic,
+  deleteTopic,
   getTopicConsumerPage,
   getTopicConsumers,
   getTopicRoutes,
   listAllTopics,
   listTopics,
+  updateTopic,
 } from './topicService';
+import { topics as mockTopics } from '../mock/topics';
 
 vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
@@ -30,6 +33,12 @@ vi.mock('../config', () => ({
 }));
 
 describe('topic service mock data', () => {
+  afterEach(() => {
+    for (let idx = mockTopics.length - 1; idx >= 0; idx -= 1) {
+      if (mockTopics[idx].name.startsWith('instance-scope-test-')) mockTopics.splice(idx, 1);
+    }
+  });
+
   it('returns copied topic rows', async () => {
     const first = await listTopics({ search: 'order-create' });
     expect(first[0].name).toBe('order-create');
@@ -118,5 +127,76 @@ describe('topic service mock data', () => {
 
     const after = await listTopics({ clusterId: existing.clusterId });
     expect(after).toEqual(before);
+  });
+
+  it('allows the same topic name and cluster in different mock instances', async () => {
+    const topic = {
+      name: 'instance-scope-test-create',
+      clusterId: 'rmq-cn-v5-prod-01',
+      namespace: 'trade',
+      type: 'NORMAL',
+      writeQueues: 4,
+      readQueues: 4,
+      perm: 'RW',
+    };
+
+    const first = await createTopic({ ...topic, instanceId: 'instance-proxy-1' });
+    const second = await createTopic({ ...topic, instanceId: 'instance-proxy-2' });
+
+    expect(first.instanceId).toBe('instance-proxy-1');
+    expect(second.instanceId).toBe('instance-proxy-2');
+    await expect(createTopic({ ...topic, instanceId: 'instance-proxy-1' })).rejects.toThrow(
+      `Topic already exists: ${topic.name}`,
+    );
+  });
+
+  it('updates only the matching mock topic instance when instance ID is supplied', async () => {
+    const topic = {
+      name: 'instance-scope-test-update',
+      clusterId: 'rmq-cn-v5-prod-01',
+      namespace: 'trade',
+      type: 'NORMAL',
+      writeQueues: 4,
+      readQueues: 4,
+      perm: 'RW',
+      remark: 'original',
+    };
+    await createTopic({ ...topic, instanceId: 'instance-proxy-1' });
+    await createTopic({ ...topic, instanceId: 'instance-proxy-2' });
+
+    const updated = await updateTopic({
+      name: topic.name,
+      instanceId: 'instance-proxy-2',
+      remark: 'updated second instance',
+    });
+
+    expect(updated.remark).toBe('updated second instance');
+    const firstInstance = await listTopics({ instanceId: 'instance-proxy-1', search: topic.name });
+    const secondInstance = await listTopics({ instanceId: 'instance-proxy-2', search: topic.name });
+    expect(firstInstance).toHaveLength(1);
+    expect(secondInstance).toHaveLength(1);
+    expect(firstInstance[0].remark).toBe('original');
+    expect(secondInstance[0].remark).toBe('updated second instance');
+  });
+
+  it('deletes only the matching mock topic instance when instance ID is supplied', async () => {
+    const topic = {
+      name: 'instance-scope-test-delete',
+      clusterId: 'rmq-cn-v5-prod-01',
+      namespace: 'trade',
+      type: 'NORMAL',
+      writeQueues: 4,
+      readQueues: 4,
+      perm: 'RW',
+    };
+    await createTopic({ ...topic, instanceId: 'instance-proxy-1' });
+    await createTopic({ ...topic, instanceId: 'instance-proxy-2' });
+
+    await deleteTopic(topic.name, 'instance-proxy-2');
+
+    const firstInstance = await listTopics({ instanceId: 'instance-proxy-1', search: topic.name });
+    const secondInstance = await listTopics({ instanceId: 'instance-proxy-2', search: topic.name });
+    expect(firstInstance).toHaveLength(1);
+    expect(secondInstance).toHaveLength(0);
   });
 });
