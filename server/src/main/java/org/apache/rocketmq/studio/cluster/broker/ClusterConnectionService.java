@@ -17,8 +17,10 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -43,6 +45,9 @@ public class ClusterConnectionService {
      * @return a populated {@link ClusterProbeResult} on success
      */
     public ClusterProbeResult testConnection(TestConnectionDTO command) {
+        if (command == null || !StringUtils.hasText(command.getNamesrvAddr())) {
+            throw new BusinessException(400, "namesrvAddr is required");
+        }
         String namesrvAddr = command.getNamesrvAddr().trim();
         log.info("Testing connection to NameServer {}", namesrvAddr);
         long start = System.currentTimeMillis();

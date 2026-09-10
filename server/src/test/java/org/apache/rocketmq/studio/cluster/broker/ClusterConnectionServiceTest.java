@@ -76,4 +76,15 @@ class ClusterConnectionServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Failed to connect NameServer");
     }
+
+    @Test
+    void rejectsMissingNameserverAddress() {
+        TestConnectionDTO empty = new TestConnectionDTO();
+        assertThatThrownBy(() -> service.testConnection(empty))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("namesrvAddr");
+        assertThatThrownBy(() -> service.testConnection(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("namesrvAddr");
+    }
 }
