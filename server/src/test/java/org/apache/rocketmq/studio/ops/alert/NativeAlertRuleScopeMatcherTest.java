@@ -58,6 +58,49 @@ class NativeAlertRuleScopeMatcherTest {
         assertThat(NativeAlertRuleScopeMatcher.matches(rule, otherTopic)).isFalse();
     }
 
+    @Test
+    void blankInstanceIdNeverMatchesTest() {
+        AlertRuleVO blank = AlertRuleVO.builder().instanceId("  ").clusterName("*").brokerName("*").build();
+        AlertRuleVO missing = AlertRuleVO.builder().brokerName("*").build();
+
+        assertThat(NativeAlertRuleScopeMatcher.matches(blank, sample("cluster-a", "broker-a"))).isFalse();
+        assertThat(NativeAlertRuleScopeMatcher.matches(missing, sample("cluster-a", "broker-a"))).isFalse();
+    }
+
+    @Test
+    void concreteSelectorRejectsSampleWithoutThatLabelTest() {
+        AlertRuleVO rule = AlertRuleVO.builder().instanceId("local").consumerGroup("orders")
+                .brokerName("*").clusterName("*").build();
+        MetricSample noGroupLabel = new MetricSample("topic.backlog.total", AlertDomain.BUSINESS, "local",
+                "cluster-a", Map.of("topic", "orders-topic"), 42D,
+                MetricAvailability.AVAILABLE, Instant.now());
+
+        assertThat(NativeAlertRuleScopeMatcher.matches(rule, noGroupLabel)).isFalse();
+    }
+
+    @Test
+    void wildcardSelectorAcceptsSampleWithoutThatLabelTest() {
+        AlertRuleVO rule = AlertRuleVO.builder().instanceId("local").consumerGroup("*")
+                .brokerName("*").clusterName("*").build();
+        MetricSample noGroupLabel = new MetricSample("topic.backlog.total", AlertDomain.BUSINESS, "local",
+                "cluster-a", Map.of("topic", "orders-topic"), 42D,
+                MetricAvailability.AVAILABLE, Instant.now());
+
+        assertThat(NativeAlertRuleScopeMatcher.matches(rule, noGroupLabel)).isTrue();
+    }
+
+    @Test
+    void selectorWhitespaceAndBlankSelectorsAreToleratedTest() {
+        AlertRuleVO trimmed = AlertRuleVO.builder().instanceId("local").brokerName(" broker-a ")
+                .clusterName(" cluster-a ").build();
+        AlertRuleVO blankSelectors = AlertRuleVO.builder().instanceId("local").brokerName(" ")
+                .clusterName(" ").build();
+
+        assertThat(NativeAlertRuleScopeMatcher.matches(trimmed, sample("cluster-a", "broker-a"))).isTrue();
+        assertThat(NativeAlertRuleScopeMatcher.matches(trimmed, sample("cluster-a", "broker-b"))).isFalse();
+        assertThat(NativeAlertRuleScopeMatcher.matches(blankSelectors, sample("cluster-b", "broker-b"))).isTrue();
+    }
+
     private static MetricSample sample(String clusterId, String brokerName) {
         return new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", clusterId,
                 Map.of("brokerName", brokerName), 1D, MetricAvailability.AVAILABLE, Instant.now());
