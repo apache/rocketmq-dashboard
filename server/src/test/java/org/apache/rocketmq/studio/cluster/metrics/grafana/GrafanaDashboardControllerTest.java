@@ -97,4 +97,22 @@ class GrafanaDashboardControllerTest {
                         "attachment; filename=\"rocketmq-grafana-dashboards.zip\""))
                 .andExpect(content().bytes(archive));
     }
+
+    @Test
+    void unknownDashboardUidShouldReturn404Envelope() throws Exception {
+        org.apache.rocketmq.studio.common.exception.BusinessException missing =
+                new org.apache.rocketmq.studio.common.exception.BusinessException(
+                        404, "Unknown Grafana dashboard uid: missing-uid");
+        when(grafanaDashboardService.getDashboard("missing-uid")).thenThrow(missing);
+        when(grafanaDashboardService.getDashboardJson("missing-uid")).thenThrow(missing);
+
+        mockMvc.perform(get("/api/metrics/grafana/dashboards/missing-uid"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("Unknown Grafana dashboard uid: missing-uid"));
+
+        mockMvc.perform(get("/api/metrics/grafana/dashboards/missing-uid/export"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(404));
+    }
 }
