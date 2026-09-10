@@ -53,4 +53,47 @@ class MybatisPlusAlertCollectionLeaseTest {
         assertThat(lease.renew()).isFalse();
         verify(mapper).renew(eq("native-alert-collection"), anyString(), any(), any());
     }
+
+    @Test
+    void tryAcquireSucceedsThroughTheMapperAcquirePath() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("PT30S");
+        RmqAlertCollectionLeaseMapper mapper = mock(RmqAlertCollectionLeaseMapper.class);
+        when(mapper.acquire(eq("native-alert-collection"), anyString(), any(), any())).thenReturn(1);
+
+        MybatisPlusAlertCollectionLease lease = new MybatisPlusAlertCollectionLease(properties, mapper);
+
+        assertThat(lease.tryAcquire()).isTrue();
+        org.mockito.Mockito.verify(mapper, org.mockito.Mockito.never())
+                .insert(any(org.apache.rocketmq.studio.persistence.entity.RmqAlertCollectionLease.class));
+    }
+
+    @Test
+    void tryAcquireFallsBackToInsertWhenAcquireMisses() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("PT30S");
+        RmqAlertCollectionLeaseMapper mapper = mock(RmqAlertCollectionLeaseMapper.class);
+        when(mapper.acquire(eq("native-alert-collection"), anyString(), any(), any())).thenReturn(0);
+        when(mapper.insert(any(org.apache.rocketmq.studio.persistence.entity.RmqAlertCollectionLease.class)))
+                .thenReturn(1);
+
+        MybatisPlusAlertCollectionLease lease = new MybatisPlusAlertCollectionLease(properties, mapper);
+
+        assertThat(lease.tryAcquire()).isTrue();
+        verify(mapper).insert(any(org.apache.rocketmq.studio.persistence.entity.RmqAlertCollectionLease.class));
+    }
+
+    @Test
+    void tryAcquireTreatsDuplicateInsertAsLeaseLoss() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("PT30S");
+        RmqAlertCollectionLeaseMapper mapper = mock(RmqAlertCollectionLeaseMapper.class);
+        when(mapper.acquire(eq("native-alert-collection"), anyString(), any(), any())).thenReturn(0);
+        when(mapper.insert(any(org.apache.rocketmq.studio.persistence.entity.RmqAlertCollectionLease.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("duplicate lease"));
+
+        MybatisPlusAlertCollectionLease lease = new MybatisPlusAlertCollectionLease(properties, mapper);
+
+        assertThat(lease.tryAcquire()).isFalse();
+    }
 }
