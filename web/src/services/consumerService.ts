@@ -18,6 +18,13 @@ import type {
 } from '../api/metadata';
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
 import { buildCsv, type CsvColumn } from '../utils/download';
+import { getInitialLanguage } from '../i18n/languagePreference';
+import translations from '../i18n/translations';
+
+function serviceText(key: string): string {
+  return translations[key]?.[getInitialLanguage()] ?? key;
+}
+
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
 const EXPORT_PAGE_SIZE = 100;
@@ -285,7 +292,7 @@ export async function importConsumerGroups(
         failures.push({
           index,
           name: group.name,
-          message: error instanceof Error ? error.message : '创建失败',
+          message: error instanceof Error ? error.message : serviceText('common.createFailed'),
         });
       }
     }
