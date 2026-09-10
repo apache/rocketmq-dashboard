@@ -54,7 +54,9 @@ public class AlertRuleListToolHandler implements ToolHandler {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", rule.getId());
         result.put("name", require(rule.getName(), "name"));
-        result.put("metric", require(rule.getMetric(), "metric"));
+        // NativeAlertRulePolicy deliberately accepts rules without a metric, so the
+        // projection degrades to blank instead of failing the whole listing.
+        result.put("metric", blankIfNull(rule.getMetric()));
         result.put("operator", blankIfNull(rule.getOperator()));
         result.put("threshold", rule.getThreshold());
         result.put("thresholdUnit", blankIfNull(rule.getThresholdUnit()));
