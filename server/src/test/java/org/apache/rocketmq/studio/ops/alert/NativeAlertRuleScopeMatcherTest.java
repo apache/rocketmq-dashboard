@@ -58,6 +58,45 @@ class NativeAlertRuleScopeMatcherTest {
         assertThat(NativeAlertRuleScopeMatcher.matches(rule, otherTopic)).isFalse();
     }
 
+    @Test
+    void requiresMatchingInstanceIdAndRejectsBlankRuleInstance() {
+        AlertRuleVO blankInstance = AlertRuleVO.builder().instanceId("  ").build();
+        AlertRuleVO otherInstance = AlertRuleVO.builder().instanceId("other").build();
+
+        assertThat(NativeAlertRuleScopeMatcher.matches(blankInstance, sample("cluster-a", "broker-a")))
+                .isFalse();
+        assertThat(NativeAlertRuleScopeMatcher.matches(otherInstance, sample("cluster-a", "broker-a")))
+                .isFalse();
+    }
+
+    @Test
+    void matchesWhenAllOptionalSelectorsAreBlank() {
+        AlertRuleVO rule = AlertRuleVO.builder().instanceId("local").build();
+
+        assertThat(NativeAlertRuleScopeMatcher.matches(rule, sample("cluster-a", "broker-a")))
+                .isTrue();
+    }
+
+    @Test
+    void emptyLabelsOnlyFailForRulesWithSelectors() {
+        MetricSample bare = new MetricSample("broker.availability", AlertDomain.CLUSTER, "local",
+                "cluster-a", Map.of(), 1D, MetricAvailability.AVAILABLE, Instant.now());
+        AlertRuleVO noSelector = AlertRuleVO.builder().instanceId("local").build();
+        AlertRuleVO topicSelector = AlertRuleVO.builder().instanceId("local").topic("orders-topic").build();
+
+        assertThat(NativeAlertRuleScopeMatcher.matches(noSelector, bare)).isTrue();
+        assertThat(NativeAlertRuleScopeMatcher.matches(topicSelector, bare)).isFalse();
+    }
+
+    @Test
+    void trimsSelectorsAndInstanceIdBeforeMatching() {
+        AlertRuleVO rule = AlertRuleVO.builder().instanceId(" local ").brokerName(" broker-a ")
+                .clusterName(" cluster-a ").build();
+
+        assertThat(NativeAlertRuleScopeMatcher.matches(rule, sample("cluster-a", "broker-a")))
+                .isTrue();
+    }
+
     private static MetricSample sample(String clusterId, String brokerName) {
         return new MetricSample("broker.availability", AlertDomain.CLUSTER, "local", clusterId,
                 Map.of("brokerName", brokerName), 1D, MetricAvailability.AVAILABLE, Instant.now());
