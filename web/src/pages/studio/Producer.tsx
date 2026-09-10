@@ -162,6 +162,8 @@ const ProducerPage = () => {
   const handleTopicChange = () => {
     producerGroupRequestIdRef.current += 1;
     setProducerGroups([]);
+    setConnectionList([]);
+    setConnectionSummary(null);
     form.setFieldValue('producerGroup', undefined);
   };
 
