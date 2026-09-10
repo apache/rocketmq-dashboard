@@ -129,4 +129,38 @@ class CliProcessEnvironmentTest {
                 Map.entry("PATH", "/usr/bin"),
                 Map.entry("PROVIDER_TOKEN", "provider-secret"));
     }
+
+    @Test
+    void nullParentEnvironmentYieldsOnlyProviderValues() {
+        CliProcessEnvironment policy = new CliProcessEnvironment(List.of());
+
+        Map<String, String> child = policy.build(null, Map.of("PROVIDER_TOKEN", "token-a"));
+
+        assertThat(child).containsExactly(Map.entry("PROVIDER_TOKEN", "token-a"));
+        assertThat(policy.build(null, null)).isEmpty();
+    }
+
+    @Test
+    void parentNullValuesAreDroppedWhileProviderValueWins() {
+        CliProcessEnvironment policy = new CliProcessEnvironment(List.of());
+        Map<String, String> parent = new LinkedHashMap<>();
+        parent.put("PATH", null);
+        parent.put("HOME", "/home/studio");
+
+        Map<String, String> child = policy.build(parent, Map.of("PATH", "/opt/bin"));
+
+        assertThat(child).containsOnly(
+                Map.entry("HOME", "/home/studio"),
+                Map.entry("PATH", "/opt/bin"));
+    }
+
+    @Test
+    void duplicateConfiguredNamesAreDeduplicated() {
+        CliProcessEnvironment policy = new CliProcessEnvironment(
+                List.of("CUSTOM_HOME", " CUSTOM_HOME ", "CUSTOM_HOME"));
+
+        assertThat(policy.allowedNames())
+                .filteredOn(name -> name.equals("CUSTOM_HOME"))
+                .hasSize(1);
+    }
 }
