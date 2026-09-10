@@ -2893,6 +2893,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'Claude / Titan / Llama (AWS)',
     en: 'Claude / Titan / Llama (AWS)',
   },
+  'topic.unavailable': { zh: '不可用', en: 'Unavailable' },
   // ─── BrokerCluster ───
 };
 
