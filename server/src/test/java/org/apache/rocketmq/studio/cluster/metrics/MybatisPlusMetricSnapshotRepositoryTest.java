@@ -68,4 +68,79 @@ class MybatisPlusMetricSnapshotRepositoryTest {
         QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
         assertThat(query.getSqlSegment()).contains("cluster_id IS NULL");
     }
+
+    @Test
+    void clusterScopedQueryAddsAClusterPredicateTest() {
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+        MetricSample scope = new MetricSample("broker.availability", AlertDomain.CLUSTER,
+                "local", "cluster-a", Map.of("brokerName", "broker-1"), 1D,
+                MetricAvailability.AVAILABLE, Instant.now());
+
+        repository.findRecent(scope, Instant.EPOCH);
+
+        ArgumentCaptor<Wrapper<RmqMetricSnapshot>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(mapper).selectList(queryCaptor.capture());
+        String sql = ((QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue()).getSqlSegment();
+        assertThat(sql).contains("cluster_id =").doesNotContain("cluster_id IS NULL");
+    }
+
+    @Test
+    void saveAllShouldInsertEntitiesWithHashedLabelsTest() {
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+        MetricSample sample = new MetricSample("broker.availability", AlertDomain.CLUSTER,
+                "local", "cluster-a", Map.of("brokerName", "broker-1"), 1D,
+                MetricAvailability.AVAILABLE, Instant.now());
+
+        repository.saveAll(List.of(sample));
+
+        ArgumentCaptor<RmqMetricSnapshot> entityCaptor = ArgumentCaptor.forClass(RmqMetricSnapshot.class);
+        verify(mapper).insert(entityCaptor.capture());
+        RmqMetricSnapshot entity = entityCaptor.getValue();
+        assertThat(entity.getInstanceId()).isEqualTo("local");
+        assertThat(entity.getMetricKey()).isEqualTo("broker.availability");
+        assertThat(entity.getClusterId()).isEqualTo("cluster-a");
+        assertThat(entity.getLabelsHash()).matches("[0-9a-f]{64}");
+        assertThat(entity.getLabelsJson()).contains("brokerName");
+        assertThat(entity.getValue()).isEqualTo(1D);
+        assertThat(entity.getAvailability()).isEqualTo("AVAILABLE");
+    }
+
+    @Test
+    void deleteBeforeShouldRemoveRowsOlderThanTheCutoffTest() {
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+        when(mapper.delete(any(Wrapper.class))).thenReturn(5);
+
+        assertThat(repository.deleteBefore(Instant.parse("2026-08-21T00:00:00Z"))).isEqualTo(5);
+    }
+
+    @Test
+    void findRecentShouldRoundTripStoredSamplesTest() throws Exception {
+        RmqMetricSnapshot entity = new RmqMetricSnapshot();
+        entity.setInstanceId("local");
+        entity.setMetricKey("broker.availability");
+        entity.setDomain(AlertDomain.CLUSTER.name());
+        entity.setClusterId("cluster-a");
+        entity.setLabelsJson("{\"brokerName\":\"broker-1\"}");
+        entity.setValue(1D);
+        entity.setAvailability(MetricAvailability.AVAILABLE.name());
+        entity.setCollectedAt(java.time.LocalDateTime.of(2026, 8, 21, 0, 0));
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(entity));
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+        MetricSample scope = new MetricSample("broker.availability", AlertDomain.CLUSTER,
+                "local", "cluster-a", Map.of(), 1D, MetricAvailability.AVAILABLE, Instant.now());
+
+        List<MetricSample> result = repository.findRecent(scope, Instant.EPOCH);
+
+        assertThat(result).singleElement().satisfies(sample -> {
+            assertThat(sample.instanceId()).isEqualTo("local");
+            assertThat(sample.clusterId()).isEqualTo("cluster-a");
+            assertThat(sample.value()).isEqualTo(1D);
+            assertThat(sample.labels()).containsEntry("brokerName", "broker-1");
+        });
+    }
 }
