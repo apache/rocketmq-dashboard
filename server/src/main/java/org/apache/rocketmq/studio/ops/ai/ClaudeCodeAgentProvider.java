@@ -258,7 +258,7 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         return env;
     }
 
-    private String anthropicBase(LlmConfigVO config) {
+    String anthropicBase(LlmConfigVO config) {
         if (llmProperties != null && StringUtils.hasText(llmProperties.getAnthropicBaseUrl())) {
             return llmProperties.getAnthropicBaseUrl().trim();
         }
