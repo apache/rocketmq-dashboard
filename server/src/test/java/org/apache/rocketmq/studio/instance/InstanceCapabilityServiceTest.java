@@ -101,4 +101,32 @@ class InstanceCapabilityServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
     }
+
+    @Test
+    void getCapabilitiesShouldReturnEmptyListWhenProviderHasNoneTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("cloud-1").vendor(InstanceVendor.ALIYUN).type(InstanceType.CLOUD).build();
+        instance.setId(3L);
+        when(instanceRepository.findById(3L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(instanceProvider.capabilities()).thenReturn(Set.of());
+
+        assertThat(service.getCapabilities(3L).capabilities()).isEmpty();
+    }
+
+    @Test
+    void getCapabilitiesShouldPreserveTencentVendorAndTypeTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("cloud-2").vendor(InstanceVendor.TENCENT).type(InstanceType.CLOUD).build();
+        instance.setId(4L);
+        when(instanceRepository.findById(4L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.TENCENT)).thenReturn(instanceProvider);
+        when(instanceProvider.capabilities()).thenReturn(Set.of(InstanceCapability.DLQ_MANAGEMENT));
+
+        InstanceCapabilitiesVO result = service.getCapabilities(4L);
+
+        assertThat(result.vendor()).isEqualTo(InstanceVendor.TENCENT);
+        assertThat(result.accessType()).isEqualTo(InstanceType.CLOUD);
+        assertThat(result.capabilities()).containsExactly(InstanceCapability.DLQ_MANAGEMENT);
+    }
 }
