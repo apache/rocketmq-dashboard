@@ -35,4 +35,34 @@ class CsvUtilTest {
         assertThat(CsvUtil.toCell("=SUM(A1)")).isEqualTo("\"'=SUM(A1)\"");
         assertThat(CsvUtil.toCell("+cmd")).isEqualTo("\"'+cmd\"");
     }
+
+    @Test
+    void prefixesEveryFormulaInjectionCharacterTest() {
+        for (char prefix : new char[] {'=', '+', '-', '@', '\t', '\r', '\n'}) {
+            String cell = CsvUtil.toCell(prefix + "payload");
+            assertThat(cell).as("prefix char %s", prefix).isEqualTo("\"'" + prefix + "payload\"");
+        }
+    }
+
+    @Test
+    void leavesSafeValuesUnprefixedTest() {
+        assertThat(CsvUtil.toCell("123")).isEqualTo("\"123\"");
+        assertThat(CsvUtil.toCell("hello")).isEqualTo("\"hello\"");
+        assertThat(CsvUtil.toCell("'=already")).isEqualTo("\"'=already\"");
+        assertThat(CsvUtil.toCell("")).isEqualTo("\"\"");
+        assertThat(CsvUtil.toCell(null)).isEqualTo("\"\"");
+    }
+
+    @Test
+    void escapesEveryEmbeddedQuoteTest() {
+        assertThat(CsvUtil.toCell("say \"hi\" then \"bye\"")).isEqualTo("\"say \"\"hi\"\" then \"\"bye\"\"\"");
+    }
+
+    @Test
+    void keepsCommasInsideQuotedCellsTest() {
+        StringBuilder csv = new StringBuilder();
+        CsvUtil.appendRow(csv, "a,b", "x");
+        assertThat(csv.toString()).isEqualTo("\"a,b\",\"x\"\r\n");
+        assertThat(CsvUtil.toCell("a,b")).isEqualTo("\"a,b\"");
+    }
 }
