@@ -68,4 +68,39 @@ class MybatisPlusMetricSnapshotRepositoryTest {
         QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
         assertThat(query.getSqlSegment()).contains("cluster_id IS NULL");
     }
+
+    @Test
+    void clusterScopedQueryFiltersByClusterAvailabilityAndTimeTest() {
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+        MetricSample scope = new MetricSample("broker.availability", AlertDomain.CLUSTER,
+                "local", "cluster-1", Map.of("broker", "b1"), 1D, MetricAvailability.AVAILABLE,
+                Instant.parse("2026-07-01T10:00:00Z"));
+
+        repository.findRecent(scope, Instant.parse("2026-07-01T09:00:00Z"));
+
+        ArgumentCaptor<Wrapper<RmqMetricSnapshot>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(mapper).selectList(queryCaptor.capture());
+        QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
+        String sql = query.getSqlSegment();
+        assertThat(sql).contains("instance_id =").contains("metric_key =").contains("domain =")
+                .contains("labels_hash =").contains("cluster_id =").contains("availability =")
+                .contains("collected_at >=").contains("ORDER BY collected_at");
+    }
+
+    @Test
+    void deleteBeforeBuildsACutoffQueryAndReturnsTheDeletedCountTest() {
+        when(mapper.delete(any(Wrapper.class))).thenReturn(3);
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+
+        int deleted = repository.deleteBefore(Instant.parse("2026-07-01T10:00:00Z"));
+
+        assertThat(deleted).isEqualTo(3);
+        ArgumentCaptor<Wrapper<RmqMetricSnapshot>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(mapper).delete(queryCaptor.capture());
+        QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("collected_at <");
+    }
 }
