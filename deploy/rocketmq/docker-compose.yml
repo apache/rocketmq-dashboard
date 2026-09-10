@@ -108,6 +108,23 @@ services:
       - broker-1
     restart: on-failure
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: rocketmq-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./conf/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    # 仅绑定回环，避免公网暴露；Studio 走容器名 rocketmq-prometheus:9090 访问
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - broker-0
+      - broker-1
+    restart: unless-stopped
+
 networks:
   default:
     name: rocketmq_net
@@ -118,3 +135,4 @@ volumes:
   broker-0-logs:
   broker-1-store:
   broker-1-logs:
+  prometheus-data:
