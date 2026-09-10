@@ -83,6 +83,7 @@ describe('AiPage tool runner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dataModeMocks.useMock = false;
+    localStorage.clear();
     sessionStorage.clear();
     useAiChatHistoryStore.setState({
       histories: {
@@ -423,6 +424,63 @@ describe('AiPage tool runner', () => {
     });
 
     expect(chatStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies a builtin prompt template with its mode and enhancement setting', async () => {
+    vi.mocked(chatStream).mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+    const input = await screen.findByPlaceholderText(
+      '输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟...',
+    );
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: '模板' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Prompt 模板' });
+    expect(within(dialog).getByText('消费延迟诊断')).toBeInTheDocument();
+    await user.click(within(dialog).getAllByRole('button', { name: '使用' })[0]);
+
+    expect((input as HTMLTextAreaElement).value).toContain(
+      '请诊断当前 RocketMQ 实例中的消费延迟问题',
+    );
+    expect(screen.getAllByTitle('对话模式')[0]).toHaveTextContent('诊断');
+    expect(screen.getByTitle('发送前增强 Prompt')).toHaveStyle({ borderColor: '#1677ff' });
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(chatStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('请诊断当前 RocketMQ 实例中的消费延迟问题'),
+          mode: 'diagnose',
+          enhance: true,
+        }),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        expect.any(Function),
+      ),
+    );
+  });
+
+  it('saves the current input as a custom prompt template', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const input = await screen.findByPlaceholderText(
+      '输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟...',
+    );
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+    fireEvent.change(input, { target: { value: '检查所有 Broker 的磁盘水位并给出风险排序' } });
+
+    await user.click(screen.getByRole('button', { name: '模板' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Prompt 模板' });
+    await user.type(within(dialog).getByRole('textbox', { name: '模板标题' }), '磁盘水位巡检');
+    await user.type(within(dialog).getByRole('textbox', { name: '模板标签' }), 'broker,disk');
+    await user.click(within(dialog).getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByText('Prompt 模板已保存')).toBeInTheDocument();
+    expect(within(dialog).getByText('磁盘水位巡检')).toBeInTheDocument();
+    expect(within(dialog).getByText('自定义')).toBeInTheDocument();
+    expect(localStorage.getItem('rocketmq-studio-ai-prompt-templates')).toContain('磁盘水位巡检');
   });
 
   it('loads the catalog, creates a schema template, and renders structured output', async () => {

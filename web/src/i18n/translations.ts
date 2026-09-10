@@ -1325,6 +1325,110 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '集群列表加载失败，已显示全局工具',
     en: 'Failed to load clusters; showing global tools',
   },
+  'ai.mode.title': { zh: '对话模式', en: 'Chat mode' },
+  'ai.mode.chat': { zh: '对话', en: 'Chat' },
+  'ai.mode.diagnose': { zh: '诊断', en: 'Diagnose' },
+  'ai.mode.manage': { zh: '运维', en: 'Manage' },
+  'ai.mode.query': { zh: '查询', en: 'Query' },
+  'ai.promptEnhance': { zh: 'Prompt 增强', en: 'Prompt enhancement' },
+  'ai.promptEnhanceTitle': { zh: '发送前增强 Prompt', en: 'Enhance the prompt before sending' },
+  'ai.promptTemplates.button': { zh: '模板', en: 'Templates' },
+  'ai.promptTemplates.title': { zh: 'Prompt 模板', en: 'Prompt templates' },
+  'ai.promptTemplates.storageUnavailable': {
+    zh: '浏览器存储不可用，自定义 Prompt 模板暂时无法保存。',
+    en: 'Browser storage is unavailable. Custom prompt templates cannot be saved right now.',
+  },
+  'ai.promptTemplates.searchAria': { zh: '搜索 Prompt 模板', en: 'Search prompt templates' },
+  'ai.promptTemplates.searchPlaceholder': {
+    zh: '搜索模板、标签或内容',
+    en: 'Search templates, tags, or content',
+  },
+  'ai.promptTemplates.saveCurrent': { zh: '保存当前输入', en: 'Save current input' },
+  'ai.promptTemplates.titleInput': { zh: '模板标题', en: 'Template title' },
+  'ai.promptTemplates.tagsInput': { zh: '模板标签', en: 'Template tags' },
+  'ai.promptTemplates.tagsPlaceholder': { zh: '标签，逗号分隔', en: 'Tags, separated by commas' },
+  'ai.promptTemplates.empty': { zh: '暂无 Prompt 模板', en: 'No prompt templates' },
+  'ai.promptTemplates.use': { zh: '使用', en: 'Use' },
+  'ai.promptTemplates.append': { zh: '追加', en: 'Append' },
+  'ai.promptTemplates.deleteConfirm': {
+    zh: '删除这个 Prompt 模板？',
+    en: 'Delete this prompt template?',
+  },
+  'ai.promptTemplates.deleteAria': { zh: '删除模板 {title}', en: 'Delete template {title}' },
+  'ai.promptTemplates.custom': { zh: '自定义', en: 'Custom' },
+  'ai.promptTemplates.builtin': { zh: '内置', en: 'Built-in' },
+  'ai.promptTemplates.titleRequired': { zh: '请输入模板标题', en: 'Enter a template title' },
+  'ai.promptTemplates.bodyRequired': {
+    zh: '当前输入为空，无法保存模板',
+    en: 'The current input is empty and cannot be saved as a template',
+  },
+  'ai.promptTemplates.storageSaveFailed': {
+    zh: '模板保存失败，浏览器存储不可用',
+    en: 'Failed to save the template because browser storage is unavailable',
+  },
+  'ai.promptTemplates.storageDeleteFailed': {
+    zh: '模板删除失败，浏览器存储不可用',
+    en: 'Failed to delete the template because browser storage is unavailable',
+  },
+  'ai.promptTemplates.saved': { zh: 'Prompt 模板已保存', en: 'Prompt template saved' },
+  'ai.promptTemplates.deleted': { zh: 'Prompt 模板已删除', en: 'Prompt template deleted' },
+  'ai.promptTemplates.consumerLag.title': { zh: '消费延迟诊断', en: 'Consumer Lag Diagnosis' },
+  'ai.promptTemplates.consumerLag.description': {
+    zh: '排查消费堆积、在线客户端、订阅和 Broker 进度返回状态。',
+    en: 'Inspect backlog, online clients, subscriptions, and Broker progress availability.',
+  },
+  'ai.promptTemplates.consumerLag.body': {
+    zh: '请诊断当前 RocketMQ 实例中的消费延迟问题。\n\n检查范围：\n1. 找出堆积最高的消费组和 Topic。\n2. 对比消费组在线客户端、订阅关系、重试队列和队列级 offset。\n3. 判断是生产突增、消费者离线、订阅漂移、Broker 进度不可查，还是单队列热点。\n4. 给出可执行的恢复步骤，并标注哪些步骤只读、哪些步骤会修改集群状态。',
+    en: 'Diagnose consumer lag in the current RocketMQ instance.\n\nScope:\n1. Find the consumer groups and topics with the highest backlog.\n2. Compare online clients, subscriptions, retry queues, and queue-level offsets.\n3. Decide whether the cause is a producer spike, offline consumers, subscription drift, unavailable Broker progress, or a single hot queue.\n4. Provide executable recovery steps and mark which steps are read-only and which modify cluster state.',
+  },
+  'ai.promptTemplates.messageTrace.title': {
+    zh: '消息轨迹排查',
+    en: 'Message Trace Investigation',
+  },
+  'ai.promptTemplates.messageTrace.description': {
+    zh: '按 Message ID 或 Key 收集发送、存储、消费和重试线索。',
+    en: 'Collect send, storage, consume, and retry evidence by Message ID or key.',
+  },
+  'ai.promptTemplates.messageTrace.body': {
+    zh: '请协助排查一条消息的完整轨迹。\n\n已知信息：\n- Message ID：\n- Topic：\n- Key 或业务单号：\n- 大致发送时间：\n\n请先说明需要哪些查询条件，然后按发送结果、Broker 存储、消费结果、重试/DLQ 四部分输出结论。',
+    en: 'Help investigate the full trace for one message.\n\nKnown information:\n- Message ID:\n- Topic:\n- Key or business identifier:\n- Approximate send time:\n\nFirst state which query conditions are required, then summarize the send result, Broker storage, consume result, and retry/DLQ state.',
+  },
+  'ai.promptTemplates.topicChange.title': { zh: 'Topic 变更预案', en: 'Topic Change Plan' },
+  'ai.promptTemplates.topicChange.description': {
+    zh: '生成 Topic 队列、权限、TTL 或保留策略变更前的检查清单。',
+    en: 'Build a precheck list before changing topic queues, permissions, TTL, or retention.',
+  },
+  'ai.promptTemplates.topicChange.body': {
+    zh: '请为一次 RocketMQ Topic 变更生成执行预案。\n\n变更目标：\n- Topic：\n- 期望调整：\n- 影响窗口：\n\n请输出：变更前检查、风险判断、执行步骤、回滚步骤、验证方式。涉及写操作时先列出需要人工确认的命令或接口。',
+    en: 'Create an execution plan for a RocketMQ topic change.\n\nChange target:\n- Topic:\n- Expected adjustment:\n- Impact window:\n\nOutput the pre-change checks, risk assessment, execution steps, rollback steps, and verification method. For write operations, list the commands or APIs that require manual confirmation first.',
+  },
+  'ai.promptTemplates.brokerHealth.title': { zh: 'Broker 健康巡检', en: 'Broker Health Check' },
+  'ai.promptTemplates.brokerHealth.description': {
+    zh: '汇总 Broker 可用性、磁盘水位、TPS、队列分布和异常告警。',
+    en: 'Summarize Broker availability, disk usage, TPS, queue distribution, and abnormal alerts.',
+  },
+  'ai.promptTemplates.brokerHealth.body': {
+    zh: '请对当前 RocketMQ 集群做一次 Broker 健康巡检。\n\n请关注：\n1. Broker 可用性和主从状态。\n2. 磁盘水位、TPS、消息量和异常告警。\n3. Topic 队列分布是否存在热点或倾斜。\n4. 最近是否有失败的告警通知或未确认系统告警。\n\n输出时请区分“已验证事实”“需要进一步查询”“建议处理动作”。',
+    en: 'Run a Broker health check for the current RocketMQ cluster.\n\nFocus on:\n1. Broker availability and master-slave status.\n2. Disk usage, TPS, message volume, and abnormal alerts.\n3. Whether topic queue distribution has hot spots or skew.\n4. Whether there are recent failed alert notifications or unacknowledged system alerts.\n\nSeparate the output into verified facts, items requiring more queries, and recommended actions.',
+  },
+  'ai.promptTemplates.opsSummary.title': { zh: '运维变更摘要', en: 'Operations Handoff Summary' },
+  'ai.promptTemplates.opsSummary.description': {
+    zh: '把已执行的查询结果整理成面向值班和复盘的摘要。',
+    en: 'Turn completed query results into a handoff and review summary.',
+  },
+  'ai.promptTemplates.opsSummary.body': {
+    zh: '请把本次 RocketMQ 运维排查过程整理成简洁摘要。\n\n摘要结构：\n- 背景：\n- 已执行查询：\n- 关键发现：\n- 已完成操作：\n- 未完成风险：\n- 下一步：',
+    en: 'Summarize this RocketMQ operations investigation concisely.\n\nStructure:\n- Background:\n- Queries executed:\n- Key findings:\n- Completed actions:\n- Remaining risks:\n- Next steps:',
+  },
+  'ai.promptTemplates.aclRisk.title': { zh: 'ACL 风险核对', en: 'ACL Risk Check' },
+  'ai.promptTemplates.aclRisk.description': {
+    zh: '检查用户、策略、实例绑定和高危权限是否符合预期。',
+    en: 'Check users, policies, instance bindings, and high-risk permissions.',
+  },
+  'ai.promptTemplates.aclRisk.body': {
+    zh: '请核对当前 RocketMQ Studio 的 ACL 风险。\n\n请检查：\n1. 是否存在管理员权限、通配资源或写权限过宽的账号。\n2. 用户和实例绑定是否符合最小权限。\n3. 云厂商实例与 Apache 实例的 ACL 字段差异。\n4. 哪些发现需要立即处理，哪些只是建议优化。',
+    en: 'Review ACL risks in the current RocketMQ Studio environment.\n\nCheck:\n1. Whether any account has admin permissions, wildcard resources, or overly broad write permissions.\n2. Whether user and instance bindings follow least privilege.\n3. ACL field differences between cloud vendor instances and Apache instances.\n4. Which findings require immediate handling and which are optimization suggestions.',
+  },
 
   // ─── Home Page ───
   'home.banner': {
