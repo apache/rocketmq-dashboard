@@ -95,4 +95,25 @@ class ConsumerDiagnosticsServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("clientId is required");
     }
+
+    @Test
+    void getConsumerStackShouldNormalizeBlankInstanceIdToNull() {
+        when(diagnosticsProvider.getConsumerStack(null, "cg-orders", "client-1"))
+                .thenReturn(null);
+
+        diagnosticsService.getConsumerStack("  ", " cg-orders ", " client-1 ");
+
+        verify(diagnosticsProvider).getConsumerStack(null, "cg-orders", "client-1");
+    }
+
+    @Test
+    void getConsumerStackShouldPropagateProviderFailuresUnchanged() {
+        when(diagnosticsProvider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .thenThrow(new IllegalStateException("jstack collection unavailable"));
+
+        assertThatThrownBy(() -> diagnosticsService.getConsumerStack(
+                "instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("jstack collection unavailable");
+    }
 }
