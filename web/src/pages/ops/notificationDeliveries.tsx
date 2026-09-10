@@ -145,6 +145,13 @@ const NotificationDeliveriesPage = () => {
     setPage(1);
   };
 
+  const statusCounts = (
+    Object.keys(statusColors) as NotificationDeliveryRecord['status'][]
+  ).map((statusValue) => ({
+    status: statusValue,
+    count: items.filter((item) => item.status === statusValue).length,
+  }));
+
   const columns: ColumnsType<NotificationDeliveryRecord> = [
     {
       title: t('deliveries.alert'),
@@ -270,6 +277,14 @@ const NotificationDeliveriesPage = () => {
               }))}
               onChange={(value) => resetPage(() => setInstanceId(value))}
             />
+          </Flex>
+          <Flex gap={8} align="center" wrap="wrap" style={{ marginBottom: 16 }}>
+            <Typography.Text type="secondary">{t('deliveries.currentPage')}:</Typography.Text>
+            {statusCounts.map(({ status: statusValue, count }) => (
+              <Tag key={statusValue} color={statusColors[statusValue]}>
+                {statusValue} {count}
+              </Tag>
+            ))}
           </Flex>
           <Table
             rowKey="id"

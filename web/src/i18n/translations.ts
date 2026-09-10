@@ -852,6 +852,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'deliveries.allChannels': { zh: '全部通道', en: 'All channels' },
   'deliveries.allStatuses': { zh: '全部状态', en: 'All statuses' },
   'deliveries.allInstances': { zh: '全部实例', en: 'All instances' },
+  'deliveries.currentPage': { zh: '当前页', en: 'Current page' },
   'deliveries.loadFailed': {
     zh: '告警投递记录加载失败，请稍后重试',
     en: 'Failed to load alert deliveries. Please try again later.',

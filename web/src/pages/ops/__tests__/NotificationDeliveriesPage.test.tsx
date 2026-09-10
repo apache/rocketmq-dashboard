@@ -169,4 +169,104 @@ describe('NotificationDeliveriesPage', () => {
       expect.objectContaining({ status: 'DELIVERED' }),
     );
   });
+
+  it('shows per-status counts for the loaded page and updates them with the active filter', async () => {
+    vi.mocked(listAlertDeliveriesPage).mockImplementation(async (query) =>
+      query?.status === 'DELIVERED'
+        ? {
+            items: [
+              {
+                id: 8,
+                alertId: 4,
+                alertTitle: 'Delivered notification',
+                channel: 'email',
+                status: 'DELIVERED',
+                attemptCount: 1,
+                createdAt: '2026-08-23T10:00:00',
+                deliveredAt: '2026-08-23T10:01:00',
+              },
+            ],
+            total: 1,
+            page: 1,
+            size: 20,
+          }
+        : {
+            items: [
+              {
+                id: 1,
+                alertId: 1,
+                alertTitle: 'Pending notification',
+                channel: 'dingtalk',
+                status: 'PENDING',
+                attemptCount: 0,
+                createdAt: '2026-08-23T10:00:00',
+              },
+              {
+                id: 2,
+                alertId: 2,
+                alertTitle: 'Delivered notification',
+                channel: 'email',
+                status: 'DELIVERED',
+                attemptCount: 1,
+                createdAt: '2026-08-23T10:00:00',
+                deliveredAt: '2026-08-23T10:01:00',
+              },
+              {
+                id: 3,
+                alertId: 3,
+                alertTitle: 'First failed notification',
+                channel: 'sms',
+                status: 'FAILED',
+                attemptCount: 5,
+                createdAt: '2026-08-23T10:00:00',
+                lastError: 'Webhook rejected the request',
+              },
+              {
+                id: 4,
+                alertId: 4,
+                alertTitle: 'Second failed notification',
+                channel: 'sms',
+                status: 'FAILED',
+                attemptCount: 5,
+                createdAt: '2026-08-23T10:00:00',
+                lastError: 'Webhook rejected the request',
+              },
+            ],
+            total: 4,
+            page: 1,
+            size: 20,
+          },
+    );
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Pending notification');
+
+    // Counts describe only the loaded page, not the full result set.
+    expect(screen.getByText('当前页:')).toBeInTheDocument();
+    expect(screen.getByText('PENDING 1')).toBeInTheDocument();
+    expect(screen.getByText('DELIVERED 1')).toBeInTheDocument();
+    expect(screen.getByText('FAILED 2')).toBeInTheDocument();
+    expect(screen.getByText('SENDING 0')).toBeInTheDocument();
+    expect(screen.getByText('RETRY_WAIT 0')).toBeInTheDocument();
+
+    // Switching the status filter reloads the page and the counts follow.
+    await user.click(screen.getAllByRole('combobox')[1]);
+    const deliveredOption = (await screen.findAllByText('DELIVERED')).find((element) =>
+      element.closest('.ant-select-item-option'),
+    );
+    if (!deliveredOption) throw new Error('DELIVERED filter option not found');
+    await user.click(deliveredOption);
+    expect(await screen.findByText('DELIVERED 1')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('PENDING 0')).toBeInTheDocument();
+      expect(screen.getByText('FAILED 0')).toBeInTheDocument();
+    });
+  });
 });
