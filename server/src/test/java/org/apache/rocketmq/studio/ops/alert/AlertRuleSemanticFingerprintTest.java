@@ -77,4 +77,69 @@ class AlertRuleSemanticFingerprintTest {
                 .isEqualTo(AlertRuleSemanticFingerprint.of(fraction))
                 .isNotEqualTo(AlertRuleSemanticFingerprint.of(rawValue));
     }
+
+    @Test
+    void domainDefaultsToBusinessAndBlankInstanceMatchesNull() {
+        AlertRuleVO nullDomain = AlertRuleVO.builder()
+                .domain(null)
+                .instanceId(null)
+                .metric("consumer.lag.total").operator(">=").threshold(100)
+                .duration("5m").build();
+        AlertRuleVO defaulted = AlertRuleVO.builder()
+                .domain(AlertDomain.BUSINESS)
+                .instanceId("   ")
+                .metric("consumer.lag.total").operator(">=").threshold(100)
+                .duration("5m").build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(nullDomain))
+                .isEqualTo(AlertRuleSemanticFingerprint.of(defaulted));
+    }
+
+    @Test
+    void blankAggregationFallsBackToLastWhileExplicitValueChangesFingerprint() {
+        AlertRuleVO base = AlertRuleVO.builder()
+                .metric("consumer.lag.total").operator(">=").threshold(100)
+                .duration("5m").build();
+        AlertRuleVO blank = AlertRuleVO.builder()
+                .metric("consumer.lag.total").operator(">=").threshold(100)
+                .duration("5m").aggregation("  ").build();
+        AlertRuleVO avg = AlertRuleVO.builder()
+                .metric("consumer.lag.total").operator(">=").threshold(100)
+                .duration("5m").aggregation("AVG").build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(blank))
+                .isEqualTo(AlertRuleSemanticFingerprint.of(base));
+        assertThat(AlertRuleSemanticFingerprint.of(avg))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(base));
+    }
+
+    @Test
+    void percentageUnitStaysRawForNonRatioMetrics() {
+        AlertRuleVO withUnit = AlertRuleVO.builder()
+                .metric("consumer.lag.total").operator(">=").threshold(85)
+                .thresholdUnit("%").duration("5m").build();
+        AlertRuleVO raw = AlertRuleVO.builder()
+                .metric("consumer.lag.total").operator(">=").threshold(85)
+                .duration("5m").build();
+        AlertRuleVO fraction = AlertRuleVO.builder()
+                .metric("consumer.lag.total").operator(">=").threshold(0.85)
+                .duration("5m").build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(withUnit))
+                .isEqualTo(AlertRuleSemanticFingerprint.of(raw))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(fraction));
+    }
+
+    @Test
+    void negativeWindowAndConsecutiveSamplesAreClamped() {
+        AlertRuleVO base = AlertRuleVO.builder()
+                .metric("consumer.lag.total").operator(">=").threshold(100)
+                .duration("5m").windowSeconds(0).consecutiveSamples(1).build();
+        AlertRuleVO clamped = AlertRuleVO.builder()
+                .metric("consumer.lag.total").operator(">=").threshold(100)
+                .duration("5m").windowSeconds(-10).consecutiveSamples(-3).build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(clamped))
+                .isEqualTo(AlertRuleSemanticFingerprint.of(base));
+    }
 }
