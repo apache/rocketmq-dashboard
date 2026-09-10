@@ -344,7 +344,7 @@ const MessagePageContent = ({
   selectInstance,
   instanceOptions,
 }: InstanceFilterProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
   const [topicError, setTopicError] = useState<string | null>(null);
   const [topicLoading, setTopicLoading] = useState(false);
@@ -414,7 +414,10 @@ const MessagePageContent = ({
   const committedQueryRef = useRef<{ mode: QueryMode; params: MessageQuery } | null>(null);
   const traceGenerationRef = useRef(0);
   const traceCacheRef = useRef(new Map<string, Promise<TraceRecord | null>>());
-  const traceDiagnostics = useMemo(() => analyzeMessageTrace(traceData), [traceData]);
+  const traceDiagnostics = useMemo(
+    () => analyzeMessageTrace(traceData, { lang }),
+    [traceData, lang],
+  );
 
   useEffect(
     () => () => {
