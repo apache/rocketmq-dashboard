@@ -63,4 +63,13 @@ describe('client connections API', () => {
       }),
     ).resolves.toEqual([connection]);
   });
+
+  it('omits query parameters when none are given', async () => {
+    mock.onGet('/clients').reply((config) => {
+      expect(config.params).toBeUndefined();
+      return [200, { code: 200, data: [connection] }];
+    });
+
+    await expect(listConnections()).resolves.toEqual([connection]);
+  });
 });
