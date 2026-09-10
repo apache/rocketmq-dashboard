@@ -57,4 +57,29 @@ class AliyunConvertersLagTest {
                     assertThat(row.getDiffTotal()).isEqualTo(100L);
                 });
     }
+
+    @Test
+    void missingOrNullReadyCountsProduceZeroRows() {
+        java.util.Map<String, DataTopicLagMapValue> topicLagMap = new java.util.HashMap<>();
+        topicLagMap.put("orders", DataTopicLagMapValue.builder().readyCount(null).build());
+        topicLagMap.put("payments", null);
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .topicLagMap(topicLagMap)
+                .build();
+
+        List<QueueProgressVO> rows = AliyunConverters.toQueueProgressRows(data);
+
+        assertThat(rows).hasSize(2)
+                .allSatisfy(row -> assertThat(row.getDiffTotal()).isZero());
+        assertThat(rows).extracting(QueueProgressVO::getTopic)
+                .containsExactlyInAnyOrder("orders", "payments");
+    }
+
+    @Test
+    void returnsEmptyWhenBreakdownAndTotalAreBothMissing() {
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .build();
+
+        assertThat(AliyunConverters.toQueueProgressRows(data)).isEmpty();
+    }
 }
