@@ -19,6 +19,7 @@ export const mockAlertRules = [
   {
     id: 1,
     name: 'Broker 磁盘使用率过高',
+    enName: 'Broker disk usage too high',
     metric: '磁盘使用率',
     operator: '>' as const,
     threshold: 85,
@@ -32,6 +33,7 @@ export const mockAlertRules = [
   {
     id: 2,
     name: '消费堆积量异常',
+    enName: 'Consumer backlog abnormal',
     metric: '消费堆积量',
     operator: '>' as const,
     threshold: 10000,
@@ -45,6 +47,7 @@ export const mockAlertRules = [
   {
     id: 3,
     name: 'TPS 突降告警',
+    enName: 'TPS drop alert',
     metric: 'TPS 异常',
     operator: '<' as const,
     threshold: 500,
@@ -58,6 +61,7 @@ export const mockAlertRules = [
   {
     id: 4,
     name: 'Broker 离线检测',
+    enName: 'Broker offline detection',
     metric: 'Broker 离线',
     operator: '>=' as const,
     threshold: 1,
@@ -71,6 +75,7 @@ export const mockAlertRules = [
   {
     id: 5,
     name: 'Proxy 连接数过高',
+    enName: 'Proxy connection count too high',
     metric: 'Proxy 连接数',
     operator: '>' as const,
     threshold: 5000,
@@ -84,6 +89,7 @@ export const mockAlertRules = [
   {
     id: 6,
     name: '磁盘使用率预警',
+    enName: 'Disk usage warning',
     metric: '磁盘使用率',
     operator: '>=' as const,
     threshold: 70,
@@ -97,6 +103,7 @@ export const mockAlertRules = [
   {
     id: 7,
     name: '消费堆积轻微告警',
+    enName: 'Slight consumer backlog warning',
     metric: '消费堆积量',
     operator: '>' as const,
     threshold: 5000,
@@ -110,6 +117,7 @@ export const mockAlertRules = [
   {
     id: 8,
     name: 'TPS 突增告警',
+    enName: 'TPS spike alert',
     metric: 'TPS 异常',
     operator: '>' as const,
     threshold: 50000,

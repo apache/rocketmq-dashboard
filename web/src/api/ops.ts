@@ -9,6 +9,9 @@ export interface AlertRule {
   threshold: number;
   thresholdUnit?: string | null;
   duration: string;
+  /** Optional English display copy for demo (mock-mode) alert rules. */
+  enName?: string | null;
+  enDuration?: string | null;
   reminderInterval?: string;
   aggregation?: 'LAST' | 'MAX' | 'MIN' | 'AVG' | 'SUM';
   windowSeconds?: number;
