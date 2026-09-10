@@ -334,17 +334,21 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-const TopicPage = () => {
+type TopicPageContentProps = Pick<
+  ReturnType<typeof useInstanceFilter>,
+  'selectedInstanceId' | 'selectedInstance' | 'selectInstance' | 'instanceOptions' | 'instancesLoading' | 'instances'
+>;
+
+const TopicPageContent = ({
+  selectedInstanceId,
+  selectedInstance,
+  selectInstance,
+  instanceOptions,
+  instancesLoading,
+  instances,
+}: TopicPageContentProps) => {
   const { t } = useLang();
   const navigate = useNavigate();
-  const {
-    selectedInstanceId,
-    selectedInstance,
-    selectInstance,
-    instanceOptions,
-    instancesLoading,
-    instances,
-  } = useInstanceFilter();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -2036,6 +2040,16 @@ const TopicPage = () => {
         )}
       </Modal>
     </div>
+  );
+};
+
+const TopicPage = () => {
+  const instanceFilter = useInstanceFilter();
+  return (
+    <TopicPageContent
+      key={instanceFilter.selectedInstanceId || 'no-selected-instance'}
+      {...instanceFilter}
+    />
   );
 };
 
