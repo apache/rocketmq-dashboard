@@ -18,7 +18,13 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { addProxyAddress, queryProxyHomePage, removeProxyAddress } from './proxy';
+import {
+  addProxyAddress,
+  getProxyTopology,
+  queryProxyHomePage,
+  reloadProxyConfig,
+  removeProxyAddress,
+} from './proxy';
 
 const mock = new MockAdapter(client);
 
@@ -79,5 +85,54 @@ describe('Proxy API', () => {
     });
 
     await expect(removeProxyAddress('10.0.0.10:8081')).resolves.toEqual(data);
+  });
+
+  it('returns the live proxy topology with per-node reachability', async () => {
+    const topology = [
+      {
+        proxyAddr: '10.0.0.10:8081',
+        status: 'UP',
+        grpcPort: 8081,
+        remotingPort: 10911,
+        grpcReachable: true,
+        remotingReachable: true,
+        latencyMs: 3,
+      },
+      {
+        proxyAddr: '10.0.0.20:8081',
+        status: 'DOWN',
+        grpcPort: 8081,
+        remotingPort: null,
+        grpcReachable: false,
+        remotingReachable: false,
+        latencyMs: -1,
+      },
+    ];
+    mock.onGet('/proxies/topology').reply(200, { code: 200, data: topology });
+
+    const result = await getProxyTopology();
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ status: 'UP', grpcReachable: true });
+    expect(result[1]).toMatchObject({ status: 'DOWN', remotingPort: null });
+  });
+
+  it('returns an empty topology when no proxy is registered', async () => {
+    mock.onGet('/proxies/topology').reply(200, { code: 200, data: [] });
+
+    await expect(getProxyTopology()).resolves.toEqual([]);
+  });
+
+  it('reloads proxy configuration with the cluster id and address', async () => {
+    mock.onPost('/proxies/config/reload').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        clusterId: 'cluster-prod',
+        addr: '10.0.0.10:8081',
+      });
+      return [200, { code: 200, data: { success: true } }];
+    });
+
+    await expect(reloadProxyConfig('cluster-prod', '10.0.0.10:8081')).resolves.toEqual({
+      success: true,
+    });
   });
 });
