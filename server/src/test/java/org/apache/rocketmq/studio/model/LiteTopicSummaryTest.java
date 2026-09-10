@@ -52,4 +52,48 @@ class LiteTopicSummaryTest {
         assertThat(summary.getConsumerDensity()).isZero();
         assertThat(summary.isEmptyAggregation()).isTrue();
     }
+
+    @Test
+    void ttlStatusIsUnknownWithoutALastActiveTime() {
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setAverageTTL(10_000L);
+
+        assertThat(summary.getTTLStatus()).isEqualTo("UNKNOWN");
+    }
+
+    @Test
+    void ttlStatusSeparatesActiveAndExpiringBoundaries() {
+        long now = System.currentTimeMillis();
+        long averageTtl = 60_000L;
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setAverageTTL(averageTtl);
+
+        summary.setLastActiveTime(new Date(now - 30_000));
+        assertThat(summary.getTTLStatus()).isEqualTo("ACTIVE");
+
+        summary.setLastActiveTime(new Date(now - 50_000));
+        assertThat(summary.getTTLStatus()).isEqualTo("EXPIRING_SOON");
+    }
+
+    @Test
+    void consumerDensityAndEmptyAggregationSemantics() {
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setTopicCount(6);
+        summary.setConsumerCount(3);
+
+        assertThat(summary.getConsumerDensity()).isEqualTo(0.5);
+        assertThat(summary.isEmptyAggregation()).isFalse();
+
+        summary.setConsumerCount(null);
+        summary.setTotalBacklog(5L);
+        assertThat(summary.isEmptyAggregation()).isFalse();
+
+        summary.setConsumerCount(0);
+        summary.setTotalBacklog(0L);
+        assertThat(summary.isEmptyAggregation()).isTrue();
+
+        LiteTopicSummary unset = new LiteTopicSummary();
+        assertThat(unset.getConsumerDensity()).isZero();
+        assertThat(unset.isEmptyAggregation()).isTrue();
+    }
 }
