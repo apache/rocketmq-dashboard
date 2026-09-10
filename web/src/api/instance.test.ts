@@ -21,6 +21,7 @@ import client from './client';
 import {
   createInstance,
   deleteInstance,
+  deleteInstancesBatch,
   getInstanceCapabilities,
   importCloudInstances,
   listInstances,
@@ -134,5 +135,26 @@ describe('instance API', () => {
     expect(supportsApacheRuntime({})).toBe(true);
     expect(supportsApacheRuntime({ vendor: 'ALIYUN' })).toBe(false);
     expect(supportsApacheRuntime({ vendor: 'TENCENT' })).toBe(false);
+  });
+
+  it('sends the id list and unwraps the result for batch deletion', async () => {
+    const result = { deleted: 2, failed: ['instance/blocked'] };
+    mock.onPost('/instances/delete-batch').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ ids: ['instance-a', 'instance-b'] });
+      return [200, { code: 200, data: result }];
+    });
+
+    await expect(deleteInstancesBatch(['instance-a', 'instance-b'])).resolves.toEqual(result);
+  });
+
+  it('reports failed ids when a batch deletion is partial', async () => {
+    mock.onPost('/instances/delete-batch').reply(200, {
+      code: 200,
+      data: { deleted: 1, failed: ['instance-b'] },
+    });
+
+    const result = await deleteInstancesBatch(['instance-a', 'instance-b']);
+    expect(result.deleted).toBe(1);
+    expect(result.failed).toEqual(['instance-b']);
   });
 });
