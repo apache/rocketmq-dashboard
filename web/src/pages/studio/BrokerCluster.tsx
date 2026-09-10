@@ -31,6 +31,8 @@ import type { ClusterInfo } from '../../api/cluster';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
+import { BrokerQueueCleanupDialog } from '../../components/BrokerQueueCleanupDialog';
+import type { QueueCleanupTarget } from '../../api/brokerQueueCleanup';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -190,6 +192,7 @@ const BrokerClusterPage = () => {
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+  const [cleanupTarget, setCleanupTarget] = useState<QueueCleanupTarget>();
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
@@ -325,6 +328,26 @@ const BrokerClusterPage = () => {
     (activeTab === 'broker' && brokerData.length === 0);
 
   const brokerColumns = [
+    {
+      title: 'Maintenance',
+      key: 'queue-cleanup',
+      render: (_: unknown, row: BrokerRecord) => (
+        <Button
+          size="small"
+          disabled={!selectedInstanceId || isMockMode()}
+          onClick={() => {
+            if (selectedInstanceId)
+              setCleanupTarget({
+                instanceId: selectedInstanceId,
+                brokerName: row.brokerName,
+                address: row.address,
+              });
+          }}
+        >
+          Queue cleanup
+        </Button>
+      ),
+    },
     {
       title: t('brokerCluster.k8sCluster'),
       dataIndex: 'k8sCluster',
@@ -521,7 +544,10 @@ const BrokerClusterPage = () => {
           <Select
             aria-label="选择实例"
             value={selectedInstanceId}
-            onChange={setSelectedInstanceId}
+            onChange={(value) => {
+              setCleanupTarget(undefined);
+              setSelectedInstanceId(value);
+            }}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
@@ -614,6 +640,13 @@ const BrokerClusterPage = () => {
           />
         </Card>
       </Spin>
+      {cleanupTarget && cleanupTarget.instanceId === selectedInstanceId && (
+        <BrokerQueueCleanupDialog
+          key={cleanupTarget.instanceId + cleanupTarget.address}
+          target={cleanupTarget}
+          onClose={() => setCleanupTarget(undefined)}
+        />
+      )}
     </div>
   );
 };
