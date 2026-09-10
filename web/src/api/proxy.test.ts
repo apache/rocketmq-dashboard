@@ -18,7 +18,13 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { addProxyAddress, queryProxyHomePage, removeProxyAddress } from './proxy';
+import {
+  addProxyAddress,
+  getProxyTopology,
+  queryProxyHomePage,
+  reloadProxyConfig,
+  removeProxyAddress,
+} from './proxy';
 
 const mock = new MockAdapter(client);
 
@@ -79,5 +85,28 @@ describe('Proxy API', () => {
     });
 
     await expect(removeProxyAddress('10.0.0.10:8081')).resolves.toEqual(data);
+  });
+
+  it('loads the live proxy topology', async () => {
+    mock.onGet('/proxies/topology').reply(200, {
+      code: 200,
+      data: [{ addr: '10.0.0.10:8081', reachable: true }],
+    });
+
+    const topology = await getProxyTopology();
+
+    expect(topology[0].addr).toBe('10.0.0.10:8081');
+    expect(topology[0].reachable).toBe(true);
+  });
+
+  it('reloads the proxy configuration', async () => {
+    mock.onPost('/proxies/config/reload').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ clusterId: 'cluster-a', addr: '10.0.0.10:8081' });
+      return [200, { code: 200, data: { success: true } }];
+    });
+
+    await expect(reloadProxyConfig('cluster-a', '10.0.0.10:8081')).resolves.toEqual({
+      success: true,
+    });
   });
 });
