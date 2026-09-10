@@ -87,4 +87,38 @@ class ApacheRocketMqDlqMetricsCollectorTest {
     private static InstanceVO apacheInstance() {
         return InstanceVO.builder().name("local").endpoint("localhost:9876").vendor(InstanceVendor.APACHE).build();
     }
+
+    @Test
+    void metricKeysShouldDeclareDlqMessageCount() {
+        assertThat(new ApacheRocketMqDlqMetricsCollector(mock(DLQProvider.class)).metricKeys())
+                .containsExactly(ApacheRocketMqDlqMetricsCollector.DLQ_MESSAGE_COUNT);
+    }
+
+    @Test
+    void blankGroupNamesAreSkippedTest() {
+        DLQProvider provider = mock(DLQProvider.class);
+        when(provider.listDLQGroups("local")).thenReturn(List.of(
+                DLQGroupVO.builder().groupName(null).messageCount(5).statsAvailable(true).build(),
+                DLQGroupVO.builder().groupName("  ").messageCount(6).statsAvailable(true).build(),
+                DLQGroupVO.builder().groupName("orders").messageCount(7).statsAvailable(true).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqDlqMetricsCollector(provider).collect(apacheInstance());
+
+        assertThat(samples).hasSize(1);
+        assertThat(samples.get(0).labels().get("consumerGroup")).isEqualTo("orders");
+    }
+
+    @Test
+    void negativeMessageCountsClampToZeroTest() {
+        DLQProvider provider = mock(DLQProvider.class);
+        when(provider.listDLQGroups("local")).thenReturn(List.of(
+                DLQGroupVO.builder().groupName("orders").messageCount(-3).statsAvailable(true).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqDlqMetricsCollector(provider).collect(apacheInstance());
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.value()).isEqualTo(0D);
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+        });
+    }
 }
