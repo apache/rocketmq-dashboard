@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -107,5 +108,30 @@ class AlertSilenceControllerTest {
                 request.getRecurrence() == AlertSilenceRecurrence.WEEKLY
                         && request.getRecurrenceDays().equals(Set.of(1, 3, 5))
                         && "Asia/Shanghai".equals(request.getTimeZone())));
+    }
+
+    @Test
+    void listShouldReturnAllSilencesTest() throws Exception {
+        AlertSilenceVO silence = AlertSilenceVO.builder()
+                .id(14L)
+                .domain(AlertDomain.CLUSTER)
+                .createdBy("admin")
+                .build();
+        when(silenceService.list()).thenReturn(List.of(silence));
+
+        mockMvc.perform(get("/api/alert-silences"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].id").value(14));
+
+        verify(silenceService).list();
+    }
+
+    @Test
+    void deleteShouldParseTheIdAndDelegateTest() throws Exception {
+        mockMvc.perform(delete("/api/alert-silences/12"))
+                .andExpect(status().isOk());
+
+        verify(silenceService).delete(12L);
     }
 }
