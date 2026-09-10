@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -78,5 +79,39 @@ class ClusterListToolHandlerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> row = rows.get(0);
         assertThat(row.get("version")).isEqualTo("V5_3_1");
+    }
+
+    @Test
+    void emptyClusterListReturnsEmptyRows() {
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.listClusters()).thenReturn(List.of());
+
+        Object output = new ClusterListToolHandler(clusterService).execute(Map.of());
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) output;
+        assertThat(rows).isEmpty();
+    }
+
+    @Test
+    void nullTypeOrStatusRaisesIllegalStateException() {
+        ClusterVO noType = ClusterVO.builder()
+                .name("type-less")
+                .status(ClusterStatus.healthy)
+                .build();
+        noType.setId("type-less");
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.listClusters()).thenReturn(List.of(noType));
+
+        assertThatThrownBy(() -> new ClusterListToolHandler(clusterService).execute(Map.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Cluster type is unavailable: type-less");
+    }
+
+    @Test
+    void handlerNameShouldBeStable() {
+        ClusterService clusterService = mock(ClusterService.class);
+
+        assertThat(new ClusterListToolHandler(clusterService).name()).isEqualTo("rmq.cluster.list");
     }
 }
