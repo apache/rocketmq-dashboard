@@ -65,6 +65,8 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
+import { ConsumerRequestModeDialog } from '../../components/ConsumerRequestModeDialog';
+import { isMockMode } from '../../services/dataMode';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
@@ -271,6 +273,7 @@ const ConsumerPageContent = ({
   const [modeFilter, setModeFilter] = useState<string>('ALL');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
+  const [requestModeTarget, setRequestModeTarget] = useState<{ topic: string; group: string }>();
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
@@ -1227,6 +1230,26 @@ const ConsumerPageContent = ({
      Modal: Queue Progress Tab
      ═══════════════════════════════════════════ */
   const queueColumns: ColumnsType<QueueProgress> = [
+    ...(!isCloudInstance && selectedInstance && !isMockMode()
+      ? [
+          {
+            title: 'Request mode',
+            key: 'request-mode',
+            width: 150,
+            render: (_: unknown, row: QueueProgress) => (
+              <Button
+                size="small"
+                onClick={() => {
+                  if (selectedGroupName)
+                    setRequestModeTarget({ topic: row.topic, group: selectedGroupName });
+                }}
+              >
+                Configure POP/PULL
+              </Button>
+            ),
+          },
+        ]
+      : []),
     {
       title: 'Topic 主题',
       dataIndex: 'topic',
@@ -1412,6 +1435,14 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
+      {requestModeTarget && selectedInstanceId && (
+        <ConsumerRequestModeDialog
+          key={selectedInstanceId + requestModeTarget.topic + requestModeTarget.group}
+          instanceId={selectedInstanceId}
+          {...requestModeTarget}
+          onClose={() => setRequestModeTarget(undefined)}
+        />
+      )}
       {/* ─── Header ─── */}
       <PageHeader
         title={t('group.title')}

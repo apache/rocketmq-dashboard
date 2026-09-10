@@ -396,6 +396,24 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldRejectConsumerRequestModeChangesForNonAdmin() throws Exception {
+        TestSession session = login(false);
+        var response = new MockHttpServletResponse();
+        boolean allowed = session.interceptor().preHandle(authenticatedRequest(
+                "POST", "/api/consumer-request-mode", session.token()), response, new Object());
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void shouldAllowConsumerRequestModeChangesForAdmin() throws Exception {
+        TestSession session = login(true);
+        boolean allowed = session.interceptor().preHandle(authenticatedRequest(
+                "POST", "/api/consumer-request-mode", session.token()), new MockHttpServletResponse(), new Object());
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
     void shouldRejectMutatingPostForNonAdminUser() throws Exception {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
