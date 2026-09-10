@@ -46,6 +46,7 @@ import {
   CheckCircleOutlined,
   DownloadOutlined,
   HistoryOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -75,6 +76,7 @@ import {
   writeMessageTraceTopic,
 } from '../../utils/messageTraceTopicStorage';
 import { tableScrollX } from '../../utils/table';
+import { copyTextToClipboard } from '../../utils/clipboard';
 import {
   analyzeMessageTrace,
   type MessageTraceDiagnostics,
@@ -137,6 +139,22 @@ const formatTimeMs = (value: number | string): string => {
   const pad = (n: number, len = 2) => String(n).padStart(len, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 };
+
+const buildTraceText = (
+  trace: TraceRecord,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string =>
+  trace.nodes
+    .map((node, index) =>
+      [
+        `${index + 1}. ${node.title}`,
+        `${t('message.traceStepTime')}: ${formatTimeMs(node.timestamp)}`,
+        `${t('message.traceStepStatus')}: ${node.status}`,
+        `${t('message.traceStepCost')}: ${node.costTime}ms`,
+        `${t('message.traceStepDetail')}: ${node.description}`,
+      ].join('\n'),
+    )
+    .join('\n\n');
 
 const formatBody = (body: string): string => {
   try {
@@ -965,6 +983,20 @@ const MessagePageContent = ({
               onClick={() => void runTraceQuery()}
             >
               查询轨迹
+            </Button>
+            <Button
+              size="small"
+              icon={<CopyOutlined />}
+              disabled={!traceData?.nodes?.length}
+              onClick={() => {
+                if (!traceData) return;
+                void copyTextToClipboard(buildTraceText(traceData, t)).then(
+                  () => message.success(t('common.copied')),
+                  () => message.error(t('common.copyFailed')),
+                );
+              }}
+            >
+              {t('message.copyTrace')}
             </Button>
           </Space>
           {traceLoading ? (
