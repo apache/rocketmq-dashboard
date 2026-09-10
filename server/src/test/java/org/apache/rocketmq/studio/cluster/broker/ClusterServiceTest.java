@@ -42,10 +42,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import org.assertj.core.api.ThrowableAssert;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -310,6 +312,71 @@ class ClusterServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Proxy not found: 127.0.0.1:8081")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    private ClusterVO clusterWithNullEntries() {
+        List<BrokerVO> brokers = new ArrayList<>();
+        brokers.add(BrokerVO.builder().name("broker-0").addr("10.0.0.1:10911").build());
+        brokers.add(null);
+        List<ProxyVO> proxies = new ArrayList<>();
+        proxies.add(ProxyVO.builder().addr("10.0.0.10:8081").build());
+        proxies.add(null);
+        ClusterVO cluster = ClusterVO.builder()
+                .name("null-entry-cluster")
+                .brokers(brokers)
+                .proxies(proxies)
+                .build();
+        cluster.setId("cluster-ne");
+        return cluster;
+    }
+
+    @Test
+    void listClustersShouldTolerateNullBrokerEntries() {
+        when(clusterProvider.discoverClusters()).thenReturn(List.of(clusterWithNullEntries()));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null))
+                .thenReturn(new ClusterConfigVO());
+
+        List<ClusterVO> clusters = clusterService.listClusters();
+
+        assertThat(clusters).hasSize(1);
+        verify(brokerConfigService).getBrokerConfig("10.0.0.1:10911", null);
+    }
+
+    @Test
+    void updateClusterConfigShouldSkipNullBrokerEntries() {
+        when(clusterRepository.findById("cluster-ne")).thenReturn(Optional.of(clusterWithNullEntries()));
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-ne")
+                .maxMessageSize(8388608)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
+        verify(brokerConfigService).updateBrokerConfig(
+                eq("10.0.0.1:10911"), eq("cluster-ne"), any(Properties.class));
+    }
+
+    @Test
+    void listProxiesShouldSkipNullProxyEntries() {
+        when(clusterRepository.findById("cluster-ne")).thenReturn(Optional.of(clusterWithNullEntries()));
+
+        List<ProxyVO> proxies = clusterService.listProxies("cluster-ne");
+
+        assertThat(proxies).hasSize(1);
+        assertThat(proxies.get(0).getAddr()).isEqualTo("10.0.0.10:8081");
+    }
+
+    @Test
+    void previewConfigShouldSkipNullBrokerTargets() {
+        when(clusterRepository.findById("cluster-ne")).thenReturn(Optional.of(clusterWithNullEntries()));
+
+        ClusterConfigPreviewVO preview = clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-ne")
+                .maxMessageSize(8388608)
+                .build());
+
+        assertThat(preview.getTargetBrokers()).hasSize(1);
+        assertThat(preview.getTargetBrokers().get(0).getAddress()).isEqualTo("10.0.0.1:10911");
     }
 
     @Test

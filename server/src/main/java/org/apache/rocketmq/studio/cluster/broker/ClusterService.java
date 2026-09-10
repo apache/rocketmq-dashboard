@@ -155,7 +155,8 @@ public class ClusterService {
         if (cluster.getProxies() == null || cluster.getProxies().isEmpty()) {
             return List.of();
         }
-        return List.copyOf(cluster.getProxies());
+        // List.copyOf rejects null elements, so filter them instead of propagating an NPE.
+        return cluster.getProxies().stream().filter(Objects::nonNull).toList();
     }
 
     public void requireProxy(String clusterId, String addr) {
@@ -210,6 +211,7 @@ public class ClusterService {
             enrichWithLiveConfig(cluster, instanceId, attemptedAddresses);
             if (cluster.getBrokers() != null) {
                 cluster.getBrokers().stream()
+                        .filter(Objects::nonNull)
                         .map(BrokerVO::getAddr)
                         .filter(address -> address != null && !address.isEmpty())
                         .forEach(attemptedAddresses::add);
@@ -220,15 +222,17 @@ public class ClusterService {
     private void enrichWithLiveConfig(ClusterVO cluster, String instanceId, Set<String> attemptedAddresses) {
         if (cluster.getBrokers() != null) {
             for (BrokerVO broker : cluster.getBrokers()) {
-                if (broker.getAddr() != null && !broker.getAddr().isEmpty()
-                        && !attemptedAddresses.contains(broker.getAddr())) {
-                    try {
-                        cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId));
-                        return;
-                    } catch (Exception e) {
-                        log.warn("Failed to read live config from broker {}: {}",
-                                broker.getAddr(), e.getMessage());
-                    }
+                // Skip null entries reported by a provider instead of NPE-ing the whole list.
+                if (broker == null || broker.getAddr() == null || broker.getAddr().isEmpty()
+                        || attemptedAddresses.contains(broker.getAddr())) {
+                    continue;
+                }
+                try {
+                    cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId));
+                    return;
+                } catch (Exception e) {
+                    log.warn("Failed to read live config from broker {}: {}",
+                            broker.getAddr(), e.getMessage());
                 }
             }
         }
@@ -250,6 +254,9 @@ public class ClusterService {
         if (cluster.getBrokers() != null && !cluster.getBrokers().isEmpty()) {
             Properties brokerProps = buildBrokerProperties(command);
             for (BrokerVO broker : cluster.getBrokers()) {
+                if (broker == null) {
+                    continue;
+                }
                 String address = broker.getAddr();
                 if (address == null || address.isEmpty()) {
                     continue;
@@ -432,6 +439,7 @@ public class ClusterService {
             return List.of();
         }
         return cluster.getBrokers().stream()
+                .filter(Objects::nonNull)
                 .filter(broker -> broker.getAddr() != null && !broker.getAddr().isBlank())
                 .map(broker -> ClusterConfigPreviewVO.BrokerTargetVO.builder()
                         .name(broker.getName())
