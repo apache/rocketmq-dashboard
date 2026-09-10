@@ -195,8 +195,8 @@ const OpsPage: React.FC = () => {
         <Alert
           type="info"
           showIcon
-          message="运行时配置不可用"
-          description={unavailableReason || '当前集群不支持读取或更新 Ops 配置。'}
+          message={t('ops.runtimeUnavailable')}
+          description={unavailableReason || t('ops.runtimeUnavailableDefault')}
           style={{ marginBottom: 24 }}
         />
       )}
