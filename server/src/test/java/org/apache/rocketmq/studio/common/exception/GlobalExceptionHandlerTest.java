@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.common.exception;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.cluster.metrics.PrometheusException;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,11 +27,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -99,6 +104,48 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.code").value(406));
     }
 
+    @Test
+    void unsupportedOperationReturns501Envelope() throws Exception {
+        mockMvc.perform(get("/test/unsupported"))
+                .andExpect(status().isNotImplemented())
+                .andExpect(jsonPath("$.code").value(501))
+                .andExpect(jsonPath("$.message").value("feature not implemented yet"));
+    }
+
+    @Test
+    void unexpectedExceptionReturns500Envelope() throws Exception {
+        mockMvc.perform(get("/test/unexpected"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(jsonPath("$.message").value("Internal Server Error"));
+    }
+
+    @Test
+    void prometheusExceptionPreservesStatusAndMessage() throws Exception {
+        mockMvc.perform(get("/test/prometheus"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(503))
+                .andExpect(jsonPath("$.message").value("prometheus scrape failed"));
+    }
+
+    @Test
+    void typeMismatchParameterReturns400InvalidParameter() throws Exception {
+        mockMvc.perform(get("/test/business/not-a-number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid request parameter"));
+    }
+
+    @Test
+    void unreadableBodyReturns400InvalidBody() throws Exception {
+        mockMvc.perform(post("/test/readable")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("not-json{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid request body"));
+    }
+
     @RestController
     static class FailingController {
 
@@ -111,6 +158,26 @@ class GlobalExceptionHandlerTest {
         Result<Void> failLlm() {
             throw new LlmGatewayException(504, "llm.provider.timeout",
                     "LLM provider request timed out", "Retry later.");
+        }
+
+        @GetMapping("/test/unsupported")
+        Result<Void> failUnsupported() {
+            throw new UnsupportedOperationException("feature not implemented yet");
+        }
+
+        @GetMapping("/test/unexpected")
+        Result<Void> failUnexpected() {
+            throw new IllegalStateException("boom");
+        }
+
+        @GetMapping("/test/prometheus")
+        Result<Void> failPrometheus() {
+            throw new PrometheusException(503, "prometheus scrape failed");
+        }
+
+        @PostMapping("/test/readable")
+        Result<Void> failUnreadable(@RequestBody Map<String, Object> body) {
+            return Result.ok();
         }
 
         @GetMapping("/test/not-acceptable")
