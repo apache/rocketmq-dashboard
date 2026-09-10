@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.cluster.metrics.BusinessMetricsCollector;
+import org.apache.rocketmq.studio.cluster.metrics.ClusterMetricsCollector;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -130,5 +132,39 @@ class NativeAlertRuleTestServiceTest {
     private static MetricSample sample(String metric, String group, double value) {
         return new MetricSample(metric, AlertDomain.BUSINESS, "local", null,
                 Map.of("consumerGroup", group), value, MetricAvailability.AVAILABLE, Instant.now());
+    }
+
+    @Test
+    void rejectsAnUnknownInstanceTest() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        when(instances.findByIdentifier("ghost")).thenReturn(Optional.empty());
+        NativeAlertRuleTestService service = new NativeAlertRuleTestService(instances, List.of(),
+                List.of(), new AlertRuleEvaluator());
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.availability")
+                .instanceId("ghost").operator(">").threshold(0).build();
+
+        assertThatThrownBy(() -> service.test(rule))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("Instance not found");
+    }
+
+    @Test
+    void clusterDomainRulesUseClusterCollectorsTest() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        InstanceVO instance = InstanceVO.builder().name("local").build();
+        when(instances.findByIdentifier("local")).thenReturn(Optional.of(instance));
+        when(collector.supports(instance)).thenReturn(true);
+        MetricSample clusterSample = new MetricSample("broker.availability", AlertDomain.CLUSTER, "local",
+                "cluster-a", Map.of(), 1D, MetricAvailability.AVAILABLE, Instant.now());
+        when(collector.collect(instance)).thenReturn(List.of(clusterSample));
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.availability")
+                .instanceId("local").operator(">").threshold(0).build();
+
+        AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(collector),
+                List.of(), new AlertRuleEvaluator()).test(rule);
+
+        assertThat(result.samples()).singleElement()
+                .satisfies(sample -> assertThat(sample.currentValue()).isEqualTo(1D));
     }
 }
