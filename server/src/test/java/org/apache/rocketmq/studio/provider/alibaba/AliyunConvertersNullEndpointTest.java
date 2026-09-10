@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.GetInstanceResponseBody;
+import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -42,5 +43,49 @@ class AliyunConvertersNullEndpointTest {
         assertThat(AliyunConverters.toInstanceDetailVO(data).getEndpoints())
                 .singleElement()
                 .satisfies(value -> assertThat(value.getEndpointUrl()).isEqualTo("10.0.0.1:8080"));
+    }
+
+    @Test
+    void toInstanceDetailShouldTolerateMissingNetworkInfo() {
+        GetInstanceResponseBody.Data data = GetInstanceResponseBody.Data.builder()
+                .instanceId("rmq-a")
+                .build();
+
+        assertThat(AliyunConverters.toInstanceDetailVO(data).getInstanceId()).isEqualTo("rmq-a");
+        assertThat(AliyunConverters.toInstanceDetailVO(data).getEndpoints()).isEmpty();
+    }
+
+    @Test
+    void toInstanceDetailShouldCarryAllDetailFieldsAndEndpointPairs() {
+        GetInstanceResponseBody.Endpoints tcp = GetInstanceResponseBody.Endpoints.builder()
+                .endpointType("TCP_VPC")
+                .endpointUrl("10.0.0.1:8080")
+                .build();
+        GetInstanceResponseBody.Endpoints grpc = GetInstanceResponseBody.Endpoints.builder()
+                .endpointType("GRPC_VPC")
+                .endpointUrl("10.0.0.2:8081")
+                .build();
+        GetInstanceResponseBody.NetworkInfo network = GetInstanceResponseBody.NetworkInfo.builder()
+                .endpoints(Arrays.asList(tcp, grpc))
+                .build();
+        GetInstanceResponseBody.Data data = GetInstanceResponseBody.Data.builder()
+                .instanceId("rmq-a")
+                .instanceName("prod-mq")
+                .status("RUNNING")
+                .regionId("cn-hangzhou")
+                .remark("prod instance")
+                .networkInfo(network)
+                .build();
+
+        CloudInstanceDetailVO vo = AliyunConverters.toInstanceDetailVO(data);
+
+        assertThat(vo.getInstanceId()).isEqualTo("rmq-a");
+        assertThat(vo.getInstanceName()).isEqualTo("prod-mq");
+        assertThat(vo.getStatus()).isEqualTo("RUNNING");
+        assertThat(vo.getRegionId()).isEqualTo("cn-hangzhou");
+        assertThat(vo.getRemark()).isEqualTo("prod instance");
+        assertThat(vo.getEndpoints()).extracting(
+                CloudInstanceDetailVO.CloudEndpoint::getEndpointType)
+                .containsExactly("TCP_VPC", "GRPC_VPC");
     }
 }
