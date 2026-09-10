@@ -281,4 +281,49 @@ class InstanceControllerTest {
         instance.setGmtModified(LocalDateTime.of(2026, 1, 1, 0, 0));
         return instance;
     }
+    @Test
+    void importCloudInstancesShouldDelegateVendorAndCredential() throws Exception {
+        when(instanceService.importCloudInstances(InstanceVendor.ALIYUN, 5L))
+                .thenReturn(CloudImportResultVO.builder()
+                        .discovered(3)
+                        .imported(2)
+                        .skipped(1)
+                        .build());
+
+        mockMvc.perform(post("/api/instances/import-cloud")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"vendor\":\"ALIYUN\",\"credentialId\":5}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.imported").value(2))
+                .andExpect(jsonPath("$.data.skipped").value(1));
+
+        verify(instanceService).importCloudInstances(InstanceVendor.ALIYUN, 5L);
+    }
+
+    @Test
+    void deleteBatchShouldDelegateIds() throws Exception {
+        when(instanceService.deleteInstances(List.of("inst-a", "inst-b")))
+                .thenReturn(BatchDeleteResultVO.builder().deleted(2).build());
+
+        mockMvc.perform(post("/api/instances/delete-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[\"inst-a\",\"inst-b\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.deleted").value(2));
+
+        verify(instanceService).deleteInstances(List.of("inst-a", "inst-b"));
+    }
+
+    @Test
+    void deleteBatchShouldRejectEmptyIds() throws Exception {
+        mockMvc.perform(post("/api/instances/delete-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[]}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(instanceService);
+    }
+
 }
