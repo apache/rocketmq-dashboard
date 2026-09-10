@@ -123,4 +123,48 @@ class ApacheAclReadServiceTest {
             return action.apply(admin);
         });
     }
+
+    @Test
+    void emptyOrMissingTopologyYieldsAnEmptyResultTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(null);
+        executeWith(resolver, admin);
+
+        RemoteAclReadResult nullTopology =
+                new ApacheAclReadService(resolver).listRules("instance-1", null, null);
+        assertThat(nullTopology.getPoliciesByBroker()).isEmpty();
+        assertThat(nullTopology.getFailuresByBroker()).isEmpty();
+        assertThat(nullTopology.isPartial()).isFalse();
+
+        ClusterInfo empty = new ClusterInfo();
+        empty.setBrokerAddrTable(new HashMap<>());
+        when(admin.examineBrokerClusterInfo()).thenReturn(empty);
+        RemoteAclReadResult emptyTopology =
+                new ApacheAclReadService(resolver).listRules("instance-1", null, null);
+        assertThat(emptyTopology.getPoliciesByBroker()).isEmpty();
+        assertThat(emptyTopology.getFailuresByBroker()).isEmpty();
+        assertThat(emptyTopology.isPartial()).isFalse();
+    }
+
+    @Test
+    void brokersWithoutAMasterAddressAreSkippedTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        BrokerData noAddress = new BrokerData();
+        noAddress.setBrokerAddrs(new HashMap<>());
+        BrokerData noAddressesAtAll = new BrokerData();
+        noAddressesAtAll.setBrokerAddrs(null);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of(
+                "a", noAddress, "b", noAddressesAtAll)));
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        executeWith(resolver, admin);
+
+        RemoteAclReadResult result = new ApacheAclReadService(resolver).listRules("instance-1", null, null);
+
+        assertThat(result.getPoliciesByBroker()).isEmpty();
+        assertThat(result.getFailuresByBroker()).isEmpty();
+        assertThat(result.isPartial()).isFalse();
+    }
 }
