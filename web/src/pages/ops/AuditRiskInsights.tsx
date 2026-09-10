@@ -293,6 +293,7 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
                 size="small"
                 rowKey="key"
                 dataSource={insights.hotTargets}
+                tableLayout="fixed"
                 scroll={{ x: tableScrollX(hotTargetColumns) }}
                 columns={hotTargetColumns}
                 pagination={false}
@@ -315,6 +316,7 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
                 size="small"
                 rowKey="id"
                 dataSource={insights.riskyRecords}
+                tableLayout="fixed"
                 scroll={{ x: tableScrollX(riskyRecordColumns) }}
                 columns={riskyRecordColumns}
                 pagination={false}

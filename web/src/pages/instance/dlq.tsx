@@ -27,6 +27,7 @@ import {
   Modal,
   Drawer,
   DatePicker,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -415,21 +416,28 @@ const DLQPage = () => {
       title: 'Group 名称',
       dataIndex: 'groupName',
       key: 'groupName',
-      width: 200,
+      minWidth: 200,
+      ellipsis: true,
       sorter: (a, b) => a.groupName.localeCompare(b.groupName),
       render: (name: string) => (
-        <Text strong style={{ fontSize: 14 }}>
-          {name}
-        </Text>
+        <Tooltip title={name}>
+          <Text strong style={{ fontSize: 14 }}>
+            {name}
+          </Text>
+        </Tooltip>
       ),
     },
     {
       title: 'DLQ Topic',
       dataIndex: 'dlqTopic',
       key: 'dlqTopic',
-      width: 240,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 240,
+      ellipsis: true,
       render: (topic: string) => (
-        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{topic}</Text>
+        <Tooltip title={topic}>
+          <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{topic}</Text>
+        </Tooltip>
       ),
     },
     {
@@ -672,6 +680,7 @@ const DLQPage = () => {
             },
           }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
@@ -920,6 +929,7 @@ const DLQPage = () => {
                   }
                 },
               }}
+              tableLayout="fixed"
               scroll={{ x: tableScrollX(detailColumns, { selection: true }) }}
               columns={detailColumns}
             />

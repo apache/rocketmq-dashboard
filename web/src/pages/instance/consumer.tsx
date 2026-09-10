@@ -874,10 +874,15 @@ const ConsumerPageContent = ({
       title: 'Group 名称',
       dataIndex: 'name',
       key: 'name',
-      width: 190,
+      // `minWidth` rather than `width`: this is the one column allowed to grow, so a window
+      // wider than the table does not inflate every other column by the same proportion.
+      // 170 keeps the total at the container width of a 1560px window, so the table fits
+      // without a horizontal scrollbar there; on wider windows this column takes the surplus.
+      minWidth: 170,
+      ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Tooltip title="点击复制名称">
+        <Tooltip title={`${name}（点击复制）`}>
           <Text
             strong
             style={{ fontSize: 14, cursor: 'pointer' }}
@@ -966,6 +971,8 @@ const ConsumerPageContent = ({
       title: '创建时间',
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
+      // 156 = the 140px `YYYY-MM-DD HH:mm:ss` label at 14px plus the small-table cell padding;
+      // anything narrower truncates the timestamp.
       width: 156,
       sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => (
@@ -989,7 +996,7 @@ const ConsumerPageContent = ({
     {
       title: '操作',
       key: 'actions',
-      width: 232,
+      width: 248,
       render: (_: unknown, record: ConsumerGroup) => (
         <Flex gap={6} justify="flex-end">
           <Button
@@ -1552,6 +1559,7 @@ const ConsumerPageContent = ({
             },
           }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true, expandable: true }) }}
           expandable={{
             onExpand: (expanded, record) => {
@@ -1725,10 +1733,16 @@ const ConsumerPageContent = ({
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
                       </Descriptions.Item>
-                      <Descriptions.Item label="创建时间" span={2}>
+                      <Descriptions.Item label="创建时间">
                         <Space size={4}>
                           <Clock size={13} color="#9CA3AF" />
                           <Text type="secondary">{selectedGroup.gmtCreate}</Text>
+                        </Space>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="修改时间">
+                        <Space size={4}>
+                          <Clock size={13} color="#9CA3AF" />
+                          <Text type="secondary">{selectedGroup.gmtModified}</Text>
                         </Space>
                       </Descriptions.Item>
                       <Descriptions.Item label="订阅 Topic" span={2}>
@@ -1756,6 +1770,7 @@ const ConsumerPageContent = ({
                         rowKey="clientId"
                         pagination={false}
                         size="small"
+                        tableLayout="fixed"
                         scroll={{ x: tableScrollX(instanceColumns) }}
                       />
                     </div>
@@ -1958,6 +1973,7 @@ const ConsumerPageContent = ({
                         rowKey="id"
                         pagination={false}
                         size="small"
+                        tableLayout="fixed"
                         scroll={{ x: tableScrollX(healthIssueColumns) }}
                       />
                     ) : (
@@ -2057,6 +2073,7 @@ const ConsumerPageContent = ({
                       rowKey={(r) => `${r.topic}-${r.broker}-${r.queueId}`}
                       pagination={false}
                       size="small"
+                      tableLayout="fixed"
                       scroll={{ x: tableScrollX(queueColumns), y: 380 }}
                       locale={{ emptyText: '消费组不在线，暂无队列进度数据' }}
                     />
@@ -2653,6 +2670,7 @@ const ConsumerPageContent = ({
                   rowKey={(row) => `${row.topic}-${row.broker}-${row.queueId}`}
                   pagination={false}
                   size="small"
+                  tableLayout="fixed"
                   scroll={{ x: tableScrollX(resetPreviewColumns), y: 260 }}
                   locale={{ emptyText: '未找到可预览的 Queue 位点' }}
                 />
