@@ -39,4 +39,56 @@ class LoginVOTest {
         assertThat(value).contains("username=admin");
         assertThat(value).doesNotContain("studio-jwt-secret");
     }
+
+    @Test
+    void toStringOmitsTheTokenFieldEntirelyTest() {
+        LoginVO response = LoginVO.builder()
+            .token("studio-jwt-secret")
+            .expiresIn(3600)
+            .build();
+
+        String value = response.toString();
+
+        assertThat(value).doesNotContain("token").doesNotContain("studio-jwt-secret");
+    }
+
+    @Test
+    void serializationOmitsNullTokensAndIncludesPresentOnes() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+
+        LoginVO withoutToken = LoginVO.builder()
+            .expiresIn(3600)
+            .user(LoginVO.UserInfo.builder().username("admin").admin(true).build())
+            .build();
+        String nullJson = mapper.writeValueAsString(withoutToken);
+        assertThat(nullJson).doesNotContain("token").contains("\"expiresIn\":3600")
+                .contains("\"username\":\"admin\"");
+
+        LoginVO withToken = LoginVO.builder().token("studio-token").expiresIn(3600).build();
+        String tokenJson = mapper.writeValueAsString(withToken);
+        assertThat(tokenJson).contains("\"token\":\"studio-token\"");
+    }
+
+    @Test
+    void dataEqualityCoversTheNestedUserInfoTest() {
+        LoginVO first = LoginVO.builder()
+            .token("t1")
+            .expiresIn(3600)
+            .user(LoginVO.UserInfo.builder().userId(1L).username("admin").admin(true).build())
+            .build();
+        LoginVO same = LoginVO.builder()
+            .token("t1")
+            .expiresIn(3600)
+            .user(LoginVO.UserInfo.builder().userId(1L).username("admin").admin(true).build())
+            .build();
+        LoginVO nonAdmin = LoginVO.builder()
+            .token("t1")
+            .expiresIn(3600)
+            .user(LoginVO.UserInfo.builder().userId(1L).username("admin").admin(false).build())
+            .build();
+
+        assertThat(first).isEqualTo(same).hasSameHashCodeAs(same);
+        assertThat(first).isNotEqualTo(nonAdmin);
+    }
 }
