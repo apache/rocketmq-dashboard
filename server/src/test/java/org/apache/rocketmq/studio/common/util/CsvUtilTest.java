@@ -35,4 +35,15 @@ class CsvUtilTest {
         assertThat(CsvUtil.toCell("=SUM(A1)")).isEqualTo("\"'=SUM(A1)\"");
         assertThat(CsvUtil.toCell("+cmd")).isEqualTo("\"'+cmd\"");
     }
+
+    @Test
+    void toCellShouldNeutralizeRemainingFormulaPrefixesTest() {
+        assertThat(CsvUtil.toCell("-1+1")).isEqualTo("\"'-1+1\"");
+        assertThat(CsvUtil.toCell("@import")).isEqualTo("\"'@import\"");
+        assertThat(CsvUtil.toCell("\tindented")).isEqualTo("\"'\tindented\"");
+        assertThat(CsvUtil.toCell("\nline")).isEqualTo("\"'\nline\"");
+        assertThat(CsvUtil.toCell("  leading spaces")).isEqualTo("\"  leading spaces\"");
+        assertThat(CsvUtil.toCell("plain text")).isEqualTo("\"plain text\"");
+        assertThat(CsvUtil.toCell("")).isEqualTo("\"\"");
+    }
 }
