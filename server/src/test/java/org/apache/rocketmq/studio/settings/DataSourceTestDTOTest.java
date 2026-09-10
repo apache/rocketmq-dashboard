@@ -16,11 +16,15 @@
  */
 package org.apache.rocketmq.studio.settings;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DataSourceTestDTOTest {
+
+    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     @Test
     void toStringShouldNotExposeCredentials() {
@@ -39,5 +43,43 @@ class DataSourceTestDTOTest {
         assertThat(value).contains("username=prometheus-user");
         assertThat(value).doesNotContain("plain-password");
         assertThat(value).doesNotContain("plain-token");
+    }
+
+    @Test
+    void toStringShouldStillCarryNonSecretFields() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+            .url("http://victoria:8428")
+            .type("victoriametrics")
+            .auth("basic")
+            .username("metrics-user")
+            .password("secret-password")
+            .bearerToken("secret-token")
+            .build();
+
+        String value = request.toString();
+
+        assertThat(value).contains("url=http://victoria:8428");
+        assertThat(value).contains("type=victoriametrics");
+        assertThat(value).contains("auth=basic");
+        assertThat(value).contains("username=metrics-user");
+    }
+
+    @Test
+    void validationShouldRejectMissingUrlAndType() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder().build();
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .contains("url is required", "type is required");
+    }
+
+    @Test
+    void validationShouldAcceptCompleteRequest() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+            .url("http://prometheus:9090")
+            .type("prometheus")
+            .build();
+
+        assertThat(validator.validate(request)).isEmpty();
     }
 }
