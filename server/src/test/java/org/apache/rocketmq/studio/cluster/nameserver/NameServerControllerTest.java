@@ -346,4 +346,36 @@ class NameServerControllerTest {
 
         verify(clusterService).deleteNameServer(any(DeleteNameServerDTO.class));
     }
+    @Test
+    void restartNameServerShouldReportFailureWhenClusterRejectsTest() throws Exception {
+        when(clusterService.restartNameServer(any(RestartNameServerDTO.class))).thenReturn(false);
+
+        RestartNameServerDTO command = RestartNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.132.218.11:9876")
+                .build();
+
+        mockMvc.perform(post("/api/nameservers/restart")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.message").value("Failed to restart NameServer"));
+    }
+
+    @Test
+    void deleteNameServerShouldReportFailureWhenClusterRejectsTest() throws Exception {
+        when(clusterService.deleteNameServer(any(DeleteNameServerDTO.class))).thenReturn(false);
+
+        DeleteNameServerDTO command = DeleteNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.132.218.11:9876")
+                .build();
+
+        mockMvc.perform(post("/api/nameservers/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.message").value("Failed to delete NameServer"));
+    }
+
 }
