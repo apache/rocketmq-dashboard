@@ -20,7 +20,10 @@ import {
   createAclRule,
   createAclUser,
   createAndUpdatePlainAccessConfig,
+  deleteAclRule,
+  deleteAclUser,
   examineBrokerClusterAclConfig,
+  getAclUserCredentials,
   listAclRules,
   listAclUsers,
   pageAclUsers,
@@ -152,5 +155,105 @@ describe('ACL service mock data', () => {
     await expect(createAndUpdatePlainAccessConfig({ accessKey: 'svc-no-secret' })).rejects.toThrow(
       'secretKey is required',
     );
+  });
+
+  it('removes a rule from mock state and tolerates an unknown id', async () => {
+    const created = await createAclRule({
+      principal: 'user-delete-candidate',
+      resource: 'delete-me',
+      actions: ['PUB'],
+    });
+    expect(created.id).toBeGreaterThan(0);
+
+    await deleteAclRule(created.id);
+
+    const after = await listAclRules({ principal: 'user-delete-candidate' });
+    expect(after.total).toBe(0);
+    await expect(deleteAclRule(99999999)).resolves.toBeUndefined();
+  });
+
+  it('removes a user from mock state and tolerates an unknown id', async () => {
+    const created = await createAclUser({
+      username: 'user-delete-candidate',
+      clusters: ['rmq-delete-test'],
+    });
+
+    await deleteAclUser(created.id);
+
+    const after = await listAclUsers({ keyword: 'user-delete-candidate' });
+    expect(after).toHaveLength(0);
+    await expect(deleteAclUser(99999999)).resolves.toBeUndefined();
+  });
+
+  it('returns a defensive copy of stored credentials for a known user', async () => {
+    const credentials = await getAclUserCredentials(1);
+    expect(credentials.username).toBe('user-admin');
+    expect(credentials.secretKey).toBe('HqWz****xK8P');
+
+    credentials.clusters.push('mutated-cluster');
+    const again = await getAclUserCredentials(1);
+    expect(again.clusters).not.toContain('mutated-cluster');
+    expect(again).not.toBe(credentials);
+  });
+
+  it('throws for credentials of an unknown user', async () => {
+    await expect(getAclUserCredentials(99999999)).rejects.toThrow('ACL user not found');
+  });
+
+  it('throws when updating a rule or user that does not exist', async () => {
+    await expect(
+      updateAclRule({ id: 99999999, principal: 'user-missing' }),
+    ).rejects.toThrow('ACL rule not found');
+    await expect(
+      updateAclUser({ id: 99999999, username: 'user-missing' }),
+    ).rejects.toThrow('ACL user not found');
+  });
+
+  it('filters rules by scope, decision, ACL version, and resource', async () => {
+    const namespaced = await listAclRules({ scope: 'namespace' });
+    expect(namespaced.items.length).toBeGreaterThan(0);
+    expect(namespaced.items.every((rule) => rule.scope === 'namespace')).toBe(true);
+
+    const denied = await listAclRules({ decision: 'DENY' });
+    expect(denied.items.length).toBeGreaterThan(0);
+    expect(denied.items.every((rule) => rule.decision === 'DENY')).toBe(true);
+
+    const v1 = await listAclRules({ aclVersion: '1.0' });
+    expect(v1.items.length).toBeGreaterThan(0);
+    expect(v1.items.every((rule) => String(rule.aclVersion) === '1.0')).toBe(true);
+
+    const resource = await listAclRules({ resource: 'payment' });
+    expect(resource.items.length).toBeGreaterThan(0);
+    expect(resource.items.every((rule) => rule.resource.toLowerCase().includes('payment'))).toBe(
+      true,
+    );
+  });
+
+  it('filters rules case-insensitively by principal', async () => {
+    const lower = await listAclRules({ principal: 'user-admin' });
+    const upper = await listAclRules({ principal: 'USER-ADMIN' });
+    expect(lower.items.length).toBeGreaterThan(0);
+    expect(upper.items).toEqual(lower.items);
+  });
+
+  it('pages rule results with a page size and total', async () => {
+    const first = await listAclRules({ page: 1, pageSize: 3 });
+    expect(first.items).toHaveLength(3);
+    expect(first.total).toBeGreaterThan(3);
+    expect(first.page).toBe(1);
+
+    const second = await listAclRules({ page: 2, pageSize: 3 });
+    expect(second.items).toHaveLength(3);
+    expect(second.items).not.toEqual(first.items);
+    expect(second.total).toBe(first.total);
+  });
+
+  it('filters users by a case-insensitive keyword', async () => {
+    const upper = await listAclUsers({ keyword: 'USER-ADMIN' });
+    expect(upper[0].username).toBe('user-admin');
+
+    const partial = await listAclUsers({ keyword: 'order' });
+    expect(partial.every((user) => user.username.toLowerCase().includes('order'))).toBe(true);
+    expect(partial.some((user) => user.username === 'user-order-service')).toBe(true);
   });
 });
