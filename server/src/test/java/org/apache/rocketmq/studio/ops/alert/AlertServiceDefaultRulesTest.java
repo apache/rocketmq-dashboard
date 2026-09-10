@@ -73,4 +73,49 @@ class AlertServiceDefaultRulesTest {
         }
         return count;
     }
+
+    @Test
+    void exportUsesRepositoryRulesWhenPresentTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .domain(AlertDomain.BUSINESS)
+                .name("CustomLagCheck")
+                .metric("consumer_lag_total")
+                .operator(">=")
+                .threshold(1000)
+                .duration("5m")
+                .enabled(true)
+                .build();
+        when(repository.findAllRules()).thenReturn(List.of(rule));
+
+        AlertService service = new AlertService(repository, Mockito.mock(AlertStateRepository.class),
+                new AlertRuleAssetService(), Mockito.mock(OperationAuditService.class));
+        String yaml = service.exportPrometheusRulesYaml();
+
+        assertTrue(yaml.contains("CustomLagCheck"));
+        assertTrue(yaml.contains("consumer_lag_total"));
+        assertTrue(yaml.contains("1000"));
+    }
+
+    @Test
+    void exportFiltersDisabledRulesBeforeFallingBackToDefaultsTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        AlertRuleVO disabled = AlertRuleVO.builder()
+                .domain(AlertDomain.BUSINESS)
+                .name("DisabledCustomCheck")
+                .metric("consumer.lag.total")
+                .operator(">=")
+                .threshold(1000)
+                .duration("5m")
+                .enabled(false)
+                .build();
+        when(repository.findAllRules()).thenReturn(List.of(disabled));
+
+        AlertService service = new AlertService(repository, Mockito.mock(AlertStateRepository.class),
+                new AlertRuleAssetService(), Mockito.mock(OperationAuditService.class));
+        String yaml = service.exportPrometheusRulesYaml();
+
+        assertTrue(yaml.contains("RocketMQBrokerDown"));
+        assertTrue(!yaml.contains("DisabledCustomCheck"));
+    }
 }
