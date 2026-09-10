@@ -52,4 +52,49 @@ class AiEngineLocaleTest {
             return "ok";
         }
     }
+
+    @Test
+    void normalizeEngineShouldDefaultToHttpForMissingOrBlankEngine() {
+        LlmConfigVO missing = LlmConfigVO.builder().build();
+        LlmConfigVO blank = LlmConfigVO.builder().engine("   ").build();
+
+        assertThat(missing.normalizeEngine()).isEqualTo(LlmConfigVO.ENGINE_HTTP);
+        assertThat(blank.normalizeEngine()).isEqualTo(LlmConfigVO.ENGINE_HTTP);
+    }
+
+    @Test
+    void normalizeEngineShouldTrimAndLowercaseEngine() {
+        LlmConfigVO qoder = LlmConfigVO.builder().engine(" QODER ").build();
+
+        assertThat(qoder.normalizeEngine()).isEqualTo("qoder");
+    }
+
+    @Test
+    void isReadyShouldReturnFalseWhenDisabledOrMissingModel() {
+        LlmConfigVO disabled = LlmConfigVO.builder()
+                .engine("qoder").model("qwen").enabled(false).build();
+        LlmConfigVO noModel = LlmConfigVO.builder()
+                .engine("qoder").enabled(true).build();
+
+        assertThat(disabled.isReady()).isFalse();
+        assertThat(noModel.isReady()).isFalse();
+    }
+
+    @Test
+    void isReadyShouldRequireEndpointAndKeyForHttpProviders() {
+        LlmConfigVO ollama = LlmConfigVO.builder()
+                .provider("ollama").model("qwen").enabled(true)
+                .apiBase("http://localhost:11434").build();
+        assertThat(ollama.isReady()).isTrue();
+
+        LlmConfigVO keyless = LlmConfigVO.builder()
+                .provider("openai").model("gpt-4o").enabled(true)
+                .apiBase("https://api.openai.com").build();
+        assertThat(keyless.isReady()).isFalse();
+
+        LlmConfigVO complete = LlmConfigVO.builder()
+                .provider("openai").model("gpt-4o").enabled(true)
+                .apiBase("https://api.openai.com").apiKey("sk-test").build();
+        assertThat(complete.isReady()).isTrue();
+    }
 }
