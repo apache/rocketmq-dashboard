@@ -74,4 +74,57 @@ class AiPayloadGuardTest {
                     assertThat(exception.getMessage()).contains("LLM model");
                 });
     }
+
+    @Test
+    void rejectsMissingRequestsAndBlankChatMessages() {
+        assertThatThrownBy(() -> AiPayloadGuard.validateChat(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Chat request is required");
+        assertThatThrownBy(() -> AiPayloadGuard.validateCommand(null, objectMapper))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Command request is required");
+
+        ChatDTO blankMessage = ChatDTO.builder().message("  ").build();
+        assertThatThrownBy(() -> AiPayloadGuard.validateChat(blankMessage))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Chat message is required");
+    }
+
+    @Test
+    void acceptsACommandWithPromptAndEnforcesTheContextBudget() {
+        AiCommandDTO valid = AiCommandDTO.builder().prompt("list topics").build();
+        assertThatCode(() -> AiPayloadGuard.validateCommand(valid, objectMapper))
+                .doesNotThrowAnyException();
+
+        AiCommandDTO oversizedContext = AiCommandDTO.builder().prompt("list topics")
+                .context(Map.of("blob", "x".repeat(AiPayloadGuard.MAX_CONTEXT_BYTES)))
+                .build();
+        assertThatThrownBy(() -> AiPayloadGuard.validateCommand(oversizedContext, objectMapper))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Command context must not exceed");
+    }
+
+    @Test
+    void enforcesModelAndConversationIdBudgetsOnChat() {
+        ChatDTO longModel = ChatDTO.builder().message("hi")
+                .model("m".repeat(AiPayloadGuard.MAX_MODEL_BYTES + 1)).build();
+        assertThatThrownBy(() -> AiPayloadGuard.validateChat(longModel))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Chat model must not exceed");
+
+        ChatDTO longConversation = ChatDTO.builder().message("hi")
+                .conversationId("c".repeat(AiPayloadGuard.MAX_CONVERSATION_ID_BYTES + 1)).build();
+        assertThatThrownBy(() -> AiPayloadGuard.validateChat(longConversation))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Conversation ID must not exceed");
+    }
+
+    @Test
+    void toolInvocationRequiresANameButToleratesMissingInput() {
+        assertThatThrownBy(() -> AiPayloadGuard.validateToolInvocation("  ", Map.of(), objectMapper))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Tool name is required");
+        assertThatCode(() -> AiPayloadGuard.validateToolInvocation("rmq.topic.list", null, objectMapper))
+                .doesNotThrowAnyException();
+    }
 }
