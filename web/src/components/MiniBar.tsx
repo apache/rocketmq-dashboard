@@ -23,10 +23,13 @@ interface MiniBarProps {
   label?: string;
 }
 
+import { useLang } from '../i18n/LangContext';
+
 const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: MiniBarProps) => {
+  const { t, lang } = useLang();
   if (!data.length) {
     return (
-      <span aria-label={label || '暂无趋势数据'} style={{ color: '#8c8c8c' }}>
+      <span aria-label={label || t('miniBar.noTrend')} style={{ color: '#8c8c8c' }}>
         —
       </span>
     );
@@ -38,7 +41,12 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
   return (
     <div
       role="img"
-      aria-label={label || `趋势数据：${data.join('、')}`}
+      aria-label={
+        label ||
+        (lang === 'en'
+          ? `Trend data: ${data.join(', ')}`
+          : `趋势数据：${data.join('、')}`)
+      }
       style={{
         display: 'inline-flex',
         alignItems: 'flex-end',

@@ -17,6 +17,7 @@
 
 import { Select } from 'antd';
 import type { CSSProperties } from 'react';
+import { useLang } from '../i18n/LangContext';
 
 export interface InstanceOption {
   value: string;
@@ -40,13 +41,14 @@ export function InstanceSelect({
   onChange,
   options,
   style,
-  placeholder = '选择实例',
+  placeholder,
 }: InstanceSelectProps) {
+  const { t } = useLang();
   return (
     <Select
       showSearch
       allowClear
-      placeholder={placeholder}
+      placeholder={placeholder ?? t('instanceSelect.placeholder')}
       value={value ?? undefined}
       onChange={(next, option) => {
         if (next === undefined || next === null) {
@@ -65,7 +67,7 @@ export function InstanceSelect({
           .toLowerCase()
           .includes(input.toLowerCase())
       }
-      notFoundContent="暂无匹配实例"
+      notFoundContent={t('instanceSelect.notFound')}
       style={style ?? { width: 220 }}
     />
   );
