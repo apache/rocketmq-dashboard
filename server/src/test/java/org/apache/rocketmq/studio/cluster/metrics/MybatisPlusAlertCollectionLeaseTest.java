@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.metrics;
 
+import org.apache.rocketmq.studio.persistence.entity.RmqAlertCollectionLease;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertCollectionLeaseMapper;
 import org.junit.jupiter.api.Test;
 
@@ -52,5 +53,72 @@ class MybatisPlusAlertCollectionLeaseTest {
 
         assertThat(lease.renew()).isFalse();
         verify(mapper).renew(eq("native-alert-collection"), anyString(), any(), any());
+    }
+
+    @Test
+    void tryAcquireWinsWhenTheDatabaseInsertIsTheFirstHolderTest() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("PT30S");
+        RmqAlertCollectionLeaseMapper mapper = mock(RmqAlertCollectionLeaseMapper.class);
+        when(mapper.acquire(eq("native-alert-collection"), anyString(), any(), any())).thenReturn(1);
+
+        MybatisPlusAlertCollectionLease lease = new MybatisPlusAlertCollectionLease(properties, mapper);
+
+        assertThat(lease.tryAcquire()).isTrue();
+        verify(mapper).acquire(eq("native-alert-collection"), anyString(), any(), any());
+    }
+
+    @Test
+    void tryAcquireInsertsWhenTheConditionalAcquireMissesTest() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("PT30S");
+        RmqAlertCollectionLeaseMapper mapper = mock(RmqAlertCollectionLeaseMapper.class);
+        when(mapper.acquire(eq("native-alert-collection"), anyString(), any(), any())).thenReturn(0);
+        when(mapper.insert(any(RmqAlertCollectionLease.class))).thenReturn(1);
+
+        MybatisPlusAlertCollectionLease lease = new MybatisPlusAlertCollectionLease(properties, mapper);
+
+        assertThat(lease.tryAcquire()).isTrue();
+        org.mockito.ArgumentCaptor<RmqAlertCollectionLease> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqAlertCollectionLease.class);
+        verify(mapper).insert(captor.capture());
+        assertThat(captor.getValue().getLeaseName()).isEqualTo("native-alert-collection");
+        assertThat(captor.getValue().getHolderId()).isNotBlank();
+    }
+
+    @Test
+    void tryAcquireReportsLossWhenTheInsertLosesARaceTest() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("PT30S");
+        RmqAlertCollectionLeaseMapper mapper = mock(RmqAlertCollectionLeaseMapper.class);
+        when(mapper.acquire(eq("native-alert-collection"), anyString(), any(), any())).thenReturn(0);
+        when(mapper.insert(any(RmqAlertCollectionLease.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("race lost"));
+
+        MybatisPlusAlertCollectionLease lease = new MybatisPlusAlertCollectionLease(properties, mapper);
+
+        assertThat(lease.tryAcquire()).isFalse();
+    }
+
+    @Test
+    void malformedLeaseDurationFallsBackToOneMinuteTest() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("not-a-duration");
+        RmqAlertCollectionLeaseMapper mapper = mock(RmqAlertCollectionLeaseMapper.class);
+        when(mapper.acquire(eq("native-alert-collection"), anyString(), any(), any())).thenReturn(0);
+        when(mapper.insert(any(RmqAlertCollectionLease.class))).thenReturn(1);
+
+        MybatisPlusAlertCollectionLease lease = new MybatisPlusAlertCollectionLease(properties, mapper);
+
+        assertThat(lease.tryAcquire()).isTrue();
+        org.mockito.ArgumentCaptor<RmqAlertCollectionLease> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqAlertCollectionLease.class);
+        verify(mapper).insert(captor.capture());
+        java.time.LocalDateTime expiresAt = captor.getValue().getExpiresAt();
+        java.time.LocalDateTime lowerBound = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)
+                .plusSeconds(58);
+        java.time.LocalDateTime upperBound = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)
+                .plusSeconds(62);
+        assertThat(expiresAt).isBetween(lowerBound, upperBound);
     }
 }
