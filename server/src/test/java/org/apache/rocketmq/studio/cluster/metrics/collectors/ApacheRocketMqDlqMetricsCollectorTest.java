@@ -84,6 +84,34 @@ class ApacheRocketMqDlqMetricsCollectorTest {
         verify(provider).listDLQGroups("local");
     }
 
+    @Test
+    void supportsGateRejectsNullInstancesAndNames() {
+        ApacheRocketMqDlqMetricsCollector collector =
+                new ApacheRocketMqDlqMetricsCollector(mock(DLQProvider.class));
+
+        assertThat(collector.supports(null)).isFalse();
+        assertThat(collector.supports(apacheInstance())).isTrue();
+        InstanceVO nullName = apacheInstance();
+        nullName.setName(null);
+        assertThat(collector.supports(nullName)).isFalse();
+        assertThat(collector.metricKeys()).containsExactly("dlq.message.count");
+    }
+
+    @Test
+    void blankGroupsAreSkippedAndNegativeCountsClamped() {
+        DLQProvider provider = mock(DLQProvider.class);
+        when(provider.listDLQGroups("local")).thenReturn(List.of(
+                DLQGroupVO.builder().groupName("   ").messageCount(5).statsAvailable(true).build(),
+                DLQGroupVO.builder().groupName("orders").messageCount(-3).statsAvailable(true).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqDlqMetricsCollector(provider).collect(apacheInstance());
+
+        assertThat(samples).hasSize(1);
+        assertThat(samples.get(0).labels()).containsEntry("consumerGroup", "orders");
+        assertThat(samples.get(0).value()).isEqualTo(0D);
+        assertThat(samples.get(0).availability()).isEqualTo(MetricAvailability.AVAILABLE);
+    }
+
     private static InstanceVO apacheInstance() {
         return InstanceVO.builder().name("local").endpoint("localhost:9876").vendor(InstanceVendor.APACHE).build();
     }
