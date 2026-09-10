@@ -67,4 +67,63 @@ class AlertRuleRequestDTOTest {
 
         assertThat(request.toAlertRuleVO().getMetric()).isEqualTo("consumer.lag.total");
     }
+
+    @Test
+    void toAlertRuleVOShouldApplyDefaultsForNullOptionalFields() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+
+        AlertRuleVO vo = request.toAlertRuleVO();
+
+        assertThat(vo.getAggregation()).isEqualTo("LAST");
+        assertThat(vo.getWindowSeconds()).isZero();
+        assertThat(vo.getConsecutiveSamples()).isEqualTo(1);
+        assertThat(vo.getReminderInterval()).isEqualTo("30m");
+        assertThat(vo.getMetric()).isNull();
+        assertThat(vo.getChannels()).isNull();
+    }
+
+    @Test
+    void toAlertRuleVOShouldCopyExplicitRuntimeFields() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setOperator(">=");
+        request.setThreshold(85);
+        request.setThresholdUnit("%");
+        request.setDuration("5m");
+        request.setAggregation("AVG");
+        request.setWindowSeconds(60);
+        request.setEnabled(false);
+        request.setDescription("broker disk high");
+        request.setBrokerName("broker-a");
+        request.setClusterName("cluster-a");
+        request.setSeverity("warning");
+        request.setInstanceId("local");
+        request.setConsumerGroup("group-a");
+        request.setTopic("orders");
+        request.setConsecutiveSamples(3);
+        request.setReminderInterval("1h");
+        request.setNotificationTemplate("${ruleName} ${value}");
+
+        AlertRuleVO vo = request.toAlertRuleVO();
+
+        assertThat(vo.getName()).isEqualTo("High Lag");
+        assertThat(vo.getOperator()).isEqualTo(">=");
+        assertThat(vo.getThreshold()).isEqualTo(85);
+        assertThat(vo.getThresholdUnit()).isEqualTo("%");
+        assertThat(vo.getDuration()).isEqualTo("5m");
+        assertThat(vo.getAggregation()).isEqualTo("AVG");
+        assertThat(vo.getWindowSeconds()).isEqualTo(60);
+        assertThat(vo.isEnabled()).isFalse();
+        assertThat(vo.getDescription()).isEqualTo("broker disk high");
+        assertThat(vo.getBrokerName()).isEqualTo("broker-a");
+        assertThat(vo.getClusterName()).isEqualTo("cluster-a");
+        assertThat(vo.getSeverity()).isEqualTo("warning");
+        assertThat(vo.getInstanceId()).isEqualTo("local");
+        assertThat(vo.getConsumerGroup()).isEqualTo("group-a");
+        assertThat(vo.getTopic()).isEqualTo("orders");
+        assertThat(vo.getConsecutiveSamples()).isEqualTo(3);
+        assertThat(vo.getReminderInterval()).isEqualTo("1h");
+        assertThat(vo.getNotificationTemplate()).isEqualTo("${ruleName} ${value}");
+    }
 }
