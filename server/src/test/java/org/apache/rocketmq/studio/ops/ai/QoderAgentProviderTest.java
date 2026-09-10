@@ -49,4 +49,17 @@ class QoderAgentProviderTest {
         assertThat(provider.buildCommand(config, null, null))
                 .containsExactly("qodercli", "-p", "");
     }
+
+    @Test
+    void reportsTheQoderEngine() {
+        assertThat(provider.engine()).isEqualTo("qoder");
+    }
+
+    @Test
+    void blankModelOverrideFallsBackToTheConfiguredModel() {
+        LlmConfigVO config = LlmConfigVO.builder().model("qoder-configured").build();
+
+        assertThat(provider.buildCommand(config, "prompt", "  "))
+                .containsExactly("qodercli", "-p", "prompt", "-m", "qoder-configured");
+    }
 }
