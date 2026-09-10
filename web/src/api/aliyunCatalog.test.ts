@@ -67,4 +67,22 @@ describe('aliyunCatalog API', () => {
 
     expect(instances[0].instanceId).toBe('rmq-cn-xxx');
   });
+
+  it('includes an optional search filter when provided', async () => {
+    mock.onGet('/cloud/aliyun/instances').reply((config) => {
+      expect(config.params).toMatchObject({ credentialId: 9, regionId: 'cn-hangzhou', search: 'prod' });
+      return [200, { code: 200, data: [] }];
+    });
+
+    await listAliyunInstances(9, 'cn-hangzhou', 'prod');
+  });
+
+  it('omits the search filter when it is absent', async () => {
+    mock.onGet('/cloud/aliyun/instances').reply((config) => {
+      expect(config.params.search).toBeUndefined();
+      return [200, { code: 200, data: [] }];
+    });
+
+    await listAliyunInstances(9, 'cn-hangzhou');
+  });
 });
