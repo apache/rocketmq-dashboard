@@ -129,4 +129,81 @@ class ProducerConnectionServiceTest {
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
         verifyNoInteractions(clientProvider);
     }
+
+    @Test
+    void listProducerGroupsShouldRejectMissingInstanceId() {
+        assertThatThrownBy(() -> producerConnectionService.listProducerGroups(" ", "order-topic", "pg", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("instanceId is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verifyNoInteractions(clientProvider);
+    }
+
+    @Test
+    void listProducerGroupsShouldClampSelectorLimitToOneWhenBelowMinimum() {
+        when(clientProvider.findProducerGroups("instance-1", null, null, 1))
+                .thenReturn(List.of("pg-order"));
+
+        assertThat(producerConnectionService.listProducerGroups("instance-1", null, null, 0))
+                .containsExactly("pg-order");
+        verify(clientProvider).findProducerGroups("instance-1", null, null, 1);
+    }
+
+    @Test
+    void listConnectionsShouldProjectNullLanguageAndVersion() {
+        ClientConnectionVO producer = ClientConnectionVO.builder()
+                .clientId("producer-2")
+                .type(ClientType.Producer)
+                .groupOrTopic("order-topic")
+                .producerGroup("pg-order")
+                .address("10.0.0.2:38888")
+                .build();
+        when(clientProvider.findProducerConnections("instance-1", "order-topic", null))
+                .thenReturn(List.of(producer));
+
+        List<ProducerConnectionVO> result =
+                producerConnectionService.listConnections("instance-1", "order-topic", " ");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getClientId()).isEqualTo("producer-2");
+        assertThat(result.get(0).getClientAddr()).isEqualTo("10.0.0.2:38888");
+        assertThat(result.get(0).getTopic()).isEqualTo("order-topic");
+        assertThat(result.get(0).getProducerGroup()).isEqualTo("pg-order");
+        assertThat(result.get(0).getLanguage()).isNull();
+        assertThat(result.get(0).getVersionDesc()).isNull();
+    }
+
+    @Test
+    void listConnectionsShouldProjectEachRawConnection() {
+        ClientConnectionVO first = ClientConnectionVO.builder()
+                .clientId("producer-1")
+                .type(ClientType.Producer)
+                .groupOrTopic("order-topic")
+                .producerGroup("pg-order")
+                .address("10.0.0.1:38888")
+                .language(ClientLanguage.Go)
+                .version("5.1.4")
+                .build();
+        ClientConnectionVO second = ClientConnectionVO.builder()
+                .clientId("producer-2")
+                .type(ClientType.Producer)
+                .groupOrTopic("order-topic")
+                .producerGroup("pg-order")
+                .address("10.0.0.2:38888")
+                .language(ClientLanguage.Cpp)
+                .version("5.0.0")
+                .build();
+        when(clientProvider.findProducerConnections("instance-1", "order-topic", "pg-order"))
+                .thenReturn(List.of(first, second));
+
+        List<ProducerConnectionVO> result = producerConnectionService.listConnections(
+                "instance-1", "order-topic", "pg-order");
+
+        assertThat(result).extracting(ProducerConnectionVO::getClientId)
+                .containsExactly("producer-1", "producer-2");
+        assertThat(result).extracting(ProducerConnectionVO::getLanguage)
+                .containsExactly("Go", "Cpp");
+        assertThat(result).extracting(ProducerConnectionVO::getVersionDesc)
+                .containsExactly("5.1.4", "5.0.0");
+    }
 }
