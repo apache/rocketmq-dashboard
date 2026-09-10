@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Select } from 'antd';
+import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Select, Input } from 'antd';
 import {
   ArrowClockwise,
   Cloud,
@@ -190,6 +190,7 @@ const BrokerClusterPage = () => {
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+  const [brokerSearch, setBrokerSearch] = useState('');
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
@@ -200,6 +201,14 @@ const BrokerClusterPage = () => {
     setNameServerData([]);
     setProxyData([]);
   }, []);
+
+  const normalizedBrokerSearch = brokerSearch.trim().toLowerCase();
+  const filteredBrokers = brokerData.filter((broker) => {
+    if (!normalizedBrokerSearch) return true;
+    return [broker.brokerName, broker.address].some((value) =>
+      value.toLowerCase().includes(normalizedBrokerSearch),
+    );
+  });
 
   const loadData = useCallback(async () => {
     if (!selectedInstanceId && !isMockMode()) {
@@ -316,13 +325,13 @@ const BrokerClusterPage = () => {
     }
     downloadCsv(
       `rocketmq-broker-topology-${today}.csv`,
-      buildCsv(BROKER_EXPORT_COLUMNS, brokerData),
+      buildCsv(BROKER_EXPORT_COLUMNS, filteredBrokers),
     );
   }
   const exportDisabled =
     (activeTab === 'nameserver' && nameServerData.length === 0) ||
     (activeTab === 'proxy' && proxyData.length === 0) ||
-    (activeTab === 'broker' && brokerData.length === 0);
+    (activeTab === 'broker' && filteredBrokers.length === 0);
 
   const brokerColumns = [
     {
@@ -582,15 +591,25 @@ const BrokerClusterPage = () => {
                   </span>
                 ),
                 children: (
-                  <Table
-                    columns={brokerColumns}
-                    dataSource={brokerData}
-                    pagination={{
-                      pageSize: 10,
-                      showTotal: (total) => `${t('common.total')} ${total} Broker`,
-                    }}
-                    size="middle"
-                  />
+                  <div>
+                    <Input.Search
+                      placeholder={t('brokerCluster.searchPlaceholder')}
+                      allowClear
+                      value={brokerSearch}
+                      onChange={(e) => setBrokerSearch(e.target.value)}
+                      onSearch={setBrokerSearch}
+                      style={{ width: 320, marginBottom: 16 }}
+                    />
+                    <Table
+                      columns={brokerColumns}
+                      dataSource={filteredBrokers}
+                      pagination={{
+                        pageSize: 10,
+                        showTotal: (total) => `${t('common.total')} ${total} Broker`,
+                      }}
+                      size="middle"
+                    />
+                  </div>
                 ),
               },
               {

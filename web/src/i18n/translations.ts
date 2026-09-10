@@ -2475,6 +2475,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'brokerCluster.httpAddr': { zh: 'HTTP 地址', en: 'HTTP Address' },
   'brokerCluster.grpcAddr': { zh: 'gRPC 地址', en: 'gRPC Address' },
   'brokerCluster.connections': { zh: '连接数', en: 'Connections' },
+  'brokerCluster.searchPlaceholder': { zh: '搜索 Broker 名称或地址', en: 'Search broker name or address' },
 
   'groupMgmt.lagUnavailable': { zh: '不可用', en: 'Unavailable' },
 
