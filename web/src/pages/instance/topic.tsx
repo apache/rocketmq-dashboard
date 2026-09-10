@@ -335,7 +335,7 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const {
     selectedInstanceId,
@@ -695,15 +695,18 @@ const TopicPage = () => {
       minWidth: 200,
       ellipsis: true,
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
-      render: (remark: string) => (
-        <Text
-          type="secondary"
-          style={{ fontSize: 14, display: 'block' }}
-          ellipsis={{ tooltip: remark }}
-        >
-          {remark}
-        </Text>
-      ),
+      render: (remark: string, record: Topic) => {
+        const display = lang === 'en' ? (record.enRemark ?? remark) : remark;
+        return (
+          <Text
+            type="secondary"
+            style={{ fontSize: 14, display: 'block' }}
+            ellipsis={{ tooltip: display }}
+          >
+            {display}
+          </Text>
+        );
+      },
     },
     {
       title: '类型',

@@ -19,6 +19,8 @@ export interface Topic {
   tps: number;
   consumerGroupCount: number;
   remark: string;
+  /** Optional English display copy for demo (mock-mode) topic remarks. */
+  enRemark?: string | null;
   gmtCreate: string;
   gmtModified: string;
 }
