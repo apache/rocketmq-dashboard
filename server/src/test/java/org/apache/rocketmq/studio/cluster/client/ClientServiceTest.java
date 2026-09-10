@@ -93,4 +93,22 @@ class ClientServiceTest {
 
         verifyNoInteractions(clientProvider);
     }
+
+    @Test
+    void listConnectionsShouldRejectNullInstanceId() {
+        assertThatThrownBy(() -> clientService.listConnections(null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("instanceId is required");
+
+        verifyNoInteractions(clientProvider);
+    }
+
+    @Test
+    void listConnectionsAtShouldRejectNullNamesrvAddr() {
+        assertThatThrownBy(() -> clientService.listConnectionsAt(null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("namesrvAddr is required");
+
+        verifyNoInteractions(clientProvider);
+    }
 }
