@@ -36,18 +36,24 @@ import {
   Select,
   Alert,
   Input,
+  List,
   Modal,
+  Popconfirm,
+  Segmented,
   Space,
   theme,
   message,
 } from 'antd';
 import {
   ArrowUp,
+  BookOpen,
   CaretDown,
   ClockCounterClockwise,
+  Plus,
   SlidersHorizontal,
   Sparkle,
   Stop,
+  Trash,
 } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
@@ -66,6 +72,16 @@ import {
   useAiChatHistoryStore,
 } from '../../stores/aiChatHistoryStore';
 import { getChatDraft, shouldOpenChatHistory, type ChatMode } from './chatDraft';
+import {
+  applyPromptTemplate,
+  buildPromptTemplatePreview,
+  deleteCustomPromptTemplate,
+  filterPromptTemplates,
+  loadPromptTemplateCatalog,
+  saveCustomPromptTemplate,
+  type PromptTemplate,
+  type PromptTemplateApplyMode,
+} from './promptTemplates';
 
 const { Text } = Typography;
 
@@ -472,6 +488,14 @@ const AiPage = () => {
   const [selectedModel, setSelectedModel] = useState('');
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [enhance, setEnhance] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<ChatMode>('chat');
+  const [promptTemplateOpen, setPromptTemplateOpen] = useState(false);
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+  const [promptTemplateSearch, setPromptTemplateSearch] = useState('');
+  const [promptTemplateMode, setPromptTemplateMode] = useState<ChatMode | 'all'>('all');
+  const [promptTemplateStorageAvailable, setPromptTemplateStorageAvailable] = useState(true);
+  const [customTemplateTitle, setCustomTemplateTitle] = useState('');
+  const [customTemplateTags, setCustomTemplateTags] = useState('');
   const [tools, setTools] = useState<McpTool[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
   const [clusterOptions, setClusterOptions] = useState<{ value: string; label: string }[]>([]);
@@ -498,6 +522,94 @@ const AiPage = () => {
     enhance?: boolean;
   } | null>(null);
   const canInspectLlmRuntime = !userId || admin === true;
+  const chatModeOptions = useMemo<Array<{ value: ChatMode; label: string }>>(
+    () => [
+      { value: 'chat', label: t('ai.mode.chat') },
+      { value: 'diagnose', label: t('ai.mode.diagnose') },
+      { value: 'manage', label: t('ai.mode.manage') },
+      { value: 'query', label: t('ai.mode.query') },
+    ],
+    [t],
+  );
+  const promptTemplateFilterOptions = useMemo<Array<{ value: ChatMode | 'all'; label: string }>>(
+    () => [{ value: 'all', label: t('common.all') }, ...chatModeOptions],
+    [chatModeOptions, t],
+  );
+  const chatModeLabels = useMemo(
+    () => Object.fromEntries(chatModeOptions.map((item) => [item.value, item.label])),
+    [chatModeOptions],
+  );
+  const visiblePromptTemplates = useMemo(
+    () => filterPromptTemplates(promptTemplates, promptTemplateSearch, promptTemplateMode),
+    [promptTemplateMode, promptTemplateSearch, promptTemplates],
+  );
+
+  const refreshPromptTemplates = useCallback(() => {
+    const catalog = loadPromptTemplateCatalog(undefined, t);
+    setPromptTemplates(catalog.templates);
+    setPromptTemplateStorageAvailable(catalog.storageAvailable);
+  }, [t]);
+
+  const openPromptTemplates = useCallback(() => {
+    refreshPromptTemplates();
+    setPromptTemplateOpen(true);
+  }, [refreshPromptTemplates]);
+
+  const handleApplyPromptTemplate = useCallback(
+    (template: PromptTemplate, applyMode: PromptTemplateApplyMode) => {
+      setInputValue((current) => applyPromptTemplate(template, current, applyMode));
+      setSelectedMode(template.mode);
+      setEnhance(template.enhance);
+      setPromptTemplateOpen(false);
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
+    },
+    [],
+  );
+
+  const handleSaveCurrentPromptTemplate = useCallback(() => {
+    const result = saveCustomPromptTemplate({
+      title: customTemplateTitle,
+      tags: customTemplateTags,
+      mode: selectedMode,
+      enhance,
+      body: inputValue,
+    });
+    if (!result.ok) {
+      const errorMessage =
+        result.reason === 'empty_title'
+          ? t('ai.promptTemplates.titleRequired')
+          : result.reason === 'empty_body'
+            ? t('ai.promptTemplates.bodyRequired')
+            : t('ai.promptTemplates.storageSaveFailed');
+      message.error(errorMessage);
+      return;
+    }
+    message.success(t('ai.promptTemplates.saved'));
+    setCustomTemplateTitle('');
+    setCustomTemplateTags('');
+    refreshPromptTemplates();
+  }, [
+    customTemplateTags,
+    customTemplateTitle,
+    enhance,
+    inputValue,
+    refreshPromptTemplates,
+    selectedMode,
+    t,
+  ]);
+
+  const handleDeletePromptTemplate = useCallback(
+    (template: PromptTemplate) => {
+      if (template.scope !== 'custom') return;
+      if (!deleteCustomPromptTemplate(template.id)) {
+        message.error(t('ai.promptTemplates.storageDeleteFailed'));
+        return;
+      }
+      message.success(t('ai.promptTemplates.deleted'));
+      refreshPromptTemplates();
+    },
+    [refreshPromptTemplates, t],
+  );
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -585,6 +697,7 @@ const AiPage = () => {
       }
       if (draft.prompt) setInputValue(draft.prompt);
       if (draft.enhance !== undefined) setEnhance(draft.enhance);
+      if (draft.mode) setSelectedMode(draft.mode);
       if (draft.engine) {
         draftEngineRef.current = draft.engine;
         setEngine(draft.engine);
@@ -633,10 +746,11 @@ const AiPage = () => {
       textOverride?: string,
       modelOverride?: string,
       enhance?: boolean,
-      modeOverride: ChatMode = 'chat',
+      modeOverride?: ChatMode,
     ) => {
       const text = (textOverride ?? inputValue).trim();
       const model = modelOverride ?? selectedModel;
+      const requestMode = modeOverride ?? selectedMode;
       if (!text || loading || chatInFlightRef.current) return;
       if (!llmReady) {
         message.warning(t('ai.providerRequired'));
@@ -677,7 +791,7 @@ const AiPage = () => {
         await chatStream(
           {
             message: text,
-            mode: modeOverride,
+            mode: requestMode,
             model,
             engine,
             enhance,
@@ -740,6 +854,7 @@ const AiPage = () => {
       llmReady,
       loading,
       selectedModel,
+      selectedMode,
       startConversation,
       t,
       updateMessages,
@@ -763,10 +878,10 @@ const AiPage = () => {
       if (e.nativeEvent.isComposing) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        handleSend();
+        handleSend(undefined, undefined, enhance);
       }
     },
-    [handleSend],
+    [enhance, handleSend],
   );
 
   const handleQuickAction = useCallback((action: string) => {
@@ -1052,6 +1167,17 @@ const AiPage = () => {
                 title="执行引擎"
                 style={{ fontSize: '0.893rem', minWidth: 110 }}
               />
+              <Select
+                size="small"
+                value={selectedMode}
+                onChange={(value: ChatMode) => setSelectedMode(value)}
+                options={chatModeOptions}
+                variant="borderless"
+                popupMatchSelectWidth={false}
+                suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
+                title={t('ai.mode.title')}
+                style={{ fontSize: '0.893rem', minWidth: 90 }}
+              />
               {llmConfig && (
                 <Tag color={llmReady ? 'green' : 'default'} style={{ borderRadius: 6 }}>
                   {llmConfig.provider || 'openai'}
@@ -1101,6 +1227,10 @@ const AiPage = () => {
                       <SlidersHorizontal size={17} />
                       <span>工具</span>
                     </button>
+                    <button className="tool-btn" onClick={openPromptTemplates}>
+                      <BookOpen size={17} />
+                      <span>{t('ai.promptTemplates.button')}</span>
+                    </button>
                     <button
                       className="tool-btn"
                       onClick={() => setEnhance((value) => !value)}
@@ -1108,10 +1238,10 @@ const AiPage = () => {
                         borderColor: enhance ? '#1677ff' : undefined,
                         color: enhance ? '#1677ff' : undefined,
                       }}
-                      title="发送前增强 Prompt"
+                      title={t('ai.promptEnhanceTitle')}
                     >
                       <Sparkle size={17} />
-                      <span>Prompt 增强</span>
+                      <span>{t('ai.promptEnhance')}</span>
                     </button>
                   </div>
                 </div>
@@ -1204,6 +1334,139 @@ const AiPage = () => {
           </div>
         )}
       </Drawer>
+
+      <Modal
+        title={t('ai.promptTemplates.title')}
+        open={promptTemplateOpen}
+        onCancel={() => setPromptTemplateOpen(false)}
+        footer={null}
+        width={760}
+        styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}
+      >
+        <Flex vertical gap={16} style={{ paddingTop: 8 }}>
+          {!promptTemplateStorageAvailable && (
+            <Alert type="warning" showIcon message={t('ai.promptTemplates.storageUnavailable')} />
+          )}
+          <Flex gap={12} wrap="wrap" align="center">
+            <Input.Search
+              aria-label={t('ai.promptTemplates.searchAria')}
+              allowClear
+              placeholder={t('ai.promptTemplates.searchPlaceholder')}
+              value={promptTemplateSearch}
+              onChange={(event) => setPromptTemplateSearch(event.target.value)}
+              style={{ flex: '1 1 260px' }}
+            />
+            <Segmented
+              value={promptTemplateMode}
+              options={promptTemplateFilterOptions}
+              onChange={(value) => setPromptTemplateMode(value as ChatMode | 'all')}
+            />
+          </Flex>
+
+          <div>
+            <Typography.Text strong>{t('ai.promptTemplates.saveCurrent')}</Typography.Text>
+            <Flex gap={8} wrap="wrap" style={{ marginTop: 8 }}>
+              <Input
+                aria-label={t('ai.promptTemplates.titleInput')}
+                placeholder={t('ai.promptTemplates.titleInput')}
+                value={customTemplateTitle}
+                onChange={(event) => setCustomTemplateTitle(event.target.value)}
+                style={{ flex: '1 1 220px' }}
+              />
+              <Input
+                aria-label={t('ai.promptTemplates.tagsInput')}
+                placeholder={t('ai.promptTemplates.tagsPlaceholder')}
+                value={customTemplateTags}
+                onChange={(event) => setCustomTemplateTags(event.target.value)}
+                style={{ flex: '1 1 220px' }}
+              />
+              <Button
+                icon={<Plus size={16} />}
+                disabled={!inputValue.trim()}
+                onClick={handleSaveCurrentPromptTemplate}
+              >
+                {t('common.save')}
+              </Button>
+            </Flex>
+          </div>
+
+          <List
+            dataSource={visiblePromptTemplates}
+            locale={{ emptyText: t('ai.promptTemplates.empty') }}
+            renderItem={(template) => (
+              <List.Item
+                actions={[
+                  <Button
+                    key="replace"
+                    type="link"
+                    onClick={() => handleApplyPromptTemplate(template, 'replace')}
+                  >
+                    {t('ai.promptTemplates.use')}
+                  </Button>,
+                  <Button
+                    key="append"
+                    type="link"
+                    onClick={() => handleApplyPromptTemplate(template, 'append')}
+                  >
+                    {t('ai.promptTemplates.append')}
+                  </Button>,
+                  template.scope === 'custom' ? (
+                    <Popconfirm
+                      key="delete"
+                      title={t('ai.promptTemplates.deleteConfirm')}
+                      okText={t('common.delete')}
+                      cancelText={t('common.cancel')}
+                      onConfirm={() => handleDeletePromptTemplate(template)}
+                    >
+                      <Button
+                        danger
+                        type="text"
+                        size="small"
+                        aria-label={t('ai.promptTemplates.deleteAria', {
+                          title: template.title,
+                        })}
+                        icon={<Trash size={16} />}
+                      />
+                    </Popconfirm>
+                  ) : null,
+                ].filter(Boolean)}
+              >
+                <List.Item.Meta
+                  title={
+                    <Space size={8} wrap>
+                      <Typography.Text strong>{template.title}</Typography.Text>
+                      <Tag color={template.scope === 'custom' ? 'blue' : 'default'}>
+                        {template.scope === 'custom'
+                          ? t('ai.promptTemplates.custom')
+                          : t('ai.promptTemplates.builtin')}
+                      </Tag>
+                      <Tag>{chatModeLabels[template.mode]}</Tag>
+                      {template.enhance && <Tag color="purple">{t('ai.promptEnhance')}</Tag>}
+                    </Space>
+                  }
+                  description={
+                    <Flex vertical gap={6}>
+                      {template.description && (
+                        <Typography.Text type="secondary">{template.description}</Typography.Text>
+                      )}
+                      <Typography.Text style={{ overflowWrap: 'anywhere' }}>
+                        {buildPromptTemplatePreview(template.body)}
+                      </Typography.Text>
+                      {template.tags.length > 0 && (
+                        <Space size={4} wrap>
+                          {template.tags.map((tag) => (
+                            <Tag key={tag}>{tag}</Tag>
+                          ))}
+                        </Space>
+                      )}
+                    </Flex>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        </Flex>
+      </Modal>
 
       <Modal
         title="AI 工具"
