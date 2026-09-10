@@ -18,7 +18,12 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { addProxyAddress, queryProxyHomePage, removeProxyAddress } from './proxy';
+import {
+  addProxyAddress,
+  addProxyAddresses,
+  queryProxyHomePage,
+  removeProxyAddress,
+} from './proxy';
 
 const mock = new MockAdapter(client);
 
@@ -66,6 +71,53 @@ describe('Proxy API', () => {
     });
 
     await expect(addProxyAddress('10.0.0.10:8081')).resolves.toEqual(data);
+  });
+
+  it('adds proxy addresses in batch through the Studio endpoint', async () => {
+    const data = {
+      total: 3,
+      added: 1,
+      existing: 1,
+      duplicate: 1,
+      invalid: 0,
+      items: [
+        {
+          rowNumber: 1,
+          input: '10.0.0.10:8081',
+          addr: '10.0.0.10:8081',
+          status: 'ADDED',
+          message: 'Proxy address added',
+        },
+        {
+          rowNumber: 2,
+          input: '127.0.0.1:8081',
+          addr: '127.0.0.1:8081',
+          status: 'EXISTING',
+          message: 'Proxy address already exists',
+        },
+        {
+          rowNumber: 3,
+          input: '10.0.0.10:8081',
+          addr: '10.0.0.10:8081',
+          status: 'DUPLICATE',
+          message: 'Duplicate address in this request',
+        },
+      ],
+      home: {
+        proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+        currentProxyAddr: '127.0.0.1:8081',
+      },
+    };
+    mock.onPost('/proxies/addresses/batch').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        addrs: ['10.0.0.10:8081', '127.0.0.1:8081', '10.0.0.10:8081'],
+      });
+      return [200, { code: 200, data }];
+    });
+
+    await expect(
+      addProxyAddresses(['10.0.0.10:8081', '127.0.0.1:8081', '10.0.0.10:8081']),
+    ).resolves.toEqual(data);
   });
 
   it('removes proxy addresses through the Studio endpoint', async () => {

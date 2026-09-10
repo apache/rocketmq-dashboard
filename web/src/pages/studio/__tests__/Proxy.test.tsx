@@ -16,11 +16,12 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import {
   addProxyAddress,
+  addProxyAddresses,
   getProxyTopology,
   queryProxyHomePage,
   reloadProxyConfig,
@@ -31,6 +32,7 @@ import ProxyPage from '../Proxy';
 
 vi.mock('../../../api/proxy', () => ({
   addProxyAddress: vi.fn(),
+  addProxyAddresses: vi.fn(),
   getProxyTopology: vi.fn(),
   queryProxyHomePage: vi.fn(),
   reloadProxyConfig: vi.fn(),
@@ -82,6 +84,15 @@ describe('ProxyPage', () => {
     vi.mocked(queryProxyHomePage).mockResolvedValue(proxyHome);
     vi.mocked(getProxyTopology).mockResolvedValue([]);
     vi.mocked(addProxyAddress).mockResolvedValue(proxyHome);
+    vi.mocked(addProxyAddresses).mockResolvedValue({
+      total: 0,
+      added: 0,
+      existing: 0,
+      duplicate: 0,
+      invalid: 0,
+      items: [],
+      home: proxyHome,
+    });
     vi.mocked(reloadProxyConfig).mockResolvedValue({
       success: true,
     });
@@ -224,6 +235,94 @@ describe('ProxyPage', () => {
 
     expect(addProxyAddress).toHaveBeenCalledTimes(1);
     mutation.resolve(proxyHome);
+  });
+
+  it('adds Proxy addresses in batch and shows row-level results', async () => {
+    const user = userEvent.setup();
+    vi.mocked(addProxyAddresses).mockResolvedValueOnce({
+      total: 4,
+      added: 1,
+      existing: 1,
+      duplicate: 1,
+      invalid: 1,
+      items: [
+        {
+          rowNumber: 1,
+          input: '10.0.0.10:8081',
+          addr: '10.0.0.10:8081',
+          status: 'ADDED',
+          message: 'Proxy address added',
+        },
+        {
+          rowNumber: 2,
+          input: '127.0.0.1:8081',
+          addr: '127.0.0.1:8081',
+          status: 'EXISTING',
+          message: 'Proxy address already exists',
+        },
+        {
+          rowNumber: 3,
+          input: '10.0.0.10:8081',
+          addr: '10.0.0.10:8081',
+          status: 'DUPLICATE',
+          message: 'Duplicate address in this request',
+        },
+        {
+          rowNumber: 4,
+          input: 'broken',
+          addr: null,
+          status: 'INVALID',
+          message: 'addr must be in host:port or [ipv6]:port format',
+        },
+      ],
+      home: {
+        proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+        currentProxyAddr: '127.0.0.1:8081',
+      },
+    });
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.click(screen.getByRole('button', { name: '批量新增' }));
+    const dialog = screen.getByRole('dialog', { name: '批量新增' });
+    await user.type(
+      within(dialog).getByLabelText('批量 Proxy 地址'),
+      '10.0.0.10:8081\n127.0.0.1:8081\n10.0.0.10:8081\nbroken',
+    );
+
+    expect(within(dialog).getByText('已识别 4 个地址')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: '批量新增' }));
+
+    await waitFor(() =>
+      expect(addProxyAddresses).toHaveBeenCalledWith([
+        '10.0.0.10:8081',
+        '127.0.0.1:8081',
+        '10.0.0.10:8081',
+        'broken',
+      ]),
+    );
+    expect(await screen.findByText('已新增 1 个 Proxy 地址')).toBeInTheDocument();
+    expect(screen.getAllByText('10.0.0.10:8081').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText('已新增')).toBeInTheDocument();
+    expect(within(dialog).getByText('已存在')).toBeInTheDocument();
+    expect(within(dialog).getByText('重复')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('无效').length).toBeGreaterThan(0);
+  });
+
+  it('rejects an empty batch before calling the API', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.click(screen.getByRole('button', { name: '批量新增' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: '批量新增' })).getByRole('button', {
+        name: '批量新增',
+      }),
+    );
+
+    expect(addProxyAddresses).not.toHaveBeenCalled();
+    expect(await screen.findByText('请输入至少一个 Proxy 地址')).toBeInTheDocument();
   });
 
   it('removes a Proxy address and applies the updated address list', async () => {

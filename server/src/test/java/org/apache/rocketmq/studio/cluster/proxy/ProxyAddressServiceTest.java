@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -102,6 +103,49 @@ class ProxyAddressServiceTest {
 
         ProxyHomeVO home = proxyAddressService.getHomePage();
         assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081", "[::1]:8081");
+    }
+
+    @Test
+    void addProxyAddrsShouldClassifyRowsAndAppendOnlyNewAddresses() {
+        ProxyAddressBatchResultVO result = proxyAddressService.addProxyAddrs(List.of(
+                " 10.0.0.10:8081 ",
+                "127.0.0.1:8081",
+                "10.0.0.10:8081",
+                "broken",
+                "[::1]:8081"
+        ));
+
+        assertThat(result.getTotal()).isEqualTo(5);
+        assertThat(result.getAdded()).isEqualTo(2);
+        assertThat(result.getExisting()).isEqualTo(1);
+        assertThat(result.getDuplicate()).isEqualTo(1);
+        assertThat(result.getInvalid()).isEqualTo(1);
+        assertThat(result.getHome().getProxyAddrList())
+                .containsExactly("127.0.0.1:8081", "10.0.0.10:8081", "[::1]:8081");
+        assertThat(result.getItems())
+                .extracting(ProxyAddressBatchItemVO::getStatus)
+                .containsExactly("ADDED", "EXISTING", "DUPLICATE", "INVALID", "ADDED");
+        assertThat(result.getItems().get(0).getRowNumber()).isEqualTo(1);
+        assertThat(result.getItems().get(0).getAddr()).isEqualTo("10.0.0.10:8081");
+        assertThat(result.getItems().get(3).getMessage())
+                .isEqualTo("addr must be in host:port or [ipv6]:port format");
+        verify(operationAuditService).record("ADD_PROXY_ADDRESS", "PROXY", "10.0.0.10:8081",
+                null, null, "SUCCESS", null);
+        verify(operationAuditService).record("ADD_PROXY_ADDRESS", "PROXY", "[::1]:8081",
+                null, null, "SUCCESS", null);
+    }
+
+    @Test
+    void addProxyAddrsShouldRejectEmptyOrOversizedRequests() {
+        assertThatThrownBy(() -> proxyAddressService.addProxyAddrs(List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("addrs is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        assertThatThrownBy(() -> proxyAddressService.addProxyAddrs(Collections.nCopies(51, "10.0.0.1:8081")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("At most 50 proxy addresses are allowed")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
     }
 
     @Test

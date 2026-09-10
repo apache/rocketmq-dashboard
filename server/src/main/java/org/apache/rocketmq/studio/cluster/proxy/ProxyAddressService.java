@@ -61,6 +61,7 @@ public class ProxyAddressService {
     private static final InetAddressValidator INET_ADDRESS_VALIDATOR = InetAddressValidator.getInstance();
     private static final int MIN_PORT = 1;
     private static final int MAX_PORT = 65535;
+    private static final int MAX_BATCH_PROXY_ADDRS = 50;
 
     private static final String RELOAD_PATH = "/admin/reloadConfig";
 
@@ -277,6 +278,77 @@ public class ProxyAddressService {
             recordAudit(Operation.ADD_PROXY_ADDRESS, ResourceType.PROXY, normalized, null);
         }
         log.info("Added Proxy address {}", normalized);
+    }
+
+    public synchronized ProxyAddressBatchResultVO addProxyAddrs(List<String> rawProxyAddrs) {
+        if (rawProxyAddrs == null || rawProxyAddrs.isEmpty()) {
+            throw new BusinessException(400, "addrs is required");
+        }
+        if (rawProxyAddrs.size() > MAX_BATCH_PROXY_ADDRS) {
+            throw new BusinessException(400, "At most 50 proxy addresses are allowed");
+        }
+
+        List<ProxyAddressBatchItemVO> items = new ArrayList<>();
+        Set<String> seenInRequest = new LinkedHashSet<>();
+        int added = 0;
+        int existing = 0;
+        int duplicate = 0;
+        int invalid = 0;
+
+        for (int index = 0; index < rawProxyAddrs.size(); index++) {
+            String raw = rawProxyAddrs.get(index);
+            String normalized;
+            try {
+                normalized = normalizeProxyAddr(raw, "addr");
+            } catch (BusinessException ex) {
+                invalid++;
+                items.add(batchItem(index, raw, null, "INVALID", ex.getMessage()));
+                continue;
+            }
+
+            if (!seenInRequest.add(normalized)) {
+                duplicate++;
+                items.add(batchItem(index, raw, normalized, "DUPLICATE", "Duplicate address in this request"));
+                continue;
+            }
+
+            if (proxyAddrs.contains(normalized)) {
+                existing++;
+                items.add(batchItem(index, raw, normalized, "EXISTING", "Proxy address already exists"));
+                continue;
+            }
+
+            proxyAddrs.add(normalized);
+            if (currentProxyAddr == null || currentProxyAddr.isBlank()) {
+                currentProxyAddr = normalized;
+            }
+            added++;
+            recordAudit(Operation.ADD_PROXY_ADDRESS, ResourceType.PROXY, normalized, null);
+            items.add(batchItem(index, raw, normalized, "ADDED", "Proxy address added"));
+        }
+
+        log.info("Batch added Proxy addresses: added={}, existing={}, duplicate={}, invalid={}",
+                added, existing, duplicate, invalid);
+        return ProxyAddressBatchResultVO.builder()
+                .total(rawProxyAddrs.size())
+                .added(added)
+                .existing(existing)
+                .duplicate(duplicate)
+                .invalid(invalid)
+                .items(items)
+                .home(getHomePage())
+                .build();
+    }
+
+    private ProxyAddressBatchItemVO batchItem(int index, String raw, String normalized, String status,
+                                              String message) {
+        return ProxyAddressBatchItemVO.builder()
+                .rowNumber(index + 1)
+                .input(raw == null ? "" : raw)
+                .addr(normalized)
+                .status(status)
+                .message(message)
+                .build();
     }
 
     public synchronized void removeProxyAddr(String proxyAddr) {

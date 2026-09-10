@@ -183,6 +183,52 @@ class ProxyControllerTest {
     }
 
     @Test
+    void addProxyAddressesShouldReturnBatchResult() throws Exception {
+        ProxyAddressBatchDTO request = ProxyAddressBatchDTO.builder()
+                .addrs(List.of("10.0.0.10:8081", "127.0.0.1:8081"))
+                .build();
+        when(proxyAddressService.addProxyAddrs(eq(List.of("10.0.0.10:8081", "127.0.0.1:8081"))))
+                .thenReturn(ProxyAddressBatchResultVO.builder()
+                        .total(2)
+                        .added(1)
+                        .existing(1)
+                        .duplicate(0)
+                        .invalid(0)
+                        .items(List.of(
+                                ProxyAddressBatchItemVO.builder()
+                                        .rowNumber(1)
+                                        .input("10.0.0.10:8081")
+                                        .addr("10.0.0.10:8081")
+                                        .status("ADDED")
+                                        .message("Proxy address added")
+                                        .build(),
+                                ProxyAddressBatchItemVO.builder()
+                                        .rowNumber(2)
+                                        .input("127.0.0.1:8081")
+                                        .addr("127.0.0.1:8081")
+                                        .status("EXISTING")
+                                        .message("Proxy address already exists")
+                                        .build()))
+                        .home(ProxyHomeVO.builder()
+                                .proxyAddrList(List.of("127.0.0.1:8081", "10.0.0.10:8081"))
+                                .currentProxyAddr("127.0.0.1:8081")
+                                .build())
+                        .build());
+
+        mockMvc.perform(post("/api/proxies/addresses/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.added").value(1))
+                .andExpect(jsonPath("$.data.items[0].status").value("ADDED"))
+                .andExpect(jsonPath("$.data.home.proxyAddrList[1]").value("10.0.0.10:8081"));
+
+        verify(proxyAddressService).addProxyAddrs(eq(List.of("10.0.0.10:8081", "127.0.0.1:8081")));
+    }
+
+    @Test
     void addProxyAddressShouldRejectBlankAddress() throws Exception {
         ProxyAddressDTO request = ProxyAddressDTO.builder()
                 .addr(" ")
@@ -194,6 +240,22 @@ class ProxyControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("addr is required"));
+
+        verifyNoInteractions(proxyAddressService);
+    }
+
+    @Test
+    void addProxyAddressesShouldRejectEmptyBatch() throws Exception {
+        ProxyAddressBatchDTO request = ProxyAddressBatchDTO.builder()
+                .addrs(List.of())
+                .build();
+
+        mockMvc.perform(post("/api/proxies/addresses/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("addrs is required"));
 
         verifyNoInteractions(proxyAddressService);
     }

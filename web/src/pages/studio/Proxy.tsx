@@ -46,19 +46,25 @@ import {
   Plus,
   Trash,
   MagnifyingGlass,
+  ListBullets,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import {
   addProxyAddress,
+  addProxyAddresses,
   getProxyTopology,
   removeProxyAddress,
   queryProxyHomePage,
   reloadProxyConfig,
+  type ProxyAddressBatchItem,
+  type ProxyAddressBatchStatus,
+  type ProxyAddressBatchResult,
   type ProxyHomePageData,
   type ProxyNode,
 } from '../../api/proxy';
 import { readLocalStorage, writeLocalStorage } from '../../utils/browserStorage';
+import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 
@@ -66,6 +72,12 @@ const persistProxyAddress = (address?: string) => {
   if (!address) return;
   writeLocalStorage('proxyAddr', address);
 };
+
+const parseBatchProxyAddresses = (value: string): string[] =>
+  value
+    .split(/[\s,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
@@ -76,6 +88,10 @@ const ProxyPage: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [newProxyAddress, setNewProxyAddress] = useState('');
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchProxyInput, setBatchProxyInput] = useState('');
+  const [batchResult, setBatchResult] = useState<ProxyAddressBatchResult | null>(null);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [nodeFilter, setNodeFilter] = useState('');
   const [addressMutationLoading, setAddressMutationLoading] = useState(false);
   const addressMutationInFlight = useRef(false);
@@ -220,6 +236,50 @@ const ProxyPage: React.FC = () => {
     }
   };
 
+  const handleBatchAddProxyAddresses = async () => {
+    if (addressMutationInFlight.current) return;
+    const addrs = parseBatchProxyAddresses(batchProxyInput);
+    if (addrs.length === 0) {
+      message.warning(t('proxy.batchAddressRequired'));
+      return;
+    }
+    if (addrs.length > 50) {
+      message.warning(t('proxy.batchTooManyAddresses', { count: 50 }));
+      return;
+    }
+
+    addressMutationInFlight.current = true;
+    const requestId = ++loadRequestId.current;
+    setBatchSubmitting(true);
+    setLoading(true);
+    try {
+      const result = await addProxyAddresses(addrs);
+      if (requestId !== loadRequestId.current) return;
+      setBatchResult(result);
+      await applyProxyHome(result.home, requestId);
+      if (result.added > 0) {
+        message.success(t('proxy.batchAddSuccess', { count: result.added }));
+      } else {
+        message.warning(t('proxy.batchAddNoNewAddress'));
+      }
+    } catch {
+      if (requestId === loadRequestId.current) {
+        message.error(t('proxy.batchAddFailed'));
+      }
+    } finally {
+      addressMutationInFlight.current = false;
+      if (requestId === loadRequestId.current) {
+        setBatchSubmitting(false);
+        setLoading(false);
+      }
+    }
+  };
+
+  const closeBatchModal = () => {
+    if (batchSubmitting) return;
+    setBatchModalOpen(false);
+  };
+
   const handleRemoveProxyAddress = async (addr: string) => {
     if (addressMutationInFlight.current) return;
     addressMutationInFlight.current = true;
@@ -334,6 +394,9 @@ const ProxyPage: React.FC = () => {
     );
   }, [nodeFilter, proxyNodes, proxyStatusLabel, t]);
 
+  const addressControlsDisabled =
+    addressMutationLoading || batchSubmitting || removingProxyAddress !== null;
+
   const renderUnavailable = () => <Text type="secondary">{t('common.na')}</Text>;
 
   const renderNumberMetric = (value: number | null) =>
@@ -341,6 +404,35 @@ const ProxyPage: React.FC = () => {
 
   const compareNullable = (left: number | null, right: number | null) =>
     (left ?? Number.NEGATIVE_INFINITY) - (right ?? Number.NEGATIVE_INFINITY);
+
+  const batchStatusLabel = (status: ProxyAddressBatchStatus) => {
+    const labels: Record<ProxyAddressBatchStatus, string> = {
+      ADDED: t('proxy.batchStatusAdded'),
+      EXISTING: t('proxy.batchStatusExisting'),
+      DUPLICATE: t('proxy.batchStatusDuplicate'),
+      INVALID: t('proxy.batchStatusInvalid'),
+    };
+    return labels[status];
+  };
+
+  const batchStatusColor = (status: ProxyAddressBatchStatus) => {
+    const colors: Record<ProxyAddressBatchStatus, string> = {
+      ADDED: 'green',
+      EXISTING: 'blue',
+      DUPLICATE: 'gold',
+      INVALID: 'red',
+    };
+    return colors[status];
+  };
+
+  const batchRowMessage = (record: ProxyAddressBatchItem) => {
+    const messages: Partial<Record<ProxyAddressBatchStatus, string>> = {
+      ADDED: t('proxy.batchMessageAdded'),
+      EXISTING: t('proxy.batchMessageExisting'),
+      DUPLICATE: t('proxy.batchMessageDuplicate'),
+    };
+    return messages[record.status] ?? record.message;
+  };
 
   // ─── Columns ─────────────────────────────────────────────────
 
@@ -466,6 +558,55 @@ const ProxyPage: React.FC = () => {
     },
   ];
 
+  const batchResultColumns: ColumnsType<ProxyAddressBatchItem> = [
+    {
+      title: t('proxy.batchRow'),
+      dataIndex: 'rowNumber',
+      key: 'rowNumber',
+      width: 80,
+    },
+    {
+      title: t('proxy.batchInput'),
+      dataIndex: 'input',
+      key: 'input',
+      width: 180,
+      ellipsis: true,
+    },
+    {
+      title: t('proxy.batchNormalizedAddress'),
+      dataIndex: 'addr',
+      key: 'addr',
+      width: 190,
+      render: (value: string | null) => value || renderUnavailable(),
+    },
+    {
+      title: t('common.status'),
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      render: (status: ProxyAddressBatchStatus) => (
+        <Tag color={batchStatusColor(status)}>{batchStatusLabel(status)}</Tag>
+      ),
+      filters: [
+        { text: t('proxy.batchStatusAdded'), value: 'ADDED' },
+        { text: t('proxy.batchStatusExisting'), value: 'EXISTING' },
+        { text: t('proxy.batchStatusDuplicate'), value: 'DUPLICATE' },
+        { text: t('proxy.batchStatusInvalid'), value: 'INVALID' },
+      ],
+      onFilter: (value, record) => record.status === value,
+    },
+    {
+      title: t('common.message'),
+      dataIndex: 'message',
+      key: 'message',
+      width: 240,
+      ellipsis: true,
+      render: (_: string, record) => batchRowMessage(record),
+    },
+  ];
+
+  const parsedBatchProxyAddresses = parseBatchProxyAddresses(batchProxyInput);
+
   // ─── Render ──────────────────────────────────────────────────
 
   return (
@@ -482,14 +623,25 @@ const ProxyPage: React.FC = () => {
               onPressEnter={() => void handleAddProxyAddress()}
               style={{ width: 220 }}
               aria-label={t('proxy.address')}
-              disabled={addressMutationLoading}
+              disabled={addressControlsDisabled}
             />
             <Button
               icon={<Plus size={14} />}
               onClick={() => void handleAddProxyAddress()}
               loading={addressMutationLoading}
+              disabled={addressControlsDisabled && !addressMutationLoading}
             >
               {t('common.add')}
+            </Button>
+            <Button
+              icon={<ListBullets size={14} />}
+              onClick={() => {
+                setBatchResult(null);
+                setBatchModalOpen(true);
+              }}
+              disabled={addressControlsDisabled}
+            >
+              {t('proxy.batchAdd')}
             </Button>
             <Input
               placeholder={t('proxy.clusterIdPlaceholder')}
@@ -572,9 +724,78 @@ const ProxyPage: React.FC = () => {
             dataSource={filteredProxyNodes}
             pagination={false}
             size="middle"
+            scroll={{ x: tableScrollX(columns) }}
           />
         </Card>
       </Spin>
+
+      <Modal
+        title={t('proxy.batchAdd')}
+        open={batchModalOpen}
+        onCancel={closeBatchModal}
+        width={820}
+        destroyOnHidden
+        footer={[
+          <Button key="cancel" onClick={closeBatchModal} disabled={batchSubmitting}>
+            {t('common.close')}
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            loading={batchSubmitting}
+            onClick={() => void handleBatchAddProxyAddresses()}
+          >
+            {t('proxy.batchAddSubmit')}
+          </Button>,
+        ]}
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Input.TextArea
+            aria-label={t('proxy.batchAddresses')}
+            placeholder={t('proxy.batchAddressPlaceholder')}
+            value={batchProxyInput}
+            onChange={(event) => {
+              setBatchProxyInput(event.target.value);
+              setBatchResult(null);
+            }}
+            autoSize={{ minRows: 6, maxRows: 10 }}
+            disabled={batchSubmitting}
+          />
+          <Text type="secondary">
+            {t('proxy.batchParsedCount', { count: parsedBatchProxyAddresses.length })}
+          </Text>
+
+          {batchResult && (
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              <Row gutter={[12, 12]}>
+                <Col xs={12} md={6}>
+                  <Statistic title={t('proxy.batchTotal')} value={batchResult.total} />
+                </Col>
+                <Col xs={12} md={6}>
+                  <Statistic title={t('proxy.batchAdded')} value={batchResult.added} />
+                </Col>
+                <Col xs={12} md={6}>
+                  <Statistic
+                    title={t('proxy.batchSkipped')}
+                    value={batchResult.existing + batchResult.duplicate}
+                  />
+                </Col>
+                <Col xs={12} md={6}>
+                  <Statistic title={t('proxy.batchInvalid')} value={batchResult.invalid} />
+                </Col>
+              </Row>
+              <Table
+                rowKey={(record) => `${record.rowNumber}-${record.status}-${record.input}`}
+                columns={batchResultColumns}
+                dataSource={batchResult.items}
+                pagination={false}
+                size="small"
+                scroll={{ x: tableScrollX(batchResultColumns), y: 260 }}
+              />
+            </Space>
+          )}
+        </Space>
+      </Modal>
 
       {/* Config Modal */}
       <Modal

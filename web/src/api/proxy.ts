@@ -47,6 +47,26 @@ export interface ProxyTopologyNode {
   latencyMs: number;
 }
 
+export type ProxyAddressBatchStatus = 'ADDED' | 'EXISTING' | 'DUPLICATE' | 'INVALID';
+
+export interface ProxyAddressBatchItem {
+  rowNumber: number;
+  input: string;
+  addr: string | null;
+  status: ProxyAddressBatchStatus;
+  message: string;
+}
+
+export interface ProxyAddressBatchResult {
+  total: number;
+  added: number;
+  existing: number;
+  duplicate: number;
+  invalid: number;
+  items: ProxyAddressBatchItem[];
+  home: ProxyHomePageData;
+}
+
 // ─── API Functions ───────────────────────────────────────────────
 
 export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
@@ -62,6 +82,13 @@ export async function getProxyTopology(): Promise<ProxyTopologyNode[]> {
 
 export async function addProxyAddress(addr: string): Promise<ProxyHomePageData> {
   const res = await client.post<{ data: ProxyHomePageData }>('/proxies/addresses', { addr });
+  return res.data.data;
+}
+
+export async function addProxyAddresses(addrs: string[]): Promise<ProxyAddressBatchResult> {
+  const res = await client.post<{ data: ProxyAddressBatchResult }>('/proxies/addresses/batch', {
+    addrs,
+  });
   return res.data.data;
 }
 
