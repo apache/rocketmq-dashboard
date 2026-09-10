@@ -23,6 +23,7 @@ import {
   listAlertSilences,
   listAlertSilencesPage,
   listSystemAlertsPage,
+  updateAlertSilence,
 } from '../../../services/opsService';
 import SystemAlertsPage from '../systemAlerts';
 
@@ -37,6 +38,7 @@ vi.mock('../../../services/opsService', () => ({
   listAlertSilences: vi.fn(),
   listAlertSilencesPage: vi.fn(),
   createAlertSilence: vi.fn(),
+  updateAlertSilence: vi.fn(),
   deleteAlertSilence: vi.fn(),
 }));
 
@@ -608,5 +610,82 @@ describe('SystemAlertsPage', () => {
       expect(deleteAlertSilence).toHaveBeenCalledWith(10);
       expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
     });
+  });
+
+  it('edits an existing maintenance window with a prefilled form', async () => {
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          domain: 'CLUSTER',
+          instanceId: 'local',
+          labels: { brokerName: 'broker-a' },
+          startsAt: '2026-09-07T01:00',
+          endsAt: '2026-09-07T02:00',
+          recurrence: 'WEEKLY',
+          timeZone: 'Asia/Shanghai',
+          recurrenceDays: [1, 3],
+          recurrenceUntil: '2026-10-01T00:00',
+          reason: 'planned upgrade',
+          createdBy: 'alice',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 10,
+    });
+    vi.mocked(updateAlertSilence).mockResolvedValue({
+      id: 9,
+      domain: 'CLUSTER',
+      instanceId: 'remote',
+      startsAt: '2026-09-07T01:00',
+      endsAt: '2026-09-07T02:00',
+      recurrence: 'WEEKLY',
+      timeZone: 'Asia/Shanghai',
+      recurrenceDays: [1, 3],
+      recurrenceUntil: '2026-10-01T00:00',
+      reason: 'updated reason',
+      createdBy: 'alice',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    await user.click(await screen.findByRole('button', { name: /编\s*辑/ }));
+
+    // The form is prefilled with the window converted into its configured time zone.
+    expect(screen.getByLabelText('开始时间')).toHaveValue('2026-09-07T09:00');
+    expect(screen.getByLabelText('结束时间')).toHaveValue('2026-09-07T10:00');
+    expect(screen.getByLabelText('重复至')).toHaveValue('2026-10-01T08:00');
+    expect(screen.getByLabelText('时区')).toHaveValue('Asia/Shanghai');
+    expect(screen.getByLabelText('标签范围')).toHaveValue('brokerName=broker-a');
+    expect(screen.getByLabelText('原因')).toHaveValue('planned upgrade');
+
+    await user.clear(screen.getByLabelText('实例 ID'));
+    await user.type(screen.getByLabelText('实例 ID'), 'remote');
+    await user.clear(screen.getByLabelText('原因'));
+    await user.type(screen.getByLabelText('原因'), 'updated reason');
+    await user.click(screen.getByRole('button', { name: /更\s*新/ }));
+
+    await waitFor(() => {
+      expect(updateAlertSilence).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 9,
+          domain: 'CLUSTER',
+          instanceId: 'remote',
+          labels: { brokerName: 'broker-a' },
+          recurrence: 'WEEKLY',
+          timeZone: 'Asia/Shanghai',
+          recurrenceDays: [1, 3],
+          startsAt: '2026-09-07T01:00:00.000Z',
+          endsAt: '2026-09-07T02:00:00.000Z',
+          recurrenceUntil: '2026-10-01T00:00:00.000Z',
+          reason: 'updated reason',
+        }),
+      );
+      expect(createAlertSilence).not.toHaveBeenCalled();
+      expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
+    });
+    expect(await screen.findByText('维护窗口已更新')).toBeInTheDocument();
   });
 });

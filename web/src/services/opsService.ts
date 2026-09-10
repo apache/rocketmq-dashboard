@@ -28,6 +28,7 @@ import type {
   AlertSilenceQuery,
   AlertSilence,
   CreateAlertSilence,
+  UpdateAlertSilence,
 } from '../api/ops';
 import { mockAlertRules } from '../mock/alerts';
 import { mockAuditRecords } from '../mock/audit';
@@ -465,6 +466,14 @@ export async function createAlertSilence(data: CreateAlertSilence): Promise<Aler
   const silence = { ...data, id: Date.now(), createdBy: 'admin' } as AlertSilence;
   alertSilencesState = [silence, ...alertSilencesState];
   return silence;
+}
+
+export async function updateAlertSilence(data: UpdateAlertSilence): Promise<AlertSilence> {
+  if (!isMockMode()) return opsApi.updateAlertSilence(data);
+  const existing = alertSilencesState.find((silence) => silence.id === data.id);
+  const updated = { ...data, createdBy: existing?.createdBy ?? 'admin' } as AlertSilence;
+  alertSilencesState = alertSilencesState.map((silence) => (silence.id === data.id ? updated : silence));
+  return updated;
 }
 
 export async function deleteAlertSilence(id: number): Promise<void> {

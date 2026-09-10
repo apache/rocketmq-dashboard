@@ -44,6 +44,7 @@ import {
   retryAlertDelivery,
   listSystemAlertsPage,
   createAlertSilence,
+  updateAlertSilence,
   deleteAlertSilence,
   listAlertSilencesPage,
 } from '../../services/opsService';
@@ -104,6 +105,23 @@ const parseSilenceLabels = (
 const localDateTimeToUtc = (value: string) => new Date(`${value}:00`).toISOString();
 const localDateTimeToUtcDatabaseValue = (value: string) =>
   new Date(`${value}:00`).toISOString().replace('Z', '');
+
+const utcLocalDateTimeToInputValue = (value: string, timeZone: string) => {
+  const timestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim()) ? new Date(value) : new Date(`${value}Z`);
+  if (Number.isNaN(timestamp.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(timestamp);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? '00';
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
+};
 
 const ALERT_EXPORT_COLUMNS: CsvColumn<SystemAlert>[] = [
   { header: 'ID', value: (alert) => alert.id },
@@ -173,6 +191,7 @@ const SystemAlertsPage = () => {
   const [silenceTotal, setSilenceTotal] = useState(0);
   const [savingSilence, setSavingSilence] = useState(false);
   const [deletingSilenceId, setDeletingSilenceId] = useState<number | null>(null);
+  const [editingSilenceId, setEditingSilenceId] = useState<number | null>(null);
   const silencePageSize = 10;
   const [silenceForm] = Form.useForm();
   const silenceRecurrence = Form.useWatch('recurrence', silenceForm) ?? 'ONCE';
@@ -375,11 +394,38 @@ const SystemAlertsPage = () => {
 
   const openSilences = () => {
     setSilencePage(1);
+    setEditingSilenceId(null);
+    silenceForm.resetFields();
     setSilencesVisible(true);
     void loadSilences(1);
   };
 
-  const createSilence = async () => {
+  const openEditSilence = (silence: AlertSilence) => {
+    const recurrence = silence.recurrence ?? 'ONCE';
+    const timeZone = recurrence === 'ONCE' ? DEFAULT_TIME_ZONE : (silence.timeZone ?? DEFAULT_TIME_ZONE);
+    const convertTime = (value: string) => utcLocalDateTimeToInputValue(value, timeZone);
+    setEditingSilenceId(silence.id);
+    silenceForm.setFieldsValue({
+      domain: silence.domain ?? undefined,
+      ruleId: silence.ruleId != null ? String(silence.ruleId) : undefined,
+      instanceId: silence.instanceId ?? undefined,
+      labelsText:
+        silence.labels && Object.keys(silence.labels).length > 0
+          ? Object.entries(silence.labels)
+              .map(([key, value]) => `${key}=${value}`)
+              .join(', ')
+          : undefined,
+      recurrence,
+      timeZone,
+      recurrenceDays: silence.recurrenceDays ?? undefined,
+      recurrenceUntil: silence.recurrenceUntil ? convertTime(silence.recurrenceUntil) : undefined,
+      startsAt: convertTime(silence.startsAt),
+      endsAt: convertTime(silence.endsAt),
+      reason: silence.reason ?? undefined,
+    });
+  };
+
+  const submitSilence = async () => {
     let values: {
       domain?: 'BUSINESS' | 'CLUSTER';
       ruleId?: string;
@@ -399,6 +445,7 @@ const SystemAlertsPage = () => {
       return;
     }
     setSavingSilence(true);
+    const editing = editingSilenceId != null;
     try {
       const recurrence = values.recurrence ?? 'ONCE';
       const convertTime = (value: string) =>
@@ -421,13 +468,18 @@ const SystemAlertsPage = () => {
             ? convertTime(values.recurrenceUntil)
             : undefined,
       };
-      await createAlertSilence(request);
+      if (editing && editingSilenceId != null) {
+        await updateAlertSilence({ ...request, id: editingSilenceId });
+      } else {
+        await createAlertSilence(request);
+      }
       silenceForm.resetFields();
+      setEditingSilenceId(null);
       setSilencePage(1);
       await loadSilences(1);
-      message.success(t('sysAlerts.silenceCreated'));
+      message.success(editing ? t('sysAlerts.silenceUpdated') : t('sysAlerts.silenceCreated'));
     } catch {
-      message.error(t('sysAlerts.silenceCreateFailed'));
+      message.error(editing ? t('sysAlerts.silenceUpdateFailed') : t('sysAlerts.silenceCreateFailed'));
     } finally {
       setSavingSilence(false);
     }
@@ -828,9 +880,12 @@ const SystemAlertsPage = () => {
       <Modal
         title={t('sysAlerts.maintenanceWindows')}
         open={silencesVisible}
-        onCancel={() => setSilencesVisible(false)}
-        onOk={() => void createSilence()}
-        okText={t('sysAlerts.create')}
+        onCancel={() => {
+          setSilencesVisible(false);
+          setEditingSilenceId(null);
+        }}
+        onOk={() => void submitSilence()}
+        okText={editingSilenceId != null ? t('sysAlerts.update') : t('sysAlerts.create')}
         okButtonProps={{ style: { display: canManageSilences ? undefined : 'none' } }}
         confirmLoading={savingSilence}
         width={680}
@@ -973,14 +1028,23 @@ const SystemAlertsPage = () => {
                     : ''}
                 </Text>
                 {canManageSilences && (
-                  <Button
-                    size="small"
-                    danger
-                    loading={deletingSilenceId === silence.id}
-                    onClick={() => void deleteSilence(silence.id)}
-                  >
-                    {t('sysAlerts.end')}
-                  </Button>
+                  <Flex gap={4} align="center" style={{ flexShrink: 0 }}>
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() => openEditSilence(silence)}
+                    >
+                      {t('sysAlerts.edit')}
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      loading={deletingSilenceId === silence.id}
+                      onClick={() => void deleteSilence(silence.id)}
+                    >
+                      {t('sysAlerts.end')}
+                    </Button>
+                  </Flex>
                 )}
               </Flex>
             ))}

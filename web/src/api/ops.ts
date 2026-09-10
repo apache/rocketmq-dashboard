@@ -168,6 +168,10 @@ export interface AlertSilence {
 
 export type CreateAlertSilence = Omit<AlertSilence, 'id' | 'createdBy'>;
 
+export interface UpdateAlertSilence extends CreateAlertSilence {
+  id: number;
+}
+
 // Matches mock/audit.ts (inferred from data)
 export interface AuditRecord {
   id: number;
@@ -376,6 +380,11 @@ export async function listAlertSilencesPage(params: AlertSilenceQuery = {}) {
 
 export async function createAlertSilence(data: CreateAlertSilence) {
   const res = await client.post<{ data: AlertSilence }>('/alert-silences', data);
+  return res.data.data;
+}
+
+export async function updateAlertSilence(data: UpdateAlertSilence) {
+  const res = await client.post<{ data: AlertSilence }>('/alert-silences/update', data);
   return res.data.data;
 }
 

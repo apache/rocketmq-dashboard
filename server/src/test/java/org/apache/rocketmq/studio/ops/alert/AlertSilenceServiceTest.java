@@ -262,6 +262,82 @@ class AlertSilenceServiceTest {
                 .hasMessage("Weekly silence windows must not exceed 7 days");
     }
 
+    @Test
+    void updatesExistingSilencePreservingIdAndCreatorAndAuditsTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        AlertSilenceVO existing = AlertSilenceVO.builder().id(9L)
+                .startsAt(LocalDateTime.of(2026, 9, 1, 10, 0)).endsAt(LocalDateTime.of(2026, 9, 1, 11, 0))
+                .createdBy("alice").build();
+        when(repository.findById(9L)).thenReturn(java.util.Optional.of(existing));
+        when(repository.update(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        UpdateAlertSilenceDTO request = updateRequest(9L);
+        request.setDomain(AlertDomain.CLUSTER);
+        request.setInstanceId(" local ");
+        request.setReason("rescheduled maintenance");
+
+        AlertSilenceVO updated = service.update(request);
+
+        assertThat(updated.getId()).isEqualTo(9L);
+        assertThat(updated.getCreatedBy()).isEqualTo("alice");
+        assertThat(updated.getInstanceId()).isEqualTo("local");
+        assertThat(updated.getReason()).isEqualTo("rescheduled maintenance");
+        org.mockito.Mockito.verify(operationAuditService).record("UPDATE_ALERT_SILENCE", "ALERT_SILENCE", "9",
+                "local", "ruleId=null, recurrence=ONCE", "SUCCESS", null);
+    }
+
+    @Test
+    void updateRejectsMissingSilenceWithNotFoundTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        when(repository.findById(9L)).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> service.update(updateRequest(9L)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert silence not found: 9");
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).update(any());
+    }
+
+    @Test
+    void updateReusesCreateValidationAndNeverPersistsInvalidScheduleTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        AlertSilenceVO existing = AlertSilenceVO.builder().id(9L)
+                .startsAt(LocalDateTime.of(2026, 9, 1, 10, 0)).endsAt(LocalDateTime.of(2026, 9, 1, 11, 0))
+                .createdBy("alice").build();
+        when(repository.findById(9L)).thenReturn(java.util.Optional.of(existing));
+        UpdateAlertSilenceDTO invalid = updateRequest(9L);
+        invalid.setRecurrence(AlertSilenceRecurrence.WEEKLY);
+        invalid.setTimeZone("UTC");
+        invalid.setRecurrenceUntil(java.time.OffsetDateTime.parse("2026-09-30T00:00:00Z"));
+
+        assertThatThrownBy(() -> service.update(invalid))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("At least one weekday is required for weekly silences");
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).update(any());
+        org.mockito.Mockito.verify(operationAuditService, org.mockito.Mockito.never())
+                .record(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.isNull(),
+                        org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
+    void updateRejectsMissingIdTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        UpdateAlertSilenceDTO request = updateRequest(9L);
+        request.setId(null);
+
+        assertThatThrownBy(() -> service.update(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Silence ID is required");
+    }
+
+    private static UpdateAlertSilenceDTO updateRequest(Long id) {
+        UpdateAlertSilenceDTO request = new UpdateAlertSilenceDTO();
+        request.setId(id);
+        request.setStartsAt(java.time.OffsetDateTime.parse("2026-09-02T10:00:00Z"));
+        request.setEndsAt(java.time.OffsetDateTime.parse("2026-09-02T11:00:00Z"));
+        return request;
+    }
+
     private static CreateAlertSilenceDTO recurringRequest(AlertSilenceRecurrence recurrence) {
         CreateAlertSilenceDTO request = new CreateAlertSilenceDTO();
         request.setStartsAt(java.time.OffsetDateTime.parse("2026-09-01T10:00:00Z"));

@@ -1050,6 +1050,13 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '维护窗口结束失败，请稍后重试',
     en: 'Failed to end maintenance window. Please try again later.',
   },
+  'sysAlerts.edit': { zh: '编辑', en: 'Edit' },
+  'sysAlerts.update': { zh: '更新', en: 'Update' },
+  'sysAlerts.silenceUpdated': { zh: '维护窗口已更新', en: 'Maintenance window updated.' },
+  'sysAlerts.silenceUpdateFailed': {
+    zh: '维护窗口更新失败，请检查时间范围',
+    en: 'Failed to update maintenance window. Check the time range.',
+  },
   'sysAlerts.exportCsv': { zh: '导出 CSV', en: 'Export CSV' },
   'sysAlerts.maintenanceWindows': { zh: '维护窗口', en: 'Maintenance windows' },
   'sysAlerts.business': { zh: '业务告警', en: 'Business alerts' },
