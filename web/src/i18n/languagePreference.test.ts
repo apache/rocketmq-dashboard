@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getInitialLanguage, LANGUAGE_STORAGE_KEY, persistLanguage } from './languagePreference';
 
 describe('language preference', () => {
@@ -34,5 +34,20 @@ describe('language preference', () => {
 
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
     expect(getInitialLanguage()).toBe('en');
+  });
+
+  it('round-trips the Chinese preference', () => {
+    persistLanguage('zh');
+
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('zh');
+    expect(getInitialLanguage()).toBe('zh');
+  });
+
+  it('falls back to Chinese when storage access throws', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+
+    expect(getInitialLanguage()).toBe('zh');
   });
 });
