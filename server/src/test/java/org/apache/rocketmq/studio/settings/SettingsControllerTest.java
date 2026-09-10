@@ -501,4 +501,20 @@ class SettingsControllerTest {
 
         verifyNoInteractions(settingsService);
     }
+    @Test
+    void testNotificationShouldDelegateForChannel() throws Exception {
+        mockMvc.perform(post("/api/settings/general/test-notification")
+                        .param("channel", "email"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(notificationOutboxService).sendTestMessage("email");
+    }
+
+    @Test
+    void testNotificationShouldRejectMissingChannel() throws Exception {
+        mockMvc.perform(post("/api/settings/general/test-notification"))
+                .andExpect(status().isBadRequest());
+    }
+
 }
