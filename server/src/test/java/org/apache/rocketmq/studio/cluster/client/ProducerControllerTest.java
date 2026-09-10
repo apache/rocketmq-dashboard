@@ -143,4 +143,29 @@ class ProducerControllerTest {
 
         verifyNoInteractions(producerConnectionService);
     }
+
+    @Test
+    void listConnectionsShouldRejectBlankInstanceId() throws Exception {
+        mockMvc.perform(get("/api/producer/connection")
+                        .param("instanceId", " ")
+                        .param("topic", "order-topic"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("instanceId is required"));
+
+        verifyNoInteractions(producerConnectionService);
+    }
+
+    @Test
+    void listProducerGroupsShouldAllowOnlyInstanceId() throws Exception {
+        when(producerConnectionService.listProducerGroups("instance-1", null, null, null))
+                .thenReturn(List.of("pg-a"));
+
+        mockMvc.perform(get("/api/producer/groups")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0]").value("pg-a"));
+
+        verify(producerConnectionService).listProducerGroups("instance-1", null, null, null);
+    }
 }
