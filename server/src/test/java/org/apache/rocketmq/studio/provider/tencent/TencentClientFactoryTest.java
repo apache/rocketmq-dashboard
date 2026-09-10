@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
+import com.tencentcloudapi.common.exception.TencentCloudSDKException;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.junit.jupiter.api.Test;
 
@@ -77,6 +79,42 @@ class TencentClientFactoryTest {
         assertThat(invalidationThread.isAlive()).isFalse();
         assertThat(factory.client(credentialId, "ap-shanghai")).isNotSameAs(firstClient);
         assertThat(factory.creationCount).hasValue(2);
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldMapUnauthorizedTo403() {
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(
+                new TencentCloudSDKException("not allowed", "req-001", "UnauthorizedOperation"));
+
+        assertThat(mapped.getCode()).isEqualTo(403);
+        assertThat(mapped.getMessage()).isEqualTo("not allowed");
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldMapCredentialFailuresTo422() {
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(
+                new TencentCloudSDKException("bad signature", "req-002", "AuthFailure.SignatureFailure"));
+
+        assertThat(mapped.getCode()).isEqualTo(422);
+        assertThat(mapped.getMessage()).isEqualTo("Cloud credential is invalid");
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldMapNotFoundTo404WithFallbackMessage() {
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(
+                new TencentCloudSDKException(null, "req-003", "ResourceNotFound"));
+
+        assertThat(mapped.getCode()).isEqualTo(404);
+        assertThat(mapped.getMessage()).isEqualTo("Tencent Cloud resource not found");
+    }
+
+    @Test
+    void mapToBusinessExceptionShouldFallBackToGeneric502() {
+        BusinessException mapped = TencentClientFactory.mapToBusinessException(
+                new TencentCloudSDKException("timeout", "req-004", "InternalError"));
+
+        assertThat(mapped.getCode()).isEqualTo(502);
+        assertThat(mapped.getMessage()).isEqualTo("Tencent Cloud OpenAPI error: timeout");
     }
 
     private static void awaitBlockedOrTerminated(Thread thread) {
