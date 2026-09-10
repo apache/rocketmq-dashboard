@@ -92,4 +92,21 @@ class MetricsBackendTypeTest {
         assertThat(MetricsBackendType.CORTEX.getInstantQueryPath()).isEqualTo("/api/v1/query");
         assertThat(MetricsBackendType.ARMS.getInstantQueryPath()).isEqualTo("/api/v1/query");
     }
+
+    @Test
+    void shouldExposeCustomBackendDefaults() {
+        assertThat(MetricsBackendType.CUSTOM.getProviderType()).isEqualTo("Custom");
+        assertThat(MetricsBackendType.CUSTOM.getQueryPath()).isEqualTo("/api/v1/query_range");
+        assertThat(MetricsBackendType.CUSTOM.getInstantQueryPath()).isEqualTo("/api/v1/query");
+    }
+
+    @Test
+    void shouldNormalizeWhitespaceAndMixedCaseBeforeResolving() {
+        assertThat(MetricsBackendType.fromProviderType("  cortex  ")).isEqualTo(MetricsBackendType.CORTEX);
+        assertThat(MetricsBackendType.fromProviderType("thanos")).isEqualTo(MetricsBackendType.THANOS);
+        assertThat(MetricsBackendType.fromProviderType("arms")).isEqualTo(MetricsBackendType.ARMS);
+        assertThat(MetricsBackendType.fromProviderType("Custom")).isEqualTo(MetricsBackendType.CUSTOM);
+        assertThat(MetricsBackendType.fromProviderType("  victoria_metrics  "))
+                .isEqualTo(MetricsBackendType.VICTORIA_METRICS);
+    }
 }
