@@ -83,4 +83,39 @@ class MessageTraceToolHandlerTest {
 
         verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
     }
+
+    @Test
+    void reportsItsToolName() {
+        assertThat(handler.name()).isEqualTo("rmq.message.trace");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void projectsNullTextFieldsAsBlank() {
+        TraceRecordVO trace = TraceRecordVO.builder()
+                .nodes(List.of(TraceNodeVO.builder()
+                        .timestamp(1000L)
+                        .costTime(5L)
+                        .build()))
+                .consumerStatus(List.of(ConsumerStatusVO.builder()
+                        .consumeTime(2000L)
+                        .retryCount(0)
+                        .build()))
+                .build();
+        when(messageService.getMessageTrace(eq("instance-a"), eq("msg-1"), eq("TopicA")))
+                .thenReturn(trace);
+
+        Map<String, Object> row = (Map<String, Object>) handler.execute(Map.of(
+                "cluster", "instance-a", "msgId", "msg-1", "topic", "TopicA"));
+
+        Map<String, Object> node = (Map<String, Object>) ((List<?>) row.get("nodes")).get(0);
+        assertThat(node.get("title")).isEqualTo("");
+        assertThat(node.get("status")).isEqualTo("");
+        assertThat(node.get("description")).isEqualTo("");
+        assertThat(node.get("timestamp")).isEqualTo(1000L);
+
+        Map<String, Object> status = (Map<String, Object>) ((List<?>) row.get("consumerStatus")).get(0);
+        assertThat(status.get("group")).isEqualTo("");
+        assertThat(status.get("deliveryStatus")).isEqualTo("");
+    }
 }
