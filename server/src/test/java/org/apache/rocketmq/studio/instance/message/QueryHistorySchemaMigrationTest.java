@@ -79,4 +79,47 @@ class QueryHistorySchemaMigrationTest {
             assertThat(tables.next()).isFalse();
         }
     }
+
+    @Test
+    void addsMessageSnapshotColumnAndAllOwnerIndexesIdempotently() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:query-history-schema-migration;MODE=MySQL;"
+                + "DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE");
+        dataSource.setUser("sa");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE rmq_instance_message ("
+                    + "id BIGINT PRIMARY KEY, queried_by VARCHAR(128), cluster_id VARCHAR(255), "
+                    + "query_type VARCHAR(32), gmt_create TIMESTAMP, gmt_modified TIMESTAMP)");
+            statement.execute("CREATE TABLE rmq_instance_trace ("
+                    + "id BIGINT PRIMARY KEY, queried_by VARCHAR(128), cluster_id VARCHAR(255), "
+                    + "gmt_create TIMESTAMP, gmt_modified TIMESTAMP)");
+        }
+
+        QueryHistorySchemaMigration migration = new QueryHistorySchemaMigration(dataSource);
+        migration.run(new DefaultApplicationArguments());
+        migration.run(new DefaultApplicationArguments());
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            try (ResultSet columns = statement.executeQuery("SELECT COUNT(*) FROM information_schema.columns "
+                    + "WHERE table_name = 'rmq_instance_message' AND column_name = 'result_snapshot'")) {
+                columns.next();
+                assertThat(columns.getInt(1)).isEqualTo(1);
+            }
+            assertThat(hasIndex(connection, "rmq_instance_message", "idx_message_query_owner_lookup")).isTrue();
+            assertThat(hasIndex(connection, "rmq_instance_message", "idx_message_query_owner_type_lookup")).isTrue();
+            assertThat(hasIndex(connection, "rmq_instance_trace", "idx_trace_query_owner_lookup")).isTrue();
+        }
+    }
+
+    private static boolean hasIndex(Connection connection, String table, String index) throws Exception {
+        try (ResultSet indexes = connection.getMetaData().getIndexInfo(
+                connection.getCatalog(), null, table, false, false)) {
+            while (indexes.next()) {
+                if (index.equalsIgnoreCase(indexes.getString("INDEX_NAME"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 }
