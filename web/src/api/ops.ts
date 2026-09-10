@@ -178,6 +178,8 @@ export interface AuditRecord {
   target: string;
   clusterId: string;
   detail: string;
+  /** Optional English display copy for demo (mock-mode) audit records. */
+  enDetail?: string | null;
   result: string;
   errorMessage: string;
 }
