@@ -77,4 +77,37 @@ class AlertRuleSemanticFingerprintTest {
                 .isEqualTo(AlertRuleSemanticFingerprint.of(fraction))
                 .isNotEqualTo(AlertRuleSemanticFingerprint.of(rawValue));
     }
+
+    @Test
+    void changesWhenTheMetricOrOperatorChangesTest() {
+        AlertRuleVO base = AlertRuleVO.builder()
+                .domain(AlertDomain.CLUSTER).instanceId("local").metric("broker.disk.usage_ratio")
+                .operator(">=").threshold(85).build();
+        AlertRuleVO otherMetric = AlertRuleVO.builder()
+                .domain(AlertDomain.CLUSTER).instanceId("local").metric("broker.jvm.heap.usage_ratio")
+                .operator(">=").threshold(85).build();
+        AlertRuleVO otherOperator = AlertRuleVO.builder()
+                .domain(AlertDomain.CLUSTER).instanceId("local").metric("broker.disk.usage_ratio")
+                .operator(">").threshold(85).build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(otherMetric))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(base));
+        assertThat(AlertRuleSemanticFingerprint.of(otherOperator))
+                .isNotEqualTo(AlertRuleSemanticFingerprint.of(base));
+    }
+
+    @Test
+    void ignoresNameSeverityEnabledAndChannelsTest() {
+        AlertRuleVO base = AlertRuleVO.builder()
+                .domain(AlertDomain.CLUSTER).instanceId("local").metric("broker.disk.usage_ratio")
+                .operator(">=").threshold(85).build();
+        AlertRuleVO cosmeticOnly = AlertRuleVO.builder()
+                .domain(AlertDomain.CLUSTER).name("Any label").instanceId("local")
+                .metric("broker.disk.usage_ratio").operator(">=").threshold(85)
+                .severity("critical").enabled(false).channels(List.of("sms", "dingtalk"))
+                .description("cosmetic").build();
+
+        assertThat(AlertRuleSemanticFingerprint.of(cosmeticOnly))
+                .isEqualTo(AlertRuleSemanticFingerprint.of(base));
+    }
 }
