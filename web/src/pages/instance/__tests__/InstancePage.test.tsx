@@ -24,7 +24,7 @@ import * as aliyunCatalogApi from '../../../api/aliyunCatalog';
 import * as cloudCredentialApi from '../../../api/cloudCredential';
 import * as tencentCatalogApi from '../../../api/tencentCatalog';
 import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCredential';
-import type { Instance } from '../../../api/instance';
+import type { Instance, InstanceType, InstanceVendor } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import * as instanceService from '../../../services/instanceService';
@@ -370,6 +370,38 @@ describe('InstancePage', () => {
         }),
       ),
     );
+  });
+
+  it('keeps the endpoint editable for Apache instances but read-only for cloud vendors', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      instance(1, 'production-proxy'),
+      { ...instance(2, 'aliyun-prod'), vendor: 'ALIYUN' as InstanceVendor, type: 'CLOUD' as InstanceType },
+    ]);
+
+    renderPage();
+
+    await screen.findByText('production-proxy');
+
+    await user.click(
+      within(screen.getByRole('row', { name: /production-proxy/ })).getByRole('button', {
+        name: /编\s*辑/,
+      }),
+    );
+    const apacheDialog = await screen.findByRole('dialog');
+    expect(within(apacheDialog).getByLabelText('接入地址')).toBeEnabled();
+    await user.click(within(apacheDialog).getByRole('button', { name: /取\s*消/ }));
+    await waitFor(() => expect(apacheDialog).toHaveClass('ant-zoom-leave'));
+
+    await user.click(
+      within(screen.getByRole('row', { name: /aliyun-prod/ })).getByRole('button', {
+        name: /编\s*辑/,
+      }),
+    );
+    const cloudDialog = await screen.findByRole('dialog');
+    const endpointInput = within(cloudDialog).getByLabelText('接入地址');
+    expect(endpointInput).toBeDisabled();
+    expect(endpointInput).toHaveValue('aliyun-prod:8080');
   });
 
   it('reloads the latest filters after a pending instance deletion completes', async () => {
