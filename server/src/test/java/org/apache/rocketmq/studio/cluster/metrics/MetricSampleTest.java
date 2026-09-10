@@ -20,7 +20,9 @@ import org.apache.rocketmq.studio.ops.alert.AlertDomain;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MetricSampleTest {
@@ -39,5 +41,72 @@ class MetricSampleTest {
                 null, null, MetricAvailability.AVAILABLE, Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Available metric samples require a value");
+    }
+
+    @Test
+    void rejectsMissingOrBlankCoreFieldsTest() {
+        Instant now = Instant.now();
+        assertThatThrownBy(() -> new MetricSample("", AlertDomain.CLUSTER, "local", null, null,
+                1D, MetricAvailability.AVAILABLE, now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("metricKey is required");
+        assertThatThrownBy(() -> new MetricSample(null, AlertDomain.CLUSTER, "local", null, null,
+                1D, MetricAvailability.AVAILABLE, now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("metricKey is required");
+        assertThatThrownBy(() -> new MetricSample("cpu", null, "local", null, null,
+                1D, MetricAvailability.AVAILABLE, now))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("domain is required");
+        assertThatThrownBy(() -> new MetricSample("cpu", AlertDomain.CLUSTER, "  ", null, null,
+                1D, MetricAvailability.AVAILABLE, now))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("instanceId is required");
+        assertThatThrownBy(() -> new MetricSample("cpu", AlertDomain.CLUSTER, "local", null, null,
+                1D, null, now))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("availability is required");
+        assertThatThrownBy(() -> new MetricSample("cpu", AlertDomain.CLUSTER, "local", null, null,
+                1D, MetricAvailability.AVAILABLE, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("collectedAt is required");
+    }
+
+    @Test
+    void availableSamplesCannotCarryAnUnavailableReasonTest() {
+        assertThatThrownBy(() -> new MetricSample("cpu", AlertDomain.CLUSTER, "local", null, null,
+                1D, MetricAvailability.AVAILABLE, Instant.now(), "not-available"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Available metric samples cannot have an unavailable reason");
+    }
+
+    @Test
+    void copiesLabelsDefensivelyAndDefaultsNullToEmptyTest() {
+        Map<String, String> mutable = new java.util.HashMap<>();
+        mutable.put("broker", "b1");
+        MetricSample sample = new MetricSample("cpu", AlertDomain.CLUSTER, "local", null, mutable,
+                1D, MetricAvailability.AVAILABLE, Instant.now());
+
+        mutable.put("extra", "e1");
+        assertThat(sample.labels()).containsExactlyEntriesOf(Map.of("broker", "b1"));
+        assertThatThrownBy(() -> sample.labels().put("k", "v"))
+                .isInstanceOf(UnsupportedOperationException.class);
+
+        MetricSample nullLabels = new MetricSample("cpu", AlertDomain.CLUSTER, "local", null, null,
+                1D, MetricAvailability.AVAILABLE, Instant.now());
+        assertThat(nullLabels.labels()).isEmpty();
+    }
+
+    @Test
+    void carriesTheUnavailableReasonForUnavailableSamplesTest() {
+        MetricSample sample = new MetricSample("cpu", AlertDomain.CLUSTER, "local", null, null,
+                null, MetricAvailability.UNAVAILABLE, Instant.now(), "broker unreachable");
+        assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+        assertThat(sample.value()).isNull();
+        assertThat(sample.unavailableReason()).isEqualTo("broker unreachable");
+
+        MetricSample viaConvenienceCtor = new MetricSample("cpu", AlertDomain.CLUSTER, "local", null,
+                null, null, MetricAvailability.UNAVAILABLE, Instant.now());
+        assertThat(viaConvenienceCtor.unavailableReason()).isNull();
     }
 }
