@@ -603,4 +603,37 @@ class AclControllerTest {
         verify(aclService).createAndUpdatePlainAccessConfig(captor.capture());
         assertThat(captor.getValue().getWhiteRemoteAddress()).isEqualTo("invalid");
     }
+    @Test
+    void listUsersPageShouldForwardFiltersAndPaging() throws Exception {
+        AclUserVO user = AclUserVO.builder().id(7L).username("operator").admin(false).build();
+        when(aclService.pageUsers("inst-1", 2, 20, "oper"))
+                .thenReturn(PageResult.of(List.of(user), 21, 2, 20));
+
+        mockMvc.perform(get("/api/acl/users/page")
+                        .param("instanceId", "inst-1")
+                        .param("page", "2")
+                        .param("pageSize", "20")
+                        .param("keyword", "oper"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.items[0].username").value("operator"))
+                .andExpect(jsonPath("$.data.total").value(21))
+                .andExpect(jsonPath("$.data.page").value(2));
+
+        verify(aclService).pageUsers("inst-1", 2, 20, "oper");
+    }
+
+    @Test
+    void listUsersPageShouldUseBoundedDefaults() throws Exception {
+        when(aclService.pageUsers(null, 1, 20, null))
+                .thenReturn(PageResult.empty(1, 20));
+
+        mockMvc.perform(get("/api/acl/users/page"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.page").value(1));
+
+        verify(aclService).pageUsers(null, 1, 20, null);
+    }
+
 }
