@@ -98,4 +98,61 @@ class ApacheRocketMqProxyMetricsCollectorTest {
             assertThat(sample.labels()).isEmpty();
         });
     }
+
+    @Test
+    void probeFailureMarksTheProxyUnavailable() {
+        ClusterService clusterService = mock(ClusterService.class);
+        ProxyHealthProbe probe = mock(ProxyHealthProbe.class);
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        when(clusterService.listClusters("local")).thenReturn(List.of(ClusterVO.builder().id("cluster-a")
+                .proxies(List.of(ProxyVO.builder().addr("proxy-a:8080").grpcPort(8081).build()))
+                .build()));
+        when(probe.probe("proxy-a", 8081, 2_000))
+                .thenThrow(new IllegalStateException("tcp connect failed"));
+
+        List<MetricSample> samples = new ApacheRocketMqProxyMetricsCollector(clusterService, probe).collect(instance);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.clusterId()).isEqualTo("cluster-a");
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+            assertThat(sample.value()).isNull();
+            assertThat(sample.labels()).containsEntry("proxyAddr", "proxy-a:8080");
+        });
+    }
+
+    @Test
+    void clustersWithoutProxyListsAreSkipped() {
+        ClusterService clusterService = mock(ClusterService.class);
+        ProxyHealthProbe probe = mock(ProxyHealthProbe.class);
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        when(clusterService.listClusters("local")).thenReturn(List.of(
+                ClusterVO.builder().id("cluster-a").proxies(null).build(),
+                ClusterVO.builder().id("cluster-b")
+                        .proxies(List.of(ProxyVO.builder().addr("proxy-b:8080").grpcPort(8081).build()))
+                        .build()));
+        when(probe.probe("proxy-b", 8081, 2_000)).thenReturn(ProxyHealthProbe.ProbeResult.reachable(1));
+
+        List<MetricSample> samples = new ApacheRocketMqProxyMetricsCollector(clusterService, probe).collect(instance);
+
+        assertThat(samples).hasSize(1);
+        assertThat(samples.get(0).labels()).containsEntry("proxyAddr", "proxy-b:8080");
+        assertThat(samples.get(0).clusterId()).isEqualTo("cluster-b");
+    }
+
+    @Test
+    void nullProxyRowsYieldUnavailableWithUnknownLabel() {
+        ClusterService clusterService = mock(ClusterService.class);
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        when(clusterService.listClusters("local")).thenReturn(List.of(ClusterVO.builder().name("cluster-a")
+                .proxies(java.util.Arrays.asList((ProxyVO) null)).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqProxyMetricsCollector(clusterService,
+                mock(ProxyHealthProbe.class)).collect(instance);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.clusterId()).isEqualTo("cluster-a");
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+            assertThat(sample.labels()).containsEntry("proxyAddr", "unknown");
+        });
+    }
 }
