@@ -66,6 +66,7 @@ export interface MessagePayloadPreviewOptions {
   maxBodyBytes?: number;
   maxProperties?: number;
   maxPropertyBytes?: number;
+  lang?: 'zh' | 'en';
 }
 
 export interface MessagePropertyPreviewEntry {
@@ -160,6 +161,7 @@ export const isReservedMessageProperty = (key: string): boolean =>
 
 export const buildMessagePropertiesFromRows = (
   rows: MessagePropertyInput[] = [],
+  lang: 'zh' | 'en' = 'zh',
 ): { entries: MessagePropertyPreviewEntry[]; issues: MessagePayloadIssue[] } => {
   const entries: MessagePropertyPreviewEntry[] = [];
   const issues: MessagePayloadIssue[] = [];
@@ -179,8 +181,10 @@ export const buildMessagePropertiesFromRows = (
         issue(
           'EMPTY_PROPERTY_KEY',
           'error',
-          '属性名不能为空',
-          `属性值“${value}”缺少对应属性名。`,
+          lang === 'en' ? 'Empty property name' : '属性名不能为空',
+          lang === 'en'
+            ? `Property value "${value}" has no property name.`
+            : `属性值“${value}”缺少对应属性名。`,
           'properties',
         ),
       );
@@ -207,8 +211,10 @@ export const buildMessagePropertiesFromRows = (
       issue(
         'DUPLICATE_PROPERTY_KEY',
         'error',
-        '属性名重复',
-        `重复属性会覆盖前面的值：${[...duplicates].sort().join(', ')}`,
+        lang === 'en' ? 'Duplicate property name' : '属性名重复',
+        lang === 'en'
+          ? `Duplicate keys will override earlier values: ${[...duplicates].sort().join(', ')}`
+          : `重复属性会覆盖前面的值：${[...duplicates].sort().join(', ')}`,
         'properties',
         [...duplicates].sort(),
       ),
@@ -220,8 +226,9 @@ export const buildMessagePropertiesFromRows = (
 
 const buildMessagePropertiesFromText = (
   text: string,
+  lang: 'zh' | 'en' = 'zh',
 ): { entries: MessagePropertyPreviewEntry[]; issues: MessagePayloadIssue[] } => {
-  const parsed = parseMessageProperties(text);
+  const parsed = parseMessageProperties(text, lang);
   const entries = Object.entries(parsed.properties).map(([key, value]) => ({
     key,
     value,
@@ -233,7 +240,13 @@ const buildMessagePropertiesFromText = (
   return {
     entries,
     issues: parsed.errors.map((errorText) =>
-      issue('INVALID_PROPERTY_FORMAT', 'error', '属性格式错误', errorText, 'properties'),
+      issue(
+        'INVALID_PROPERTY_FORMAT',
+        'error',
+        lang === 'en' ? 'Invalid property format' : '属性格式错误',
+        errorText,
+        'properties',
+      ),
     ),
   };
 };
@@ -242,6 +255,8 @@ export const analyzeMessagePayloadPreview = (
   input: MessagePayloadPreviewInput,
   options: MessagePayloadPreviewOptions = {},
 ): MessagePayloadPreview => {
+  const lang = options.lang ?? 'zh';
+  const pick = (zh: string, en: string): string => (lang === 'en' ? en : zh);
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_MESSAGE_BODY_BYTES;
   const maxProperties = options.maxProperties ?? DEFAULT_MAX_MESSAGE_PROPERTIES;
   const maxPropertyBytes = options.maxPropertyBytes ?? DEFAULT_MAX_MESSAGE_PROPERTY_BYTES;
@@ -257,8 +272,8 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'TRIMMED_TAG',
         'info',
-        'Tag 会去除首尾空白',
-        '发送时会使用去除首尾空白后的 Tag。',
+        pick('Tag 会去除首尾空白', 'Tag will be trimmed'),
+        pick('发送时会使用去除首尾空白后的 Tag。', 'The trimmed Tag is used when sending.'),
         'tag',
       ),
     );
@@ -268,8 +283,8 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'TRIMMED_KEY',
         'info',
-        'Key 会去除首尾空白',
-        '发送时会使用去除首尾空白后的 Key。',
+        pick('Key 会去除首尾空白', 'Key will be trimmed'),
+        pick('发送时会使用去除首尾空白后的 Key。', 'The trimmed Key is used when sending.'),
         'key',
       ),
     );
@@ -278,14 +293,24 @@ export const analyzeMessagePayloadPreview = (
   const format = bodyFormat(normalizedBody);
   const bodyBytes = textBytes(normalizedBody);
   if (format === 'empty') {
-    issues.push(issue('EMPTY_BODY', 'error', '消息体为空', '发送消息必须提供 Body。', 'body'));
+    issues.push(
+      issue(
+        'EMPTY_BODY',
+        'error',
+        pick('消息体为空', 'Message body is empty'),
+        pick('发送消息必须提供 Body。', 'A Body is required to send a message.'),
+        'body',
+      ),
+    );
   } else if (bodyBytes > maxBodyBytes) {
     issues.push(
       issue(
         'BODY_SIZE_LIMIT',
         'error',
-        '消息体超过默认上限',
-        `当前 Body 为 ${bodyBytes} bytes，超过 ${maxBodyBytes} bytes。`,
+        pick('消息体超过默认上限', 'Body exceeds the default limit'),
+        lang === 'en'
+          ? `Current Body is ${bodyBytes} bytes, over the ${maxBodyBytes} bytes limit.`
+          : `当前 Body 为 ${bodyBytes} bytes，超过 ${maxBodyBytes} bytes。`,
         'body',
       ),
     );
@@ -294,8 +319,11 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'PLAIN_TEXT_BODY',
         'info',
-        'Body 不是 JSON',
-        'RocketMQ 支持文本消息，当前 Body 会按原始文本发送。',
+        pick('Body 不是 JSON', 'Body is not JSON'),
+        pick(
+          'RocketMQ 支持文本消息，当前 Body 会按原始文本发送。',
+          'RocketMQ supports text messages; the current Body is sent as raw text.',
+        ),
         'body',
       ),
     );
@@ -304,8 +332,11 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'SCALAR_JSON_BODY',
         'info',
-        'Body 是 JSON 标量',
-        '当前 Body 是合法 JSON，但不是对象或数组。',
+        pick('Body 是 JSON 标量', 'Body is a JSON scalar'),
+        pick(
+          '当前 Body 是合法 JSON，但不是对象或数组。',
+          'The current Body is valid JSON but is neither an object nor an array.',
+        ),
         'body',
       ),
     );
@@ -313,8 +344,8 @@ export const analyzeMessagePayloadPreview = (
 
   const propertyResult =
     input.propsMode === 'text'
-      ? buildMessagePropertiesFromText(input.propsText ?? '')
-      : buildMessagePropertiesFromRows(input.properties);
+      ? buildMessagePropertiesFromText(input.propsText ?? '', lang)
+      : buildMessagePropertiesFromRows(input.properties, lang);
   issues.push(...propertyResult.issues);
 
   const reservedNames = propertyResult.entries
@@ -326,8 +357,10 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'RESERVED_PROPERTY_KEY',
         'warning',
-        '属性名可能与系统属性冲突',
-        `建议改用业务属性名，避免覆盖或混淆系统属性：${reservedNames.join(', ')}`,
+        pick('属性名可能与系统属性冲突', 'Property names may clash with system properties'),
+        lang === 'en'
+          ? `Use business property names to avoid overriding or confusing system properties: ${reservedNames.join(', ')}`
+          : `建议改用业务属性名，避免覆盖或混淆系统属性：${reservedNames.join(', ')}`,
         'properties',
         reservedNames,
       ),
@@ -343,8 +376,10 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'EMPTY_PROPERTY_VALUE',
         'info',
-        '存在空属性值',
-        `这些属性会以空字符串发送：${emptyValueNames.join(', ')}`,
+        pick('存在空属性值', 'Some property values are empty'),
+        lang === 'en'
+          ? `These properties are sent with empty strings: ${emptyValueNames.join(', ')}`
+          : `这些属性会以空字符串发送：${emptyValueNames.join(', ')}`,
         'properties',
         emptyValueNames,
       ),
@@ -360,8 +395,10 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'PROPERTY_COUNT_LIMIT',
         'warning',
-        '属性数量较多',
-        `当前 ${propertyResult.entries.length} 个属性，建议控制在 ${maxProperties} 个以内。`,
+        pick('属性数量较多', 'Many properties'),
+        lang === 'en'
+          ? `Currently ${propertyResult.entries.length} properties; keep it under ${maxProperties}.`
+          : `当前 ${propertyResult.entries.length} 个属性，建议控制在 ${maxProperties} 个以内。`,
         'properties',
       ),
     );
@@ -371,8 +408,10 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'PROPERTY_SIZE_LIMIT',
         'warning',
-        '属性总大小较大',
-        `当前属性约 ${propertyBytes} bytes，建议控制在 ${maxPropertyBytes} bytes 以内。`,
+        pick('属性总大小较大', 'Large total property size'),
+        lang === 'en'
+          ? `Properties are about ${propertyBytes} bytes; keep them under ${maxPropertyBytes} bytes.`
+          : `当前属性约 ${propertyBytes} bytes，建议控制在 ${maxPropertyBytes} bytes 以内。`,
         'properties',
       ),
     );

@@ -22,7 +22,10 @@ interface ParsedProperties {
 
 // 解析批量粘贴的用户属性串：每行一个 key=value，等号只取第一个。
 // 逗号属于合法属性值，不能同时作为记录分隔符，否则会破坏地址、列表等常见值。
-export const parseMessageProperties = (text: string): ParsedProperties => {
+export const parseMessageProperties = (
+  text: string,
+  lang: 'zh' | 'en' = 'zh',
+): ParsedProperties => {
   const entries = new Map<string, string>();
   const errors: string[] = [];
   for (const line of text.split(/\r?\n/)) {
@@ -30,14 +33,20 @@ export const parseMessageProperties = (text: string): ParsedProperties => {
     if (!trimmed) continue;
     const eqIndex = trimmed.indexOf('=');
     if (eqIndex <= 0) {
-      errors.push(`“${trimmed}”应使用 key=value 格式`);
+      errors.push(
+        lang === 'en' ? `"${trimmed}" should use key=value format` : `“${trimmed}”应使用 key=value 格式`,
+      );
       continue;
     }
     const key = trimmed.slice(0, eqIndex).trim();
     if (!key) {
-      errors.push(`“${trimmed}”的属性名不能为空`);
+      errors.push(
+        lang === 'en' ? `"${trimmed}" has an empty property name` : `“${trimmed}”的属性名不能为空`,
+      );
     } else if (entries.has(key)) {
-      errors.push(`属性名“${key}”重复`);
+      errors.push(
+        lang === 'en' ? `Duplicate property name "${key}"` : `属性名“${key}”重复`,
+      );
     } else {
       entries.set(key, trimmed.slice(eqIndex + 1).trim());
     }
