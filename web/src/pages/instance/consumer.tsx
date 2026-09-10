@@ -254,7 +254,7 @@ const ConsumerPageContent = ({
   instanceOptions,
   instancesLoading,
 }: ConsumerPageContentProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -657,9 +657,11 @@ const ConsumerPageContent = ({
   const selectedGroupHealth = useMemo(
     () =>
       selectedGroup
-        ? analyzeConsumerGroupHealth(selectedGroup, selectedSubscriptions, selectedProgress)
+        ? analyzeConsumerGroupHealth(selectedGroup, selectedSubscriptions, selectedProgress, {
+            lang,
+          })
         : null,
-    [selectedGroup, selectedProgress, selectedSubscriptions],
+    [selectedGroup, selectedProgress, selectedSubscriptions, lang],
   );
 
   const handlePreviewResetOffset = async () => {
