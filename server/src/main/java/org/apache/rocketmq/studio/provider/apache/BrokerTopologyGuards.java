@@ -16,8 +16,10 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -67,12 +69,41 @@ public final class BrokerTopologyGuards {
         if (!StringUtils.hasText(brokerAddr)) {
             return null;
         }
-        if (knownBrokerEndpoints(admin).contains(brokerAddr)) {
+        Set<String> endpoints = knownBrokerEndpoints(admin);
+        if (endpoints.contains(brokerAddr)) {
             return brokerAddr;
+        }
+        InetSocketAddress address = (InetSocketAddress) messageId.getAddress();
+        for (String endpoint : endpoints) {
+            if (matchesBrokerEndpoint(endpoint, address)) {
+                // Keep the decoded IP for remoting instead of resolving the hostname again.
+                return brokerAddr;
+            }
         }
         log.warn("Rejecting decoded broker address {} for msgId={} because it is not a known broker endpoint"
                 + " for the selected instance", brokerAddr, msgId);
         return null;
+    }
+
+    private static boolean matchesBrokerEndpoint(String endpoint, InetSocketAddress address) {
+        int separator = endpoint.lastIndexOf(':');
+        if (separator <= 0) {
+            return false;
+        }
+        try {
+            if (Integer.parseInt(endpoint.substring(separator + 1)) != address.getPort()) {
+                return false;
+            }
+            // Only resolve hosts advertised by the selected instance's broker topology.
+            for (InetAddress resolved : InetAddress.getAllByName(endpoint.substring(0, separator))) {
+                if (resolved.equals(address.getAddress())) {
+                    return true;
+                }
+            }
+        } catch (NumberFormatException | UnknownHostException e) {
+            log.debug("Could not resolve registered broker endpoint {}: {}", endpoint, e.getMessage());
+        }
+        return false;
     }
 
     static String decodedBrokerAddr(MessageId messageId) {
