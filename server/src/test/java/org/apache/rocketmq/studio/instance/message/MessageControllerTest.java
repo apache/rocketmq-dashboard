@@ -143,4 +143,44 @@ class MessageControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.consumeResult").value("CR_SUCCESS"));
     }
+
+    @Test
+    void queueOffsetsShouldDelegateToTheService() throws Exception {
+        QueueOffsetVO offset = new QueueOffsetVO();
+        offset.setBrokerName("broker-a");
+        offset.setQueueId(3);
+        offset.setMinOffset(100L);
+        offset.setMaxOffset(200L);
+        when(messageService.getQueueOffsets("instance-1", "orders")).thenReturn(List.of(offset));
+
+        mockMvc.perform(get("/api/messages/queues")
+                        .param("instanceId", "instance-1")
+                        .param("topic", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].brokerName").value("broker-a"))
+                .andExpect(jsonPath("$.data[0].queueId").value(3))
+                .andExpect(jsonPath("$.data[0].minOffset").value(100))
+                .andExpect(jsonPath("$.data[0].maxOffset").value(200));
+
+        verify(messageService).getQueueOffsets("instance-1", "orders");
+    }
+
+    @Test
+    void queueMessageShouldDelegateWithTheOffsetCoordinates() throws Exception {
+        MessageRecordVO message = MessageRecordVO.builder().msgId("msg-1").topic("orders").build();
+        when(messageService.pullMessageAtOffset("instance-1", "orders", "broker-a", 2, 99L))
+                .thenReturn(message);
+
+        mockMvc.perform(get("/api/messages/queue-message")
+                        .param("instanceId", "instance-1")
+                        .param("topic", "orders")
+                        .param("brokerName", "broker-a")
+                        .param("queueId", "2")
+                        .param("offset", "99"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.msgId").value("msg-1"));
+
+        verify(messageService).pullMessageAtOffset("instance-1", "orders", "broker-a", 2, 99L);
+    }
 }
