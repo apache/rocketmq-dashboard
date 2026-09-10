@@ -72,6 +72,77 @@ class CloudRocketMqClusterMetricsCollectorTest {
         });
     }
 
+    @Test
+    void collectSkipsUnsupportedInstances() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        CloudRocketMqClusterMetricsCollector collector =
+                new CloudRocketMqClusterMetricsCollector(registry);
+        InstanceVO apache = InstanceVO.builder().name("local")
+                .vendor(InstanceVendor.APACHE).build();
+        InstanceVO noCredential = cloudInstance(InstanceVendor.ALIYUN);
+        noCredential.setCredentialId(null);
+
+        assertThat(collector.supports(apache)).isFalse();
+        assertThat(collector.supports(noCredential)).isFalse();
+        assertThat(collector.collect(apache)).isEmpty();
+        assertThat(collector.metricKeys()).containsExactly("cloud.instance.availability");
+    }
+
+    @Test
+    void runningStatusIsMatchedCaseInsensitively() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        CloudCatalogProvider catalog = mock(CloudCatalogProvider.class);
+        InstanceVO instance = cloudInstance(InstanceVendor.ALIYUN);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setStatus("running");
+        when(registry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(7L, "cn-hangzhou", "rmq-cloud")).thenReturn(detail);
+
+        List<MetricSample> samples = new CloudRocketMqClusterMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.value()).isEqualTo(1D);
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+            assertThat(sample.labels()).containsEntry("cloudStatus", "running");
+        });
+    }
+
+    @Test
+    void nullDetailMapsToUnavailableWithoutStatusLabel() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        CloudCatalogProvider catalog = mock(CloudCatalogProvider.class);
+        InstanceVO instance = cloudInstance(InstanceVendor.ALIYUN);
+        when(registry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(7L, "cn-hangzhou", "rmq-cloud")).thenReturn(null);
+
+        List<MetricSample> samples = new CloudRocketMqClusterMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+            assertThat(sample.value()).isNull();
+            assertThat(sample.labels()).containsKey("cloudInstanceId");
+            assertThat(sample.labels()).doesNotContainKey("cloudStatus");
+        });
+    }
+
+    @Test
+    void catalogFailureMapsToUnavailableWithoutStatusLabel() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        CloudCatalogProvider catalog = mock(CloudCatalogProvider.class);
+        InstanceVO instance = cloudInstance(InstanceVendor.ALIYUN);
+        when(registry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(7L, "cn-hangzhou", "rmq-cloud"))
+                .thenThrow(new IllegalStateException("provider down"));
+
+        List<MetricSample> samples = new CloudRocketMqClusterMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).singleElement().satisfies(sample -> {
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+            assertThat(sample.value()).isNull();
+            assertThat(sample.labels()).doesNotContainKey("cloudStatus");
+        });
+    }
+
     private static InstanceVO cloudInstance(InstanceVendor vendor) {
         return InstanceVO.builder().name("cloud-local").vendor(vendor).credentialId(7L)
                 .regionId("cn-hangzhou").cloudInstanceId("rmq-cloud").build();
