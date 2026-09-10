@@ -74,4 +74,39 @@ class AiPayloadGuardTest {
                     assertThat(exception.getMessage()).contains("LLM model");
                 });
     }
+
+    @Test
+    void chatShouldRejectMissingRequestOrMessage() {
+        assertThatThrownBy(() -> AiPayloadGuard.validateChat(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Chat request is required");
+        assertThatThrownBy(() -> AiPayloadGuard.validateChat(ChatDTO.builder().message("  ").build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Chat message is required");
+    }
+
+    @Test
+    void commandShouldAcceptPromptOnlyAndRejectOversizedContext() {
+        AiCommandDTO promptOnly = AiCommandDTO.builder()
+                .prompt("explain the lag")
+                .context(Map.of("cluster", "main"))
+                .build();
+        assertThatCode(() -> AiPayloadGuard.validateCommand(promptOnly, objectMapper))
+                .doesNotThrowAnyException();
+
+        AiCommandDTO oversizedContext = AiCommandDTO.builder()
+                .prompt("explain the lag")
+                .context(Map.of("payload", "x".repeat(AiPayloadGuard.MAX_CONTEXT_BYTES)))
+                .build();
+        assertThatThrownBy(() -> AiPayloadGuard.validateCommand(oversizedContext, objectMapper))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Command context must not exceed");
+    }
+
+    @Test
+    void toolInvocationShouldRejectBlankName() {
+        assertThatThrownBy(() -> AiPayloadGuard.validateToolInvocation("  ", Map.of(), objectMapper))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Tool name is required");
+    }
 }
