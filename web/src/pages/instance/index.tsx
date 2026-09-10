@@ -1041,6 +1041,9 @@ const InstancePage = () => {
             extra={getEndpointExtra(editInstanceType)}
           >
             <Input
+              disabled={
+                editingInstance?.vendor === 'ALIYUN' || editingInstance?.vendor === 'TENCENT'
+              }
               placeholder={
                 editInstanceType === 'DIRECT'
                   ? t('instance.directEndpointPlaceholder')
