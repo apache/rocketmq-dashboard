@@ -104,7 +104,7 @@ const MainLayout = () => {
     try {
       await requestLogout();
     } catch {
-      message.warning('服务端退出失败，已清除本地登录状态');
+      message.warning(t('layout.logoutServerFailed'));
     } finally {
       clearAiChatHistories();
       clearAuth();
@@ -267,7 +267,7 @@ const MainLayout = () => {
       '/ops/audit': t('nav.audit'),
       '/ai': t('nav.ai'),
       '/settings': t('nav.settings'),
-      '/studio/users': '用户管理',
+      '/studio/users': t('nav.studioUsers'),
     }),
     [t],
   );
@@ -321,7 +321,7 @@ const MainLayout = () => {
     onClick: handleUserMenuClick,
     items: [
       { key: 'profile', icon: <UserGear size={14} />, label: t('user.profile') },
-      ...(admin ? [{ key: 'users', icon: <UserGear size={14} />, label: '用户管理' }] : []),
+      ...(admin ? [{ key: 'users', icon: <UserGear size={14} />, label: t('nav.studioUsers') }] : []),
       { type: 'divider' as const },
       { key: 'logout', label: t('user.logout'), danger: true },
     ],
@@ -736,7 +736,7 @@ const MainLayout = () => {
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="未找到匹配页面"
+              description={t('layout.searchNotFound')}
               style={{ padding: '24px 0' }}
             />
           )}
@@ -752,9 +752,9 @@ const MainLayout = () => {
             background: darkMode ? '#26262a' : '#fafafa',
           }}
         >
-          <span>↑↓ 切换</span>
-          <span>↵ 打开</span>
-          <span>ESC 关闭</span>
+          <span>{t('layout.searchNavHint')}</span>
+          <span>{t('layout.searchOpenHint')}</span>
+          <span>{t('layout.searchCloseHint')}</span>
         </div>
       </Modal>
     </>
