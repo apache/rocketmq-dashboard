@@ -7,6 +7,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,10 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class NativeAlertMetricCatalogServiceTest {
@@ -58,5 +62,40 @@ class NativeAlertMetricCatalogServiceTest {
 
         assertThat(nativeRule.getMetric()).isEqualTo("broker.disk.usage_ratio");
         assertThat(customRule.getMetric()).isEqualTo("custom.metric");
+    }
+
+    @Test
+    void listShouldRejectBlankInstanceId() {
+        InstanceRepository repository = mock(InstanceRepository.class);
+        NativeAlertMetricCatalogService service = new NativeAlertMetricCatalogService(repository);
+
+        assertThatThrownBy(() -> service.list("  ", AlertDomain.CLUSTER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("instanceId is required");
+        assertThatThrownBy(() -> service.list(null, AlertDomain.BUSINESS))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("instanceId is required");
+    }
+
+    @Test
+    void listShouldRejectUnknownInstance() {
+        InstanceRepository repository = mock(InstanceRepository.class);
+        when(repository.findByIdentifier("missing")).thenReturn(Optional.empty());
+        NativeAlertMetricCatalogService service = new NativeAlertMetricCatalogService(repository);
+
+        assertThatThrownBy(() -> service.list("missing", AlertDomain.CLUSTER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Instance not found: missing");
+    }
+
+    @Test
+    void validateShouldSkipRepositoryForNonNativeMetrics() {
+        InstanceRepository repository = mock(InstanceRepository.class);
+        NativeAlertMetricCatalogService service = new NativeAlertMetricCatalogService(repository);
+
+        service.validate(AlertRuleVO.builder().domain(AlertDomain.CLUSTER)
+                .instanceId("apache").metric(" my.custom.metric ").build());
+
+        verify(repository, never()).findByIdentifier(any());
     }
 }
