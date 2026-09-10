@@ -173,4 +173,40 @@ describe('comparison row helpers', () => {
     expect(formatTopicDifferences(drift.differences)).toBe('writeQueues: 8 -> 16');
     expect(formatTopicDifferences([])).toBe('');
   });
+
+  it('returns every row for the ALL status filter', () => {
+    expect(filterTopicComparisonRows(rows, 'ALL', '').map((row) => row.topicName)).toEqual([
+      'Orders.Created',
+      'payments-settled',
+      'target-only',
+    ]);
+  });
+
+  it('joins multiple differences with a semicolon separator', () => {
+    const source = topic('multi-drift');
+    const target = topic('multi-drift', {
+      type: 'FIFO',
+      namespace: 'payments',
+      writeQueues: 16,
+      readQueues: 4,
+      perm: 'RO',
+    });
+
+    const drift = compareTopicInventories([source], [target]).rows[0];
+    expect(formatTopicDifferences(drift.differences)).toBe(
+      'type: NORMAL -> FIFO; namespace: orders -> payments; ' +
+        'writeQueues: 8 -> 16; readQueues: 8 -> 4; perm: RW -> RO',
+    );
+  });
+
+  it('includes only the fields that actually drifted', () => {
+    const source = topic('orders-created');
+    const target = topic('orders-created', { writeQueues: 16, perm: 'RO' });
+
+    const drift = compareTopicInventories([source], [target]).rows[0];
+    expect(drift.differences.map((difference) => difference.field)).toEqual([
+      'writeQueues',
+      'perm',
+    ]);
+  });
 });
