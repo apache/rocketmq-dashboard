@@ -68,4 +68,27 @@ describe('alertRuleAssets API', () => {
     expect(result).toBeInstanceOf(Blob);
     expect(result.type).toBe('text/yaml');
   });
+
+  it('returns an empty list when no assets are installed', async () => {
+    mock.onGet('/alert-rules/assets').reply(200, { code: 200, data: [] });
+
+    await expect(listAlertRuleAssets()).resolves.toEqual([]);
+  });
+
+  it('URL-encodes asset names that contain special characters', async () => {
+    mock.onGet('/alert-rules/assets/consumer%20lag%2Frules').reply(200, {
+      code: 200,
+      data: 'groups:\n  - name: consumer lag/rules\n',
+    });
+
+    await expect(getAlertRuleAsset('consumer lag/rules')).resolves.toContain('consumer lag/rules');
+  });
+
+  it('URL-encodes special characters when exporting an asset', async () => {
+    const blob = new Blob(['payload'], { type: 'text/yaml' });
+    mock.onGet('/alert-rules/assets/broker%20%2F%20down/export').reply(200, blob);
+
+    const result = await exportAlertRuleAsset('broker / down');
+    expect(result).toBeInstanceOf(Blob);
+  });
 });
