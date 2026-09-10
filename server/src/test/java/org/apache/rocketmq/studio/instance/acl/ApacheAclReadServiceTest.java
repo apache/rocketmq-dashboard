@@ -33,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ApacheAclReadServiceTest {
@@ -122,5 +124,75 @@ class ApacheAclReadServiceTest {
             MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
             return action.apply(admin);
         });
+    }
+
+    @Test
+    void skipsDuplicateMasterAddressAcrossBrokerEntries() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        BrokerData first = new BrokerData();
+        first.setBrokerAddrs(new HashMap<>(Map.of(0L, "broker-a:10911")));
+        BrokerData second = new BrokerData();
+        second.setBrokerAddrs(new HashMap<>(Map.of(0L, "broker-a:10911")));
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(Map.of("first", first, "second", second));
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(admin.listAcl("broker-a:10911", null, null)).thenReturn(List.of());
+        executeWith(resolver, admin);
+
+        RemoteAclReadResult result = new ApacheAclReadService(resolver).listRules("instance-1", null, null);
+
+        verify(admin).listAcl("broker-a:10911", null, null);
+        assertThat(result.getPoliciesByBroker()).containsOnlyKeys("broker-a:10911");
+        assertThat(result.getFailuresByBroker()).isEmpty();
+    }
+
+    @Test
+    void skipsBrokerEntriesWithoutMasterAddress() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        BrokerData noAddrs = new BrokerData();
+        BrokerData slaveOnly = new BrokerData();
+        slaveOnly.setBrokerAddrs(new HashMap<>(Map.of(2L, "broker-a:10911")));
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(Map.of("no-addrs", noAddrs, "slave", slaveOnly));
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        executeWith(resolver, admin);
+
+        RemoteAclReadResult result = new ApacheAclReadService(resolver).listRules("instance-1", null, null);
+
+        verify(admin, never()).listAcl(any(), any(), any());
+        assertThat(result.getPoliciesByBroker()).isEmpty();
+        assertThat(result.getFailuresByBroker()).isEmpty();
+        assertThat(result.isPartial()).isFalse();
+    }
+
+    @Test
+    void usesDeepestRootCauseAsFailureMessage() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfo("broker-a:10911"));
+        when(admin.listAcl("broker-a:10911", null, null))
+                .thenThrow(new IllegalStateException("outer", new RuntimeException("root cause")));
+        executeWith(resolver, admin);
+
+        RemoteAclReadResult result = new ApacheAclReadService(resolver).listRules("instance-1", null, null);
+
+        assertThat(result.getFailuresByBroker()).containsEntry("broker-a:10911", "root cause");
+    }
+
+    @Test
+    void treatsMissingBrokerTableAsEmptyResult() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(new ClusterInfo());
+        executeWith(resolver, admin);
+
+        RemoteAclReadResult result = new ApacheAclReadService(resolver).listRules("instance-1", null, null);
+
+        verify(admin, never()).listAcl(any(), any(), any());
+        assertThat(result.getPoliciesByBroker()).isEmpty();
+        assertThat(result.getFailuresByBroker()).isEmpty();
+        assertThat(result.isPartial()).isFalse();
     }
 }
