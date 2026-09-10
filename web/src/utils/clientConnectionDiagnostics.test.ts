@@ -206,3 +206,13 @@ describe('client connection diagnostics', () => {
     );
   });
 });
+
+describe('client connection diagnostics single connection', () => {
+  it('reports a single producer connection with stable summary counts', () => {
+    const diagnostics = analyzeClientConnections([connection({})]);
+
+    expect(diagnostics.summary.totalConnections).toBe(1);
+    expect(diagnostics.summary.uniqueClientCount).toBe(1);
+    expect(diagnostics.resources).toHaveLength(1);
+  });
+});
