@@ -1037,10 +1037,15 @@ const InstancePage = () => {
               </span>
             }
             name="endpoint"
-            rules={[{ required: true, message: t('instance.endpointRequired') }]}
+            rules={
+              editingInstance?.vendor && editingInstance.vendor !== 'APACHE'
+                ? []
+                : [{ required: true, message: t('instance.endpointRequired') }]
+            }
             extra={getEndpointExtra(editInstanceType)}
           >
             <Input
+              disabled={editingInstance?.vendor && editingInstance.vendor !== 'APACHE'}
               placeholder={
                 editInstanceType === 'DIRECT'
                   ? t('instance.directEndpointPlaceholder')
