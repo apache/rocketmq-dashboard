@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getGeneralSettings, saveGeneralSettings } from './settings';
+import { getGeneralSettings, saveGeneralSettings, testNotification } from './settings';
 import type { GeneralSettings, GeneralSettingsUpdate } from './settings';
 
 const mock = new MockAdapter(client);
@@ -103,5 +103,26 @@ describe('general settings API', () => {
     });
 
     await expect(saveGeneralSettings(update)).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['dingtalk', '/settings/general/test-notification', 'dingtalk'],
+    ['email', '/settings/general/test-notification', 'email'],
+    ['sms', '/settings/general/test-notification', 'sms'],
+  ] as const)('sends a test notification through the %s channel', async (channel, url) => {
+    mock.onPost(url).reply((config) => {
+      expect(config.params).toEqual({ channel });
+      return [200, { code: 200, data: { success: true } }];
+    });
+
+    await expect(testNotification(channel)).resolves.toBeUndefined();
+  });
+
+  it('surfaces a failure when the notification channel rejects', async () => {
+    mock.onPost('/settings/general/test-notification').reply(502, {
+      message: 'provider unavailable',
+    });
+
+    await expect(testNotification('email')).rejects.toThrow();
   });
 });
