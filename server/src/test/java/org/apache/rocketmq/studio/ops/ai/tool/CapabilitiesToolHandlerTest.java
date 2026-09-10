@@ -57,4 +57,47 @@ class CapabilitiesToolHandlerTest {
         assertThat(result.get("version")).isEqualTo("");
         assertThat(result.get("capabilities")).isEqualTo(List.of("REMOTING"));
     }
+
+    @Test
+    void handlerNameShouldBeRmqCapabilities() {
+        ClusterService clusterService = mock(ClusterService.class);
+        CapabilityResolver capabilityResolver = mock(CapabilityResolver.class);
+
+        assertThat(new CapabilitiesToolHandler(clusterService, capabilityResolver).name())
+                .isEqualTo("rmq.capabilities");
+    }
+
+    @Test
+    void nullTypeAndClusterIdAreEmittedAsBlankStrings() {
+        ClusterVO cluster = ClusterVO.builder().name("DefaultCluster").build();
+
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.getCluster("DefaultCluster")).thenReturn(cluster);
+        CapabilityResolver capabilityResolver = mock(CapabilityResolver.class);
+        when(capabilityResolver.resolve(cluster)).thenReturn(List.of());
+
+        Object output = new CapabilitiesToolHandler(clusterService, capabilityResolver)
+                .execute(Map.of("cluster", "DefaultCluster"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) output;
+        assertThat(result.get("cluster")).isEqualTo("");
+        assertThat(result.get("type")).isEqualTo("");
+        assertThat(result.get("capabilities")).isEqualTo(List.of());
+    }
+
+    @Test
+    void missingClusterErrorPropagatesToTheCaller() {
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.getCluster("unknown-cluster"))
+                .thenThrow(new org.apache.rocketmq.studio.common.exception.BusinessException(
+                        404, "Cluster not found: unknown-cluster"));
+        CapabilityResolver capabilityResolver = mock(CapabilityResolver.class);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> new CapabilitiesToolHandler(clusterService, capabilityResolver)
+                                .execute(Map.of("cluster", "unknown-cluster")))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessage("Cluster not found: unknown-cluster");
+    }
 }
