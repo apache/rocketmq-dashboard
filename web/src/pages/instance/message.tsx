@@ -40,6 +40,7 @@ import {
 import {
   SearchOutlined,
   ReloadOutlined,
+  CopyOutlined,
   SendOutlined,
   EyeOutlined,
   NodeIndexOutlined,
@@ -151,6 +152,29 @@ const formatDurationMs = (value: number | null): string => {
   if (value >= 60000) return `${(value / 60000).toFixed(1)} min`;
   if (value >= 1000) return `${(value / 1000).toFixed(2)} s`;
   return `${value} ms`;
+};
+
+
+const copyMessageProperties = async (record: MessageRecord) => {
+  const text = JSON.stringify(record.properties ?? {}, null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success('消息属性已复制为 JSON');
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    if (copied) {
+      message.success('消息属性已复制为 JSON');
+    } else {
+      message.error('复制失败，请手动复制');
+    }
+  }
 };
 
 const getQueryValidationError = (mode: QueryMode, params: MessageQuery): string | null => {
@@ -904,6 +928,19 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{formatTimeMs(selectedMsg.storeTime)}</span>
             </Descriptions.Item>
           </Descriptions>
+          <Flex gap={8} align="center" style={{ marginBottom: 16 }}>
+            <Button
+              size="small"
+              icon={<CopyOutlined />}
+              disabled={Object.keys(selectedMsg.properties ?? {}).length === 0}
+              onClick={() => void copyMessageProperties(selectedMsg)}
+            >
+              复制属性 JSON
+            </Button>
+            {Object.keys(selectedMsg.properties ?? {}).length === 0 ? (
+              <Typography.Text type="secondary">该消息无属性</Typography.Text>
+            ) : null}
+          </Flex>
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
             消息体
           </Typography.Title>
