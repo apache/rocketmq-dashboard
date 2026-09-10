@@ -95,4 +95,21 @@ class ConsumerDiagnosticsServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("clientId is required");
     }
+
+    @Test
+    void getConsumerStackTreatsBlankInstanceAsUnscoped() {
+        ConsumerStackTraceVO stackTrace = ConsumerStackTraceVO.builder()
+                .groupName("cg-orders")
+                .clientId("client-1")
+                .threads(List.of())
+                .build();
+        when(diagnosticsProvider.getConsumerStack(null, "cg-orders", "client-1"))
+                .thenReturn(stackTrace);
+
+        ConsumerStackTraceVO result = diagnosticsService.getConsumerStack(
+                "   ", "cg-orders", "client-1");
+
+        assertThat(result.getGroupName()).isEqualTo("cg-orders");
+        verify(diagnosticsProvider).getConsumerStack(null, "cg-orders", "client-1");
+    }
 }
