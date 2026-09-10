@@ -190,4 +190,16 @@ class MetricsControllerTest {
 
         verifyNoInteractions(metricsService);
     }
+
+    @Test
+    void dataSourceQueryShouldRejectAMissingKeyParameter() throws Exception {
+        mockMvc.perform(post("/api/metrics/query/datasource")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid request parameter"));
+
+        verifyNoInteractions(metricsService);
+    }
 }
