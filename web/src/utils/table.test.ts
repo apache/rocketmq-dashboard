@@ -51,4 +51,38 @@ describe('tableScrollX', () => {
   it('tolerates an undefined column list', () => {
     expect(tableScrollX(undefined)).toBe(0);
   });
+
+  it('recurses into nested child groups', () => {
+    expect(
+      tableScrollX([
+        { children: [{ width: 100 }, { children: [{ width: 50 }, { width: 30 }] }] },
+      ]),
+    ).toBe(180);
+  });
+
+  it('applies the default share to child groups whose leaves are unsized', () => {
+    expect(tableScrollX([{ children: [{}, {}] }])).toBe(240);
+  });
+
+  it('parses decimal pixel widths and rejects non-pixel strings', () => {
+    expect(tableScrollX([{ width: '80.5px' }])).toBe(80.5);
+    expect(tableScrollX([{ width: '0px' }])).toBe(0);
+    expect(tableScrollX([{ width: 'abcpx' }])).toBe(120);
+    expect(tableScrollX([{ width: '80' }])).toBe(120);
+  });
+
+  it('drops hidden groups entirely before summing their children', () => {
+    expect(tableScrollX([{ hidden: true, children: [{ width: 100 }, { width: 60 }] }])).toBe(0);
+    expect(tableScrollX([{ hidden: true }, { width: 50 }])).toBe(50);
+  });
+
+  it('treats an empty child group like an unsized leaf column', () => {
+    expect(tableScrollX([{ children: [] }])).toBe(120);
+    expect(tableScrollX([{ children: [], width: 200 }])).toBe(200);
+  });
+
+  it('honors an explicit zero width column', () => {
+    expect(tableScrollX([{ width: 0 }, { width: 100 }])).toBe(100);
+    expect(tableScrollX([{ width: 0 }], { selection: true })).toBe(40);
+  });
 });
