@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.alert;
 import org.apache.rocketmq.studio.cluster.metrics.BusinessMetricsCollector;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,11 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class NativeAlertRuleTestServiceTest {
@@ -121,6 +126,37 @@ class NativeAlertRuleTestServiceTest {
 
         assertThat(result.samples()).singleElement()
                 .satisfies(sample -> assertThat(sample.currentValue()).isEqualTo(20));
+    }
+
+    @Test
+    void testShouldRejectUnknownInstance() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        when(instances.findByIdentifier("missing")).thenReturn(Optional.empty());
+        NativeAlertRuleTestService service = new NativeAlertRuleTestService(instances, List.of(), List.of(),
+                new AlertRuleEvaluator());
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).instanceId("missing")
+                .metric("broker.availability").operator(">=").threshold(1).build();
+
+        assertThatThrownBy(() -> service.test(rule))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Instance not found: missing");
+    }
+
+    @Test
+    void testShouldSkipCollectorsThatDoNotSupportTheInstance() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        BusinessMetricsCollector collector = mock(BusinessMetricsCollector.class);
+        InstanceVO instance = InstanceVO.builder().name("local").build();
+        when(instances.findByIdentifier("local")).thenReturn(Optional.of(instance));
+        when(collector.supports(instance)).thenReturn(false);
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.BUSINESS).metric("consumer.lag.total")
+                .instanceId("local").operator(">").threshold(10).build();
+
+        AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(), List.of(collector),
+                new AlertRuleEvaluator()).test(rule);
+
+        assertThat(result.samples()).isEmpty();
+        verify(collector, never()).collect(any());
     }
 
     private static MetricSample sample(String group, double value) {
