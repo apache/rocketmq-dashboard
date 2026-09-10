@@ -22,12 +22,19 @@ import {
   createTopic,
   deleteTopic,
   exportConsumerGroups,
+  getConsumerGroup,
+  getConsumerGroupSettings,
+  getConsumerProgress,
   getConsumerStack,
+  getConsumerSubscriptions,
   getTopicConsumerPage,
   getTopicConsumers,
   getTopicRoutes,
   importConsumerGroups,
   listTopics,
+  previewConsumerOffsetReset,
+  refreshConsumerGroup,
+  resetConsumerOffset,
   sendTopicMessage,
   exportTopics,
   importTopics,
@@ -264,5 +271,44 @@ describe('topic metadata API', () => {
         ],
       }),
     ).resolves.toMatchObject({ imported: 1, failed: 0 });
+  });
+
+  it('loads consumer group details, progress, subscriptions and settings', async () => {
+    const group = { groupName: 'orders', clusterId: 'cluster-a' };
+    const progress = [{ topic: 'orders', diffTotal: 12 }];
+    const subscriptions = [{ topic: 'orders', expression: '*' }];
+    const settings = { groupName: 'orders', retryMaxTimes: 16 };
+    mock.onGet('/groups/orders').reply(200, { code: 200, data: group });
+    mock.onGet('/groups/orders/progress').reply(200, { code: 200, data: progress });
+    mock.onGet('/groups/orders/subscriptions').reply(200, { code: 200, data: subscriptions });
+    mock.onGet('/groups/orders/settings', { params: { instanceId: 'instance-1' } }).reply(200, {
+      code: 200,
+      data: settings,
+    });
+    mock.onGet('/groups/orders/refresh').reply(200, { code: 200, data: group });
+
+    await expect(getConsumerGroup('orders', 'instance-1')).resolves.toEqual(group);
+    await expect(getConsumerProgress('orders', 'instance-1')).resolves.toEqual(progress);
+    await expect(getConsumerSubscriptions('orders', 'instance-1')).resolves.toEqual(
+      subscriptions,
+    );
+    await expect(getConsumerGroupSettings('orders', 'instance-1')).resolves.toEqual(settings);
+    await expect(refreshConsumerGroup('orders', 'instance-1')).resolves.toEqual(group);
+  });
+
+  it('previews and applies consumer offset resets', async () => {
+    const request = { name: 'orders', instanceId: 'instance-1', timestamp: 1784107658, topic: 'orders' };
+    const preview = { groupName: 'orders', complete: true, allowReset: true, queueCount: 8 };
+    mock.onPost('/groups/reset-offset/preview').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(request);
+      return [200, { code: 200, data: preview }];
+    });
+    mock.onPost('/groups/reset-offset').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(request);
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(previewConsumerOffsetReset(request)).resolves.toEqual(preview);
+    await expect(resetConsumerOffset(request)).resolves.toBeUndefined();
   });
 });
