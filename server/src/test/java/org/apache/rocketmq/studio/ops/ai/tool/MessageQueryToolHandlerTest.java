@@ -130,4 +130,77 @@ class MessageQueryToolHandlerTest {
                 .queryMessages(eq("instance-a"), any(), any(), any(), any(),
                         eq(123456789L), any());
     }
+
+    @Test
+    void executeShouldConvertStringFormEpochMilliseconds() {
+        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA",
+                "startTime", "1000", "endTime", "2000"));
+
+        verify(messageService)
+                .queryMessages(eq("instance-a"), any(), any(), any(), any(),
+                        eq(1000L), eq(2000L));
+    }
+
+    @Test
+    void executeShouldConvertInRangeFractionalDoubleByTruncation() {
+        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA",
+                "startTime", 1000.9));
+
+        verify(messageService)
+                .queryMessages(eq("instance-a"), any(), any(), any(), any(),
+                        eq(1000L), any());
+    }
+
+    @Test
+    void executeShouldRejectDoubleBeyondLongRangeInsteadOfWrapping() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> handler.execute(Map.of(
+                                "cluster", "instance-a", "topic", "TopicA",
+                                "startTime", Double.MAX_VALUE)))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("epoch-milliseconds");
+    }
+
+    @Test
+    void projectionShouldBlankOutAbsentOptionalFields() {
+        MessageRecordVO sparse = MessageRecordVO.builder()
+                .msgId("msg-2")
+                .storeTime(2000L)
+                .build();
+        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(sparse));
+
+        Object result = handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA"));
+
+        Map<?, ?> row = (Map<?, ?>) ((List<?>) result).get(0);
+        assertThat(row.get("msgId")).isEqualTo("msg-2");
+        assertThat(row.get("topic")).isEqualTo("");
+        assertThat(row.get("tag")).isEqualTo("");
+        assertThat(row.get("key")).isEqualTo("");
+        assertThat(row.get("body")).isEqualTo("");
+        assertThat(row.get("bodyEncoding")).isEqualTo("");
+        assertThat(row.get("storeHost")).isEqualTo("");
+        assertThat(row.get("bornHost")).isEqualTo("");
+        assertThat(row.get("storeTime")).isEqualTo(2000L);
+        assertThat(row.get("bodyTruncated")).isEqualTo(false);
+        assertThat(row.get("size")).isEqualTo(0);
+    }
+
+    @Test
+    void projectionShouldRejectMessageWithoutMsgId() {
+        MessageRecordVO missingId = MessageRecordVO.builder().build();
+        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(missingId));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> handler.execute(Map.of("cluster", "instance-a", "topic", "TopicA")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("msgId is unavailable");
+    }
 }
