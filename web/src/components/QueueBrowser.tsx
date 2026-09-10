@@ -34,6 +34,7 @@ import {
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import type { MessageRecord, QueueOffset } from '../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../api/message';
+import { useLang } from '../i18n/LangContext';
 
 const { Text, Paragraph } = Typography;
 
@@ -55,6 +56,7 @@ export interface PulledEntry {
 }
 
 export const useQueueBrowser = (instanceId?: string) => {
+  const { t } = useLang();
   const [topic, setTopic] = useState<string | undefined>();
   const [queues, setQueues] = useState<QueueOffset[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,7 +101,7 @@ export const useQueueBrowser = (instanceId?: string) => {
       setOffsets(initial);
     } catch (err) {
       if (requestId === requestSeqRef.current) {
-        message.error(err instanceof Error ? err.message : '加载队列信息失败');
+        message.error(err instanceof Error ? err.message : t('queueBrowser.loadQueueFailed'));
       }
     } finally {
       if (requestId === requestSeqRef.current) {
@@ -107,7 +109,7 @@ export const useQueueBrowser = (instanceId?: string) => {
         setLoading(false);
       }
     }
-  }, [instanceId, topic]);
+  }, [instanceId, topic, t]);
 
   const handlePull = async (queue: QueueOffset) => {
     if (!instanceId || !topic) return;
@@ -132,7 +134,7 @@ export const useQueueBrowser = (instanceId?: string) => {
       ]);
     } catch (err) {
       if (requestId === requestSeqRef.current) {
-        message.error(err instanceof Error ? err.message : '拉取消息失败');
+        message.error(err instanceof Error ? err.message : t('queueBrowser.pullFailed'));
       }
     } finally {
       pullingRef.current.delete(key);
@@ -173,12 +175,14 @@ export const QueueBrowserControls = ({
   state,
   topicOptions,
   topicLoading,
-}: ControlsProps) => (
-  <Flex gap={12} align="center">
+}: ControlsProps) => {
+  const { t } = useLang();
+  return (
+    <Flex gap={12} align="center">
     <Select
       showSearch
       allowClear
-      placeholder="选择 Topic"
+      placeholder={t('queueBrowser.topicPlaceholder')}
       value={state.topic}
       onChange={state.setTopic}
       options={topicOptions}
@@ -192,13 +196,16 @@ export const QueueBrowserControls = ({
       loading={state.loading}
       onClick={() => void state.loadQueues()}
     >
-      加载队列
+      {t('queueBrowser.loadQueues')}
     </Button>
-  </Flex>
-);
+    </Flex>
+  );
+};
 
-export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => (
-  <Card>
+export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => {
+  const { t } = useLang();
+  return (
+    <Card>
     {state.loading ? (
       <Flex justify="center" style={{ padding: 32 }}>
         <Spin />
@@ -206,7 +213,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
     ) : state.queues.length === 0 ? (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="选择 Topic 并点击「加载队列」，按队列浏览消息"
+        description={t('queueBrowser.emptySelectHint')}
         style={{ padding: '32px 0' }}
       />
     ) : (
@@ -240,7 +247,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                 render: (v: number) => <Text style={{ fontSize: 14 }}>{v}</Text>,
               },
               {
-                title: 'Offset 范围',
+                title: t('queueBrowser.offsetRange'),
                 key: 'offset',
                 width: 170,
                 render: (_: unknown, record: QueueOffset) => {
@@ -273,7 +280,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                 },
               },
               {
-                title: '操作',
+                title: t('queueBrowser.action'),
                 key: 'action',
                 width: 70,
                 align: 'center',
@@ -286,7 +293,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                       loading={state.pulling.has(key)}
                       onClick={() => void state.handlePull(record)}
                     >
-                      查看
+                      {t('queueBrowser.view')}
                     </Button>
                   );
                 },
@@ -294,8 +301,10 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
             ]}
           />
           <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 14 }}>
-            共 {state.queues.length} 个队列，总消息量{' '}
-            {state.queues.reduce((sum, q) => sum + (q.maxOffset - q.minOffset), 0)} 条
+            {t('queueBrowser.queueSummary', {
+              count: state.queues.length,
+              total: state.queues.reduce((sum, q) => sum + (q.maxOffset - q.minOffset), 0),
+            })}
           </Text>
         </div>
 
@@ -304,7 +313,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
           {state.entries.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="点击左侧「查看」，消息详情将显示在这里"
+              description={t('queueBrowser.emptyDetailHint')}
               style={{ padding: '32px 0' }}
             />
           ) : (
@@ -352,12 +361,12 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                             {entry.message.key || '-'}
                           </span>
                         </Descriptions.Item>
-                        <Descriptions.Item label="存储时间">
+                        <Descriptions.Item label={t('queueBrowser.storeTime')}>
                           <span style={{ fontFamily: 'monospace', fontSize: 14 }}>
                             {formatTimeMs(entry.message.storeTime)}
                           </span>
                         </Descriptions.Item>
-                        <Descriptions.Item label="大小">
+                        <Descriptions.Item label={t('queueBrowser.size')}>
                           {entry.message.size} bytes
                         </Descriptions.Item>
                         <Descriptions.Item label="Born Host">
@@ -383,7 +392,7 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                       )}
                     </>
                   ) : (
-                    <Text type="secondary">该 offset 处无消息</Text>
+                    <Text type="secondary">{t('queueBrowser.noMessageAtOffset')}</Text>
                   )}
                 </Card>
               ))}
@@ -393,4 +402,5 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
       </Flex>
     )}
   </Card>
-);
+  );
+};
