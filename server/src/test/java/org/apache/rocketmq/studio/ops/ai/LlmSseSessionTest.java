@@ -67,6 +67,43 @@ class LlmSseSessionTest {
         verify(task, never()).cancel(true);
     }
 
+    @Test
+    void sendShouldRejectAfterCancellation() {
+        TestEmitter emitter = new TestEmitter();
+        LlmSseSession session = new LlmSseSession(emitter, ignored -> { });
+        session.attach(mock(Future.class));
+        session.cancel();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> session.send(SseEmitter.event().data("chunk")))
+                .isInstanceOf(java.io.IOException.class)
+                .hasMessage("SSE client is no longer connected");
+    }
+
+    @Test
+    void attachShouldRejectASecondTask() {
+        TestEmitter emitter = new TestEmitter();
+        LlmSseSession session = new LlmSseSession(emitter, ignored -> { });
+        Future<?> firstTask = mock(Future.class);
+        Future<?> secondTask = mock(Future.class);
+        session.attach(firstTask);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> session.attach(secondTask))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("An SSE session can own only one task");
+        verify(secondTask).cancel(true);
+        verify(firstTask, never()).cancel(true);
+    }
+
+    @Test
+    void beginTerminalShouldBeIdempotent() {
+        TestEmitter emitter = new TestEmitter();
+        LlmSseSession session = new LlmSseSession(emitter, ignored -> { });
+
+        assertThat(session.beginTerminal()).isTrue();
+        assertThat(session.beginTerminal()).isFalse();
+    }
+
     private void assertLifecycleCallbackCancels(Consumer<TestEmitter> callback) {
         TestEmitter emitter = new TestEmitter();
         AtomicInteger terminations = new AtomicInteger();
