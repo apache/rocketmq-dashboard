@@ -102,6 +102,10 @@ public class TencentAclService {
                 if (role == null || !StringUtils.hasText(role.getRoleName())) {
                     continue;
                 }
+                if (!Boolean.TRUE.equals(role.getPermRead())
+                        && !Boolean.TRUE.equals(role.getPermWrite())) {
+                    continue;
+                }
                 if (requestedPrincipal != null
                         && !requestedPrincipal.equals(role.getRoleName())) {
                     continue;
@@ -242,11 +246,13 @@ public class TencentAclService {
     public void deleteRule(String instanceId, String principal) {
         Context context = resolve(instanceId);
         String roleName = requireRoleName(principal, "ACL principal");
-        DeleteRoleRequest request = new DeleteRoleRequest();
+        ModifyRoleRequest request = new ModifyRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
         request.setRole(roleName);
+        request.setPermRead(false);
+        request.setPermWrite(false);
         clientFactory.call(context.credentialId(), context.regionId(),
-                client -> client.DeleteRole(request));
+                client -> client.ModifyRole(request));
     }
 
     private static String requireRulePrincipal(AclRuleVO rule) {

@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.tencent;
 
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import com.tencentcloudapi.trocket.v20230308.models.DeleteRoleRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeRoleListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeRoleListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyRoleRequest;
@@ -43,6 +44,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -142,6 +144,20 @@ class TencentAclServiceTest {
     }
 
     @Test
+    void listRulesShouldSkipRolesWithoutReadOrWritePermissionTest() throws Exception {
+        RoleItem permissionless = role("disabled-role");
+        permissionless.setPermRead(false);
+        RoleItem readable = role("reader-role");
+        DescribeRoleListResponse response = new DescribeRoleListResponse();
+        response.setData(new RoleItem[]{permissionless, readable});
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThat(service.listRules(INSTANCE_ID, null))
+                .extracting(AclRuleVO::getPrincipal)
+                .containsExactly("reader-role");
+    }
+
+    @Test
     void updateUserShouldFindRolePastLegacyTenThousandTencentRoleCapTest() throws Exception {
         when(client.DescribeRoleList(any())).thenAnswer(invocation -> {
             DescribeRoleListRequest request = invocation.getArgument(0);
@@ -237,6 +253,32 @@ class TencentAclServiceTest {
         assertThat(request.getPermRead()).isTrue();
         assertThat(request.getPermWrite()).isTrue();
         assertThat(created.getActions()).containsExactly("PUB", "SUB");
+    }
+
+    @Test
+    void deleteRuleShouldDisablePermissionsWithoutDeletingRoleTest() throws Exception {
+        service.deleteRule(INSTANCE_ID, "  reader-role  ");
+
+        ArgumentCaptor<ModifyRoleRequest> requestCaptor = ArgumentCaptor.forClass(ModifyRoleRequest.class);
+        verify(client).ModifyRole(requestCaptor.capture());
+        ModifyRoleRequest request = requestCaptor.getValue();
+        assertThat(request.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(request.getRole()).isEqualTo("reader-role");
+        assertThat(request.getPermRead()).isFalse();
+        assertThat(request.getPermWrite()).isFalse();
+        verify(client, never()).DeleteRole(any());
+    }
+
+    @Test
+    void deleteUserShouldDeleteRoleTest() throws Exception {
+        service.deleteUser(INSTANCE_ID, "  reader-role  ");
+
+        ArgumentCaptor<DeleteRoleRequest> requestCaptor = ArgumentCaptor.forClass(DeleteRoleRequest.class);
+        verify(client).DeleteRole(requestCaptor.capture());
+        DeleteRoleRequest request = requestCaptor.getValue();
+        assertThat(request.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(request.getRole()).isEqualTo("reader-role");
+        verify(client, never()).ModifyRole(any());
     }
 
     @Test
