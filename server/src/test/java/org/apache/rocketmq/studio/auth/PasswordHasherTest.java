@@ -46,4 +46,55 @@ class PasswordHasherTest {
                 "pbkdf2$210000$" + parts[2] + "$AA==")).isFalse();
     }
 
+    @Test
+    void rejectsMalformedStoredHashFormatsTest() {
+        PasswordHasher hasher = new PasswordHasher();
+        String salt = "AAAAAAAAAAAAAAAAAAAAAAAA";
+        String digest = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+        assertThat(hasher.matches("password", "plain-text")).isFalse();
+        assertThat(hasher.matches("password", "argon2$1$AAAA$AAAA")).isFalse();
+        assertThat(hasher.matches("password", "pbkdf2$210000$AAAA")).isFalse();
+        // A non-numeric iteration count is treated as a mismatch, not a crash.
+        assertThat(hasher.matches("password", "pbkdf2$abc$" + salt + "$" + digest)).isFalse();
+        // An undecodable salt/digest pair is rejected without deriving anything.
+        assertThat(hasher.matches("password", "pbkdf2$210000$" + salt + "$" + digest)).isFalse();
+    }
+
+    @Test
+    void rejectsIterationCountsOutsideTheSafeRangeTest() {
+        PasswordHasher hasher = new PasswordHasher();
+        String salt = "AAAAAAAAAAAAAAAAAAAAAAAA";
+        String digest = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+        assertThat(hasher.matches("password", "pbkdf2$99999$" + salt + "$" + digest)).isFalse();
+        assertThat(hasher.matches("password", "pbkdf2$1000001$" + salt + "$" + digest)).isFalse();
+    }
+
+    @Test
+    void rejectsNullArgumentsTest() {
+        PasswordHasher hasher = new PasswordHasher();
+
+        assertThat(hasher.matches(null, "pbkdf2$210000$AAAA$AAAA")).isFalse();
+        assertThat(hasher.matches("password", null)).isFalse();
+    }
+
+    @Test
+    void rejectsTamperedSaltOrDigestTest() {
+        PasswordHasher hasher = new PasswordHasher();
+        String validHash = hasher.hash("a-long-enough-password");
+        String[] parts = validHash.split("\\$", -1);
+
+        char[] saltChars = parts[2].toCharArray();
+        saltChars[5] = saltChars[5] == 'A' ? 'B' : 'A';
+        String tamperedSalt = new String(saltChars);
+        assertThat(hasher.matches("a-long-enough-password",
+                "pbkdf2$" + parts[1] + "$" + tamperedSalt + "$" + parts[3])).isFalse();
+
+        char[] digestChars = parts[3].toCharArray();
+        digestChars[10] = digestChars[10] == 'A' ? 'B' : 'A';
+        String tamperedDigest = new String(digestChars);
+        assertThat(hasher.matches("a-long-enough-password",
+                "pbkdf2$" + parts[1] + "$" + parts[2] + "$" + tamperedDigest)).isFalse();
+    }
 }
