@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -124,5 +125,21 @@ class AiControllerTest {
                 .andExpect(jsonPath("$.data").isArray());
 
         verify(aiService).executeTool("rmq.cluster.list", Collections.emptyMap());
+    }
+
+    @Test
+    void executeDelegatesTheCommandAndReturnsTheResult() throws Exception {
+        when(aiService.execute(any(AiCommandDTO.class)))
+                .thenReturn(AiExecuteResultVO.builder().success(true).result("topic list generated").build());
+
+        mockMvc.perform(post("/api/ai/execute")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"prompt\":\"list topics\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.success").value(true))
+                .andExpect(jsonPath("$.data.result").value("topic list generated"));
+
+        verify(aiService).execute(any(AiCommandDTO.class));
     }
 }
