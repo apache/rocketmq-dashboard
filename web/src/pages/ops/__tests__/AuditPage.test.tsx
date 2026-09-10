@@ -186,6 +186,50 @@ describe('Audit page', () => {
     expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
   });
 
+  it('opens a resource timeline from a non-empty audit target', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    await user.click(await screen.findByRole('button', { name: '查看 topic-a 操作时间线' }));
+
+    expect(await screen.findByText('资源操作时间线')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenCalledWith({
+        page: 1,
+        pageSize: 20,
+        resourceType: 'TOPIC',
+        target: 'topic-a',
+        clusterId: 'prod-cn',
+      }),
+    );
+  });
+
+  it('does not offer a timeline action for an empty audit target', async () => {
+    vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
+      items: [
+        {
+          id: 3,
+          timestamp: '2026-08-01 12:00:00',
+          operator: 'ops-user',
+          operationType: 'UPDATE_SETTINGS',
+          resourceType: 'SETTINGS',
+          target: '',
+          clusterId: null,
+          detail: 'updated settings',
+          result: 'SUCCESS',
+          errorMessage: '',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AuditPage />);
+
+    await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /操作时间线/ })).not.toBeInTheDocument();
+  });
+
   it('loads a filtered server-side summary dashboard', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);

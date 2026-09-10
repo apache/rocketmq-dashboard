@@ -3,7 +3,12 @@ import {
   fetchAuditFilterOptions,
   fetchAuditSummary,
 } from '../api/audit';
-import type { AuditFilter, AuditFilterOptions, AuditSummary } from '../api/audit';
+import type {
+  AuditFilter,
+  AuditFilterOptions,
+  AuditSummary,
+  AuditSummaryFilter,
+} from '../api/audit';
 import { isMockMode } from './dataMode';
 import * as opsApi from '../api/ops';
 import type {
@@ -86,7 +91,11 @@ function filterAuditRecords(params: AuditFilter): AuditRecord[] {
     }
     if (params.operationType && record.operationType !== params.operationType) return false;
     if (params.resourceType && record.resourceType !== params.resourceType) return false;
-    if (params.clusterId && record.clusterId !== params.clusterId) return false;
+    if (params.target && record.target !== params.target) return false;
+    if (!params.clusterIdMissing && params.clusterId && record.clusterId !== params.clusterId)
+      return false;
+    if (params.clusterIdMissing && record.clusterId != null && record.clusterId !== '')
+      return false;
     if (params.startDate && record.timestamp < params.startDate) return false;
     if (params.endDate && record.timestamp > `${params.endDate} 23:59:59`) return false;
     return !params.result || record.result.toUpperCase() === params.result.toUpperCase();
@@ -497,7 +506,7 @@ export async function exportAuditLogs(params: AuditFilter = {}): Promise<string>
   return formatAuditCsv(filterAuditRecords(params));
 }
 
-export async function getAuditSummary(params: AuditFilter = {}): Promise<AuditSummary> {
+export async function getAuditSummary(params: AuditSummaryFilter = {}): Promise<AuditSummary> {
   if (!isMockMode()) return fetchAuditSummary(params);
   const records = filterAuditRecords(params);
   const countBy = (field: 'operationType' | 'resourceType') =>
