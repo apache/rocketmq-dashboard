@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.Collections;
@@ -101,10 +102,39 @@ public final class BrokerTopologyGuards {
             }
             for (String brokerAddr : brokerData.getBrokerAddrs().values()) {
                 if (StringUtils.hasText(brokerAddr)) {
-                    endpoints.add(brokerAddr.trim());
+                    String trimmed = brokerAddr.trim();
+                    endpoints.add(trimmed);
+                    String resolved = resolveBrokerAddrToIp(trimmed);
+                    if (resolved != null && !resolved.equals(trimmed)) {
+                        endpoints.add(resolved);
+                    }
                 }
             }
         }
         return endpoints;
+    }
+
+    /**
+     * Resolve a {@code host:port} broker address to its {@code ip:port} form, so a broker
+     * registered by hostname still matches the IP embedded in an offset msgId. Returns null
+     * when the address cannot be parsed or resolved.
+     */
+    private static String resolveBrokerAddrToIp(String brokerAddr) {
+        int sep = brokerAddr.lastIndexOf(':');
+        if (sep <= 0 || sep == brokerAddr.length() - 1) {
+            return null;
+        }
+        String host = brokerAddr.substring(0, sep);
+        String port = brokerAddr.substring(sep + 1);
+        // Strip brackets from an IPv6 literal such as "[::1]:10911".
+        if (host.startsWith("[") && host.endsWith("]")) {
+            host = host.substring(1, host.length() - 1);
+        }
+        try {
+            String ip = InetAddress.getByName(host).getHostAddress();
+            return ip + ":" + port;
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
