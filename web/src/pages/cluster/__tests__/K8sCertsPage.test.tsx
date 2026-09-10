@@ -192,4 +192,99 @@ describe('K8sCertsPage', () => {
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
   });
+
+  it('exports the filtered certificate metadata as CSV', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:k8s-certs';
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      renderPage();
+
+      await screen.findByText('rocketmq-prod-tls');
+      await user.type(screen.getByPlaceholderText('搜索 k8s ID 或集群'), 'staging{enter}');
+      expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument();
+      expect(screen.getByText('rocketmq-staging-tls')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      await expect(blob.text()).resolves.toBe(
+        [
+          '"ID","K8s ID","Cluster","Type","Issuer","Not Before","Not After","Days Remaining","Status"',
+          '"2","rocketmq-staging-tls","staging-cluster","TLS","kubernetes-ca","2026-01-01T00:00:00Z","2027-01-01T00:00:00Z","365","valid"',
+        ].join('\n'),
+      );
+      expect(
+        document.querySelector('a[download^="rocketmq-k8s-certs-"]'),
+      ).not.toBeInTheDocument();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:k8s-certs');
+    } finally {
+      clickSpy.mockRestore();
+    }
+  });
+
+  it('never exports PEM private key material', async () => {
+    vi.mocked(listK8sCerts).mockResolvedValueOnce([
+      {
+        ...certs[0],
+        certPem: '-----BEGIN CERTIFICATE-----cert-material',
+        keyPem: '-----BEGIN PRIVATE KEY-----secret-key-material',
+      },
+      certs[2],
+    ]);
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:k8s-certs-secret-check';
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      renderPage();
+
+      await screen.findByText('rocketmq-prod-tls');
+      await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      const csv = await blob.text();
+      expect(csv).toContain('rocketmq-prod-tls');
+      expect(csv).toContain('rocketmq-staging-tls');
+      expect(csv).not.toContain('BEGIN');
+      expect(csv).not.toContain('PRIVATE KEY');
+      expect(csv).not.toContain('secret-key-material');
+      expect(csv).not.toContain('cert-material');
+    } finally {
+      clickSpy.mockRestore();
+    }
+  });
+
+  it('disables the CSV export button when no certificate matches', async () => {
+    vi.mocked(listK8sCerts).mockResolvedValueOnce([]);
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '导出 CSV' })).toBeDisabled(),
+    );
+  });
 });

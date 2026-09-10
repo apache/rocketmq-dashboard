@@ -30,6 +30,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.dlq': { zh: '死信队列', en: 'Dead Letter Queue' },
   'nav.clusterOps': { zh: '集群管理', en: 'Cluster Management' },
   'nav.certs': { zh: 'K8s 证书配置', en: 'K8s Certificate Config' },
+  'certs.exportCsv': { zh: '导出 CSV', en: 'Export CSV' },
   'nav.rocketmqCluster': { zh: 'RocketMQ 集群', en: 'RocketMQ Cluster' },
   'nav.clients': { zh: '客户端连接', en: 'Client Connections' },
   'nav.alertEvents': { zh: '告警事件', en: 'Alert Events' },

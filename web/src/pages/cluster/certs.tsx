@@ -31,14 +31,16 @@ import {
   Popconfirm,
   message,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { formatDateTime } from '../../utils/format';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { tableScrollX } from '../../utils/table';
+import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
 
@@ -53,7 +55,21 @@ interface CreateCertFormValues {
   keyPem?: string;
 }
 
+// Metadata only: the export never includes certPem/keyPem private material.
+const CERT_EXPORT_COLUMNS: CsvColumn<K8sCertInfo>[] = [
+  { header: 'ID', value: (cert) => cert.id },
+  { header: 'K8s ID', value: (cert) => cert.k8sId },
+  { header: 'Cluster', value: (cert) => cert.cluster },
+  { header: 'Type', value: (cert) => cert.type ?? '' },
+  { header: 'Issuer', value: (cert) => cert.issuer ?? '' },
+  { header: 'Not Before', value: (cert) => cert.notBefore ?? '' },
+  { header: 'Not After', value: (cert) => cert.notAfter ?? '' },
+  { header: 'Days Remaining', value: (cert) => cert.daysRemaining },
+  { header: 'Status', value: (cert) => cert.status ?? '' },
+];
+
 const K8sCertsPage = () => {
+  const { t } = useLang();
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [certSearch, setCertSearch] = useState('');
@@ -129,6 +145,11 @@ const K8sCertsPage = () => {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleExport = () => {
+    const filename = `rocketmq-k8s-certs-${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadCsv(filename, buildCsv(CERT_EXPORT_COLUMNS, filteredCerts));
   };
 
   const certColumns: ColumnsType<K8sCertInfo> = [
@@ -277,9 +298,19 @@ const K8sCertsPage = () => {
             ]}
           />
         </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-          新增证书
-        </Button>
+        <Space>
+          <Button
+            icon={<DownloadOutlined />}
+            aria-label={t('certs.exportCsv')}
+            disabled={filteredCerts.length === 0}
+            onClick={handleExport}
+          >
+            {t('certs.exportCsv')}
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+            新增证书
+          </Button>
+        </Space>
       </Flex>
       <Card styles={{ body: { padding: 0 } }}>
         <Table
