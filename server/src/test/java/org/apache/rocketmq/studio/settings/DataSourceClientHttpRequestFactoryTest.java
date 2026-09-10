@@ -41,6 +41,24 @@ class DataSourceClientHttpRequestFactoryTest {
         connection.disconnect();
     }
 
+    @Test
+    void prepareConnectionShouldDisableRedirectsForEveryHttpMethod() throws Exception {
+        TestableDataSourceClientHttpRequestFactory requestFactory =
+                new TestableDataSourceClientHttpRequestFactory();
+
+        for (String method : new String[]{"GET", "POST", "PUT", "DELETE"}) {
+            HttpURLConnection connection = (HttpURLConnection) URI.create("http://example.com")
+                    .toURL().openConnection();
+
+            requestFactory.prepare(connection, method);
+
+            assertThat(connection.getInstanceFollowRedirects())
+                    .as("redirects must be disabled for %s", method)
+                    .isFalse();
+            connection.disconnect();
+        }
+    }
+
     private static class TestableDataSourceClientHttpRequestFactory
             extends DataSourceClientHttpRequestFactory {
 
