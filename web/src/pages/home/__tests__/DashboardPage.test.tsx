@@ -177,27 +177,34 @@ describe('DashboardPage', () => {
     expect(within(row as HTMLElement).getAllByText('N/A').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('merges traffic insight metrics into the existing cluster health table', async () => {
+  it('exposes traffic insight metrics in the expanded cluster health row', async () => {
     vi.mocked(dashboardService.getDashboard).mockResolvedValue(trafficDashboard());
+    const user = userEvent.setup();
     renderWithProviders(<DashboardPage />);
 
     await screen.findAllByText('traffic-a');
     const clusterHealthCard = screen.getByText('集群健康概览').closest('.ant-card');
     expect(clusterHealthCard).not.toBeNull();
     const clusterHealth = within(clusterHealthCard as HTMLElement);
+
+    // The traffic breakdown lives behind the row expander so the main table stays at eight
+    // identity/topology columns instead of scrolling horizontally.
+    expect(clusterHealth.queryByText('总 TPS')).toBeNull();
+    const row = clusterHealth.getByText('traffic-a').closest('tr');
+    expect(row).not.toBeNull();
+    await user.click(
+      within(row as HTMLElement).getByRole('button', { name: /展开行|Expand row/u }),
+    );
+
     expect(clusterHealth.getAllByText('总 TPS')).not.toHaveLength(0);
     expect(clusterHealth.getAllByText('占比')).not.toHaveLength(0);
     expect(clusterHealth.getAllByText('单 Broker TPS')).not.toHaveLength(0);
     expect(clusterHealth.getAllByText('出入比')).not.toHaveLength(0);
-
-    const row = clusterHealth.getByText('traffic-a').closest('tr');
-    expect(row).not.toBeNull();
-    const clusterRow = within(row as HTMLElement);
-    expect(clusterRow.getByText('150/s')).toBeInTheDocument();
-    expect(clusterRow.getByText('75%')).toBeInTheDocument();
-    expect(clusterRow.getByText('75/s')).toBeInTheDocument();
-    expect(clusterRow.getByText('0.5:1')).toBeInTheDocument();
-    expect(clusterRow.getByText(/上升/u)).toBeInTheDocument();
+    expect(clusterHealth.getByText('150/s')).toBeInTheDocument();
+    expect(clusterHealth.getByText('75%')).toBeInTheDocument();
+    expect(clusterHealth.getByText('75/s')).toBeInTheDocument();
+    expect(clusterHealth.getByText('0.5:1')).toBeInTheDocument();
+    expect(clusterHealth.getByText(/上升/u)).toBeInTheDocument();
   });
 
   it('does not show dashboard data from the previous instance while loading a new selection', async () => {
@@ -209,7 +216,7 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await screen.findAllByText('initial-cluster');
-    const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
+    const selector = screen.getByRole('combobox', { name: '实例筛选' });
     await user.click(selector);
     await user.click(
       await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
@@ -232,7 +239,7 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await screen.findAllByText('initial-cluster');
-    const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
+    const selector = screen.getByRole('combobox', { name: '实例筛选' });
     await user.click(selector);
     await user.click(
       await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
@@ -263,7 +270,7 @@ describe('DashboardPage', () => {
     );
 
     await screen.findAllByText('instance-a-cluster');
-    const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
+    const selector = screen.getByRole('combobox', { name: '实例筛选' });
     await user.click(selector);
     await user.click(
       await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
@@ -305,7 +312,7 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />);
 
     await screen.findAllByText('apache-cluster');
-    await user.click(screen.getByRole('combobox', { name: 'Dashboard instance' }));
+    await user.click(screen.getByRole('combobox', { name: '实例筛选' }));
 
     expect(
       await screen.findByText('apache-instance', {

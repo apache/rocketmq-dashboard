@@ -346,30 +346,30 @@ export const GeneralSettingsTab = () => {
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 0 }}>
-            <Space>
+            <Flex align="center" justify="space-between" gap={8} wrap>
+              <Space>
+                <Button
+                  onClick={() => void sendTest('dingtalk')}
+                  loading={testingChannel === 'dingtalk'}
+                >
+                  {t('settings.testDingtalk')}
+                </Button>
+                <Button onClick={() => void sendTest('email')} loading={testingChannel === 'email'}>
+                  {t('settings.testEmail')}
+                </Button>
+                <Button onClick={() => void sendTest('sms')} loading={testingChannel === 'sms'}>
+                  {t('settings.testSmsWebhook')}
+                </Button>
+              </Space>
               <Button
-                onClick={() => void sendTest('dingtalk')}
-                loading={testingChannel === 'dingtalk'}
+                type="primary"
+                htmlType="submit"
+                loading={savingNotification}
+                disabled={loading}
               >
-                {t('settings.testDingtalk')}
+                {t('settings.saveSettings')}
               </Button>
-              <Button onClick={() => void sendTest('email')} loading={testingChannel === 'email'}>
-                {t('settings.testEmail')}
-              </Button>
-              <Button onClick={() => void sendTest('sms')} loading={testingChannel === 'sms'}>
-                {t('settings.testSmsWebhook')}
-              </Button>
-            </Space>
-          </Form.Item>
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={savingNotification}
-              disabled={loading}
-            >
-              {t('settings.saveSettings')}
-            </Button>
+            </Flex>
           </Form.Item>
         </Form>
       </Card>

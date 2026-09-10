@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { Alert, Card, Col, Empty, Flex, Row, Statistic, Tag, Typography } from 'antd';
+import { Alert, Card, Col, Empty, Row, Statistic, Tag, Typography } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import {
   formatTrafficPercent,
@@ -67,20 +67,52 @@ const DashboardTrafficInsights = ({ insights }: Props) => {
   const { t } = useLang();
   const visibleIssues = insights.issues.slice(0, 4);
 
-  const renderIssue = (issue: DashboardTrafficIssue) => (
-    <Tag key={`${issue.code}-${issue.clusterId ?? 'global'}`} color={levelColor[issue.level]}>
-      {t(issueTextKey(issue), {
-        cluster: issue.clusterName ?? t('dashboardTraffic.allClusters'),
-        value:
-          issue.value == null
-            ? '-'
-            : formatTrafficPercent(
-                issue.code === 'RECENT_TRAFFIC_DROP' ? Math.abs(issue.value) : issue.value,
-              ),
-        threshold: issue.threshold == null ? '-' : formatTrafficPercent(issue.threshold),
-      })}
-    </Tag>
-  );
+  const issueText = (issue: DashboardTrafficIssue) =>
+    t(issueTextKey(issue), {
+      cluster: issue.clusterName ?? t('dashboardTraffic.allClusters'),
+      value:
+        issue.value == null
+          ? '-'
+          : formatTrafficPercent(
+              issue.code === 'RECENT_TRAFFIC_DROP' ? Math.abs(issue.value) : issue.value,
+            ),
+      threshold: issue.threshold == null ? '-' : formatTrafficPercent(issue.threshold),
+    });
+
+  // All four cards render the same structure, caption slot included. Only the top-share card has
+  // something to put there, and letting the others omit it made them shorter than their
+  // neighbours — `align="stretch"` cannot fix that because the cards wrap onto two flex lines.
+  const summaryCards = [
+    {
+      key: 'activeClusters',
+      title: t('dashboardTraffic.activeClusters'),
+      value: `${insights.activeClusterCount}/${insights.totalClusterCount}`,
+      caption: '',
+    },
+    {
+      key: 'topClusterShare',
+      title: t('dashboardTraffic.topClusterShare'),
+      value: insights.topClusterSharePercent,
+      suffix: '%',
+      precision: 1,
+      caption: insights.topCluster?.name ?? '-',
+    },
+    {
+      key: 'balanceScore',
+      title: t('dashboardTraffic.balanceScore'),
+      value: insights.balanceScore,
+      suffix: '/100',
+      caption: '',
+    },
+    {
+      key: 'unhealthyTraffic',
+      title: t('dashboardTraffic.unhealthyTraffic'),
+      value: formatTrafficTps(insights.unhealthyTrafficTps),
+      suffix: '/s',
+      valueStyle: { color: insights.unhealthyTrafficTps > 0 ? '#cf1322' : undefined },
+      caption: '',
+    },
+  ];
 
   return (
     <Card
@@ -93,48 +125,28 @@ const DashboardTrafficInsights = ({ insights }: Props) => {
       style={{ marginBottom: 24 }}
       styles={{ body: { padding: 20 } }}
     >
-      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={12} lg={6}>
-          <Card size="small">
-            <Statistic
-              title={t('dashboardTraffic.activeClusters')}
-              value={`${insights.activeClusterCount}/${insights.totalClusterCount}`}
-            />
-          </Card>
-        </Col>
-        <Col xs={12} lg={6}>
-          <Card size="small">
-            <Statistic
-              title={t('dashboardTraffic.topClusterShare')}
-              value={insights.topClusterSharePercent}
-              suffix="%"
-              precision={1}
-            />
-            <Text type="secondary">{insights.topCluster?.name ?? '-'}</Text>
-          </Card>
-        </Col>
-        <Col xs={12} lg={6}>
-          <Card size="small">
-            <Statistic
-              title={t('dashboardTraffic.balanceScore')}
-              value={insights.balanceScore}
-              suffix="/100"
-            />
-          </Card>
-        </Col>
-        <Col xs={12} lg={6}>
-          <Card size="small">
-            <Statistic
-              title={t('dashboardTraffic.unhealthyTraffic')}
-              value={formatTrafficTps(insights.unhealthyTrafficTps)}
-              suffix="/s"
-              valueStyle={{ color: insights.unhealthyTrafficTps > 0 ? '#cf1322' : undefined }}
-            />
-          </Card>
-        </Col>
+      <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 16 }}>
+        {summaryCards.map((card) => (
+          <Col xs={12} lg={6} key={card.key}>
+            <Card size="small" style={{ height: '100%' }}>
+              <Statistic
+                title={card.title}
+                value={card.value}
+                suffix={card.suffix}
+                precision={card.precision}
+                valueStyle={card.valueStyle}
+              />
+              <Text type="secondary" ellipsis={{ tooltip: card.caption || undefined }}>
+                {card.caption || '\u00a0'}
+              </Text>
+            </Card>
+          </Col>
+        ))}
       </Row>
 
       {visibleIssues.length > 0 && (
+        /* One compact line rather than a `description` block of one Tag per finding, which took
+           several times the vertical space for the same text. */
         <Alert
           showIcon
           type={
@@ -144,12 +156,7 @@ const DashboardTrafficInsights = ({ insights }: Props) => {
                 ? 'warning'
                 : 'info'
           }
-          message={t('dashboardTraffic.findings')}
-          description={
-            <Flex wrap="wrap" gap={8}>
-              {visibleIssues.map(renderIssue)}
-            </Flex>
-          }
+          message={`${t('dashboardTraffic.findings')}：${visibleIssues.map(issueText).join('、')}`}
           style={{ marginBottom: 16 }}
         />
       )}

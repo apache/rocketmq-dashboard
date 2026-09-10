@@ -150,6 +150,7 @@ describe('DashboardTrafficInsights', () => {
 
     expect(screen.getByText('流量洞察')).toBeInTheDocument();
     expect(screen.getByText('暂无集群流量数据')).toBeInTheDocument();
-    expect(screen.getByText('未检测到活跃流量')).toBeInTheDocument();
+    // Findings render as one joined line, so match on a substring rather than the exact node text.
+    expect(screen.getByText(/未检测到活跃流量/u)).toBeInTheDocument();
   });
 });
