@@ -35,4 +35,38 @@ class CsvUtilTest {
         assertThat(CsvUtil.toCell("=SUM(A1)")).isEqualTo("\"'=SUM(A1)\"");
         assertThat(CsvUtil.toCell("+cmd")).isEqualTo("\"'+cmd\"");
     }
+
+    @Test
+    void toCellShouldNeutralizeEveryFormulaTriggerCharacterTest() {
+        assertThat(CsvUtil.toCell("-1")).isEqualTo("\"'-1\"");
+        assertThat(CsvUtil.toCell("@cmd")).isEqualTo("\"'@cmd\"");
+        assertThat(CsvUtil.toCell("\tindented")).isEqualTo("\"'\tindented\"");
+        assertThat(CsvUtil.toCell("\rline")).isEqualTo("\"'\rline\"");
+        assertThat(CsvUtil.toCell("\nline")).isEqualTo("\"'\nline\"");
+    }
+
+    @Test
+    void toCellShouldQuoteEmptyAndPlainValuesAsIsTest() {
+        assertThat(CsvUtil.toCell("")).isEqualTo("\"\"");
+        assertThat(CsvUtil.toCell("plain")).isEqualTo("\"plain\"");
+        assertThat(CsvUtil.toCell(" spaced ")).isEqualTo("\" spaced \"");
+    }
+
+    @Test
+    void appendRowWithNoValuesEmitsOnlyCrlfTest() {
+        StringBuilder csv = new StringBuilder();
+
+        CsvUtil.appendRow(csv);
+
+        assertThat(csv.toString()).isEqualTo("\r\n");
+    }
+
+    @Test
+    void appendRowShouldBuildMultipleRowsTest() {
+        StringBuilder csv = new StringBuilder();
+        CsvUtil.appendRow(csv, "a", "b");
+        CsvUtil.appendRow(csv, "c");
+
+        assertThat(csv.toString()).isEqualTo("\"a\",\"b\"\r\n\"c\"\r\n");
+    }
 }
