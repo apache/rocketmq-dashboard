@@ -226,4 +226,43 @@ class SystemAlertControllerTest {
 
         verify(alertService).clearAcknowledged();
     }
+    @Test
+    void listRelatedAlertsShouldForwardAlertId() throws Exception {
+        when(alertService.findRelatedAlerts(9L)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/system-alerts/9/related"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        verify(alertService).findRelatedAlerts(9L);
+    }
+
+    @Test
+    void retryFailedDeliveryShouldDelegateDeliveryId() throws Exception {
+        mockMvc.perform(post("/api/system-alerts/deliveries/5/retry"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(notificationOutboxService).retryFailedDelivery(5L);
+    }
+
+    @Test
+    void acknowledgeShouldReturnAcknowledgedAlert() throws Exception {
+        SystemAlertVO acknowledged = SystemAlertVO.builder()
+                .id(21L)
+                .title("disk-high")
+                .build();
+        when(alertService.acknowledgeAlert(21L)).thenReturn(acknowledged);
+
+        mockMvc.perform(post("/api/system-alerts/acknowledge")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":21}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(21));
+
+        verify(alertService).acknowledgeAlert(21L);
+    }
+
 }
