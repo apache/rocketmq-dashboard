@@ -17,9 +17,14 @@
 package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.GetTraceResponseBody;
+import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
+import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
+import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
+import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -43,5 +48,53 @@ class AliyunConvertersTraceElementsTest {
                 .build();
 
         assertThat(AliyunConverters.toTraceRecord(data).getNodes()).isEmpty();
+    }
+
+    @Test
+    void toTraceRecordShouldBuildConsumerStatusFromRecordLessGroups() {
+        GetTraceResponseBody.ConsumerInfos succeeded = consumerInfo("group-a", "SUCCESS");
+        GetTraceResponseBody.ConsumerInfos failed = consumerInfo("group-b", "FAILED");
+        GetTraceResponseBody.ConsumerInfos unknown = consumerInfo("group-c", "UNKNOWN");
+        GetTraceResponseBody.Data data = GetTraceResponseBody.Data.builder()
+                .producerInfo(GetTraceResponseBody.ProducerInfo.builder()
+                        .records(Arrays.asList()).build())
+                .brokerInfo(GetTraceResponseBody.BrokerInfo.builder()
+                        .operations(Arrays.asList()).build())
+                .consumerInfos(Arrays.asList(succeeded, failed, unknown))
+                .build();
+
+        TraceRecordVO trace = AliyunConverters.toTraceRecord(data);
+
+        assertThat(trace.getNodes()).hasSize(3);
+        assertThat(trace.getNodes())
+                .extracting(TraceNodeVO::getTitle)
+                .containsExactly("Consumer group-a", "Consumer group-b", "Consumer group-c");
+        assertThat(trace.getConsumerStatus())
+                .extracting(ConsumerStatusVO::getDeliveryStatus)
+                .containsExactly(DeliveryStatus.success, DeliveryStatus.failed, DeliveryStatus.pending);
+    }
+
+    @Test
+    void toTraceRecordShouldTolerateNullConsumerInfoLists() {
+        GetTraceResponseBody.Data data = GetTraceResponseBody.Data.builder()
+                .producerInfo(GetTraceResponseBody.ProducerInfo.builder()
+                        .records(Arrays.asList()).build())
+                .brokerInfo(GetTraceResponseBody.BrokerInfo.builder()
+                        .operations(Arrays.asList()).build())
+                .consumerInfos(null)
+                .build();
+
+        TraceRecordVO trace = AliyunConverters.toTraceRecord(data);
+
+        assertThat(trace.getNodes()).isEmpty();
+        assertThat(trace.getConsumerStatus()).isEmpty();
+    }
+
+    private static GetTraceResponseBody.ConsumerInfos consumerInfo(String group, String status) {
+        return GetTraceResponseBody.ConsumerInfos.builder()
+                .consumerGroupId(group)
+                .consumeStatus(status)
+                .records(List.of())
+                .build();
     }
 }
