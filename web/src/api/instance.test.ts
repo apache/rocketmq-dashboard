@@ -21,6 +21,7 @@ import client from './client';
 import {
   createInstance,
   deleteInstance,
+  deleteInstancesBatch,
   getInstanceCapabilities,
   importCloudInstances,
   listInstances,
@@ -134,5 +135,32 @@ describe('instance API', () => {
     expect(supportsApacheRuntime({})).toBe(true);
     expect(supportsApacheRuntime({ vendor: 'ALIYUN' })).toBe(false);
     expect(supportsApacheRuntime({ vendor: 'TENCENT' })).toBe(false);
+  });
+
+  it('creates and updates an instance through their endpoints', async () => {
+    mock.onPost('/instances/create').reply((config) => {
+      expect(JSON.parse(config.data)).toMatchObject({ name: 'orders' });
+      return [200, { code: 200, data: instance }];
+    });
+    mock.onPost('/instances/update').reply((config) => {
+      expect(JSON.parse(config.data)).toMatchObject({ name: 'orders' });
+      return [200, { code: 200, data: instance }];
+    });
+
+    await expect(
+      createInstance({ name: 'orders', type: 'PROXY_CLUSTER', endpoint: 'proxy:8080' }),
+    ).resolves.toEqual(instance);
+    await expect(
+      updateInstance({ id: 1, name: 'orders', type: 'PROXY_CLUSTER', endpoint: 'proxy:8080' }),
+    ).resolves.toEqual(instance);
+  });
+
+  it('deletes a batch of instances and reports the result', async () => {
+    mock.onPost('/instances/delete-batch').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ ids: ['a', 'b'] });
+      return [200, { code: 200, data: { deleted: 2, failed: [] } }];
+    });
+
+    await expect(deleteInstancesBatch(['a', 'b'])).resolves.toEqual({ deleted: 2, failed: [] });
   });
 });
