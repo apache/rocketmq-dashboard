@@ -46,6 +46,7 @@ import {
   Plus,
   Trash,
   MagnifyingGlass,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -59,6 +60,7 @@ import {
   type ProxyNode,
 } from '../../api/proxy';
 import { readLocalStorage, writeLocalStorage } from '../../utils/browserStorage';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -66,6 +68,24 @@ const persistProxyAddress = (address?: string) => {
   if (!address) return;
   writeLocalStorage('proxyAddr', address);
 };
+
+const PROXY_NODE_EXPORT_STATUS_LABEL: Record<ProxyNode['status'], string> = {
+  healthy: 'Healthy',
+  unhealthy: 'Unhealthy',
+  warning: 'Warning',
+  unknown: 'Unknown',
+};
+
+const PROXY_NODE_EXPORT_COLUMNS: CsvColumn<ProxyNode>[] = [
+  { header: 'Address', value: (node) => node.address },
+  { header: 'Status', value: (node) => PROXY_NODE_EXPORT_STATUS_LABEL[node.status] },
+  { header: 'Version', value: (node) => node.version ?? '' },
+  { header: 'Connections', value: (node) => node.connections ?? '' },
+  { header: 'TPS', value: (node) => node.tps ?? '' },
+  { header: 'Memory (%)', value: (node) => node.memory ?? '' },
+  { header: 'CPU (%)', value: (node) => node.cpu ?? '' },
+  { header: 'Uptime', value: (node) => node.uptime ?? '' },
+];
 
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
@@ -342,6 +362,11 @@ const ProxyPage: React.FC = () => {
   const compareNullable = (left: number | null, right: number | null) =>
     (left ?? Number.NEGATIVE_INFINITY) - (right ?? Number.NEGATIVE_INFINITY);
 
+  const handleExport = () => {
+    const filename = `rocketmq-proxy-nodes-${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadCsv(filename, buildCsv(PROXY_NODE_EXPORT_COLUMNS, filteredProxyNodes));
+  };
+
   // ─── Columns ─────────────────────────────────────────────────
 
   const columns: ColumnsType<ProxyNode> = [
@@ -556,15 +581,24 @@ const ProxyPage: React.FC = () => {
           variant="borderless"
           style={{ borderRadius: 8, marginBottom: 24 }}
           extra={
-            <Input
-              allowClear
-              aria-label={t('proxy.nodeFilter')}
-              placeholder={t('proxy.nodeFilterPlaceholder')}
-              prefix={<MagnifyingGlass size={14} />}
-              value={nodeFilter}
-              onChange={(event) => setNodeFilter(event.target.value)}
-              style={{ width: 260 }}
-            />
+            <Space>
+              <Input
+                allowClear
+                aria-label={t('proxy.nodeFilter')}
+                placeholder={t('proxy.nodeFilterPlaceholder')}
+                prefix={<MagnifyingGlass size={14} />}
+                value={nodeFilter}
+                onChange={(event) => setNodeFilter(event.target.value)}
+                style={{ width: 260 }}
+              />
+              <Button
+                icon={<DownloadSimple size={14} />}
+                disabled={filteredProxyNodes.length === 0}
+                onClick={handleExport}
+              >
+                {t('common.export')}
+              </Button>
+            </Space>
           }
         >
           <Table
