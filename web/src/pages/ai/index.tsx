@@ -219,6 +219,7 @@ const UserBubble = ({ text, createdAt }: Pick<Message, 'text' | 'createdAt'>) =>
 };
 
 export const AiMessage = ({ msg }: { msg: Message }) => {
+  const { t } = useLang();
   const { token } = theme.useToken();
 
   return (
@@ -399,7 +400,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
               }}
             />
             <Text type="secondary" style={{ fontSize: 14, marginLeft: 8 }}>
-              正在思考…
+              {t('ai.thinking')}
             </Text>
           </Flex>
         )}
@@ -1225,19 +1226,19 @@ const AiPage = () => {
       >
         <Flex vertical gap={16} style={{ paddingTop: 8 }}>
           <Select
-            aria-label="选择集群"
+            aria-label={t('ai.selectCluster')}
             loading={clustersLoading}
             value={selectedClusterId || GLOBAL_TOOL_SCOPE}
             onChange={(scope) => void handleClusterChange(scope)}
-            options={[{ value: GLOBAL_TOOL_SCOPE, label: '全局工具' }, ...clusterOptions]}
+            options={[{ value: GLOBAL_TOOL_SCOPE, label: t('ai.globalTools') }, ...clusterOptions]}
           />
 
           <Select
-            aria-label="选择工具"
+            aria-label={t('ai.selectTool')}
             showSearch
             loading={toolsLoading}
             value={selectedToolName || undefined}
-            placeholder="选择工具"
+            placeholder={t('ai.selectTool')}
             optionFilterProp="label"
             onChange={(name) => selectTool(name)}
             options={tools.map((tool) => ({
@@ -1263,7 +1264,7 @@ const AiPage = () => {
 
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>
-              输入参数 (JSON)
+              {t('ai.inputParams')}
             </Text>
             <Input.TextArea
               aria-label="工具参数 JSON"
@@ -1277,7 +1278,7 @@ const AiPage = () => {
           {toolResult !== undefined && (
             <div>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                执行结果
+                {t('ai.runResult')}
               </Text>
               <pre
                 data-testid="tool-result"
