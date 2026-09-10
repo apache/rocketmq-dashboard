@@ -476,6 +476,58 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void exportsDeliveryRowsWithNormalizedFiltersWithoutMessageContentTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        NotificationDeliveryPageVO delivery = NotificationDeliveryPageVO.builder().id(8L).alertId(9L)
+                .alertTitle("Disk usage \"high\"").alertDomain(AlertDomain.CLUSTER).transition("FIRING")
+                .instanceId("local").channel("dingtalk").status(NotificationOutboxStatus.FAILED).attemptCount(2)
+                .createdAt(LocalDateTime.of(2026, 8, 23, 10, 0))
+                .deliveredAt(null).nextAttemptAt(LocalDateTime.of(2026, 8, 23, 10, 5))
+                .lastError("=cmd()").messageContent("sensitive message content").build();
+        when(mapper.countPage("dingtalk", "FAILED", "local")).thenReturn(1L);
+        when(mapper.findPage("dingtalk", "FAILED", "local", 1, 0)).thenReturn(List.of(delivery));
+
+        String csv = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class))
+                .exportDeliveries(" DingTalk ", "failed", "local");
+
+        verify(mapper).findPage("dingtalk", "FAILED", "local", 1, 0);
+        assertThat(csv).startsWith("\uFEFF\"Delivery ID\",\"Alert ID\",\"Alert Title\",\"Alert Domain\",\"Transition\","
+                + "\"Instance ID\",\"Channel\",\"Status\",\"Attempt Count\",\"Created At\",\"Delivered At\","
+                + "\"Next Attempt At\",\"Last Error\"");
+        assertThat(csv).contains("\"8\",\"9\",\"Disk usage \"\"high\"\"\",\"CLUSTER\",\"FIRING\",\"local\","
+                + "\"dingtalk\",\"FAILED\",\"2\",\"2026-08-23T10:00\",\"\",\"2026-08-23T10:05\",\"'=cmd()\"");
+        assertThat(csv).doesNotContain("sensitive message content");
+    }
+
+    @Test
+    void capsExportAtTenThousandRowsWhenMoreDeliveriesMatchTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        when(mapper.countPage("dingtalk", "FAILED", "local")).thenReturn(10_500L);
+        when(mapper.findPage("dingtalk", "FAILED", "local", 10_000, 0)).thenReturn(List.of());
+
+        String csv = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class))
+                .exportDeliveries("dingtalk", "FAILED", "local");
+
+        verify(mapper).findPage("dingtalk", "FAILED", "local", 10_000, 0);
+        assertThat(csv).contains("\"Delivery ID\"");
+    }
+
+    @Test
+    void exportsOnlyTheHeaderWhenNoDeliveriesMatchTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        when(mapper.countPage("dingtalk", "FAILED", "local")).thenReturn(0L);
+
+        String csv = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class))
+                .exportDeliveries("dingtalk", "FAILED", "local");
+
+        assertThat(csv).startsWith("\uFEFF\"Delivery ID\",\"Alert ID\"").endsWith("\"Last Error\"\r\n");
+        verify(mapper, never()).findPage(anyString(), anyString(), anyString(), any(Integer.class), any(Long.class));
+    }
+
+    @Test
     void retriesOnlyFailedDeliveryAndResetsItsDispatchStateTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         OperationAuditService audit = mock(OperationAuditService.class);

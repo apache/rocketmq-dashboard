@@ -442,6 +442,13 @@ export async function listAlertDeliveriesPage(
   return opsApi.listAlertDeliveriesPage(params);
 }
 
+export async function exportNotificationDeliveries(
+  params: NotificationDeliveryQuery = {},
+): Promise<string> {
+  if (!isMockMode()) return opsApi.exportNotificationDeliveries(params);
+  return '';
+}
+
 export async function listAlertSilences(): Promise<AlertSilence[]> {
   if (isMockMode()) return alertSilencesState.map((silence) => ({ ...silence }));
   return opsApi.listAlertSilences();

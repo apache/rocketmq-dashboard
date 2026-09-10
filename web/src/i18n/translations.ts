@@ -875,6 +875,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '重试当前页失败记录',
     en: 'Retry failed records on this page',
   },
+  'deliveries.exportFailed': {
+    zh: '导出投递记录失败，请稍后重试',
+    en: 'Failed to export alert deliveries. Please try again later.',
+  },
 
   // ─── General Settings ───
   'settings.generalLoadFailed': {

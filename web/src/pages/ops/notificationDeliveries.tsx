@@ -26,10 +26,12 @@ import type { Instance } from '../../api/instance';
 import type { NotificationDeliveryRecord } from '../../api/ops';
 import { listInstances } from '../../services/instanceService';
 import {
+  exportNotificationDeliveries,
   listAlertDeliveriesPage,
   retryAlertDeliveries,
   retryAlertDelivery,
 } from '../../services/opsService';
+import { downloadCsv } from '../../utils/download';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
@@ -55,6 +57,7 @@ const NotificationDeliveriesPage = () => {
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
   const [retryingVisible, setRetryingVisible] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const retryingIdsInFlight = useRef(new Set<number>());
   const retryingVisibleInFlight = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -111,6 +114,18 @@ const NotificationDeliveriesPage = () => {
     } finally {
       retryingVisibleInFlight.current = false;
       setRetryingVisible(false);
+    }
+  };
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const csv = await exportNotificationDeliveries({ channel, status, instanceId });
+      downloadCsv(`rocketmq-alert-deliveries-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    } catch {
+      message.error(t('deliveries.exportFailed'));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -240,6 +255,9 @@ const NotificationDeliveriesPage = () => {
               onClick={() => void retryVisibleFailures()}
             >
               {t('deliveries.retryCurrentPage')}
+            </Button>
+            <Button loading={exporting} onClick={() => void exportCsv()}>
+              {t('common.export')}
             </Button>
             <Select
               allowClear

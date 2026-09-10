@@ -43,6 +43,7 @@ import {
   acknowledgeAlert,
   clearAcknowledgedAlerts,
   listAlertDeliveries,
+  exportNotificationDeliveries,
   listAlertSilences,
   listAlertSilencesPage,
   createAlertSilence,
@@ -358,6 +359,18 @@ describe('Ops API - System Alerts & Audit', () => {
     await expect(listAlertDeliveries(1)).resolves.toEqual([
       { id: 1, channel: 'dingtalk', status: 'DELIVERED', attemptCount: 1 },
     ]);
+  });
+
+  it('exports notification deliveries with the current filters', async () => {
+    const csv = '"Delivery ID","Channel"\r\n"1","dingtalk"\r\n';
+    mock.onGet('/system-alerts/deliveries/export').reply((config) => {
+      expect(config.params).toEqual({ channel: 'dingtalk', status: 'FAILED', instanceId: 'local' });
+      return [200, { code: 200, data: csv }];
+    });
+
+    await expect(
+      exportNotificationDeliveries({ channel: 'dingtalk', status: 'FAILED', instanceId: 'local' }),
+    ).resolves.toBe(csv);
   });
 
   it('manages alert silences', async () => {

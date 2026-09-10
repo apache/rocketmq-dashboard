@@ -134,6 +134,20 @@ class SystemAlertControllerTest {
     }
 
     @Test
+    void exportDeliveriesShouldReturnCsvWithForwardedFiltersTest() throws Exception {
+        String csv = "\uFEFF\"Delivery ID\",\"Channel\",\"Status\"\r\n\"8\",\"dingtalk\",\"FAILED\"\r\n";
+        when(notificationOutboxService.exportDeliveries("dingtalk", "FAILED", "local")).thenReturn(csv);
+
+        mockMvc.perform(get("/api/system-alerts/deliveries/export").param("channel", "dingtalk")
+                        .param("status", "FAILED").param("instanceId", "local"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").value(csv));
+
+        verify(notificationOutboxService).exportDeliveries("dingtalk", "FAILED", "local");
+    }
+
+    @Test
     void retryFailedDeliveryShouldForwardDeliveryIdTest() throws Exception {
         mockMvc.perform(post("/api/system-alerts/deliveries/8/retry"))
                 .andExpect(status().isOk())
