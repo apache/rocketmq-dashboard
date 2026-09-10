@@ -46,4 +46,24 @@ class SystemTopicFilterTest {
         assertThat(SystemTopicFilter.isSystem("BenchmarkTestOrders", brokerNames)).isFalse();
         assertThat(SystemTopicFilter.isSystem("SCHEDULE_TOPIC_orders", brokerNames)).isFalse();
     }
+
+    @Test
+    void canonicalTopicsRemainSystemWithNullOrEmptyBrokerNamesTest() {
+        assertThat(SystemTopicFilter.isSystem("RMQ_SYS_TRANS_HALF_TOPIC", null)).isTrue();
+        assertThat(SystemTopicFilter.isSystem("%RETRY%consumer-a", Set.of())).isTrue();
+        assertThat(SystemTopicFilter.isSystem("rmq_sys_TRACE_DATA", null)).isTrue();
+
+        // Broker-name matching requires the broker set; without it the topic is not system.
+        assertThat(SystemTopicFilter.isSystem("broker-prod-a", null)).isFalse();
+        assertThat(SystemTopicFilter.isSystem("broker-prod-a", Set.of())).isFalse();
+    }
+
+    @Test
+    void singleArgumentOverloadDelegatesWithoutBrokerNamesTest() {
+        assertThat(SystemTopicFilter.isSystem(null)).isTrue();
+        assertThat(SystemTopicFilter.isSystem("")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("RMQ_SYS_TRANS_HALF_TOPIC")).isTrue();
+        assertThat(SystemTopicFilter.isSystem("orders")).isFalse();
+        assertThat(SystemTopicFilter.isSystem("broker-prod-a")).isFalse();
+    }
 }
