@@ -108,3 +108,22 @@ describe('countClusterComponents', () => {
     expect(countClusterComponents(clusters)).toEqual({ brokers: 0, nameServers: 0, proxies: 0 });
   });
 });
+
+describe('countClusterComponents partial inventories', () => {
+  it('counts only the component kinds present on a cluster', () => {
+    const clusters = [
+      {
+        ...baseCluster,
+        brokers: [],
+        proxies: [{ addr: 'p:8081' } as ClusterInfo['proxies'][number]],
+        nameServers: [],
+      },
+    ];
+
+    expect(countClusterComponents(clusters)).toEqual({
+      brokers: 0,
+      nameServers: 0,
+      proxies: 1,
+    });
+  });
+});
