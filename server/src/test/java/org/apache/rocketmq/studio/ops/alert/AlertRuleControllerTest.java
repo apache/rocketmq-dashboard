@@ -104,6 +104,43 @@ class AlertRuleControllerTest {
     }
 
     @Test
+    void runtimeShouldReturnBusinessRuleRuntimeTest() throws Exception {
+        AlertRuleRuntimeVO runtime = AlertRuleRuntimeVO.builder()
+                .ruleId(1L)
+                .status(AlertStateStatus.FIRING)
+                .build();
+        when(alertService.listRuleRuntime(AlertDomain.BUSINESS)).thenReturn(List.of(runtime));
+
+        mockMvc.perform(get("/api/business-alert-rules/runtime"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].ruleId").value(1))
+                .andExpect(jsonPath("$.data[0].status").value("FIRING"));
+
+        verify(alertService).listRuleRuntime(AlertDomain.BUSINESS);
+    }
+
+    @Test
+    void testRuleShouldReturnNativeTestResultTest() throws Exception {
+        AlertRuleVO request = AlertRuleVO.builder()
+                .name("High Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .enabled(true)
+                .build();
+        AlertRuleTestResultVO result = new AlertRuleTestResultVO(List.of(
+                new AlertRuleTestResultVO.Sample(Map.of("consumerGroup", "orders"),
+                        "AVAILABLE", 42D, true, null)));
+        when(nativeAlertRuleTestService.test(any(AlertRuleVO.class))).thenReturn(result);
+
+        mockMvc.perform(post("/api/alert-rules/test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.samples[0].conditionMet").value(true));
+
+        verify(nativeAlertRuleTestService).test(any(AlertRuleVO.class));
+    }
+
+    @Test
     void businessRulesPageEndpointShouldForwardFiltersTest() throws Exception {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("High Lag")
                 .domain(AlertDomain.BUSINESS).enabled(true).build();
