@@ -87,4 +87,35 @@ class ProducerConnectionSummaryVOTest {
                 .versionDesc(version)
                 .build();
     }
+
+    @Test
+    void fromShouldMarkASingleCompleteConnectionReady() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(List.of(
+                connection("producer-a", "10.0.0.1:38888", "Java", "5.1.0")));
+
+        assertThat(summary.getTotalConnections()).isEqualTo(1);
+        assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.READY);
+        assertThat(summary.getWarnings()).isEmpty();
+        assertThat(summary.getUniqueLanguageCount()).isEqualTo(1);
+        assertThat(summary.getLanguages())
+                .singleElement().satisfies(item -> {
+                    assertThat(item.getValue()).isEqualTo("Java");
+                    assertThat(item.getCount()).isEqualTo(1L);
+                });
+    }
+
+    @Test
+    void fromShouldExcludeBlankAddressesAndNormalizeDimensions() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(List.of(
+                connection("producer-a", "", null, "5.1.0"),
+                connection("producer-b", "10.0.0.2:38888", " Java ", "5.1.0")));
+
+        assertThat(summary.getUniqueAddressCount()).isEqualTo(1);
+        assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.WARNING);
+        assertThat(summary.getWarnings()).contains(
+                ProducerConnectionSummaryVO.INCOMPLETE_CLIENT_METADATA);
+        assertThat(summary.getLanguages())
+                .extracting(ProducerConnectionSummaryItemVO::getValue)
+                .containsExactly("Java", "UNKNOWN");
+    }
 }
