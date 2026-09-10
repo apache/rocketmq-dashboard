@@ -61,6 +61,26 @@ class CloudCredentialSchemaMigrationTest {
                 .hasMessageContaining("1");
     }
 
+    @Test
+    void migrationShouldKeepInstancesWithoutCredentialReferencesTest() throws Exception {
+        JdbcDataSource dataSource = dataSource("unbound");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            createLegacyTables(statement);
+            statement.executeUpdate("INSERT INTO rmq_instance (id, name, type, endpoint)"
+                    + " VALUES (10, 'local-a', 'DIRECT', 'endpoint')");
+            statement.executeUpdate("INSERT INTO rmq_cloud_credential (id, name, vendor, access_key, secret_key)"
+                    + " VALUES (1, 'aliyun', 'ALIYUN', 'ak', 'sk')");
+        }
+
+        CloudCredentialSchemaMigration migration = new CloudCredentialSchemaMigration(dataSource);
+        migration.run(new DefaultApplicationArguments());
+        migration.run(new DefaultApplicationArguments());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThat(hasImportedKey(connection)).isTrue();
+        }
+    }
+
     private static JdbcDataSource dataSource(String name) {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL("jdbc:h2:mem:cloud-credential-schema-" + name
