@@ -33,6 +33,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -100,5 +101,57 @@ class InstanceCapabilityServiceTest {
         assertThatThrownBy(() -> service.getCapabilities(999L))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void getCapabilitiesShouldReturnEmptyListWhenProviderExposesNoCapabilities() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("direct-empty")
+                .type(InstanceType.DIRECT)
+                .build();
+        instance.setId(3L);
+        when(instanceRepository.findById(3L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.capabilities()).thenReturn(Set.of());
+
+        InstanceCapabilitiesVO result = service.getCapabilities(3L);
+
+        assertThat(result.vendor()).isEqualTo(InstanceVendor.APACHE);
+        assertThat(result.capabilities()).isEmpty();
+    }
+
+    @Test
+    void getCapabilitiesShouldTranslateMissingProviderRegistration() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("ghost-vendor")
+                .type(InstanceType.DIRECT)
+                .build();
+        instance.setId(4L);
+        when(instanceRepository.findById(4L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE))
+                .thenThrow(new BusinessException(501, "No instance provider registered for vendor APACHE"));
+
+        assertThatThrownBy(() -> service.getCapabilities(4L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(501));
+    }
+
+    @Test
+    void getCapabilitiesShouldAskForExplicitNonNullVendor() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("cloud-tencent")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        instance.setId(5L);
+        when(instanceRepository.findById(5L)).thenReturn(Optional.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.TENCENT)).thenReturn(instanceProvider);
+        when(instanceProvider.capabilities()).thenReturn(Set.of(InstanceCapability.MESSAGE_QUERY));
+
+        InstanceCapabilitiesVO result = service.getCapabilities(5L);
+
+        verify(providerRegistry).forVendor(InstanceVendor.TENCENT);
+        assertThat(result.vendor()).isEqualTo(InstanceVendor.TENCENT);
+        assertThat(result.capabilities()).containsExactly(InstanceCapability.MESSAGE_QUERY);
     }
 }
