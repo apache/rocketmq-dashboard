@@ -39,4 +39,35 @@ class EntityIdsTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("positive numeric value");
     }
+
+    @Test
+    void rejectsBlankIdentifiers() {
+        assertThatThrownBy(() -> EntityIds.parseId(null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(400))
+                .hasMessageContaining("id is required");
+        assertThatThrownBy(() -> EntityIds.parseId("  "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("id is required");
+    }
+
+    @Test
+    void rejectsNonNumericIdentifiers() {
+        assertThatThrownBy(() -> EntityIds.parseId("abc"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(400))
+                .hasMessageContaining("must be a numeric value");
+        assertThatThrownBy(() -> EntityIds.parseId("42L"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must be a numeric value");
+    }
+
+    @Test
+    void parsesFullLongRangePositiveValues() {
+        assertThat(EntityIds.parseId("9223372036854775807"))
+                .isEqualTo(Long.MAX_VALUE);
+        assertThatThrownBy(() -> EntityIds.parseId("9223372036854775808"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must be a numeric value");
+    }
 }
