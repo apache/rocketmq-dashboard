@@ -15,10 +15,15 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { API_BASE_URL } from './config';
 
 describe('config API base url', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
   it('defaults to a relative /api path when no env override is set', () => {
     expect(API_BASE_URL).toBe('/api');
   });
@@ -31,5 +36,14 @@ describe('config API base url', () => {
 
   it('strips a single trailing slash', () => {
     expect(API_BASE_URL.endsWith('/')).toBe(false);
+  });
+
+  it('uses an env override and strips its trailing slash', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://gateway.example/api/');
+    vi.resetModules();
+
+    const mod = await import('./config');
+
+    expect(mod.API_BASE_URL).toBe('https://gateway.example/api');
   });
 });
