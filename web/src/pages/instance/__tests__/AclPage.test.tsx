@@ -961,4 +961,81 @@ describe('ACL page', () => {
       expect.objectContaining({ accessKey: 'new-svc' }),
     );
   });
+
+  it('exports the full ACL user inventory as CSV without credentials', async () => {
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([
+      {
+        id: 11,
+        username: 'remote-admin',
+        accessKey: 'secret-ak-11',
+        secretKey: 'secret-sk-11',
+        admin: true,
+        clusters: ['cluster-a', 'cluster-b'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      },
+      {
+        id: 12,
+        username: 'plain-user',
+        accessKey: 'secret-ak-12',
+        secretKey: 'secret-sk-12',
+        admin: false,
+        clusters: [],
+        gmtCreate: null,
+      },
+    ]);
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:acl-users';
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      renderWithProviders(<AclPage />);
+
+      await user.click(await screen.findByText('用户管理'));
+      await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+
+      await waitFor(() => expect(aclService.listAclUsers).toHaveBeenCalledTimes(1));
+      expect(aclService.listAclUsers).toHaveBeenCalledWith({ instanceId: undefined });
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      const blob = createObjectURL.mock.calls[0][0] as Blob;
+      const csv = await blob.text();
+      expect(csv).toBe(
+        [
+          '"Username","Admin","Clusters","Created"',
+          '"remote-admin","true","cluster-a, cluster-b","2026-07-23T00:00:00Z"',
+          '"plain-user","false","",""',
+        ].join('\n'),
+      );
+      expect(csv).not.toContain('secret-ak');
+      expect(csv).not.toContain('secret-sk');
+      expect(
+        document.querySelector('a[download^="rocketmq-acl-users-"]'),
+      ).not.toBeInTheDocument();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:acl-users');
+    } finally {
+      clickSpy.mockRestore();
+    }
+  });
+
+  it('shows an error toast when the full ACL user export fails', async () => {
+    vi.mocked(aclService.listAclUsers).mockRejectedValue(new Error('backend down'));
+    const user = userEvent.setup();
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+
+    await waitFor(() => expect(aclService.listAclUsers).toHaveBeenCalledTimes(1));
+    expect((await screen.findAllByText('获取数据失败')).length).toBeGreaterThan(0);
+  });
 });

@@ -46,6 +46,7 @@ import {
   Eye,
   EyeSlash,
   Key,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -62,6 +63,7 @@ import {
   getAclUserCredentials,
   examineBrokerClusterAclConfig,
   listAclRules,
+  listAclUsers,
   pageAclUsers,
   updateAclRule,
   updateAclUser,
@@ -70,6 +72,7 @@ import type { AclRule, AclUser, AclClusterConfig, PlainAccessConfig } from '../.
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { tableScrollX } from '../../utils/table';
 import { analyzeAclRisk, type AclRiskIssue } from '../../utils/aclRiskDiagnostics';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 type AclEntityId = AclRule['id'];
 type AclRuleFormValues = Pick<
@@ -95,6 +98,14 @@ const normalizeRule = (rule: AclRule): AclRule => ({
 });
 
 type NormalizedAclUser = AclUser & { accessKey: string; secretKey: string };
+
+// Credentials (accessKey/secretKey) are deliberately never exported.
+const ACL_USER_EXPORT_COLUMNS: CsvColumn<NormalizedAclUser>[] = [
+  { header: 'Username', value: (user) => user.username },
+  { header: 'Admin', value: (user) => (user.admin ? 'true' : 'false') },
+  { header: 'Clusters', value: (user) => user.clusters.join(', ') },
+  { header: 'Created', value: (user) => user.gmtCreate ?? '' },
+];
 
 const normalizeUser = (user: AclUser): NormalizedAclUser => ({
   ...user,
@@ -140,6 +151,7 @@ const AclPageContent = ({
   const [userKeyword, setUserKeyword] = useState('');
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
+  const [exportingUsers, setExportingUsers] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
   const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
   const [userRefreshKey, setUserRefreshKey] = useState(0);
@@ -258,6 +270,23 @@ const AclPageContent = ({
   /* ─── Rule helpers ─── */
   const isAdmin = (principal: string) =>
     users.find((u) => u.username === principal)?.admin ?? false;
+
+  const handleExportUsers = async () => {
+    if (exportingUsers) return;
+    setExportingUsers(true);
+    try {
+      // listAclUsers returns the full user inventory (not paginated), so the
+      // export always contains every user of the selected instance.
+      const allUsers = await listAclUsers({ instanceId: selectedInstanceId });
+      const rows = allUsers.map(normalizeUser);
+      const filename = `rocketmq-acl-users-${new Date().toISOString().slice(0, 10)}.csv`;
+      downloadCsv(filename, buildCsv(ACL_USER_EXPORT_COLUMNS, rows));
+    } catch {
+      message.error(t('common.fetchDataFailed'));
+    } finally {
+      setExportingUsers(false);
+    }
+  };
 
   const actionTagColor: Record<string, string> = {
     PUB: 'blue',
@@ -1242,6 +1271,14 @@ const AclPageContent = ({
                         allowClear
                         style={{ width: 240 }}
                       />
+                      <Button
+                        icon={<DownloadSimple size={14} />}
+                        loading={exportingUsers}
+                        disabled={exportingUsers}
+                        onClick={() => void handleExportUsers()}
+                      >
+                        {t('acl.exportCsv')}
+                      </Button>
                     </Space>
                   </div>
 

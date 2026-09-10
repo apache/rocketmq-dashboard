@@ -1395,6 +1395,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'acl.allDecisions': { zh: '全部决策', en: 'All Decisions' },
   'acl.totalRules': { zh: '共 {n} 条规则', en: '{n} rules total' },
   'acl.totalUsers': { zh: '共 {n} 个用户', en: '{n} users total' },
+  'acl.exportCsv': { zh: '导出 CSV', en: 'Export CSV' },
   'acl.editRule': { zh: '编辑规则', en: 'Edit Rule' },
   'acl.save': { zh: '保存', en: 'Save' },
   'acl.add': { zh: '添加', en: 'Add' },
