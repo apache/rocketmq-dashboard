@@ -17,14 +17,33 @@
 package org.apache.rocketmq.studio.settings;
 
 import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DataSourceDTOTest {
+
+    private static ValidatorFactory validatorFactory;
+    private static Validator validator;
+
+    @BeforeAll
+    static void setUpValidator() {
+        validatorFactory = Validation.buildDefaultValidatorFactory();
+        validator = validatorFactory.getValidator();
+    }
+
+    @AfterAll
+    static void closeValidator() {
+        validatorFactory.close();
+    }
 
     @Test
     void shouldCanonicalizeProviderTypeAndInstanceBindings() {
@@ -43,11 +62,8 @@ class DataSourceDTOTest {
         DataSourceDTO request = validDataSource();
         request.setInstanceIds(List.of("instance-a", " "));
 
-        try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
-            assertThat(validatorFactory.getValidator().validate(request))
-                    .anyMatch(violation -> "instanceIds must not contain blank values"
-                            .equals(violation.getMessage()));
-        }
+        assertThat(violationMessages(request))
+                .anyMatch(message -> message.equals("instanceIds must not contain blank values"));
     }
 
     @Test
@@ -55,6 +71,73 @@ class DataSourceDTOTest {
         DataSourceDTO request = validDataSource();
 
         assertThat(request.toDataSourceVO().getInstanceIds()).isNull();
+    }
+
+    @Test
+    void shouldTrimAuthModeAndNormalizeCommonAliases() {
+        DataSourceDTO request = validDataSource();
+        request.setType("thanos");
+        request.setAuth(" basic auth ");
+
+        DataSourceVO dataSource = request.toDataSourceVO();
+
+        assertThat(dataSource.getType()).isEqualTo("Thanos");
+        assertThat(dataSource.getAuth()).isEqualTo("basic auth");
+    }
+
+    @Test
+    void shouldNormalizePrometheusAndVictoriaAliases() {
+        DataSourceDTO request = validDataSource();
+        request.setType("victoria_metrics");
+
+        assertThat(request.toDataSourceVO().getType()).isEqualTo("VictoriaMetrics");
+
+        request.setType("Prometheus");
+        assertThat(request.toDataSourceVO().getType()).isEqualTo("Prometheus");
+    }
+
+    @Test
+    void shouldRejectMissingNameTypeAndUrl() {
+        DataSourceDTO request = validDataSource();
+        request.setName(null);
+        request.setType(" ");
+        request.setUrl(null);
+
+        Set<String> messages = violationMessages(request);
+        assertThat(messages).contains("name is required", "type is required", "url is required");
+    }
+
+    @Test
+    void shouldRejectUnsupportedDataSourceType() {
+        DataSourceDTO request = validDataSource();
+        request.setType("influxdb");
+
+        assertThat(violationMessages(request)).contains("Unsupported metrics data source type");
+    }
+
+    @Test
+    void shouldRejectUnsupportedAuthMode() {
+        DataSourceDTO request = validDataSource();
+        request.setAuth("client certificate");
+
+        assertThat(violationMessages(request))
+                .contains("Unsupported metrics data source authentication");
+    }
+
+    @Test
+    void shouldAcceptEverySupportedAuthMode() {
+        for (String auth : List.of("none", "basic auth", "bearer token")) {
+            DataSourceDTO request = validDataSource();
+            request.setAuth(auth);
+            assertThat(violationMessages(request))
+                    .doesNotContain("Unsupported metrics data source authentication");
+        }
+    }
+
+    private Set<String> violationMessages(DataSourceDTO request) {
+        return validator.validate(request).stream()
+                .map(violation -> violation.getMessage())
+                .collect(Collectors.toSet());
     }
 
     private DataSourceDTO validDataSource() {
