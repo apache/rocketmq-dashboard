@@ -108,4 +108,33 @@ class AlertSilenceControllerTest {
                         && request.getRecurrenceDays().equals(Set.of(1, 3, 5))
                         && "Asia/Shanghai".equals(request.getTimeZone())));
     }
+
+    @Test
+    void listShouldReturnAllSilencesTest() throws Exception {
+        AlertSilenceVO silence = AlertSilenceVO.builder()
+                .id(12L)
+                .domain(AlertDomain.CLUSTER)
+                .startsAt(LocalDateTime.of(2026, 8, 22, 9, 0))
+                .endsAt(LocalDateTime.of(2026, 8, 22, 10, 0))
+                .createdBy("admin")
+                .build();
+        when(silenceService.list()).thenReturn(List.of(silence));
+
+        mockMvc.perform(get("/api/alert-silences"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(12))
+                .andExpect(jsonPath("$.data[0].domain").value("CLUSTER"));
+
+        verify(silenceService).list();
+    }
+
+    @Test
+    void deleteShouldDelegateTheIdTest() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/alert-silences/7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(silenceService).delete(7L);
+    }
 }
