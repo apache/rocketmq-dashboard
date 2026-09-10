@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.GetInstanceResponseBody;
+import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -42,5 +43,35 @@ class AliyunConvertersNullEndpointTest {
         assertThat(AliyunConverters.toInstanceDetailVO(data).getEndpoints())
                 .singleElement()
                 .satisfies(value -> assertThat(value.getEndpointUrl()).isEqualTo("10.0.0.1:8080"));
+    }
+
+    @Test
+    void toInstanceDetailShouldCopyCoreFields() {
+        GetInstanceResponseBody.Data data = GetInstanceResponseBody.Data.builder()
+                .instanceId("rmq-b")
+                .instanceName("prod-rocketmq")
+                .status("RUNNING")
+                .regionId("cn-shanghai")
+                .remark("production instance")
+                .build();
+
+        CloudInstanceDetailVO vo = AliyunConverters.toInstanceDetailVO(data);
+
+        assertThat(vo.getInstanceId()).isEqualTo("rmq-b");
+        assertThat(vo.getInstanceName()).isEqualTo("prod-rocketmq");
+        assertThat(vo.getStatus()).isEqualTo("RUNNING");
+        assertThat(vo.getRegionId()).isEqualTo("cn-shanghai");
+        assertThat(vo.getRemark()).isEqualTo("production instance");
+        assertThat(vo.getEndpoints()).isEmpty();
+    }
+
+    @Test
+    void toInstanceDetailShouldHandleAbsentNetworkInfo() {
+        GetInstanceResponseBody.Data data = GetInstanceResponseBody.Data.builder()
+                .instanceId("rmq-c")
+                .networkInfo(null)
+                .build();
+
+        assertThat(AliyunConverters.toInstanceDetailVO(data).getEndpoints()).isEmpty();
     }
 }
