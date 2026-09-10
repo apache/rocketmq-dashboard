@@ -23,10 +23,12 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -77,5 +79,35 @@ class AlertRuleAssetControllerTest {
                 .andExpect(header().string("Content-Type", "application/x-yaml"))
                 .andExpect(header().string("Content-Disposition",
                         "form-data; name=\"attachment\"; filename=\"rocketmq-broker-down.yaml\""));
+    }
+
+    @Test
+    void listAssetsShouldReturnEmptyListWhenNoAssets() throws Exception {
+        when(alertRuleAssetService.listAssets()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/alert-rules/assets"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void exportAssetShouldReturnYamlBodyAsUtf8() throws Exception {
+        String yaml = "groups:\n  - name: caf\u00e9.rules\n    rules:\n      - alert: RocketMQBrokerDown\n";
+        when(alertRuleAssetService.getAssetYaml("rocketmq-broker-down")).thenReturn(yaml);
+
+        mockMvc.perform(get("/api/alert-rules/assets/rocketmq-broker-down/export"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/x-yaml"))
+                .andExpect(content().bytes(yaml.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void listAssetsShouldTranslateServiceFailureToServerError() throws Exception {
+        when(alertRuleAssetService.listAssets())
+                .thenThrow(new IllegalStateException("asset catalog unavailable"));
+
+        mockMvc.perform(get("/api/alert-rules/assets"))
+                .andExpect(status().is5xxServerError());
     }
 }
