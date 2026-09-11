@@ -372,6 +372,51 @@ describe('InstancePage', () => {
     );
   });
 
+  it('surfaces the server error reason when creating an instance fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.createInstance).mockRejectedValue({
+      response: { data: { message: 'Instance name already exists: new-proxy' } },
+    });
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
+    const createTypeSelect = within(dialog).getByRole('combobox');
+    fireEvent.mouseDown(createTypeSelect.parentElement!);
+    const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
+      selector: '.ant-select-item-option-content',
+    });
+    await user.click(proxyOptions[proxyOptions.length - 1]);
+    await user.type(within(dialog).getByLabelText('接入地址'), 'proxy-new:8080');
+    await user.click(within(dialog).getByRole('button', { name: /连\s*接/ }));
+
+    expect(await screen.findByText('Instance name already exists: new-proxy')).toBeInTheDocument();
+    expect(screen.queryByText('添加实例失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the server error reason when updating an instance fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.updateInstance).mockRejectedValue({
+      response: { data: { message: 'Instance endpoint is not reachable' } },
+    });
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /production-proxy/ });
+    await user.click(within(row).getByRole('button', { name: /编\s*辑/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    const endpointInput = within(dialog).getByLabelText('接入地址');
+    await user.clear(endpointInput);
+    await user.type(endpointInput, 'namesrv-new:9876');
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(await screen.findByText('Instance endpoint is not reachable')).toBeInTheDocument();
+    expect(screen.queryByText('更新实例失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
   it('reloads the latest filters after a pending instance deletion completes', async () => {
     const user = userEvent.setup();
     const pendingDelete = deferred<void>();
