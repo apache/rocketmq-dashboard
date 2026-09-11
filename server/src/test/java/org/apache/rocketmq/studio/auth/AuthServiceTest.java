@@ -54,6 +54,14 @@ class AuthServiceTest {
     }
 
     @Test
+    void escapeLikeShouldEscapeSqlWildcards() {
+        assertThat(AuthService.escapeLike("admin_")).isEqualTo("admin\\_");
+        assertThat(AuthService.escapeLike("admin%")).isEqualTo("admin\\%");
+        assertThat(AuthService.escapeLike("a\\b")).isEqualTo("a\\\\b");
+        assertThat(AuthService.escapeLike("plain")).isEqualTo("plain");
+    }
+
+    @Test
     void loginShouldReturnTokenForValidCredentials() {
         AuthProperties.User user = new AuthProperties.User();
         user.setUsername("testuser");
