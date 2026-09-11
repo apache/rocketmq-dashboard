@@ -17,13 +17,11 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
@@ -55,10 +53,7 @@ public class NativeAlertProcessor {
     private final AlertRepository alertRepository;
     private final NotificationOutboxService notificationOutboxService;
     private final AlertNotificationSuppressionService notificationSuppressionService;
-
-    @Autowired
-    @Setter
-    private PlatformTransactionManager transactionManager;
+    private final PlatformTransactionManager transactionManager;
 
     public void process(List<MetricSample> samples) {
         processSamples(samples);
@@ -148,8 +143,14 @@ public class NativeAlertProcessor {
                 // transient emit failure rolls back both the state change and the event,
                 // preventing orphaned states or events.  The next collection cycle will
                 // re-evaluate this active state and re-attempt the emit.
+                // save() may still return false inside the sub-transaction when a
+                // concurrent writer (e.g. a user ACK) won the optimistic race, so the
+                // emit is gated on the save result: an alert that already moved on must
+                // not receive a RESOLVED event.
                 isolatedTx.executeWithoutResult(txStatus -> {
-                    stateRepository.save(active.key(), update.state());
+                    if (!stateRepository.save(active.key(), update.state())) {
+                        return;
+                    }
                     emitLifecycleEvent(rule, active.key(), update, scope.domain(),
                             active.instanceId(), rule.getMetric(), active.labels(), resolvedAt);
                 });
