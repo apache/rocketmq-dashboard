@@ -268,6 +268,20 @@ public class AuthService {
                 .build();
     }
 
+    public List<StudioUserSessionDetailVO> listActiveSessionsForUser(Long userId) {
+        requireDatabaseBacked();
+        getUser(userId);
+        LocalDateTime current = now();
+        return sessionMapper.selectList(activeSessionQuery(current)
+                        .select("id", "user_id", "last_seen_at", "expires_at", "gmt_create")
+                        .eq("user_id", userId)
+                        .orderByDesc("last_seen_at")
+                        .orderByAsc("id"))
+                .stream()
+                .map(session -> sessionDetail(session, current))
+                .toList();
+    }
+
     public int revokeSessionsForUser(Long userId) {
         requireDatabaseBacked();
         getUser(userId);
@@ -490,6 +504,31 @@ public class AuthService {
         return new QueryWrapper<RmqStudioSession>()
                 .isNull("revoked_at")
                 .gt("expires_at", current);
+    }
+
+    private StudioUserSessionDetailVO sessionDetail(RmqStudioSession session, LocalDateTime current) {
+        LocalDateTime expiresAt = session.getExpiresAt();
+        LocalDateTime lastSeenAt = session.getLastSeenAt();
+        return StudioUserSessionDetailVO.builder()
+                .id(session.getId())
+                .userId(session.getUserId())
+                .lastSeenAt(lastSeenAt)
+                .expiresAt(expiresAt)
+                .gmtCreate(session.getGmtCreate())
+                .remainingSeconds(nonNegativeSecondsBetween(current, expiresAt))
+                .idleSeconds(lastSeenAt == null ? null : nonNegativeSecondsBetween(lastSeenAt, current))
+                .expiringSoon(expiresAt != null
+                        && !expiresAt.isAfter(current.plus(SESSION_EXPIRING_SOON_WINDOW)))
+                .stale(lastSeenAt != null
+                        && lastSeenAt.isBefore(current.minus(STALE_SESSION_THRESHOLD)))
+                .build();
+    }
+
+    private long nonNegativeSecondsBetween(LocalDateTime start, LocalDateTime end) {
+        if (start == null || end == null) {
+            return 0;
+        }
+        return Math.max(0, Duration.between(start, end).getSeconds());
     }
 
     /**

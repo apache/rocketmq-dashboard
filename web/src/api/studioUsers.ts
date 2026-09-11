@@ -62,6 +62,18 @@ export interface StudioUserSessionOverview {
   staleSessionThresholdMinutes: number;
 }
 
+export interface StudioUserSessionDetail {
+  id: number;
+  userId: number;
+  lastSeenAt?: string | null;
+  expiresAt?: string | null;
+  gmtCreate?: string | null;
+  remainingSeconds: number;
+  idleSeconds?: number | null;
+  expiringSoon: boolean;
+  stale: boolean;
+}
+
 export async function listStudioUsers(query: StudioUserQuery = {}) {
   const response = await client.get<{ data: StudioUserPage }>('/studio-users', {
     params: query,
@@ -72,6 +84,13 @@ export async function listStudioUsers(query: StudioUserQuery = {}) {
 export async function getStudioUserSessionOverview() {
   const response = await client.get<{ data: StudioUserSessionOverview }>(
     '/studio-users/sessions/overview',
+  );
+  return response.data.data;
+}
+
+export async function listStudioUserSessions(userId: number) {
+  const response = await client.get<{ data: StudioUserSessionDetail[] }>(
+    `/studio-users/${userId}/sessions`,
   );
   return response.data.data;
 }

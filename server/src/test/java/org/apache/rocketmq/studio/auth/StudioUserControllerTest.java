@@ -138,6 +138,37 @@ class StudioUserControllerTest {
     }
 
     @Test
+    void listActiveSessionsReturnsSafeSessionDetails() throws Exception {
+        when(authService.listActiveSessionsForUser(7L))
+                .thenReturn(List.of(StudioUserSessionDetailVO.builder()
+                        .id(19L)
+                        .userId(7L)
+                        .lastSeenAt(LocalDateTime.parse("2026-08-22T09:45:00"))
+                        .expiresAt(LocalDateTime.parse("2026-08-22T09:50:00"))
+                        .gmtCreate(LocalDateTime.parse("2026-08-22T09:15:00"))
+                        .remainingSeconds(300)
+                        .idleSeconds(60L)
+                        .expiringSoon(true)
+                        .stale(false)
+                        .build()));
+
+        mockMvc.perform(get("/api/studio-users/7/sessions"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(19))
+                .andExpect(jsonPath("$.data[0].userId").value(7))
+                .andExpect(jsonPath("$.data[0].lastSeenAt").value("2026-08-22T09:45:00"))
+                .andExpect(jsonPath("$.data[0].expiresAt").value("2026-08-22T09:50:00"))
+                .andExpect(jsonPath("$.data[0].gmtCreate").value("2026-08-22T09:15:00"))
+                .andExpect(jsonPath("$.data[0].remainingSeconds").value(300))
+                .andExpect(jsonPath("$.data[0].idleSeconds").value(60))
+                .andExpect(jsonPath("$.data[0].expiringSoon").value(true))
+                .andExpect(jsonPath("$.data[0].stale").value(false))
+                .andExpect(jsonPath("$.data[0].tokenHash").doesNotExist());
+
+        verify(authService).listActiveSessionsForUser(7L);
+    }
+
+    @Test
     void revokeSessionsReturnsTheRevokedSessionCount() throws Exception {
         when(authService.revokeSessionsForUser(7L)).thenReturn(3);
 
