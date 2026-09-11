@@ -94,6 +94,23 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void listUsersEscapesLikeWildcardsInUsernameSearch() {
+        when(userMapper.selectPage(any(Page.class), any(Wrapper.class)))
+                .thenReturn(new Page<>(1, 20, 0));
+
+        authService.listUsers("admin_%", null, null, 1, 20);
+
+        org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioUser>> queryCaptor =
+                org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(userMapper).selectPage(any(Page.class), queryCaptor.capture());
+        // Materialize the SQL segment so MyBatis-Plus fills paramNameValuePairs.
+        queryCaptor.getValue().getSqlSegment();
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains("%admin\\_\\%%")
+                .doesNotContain("%admin_%");
+    }
+
+    @Test
     void listUsersRejectsInvalidPaginationBeforeDatabaseAccess() {
         assertThatThrownBy(() -> authService.listUsers(null, null, null, 0, 20))
                 .isInstanceOf(BusinessException.class)
