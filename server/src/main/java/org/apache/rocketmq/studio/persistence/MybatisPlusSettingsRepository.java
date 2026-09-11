@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
@@ -147,7 +148,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
         String normalizedType = type == null || type.isBlank() ? null : type.trim();
         QueryWrapper<RmqDataSource> query = new QueryWrapper<RmqDataSource>()
-                .like(normalizedSearch != null, "json", normalizedSearch)
+                .like(normalizedSearch != null, "json", SqlLikeUtils.escape(normalizedSearch))
                 .apply(normalizedType != null,
                         "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%')", normalizedType)
                 .orderByDesc("gmt_modified", "id");
