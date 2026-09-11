@@ -532,7 +532,9 @@ public class AuthService {
         }
         return configuredUsers.stream()
                 .filter(user -> user.getUsername().equals(request.getUsername()))
-                .filter(user -> user.getPassword().equals(request.getPassword()))
+                .filter(user -> MessageDigest.isEqual(
+                        user.getPassword().getBytes(StandardCharsets.UTF_8),
+                        request.getPassword().getBytes(StandardCharsets.UTF_8)))
                 .findFirst()
                 .map(user -> userInfo(null, user.getUsername(), user.isAdmin()))
                 .orElseThrow(() -> new BusinessException(401, "Invalid username or password"));
