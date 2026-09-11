@@ -22,6 +22,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -45,5 +46,12 @@ public class MetricProfileVO {
         private String prometheusMetric;
         private String promql;
         private List<String> labels;
+        /**
+         * Canonical scope dimension (cluster, broker, topic, consumer_group) to the label name
+         * this profile exposes on the metric's series. Exported rules must emit selectors with
+         * these label names — the consumer_group dimension is "group" on the 4.x exporter
+         * profile and "consumer_group" on the 5.x native profile.
+         */
+        private Map<String, String> scopeLabels;
     }
 }

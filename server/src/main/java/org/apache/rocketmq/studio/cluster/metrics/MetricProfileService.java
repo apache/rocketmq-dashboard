@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -72,6 +73,21 @@ public class MetricProfileService {
                 .findFirst();
     }
 
+    /**
+     * Resolves the label name the active profile uses for a scope dimension of a semantic
+     * metric's series — e.g. the consumer_group dimension is labeled {@code group} by the
+     * 4.x exporter profile and {@code consumer_group} by the 5.x native profile. Returns
+     * empty when the active profile has no mapping for the semantic metric or its series
+     * are not broken out by that dimension, so callers drop the selector instead of guessing
+     * a label name that would silently match an empty series set.
+     */
+    public Optional<String> resolveCurrentScopeLabel(String semanticMetric, String scope) {
+        return listProfiles().get(0).getMetrics().stream()
+                .filter(metric -> metric.getSemanticMetric().equals(semanticMetric))
+                .findFirst()
+                .flatMap(metric -> Optional.ofNullable(metric.getScopeLabels().get(scope)));
+    }
+
     private MetricProfileVO profile(MetricProfile profile,
                                     List<MetricProfileVO.MetricMappingVO> metrics) {
         return MetricProfileVO.builder()
@@ -86,24 +102,31 @@ public class MetricProfileService {
         return List.of(
                 mapping(SemanticMetric.MESSAGE_IN_TPS, "rocketmq_broker_tps",
                         "sum(rocketmq_broker_tps) by (cluster, broker)",
+                        Map.of("cluster", "cluster", "broker", "broker"),
                         "cluster", "broker"),
                 mapping(SemanticMetric.MESSAGE_OUT_TPS, "rocketmq_consumer_tps",
                         "sum(rocketmq_consumer_tps) by (cluster, group, topic)",
+                        Map.of("cluster", "cluster", "consumer_group", "group", "topic", "topic"),
                         "cluster", "group", "topic"),
                 mapping(SemanticMetric.THROUGHPUT_IN, "rocketmq_producer_message_size",
                         "sum(rocketmq_producer_message_size) by (cluster, topic)",
+                        Map.of("cluster", "cluster", "topic", "topic"),
                         "cluster", "topic"),
                 mapping(SemanticMetric.THROUGHPUT_OUT, "rocketmq_consumer_message_size",
                         "sum(rocketmq_consumer_message_size) by (cluster, group, topic)",
+                        Map.of("cluster", "cluster", "consumer_group", "group", "topic", "topic"),
                         "cluster", "group", "topic"),
                 mapping(SemanticMetric.CONSUMER_LAG_MESSAGES, "rocketmq_message_accumulation",
                         "sum(rocketmq_message_accumulation) by (cluster, group, topic)",
+                        Map.of("cluster", "cluster", "consumer_group", "group", "topic", "topic"),
                         "cluster", "group", "topic"),
                 mapping(SemanticMetric.CONSUMER_LAG_LATENCY, "rocketmq_group_get_latency_by_storetime",
                         "max(rocketmq_group_get_latency_by_storetime) by (cluster, group, topic)",
+                        Map.of("cluster", "cluster", "consumer_group", "group", "topic", "topic"),
                         "cluster", "group", "topic"),
                 mapping(SemanticMetric.BROKER_HEALTH, "up",
                         "min(up{job=~\".*rocketmq.*\"}) by (job, instance)",
+                        Map.of(),
                         "job", "instance")
         );
     }
@@ -112,43 +135,54 @@ public class MetricProfileService {
         return List.of(
                 mapping(SemanticMetric.MESSAGE_IN_TPS, "rocketmq_messages_in_total",
                         "sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)",
+                        Map.of("cluster", "cluster", "topic", "topic"),
                         "cluster", "node_id", "topic", "message_type"),
                 mapping(SemanticMetric.MESSAGE_OUT_TPS, "rocketmq_messages_out_total",
                         "sum(rate(rocketmq_messages_out_total[1m])) by (cluster, node_id, consumer_group)",
+                        Map.of("cluster", "cluster", "topic", "topic", "consumer_group", "consumer_group"),
                         "cluster", "node_id", "topic", "consumer_group"),
                 mapping(SemanticMetric.THROUGHPUT_IN, "rocketmq_throughput_in_total",
                         "sum(rate(rocketmq_throughput_in_total[1m])) by (cluster, node_id)",
+                        Map.of("cluster", "cluster", "topic", "topic"),
                         "cluster", "node_id", "topic", "message_type"),
                 mapping(SemanticMetric.THROUGHPUT_OUT, "rocketmq_throughput_out_total",
                         "sum(rate(rocketmq_throughput_out_total[1m])) by (cluster, node_id, consumer_group)",
+                        Map.of("cluster", "cluster", "topic", "topic", "consumer_group", "consumer_group"),
                         "cluster", "node_id", "topic", "consumer_group"),
                 mapping(SemanticMetric.CONSUMER_LAG_MESSAGES, "rocketmq_consumer_lag_messages",
                         "sum(rocketmq_consumer_lag_messages) by (cluster, topic, consumer_group)",
+                        Map.of("cluster", "cluster", "topic", "topic", "consumer_group", "consumer_group"),
                         "cluster", "topic", "consumer_group"),
                 mapping(SemanticMetric.CONSUMER_LAG_LATENCY, "rocketmq_consumer_lag_latency_milliseconds",
                         "max(rocketmq_consumer_lag_latency_milliseconds) by (cluster, topic, consumer_group)",
+                        Map.of("cluster", "cluster", "topic", "topic", "consumer_group", "consumer_group"),
                         "cluster", "topic", "consumer_group"),
                 // Every broker reports the same cluster-level count; max avoids double counting.
                 mapping(SemanticMetric.TOPIC_NUMBER, "rocketmq_topic_number",
                         "max(rocketmq_topic_number) by (cluster)",
+                        Map.of("cluster", "cluster"),
                         "cluster"),
                 mapping(SemanticMetric.CONSUMER_GROUP_NUMBER, "rocketmq_consumer_group_number",
                         "max(rocketmq_consumer_group_number) by (cluster)",
+                        Map.of("cluster", "cluster"),
                         "cluster"),
                 mapping(SemanticMetric.BROKER_HEALTH, "up",
                         "min(up{job=~\".*rocketmq.*\"}) by (job, instance)",
+                        Map.of(),
                         "job", "instance")
         );
     }
 
     private MetricProfileVO.MetricMappingVO mapping(SemanticMetric semanticMetric, String prometheusMetric,
-                                                    String promql, String... labels) {
+                                                    String promql, Map<String, String> scopeLabels,
+                                                    String... labels) {
         return MetricProfileVO.MetricMappingVO.builder()
                 .semanticMetric(semanticMetric.getKey())
                 .name(semanticMetric.getDisplayName())
                 .unit(semanticMetric.getUnit())
                 .prometheusMetric(prometheusMetric)
                 .promql(promql)
+                .scopeLabels(scopeLabels)
                 .labels(List.of(labels))
                 .build();
     }

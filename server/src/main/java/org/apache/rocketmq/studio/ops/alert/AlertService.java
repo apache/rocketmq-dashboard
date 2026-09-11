@@ -695,10 +695,38 @@ public class AlertService {
     }
 
     private String labelSelector(AlertRuleVO rule) {
+        String semantic = scopeSemanticMetric(rule.getMetric());
         StringBuilder selector = new StringBuilder();
+        // cluster and broker are spelled identically by both profiles, so they keep their
+        // pre-existing literal names; the consumer-group and topic label names differ per
+        // profile and must be resolved from the active profile's mapping.
         appendLabel(selector, "cluster", rule.getClusterName());
         appendLabel(selector, "broker", rule.getBrokerName());
+        appendScopeLabel(selector, semantic, "consumer_group", rule.getConsumerGroup());
+        appendScopeLabel(selector, semantic, "topic", rule.getTopic());
         return selector.isEmpty() ? "" : "{" + selector + "}";
+    }
+
+    /**
+     * Semantic metric whose active-profile mapping decides the selector's label names.
+     * Native metrics resolve through {@link #NATIVE_METRIC_SEMANTIC}; raw exporter metric
+     * names fall back to the consumer-lag mapping — the export default — whose labels
+     * document the label naming of the deployed profile.
+     */
+    private String scopeSemanticMetric(String metric) {
+        String normalized = hasText(metric) ? metric.trim() : "";
+        return NATIVE_METRIC_SEMANTIC.getOrDefault(normalized, SemanticMetric.CONSUMER_LAG_MESSAGES.getKey());
+    }
+
+    private void appendScopeLabel(StringBuilder selector, String semantic, String scope, String value) {
+        if (!hasText(value) || "*".equals(value.trim())) {
+            return;
+        }
+        // A label name guessed for the wrong profile (e.g. "group" on a 5.x deployment)
+        // matches an empty series set and silently disables the alert, so the name must
+        // come from the active profile's mapping; an unmapped scope drops the selector.
+        metricProfileService.resolveCurrentScopeLabel(semantic, scope)
+                .ifPresent(label -> appendLabel(selector, label, value));
     }
 
     private void appendLabel(StringBuilder selector, String label, String value) {
