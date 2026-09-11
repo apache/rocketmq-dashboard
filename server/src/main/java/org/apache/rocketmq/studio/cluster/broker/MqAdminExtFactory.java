@@ -26,7 +26,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -203,7 +206,10 @@ public class MqAdminExtFactory {
 
     private String rootMessage(Throwable ex) {
         Throwable cause = ex;
-        while (cause.getCause() != null && cause.getCause() != cause) {
+        // An identity set bounds the walk: a direct self-cycle is the only case the old
+        // cause.getCause() != cause check caught, a two-exception cycle still loops forever.
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (seen.add(cause) && cause.getCause() != null) {
             cause = cause.getCause();
         }
         String message = cause.getMessage();
