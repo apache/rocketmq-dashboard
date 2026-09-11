@@ -74,7 +74,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
 
     private QueryWrapper<RmqAlertRule> ruleQuery(String search, Boolean enabled) {
         return new QueryWrapper<RmqAlertRule>()
-                .like(StringUtils.hasText(search), "name", search)
+                .like(StringUtils.hasText(search), "name", escapeLike(search))
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("name", "id");
     }
@@ -84,9 +84,9 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         QueryWrapper<RmqAlertRule> conditions = new QueryWrapper<RmqAlertRule>()
                 .eq(query.enabled() != null, "enabled", query.enabled())
                 .and(StringUtils.hasText(query.search()), wrapper -> wrapper
-                        .like("name", query.search().trim())
+                        .like("name", escapeLike(query.search().trim()))
                         .or()
-                        .like("metric", query.search().trim()))
+                        .like("metric", escapeLike(query.search().trim())))
                 .orderByAsc("name")
                 .orderByAsc("id");
         if (query.domain() == AlertDomain.BUSINESS) {
@@ -364,6 +364,19 @@ public class MybatisPlusAlertRepository implements AlertRepository {
 
     private static String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    /**
+     * Escapes SQL LIKE wildcards so alert-rule names and metrics match literally.
+     * Underscores are common in metric names ({@code consumer_lag}); leaving them
+     * unescaped would also match {@code consumerXlag}. Mirrors
+     * {@code QueryHistoryService.escapeLike}.
+     */
+    private static String escapeLike(String search) {
+        if (!StringUtils.hasText(search)) {
+            return search;
+        }
+        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private static List<String> splitCsv(String value) {

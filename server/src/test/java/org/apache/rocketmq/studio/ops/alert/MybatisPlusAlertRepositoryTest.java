@@ -194,6 +194,48 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
+    void findRulePageShouldEscapeLikeWildcards() {
+        Page<RmqAlertRule> mapperPage = new Page<RmqAlertRule>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        // "prod_lag%" must match rules literally named that way; "_" must not
+        // stand in for any character and "%" must not match any suffix.
+        repository.findRulePage("prod_lag%", null, 1, 20);
+
+        ArgumentCaptor<IPage<RmqAlertRule>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(pageCaptor.capture(), queryCaptor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        query.getSqlSegment();
+        assertThat(query.getParamNameValuePairs())
+                .containsValue("%prod\\_lag\\%%")
+                .doesNotContainValue("%prod_lag%");
+    }
+
+    @Test
+    void findRulesPageShouldEscapeLikeWildcardsOnNameAndMetric() {
+        Page<RmqAlertRule> mapperPage = new Page<RmqAlertRule>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findRulesPage(new AlertRuleQuery(AlertDomain.BUSINESS, "consumer_lag%", null, 1, 20));
+
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        query.getSqlSegment();
+        assertThat(query.getSqlSegment())
+                .contains("name LIKE")
+                .contains("metric LIKE");
+        assertThat(query.getParamNameValuePairs())
+                .containsValue("%consumer\\_lag\\%%")
+                .doesNotContainValue("%consumer_lag%");
+    }
+
+    @Test
     void findRuleByIdShouldReturnOnlyTheRequestedRuleTest() {
         RmqAlertRule entity = new RmqAlertRule();
         entity.setId(7L);
