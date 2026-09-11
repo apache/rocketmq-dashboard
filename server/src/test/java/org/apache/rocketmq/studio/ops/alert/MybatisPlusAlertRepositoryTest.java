@@ -295,6 +295,27 @@ class MybatisPlusAlertRepositoryTest {
                 argThat(MybatisPlusAlertRepositoryTest::hasStableAlertOrdering));
     }
 
+    @Test
+    void summarizeAlertsShouldAggregateResultSetWideCountsTest() {
+        Map<String, Object> row = Map.of(
+                "total_count", 21L,
+                "unacknowledged_count", 13L);
+        when(alertMapper.selectMaps(any())).thenReturn(List.of(row));
+
+        SystemAlertSummaryVO summary = repository.summarizeAlerts(new SystemAlertQuery(
+                "error", AlertDomain.CLUSTER, "instance-a", "FIRING", "topic", "orders",
+                LocalDateTime.of(2026, 9, 1, 0, 0), LocalDateTime.of(2026, 9, 5, 0, 0), 1, 1, false));
+
+        assertThat(summary.getTotal()).isEqualTo(21);
+        assertThat(summary.getUnacknowledged()).isEqualTo(13);
+        ArgumentCaptor<Wrapper<RmqSystemAlert>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(alertMapper).selectMaps(captor.capture());
+        QueryWrapper<RmqSystemAlert> query = (QueryWrapper<RmqSystemAlert>) captor.getValue();
+        assertThat(query.getSqlSelect()).contains("total_count", "unacknowledged_count");
+        assertThat(query.getSqlSegment()).contains("level =", "domain =", "instance_id =",
+                "transition =", "notification_suppressed =");
+    }
+
     private static boolean hasScopeLabelAndTimeFilters(Wrapper<RmqSystemAlert> query) {
         if (!(query instanceof QueryWrapper<?> queryWrapper)) {
             return false;

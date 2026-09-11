@@ -22,6 +22,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
+import org.apache.rocketmq.studio.common.util.JdbcRowValues;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
@@ -199,6 +200,29 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         Page<RmqSystemAlert> result = alertMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
         return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toAlertVO).toList(),
                 result.getTotal(), query.page(), query.pageSize());
+    }
+
+    @Override
+    public SystemAlertSummaryVO summarizeAlerts(SystemAlertQuery query) {
+        QueryWrapper<RmqSystemAlert> conditions = new QueryWrapper<RmqSystemAlert>()
+                .select(
+                        "COUNT(*) AS total_count",
+                        "COALESCE(SUM(CASE WHEN acknowledged = 0 THEN 1 ELSE 0 END), 0) AS unacknowledged_count")
+                .eq(StringUtils.hasText(query.level()), "level", normalizeLevel(query.level()))
+                .eq(query.domain() != null, "domain", query.domain() == null ? null : query.domain().name())
+                .eq(StringUtils.hasText(query.instanceId()), "instance_id", trimToNull(query.instanceId()))
+                .eq(StringUtils.hasText(query.transition()), "transition", normalizeTransition(query.transition()))
+                .eq(query.notificationSuppressed() != null, "notification_suppressed", query.notificationSuppressed())
+                .apply(StringUtils.hasText(query.labelKey()),
+                        "JSON_CONTAINS(labels_json, JSON_OBJECT({0}, {1}))", query.labelKey(), query.labelValue())
+                .ge(query.from() != null, "time", query.from())
+                .le(query.to() != null, "time", query.to());
+        List<Map<String, Object>> rows = alertMapper.selectMaps(conditions);
+        Map<String, Object> row = rows.isEmpty() ? Map.of() : rows.get(0);
+        return SystemAlertSummaryVO.builder()
+                .total(JdbcRowValues.longValueOrZero(row, "total_count"))
+                .unacknowledged(JdbcRowValues.longValueOrZero(row, "unacknowledged_count"))
+                .build();
     }
 
     @Override
