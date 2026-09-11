@@ -18,6 +18,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
+  Descriptions,
+  Drawer,
   Flex,
   Form,
   Input,
@@ -32,7 +34,14 @@ import {
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DownloadSimple, Key, Plus, SignOut } from '@phosphor-icons/react';
+import {
+  ArrowClockwise,
+  DownloadSimple,
+  Key,
+  ListBullets,
+  Plus,
+  SignOut,
+} from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
@@ -41,15 +50,18 @@ import {
   createStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as exportStudioUsers,
+  listStudioUserSessions,
   listStudioUsers,
   resetStudioUserPassword,
   revokeStudioUserSessions,
   setStudioUserEnabled,
   type StudioUser,
+  type StudioUserSessionDetail,
   type StudioUserSessionOverview,
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { formatDelay } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 interface CreateFormValues {
@@ -63,7 +75,8 @@ interface PasswordFormValues {
   newPassword: string;
 }
 
-const dateTime = (value?: string) => (value ? new Date(value).toLocaleString() : '-');
+const dateTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : '-');
+const durationText = (value?: number | null) => (value == null ? '-' : formatDelay(value));
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 type RoleFilter = 'admin' | 'reader';
@@ -87,6 +100,15 @@ const STUDIO_USER_EXPORT_COLUMNS: CsvColumn<StudioUser>[] = [
   { header: 'Created At', value: (user) => dateTime(user.gmtCreate) },
   { header: 'Modified At', value: (user) => dateTime(user.gmtModified) },
 ];
+
+const sessionStatusTags = (session: StudioUserSessionDetail) => (
+  <Space size={4} wrap>
+    <Tag color="processing">活跃</Tag>
+    {session.expiringSoon && <Tag color="gold">即将过期</Tag>}
+    {session.stale && <Tag color="orange">长时间未活跃</Tag>}
+  </Space>
+);
+
 const UserManagementPage = () => {
   const navigate = useNavigate();
   const admin = useAuthStore((state) => state.admin);
@@ -102,6 +124,9 @@ const UserManagementPage = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
   const [sessionOverview, setSessionOverview] = useState<StudioUserSessionOverview | null>(null);
+  const [sessionDrawerUser, setSessionDrawerUser] = useState<StudioUser | null>(null);
+  const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
+  const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
@@ -109,6 +134,7 @@ const UserManagementPage = () => {
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
+  const sessionDetailsRequestSeqRef = useRef(0);
   const mutatingUserIdsRef = useRef(new Set<number>());
 
   useEffect(() => {
@@ -122,6 +148,8 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
+      setSessionDrawerUser(null);
+      setSessionDetails([]);
       return;
     }
     const requestId = ++requestSeqRef.current;
@@ -167,9 +195,45 @@ const UserManagementPage = () => {
   useEffect(
     () => () => {
       requestSeqRef.current += 1;
+      sessionDetailsRequestSeqRef.current += 1;
     },
     [],
   );
+
+  const loadSessionDetails = useCallback(async (record: StudioUser) => {
+    const requestId = ++sessionDetailsRequestSeqRef.current;
+    setSessionDetailsLoading(true);
+    try {
+      const details = await listStudioUserSessions(record.id);
+      if (requestId !== sessionDetailsRequestSeqRef.current) return;
+      setSessionDetails(details);
+      setSessionDrawerUser((current) =>
+        current?.id === record.id ? { ...current, activeSessionCount: details.length } : current,
+      );
+    } catch {
+      if (requestId === sessionDetailsRequestSeqRef.current) {
+        setSessionDetails([]);
+        message.error('加载用户会话失败');
+      }
+    } finally {
+      if (requestId === sessionDetailsRequestSeqRef.current) {
+        setSessionDetailsLoading(false);
+      }
+    }
+  }, []);
+
+  const openSessionDrawer = (record: StudioUser) => {
+    setSessionDrawerUser(record);
+    setSessionDetails([]);
+    void loadSessionDetails(record);
+  };
+
+  const closeSessionDrawer = () => {
+    sessionDetailsRequestSeqRef.current += 1;
+    setSessionDrawerUser(null);
+    setSessionDetails([]);
+    setSessionDetailsLoading(false);
+  };
 
   const createUser = async () => {
     const values = await createForm.validateFields();
@@ -254,6 +318,9 @@ const UserManagementPage = () => {
           navigate('/login', { replace: true });
           return;
         }
+        if (sessionDrawerUser?.id === record.id) {
+          await loadSessionDetails({ ...record, activeSessionCount: 0 });
+        }
         await loadUsers();
       },
       '注销用户会话失败',
@@ -280,30 +347,72 @@ const UserManagementPage = () => {
     }
     setUserExporting(false);
   }, [admin, roleFilter, search, statusFilter]);
+  const sessionDetailColumns: ColumnsType<StudioUserSessionDetail> = [
+    { title: '会话 ID', dataIndex: 'id', width: 96 },
+    {
+      title: '状态',
+      key: 'status',
+      width: 172,
+      render: (_, record) => sessionStatusTags(record),
+    },
+    {
+      title: '最近活跃',
+      dataIndex: 'lastSeenAt',
+      width: 160,
+      ellipsis: true,
+      render: dateTime,
+    },
+    {
+      title: '已空闲',
+      dataIndex: 'idleSeconds',
+      width: 112,
+      render: durationText,
+    },
+    {
+      title: '过期时间',
+      dataIndex: 'expiresAt',
+      width: 160,
+      ellipsis: true,
+      render: dateTime,
+    },
+    {
+      title: '剩余有效期',
+      dataIndex: 'remainingSeconds',
+      width: 126,
+      render: durationText,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'gmtCreate',
+      width: 160,
+      ellipsis: true,
+      render: dateTime,
+    },
+  ];
   // Declared widths total 1116px, which stays inside the usable content width of a normal
   // 1440px viewport (220px Sider plus page and Card padding), so the table does not show a
   // horizontal scrollbar by default. Columns whose text can be longer than that truncate with
   // the full value on hover instead of wrapping.
   const columns: ColumnsType<StudioUser> = [
     { title: '用户名', dataIndex: 'username', width: 120, ellipsis: true },
-    { title: '用户 ID', dataIndex: 'id', width: 88 },
+    { title: '用户 ID', dataIndex: 'id', width: 80 },
     {
       title: '权限',
       dataIndex: 'admin',
-      width: 92,
+      width: 88,
       render: (value: boolean) => (value ? <Tag color="blue">管理员</Tag> : <Tag>普通用户</Tag>),
     },
     {
       title: '状态',
       dataIndex: 'enabled',
-      width: 92,
+      width: 88,
       render: (value: boolean) =>
         value ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>,
     },
     {
       title: '活跃会话',
       dataIndex: 'activeSessionCount',
-      width: 84,
+      width: 80,
       render: (value?: number) => {
         const count = value ?? 0;
         return <Tag color={count > 0 ? 'processing' : 'default'}>{count}</Tag>;
@@ -312,32 +421,39 @@ const UserManagementPage = () => {
     {
       title: '最近活跃',
       dataIndex: 'lastSessionSeenAt',
-      width: 140,
+      width: 132,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: '最近过期',
       dataIndex: 'nearestSessionExpiresAt',
-      width: 140,
+      width: 132,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: '创建时间',
       dataIndex: 'gmtCreate',
-      width: 140,
+      width: 132,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: '操作',
       key: 'actions',
-      width: 220,
+      width: 264,
       render: (_, record) => (
-        <Space>
+        <Space size={4}>
           <Button size="small" icon={<Key size={14} />} onClick={() => setPasswordTarget(record)}>
             改密
+          </Button>
+          <Button
+            size="small"
+            icon={<ListBullets size={14} />}
+            onClick={() => openSessionDrawer(record)}
+          >
+            会话
           </Button>
           <Popconfirm
             title={`注销 ${record.username} 的活跃会话？`}
@@ -355,7 +471,7 @@ const UserManagementPage = () => {
               disabled={(record.activeSessionCount ?? 0) === 0}
               loading={mutatingUserIds.has(record.id)}
             >
-              会话
+              注销
             </Button>
           </Popconfirm>
           <Switch
@@ -505,6 +621,98 @@ const UserManagementPage = () => {
           />
         </Card>
       )}
+
+      <Drawer
+        title={sessionDrawerUser ? `${sessionDrawerUser.username} 的会话` : '用户会话'}
+        width={820}
+        open={sessionDrawerUser !== null}
+        onClose={closeSessionDrawer}
+        destroyOnHidden
+        extra={
+          sessionDrawerUser ? (
+            <Space>
+              <Button
+                icon={<ArrowClockwise size={16} />}
+                loading={sessionDetailsLoading}
+                onClick={() => void loadSessionDetails(sessionDrawerUser)}
+              >
+                刷新
+              </Button>
+              <Popconfirm
+                title={`注销 ${sessionDrawerUser.username} 的活跃会话？`}
+                description="用户需要重新登录，账号状态不会改变。"
+                okText="注销"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+                disabled={sessionDetails.length === 0}
+                onConfirm={() => void revokeSessions(sessionDrawerUser)}
+              >
+                <Button
+                  danger
+                  icon={<SignOut size={16} />}
+                  disabled={sessionDetails.length === 0}
+                  loading={mutatingUserIds.has(sessionDrawerUser.id)}
+                >
+                  注销全部
+                </Button>
+              </Popconfirm>
+            </Space>
+          ) : undefined
+        }
+      >
+        {sessionDrawerUser && (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Descriptions
+              bordered
+              size="small"
+              column={2}
+              items={[
+                { key: 'userId', label: '用户 ID', children: sessionDrawerUser.id },
+                {
+                  key: 'role',
+                  label: '权限',
+                  children: sessionDrawerUser.admin ? '管理员' : '普通用户',
+                },
+                {
+                  key: 'activeSessionCount',
+                  label: '活跃会话',
+                  children: sessionDetailsLoading ? '-' : sessionDetails.length,
+                },
+                {
+                  key: 'status',
+                  label: '账号状态',
+                  children: sessionDrawerUser.enabled ? '已启用' : '已禁用',
+                },
+                {
+                  key: 'lastSessionSeenAt',
+                  label: '最近活跃',
+                  children: dateTime(sessionDrawerUser.lastSessionSeenAt),
+                },
+                {
+                  key: 'nearestSessionExpiresAt',
+                  label: '最近过期',
+                  children: dateTime(sessionDrawerUser.nearestSessionExpiresAt),
+                },
+                {
+                  key: 'passwordChangedAt',
+                  label: '密码修改时间',
+                  children: dateTime(sessionDrawerUser.passwordChangedAt),
+                },
+              ]}
+            />
+            <Table
+              rowKey="id"
+              loading={sessionDetailsLoading}
+              columns={sessionDetailColumns}
+              dataSource={sessionDetails}
+              tableLayout="fixed"
+              pagination={false}
+              scroll={{ x: tableScrollX(sessionDetailColumns), y: 420 }}
+              locale={{ emptyText: '暂无活跃会话' }}
+            />
+          </Space>
+        )}
+      </Drawer>
 
       <Modal
         title="新建 Studio 用户"
