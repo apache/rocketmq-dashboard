@@ -113,7 +113,9 @@ public class MybatisPlusAclRepository implements AclRepository {
 
     @Override
     public PageResult<AclUserVO> findUserPage(String keyword, int page, int pageSize) {
-        String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase(Locale.ROOT) : null;
+        String search = StringUtils.hasText(keyword)
+                ? escapeLike(keyword.trim().toLowerCase(Locale.ROOT))
+                : null;
         QueryWrapper<RmqAclUser> query = new QueryWrapper<RmqAclUser>()
                 .and(search != null, w -> w
                         .like("username", search)
@@ -388,13 +390,26 @@ public class MybatisPlusAclRepository implements AclRepository {
     private static QueryWrapper<RmqAclRule> ruleQuery(String principal, String resource, String scope,
             String decision, String aclVersion) {
         return new QueryWrapper<RmqAclRule>()
-                .like(StringUtils.hasText(principal), "principal", principal)
-                .like(StringUtils.hasText(resource), "resource", resource)
+                .like(StringUtils.hasText(principal), "principal", escapeLike(principal))
+                .like(StringUtils.hasText(resource), "resource", escapeLike(resource))
                 .eq(StringUtils.hasText(scope), "scope", scope)
                 .eq(StringUtils.hasText(decision), "decision", decision)
                 .eq(StringUtils.hasText(aclVersion), "acl_version", aclVersion)
                 .orderByDesc("gmt_create")
                 .orderByDesc("id");
+    }
+
+    /**
+     * Escapes SQL LIKE wildcards so ACL usernames, access keys, principals and
+     * resources match literally. Underscores are common in service-account
+     * names ({@code svc_monitor}); leaving them unescaped would also match
+     * {@code svcXmonitor}. Mirrors {@code QueryHistoryService.escapeLike}.
+     */
+    private static String escapeLike(String search) {
+        if (!StringUtils.hasText(search)) {
+            return search;
+        }
+        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private static String[] splitPerm(String entry) {

@@ -174,6 +174,46 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void findUserPageShouldEscapeLikeWildcards() {
+        Page<RmqAclUser> mapperPage = new Page<RmqAclUser>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(userMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        // "prod_user%" must match accounts literally named that way; "_" must not
+        // stand in for any character and "%" must not match any suffix.
+        repository.findUserPage("prod_user%", 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(userMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAclUser> query = (QueryWrapper<RmqAclUser>) queryCaptor.getValue();
+        query.getSqlSegment();
+        assertThat(query.getParamNameValuePairs())
+                .containsValue("%prod\\_user\\%%")
+                .doesNotContainValue("%prod_user%");
+    }
+
+    @Test
+    void findRulePageShouldEscapeLikeWildcardsOnPrincipalAndResource() {
+        Page<RmqAclRule> mapperPage = new Page<RmqAclRule>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findRulePage("svc_monitor%", "orders_topic%", null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqAclRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAclRule> query = (QueryWrapper<RmqAclRule>) queryCaptor.getValue();
+        query.getSqlSegment();
+        assertThat(query.getParamNameValuePairs())
+                .containsValue("%svc\\_monitor\\%%")
+                .containsValue("%orders\\_topic\\%%")
+                .doesNotContainValue("%svc_monitor%")
+                .doesNotContainValue("%orders_topic%");
+    }
+
+    @Test
     void replaceRuleShouldReturnEmptyWhenConcurrentDeleteWins() {
         RmqAclRule existing = new RmqAclRule();
         existing.setId(1L);
