@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,6 +40,9 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/cloud-credentials")
 public class CloudCredentialController {
+
+    /** Carries the operator's password for the reveal step; never placed on the query string. */
+    public static final String REAUTH_HEADER = "X-Studio-Reauth";
 
     private final CloudCredentialService credentialService;
 
@@ -79,10 +83,17 @@ public class CloudCredentialController {
         return Result.ok();
     }
 
+    /**
+     * Reveals a credential together with its plaintext secret key for an authenticated admin. The admin
+     * session is not sufficient on its own: {@link CloudCredentialController#REAUTH_HEADER} must carry the
+     * operator's password, which {@code CloudCredentialService#reveal} verifies and audits.
+     */
     @GetMapping("/{id}/credentials")
-    public ResponseEntity<Result<CloudCredentialVO>> getCredentialSecrets(@PathVariable Long id) {
+    public ResponseEntity<Result<CloudCredentialVO>> getCredentialSecrets(
+            @PathVariable Long id,
+            @RequestHeader(name = REAUTH_HEADER, required = false) String reauthPassword) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(Result.ok(credentialService.reveal(id)));
+                .body(Result.ok(credentialService.reveal(id, reauthPassword)));
     }
 }

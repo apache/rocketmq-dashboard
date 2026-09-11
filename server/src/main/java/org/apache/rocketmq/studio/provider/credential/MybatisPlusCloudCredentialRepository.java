@@ -21,7 +21,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.common.util.CredentialCipher;
 import org.apache.rocketmq.studio.persistence.entity.RmqCloudCredential;
 import org.apache.rocketmq.studio.persistence.mapper.RmqCloudCredentialMapper;
 import org.springframework.stereotype.Repository;
@@ -33,20 +33,23 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * MySQL-backed cloud credential repository. Secret keys are stored base64-encoded in
- * {@code rmq_cloud_credential.secret_key} and decoded when read; plain text is never persisted.
+ * MySQL-backed cloud credential repository. Secret keys are sealed with AES-GCM by
+ * {@link CredentialCipher} before they reach {@code rmq_cloud_credential.secret_key} and are opened again
+ * when read, so the column never holds a recoverable plaintext key. Rows written by the earlier base64
+ * scheme are still readable and are re-sealed by {@code CredentialEncryptionMigration}.
  */
 @RequiredArgsConstructor
 @Repository
 public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepository {
 
     private final RmqCloudCredentialMapper credentialMapper;
+    private final CredentialCipher credentialCipher;
 
     @Override
     public List<CloudCredentialVO> findAll() {
         return credentialMapper.selectList(
                         new QueryWrapper<RmqCloudCredential>().orderByAsc("id")).stream()
-                .map(MybatisPlusCloudCredentialRepository::toVO)
+                .map(this::toVO)
                 .collect(Collectors.toList());
     }
     @Override
@@ -58,7 +61,7 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
                 .orderByDesc("gmt_modified", "id");
         Page<RmqCloudCredential> result = credentialMapper.selectPage(new Page<>(page, pageSize), q);
         return PageResult.of(result.getRecords().stream()
-                        .map(MybatisPlusCloudCredentialRepository::toVO)
+                        .map(this::toVO)
                         .toList(),
                 result.getTotal(), page, pageSize);
     }
@@ -69,7 +72,7 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
             return Optional.empty();
         }
         return Optional.ofNullable(credentialMapper.selectById(id))
-                .map(MybatisPlusCloudCredentialRepository::toVO);
+                .map(this::toVO);
     }
 
     @Override
@@ -79,7 +82,7 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
                         .eq("vendor", vendor.name())
                         .eq("access_key", accessKey)
                         .last("LIMIT 1"));
-        return Optional.ofNullable(entity).map(MybatisPlusCloudCredentialRepository::toVO);
+        return Optional.ofNullable(entity).map(this::toVO);
     }
 
     @Override
@@ -109,26 +112,26 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
 
     // ── Mapping ────────────────────────────────────────────────────
 
-    private static CloudCredentialVO toVO(RmqCloudCredential entity) {
+    private CloudCredentialVO toVO(RmqCloudCredential entity) {
         CloudCredentialVO vo = new CloudCredentialVO();
         vo.setId(entity.getId());
         vo.setName(entity.getName());
         vo.setVendor(parseVendor(entity.getId(), entity.getVendor()));
         vo.setAccessKey(entity.getAccessKey());
-        vo.setSecretKey(CredentialUtils.decodeBase64(entity.getSecretKey()));
+        vo.setSecretKey(credentialCipher.decrypt(entity.getSecretKey()));
         vo.setRemark(entity.getRemark());
         vo.setGmtCreate(entity.getGmtCreate());
         vo.setGmtModified(entity.getGmtModified());
         return vo;
     }
 
-    private static RmqCloudCredential toEntity(CloudCredentialVO vo) {
+    private RmqCloudCredential toEntity(CloudCredentialVO vo) {
         RmqCloudCredential entity = new RmqCloudCredential();
         entity.setId(vo.getId());
         entity.setName(vo.getName());
         entity.setVendor(vo.getVendor() == null ? null : vo.getVendor().name());
         entity.setAccessKey(vo.getAccessKey());
-        entity.setSecretKey(CredentialUtils.encodeBase64(vo.getSecretKey()));
+        entity.setSecretKey(credentialCipher.encrypt(vo.getSecretKey()));
         entity.setRemark(vo.getRemark());
         entity.setGmtCreate(vo.getGmtCreate());
         entity.setGmtModified(vo.getGmtModified() == null ? LocalDateTime.now() : vo.getGmtModified());

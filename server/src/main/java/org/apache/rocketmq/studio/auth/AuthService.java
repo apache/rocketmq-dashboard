@@ -159,6 +159,41 @@ public class AuthService {
         return getAuthenticatedUser(authorization).map(LoginVO.UserInfo::isAdmin).orElse(false);
     }
 
+    /**
+     * Second-factor confirmation for operations that expose stored secrets.
+     *
+     * <p>The caller is already an authenticated admin by the time this runs (the interceptor gates the
+     * reveal endpoints), so this deliberately asks for the account password again: a replayed session
+     * cookie is not enough to read provider keys. The confirmation is resolved against the currently
+     * authenticated principal from {@link AuthenticatedUserContext}, never against a caller-supplied
+     * user name, so it cannot be used to check another account's password.</p>
+     *
+     * @throws BusinessException 403 when the password is missing, the principal is unknown, or the
+     *         password does not match - all cases fail closed.
+     */
+    public void verifySensitiveOperationPassword(String rawPassword) {
+        if (rawPassword == null || rawPassword.isBlank()) {
+            throw new BusinessException(403,
+                    "Password confirmation is required to reveal stored secrets");
+        }
+        String username = AuthenticatedUserContext.currentUsernameOrSystem();
+        if (databaseBacked()) {
+            ensureBootstrapUsers();
+            RmqStudioUser user = findUserByUsername(username).orElse(null);
+            if (user == null || !Boolean.TRUE.equals(user.getEnabled())
+                    || !passwordHasher.matches(rawPassword, user.getPasswordHash())) {
+                throw new BusinessException(403, "Password confirmation failed");
+            }
+            return;
+        }
+        boolean matched = authProperties.configuredUsers().stream()
+                .anyMatch(candidate -> candidate.getUsername().equals(username)
+                        && candidate.getPassword().equals(rawPassword));
+        if (!matched) {
+            throw new BusinessException(403, "Password confirmation failed");
+        }
+    }
+
     public void logout(String authorization) {
         tokenFromAuthorization(authorization).ifPresent(token -> {
             if (databaseBacked()) {

@@ -48,11 +48,22 @@ class CloudCredentialControllerTest {
         credentials.setId(1L);
         credentials.setAccessKey("access-key");
         credentials.setSecretKey("secret-key");
-        when(credentialService.reveal(1L)).thenReturn(credentials);
+        when(credentialService.reveal(1L, null)).thenReturn(credentials);
 
         mockMvc.perform(get("/api/cloud-credentials/1/credentials"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+    }
+
+    @Test
+    void getCredentialSecretsShouldForwardTheReAuthenticationHeader() throws Exception {
+        when(credentialService.reveal(1L, "operator-password")).thenReturn(new CloudCredentialVO());
+
+        mockMvc.perform(get("/api/cloud-credentials/1/credentials")
+                        .header(CloudCredentialController.REAUTH_HEADER, "operator-password"))
+                .andExpect(status().isOk());
+
+        verify(credentialService).reveal(1L, "operator-password");
     }
 
     @Test

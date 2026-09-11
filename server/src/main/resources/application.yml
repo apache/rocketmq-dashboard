@@ -67,6 +67,11 @@ management:
 studio:
   cors:
     allowed-origins: ${STUDIO_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  credential:
+    # Base64-encoded 32-byte AES-256 key used to seal provider AK/SK secrets at rest (enc:v1:...).
+    # Generate with: openssl rand -base64 32  — leave empty to fall back to a deterministic
+    # development key, which is logged as a warning and must not be used for real credentials.
+    encryption-key: ${STUDIO_CREDENTIAL_ENCRYPTION_KEY:}
   auth:
     login-required: ${STUDIO_AUTH_LOGIN_REQUIRED:true}
     # Production defaults. The dev profile disables Secure so local HTTP works without extra environment variables.

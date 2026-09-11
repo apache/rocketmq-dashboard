@@ -288,6 +288,68 @@ class AuthServiceTest {
         authService.logout(null);
     }
 
+    @Test
+    void sensitiveOperationPasswordShouldAcceptTheCurrentPrincipalPassword() {
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("ops");
+        user.setPassword("secret");
+        authProperties.setUsers(List.of(user));
+        AuthenticatedUserContext.setUser(null, "ops", true);
+        try {
+            authService.verifySensitiveOperationPassword("secret");
+        } finally {
+            AuthenticatedUserContext.clear();
+        }
+    }
+
+    @Test
+    void sensitiveOperationPasswordShouldRejectAWrongPassword() {
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("ops");
+        user.setPassword("secret");
+        authProperties.setUsers(List.of(user));
+        AuthenticatedUserContext.setUser(null, "ops", true);
+        try {
+            assertThatThrownBy(() -> authService.verifySensitiveOperationPassword("wrong"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Password confirmation failed")
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(403));
+        } finally {
+            AuthenticatedUserContext.clear();
+        }
+    }
+
+    @Test
+    void sensitiveOperationPasswordShouldFailClosedWithoutAPassword() {
+        assertThatThrownBy(() -> authService.verifySensitiveOperationPassword(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Password confirmation is required to reveal stored secrets");
+        assertThatThrownBy(() -> authService.verifySensitiveOperationPassword(" "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Password confirmation is required to reveal stored secrets");
+    }
+
+    @Test
+    void sensitiveOperationPasswordShouldResolveAgainstTheSessionPrincipalOnly() {
+        // "other" is a valid configured user, but the session belongs to "ops": confirming with
+        // another account's password must not open the caller's sensitive operation.
+        AuthProperties.User ops = new AuthProperties.User();
+        ops.setUsername("ops");
+        ops.setPassword("secret");
+        AuthProperties.User other = new AuthProperties.User();
+        other.setUsername("other");
+        other.setPassword("otherpass");
+        authProperties.setUsers(List.of(ops, other));
+        AuthenticatedUserContext.setUser(null, "ops", true);
+        try {
+            assertThatThrownBy(() -> authService.verifySensitiveOperationPassword("otherpass"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Password confirmation failed");
+        } finally {
+            AuthenticatedUserContext.clear();
+        }
+    }
+
     private GeneralSettingsVO sessionSettings(int minutes) {
         return GeneralSettingsVO.builder().sessionTimeout(minutes).build();
     }

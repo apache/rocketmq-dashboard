@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.auth.AuthService;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
@@ -50,6 +51,7 @@ public class CloudCredentialService {
     private final AliyunClientFactory aliyunClientFactory;
     private final TencentClientFactory tencentClientFactory;
     private final OperationAuditService operationAuditService;
+    private final AuthService authService;
 
     public List<CloudCredentialVO> listMasked() {
         log.info("Listing cloud credentials (masked)");
@@ -163,12 +165,30 @@ public class CloudCredentialService {
                 credentialAuditDetail(existing));
     }
 
-    public CloudCredentialVO reveal(Long id) {
+    /**
+     * Returns the credential including its plaintext secret key, for the admin-only reveal endpoint.
+     *
+     * <p>Revealing a stored AK/SK is a step above ordinary admin reads, so the caller has to prove the
+     * account again with {@code reauthPassword} even though the session is already an authenticated admin.
+     * A stolen session cookie on its own therefore cannot exfiltrate provider keys, and every attempt -
+     * successful or not - is written to the operation audit log.</p>
+     */
+    public CloudCredentialVO reveal(Long id, String reauthPassword) {
         if (id == null) {
             throw new BusinessException(400, "Cloud credential id is required");
         }
-        return credentialRepository.findById(id)
+        try {
+            authService.verifySensitiveOperationPassword(reauthPassword);
+        } catch (BusinessException denied) {
+            recordAudit("REVEAL_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(id), null,
+                    "id=" + id, "FAILURE", denied.getMessage());
+            throw denied;
+        }
+        CloudCredentialVO credential = credentialRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + id));
+        recordAudit("REVEAL_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(id), null,
+                credentialAuditDetail(credential), "SUCCESS", null);
+        return credential;
     }
 
     private CloudCredentialVO maskAccessKey(CloudCredentialVO credential) {
@@ -198,8 +218,14 @@ public class CloudCredentialService {
 
     private void recordAudit(String operation, String resourceType, String resourceName,
                              String clusterId, String detail) {
+        recordAudit(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+    }
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail, String result, String errorMessage) {
         try {
-            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail,
+                    result, errorMessage);
         } catch (Exception auditFailure) {
             log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
                     auditFailure.getMessage());
