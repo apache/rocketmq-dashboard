@@ -64,4 +64,15 @@ class MessagePropertyDisplayTest {
         assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("k", "short"))).isFalse();
         assertThat(MessagePropertyDisplay.hasOversizedProperty(null)).isFalse();
     }
+
+    @Test
+    void limitPropertiesShouldNotSplitSurrogatePairTest() {
+        // 1023 ASCII chars followed by an emoji (a supplementary character whose
+        // UTF-16 encoding straddles the 1024-char boundary) and a suffix.
+        String emoji = "😀"; // 😀
+        String value = "a".repeat(1023) + emoji + "suffix";
+        String truncated = MessagePropertyDisplay.limitProperties(Map.of("k", value)).get("k");
+        // The truncation must land on a code-point boundary and keep the emoji intact.
+        assertThat(truncated).isEqualTo("a".repeat(1023) + emoji + "...");
+    }
 }
