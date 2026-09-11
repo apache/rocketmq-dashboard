@@ -11,6 +11,7 @@ import { App } from 'antd';
 import MessageQueryHistoryDrawer from '../MessageQueryHistoryDrawer';
 import { LangProvider } from '../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../i18n/languagePreference';
+import { formatUtcDateTime } from '../../utils/format';
 import {
   getQueryHistorySummary,
   listMessageQueryHistory,
@@ -118,6 +119,36 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(await screen.findByText('查询历史加载失败')).toBeInTheDocument();
     expect(screen.queryByText('order-1')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled();
+  });
+
+  it('treats offset-less queriedAt values as UTC', async () => {
+    vi.mocked(listMessageQueryHistory).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          queryType: 'KEY',
+          topic: 'orders',
+          messageKey: 'order-1',
+          resultCount: 2,
+          queriedBy: 'alice',
+          queriedAt: '2026-08-05T12:00:00',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    expect(screen.getByText(formatUtcDateTime('2026-08-05T12:00:00'))).toBeInTheDocument();
   });
 
   it('renders query history drawer copy in English mode', async () => {
