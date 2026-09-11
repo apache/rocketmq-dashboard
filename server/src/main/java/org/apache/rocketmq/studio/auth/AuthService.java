@@ -188,7 +188,7 @@ public class AuthService {
                     "search must not exceed " + MAX_USER_SEARCH_LENGTH + " characters");
         }
         QueryWrapper<RmqStudioUser> query = new QueryWrapper<RmqStudioUser>()
-                .like(!normalizedSearch.isEmpty(), "username", normalizedSearch)
+                .like(!normalizedSearch.isEmpty(), "username", escapeLike(normalizedSearch))
                 .eq(admin != null, "admin", admin)
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("username")
@@ -596,6 +596,10 @@ public class AuthService {
         if (!databaseBacked()) {
             throw new IllegalStateException("Studio user management requires database persistence");
         }
+    }
+
+    static String escapeLike(String search) {
+        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private record AuthSession(LoginVO.UserInfo user, long expiresAtMillis) {
