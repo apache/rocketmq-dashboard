@@ -188,13 +188,25 @@ public class AuthService {
                     "search must not exceed " + MAX_USER_SEARCH_LENGTH + " characters");
         }
         QueryWrapper<RmqStudioUser> query = new QueryWrapper<RmqStudioUser>()
-                .like(!normalizedSearch.isEmpty(), "username", normalizedSearch)
+                .like(!normalizedSearch.isEmpty(), "username", escapeLike(normalizedSearch))
                 .eq(admin != null, "admin", admin)
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("username")
                 .orderByAsc("id");
         Page<RmqStudioUser> result = userMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
+    }
+
+    /**
+     * Escapes SQL LIKE wildcards so username searches match literally.
+     * Usernames commonly contain underscores, which would otherwise match
+     * any single character (mirrors QueryHistoryService).
+     */
+    private static String escapeLike(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return keyword;
+        }
+        return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     public Map<Long, StudioUserSessionSummaryVO> listActiveSessionSummaries(
