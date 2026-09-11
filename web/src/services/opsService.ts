@@ -28,6 +28,7 @@ import type {
   AlertSilenceQuery,
   AlertSilence,
   CreateAlertSilence,
+  AlertRuleSummary,
 } from '../api/ops';
 import { mockAlertRules } from '../mock/alerts';
 import { mockAuditRecords } from '../mock/audit';
@@ -153,6 +154,29 @@ export async function listAlertRuleRuntime(
 ): Promise<AlertRuleRuntime[]> {
   if (isMockMode()) return [];
   return opsApi.listAlertRuleRuntime(domain);
+}
+
+export async function getAlertRuleSummary(
+  domain: AlertRuleDomain = 'CLUSTER',
+  query: AlertRuleQuery = {},
+): Promise<AlertRuleSummary> {
+  if (!isMockMode()) return opsApi.fetchAlertRuleSummary(domain, query);
+
+  const search = query.search?.trim().toLowerCase();
+  const filtered = alertRulesState[domain]
+    .filter((rule) => query.enabled == null || rule.enabled === query.enabled)
+    .filter(
+      (rule) =>
+        !search || includesIgnoreCase(rule.name, search) || includesIgnoreCase(rule.metric, search),
+    );
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  return {
+    total: filtered.length,
+    enabled: filtered.filter((rule) => rule.enabled).length,
+    triggeredSince: filtered.filter(
+      (rule) => rule.lastTriggered && new Date(rule.lastTriggered).getTime() > dayAgo,
+    ).length,
+  };
 }
 
 export async function exportAlertRulesTransfer(
