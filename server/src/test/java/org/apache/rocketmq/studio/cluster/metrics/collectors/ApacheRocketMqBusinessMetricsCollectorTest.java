@@ -150,6 +150,45 @@ class ApacheRocketMqBusinessMetricsCollectorTest {
                 });
     }
 
+    @Test
+    void reportsUnavailableMaxQueueLagAndTopicBacklogWhenProgressHasUnknownSentinelTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO orders = group("orders", "cluster-a", 42);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(orders));
+        when(provider.getGroupProgress("local", "orders")).thenReturn(List.of(
+                QueueProgressVO.builder().topic("orders-topic").diffTotal(17).build(),
+                QueueProgressVO.builder().topic("orders-topic").diffTotal(ConsumerLagResolver.UNKNOWN).build(),
+                QueueProgressVO.builder().topic("payments-topic").diffTotal(5).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqBusinessMetricsCollector(registry).collect(apacheInstance());
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.CONSUMER_LAG_MAX_QUEUE)
+                && "orders".equals(sample.labels().get("consumerGroup"))).singleElement()
+                .satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_LAG_UNKNOWN");
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.TOPIC_BACKLOG_TOTAL)
+                && "orders-topic".equals(sample.labels().get("topic"))).singleElement()
+                .satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_LAG_UNKNOWN");
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.TOPIC_BACKLOG_TOTAL)
+                && "payments-topic".equals(sample.labels().get("topic"))).singleElement()
+                .satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+                    assertThat(sample.value()).isEqualTo(5D);
+                });
+    }
+
     private static ConsumerGroupVO group(String name, String clusterId, long lag) {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName(name);

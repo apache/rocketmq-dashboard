@@ -425,6 +425,53 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void previewResetOffsetShouldReportUnknownTotalLagWhenAQueueHasUnknownSentinel() throws Exception {
+        long timestamp = 1784246400000L;
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue unknownQueue = new MessageQueue("orders", "broker-a", 0);
+        MessageQueue healthyQueue = new MessageQueue("orders", "broker-b", 1);
+        stats.getOffsetTable().put(unknownQueue, offsetWrapper(5L, 6L));
+        stats.getOffsetTable().put(healthyQueue, offsetWrapper(100L, 90L));
+        when(adminExt.examineConsumeStats("cg-orders")).thenReturn(stats);
+        when(adminExt.minOffset(unknownQueue)).thenReturn(0L);
+        when(adminExt.maxOffset(unknownQueue)).thenReturn(10L);
+        when(adminExt.searchOffset("broker-a", "orders", 0, timestamp, 3_000L)).thenReturn(3L);
+        when(adminExt.minOffset(healthyQueue)).thenReturn(0L);
+        when(adminExt.maxOffset(healthyQueue)).thenReturn(200L);
+        when(adminExt.searchOffset("broker-b", "orders", 1, timestamp, 3_000L)).thenReturn(95L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", timestamp, "orders");
+
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(7L);
+        assertThat(preview.getQueues())
+                .extracting(ResetConsumerOffsetQueuePreviewVO::getBroker,
+                        ResetConsumerOffsetQueuePreviewVO::getCurrentLag)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("broker-a", ConsumerLagResolver.UNKNOWN),
+                        org.assertj.core.groups.Tuple.tuple("broker-b", 10L));
+    }
+
+    @Test
+    void previewResetOffsetShouldReportUnknownProjectedTotalLagWhenAQueueHasUnknownSentinel() throws Exception {
+        long timestamp = 1784246400000L;
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue queue = new MessageQueue("orders", "broker-a", 0);
+        stats.getOffsetTable().put(queue, offsetWrapper(3L, 1L));
+        when(adminExt.examineConsumeStats("cg-orders")).thenReturn(stats);
+        when(adminExt.minOffset(queue)).thenReturn(0L);
+        when(adminExt.maxOffset(queue)).thenReturn(10L);
+        when(adminExt.searchOffset("broker-a", "orders", 0, timestamp, 3_000L)).thenReturn(5L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", timestamp, "orders");
+
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(2L);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
+    @Test
     void previewResetOffsetShouldRejectBlankTopicBeforeResolvingAdmin() {
         assertThatThrownBy(() -> adminClient.previewResetOffset("instance-a", "cg-orders", 1784246400000L, " "))
                 .isInstanceOf(BusinessException.class)

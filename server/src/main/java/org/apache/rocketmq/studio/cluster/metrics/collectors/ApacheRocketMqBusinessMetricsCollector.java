@@ -129,18 +129,32 @@ public class ApacheRocketMqBusinessMetricsCollector implements BusinessMetricsCo
         Map<String, String> labels = Map.of("consumerGroup", group.getName());
         try {
             List<QueueProgressVO> progress = provider.getGroupProgress(instance.getName(), group.getName());
-            long maxLag = progress.stream().mapToLong(QueueProgressVO::getDiffTotal)
-                    .map(value -> Math.max(0, value)).max().orElse(0);
             List<MetricSample> samples = new ArrayList<>();
-            samples.add(new MetricSample(CONSUMER_LAG_MAX_QUEUE, AlertDomain.BUSINESS, instance.getName(),
-                    group.getClusterId(), labels, (double) maxLag, MetricAvailability.AVAILABLE, collectedAt));
+            boolean maxQueueLagUnknown = progress.stream()
+                    .anyMatch(row -> row.getDiffTotal() == ConsumerLagResolver.UNKNOWN);
+            if (maxQueueLagUnknown) {
+                samples.add(unavailable(CONSUMER_LAG_MAX_QUEUE, instance, labels, collectedAt,
+                        "CONSUMER_LAG_UNKNOWN"));
+            } else {
+                long maxLag = progress.stream().mapToLong(QueueProgressVO::getDiffTotal)
+                        .map(value -> Math.max(0, value)).max().orElse(0);
+                samples.add(new MetricSample(CONSUMER_LAG_MAX_QUEUE, AlertDomain.BUSINESS, instance.getName(),
+                        group.getClusterId(), labels, (double) maxLag, MetricAvailability.AVAILABLE, collectedAt));
+            }
             progress.stream().filter(row -> row.getTopic() != null && !row.getTopic().isBlank())
-                    .collect(java.util.stream.Collectors.groupingBy(QueueProgressVO::getTopic,
-                            java.util.stream.Collectors.summingLong(
-                                    row -> Math.max(0, row.getDiffTotal()))))
-                    .forEach((topic, lag) -> samples.add(new MetricSample(TOPIC_BACKLOG_TOTAL, AlertDomain.BUSINESS,
-                            instance.getName(), group.getClusterId(), Map.of("consumerGroup", group.getName(),
-                            "topic", topic), (double) lag, MetricAvailability.AVAILABLE, collectedAt)));
+                    .collect(java.util.stream.Collectors.groupingBy(QueueProgressVO::getTopic))
+                    .forEach((topic, rows) -> {
+                        if (rows.stream().anyMatch(row -> row.getDiffTotal() == ConsumerLagResolver.UNKNOWN)) {
+                            samples.add(unavailable(TOPIC_BACKLOG_TOTAL, instance, Map.of("consumerGroup",
+                                    group.getName(), "topic", topic), collectedAt, "CONSUMER_LAG_UNKNOWN"));
+                        } else {
+                            long lag = rows.stream()
+                                    .mapToLong(row -> Math.max(0, row.getDiffTotal())).sum();
+                            samples.add(new MetricSample(TOPIC_BACKLOG_TOTAL, AlertDomain.BUSINESS,
+                                    instance.getName(), group.getClusterId(), Map.of("consumerGroup", group.getName(),
+                                    "topic", topic), (double) lag, MetricAvailability.AVAILABLE, collectedAt));
+                        }
+                    });
             return samples;
         } catch (RuntimeException error) {
             log.warn("Failed to collect queue lag for group {} on instance {}: {}", group.getName(),
