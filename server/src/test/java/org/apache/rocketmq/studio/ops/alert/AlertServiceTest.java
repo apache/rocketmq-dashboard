@@ -1234,6 +1234,20 @@ class AlertServiceTest {
     }
 
     @Test
+    void acknowledgingReminderEventShouldAcknowledgeItsActiveRuleStateTest() {
+        SystemAlertVO alert = SystemAlertVO.builder().id(1L).ruleId(7L).fingerprint("fingerprint")
+                .time(LocalDateTime.of(2026, 8, 22, 12, 30))
+                .transition("REMINDER").acknowledged(false).build();
+        when(alertRepository.findAlertById(1L)).thenReturn(Optional.of(alert));
+        when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(true);
+
+        alertService.acknowledgeAlert(1L);
+
+        verify(alertStateRepository).acknowledge(new AlertStateKey(7L, "fingerprint"),
+                LocalDateTime.of(2026, 8, 22, 12, 30).toInstant(ZoneOffset.UTC));
+    }
+
+    @Test
     void acknowledgingResolvedEventMustNotAcknowledgeANewerFiringStateTest() {
         SystemAlertVO resolved = SystemAlertVO.builder().id(1L).ruleId(7L).fingerprint("fingerprint")
                 .transition("RESOLVED").acknowledged(false).build();

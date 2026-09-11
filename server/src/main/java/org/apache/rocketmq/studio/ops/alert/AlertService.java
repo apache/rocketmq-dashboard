@@ -570,8 +570,12 @@ public class AlertService {
         if (!alertRepository.acknowledgeAlert(alert)) {
             throw new BusinessException(404, "System alert not found: " + id);
         }
-        if ("FIRING".equalsIgnoreCase(alert.getTransition())
-                && alert.getRuleId() != null && hasText(alert.getFingerprint()) && alert.getTime() != null) {
+        // FIRING and REMINDER events belong to the same firing episode, so acknowledging
+        // either must ACK the active state; the repository only honors events whose time
+        // is not older than the current episode, which keeps stale events inert.
+        String transition = alert.getTransition();
+        if (alert.getRuleId() != null && hasText(alert.getFingerprint()) && alert.getTime() != null
+                && ("FIRING".equalsIgnoreCase(transition) || "REMINDER".equalsIgnoreCase(transition))) {
             alertStateRepository.acknowledge(new AlertStateKey(alert.getRuleId(), alert.getFingerprint()),
                     alert.getTime().toInstant(ZoneOffset.UTC));
         }
