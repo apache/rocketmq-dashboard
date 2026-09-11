@@ -375,7 +375,7 @@ const InstancePage = () => {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
-      message.error(t('instance.createFailed'));
+      message.error(describeApiError(error, t('instance.createFailed')));
     } finally {
       mutationInFlightRef.current = false;
       setSubmitting(false);
@@ -459,7 +459,7 @@ const InstancePage = () => {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
-      message.error(t('instance.updateFailed'));
+      message.error(describeApiError(error, t('instance.updateFailed')));
     } finally {
       mutationInFlightRef.current = false;
       setSubmitting(false);
