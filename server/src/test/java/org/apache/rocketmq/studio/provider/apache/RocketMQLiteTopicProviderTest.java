@@ -211,7 +211,11 @@ class RocketMQLiteTopicProviderTest {
 
         ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
         verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), captor.capture());
-        assertThat(captor.getValue().getLiteTopicExpiration()).isEqualTo(120);
+        // The update must be expressed in the broker's "+key=value" change protocol and must not
+        // re-send the immutable message.type attribute.
+        Map<String, String> change = captor.getValue().getAttributes();
+        assertThat(change).containsEntry("+lite.topic.expiration", "120");
+        assertThat(change).hasSize(1);
     }
 
     @Test
@@ -223,8 +227,9 @@ class RocketMQLiteTopicProviderTest {
 
         ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
         verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), captor.capture());
-        assertThat(captor.getValue().getLiteTopicExpiration())
-                .isEqualTo(RocketMQLiteTopicProvider.MAX_LITE_TTL_MINUTES);
+        assertThat(captor.getValue().getAttributes())
+                .containsEntry("+lite.topic.expiration",
+                        String.valueOf(RocketMQLiteTopicProvider.MAX_LITE_TTL_MINUTES));
     }
 
     @Test

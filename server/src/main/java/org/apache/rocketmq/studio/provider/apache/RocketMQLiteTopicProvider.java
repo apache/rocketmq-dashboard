@@ -45,6 +45,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -341,8 +342,15 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 if (config == null) {
                     continue;
                 }
-                config.setTopicMessageType(TopicMessageType.LITE);
-                config.setLiteTopicExpiration((int) minutes);
+                // Attributes read back from the broker use bare keys ("lite.topic.expiration"),
+                // while the update protocol only accepts change entries ("+key=value"); a bare
+                // key is rejected with "add/alter attribute format is wrong". The broker merges
+                // this change set into the stored attributes, so re-sending message.type is
+                // unnecessary - and message.type is validated as immutable on alter anyway.
+                // Only the TTL is altered.
+                Map<String, String> change = new HashMap<>();
+                change.put("+lite.topic.expiration", String.valueOf(minutes));
+                config.setAttributes(change);
                 admin.createAndUpdateTopicConfig(master, config);
                 updated++;
             }
