@@ -34,6 +34,10 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -106,6 +110,49 @@ class AlertSilenceServiceTest {
         org.mockito.Mockito.verify(repository).save(org.mockito.ArgumentMatchers.argThat(silence ->
                 LocalDateTime.of(2026, 8, 22, 16, 0).equals(silence.getStartsAt())
                         && LocalDateTime.of(2026, 8, 22, 17, 0).equals(silence.getEndsAt())));
+    }
+
+    @Test
+    void updatesExistingSilenceWithCreateValidationAndOriginalCreatorTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO request = recurringRequest(AlertSilenceRecurrence.WEEKLY);
+        request.setRecurrenceDays(Set.of(1, 3));
+        request.setInstanceId(" local ");
+        request.setLabels(Map.of("brokerName", " broker-a "));
+        request.setReason(" extended maintenance ");
+        AlertSilenceVO existing = AlertSilenceVO.builder().id(9L).createdBy("alice").build();
+        when(repository.findById(9L)).thenReturn(existing);
+        when(repository.update(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AlertSilenceVO result = service.update(9L, request);
+
+        ArgumentCaptor<AlertSilenceVO> captured = ArgumentCaptor.forClass(AlertSilenceVO.class);
+        org.mockito.Mockito.verify(repository).update(captured.capture());
+        assertThat(result.getId()).isEqualTo(9L);
+        assertThat(result.getCreatedBy()).isEqualTo("alice");
+        assertThat(captured.getValue().getInstanceId()).isEqualTo("local");
+        assertThat(captured.getValue().getLabels()).containsEntry("brokerName", "broker-a");
+        assertThat(captured.getValue().getReason()).isEqualTo("extended maintenance");
+        assertThat(captured.getValue().getRecurrence()).isEqualTo(AlertSilenceRecurrence.WEEKLY);
+        verify(operationAuditService).record(eq("UPDATE_ALERT_SILENCE"), eq("ALERT_SILENCE"), eq("9"),
+                eq("local"), contains("recurrence=WEEKLY"), eq("SUCCESS"), isNull());
+    }
+
+    @Test
+    void updateShouldRejectUnknownOrMissingSilenceTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO request = recurringRequest(AlertSilenceRecurrence.DAILY);
+        when(repository.findById(404L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.update(null, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Silence ID is required");
+        assertThatThrownBy(() -> service.update(404L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert silence not found: 404");
+
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).update(any());
+        verify(operationAuditService, org.mockito.Mockito.never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

@@ -34,6 +34,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -107,5 +108,34 @@ class AlertSilenceControllerTest {
                 request.getRecurrence() == AlertSilenceRecurrence.WEEKLY
                         && request.getRecurrenceDays().equals(Set.of(1, 3, 5))
                         && "Asia/Shanghai".equals(request.getTimeZone())));
+    }
+
+    @Test
+    void updateShouldBindAndReturnUpdatedScheduleTest() throws Exception {
+        AlertSilenceVO silence = AlertSilenceVO.builder().id(13L)
+                .startsAt(LocalDateTime.of(2026, 9, 7, 1, 0))
+                .endsAt(LocalDateTime.of(2026, 9, 7, 3, 0))
+                .recurrence(AlertSilenceRecurrence.DAILY).timeZone("Asia/Shanghai")
+                .recurrenceUntil(LocalDateTime.of(2026, 10, 1, 0, 0)).createdBy("admin").build();
+        when(silenceService.update(eq(13L), any(CreateAlertSilenceDTO.class))).thenReturn(silence);
+
+        mockMvc.perform(put("/api/alert-silences/13")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "startsAt": "2026-09-07T09:00:00+08:00",
+                                  "endsAt": "2026-09-07T11:00:00+08:00",
+                                  "recurrence": "DAILY",
+                                  "timeZone": "Asia/Shanghai",
+                                  "recurrenceUntil": "2026-10-01T08:00:00+08:00"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(13))
+                .andExpect(jsonPath("$.data.endsAt").value("2026-09-07T03:00:00"))
+                .andExpect(jsonPath("$.data.recurrence").value("DAILY"));
+
+        verify(silenceService).update(eq(13L), org.mockito.ArgumentMatchers.argThat(request ->
+                request.getEndsAt().equals(java.time.OffsetDateTime.parse("2026-09-07T03:00:00Z"))));
     }
 }
