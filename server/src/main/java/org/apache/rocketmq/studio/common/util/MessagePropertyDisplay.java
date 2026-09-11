@@ -68,13 +68,15 @@ public final class MessagePropertyDisplay {
     /** True when any value exceeds {@link #MAX_PROPERTY_VALUE_CHARS} and would be abbreviated. */
     public static boolean hasOversizedProperty(Map<String, String> properties) {
         return properties != null && properties.values().stream()
-                .anyMatch(value -> value != null && value.length() > MAX_PROPERTY_VALUE_CHARS);
+                .anyMatch(value -> value != null
+                        && value.codePointCount(0, value.length()) > MAX_PROPERTY_VALUE_CHARS);
     }
 
     private static String abbreviate(String value) {
-        if (value == null || value.length() <= MAX_PROPERTY_VALUE_CHARS) {
+        if (value == null || value.codePointCount(0, value.length()) <= MAX_PROPERTY_VALUE_CHARS) {
             return value;
         }
-        return value.substring(0, MAX_PROPERTY_VALUE_CHARS) + "...";
+        int endIndex = value.offsetByCodePoints(0, MAX_PROPERTY_VALUE_CHARS);
+        return value.substring(0, endIndex) + "...";
     }
 }
