@@ -525,6 +525,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'messageHistory.traceTopic': { zh: '轨迹 Topic', en: 'Trace Topic' },
   'messageHistory.traceNodes': { zh: '轨迹节点', en: 'Trace Nodes' },
   'messageHistory.consumers': { zh: '消费者', en: 'Consumers' },
+  'messageHistory.deleteConfirm': { zh: '删除这条查询历史？', en: 'Delete this query history?' },
+  'messageHistory.clearHistory': { zh: '清空查询历史', en: 'Clear History' },
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
