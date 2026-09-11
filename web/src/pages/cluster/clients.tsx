@@ -191,6 +191,9 @@ const ClientsPage = () => {
     setSelectedEndpoint(endpoint);
     setConnections([]);
     setClusterFilter('ALL');
+    // Column filters describe the previous endpoint's rows; keeping them (or antd's
+    // uncontrolled internal filter state) would hide every row of the new endpoint.
+    setColumnFilters({});
     setSelectedConnection(null);
     setLoadError(null);
     setLoading(true);
@@ -383,6 +386,7 @@ const ClientsPage = () => {
       filters: clusterOptions
         .filter((option) => option.value !== 'ALL')
         .map((option) => ({ text: option.label, value: option.value })),
+      filteredValue: columnFilters.clusterName ?? null,
       onFilter: (value, record) => record.clusterName === value,
       render: (name: string) => <Text style={{ fontSize: 14 }}>{name}</Text>,
     },
@@ -415,6 +419,7 @@ const ClientsPage = () => {
         { text: 'Producer', value: 'Producer' },
         { text: 'Consumer', value: 'Consumer' },
       ],
+      filteredValue: columnFilters.type ?? null,
       onFilter: (value, record) => record.type === value,
       render: (type: string) => {
         const cfg = typeConfig[type] ?? { label: type };
@@ -442,6 +447,7 @@ const ClientsPage = () => {
         { text: 'gRPC', value: 'gRPC' },
         { text: 'Remoting', value: 'Remoting' },
       ],
+      filteredValue: columnFilters.protocol ?? null,
       onFilter: (value, record) => record.protocol === value,
       render: (protocol: string) => {
         const cfg = protocolConfig[protocol] ?? { color: 'default', label: protocol };
@@ -466,6 +472,7 @@ const ClientsPage = () => {
         text: config.label,
         value,
       })),
+      filteredValue: columnFilters.language ?? null,
       onFilter: (value, record) => record.language === value,
       render: (lang: string) => {
         const cfg = languageConfig[lang] ?? { color: 'default', label: lang };

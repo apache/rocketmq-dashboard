@@ -470,6 +470,63 @@ describe('Clients page', () => {
     expect(csv).toContain('audit-svc-0@10.0.2.10:49154');
   });
 
+  it('clears column filters when the nameserver changes', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:nameserver-switch-connections';
+    });
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup();
+    const billingConnections: ClientConnection[] = [
+      {
+        clientId: 'billing-svc-0@10.0.3.10:49155',
+        type: 'Producer',
+        groupOrTopic: 'billing-producer',
+        protocol: 'gRPC',
+        address: '10.0.3.10:49155',
+        language: 'Java',
+        version: '5.0.7',
+        connectedAt: '2026-07-02 09:00:00',
+        clusterName: 'ns-audit',
+      },
+    ];
+    vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
+      query?.namesrvAddr === 'namesrv-2:9876'
+        ? Promise.resolve(billingConnections)
+        : Promise.resolve(connections),
+    );
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    const filterTriggers = document.querySelectorAll<HTMLElement>('.ant-table-filter-trigger');
+    await user.click(filterTriggers[1]);
+    const filterDropdown = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
+    expect(filterDropdown).not.toBeNull();
+    await user.click(within(filterDropdown!).getByText('Consumer'));
+    await user.click(within(filterDropdown!).getByRole('button', { name: 'OK' }));
+    expect(screen.queryByText('order-svc-0@10.0.1.12:49152')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'NameServer' }));
+    await user.click(
+      await screen.findByText('rocketmq2 (namesrv-2:9876)', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    expect(await screen.findByText('billing-svc-0@10.0.3.10:49155')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    await expect(blob.text()).resolves.toContain('billing-svc-0@10.0.3.10:49155');
+  });
+
   it('renders empty distributions when no connections are available', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue([]);
     renderWithProviders(<ClientsPage />);
