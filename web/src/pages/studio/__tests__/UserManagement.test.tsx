@@ -29,6 +29,7 @@ import {
   type StudioUser,
 } from '../../../api/studioUsers';
 import { downloadCsv } from '../../../utils/download';
+import { formatUtcDateTime } from '../../../utils/format';
 import UserManagementPage from '../UserManagement';
 
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
@@ -190,7 +191,7 @@ describe('UserManagementPage', () => {
 
     await screen.findByText('operator');
     expect(screen.getAllByText('2').length).toBeGreaterThan(0);
-    expect(screen.getByText(new Date('2026-08-22T09:30:00').toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText(formatUtcDateTime('2026-08-22T09:30:00'))).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '会话' }));
     await screen.findByText('注销 operator 的活跃会话？');
@@ -198,6 +199,14 @@ describe('UserManagementPage', () => {
 
     await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
     expect(listStudioUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats offset-less session timestamps as UTC', async () => {
+    renderPage();
+
+    await screen.findByText('operator');
+    // AuthService writes Clock.systemUTC() LocalDateTime values without an offset.
+    expect(screen.getByText(formatUtcDateTime('2026-08-22T09:30:00'))).toBeInTheDocument();
   });
 
   it('blocks the row status switch while the same user revocation is in flight', async () => {

@@ -50,6 +50,7 @@ import {
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 interface CreateFormValues {
@@ -63,7 +64,9 @@ interface PasswordFormValues {
   newPassword: string;
 }
 
-const dateTime = (value?: string) => (value ? new Date(value).toLocaleString() : '-');
+// AuthService stores Clock.systemUTC() LocalDateTime values without an offset.
+// formatUtcDateTime appends Z so the viewer's timezone is applied correctly.
+const dateTime = (value?: string) => formatUtcDateTime(value);
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 type RoleFilter = 'admin' | 'reader';
