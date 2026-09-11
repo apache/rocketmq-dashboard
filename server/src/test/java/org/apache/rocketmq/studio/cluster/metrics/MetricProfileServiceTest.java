@@ -159,6 +159,33 @@ class MetricProfileServiceTest {
                 "Unknown semantic metric 'queue_depth' for profile 'rocketmq5-native'");
     }
 
+    @Test
+    void resolveCurrentScopeLabelShouldFollowActiveProfileTest() {
+        // 5.x native profile (the default): consumer-group series carry the consumer_group label.
+        assertThat(service.resolveCurrentScopeLabel("consumer_lag_messages", "consumer_group"))
+                .contains("consumer_group");
+        assertThat(service.resolveCurrentScopeLabel("consumer_lag_messages", "topic"))
+                .contains("topic");
+        assertThat(service.resolveCurrentScopeLabel("consumer_lag_messages", "broker"))
+                .isEmpty();
+
+        // 4.x exporter profile: the same dimension is the exporter's "group" label, and the
+        // lag series are not broken out by broker either.
+        PrometheusProperties exporterProperties = new PrometheusProperties();
+        exporterProperties.setProfile("rocketmq4-exporter");
+        MetricProfileService exporterService = new MetricProfileService(exporterProperties);
+        assertThat(exporterService.resolveCurrentScopeLabel("consumer_lag_messages", "consumer_group"))
+                .contains("group");
+        assertThat(exporterService.resolveCurrentScopeLabel("consumer_lag_messages", "topic"))
+                .contains("topic");
+        assertThat(exporterService.resolveCurrentScopeLabel("consumer_lag_messages", "broker"))
+                .isEmpty();
+
+        // An unknown semantic metric resolves to empty so callers drop the selector instead
+        // of guessing a label name that would match an empty series set.
+        assertThat(service.resolveCurrentScopeLabel("queue_depth", "consumer_group")).isEmpty();
+    }
+
     private MetricProfileVO findProfile(String id) {
         return service.listProfiles().stream()
                 .filter(profile -> profile.getId().equals(id))
