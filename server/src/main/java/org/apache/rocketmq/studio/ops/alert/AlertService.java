@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.time.LocalDateTime;
@@ -695,10 +696,46 @@ public class AlertService {
     }
 
     private String labelSelector(AlertRuleVO rule) {
+        Optional<String> semantic = scopeSemanticMetric(rule.getMetric());
         StringBuilder selector = new StringBuilder();
+        // cluster is spelled identically by both profiles. The broker dimension is node_id on the
+        // 5.x native profile, so use the profile's own name when it maps one; a metric no profile
+        // knows (a custom exporter rule) keeps the literal name, because dropping the scope would
+        // silently widen the rule.
         appendLabel(selector, "cluster", rule.getClusterName());
-        appendLabel(selector, "broker", rule.getBrokerName());
+        appendLabel(selector, resolveScopeLabel(semantic, "broker", "broker"), rule.getBrokerName());
+        appendScopeLabel(selector, semantic, "consumer_group", rule.getConsumerGroup());
+        appendScopeLabel(selector, semantic, "topic", rule.getTopic());
         return selector.isEmpty() ? "" : "{" + selector + "}";
+    }
+
+    /**
+     * Semantic metric the rule actually references — a native key through
+     * {@link #NATIVE_METRIC_SEMANTIC}, otherwise matched against the active profile's semantic keys
+     * and exporter names. Empty when no profile knows the metric: falling back to the consumer-lag
+     * mapping would borrow that metric's label names and emit, say, {@code consumer_group} on a
+     * series that carries no such label, silently matching an empty set.
+     */
+    private Optional<String> scopeSemanticMetric(String metric) {
+        String normalized = hasText(metric) ? metric.trim() : "";
+        return Optional.ofNullable(NATIVE_METRIC_SEMANTIC.get(normalized))
+                .or(() -> metricProfileService.resolveSemanticMetric(normalized));
+    }
+
+    private String resolveScopeLabel(Optional<String> semantic, String scope, String fallback) {
+        return semantic.flatMap(key -> metricProfileService.resolveCurrentScopeLabel(key, scope))
+                .orElse(fallback);
+    }
+
+    private void appendScopeLabel(StringBuilder selector, Optional<String> semantic, String scope, String value) {
+        if (!hasText(value) || "*".equals(value.trim())) {
+            return;
+        }
+        // A label name guessed for the wrong profile (e.g. "group" on a 5.x deployment)
+        // matches an empty series set and silently disables the alert, so the name must
+        // come from the active profile's mapping; an unmapped scope drops the selector.
+        semantic.flatMap(key -> metricProfileService.resolveCurrentScopeLabel(key, scope))
+                .ifPresent(label -> appendLabel(selector, label, value));
     }
 
     private void appendLabel(StringBuilder selector, String label, String value) {
