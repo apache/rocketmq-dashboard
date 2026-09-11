@@ -21,6 +21,9 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -33,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -103,7 +107,7 @@ class NativeAlertProcessorTest {
 
         NativeAlertProcessor processor = new NativeAlertProcessor(service, evaluationService,
                 new AlertStateMachine(), mock(AlertStateRepository.class), mock(AlertRepository.class),
-                mock(NotificationOutboxService.class), suppression());
+                mock(NotificationOutboxService.class), suppression(), mockTxManager());
 
         assertThatThrownBy(() -> processor.process(List.of(sample("orders"))))
                 .isInstanceOf(AssertionError.class)
@@ -354,7 +358,7 @@ class NativeAlertProcessorTest {
         NativeAlertEvaluationService evaluationService = new NativeAlertEvaluationService(new AlertRuleEvaluator(),
                 new AlertStateMachine(), states, snapshots, alerts, outbox, suppression);
         return new NativeAlertProcessor(service, evaluationService, new AlertStateMachine(), states, alerts, outbox,
-                suppression);
+                suppression, mockTxManager());
     }
 
     private static NativeAlertProcessor processor(AlertService service, AlertStateRepository states,
@@ -431,11 +435,11 @@ class NativeAlertProcessorTest {
         when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         NotificationOutboxService outbox = mock(NotificationOutboxService.class);
 
-        new NativeAlertProcessor(service,
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
                 new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
                         mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
-                new AlertStateMachine(), states, alerts, outbox, suppression())
-                .processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager());
+        processor.processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
                         java.util.Set.of("consumer.lag.total")), List.of());
 
         org.mockito.ArgumentCaptor<AlertRuleState> state = org.mockito.ArgumentCaptor.forClass(AlertRuleState.class);
@@ -466,12 +470,13 @@ class NativeAlertProcessorTest {
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         AlertRepository alerts = mock(AlertRepository.class);
 
-        new NativeAlertProcessor(service,
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
                 new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
                         mock(MetricSnapshotRepository.class), alerts, mock(NotificationOutboxService.class),
                         suppression()),
-                new AlertStateMachine(), states, alerts, mock(NotificationOutboxService.class), suppression())
-                .processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                new AlertStateMachine(), states, alerts, mock(NotificationOutboxService.class), suppression(),
+                mockTxManager());
+        processor.processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
                         java.util.Set.of("consumer.lag.total")), List.of(current));
 
         verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
@@ -506,7 +511,7 @@ class NativeAlertProcessorTest {
         new NativeAlertProcessor(service,
                 new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
                         mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
-                new AlertStateMachine(), states, alerts, outbox, suppression())
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager())
                 .processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
                         java.util.Set.of("consumer.delay.seconds", "consumer.lag.total")), List.of(lagSample));
 
@@ -536,18 +541,133 @@ class NativeAlertProcessorTest {
         when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
         AlertRepository alerts = mock(AlertRepository.class);
 
-        new NativeAlertProcessor(service,
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
                 new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
                         mock(MetricSnapshotRepository.class), alerts, mock(NotificationOutboxService.class),
                         suppression()),
-                new AlertStateMachine(), states, alerts, mock(NotificationOutboxService.class), suppression())
-                .processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                new AlertStateMachine(), states, alerts, mock(NotificationOutboxService.class), suppression(),
+                mockTxManager());
+        processor.processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
                         java.util.Set.of("consumer.lag.total")), List.of(new MetricSample("consumer.lag.total",
                         AlertDomain.BUSINESS, "local", null, Map.of(), null, MetricAvailability.UNAVAILABLE,
                         Instant.now(), "BUSINESS_METRICS_COLLECTION_FAILED")));
 
         verify(states, never()).save(eq(oldKey), any(AlertRuleState.class));
         verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
+    }
+
+    @Test
+    void singleLifecycleEmitFailureDoesNotRollBackTheBatchTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule1 = rule(1L, "local", "orders", 1);
+        AlertRuleVO rule2 = rule(2L, "local", "payments", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule1, rule2));
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.save(any(AlertStateKey.class), any(AlertRuleState.class))).thenReturn(true);
+        MetricSample ordersSample = sample("orders");
+        MetricSample paymentsSample = sample("payments");
+        ActiveAlertState active1 = new ActiveAlertState(
+                new AlertStateKey(1L, AlertFingerprint.of(1L, "local", ordersSample.labels())),
+                new AlertRuleState(AlertStateStatus.FIRING, 1, 20D, Instant.now().minusSeconds(60),
+                        Instant.now().minusSeconds(60), Instant.now().minusSeconds(60), null),
+                "local", ordersSample.labels());
+        ActiveAlertState active2 = new ActiveAlertState(
+                new AlertStateKey(2L, AlertFingerprint.of(2L, "local", paymentsSample.labels())),
+                new AlertRuleState(AlertStateStatus.FIRING, 1, 20D, Instant.now().minusSeconds(60),
+                        Instant.now().minusSeconds(60), Instant.now().minusSeconds(60), null),
+                "local", paymentsSample.labels());
+        when(states.findActive(any(MetricCollectionScope.class), any())).thenReturn(List.of(active1, active2));
+        AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.saveAlert(any(SystemAlertVO.class)))
+                .thenThrow(new IllegalStateException("db write failed"))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
+                new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                        mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager());
+        assertThatCode(() -> processor.processSuccessfulCollection(
+                new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                        java.util.Set.of("consumer.lag.total")),
+                List.of())).doesNotThrowAnyException();
+
+        verify(outbox).enqueue(any(SystemAlertVO.class), eq(rule2), anyMap());
+    }
+
+    @Test
+    void emitFailureRollsBackBothSaveAndEmitPreventingOrphanEventsTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        MetricSample oldSample = sample("orders");
+        AlertStateKey oldKey = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), oldSample.instanceId(), oldSample.labels()));
+        ActiveAlertState active = new ActiveAlertState(oldKey,
+                new AlertRuleState(AlertStateStatus.FIRING, 1, 20D, oldSample.collectedAt().minusSeconds(60),
+                        oldSample.collectedAt().minusSeconds(60), oldSample.collectedAt().minusSeconds(60), null),
+                oldSample.instanceId(), oldSample.labels());
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
+        AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.saveAlert(any(SystemAlertVO.class)))
+                .thenThrow(new IllegalStateException("event persist failed"));
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
+                new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                        mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager());
+        assertThatCode(() -> processor.processSuccessfulCollection(
+                new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                        java.util.Set.of("consumer.lag.total")),
+                List.of())).doesNotThrowAnyException();
+
+        verify(states).save(eq(oldKey), any(AlertRuleState.class));
+        verify(alerts).saveAlert(any(SystemAlertVO.class));
+        verify(outbox, never()).enqueue(any(), any(), any());
+    }
+
+    @Test
+    void doesNotEmitResolvedEventWhenStateSaveLosesTheOptimisticRaceTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        MetricSample oldSample = sample("orders");
+        AlertStateKey oldKey = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), oldSample.instanceId(), oldSample.labels()));
+        ActiveAlertState active = new ActiveAlertState(oldKey,
+                new AlertRuleState(AlertStateStatus.FIRING, 1, 20D, oldSample.collectedAt().minusSeconds(60),
+                        oldSample.collectedAt().minusSeconds(60), oldSample.collectedAt().minusSeconds(60), null),
+                oldSample.instanceId(), oldSample.labels());
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        // a concurrent ACK already advanced the state, so this writer's save loses the
+        // optimistic race and returns false
+        when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(false);
+        AlertRepository alerts = mock(AlertRepository.class);
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
+                new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                        mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager());
+        assertThatCode(() -> processor.processSuccessfulCollection(
+                new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                        java.util.Set.of("consumer.lag.total")),
+                List.of())).doesNotThrowAnyException();
+
+        verify(states).save(eq(oldKey), any(AlertRuleState.class));
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
+        verify(outbox, never()).enqueue(any(), any(), any());
+    }
+
+    private static PlatformTransactionManager mockTxManager() {
+        PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
+        TransactionStatus status = mock(TransactionStatus.class);
+        when(txManager.getTransaction(any(TransactionDefinition.class))).thenReturn(status);
+        return txManager;
     }
 
     private static AlertNotificationSuppressionService suppression() {

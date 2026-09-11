@@ -23,7 +23,10 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
@@ -50,6 +53,7 @@ public class NativeAlertProcessor {
     private final AlertRepository alertRepository;
     private final NotificationOutboxService notificationOutboxService;
     private final AlertNotificationSuppressionService notificationSuppressionService;
+    private final PlatformTransactionManager transactionManager;
 
     public void process(List<MetricSample> samples) {
         processSamples(samples);
@@ -112,10 +116,14 @@ public class NativeAlertProcessor {
                         .map(rule -> new AlertStateKey(rule.getId(),
                                 AlertFingerprint.of(rule.getId(), sample.instanceId(), sample.labels()))))
                 .collect(Collectors.toSet());
-        Map<Long, AlertRuleVO> byId = rules.stream().collect(Collectors.toMap(AlertRuleVO::getId, rule -> rule));
+        Map<Long, AlertRuleVO> byId = rules.stream().collect(Collectors.toMap(AlertRuleVO::getId, rule -> rule,
+                (left, right) -> left));
         Instant resolvedAt = samples.stream().filter(scope::contains).map(MetricSample::collectedAt).max(Instant::compareTo)
                 .orElseGet(Instant::now);
         AlertEvaluationResult clear = new AlertEvaluationResult(true, false, null, MetricAvailability.AVAILABLE);
+        TransactionTemplate isolatedTx = new TransactionTemplate(transactionManager);
+        isolatedTx.setPropagationBehavior(Propagation.REQUIRES_NEW.value());
+        int failedLifecycleEmits = 0;
         for (ActiveAlertState active : stateRepository.findActive(scope, rules)) {
             if (presentKeys.contains(active.key())) {
                 continue;
@@ -130,11 +138,30 @@ public class NativeAlertProcessor {
             if (update.transition() != AlertStateTransition.RESOLVED) {
                 continue;
             }
-            if (!stateRepository.save(active.key(), update.state())) {
-                continue;
+            try {
+                // save + emit run inside a single REQUIRES_NEW sub-transaction so that a
+                // transient emit failure rolls back both the state change and the event,
+                // preventing orphaned states or events.  The next collection cycle will
+                // re-evaluate this active state and re-attempt the emit.
+                // save() may still return false inside the sub-transaction when a
+                // concurrent writer (e.g. a user ACK) won the optimistic race, so the
+                // emit is gated on the save result: an alert that already moved on must
+                // not receive a RESOLVED event.
+                isolatedTx.executeWithoutResult(txStatus -> {
+                    if (!stateRepository.save(active.key(), update.state())) {
+                        return;
+                    }
+                    emitLifecycleEvent(rule, active.key(), update, scope.domain(),
+                            active.instanceId(), rule.getMetric(), active.labels(), resolvedAt);
+                });
+            } catch (RuntimeException error) {
+                failedLifecycleEmits++;
+                log.warn("Native alert reconcile lifecycle emit failed: ruleId={}, fingerprint={}, cause={}",
+                        rule.getId(), active.key().fingerprint(), error.getClass().getSimpleName());
             }
-            emitLifecycleEvent(rule, active.key(), update, scope.domain(), active.instanceId(), rule.getMetric(),
-                    active.labels(), resolvedAt);
+        }
+        if (failedLifecycleEmits > 0) {
+            log.warn("Native alert reconcile completed with {} failed lifecycle emit(s)", failedLifecycleEmits);
         }
     }
 
