@@ -44,6 +44,11 @@ public class StudioUserController {
         return Result.ok(authService.getSessionOverview());
     }
 
+    @GetMapping("/{userId}/sessions")
+    public Result<List<StudioUserSessionDetailVO>> listActiveSessions(@PathVariable Long userId) {
+        return Result.ok(authService.listActiveSessionsForUser(userId));
+    }
+
     @GetMapping
     public Result<PageResult<StudioUserVO>> list(
             @RequestParam(required = false) String search,

@@ -21,6 +21,7 @@ import client from './client';
 import {
   getStudioUserSessionOverview,
   listAllStudioUsers as loadStudioUsersForExport,
+  listStudioUserSessions,
   listStudioUsers,
   revokeStudioUserSessions,
 } from './studioUsers';
@@ -113,6 +114,31 @@ describe('studio users API', () => {
     expect(overview.activeSessionCount).toBe(5);
     expect(overview.activeUserCount).toBe(3);
     expect(mock.history.get[0].url).toBe('/studio-users/sessions/overview');
+  });
+
+  it('loads active Studio session details for a user', async () => {
+    mock.onGet('/studio-users/7/sessions').reply(200, {
+      code: 200,
+      data: [
+        {
+          id: 19,
+          userId: 7,
+          lastSeenAt: '2026-08-22T09:45:00',
+          expiresAt: '2026-08-22T09:50:00',
+          gmtCreate: '2026-08-22T09:15:00',
+          remainingSeconds: 300,
+          idleSeconds: 60,
+          expiringSoon: true,
+          stale: false,
+        },
+      ],
+    });
+
+    const sessions = await listStudioUserSessions(7);
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ id: 19, userId: 7, expiringSoon: true });
+    expect(mock.history.get[0].url).toBe('/studio-users/7/sessions');
   });
 
   it('revokes a users active Studio sessions', async () => {
