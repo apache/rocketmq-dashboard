@@ -27,6 +27,8 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
@@ -39,8 +41,8 @@ public class AuditService {
     private static final int MAX_EXPORT_RECORDS = 10_000;
     private static final int CLEANUP_BATCH_SIZE = 500;
     private static final int CLEANUP_MAX_BATCHES = 20;
-    private static final String CSV_HEADER =
-            "timestamp,operator,operationType,resourceType,target,clusterId,detail,result,errorMessage\r\n";
+    private static final String CSV_COLUMNS =
+            "operator,operationType,resourceType,target,clusterId,detail,result,errorMessage";
 
     private final AuditRepository auditRepository;
 
@@ -77,7 +79,7 @@ public class AuditService {
             throw new BusinessException(400,
                     "Audit log export exceeds the maximum of " + MAX_EXPORT_RECORDS + " records; narrow the filters");
         }
-        StringBuilder csv = new StringBuilder("\uFEFF").append(CSV_HEADER);
+        StringBuilder csv = new StringBuilder("\uFEFF").append(csvHeader());
         for (AuditRecordVO record : page.getItems()) {
             CsvUtil.appendRow(csv,
                     record.getTimestamp(),
@@ -91,6 +93,22 @@ public class AuditService {
                     record.getErrorMessage());
         }
         return csv.toString();
+    }
+
+    /**
+     * Audit timestamps are stored as zone-less server-local values (whatever zone the server
+     * JVM/MySQL session runs in), so the exported timestamp column names the server's UTC
+     * offset — e.g. {@code timestamp(UTC+08:00)} — making the file interpretable without
+     * out-of-band timezone knowledge. The stored base itself is deliberately not converted;
+     * switching it to UTC is a repo-wide change that needs schema defaults and a backfill.
+     */
+    private String csvHeader() {
+        return "timestamp(" + serverZoneLabel() + ")," + CSV_COLUMNS + "\r\n";
+    }
+
+    private String serverZoneLabel() {
+        ZoneOffset offset = OffsetDateTime.now().getOffset();
+        return "UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId());
     }
 
 

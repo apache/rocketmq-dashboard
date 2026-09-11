@@ -29,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -161,6 +162,37 @@ class AuditServiceTest {
         assertThat(csv).contains("resourceType,target,clusterId,detail,result,errorMessage")
                 .contains("\"'=cmd\",\"DELETE\",\"TOPIC\",\"topic,a\",\"prod-cn\"")
                 .contains("\"'=denied\"");
+    }
+
+    @Test
+    void exportLogsLabelsTimestampColumnWithServerZoneOffset() {
+        AuditRecordVO record = AuditRecordVO.builder()
+                .timestamp(LocalDateTime.of(2026, 8, 1, 9, 30))
+                .operator("alice")
+                .operationType("DELETE")
+                .resourceType("TOPIC")
+                .target("topic-a")
+                .result("SUCCESS")
+                .build();
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(),
+                any(LocalDateTime.class), any(LocalDateTime.class), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(record), 1, 1, 10_000));
+
+        TimeZone originalZone = TimeZone.getDefault();
+        try {
+            // The stored base is server-local and stays unconverted; only the column name
+            // tells the consumer which zone the values are in.
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            assertThat(auditService.exportLogs(null, null, null, null, "2026-08-01", "2026-08-02", null))
+                    .startsWith("\uFEFFtimestamp(UTC+08:00),operator,")
+                    .contains("\"2026-08-01T09:30\"");
+
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+            assertThat(auditService.exportLogs(null, null, null, null, "2026-08-01", "2026-08-02", null))
+                    .startsWith("\uFEFFtimestamp(UTC),operator,");
+        } finally {
+            TimeZone.setDefault(originalZone);
+        }
     }
 
     @Test
