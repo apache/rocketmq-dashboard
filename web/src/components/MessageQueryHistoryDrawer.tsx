@@ -16,6 +16,7 @@ import {
   type TraceQueryHistory,
 } from '../api/messageHistory';
 import { useLang } from '../i18n/LangContext';
+import MessageHistoryInsightsPanel from './MessageHistoryInsightsPanel';
 
 interface Props {
   open: boolean;
@@ -180,6 +181,12 @@ const MessageQueryHistoryDrawer = ({
           style={{ marginBottom: 12 }}
         />
       )}
+      <MessageHistoryInsightsPanel
+        summary={summary}
+        messageRows={messageRows}
+        traceRows={traceRows}
+        loading={loading}
+      />
       <Tabs
         activeKey={tab}
         onChange={(key) => {

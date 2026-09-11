@@ -525,6 +525,127 @@ const translations: Record<string, Record<Lang, string>> = {
   'messageHistory.traceTopic': { zh: '轨迹 Topic', en: 'Trace Topic' },
   'messageHistory.traceNodes': { zh: '轨迹节点', en: 'Trace Nodes' },
   'messageHistory.consumers': { zh: '消费者', en: 'Consumers' },
+  'messageHistoryInsights.title': { zh: '查询历史洞察', en: 'Query History Insights' },
+  'messageHistoryInsights.score': { zh: '健康分', en: 'Health Score' },
+  'messageHistoryInsights.messageShare': { zh: '消息查询占比', en: 'Message Query Share' },
+  'messageHistoryInsights.traceShare': { zh: '轨迹查询占比', en: 'Trace Query Share' },
+  'messageHistoryInsights.latestAge': { zh: '最近查询距今', en: 'Latest Query Age' },
+  'messageHistoryInsights.totalQueries': { zh: '共 {count} 次查询', en: '{count} total queries' },
+  'messageHistoryInsights.messageRows': {
+    zh: '已加载 {count} 条消息记录',
+    en: '{count} loaded message rows',
+  },
+  'messageHistoryInsights.traceRows': {
+    zh: '已加载 {count} 条轨迹记录',
+    en: '{count} loaded trace rows',
+  },
+  'messageHistoryInsights.findings': { zh: '风险信号与建议', en: 'Signals and Recommendations' },
+  'messageHistoryInsights.healthyMessage': {
+    zh: '最近查询历史较健康，暂未发现宽泛查询、空结果或轨迹采集异常。',
+    en: 'Recent query history looks healthy, with no broad searches, zero-result lookups, or trace collection gaps detected.',
+  },
+  'messageHistoryInsights.noNotableRows': {
+    zh: '没有需要关注的查询记录',
+    en: 'No notable query rows',
+  },
+  'messageHistoryInsights.detail': { zh: '查询条件', en: 'Query Detail' },
+  'messageHistoryInsights.signal': { zh: '信号', en: 'Signal' },
+  'messageHistoryInsights.level.healthy': { zh: '健康', en: 'Healthy' },
+  'messageHistoryInsights.level.notice': { zh: '关注', en: 'Notice' },
+  'messageHistoryInsights.level.warning': { zh: '告警', en: 'Warning' },
+  'messageHistoryInsights.level.critical': { zh: '严重', en: 'Critical' },
+  'messageHistoryInsights.kind.message': { zh: '消息', en: 'Message' },
+  'messageHistoryInsights.kind.trace': { zh: '轨迹', en: 'Trace' },
+  'messageHistoryInsights.issue.noHistory': {
+    zh: '暂无查询历史基线',
+    en: 'No query history baseline',
+  },
+  'messageHistoryInsights.issue.noHistory.short': { zh: '无基线', en: 'No baseline' },
+  'messageHistoryInsights.issue.staleHistory': {
+    zh: '最近查询已超过 {value}',
+    en: 'Latest query is older than {value}',
+  },
+  'messageHistoryInsights.issue.staleHistory.short': { zh: '历史过旧', en: 'Stale' },
+  'messageHistoryInsights.issue.traceUnderused': {
+    zh: '轨迹查询占比仅 {ratio}',
+    en: 'Trace query share is only {ratio}',
+  },
+  'messageHistoryInsights.issue.traceUnderused.short': { zh: '轨迹偏少', en: 'Low trace use' },
+  'messageHistoryInsights.issue.zeroResultQueries': {
+    zh: '{count} 条消息查询没有结果',
+    en: 'Zero-result message searches: {count}',
+  },
+  'messageHistoryInsights.issue.zeroResultQueries.short': { zh: '空结果', en: 'Zero result' },
+  'messageHistoryInsights.issue.broadTopicQueries': {
+    zh: '{count} 条 Topic 查询范围过宽',
+    en: 'Broad topic searches: {count}',
+  },
+  'messageHistoryInsights.issue.broadTopicQueries.short': { zh: '范围过宽', en: 'Broad filter' },
+  'messageHistoryInsights.issue.largeResultQueries': {
+    zh: '{count} 条消息查询结果过大',
+    en: 'Large-result message searches: {count}',
+  },
+  'messageHistoryInsights.issue.largeResultQueries.short': { zh: '结果过大', en: 'Large result' },
+  'messageHistoryInsights.issue.traceWithoutNodes': {
+    zh: '{count} 条轨迹没有节点数据',
+    en: 'Trace lookups without node data: {count}',
+  },
+  'messageHistoryInsights.issue.traceWithoutNodes.short': { zh: '无节点', en: 'No nodes' },
+  'messageHistoryInsights.issue.traceWithoutConsumers': {
+    zh: '{count} 条轨迹没有消费者数据',
+    en: 'Trace lookups without consumer data: {count}',
+  },
+  'messageHistoryInsights.issue.traceWithoutConsumers.short': {
+    zh: '无消费者',
+    en: 'No consumers',
+  },
+  'messageHistoryInsights.issue.fragmentedTraceTopics': {
+    zh: '检测到 {count} 个不同轨迹 Topic',
+    en: 'Trace topics in use: {count}',
+  },
+  'messageHistoryInsights.issue.fragmentedTraceTopics.short': {
+    zh: '轨迹 Topic 分散',
+    en: 'Split trace topics',
+  },
+  'messageHistoryInsights.issue.unknownOperators': {
+    zh: '{count} 条查询缺少操作者',
+    en: 'Queries missing operator context: {count}',
+  },
+  'messageHistoryInsights.issue.unknownOperators.short': { zh: '无操作者', en: 'No operator' },
+  'messageHistoryInsights.issue.unknown': { zh: '未知风险', en: 'Unknown signal' },
+  'messageHistoryInsights.issue.unknown.short': { zh: '未知', en: 'Unknown' },
+  'messageHistoryInsights.recommendation.narrowQueryFilters': {
+    zh: '增加 Key、Message ID、Tag 或更短时间范围',
+    en: 'Add Key, Message ID, Tag, or a shorter time range',
+  },
+  'messageHistoryInsights.recommendation.replayZeroResults': {
+    zh: '复核空结果查询的 Topic、时间范围和实例',
+    en: 'Review the topic, time range, and instance used by zero-result searches',
+  },
+  'messageHistoryInsights.recommendation.pairTraceLookups': {
+    zh: '对关键消息查询补充轨迹查询',
+    en: 'Pair important message searches with trace lookups',
+  },
+  'messageHistoryInsights.recommendation.standardizeTraceTopic': {
+    zh: '统一常用轨迹 Topic，降低排查分叉',
+    en: 'Standardize common trace topics to reduce troubleshooting branches',
+  },
+  'messageHistoryInsights.recommendation.checkTraceCollection': {
+    zh: '检查轨迹采集链路和客户端上报配置',
+    en: 'Check trace collection and client reporting configuration',
+  },
+  'messageHistoryInsights.recommendation.addOperatorContext': {
+    zh: '补齐查询操作者，便于审计和复盘',
+    en: 'Keep operator context for audit and follow-up',
+  },
+  'messageHistoryInsights.recommendation.keepRecentBaseline': {
+    zh: '保留近期查询基线，便于对比排障质量',
+    en: 'Keep a recent query baseline for troubleshooting quality comparison',
+  },
+  'messageHistoryInsights.recommendation.review': {
+    zh: '复核查询历史',
+    en: 'Review query history',
+  },
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
