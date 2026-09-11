@@ -188,7 +188,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of(latest));
 
         AuditSummaryVO summary = repository.summarize(
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThat(summary.getTotal()).isEqualTo(8);
         assertThat(summary.getSuccessful()).isEqualTo(5);
@@ -238,7 +238,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         AuditSummaryVO summary = repository.summarize(
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThat(summary.getByOperation()).extracting(AuditSummaryBucketVO::getName)
                 .containsExactly("op-a", "op-b", "op-c", "op-d", "op-e");
@@ -257,7 +257,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         AuditSummaryVO summary = repository.summarize(
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThat(summary.getSuccessful()).isEqualTo(2);
         assertThat(summary.getUniqueOperators()).isEqualTo(1);
