@@ -108,7 +108,7 @@ class AuthCredentialAuthorizationIntegrationTest {
                 .andExpect(status().isOk());
 
         verify(aclService).getUserCredentials(eq("user-1"), isNull());
-        verify(cloudCredentialService).reveal(12L);
+        verify(cloudCredentialService).reveal(eq(12L), isNull());
     }
 
     private LoginVO.UserInfo user(boolean admin) {

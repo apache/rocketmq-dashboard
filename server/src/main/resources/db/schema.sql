@@ -57,8 +57,8 @@ CREATE TABLE IF NOT EXISTS rmq_nameserver (
   UNIQUE KEY uk_nameserver_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Cloud provider credentials (defined before rmq_instance for the FK below;
--- secret_key is base64-encoded and never seeded).
+-- Cloud provider credentials (defined before rmq_instance for the FK below; secret_key holds an
+-- AES-256-GCM sealed value written by CredentialCipher - see CredentialEncryptionMigration).
 CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
   `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
   name VARCHAR(128) NOT NULL COMMENT 'Credential display name',
   vendor VARCHAR(32) NOT NULL COMMENT 'ALIYUN/TENCENT',
   access_key VARCHAR(255) NOT NULL,
-  secret_key VARCHAR(512) NOT NULL COMMENT 'Base64-encoded secret key',
+  secret_key VARCHAR(512) NOT NULL COMMENT 'AES-256-GCM sealed secret key (enc:v1:...)',
   remark VARCHAR(255),
   PRIMARY KEY (`id`),
   UNIQUE KEY uk_vendor_access_key (vendor, access_key)

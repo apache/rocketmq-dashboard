@@ -22,6 +22,7 @@ import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.auth.AuthService;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -62,6 +64,9 @@ class CloudCredentialServiceTest {
 
     @Mock
     private OperationAuditService operationAuditService;
+
+    @Mock
+    private AuthService authService;
 
     @InjectMocks
     private CloudCredentialService service;
@@ -270,29 +275,58 @@ class CloudCredentialServiceTest {
     }
 
     @Test
-    void revealShouldReturnUnmaskedCredentialTest() {
+    void revealShouldReturnUnmaskedCredentialAfterPasswordConfirmationTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
         stored.setId(1L);
+        stored.setName("aliyun-prod");
         stored.setVendor(InstanceVendor.ALIYUN);
         stored.setAccessKey("LTAI5tRevealKey000000001");
         stored.setSecretKey("plain-secret");
         when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
 
-        CloudCredentialVO revealed = service.reveal(1L);
+        CloudCredentialVO revealed = service.reveal(1L, "correct-password");
 
         assertThat(revealed.getAccessKey()).isEqualTo("LTAI5tRevealKey000000001");
         assertThat(revealed.getSecretKey()).isEqualTo("plain-secret");
+        verify(authService).verifySensitiveOperationPassword("correct-password");
+        verify(operationAuditService).record(eq("REVEAL_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
+                eq("1"), eq(null), eq("name=aliyun-prod, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
     }
 
     @Test
-    void repositoryShouldBase64EncodeSecretTest() {
+    void revealShouldFailClosedWhenPasswordConfirmationIsRejectedTest() {
+        doThrow(new BusinessException(403, "Password confirmation failed"))
+                .when(authService).verifySensitiveOperationPassword(isNull());
+
+        assertThatThrownBy(() -> service.reveal(1L, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Password confirmation failed")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(403));
+
+        // A rejected confirmation must neither read nor expose the stored secret, but must be audited.
+        verify(credentialRepository, never()).findById(any());
+        verify(operationAuditService).record(eq("REVEAL_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
+                eq("1"), eq(null), eq("id=1"), eq("FAILURE"), eq("Password confirmation failed"));
+    }
+
+    @Test
+    void revealShouldStillValidateTheIdBeforeConfirmingThePasswordTest() {
+        assertThatThrownBy(() -> service.reveal(null, "correct-password"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential id is required");
+
+        verify(authService, never()).verifySensitiveOperationPassword(any());
+    }
+
+    @Test
+    void legacyBase64SecretShouldRoundTripForTheEncryptionMigrationTest() {
         String encoded = CredentialUtils.encodeBase64("plain-secret");
         assertThat(encoded).isNotEqualTo("plain-secret");
         assertThat(CredentialUtils.decodeBase64(encoded)).isEqualTo("plain-secret");
     }
 
     @Test
-    void repositoryShouldTolerateLegacyPlainSecretTest() {
+    void legacyPlainSecretShouldSurviveTolerantBase64DecodingTest() {
         assertThat(CredentialUtils.decodeBase64("not base64 !!!")).isEqualTo("not base64 !!!");
     }
 
