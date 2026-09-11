@@ -36,6 +36,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -140,6 +142,24 @@ class SystemAlertControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(notificationOutboxService).retryFailedDelivery(8L);
+    }
+
+    @Test
+    void exportDeliveriesShouldForwardFiltersTest() throws Exception {
+        when(notificationOutboxService.exportDeliveries("dingtalk", "FAILED", "local"))
+                .thenReturn("\uFEFFdeliveryId\r\n");
+
+        mockMvc.perform(get("/api/system-alerts/deliveries/export")
+                        .param("channel", "dingtalk")
+                        .param("status", "FAILED")
+                        .param("instanceId", "local"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"notification-deliveries.csv\""))
+                .andExpect(content().bytes("\uFEFFdeliveryId\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
+        verify(notificationOutboxService).exportDeliveries("dingtalk", "FAILED", "local");
     }
 
     @Test

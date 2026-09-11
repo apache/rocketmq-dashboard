@@ -442,6 +442,17 @@ export async function listAlertDeliveriesPage(
   return opsApi.listAlertDeliveriesPage(params);
 }
 
+export async function exportAlertDeliveries(
+  params: Omit<NotificationDeliveryQuery, 'page' | 'pageSize'>,
+): Promise<Blob> {
+  if (isMockMode()) {
+    const header =
+      'deliveryId,alertId,alertTitle,alertDomain,transition,instanceId,channel,status,attemptCount,createdAt,deliveredAt,nextRetryAt,lastError\r\n';
+    return new Blob(['\uFEFF' + header], { type: 'text/csv;charset=utf-8' });
+  }
+  return opsApi.exportAlertDeliveries(params);
+}
+
 export async function listAlertSilences(): Promise<AlertSilence[]> {
   if (isMockMode()) return alertSilencesState.map((silence) => ({ ...silence }));
   return opsApi.listAlertSilences();
