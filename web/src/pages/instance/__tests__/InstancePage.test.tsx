@@ -50,6 +50,7 @@ vi.mock('../../../services/instanceService', () => ({
   deleteInstancesBatch: vi.fn(),
   importCloudInstances: vi.fn(),
   listInstances: vi.fn(),
+  listInstancesPage: vi.fn(),
   updateInstance: vi.fn(),
 }));
 
@@ -93,6 +94,13 @@ const instance = (
   gmtModified: '2026-01-01T00:00:00Z',
 });
 
+const instancePage = (items: Instance[]) => ({
+  items,
+  total: items.length,
+  page: 1,
+  size: 20,
+});
+
 const renderPage = () =>
   render(
     <App>
@@ -123,10 +131,9 @@ describe('InstancePage', () => {
     vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
     vi.mocked(tencentCatalogApi.listTencentRegions).mockResolvedValue([]);
     vi.mocked(tencentCatalogApi.listTencentInstances).mockResolvedValue([]);
-    vi.mocked(instanceService.listInstances).mockResolvedValue([
-      instance(1, 'production-proxy'),
-      instance(2, 'development-direct', 'DIRECT'),
-    ]);
+    vi.mocked(instanceService.listInstancesPage).mockResolvedValue(
+      instancePage([instance(1, 'production-proxy'), instance(2, 'development-direct', 'DIRECT')]),
+    );
   });
 
   it('loads server-filtered results when the search or type changes', async () => {
@@ -134,31 +141,39 @@ describe('InstancePage', () => {
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
-    expect(instanceService.listInstances).toHaveBeenCalledWith({});
+    expect(instanceService.listInstancesPage).toHaveBeenCalledWith({}, 1, 20);
 
     fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: 'proxy-hz' },
     });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'proxy-hz' }),
+      () =>
+        expect(instanceService.listInstancesPage).toHaveBeenCalledWith(
+          { search: 'proxy-hz' },
+          1,
+          20,
+        ),
       { timeout: 1000 },
     );
 
     fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: '' },
     });
-    await waitFor(() => expect(instanceService.listInstances).toHaveBeenLastCalledWith({}), {
-      timeout: 1000,
-    });
+    await waitFor(
+      () => expect(instanceService.listInstancesPage).toHaveBeenLastCalledWith({}, 1, 20),
+      {
+        timeout: 1000,
+      },
+    );
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getAllByRole('combobox')[0];
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
     );
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstancesPage).toHaveBeenLastCalledWith({ type: 'DIRECT' }, 1, 20),
     );
   });
 
@@ -175,15 +190,17 @@ describe('InstancePage', () => {
   });
 
   it('keeps unavailable resource counts after available values in both sort directions', async () => {
-    vi.mocked(instanceService.listInstances).mockResolvedValue([
-      {
-        ...instance(3, 'unavailable-instance'),
-        topicCount: 0,
-        resourceCountsAvailable: false,
-      },
-      { ...instance(4, 'zero-instance'), topicCount: 0 },
-      { ...instance(5, 'many-instance'), topicCount: 10 },
-    ]);
+    vi.mocked(instanceService.listInstancesPage).mockResolvedValue(
+      instancePage([
+        {
+          ...instance(3, 'unavailable-instance'),
+          topicCount: 0,
+          resourceCountsAvailable: false,
+        },
+        { ...instance(4, 'zero-instance'), topicCount: 0 },
+        { ...instance(5, 'many-instance'), topicCount: 10 },
+      ]),
+    );
     const { container } = renderPage();
 
     await screen.findByText('unavailable-instance');
@@ -209,16 +226,16 @@ describe('InstancePage', () => {
   });
 
   it('ignores an older search response that finishes after the latest request', async () => {
-    let resolveOldSearch!: (instances: Instance[]) => void;
-    let resolveLatestSearch!: (instances: Instance[]) => void;
-    const oldSearch = new Promise<Instance[]>((resolve) => {
+    let resolveOldSearch!: (instances: ReturnType<typeof instancePage>) => void;
+    let resolveLatestSearch!: (instances: ReturnType<typeof instancePage>) => void;
+    const oldSearch = new Promise<ReturnType<typeof instancePage>>((resolve) => {
       resolveOldSearch = resolve;
     });
-    const latestSearch = new Promise<Instance[]>((resolve) => {
+    const latestSearch = new Promise<ReturnType<typeof instancePage>>((resolve) => {
       resolveLatestSearch = resolve;
     });
-    vi.mocked(instanceService.listInstances)
-      .mockResolvedValueOnce([instance(6, 'initial-instance')])
+    vi.mocked(instanceService.listInstancesPage)
+      .mockResolvedValueOnce(instancePage([instance(6, 'initial-instance')]))
       .mockReturnValueOnce(oldSearch)
       .mockReturnValueOnce(latestSearch);
     renderPage();
@@ -227,7 +244,8 @@ describe('InstancePage', () => {
     const searchInput = screen.getByPlaceholderText('搜索实例 ID 或地址');
     fireEvent.change(searchInput, { target: { value: 'old' } });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'old' }),
+      () =>
+        expect(instanceService.listInstancesPage).toHaveBeenCalledWith({ search: 'old' }, 1, 20),
       {
         timeout: 1000,
       },
@@ -235,14 +253,15 @@ describe('InstancePage', () => {
 
     fireEvent.change(searchInput, { target: { value: 'latest' } });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'latest' }),
+      () =>
+        expect(instanceService.listInstancesPage).toHaveBeenCalledWith({ search: 'latest' }, 1, 20),
       { timeout: 1000 },
     );
 
-    await act(async () => resolveLatestSearch([instance(7, 'latest-instance')]));
+    await act(async () => resolveLatestSearch(instancePage([instance(7, 'latest-instance')])));
     expect(await screen.findByText('latest-instance')).toBeInTheDocument();
 
-    await act(async () => resolveOldSearch([instance(8, 'old-instance')]));
+    await act(async () => resolveOldSearch(instancePage([instance(8, 'old-instance')])));
     expect(screen.queryByText('old-instance')).not.toBeInTheDocument();
     expect(screen.getByText('latest-instance')).toBeInTheDocument();
   });
@@ -277,13 +296,13 @@ describe('InstancePage', () => {
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getAllByRole('combobox')[0];
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstancesPage).toHaveBeenLastCalledWith({ type: 'DIRECT' }, 1, 20),
     );
 
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
@@ -305,7 +324,7 @@ describe('InstancePage', () => {
         endpoint: 'proxy-new:8080',
       }),
     );
-    expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+    expect(instanceService.listInstancesPage).toHaveBeenLastCalledWith({ type: 'DIRECT' }, 1, 20);
   });
 
   it('creates an Apache instance with an explicit Proxy Local deployment type', async () => {
@@ -388,19 +407,19 @@ describe('InstancePage', () => {
       expect(instanceService.deleteInstance).toHaveBeenCalledWith('production-proxy'),
     );
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getAllByRole('combobox')[0];
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstancesPage).toHaveBeenLastCalledWith({ type: 'DIRECT' }, 1, 20),
     );
 
     await act(async () => pendingDelete.resolve());
 
-    await waitFor(() => expect(instanceService.listInstances).toHaveBeenCalledTimes(3));
-    expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+    await waitFor(() => expect(instanceService.listInstancesPage).toHaveBeenCalledTimes(3));
+    expect(instanceService.listInstancesPage).toHaveBeenLastCalledWith({ type: 'DIRECT' }, 1, 20);
     confirmSpy.mockRestore();
   });
 
@@ -862,10 +881,12 @@ describe('InstancePage', () => {
 
   it('sorts and renders instances without remarks', async () => {
     const user = userEvent.setup();
-    vi.mocked(instanceService.listInstances).mockResolvedValue([
-      instance(10, 'instance-without-remark', 'PROXY_CLUSTER', null),
-      instance(11, 'instance-with-remark', 'PROXY_CLUSTER', 'production'),
-    ]);
+    vi.mocked(instanceService.listInstancesPage).mockResolvedValue(
+      instancePage([
+        instance(10, 'instance-without-remark', 'PROXY_CLUSTER', null),
+        instance(11, 'instance-with-remark', 'PROXY_CLUSTER', 'production'),
+      ]),
+    );
     renderPage();
 
     const name = await screen.findByText('instance-without-remark');
@@ -877,14 +898,16 @@ describe('InstancePage', () => {
   });
 
   it('renders the region column with regionId for cloud instances and a dash for open-source ones', async () => {
-    vi.mocked(instanceService.listInstances).mockResolvedValue([
-      {
-        ...instance(12, 'rmq-cloud-1', 'CLOUD', ''),
-        vendor: 'ALIYUN',
-        regionId: 'cn-hangzhou',
-      },
-      instance(13, 'open-source-1', 'DIRECT', ''),
-    ]);
+    vi.mocked(instanceService.listInstancesPage).mockResolvedValue(
+      instancePage([
+        {
+          ...instance(12, 'rmq-cloud-1', 'CLOUD', ''),
+          vendor: 'ALIYUN',
+          regionId: 'cn-hangzhou',
+        },
+        instance(13, 'open-source-1', 'DIRECT', ''),
+      ]),
+    );
     renderPage();
 
     expect(await screen.findByRole('columnheader', { name: '地域' })).toBeInTheDocument();
@@ -897,10 +920,9 @@ describe('InstancePage', () => {
 
   it('deletes selected instances through the toolbar batch delete button', async () => {
     const user = userEvent.setup();
-    vi.mocked(instanceService.listInstances).mockResolvedValue([
-      instance(20, 'batch-a'),
-      instance(21, 'batch-b'),
-    ]);
+    vi.mocked(instanceService.listInstancesPage).mockResolvedValue(
+      instancePage([instance(20, 'batch-a'), instance(21, 'batch-b')]),
+    );
     vi.mocked(instanceService.deleteInstancesBatch).mockResolvedValue({ deleted: 1, failed: [] });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
@@ -932,9 +954,11 @@ describe('InstancePage', () => {
 
   it('clears selections hidden by a search result', async () => {
     const user = userEvent.setup();
-    vi.mocked(instanceService.listInstances)
-      .mockResolvedValueOnce([instance(22, 'search-selected'), instance(23, 'search-visible')])
-      .mockResolvedValueOnce([instance(23, 'search-visible')]);
+    vi.mocked(instanceService.listInstancesPage)
+      .mockResolvedValueOnce(
+        instancePage([instance(22, 'search-selected'), instance(23, 'search-visible')]),
+      )
+      .mockResolvedValueOnce(instancePage([instance(23, 'search-visible')]));
     renderPage();
 
     const selectedName = await screen.findByText('search-selected');
@@ -946,7 +970,11 @@ describe('InstancePage', () => {
     await user.type(screen.getByPlaceholderText('搜索实例 ID 或地址'), 'visible');
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ search: 'visible' }),
+      expect(instanceService.listInstancesPage).toHaveBeenLastCalledWith(
+        { search: 'visible' },
+        1,
+        20,
+      ),
     );
     await waitFor(() => expect(screen.queryByText('search-selected')).not.toBeInTheDocument());
     expect(deleteButton).toBeDisabled();
@@ -954,12 +982,11 @@ describe('InstancePage', () => {
 
   it('clears selections hidden by a type-filter result', async () => {
     const user = userEvent.setup();
-    vi.mocked(instanceService.listInstances)
-      .mockResolvedValueOnce([
-        instance(24, 'proxy-selected'),
-        instance(25, 'direct-visible', 'DIRECT'),
-      ])
-      .mockResolvedValueOnce([instance(25, 'direct-visible', 'DIRECT')]);
+    vi.mocked(instanceService.listInstancesPage)
+      .mockResolvedValueOnce(
+        instancePage([instance(24, 'proxy-selected'), instance(25, 'direct-visible', 'DIRECT')]),
+      )
+      .mockResolvedValueOnce(instancePage([instance(25, 'direct-visible', 'DIRECT')]));
     renderPage();
 
     const selectedName = await screen.findByText('proxy-selected');
@@ -967,14 +994,14 @@ describe('InstancePage', () => {
     const deleteButton = screen.getAllByRole('button', { name: /删除/ })[0];
     expect(deleteButton).toBeEnabled();
 
-    const typeSelect = screen.getByRole('combobox');
+    const typeSelect = screen.getAllByRole('combobox')[0];
     fireEvent.mouseDown(typeSelect.parentElement!);
     await user.click(
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
     );
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstancesPage).toHaveBeenLastCalledWith({ type: 'DIRECT' }, 1, 20),
     );
     await waitFor(() => expect(screen.queryByText('proxy-selected')).not.toBeInTheDocument());
     expect(deleteButton).toBeDisabled();
@@ -982,9 +1009,11 @@ describe('InstancePage', () => {
 
   it('reconciles selections when a mutation refresh removes an instance', async () => {
     const user = userEvent.setup();
-    vi.mocked(instanceService.listInstances)
-      .mockResolvedValueOnce([instance(26, 'refresh-selected'), instance(27, 'refresh-trigger')])
-      .mockResolvedValueOnce([instance(27, 'refresh-trigger')]);
+    vi.mocked(instanceService.listInstancesPage)
+      .mockResolvedValueOnce(
+        instancePage([instance(26, 'refresh-selected'), instance(27, 'refresh-trigger')]),
+      )
+      .mockResolvedValueOnce(instancePage([instance(27, 'refresh-trigger')]));
     vi.mocked(instanceService.deleteInstance).mockResolvedValue();
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
@@ -1000,7 +1029,7 @@ describe('InstancePage', () => {
     const triggerName = screen.getByText('refresh-trigger');
     await user.click(within(triggerName.closest('tr')!).getByRole('button', { name: /删除/ }));
 
-    await waitFor(() => expect(instanceService.listInstances).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(instanceService.listInstancesPage).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByText('refresh-selected')).not.toBeInTheDocument());
     expect(deleteButton).toBeDisabled();
     confirmSpy.mockRestore();

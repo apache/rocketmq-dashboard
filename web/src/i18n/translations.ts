@@ -269,8 +269,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'instance.title': { zh: '实例列表', en: 'Instance List' },
   'instance.subtitle': { zh: '管理 RocketMQ 集群连接', en: 'Manage RocketMQ cluster connections' },
   'instance.managementSubtitle': {
-    zh: '接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {count} 个实例',
-    en: 'Connect and manage RocketMQ instances (Apache / Aliyun / Tencent). Showing {count} instances.',
+    zh: '接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），共 {count} 个实例',
+    en: 'Connect and manage RocketMQ instances (Apache / Aliyun / Tencent). {count} instances in total.',
   },
   'instance.count': { zh: '共 {n} 个实例', en: '{n} instances' },
   'instance.searchPlaceholder': { zh: '搜索实例 ID 或地址', en: 'Search instance ID or endpoint' },

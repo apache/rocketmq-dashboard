@@ -70,7 +70,15 @@ export interface UpdateInstanceRequest {
 
 export interface InstanceQuery {
   type?: Instance['type'];
+  vendor?: InstanceVendor;
   search?: string;
+}
+
+export interface InstancePage {
+  items: Instance[];
+  total: number;
+  page: number;
+  size: number;
 }
 
 /** Whether an instance can use Apache MQAdmin-backed runtime diagnostics. */
@@ -93,6 +101,19 @@ export async function listInstances(query: InstanceQuery = {}) {
     ...(search ? { search } : {}),
   };
   const res = await client.get<{ data: Instance[] }>('/instances', { params });
+  return res.data.data;
+}
+
+export async function listInstancesPage(query: InstanceQuery = {}, page = 1, pageSize = 20) {
+  const search = query.search?.trim();
+  const params = {
+    ...(query.type ? { type: query.type } : {}),
+    ...(query.vendor ? { vendor: query.vendor } : {}),
+    ...(search ? { search } : {}),
+    page,
+    pageSize,
+  };
+  const res = await client.get<{ data: InstancePage }>('/instances/page', { params });
   return res.data.data;
 }
 
