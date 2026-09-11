@@ -103,6 +103,8 @@ class AuthServiceDatabaseTest {
         org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioUser>> queryCaptor =
                 org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
         verify(userMapper).selectPage(any(Page.class), queryCaptor.capture());
+        // Materialize the SQL segment so MyBatis-Plus fills paramNameValuePairs.
+        queryCaptor.getValue().getSqlSegment();
         assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
                 .contains("%admin\\_\\%%")
                 .doesNotContain("%admin_%");
