@@ -16,6 +16,7 @@ import {
   type TraceQueryHistory,
 } from '../api/messageHistory';
 import { useLang } from '../i18n/LangContext';
+import { formatUtcDateTime } from '../utils/format';
 
 interface Props {
   open: boolean;
@@ -26,11 +27,7 @@ interface Props {
 }
 
 const PAGE_SIZE = 20;
-const formatTime = (value?: string) => {
-  if (!value) return '-';
-  const timestamp = new Date(value);
-  return Number.isNaN(timestamp.getTime()) ? '-' : timestamp.toLocaleString();
-};
+const formatTime = (value?: string) => formatUtcDateTime(value);
 
 const MessageQueryHistoryDrawer = ({
   open,
