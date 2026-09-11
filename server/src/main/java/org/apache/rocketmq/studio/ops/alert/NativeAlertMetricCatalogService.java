@@ -68,13 +68,18 @@ public class NativeAlertMetricCatalogService {
     }
 
     public void validate(AlertRuleVO rule) {
-        if (rule == null || rule.getMetric() == null || !NATIVE_METRICS.contains(rule.getMetric())) {
+        if (rule == null || rule.getMetric() == null) {
+            return;
+        }
+        String metric = rule.getMetric().trim();
+        rule.setMetric(metric);
+        if (!NATIVE_METRICS.contains(metric)) {
             return;
         }
         boolean supported = list(rule.getInstanceId(), rule.getDomain()).stream()
-                .anyMatch(metric -> metric.key().equals(rule.getMetric()));
+                .anyMatch(candidate -> candidate.key().equals(metric));
         if (!supported) {
-            throw new BusinessException(400, "Native metric " + rule.getMetric()
+            throw new BusinessException(400, "Native metric " + metric
                     + " is not supported by the selected Studio instance");
         }
     }

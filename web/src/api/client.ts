@@ -79,6 +79,12 @@ function isPublicAuthRequest(url?: string): boolean {
   }
 }
 
+export function handleSessionUnauthorized(): void {
+  clearAiChatHistories();
+  clearAuthSession();
+  window.location.href = '/login';
+}
+
 const client = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
@@ -97,9 +103,7 @@ client.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
-      clearAiChatHistories();
-      clearAuthSession();
-      window.location.href = '/login';
+      handleSessionUnauthorized();
       return Promise.reject(error);
     }
     if (isCorsRejection(error)) {

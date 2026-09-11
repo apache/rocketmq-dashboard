@@ -1,0 +1,25 @@
+# Prometheus 抓取配置 —— RocketMQ Studio 监控面板数据源
+#
+# broker 侧需在 broker-{0,1}.conf 打开 PROM 导出（metricsExporterType=PROM，
+# metricsPromExporterPort=5557，metricsPromExporterHost=0.0.0.0）。
+#
+# 按容器名抓取而非 IP：Prometheus 与 broker 同在 rocketmq_net，容器重建导致 IP
+# 漂移时无需改配置。
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: rocketmq-broker
+    static_configs:
+      - targets:
+          - rmq-broker-0:5557
+          - rmq-broker-1:5557
+        labels:
+          cluster: rocketmq-studio
+
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090

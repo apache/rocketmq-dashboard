@@ -11,8 +11,9 @@
         <file>logs/rocketmq-studio/studio.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>logs/rocketmq-studio/otherdays/studio.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <maxFileSize>1GB</maxFileSize>
-            <maxHistory>10</maxHistory>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
         </rollingPolicy>
         <encoder>
             <pattern>${FILE_LOG_PATTERN}</pattern>

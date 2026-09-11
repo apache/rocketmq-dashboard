@@ -29,16 +29,28 @@ public class StudioUserVO {
     private String username;
     private boolean admin;
     private boolean enabled;
+    private int activeSessionCount;
+    private LocalDateTime lastSessionSeenAt;
+    private LocalDateTime nearestSessionExpiresAt;
     private LocalDateTime passwordChangedAt;
     private LocalDateTime gmtCreate;
     private LocalDateTime gmtModified;
 
     public static StudioUserVO from(RmqStudioUser user) {
+        return from(user, null);
+    }
+
+    public static StudioUserVO from(RmqStudioUser user, StudioUserSessionSummaryVO sessionSummary) {
         return StudioUserVO.builder()
                 .id(user.getId())
                 .username(user.getUsername())
                 .admin(Boolean.TRUE.equals(user.getAdmin()))
                 .enabled(Boolean.TRUE.equals(user.getEnabled()))
+                .activeSessionCount(sessionSummary == null ? 0 : sessionSummary.getActiveSessionCount())
+                .lastSessionSeenAt(sessionSummary == null ? null : sessionSummary.getLastSessionSeenAt())
+                .nearestSessionExpiresAt(sessionSummary == null
+                        ? null
+                        : sessionSummary.getNearestSessionExpiresAt())
                 .passwordChangedAt(user.getPasswordChangedAt())
                 .gmtCreate(user.getGmtCreate())
                 .gmtModified(user.getGmtModified())

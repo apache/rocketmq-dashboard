@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -55,6 +56,20 @@ public class MetricProfileService {
                 .findFirst()
                 .orElseThrow(() -> badRequest("Unknown semantic metric '" + semanticMetric
                         + "' for profile '" + profileId + "'"));
+    }
+
+    /**
+     * Resolves the prometheus metric name for a semantic metric under the currently configured
+     * profile (the one {@link #listProfiles()} orders first). Returns empty when the active profile
+     * has no mapping for the semantic metric, so callers can treat it as unexportable rather than
+     * falling back to a hardcoded name that would be wrong for the deployed profile (e.g. consumer
+     * lag is {@code rocketmq_message_accumulation} on the 4.x exporter profile, not the 5.x name).
+     */
+    public Optional<String> resolveCurrentPrometheusMetric(String semanticMetric) {
+        return listProfiles().get(0).getMetrics().stream()
+                .filter(metric -> metric.getSemanticMetric().equals(semanticMetric))
+                .map(MetricProfileVO.MetricMappingVO::getPrometheusMetric)
+                .findFirst();
     }
 
     private MetricProfileVO profile(MetricProfile profile,

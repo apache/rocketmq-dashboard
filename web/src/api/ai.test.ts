@@ -17,6 +17,7 @@
 
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useAiChatHistoryStore } from '../stores/aiChatHistoryStore';
 import client from './client';
 import {
   AiStreamError,
@@ -27,6 +28,10 @@ import {
   type AiExecuteRequest,
   type McpTool,
 } from './ai';
+
+vi.mock('../config', () => ({
+  API_BASE_URL: 'https://backend.example.com/studio-api',
+}));
 
 const mock = new MockAdapter(client);
 const encoder = new TextEncoder();
@@ -45,6 +50,8 @@ function streamResponse(chunks: string[], onCancel?: () => void): Response {
 describe('AI API', () => {
   beforeEach(() => {
     mock.reset();
+    localStorage.clear();
+    useAiChatHistoryStore.getState().clearHistories();
   });
 
   afterEach(() => {
@@ -53,7 +60,7 @@ describe('AI API', () => {
   });
 
   describe('chatStream (SSE)', () => {
-    it('sends browser cookies without reading browser storage', async () => {
+    it('uses the configured API base URL and sends browser cookies', async () => {
       const fetchMock = vi.fn().mockResolvedValue(streamResponse(['data: [DONE]\n\n']));
       vi.stubGlobal('fetch', fetchMock);
 
@@ -62,12 +69,35 @@ describe('AI API', () => {
       ).resolves.toBeUndefined();
 
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/ai/chat',
+        'https://backend.example.com/studio-api/ai/chat',
         expect.objectContaining({
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
         }),
       );
+    });
+
+    it('clears the current session when the stream request returns 401', async () => {
+      localStorage.setItem('rocketmq-studio-user', 'admin');
+      localStorage.setItem('rocketmq-studio-user-admin', 'true');
+      useAiChatHistoryStore.getState().startConversation('real', 'conversation-1');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ message: 'Unauthorized' }), {
+            status: 401,
+            statusText: 'Unauthorized',
+          }),
+        ),
+      );
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toMatchObject({ status: 401 });
+
+      expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
+      expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
+      expect(useAiChatHistoryStore.getState().histories.real.conversations).toEqual([]);
     });
 
     it('reassembles an event split across network chunks', async () => {

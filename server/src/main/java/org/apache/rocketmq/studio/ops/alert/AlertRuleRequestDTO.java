@@ -64,10 +64,11 @@ public class AlertRuleRequestDTO {
     private String notificationTemplate;
 
     public AlertRuleVO toAlertRuleVO() {
+        String normalizedMetric = metric == null ? null : metric.trim();
         return AlertRuleVO.builder()
                 .id(id)
                 .name(name)
-                .metric(metric)
+                .metric(normalizedMetric)
                 .operator(operator)
                 .threshold(threshold)
                 .thresholdUnit(thresholdUnit)

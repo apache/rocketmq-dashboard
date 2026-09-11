@@ -23,6 +23,9 @@ export interface StudioUser {
   username: string;
   admin: boolean;
   enabled: boolean;
+  activeSessionCount: number;
+  lastSessionSeenAt?: string | null;
+  nearestSessionExpiresAt?: string | null;
   passwordChangedAt: string;
   gmtCreate: string;
   gmtModified: string;
@@ -45,10 +48,31 @@ export interface StudioUserQuery {
 
 type StudioUserExportQuery = Omit<StudioUserQuery, 'page' | 'pageSize'>;
 type CreateStudioUserRequest = Pick<StudioUser, 'username' | 'admin'> & { password: string };
+export interface StudioUserSessionRevokeResult {
+  userId: number;
+  revokedSessionCount: number;
+}
+
+export interface StudioUserSessionOverview {
+  activeSessionCount: number;
+  activeUserCount: number;
+  expiringSoonSessionCount: number;
+  staleSessionCount: number;
+  expiringSoonWindowMinutes: number;
+  staleSessionThresholdMinutes: number;
+}
+
 export async function listStudioUsers(query: StudioUserQuery = {}) {
   const response = await client.get<{ data: StudioUserPage }>('/studio-users', {
     params: query,
   });
+  return response.data.data;
+}
+
+export async function getStudioUserSessionOverview() {
+  const response = await client.get<{ data: StudioUserSessionOverview }>(
+    '/studio-users/sessions/overview',
+  );
   return response.data.data;
 }
 
@@ -83,4 +107,11 @@ export async function setStudioUserEnabled(userId: number, enabled: boolean) {
 
 export async function resetStudioUserPassword(userId: number, newPassword: string) {
   await client.post(`/studio-users/${userId}/password`, { newPassword });
+}
+
+export async function revokeStudioUserSessions(userId: number) {
+  const response = await client.post<{ data: StudioUserSessionRevokeResult }>(
+    `/studio-users/${userId}/sessions/revoke`,
+  );
+  return response.data.data;
 }

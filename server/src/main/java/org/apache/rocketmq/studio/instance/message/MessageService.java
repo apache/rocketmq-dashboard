@@ -42,19 +42,22 @@ public class MessageService {
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
-        return queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime, true);
+        return queryMessagesDetailed(instanceId, topic, msgId, tag, key, startTime, endTime, true)
+                .messages();
     }
 
-    private List<MessageRecordVO> queryMessages(
+    private MessageQueryResult queryMessagesDetailed(
             String instanceId, String topic, String msgId, String tag, String key,
             Long startTime, Long endTime, boolean recordHistory) {
         validateTopicQueryWindow(topic, msgId, key, startTime, endTime);
         log.info("Querying messages: topic={}, msgId={}, tag={}, key={}", topic, msgId, tag, key);
-        List<MessageRecordVO> result = providerRegistry.byInstanceId(instanceId)
-                .map(provider -> provider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime))
-                .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
+        MessageQueryResult result = providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.queryMessagesDetailed(instanceId, topic, msgId, tag,
+                        key, startTime, endTime))
+                .orElseGet(() -> messageProvider.queryMessagesDetailed(instanceId, topic, msgId,
+                        tag, key, startTime, endTime));
         if (recordHistory) {
-            recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result);
+            recordMessageQuery(instanceId, topic, msgId, tag, key, startTime, endTime, result.messages());
         }
         return result;
     }
@@ -64,15 +67,22 @@ public class MessageService {
         if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new BusinessException(400, "page must be positive and pageSize must be between 1 and 200");
         }
-        List<MessageRecordVO> result = queryMessages(
+        // The Apache / Aliyun / Tencent providers all cap topic-keyed scans at a fixed
+        // broker-side limit (see RocketMQMessageProvider#DEFAULT_TOPIC_LIMIT). RocketMQ has
+        // no server-side "skip the first N messages" API, so the in-memory subList below is
+        // the page slice within that cap; the total / resultMayBeTruncated fields let the UI
+        // tell the user when deeper pages may be empty.
+        MessageQueryResult queryResult = queryMessagesDetailed(
                 instanceId, topic, msgId, tag, key, startTime, endTime, page == 1);
+        List<MessageRecordVO> result = queryResult.messages();
         long offset = (long) (page - 1) * pageSize;
         int from = (int) Math.min(offset, result.size());
         int to = Math.min(from + pageSize, result.size());
         boolean topicQuery = StringUtils.hasText(topic) && !StringUtils.hasText(msgId)
                 && !StringUtils.hasText(key);
         return MessageQueryPageVO.builder().items(result.subList(from, to)).total(result.size()).page(page)
-                .size(pageSize).resultMayBeTruncated(topicQuery && result.size() >= TOPIC_QUERY_RESULT_LIMIT).build();
+                .size(pageSize).resultMayBeTruncated(queryResult.mayBeTruncated()
+                        || topicQuery && result.size() >= TOPIC_QUERY_RESULT_LIMIT).build();
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
@@ -83,7 +93,7 @@ public class MessageService {
         TraceRecordVO result = providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.getMessageTrace(instanceId, msgId, topic))
                 .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic));
-        recordTraceQuery(instanceId, msgId, topic, result);
+        recordTraceQuery(instanceId, msgId, topic, null, result);
         return result;
     }
 
@@ -126,16 +136,18 @@ public class MessageService {
         if (!StringUtils.hasText(msgId)) {
             throw new BusinessException(400, "msgId is required");
         }
-        if (!StringUtils.hasText(traceTopic)) {
+        String normalizedTraceTopic = normalizeOptional(traceTopic);
+        if (normalizedTraceTopic == null) {
             // No custom trace topic: fall back to the legacy 3-arg path so providers that
             // only implement message-id tracing (Aliyun/Tencent) keep working unchanged.
             return getMessageTrace(instanceId, msgId, topic);
         }
-        log.info("Getting message trace: msgId={}, topic={}, traceTopic={}", msgId, topic, traceTopic);
+        log.info("Getting message trace: msgId={}, topic={}, traceTopic={}", msgId, topic,
+                normalizedTraceTopic);
         TraceRecordVO result = providerRegistry.byInstanceId(instanceId)
-                .map(provider -> provider.getMessageTrace(instanceId, msgId, topic, traceTopic))
-                .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic, traceTopic));
-        recordTraceQuery(instanceId, msgId, topic, result);
+                .map(provider -> provider.getMessageTrace(instanceId, msgId, topic, normalizedTraceTopic))
+                .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic, normalizedTraceTopic));
+        recordTraceQuery(instanceId, msgId, topic, normalizedTraceTopic, result);
         return result;
     }
 
@@ -143,12 +155,14 @@ public class MessageService {
         if (!StringUtils.hasText(key)) {
             throw new BusinessException(400, "key is required");
         }
-        log.info("Getting message trace by key: key={}, topic={}, traceTopic={}", key, topic, traceTopic);
+        String normalizedTraceTopic = normalizeOptional(traceTopic);
+        log.info("Getting message trace by key: key={}, topic={}, traceTopic={}", key, topic,
+                normalizedTraceTopic);
         // Trace query history is keyed by message id; key-based lookups are intentionally
         // not recorded so the key is not misreported as a message id.
         return providerRegistry.byInstanceId(instanceId)
-                .map(provider -> provider.getMessageTraceByKey(instanceId, key, topic, traceTopic))
-                .orElseGet(() -> messageProvider.getMessageTraceByKey(instanceId, key, topic, traceTopic));
+                .map(provider -> provider.getMessageTraceByKey(instanceId, key, topic, normalizedTraceTopic))
+                .orElseGet(() -> messageProvider.getMessageTraceByKey(instanceId, key, topic, normalizedTraceTopic));
     }
     private void recordMessageQuery(String instanceId, String topic, String msgId, String tag,
                                     String key, Long startTime, Long endTime, List<MessageRecordVO> result) {
@@ -162,15 +176,20 @@ public class MessageService {
         }
     }
 
-    private void recordTraceQuery(String instanceId, String msgId, String topic, TraceRecordVO result) {
+    private void recordTraceQuery(String instanceId, String msgId, String topic, String traceTopic,
+                                  TraceRecordVO result) {
         int nodeCount = result == null || result.getNodes() == null ? 0 : result.getNodes().size();
         int consumerCount = result == null || result.getConsumerStatus() == null ? 0
                 : result.getConsumerStatus().size();
         try {
-            queryHistoryService.recordTraceQuery(instanceId, msgId, topic, nodeCount, consumerCount);
+            queryHistoryService.recordTraceQuery(instanceId, msgId, topic, traceTopic, nodeCount, consumerCount);
         } catch (RuntimeException failure) {
             log.warn("Failed to record trace query history: {}", failure.getMessage());
         }
+    }
+
+    private static String normalizeOptional(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {

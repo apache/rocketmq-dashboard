@@ -208,6 +208,24 @@ describe('ProxyPage', () => {
     expect(await screen.findByText('请输入 Proxy 地址')).toBeInTheDocument();
   });
 
+  it('submits one address mutation when add is clicked twice before rendering', async () => {
+    const mutation = createDeferred<typeof proxyHome>();
+    vi.mocked(addProxyAddress).mockImplementation(() => mutation.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.type(screen.getByLabelText('Proxy 地址'), '10.0.0.10:8081');
+    const addButton = screen.getByRole('button', { name: '新增' });
+    act(() => {
+      addButton.click();
+      addButton.click();
+    });
+
+    expect(addProxyAddress).toHaveBeenCalledTimes(1);
+    mutation.resolve(proxyHome);
+  });
+
   it('removes a Proxy address and applies the updated address list', async () => {
     const user = userEvent.setup();
     vi.mocked(queryProxyHomePage).mockResolvedValueOnce({

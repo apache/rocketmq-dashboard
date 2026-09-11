@@ -57,6 +57,21 @@ CREATE TABLE IF NOT EXISTS rmq_nameserver (
   UNIQUE KEY uk_nameserver_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Cloud provider credentials (defined before rmq_instance for the FK below;
+-- secret_key is base64-encoded and never seeded).
+CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
+  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  name VARCHAR(128) NOT NULL COMMENT 'Credential display name',
+  vendor VARCHAR(32) NOT NULL COMMENT 'ALIYUN/TENCENT',
+  access_key VARCHAR(255) NOT NULL,
+  secret_key VARCHAR(512) NOT NULL COMMENT 'Base64-encoded secret key',
+  remark VARCHAR(255),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_vendor_access_key (vendor, access_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 2. 实例注册表（实例管理页的数据源，topic/group 按 instance_id 归属统计）
 CREATE TABLE IF NOT EXISTS rmq_instance (
   `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -72,7 +87,10 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   admin_credential_ref VARCHAR(128) COMMENT 'External Apache admin credential reference; no secret material',
   region_id VARCHAR(128),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_instance_name (name)
+  UNIQUE KEY uk_instance_name (name),
+  INDEX idx_instance_credential_id (credential_id),
+  CONSTRAINT fk_instance_cloud_credential FOREIGN KEY (credential_id)
+    REFERENCES rmq_cloud_credential(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 3. Topic 管理记录（通过 Studio 创建/管理的 Topic 元数据）
@@ -162,6 +180,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance_trace (
   `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   msg_id VARCHAR(128) NOT NULL,
   topic VARCHAR(255),
+  trace_topic VARCHAR(255) COMMENT '自定义消息轨迹主题，空表示使用默认主题',
   node_count INT DEFAULT 0,
   consumer_count INT DEFAULT 0,
   cluster_id VARCHAR(255),
@@ -338,12 +357,17 @@ CREATE TABLE IF NOT EXISTS rmq_alert_silence (
   `labels_json` TEXT NULL,
   `starts_at` DATETIME NOT NULL,
   `ends_at` DATETIME NOT NULL,
+  `recurrence` VARCHAR(16) NOT NULL DEFAULT 'ONCE',
+  `time_zone` VARCHAR(64) NULL,
+  `recurrence_days_json` VARCHAR(64) NULL,
+  `recurrence_until` DATETIME NULL,
   `reason` VARCHAR(512) NULL,
   `created_by` VARCHAR(128) NOT NULL,
   PRIMARY KEY (`id`),
   INDEX idx_alert_silence_active (`starts_at`, `ends_at`),
   INDEX idx_alert_silence_expiry (`ends_at`, `starts_at`),
-  INDEX idx_alert_silence_scope (`domain`, `rule_id`, `instance_id`)
+  INDEX idx_alert_silence_scope (`domain`, `rule_id`, `instance_id`),
+  INDEX idx_alert_silence_recurrence (`recurrence`, `recurrence_until`, `starts_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS rmq_alert_notification_outbox (
@@ -396,20 +420,6 @@ CREATE TABLE IF NOT EXISTS rmq_system_alert (
   INDEX idx_system_alert_feed (domain, instance_id, transition, time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 15. Cloud provider credentials (secret_key is base64-encoded and never seeded).
-CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
-  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
-  name VARCHAR(128) NOT NULL COMMENT 'Credential display name',
-  vendor VARCHAR(32) NOT NULL COMMENT 'ALIYUN/TENCENT',
-  access_key VARCHAR(255) NOT NULL,
-  secret_key VARCHAR(512) NOT NULL COMMENT 'Base64-encoded secret key',
-  remark VARCHAR(255),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY uk_vendor_access_key (vendor, access_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 -- Idempotent upgrades for databases created before the corresponding CREATE statements
 -- were widened. Safe to re-run: on fresh databases the columns already match, and on
 -- existing databases the MODIFY below only grows the column width. Usernames may be up
@@ -419,5 +429,5 @@ ALTER TABLE rmq_instance_message MODIFY queried_by VARCHAR(128);
 ALTER TABLE rmq_instance_trace MODIFY queried_by VARCHAR(128);
 ALTER TABLE rmq_operation_audit MODIFY operator VARCHAR(128);
 
--- Existing deployments are upgraded by AlertSchemaMigration after the application
--- connects, because this schema is also parsed by H2 in the development profile.
+-- Existing deployments are upgraded by the application schema-migration runners after the
+-- application connects. This schema is also parsed by H2 in the development profile.

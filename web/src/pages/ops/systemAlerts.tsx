@@ -57,11 +57,22 @@ import type {
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
 
 const { Text } = Typography;
 
 const ALERT_EXPORT_PAGE_SIZE = 100;
 const ALERT_EXPORT_MAX_PAGES = 10_000;
+const DEFAULT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const WEEKDAYS = [
+  { value: 1, key: 'sysAlerts.monday' },
+  { value: 2, key: 'sysAlerts.tuesday' },
+  { value: 3, key: 'sysAlerts.wednesday' },
+  { value: 4, key: 'sysAlerts.thursday' },
+  { value: 5, key: 'sysAlerts.friday' },
+  { value: 6, key: 'sysAlerts.saturday' },
+  { value: 7, key: 'sysAlerts.sunday' },
+] as const;
 
 const normalizeAlertLevel = (level?: string | null) => (level ?? '').toLowerCase();
 const formatAlertTransition = (
@@ -164,6 +175,7 @@ const SystemAlertsPage = () => {
   const [deletingSilenceId, setDeletingSilenceId] = useState<number | null>(null);
   const silencePageSize = 10;
   const [silenceForm] = Form.useForm();
+  const silenceRecurrence = Form.useWatch('recurrence', silenceForm) ?? 'ONCE';
 
   const currentQuery = () => {
     const labelSeparator = labelFilter.indexOf('=');
@@ -376,6 +388,10 @@ const SystemAlertsPage = () => {
       endsAt: string;
       reason?: string;
       labelsText?: string;
+      recurrence?: 'ONCE' | 'DAILY' | 'WEEKLY';
+      timeZone?: string;
+      recurrenceDays?: number[];
+      recurrenceUntil?: string;
     };
     try {
       values = await silenceForm.validateFields();
@@ -384,14 +400,26 @@ const SystemAlertsPage = () => {
     }
     setSavingSilence(true);
     try {
+      const recurrence = values.recurrence ?? 'ONCE';
+      const convertTime = (value: string) =>
+        recurrence === 'ONCE'
+          ? localDateTimeToUtc(value)
+          : zonedLocalDateTimeToUtc(value, values.timeZone!);
       const request: CreateAlertSilence = {
         instanceId: values.instanceId,
-        startsAt: localDateTimeToUtc(values.startsAt),
-        endsAt: localDateTimeToUtc(values.endsAt),
+        startsAt: convertTime(values.startsAt),
+        endsAt: convertTime(values.endsAt),
         reason: values.reason,
         ruleId: values.ruleId ? Number(values.ruleId) : undefined,
         domain: values.domain || undefined,
         labels: parseSilenceLabels(values.labelsText, t('sysAlerts.labelsFormatInvalid')),
+        recurrence,
+        timeZone: recurrence !== 'ONCE' ? values.timeZone : undefined,
+        recurrenceDays: recurrence === 'WEEKLY' ? values.recurrenceDays : undefined,
+        recurrenceUntil:
+          recurrence !== 'ONCE' && values.recurrenceUntil
+            ? convertTime(values.recurrenceUntil)
+            : undefined,
       };
       await createAlertSilence(request);
       silenceForm.resetFields();
@@ -447,7 +475,7 @@ const SystemAlertsPage = () => {
         }
       />
 
-      <Flex gap={8} style={{ marginBottom: 16 }}>
+      <Flex gap={8} wrap align="center" style={{ marginBottom: 16 }}>
         {['all', 'error', 'warning', 'info'].map((level) => (
           <Button
             key={level}
@@ -490,7 +518,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.instanceFilter')}
           size="small"
           placeholder={t('sysAlerts.instanceId')}
-          style={{ width: 150 }}
+          style={{ width: 150, flex: 'none' }}
           value={instanceFilter}
           onChange={(event) => {
             setInstanceFilter(event.target.value);
@@ -501,7 +529,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.labelsFilter')}
           size="small"
           placeholder={t('sysAlerts.labelsPlaceholder')}
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={labelFilter}
           onChange={(event) => {
             setLabelFilter(event.target.value);
@@ -512,7 +540,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.startTimeFilter')}
           type="datetime-local"
           size="small"
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={fromFilter}
           onChange={(event) => {
             setFromFilter(event.target.value);
@@ -523,7 +551,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.endTimeFilter')}
           type="datetime-local"
           size="small"
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={toFilter}
           onChange={(event) => {
             setToFilter(event.target.value);
@@ -559,7 +587,11 @@ const SystemAlertsPage = () => {
             { value: 'delivered', label: t('sysAlerts.notificationNotSuppressed') },
           ]}
         />
-        {collectorStatus && <Tag color="success">{t('sysAlerts.nativeCollectionEnabled')}</Tag>}
+        {collectorStatus && (
+          <Tag color="success" style={{ marginInlineEnd: 0 }}>
+            {t('sysAlerts.nativeCollectionEnabled')}
+          </Tag>
+        )}
       </Flex>
 
       <Flex vertical gap={12}>
@@ -804,7 +836,11 @@ const SystemAlertsPage = () => {
         width={680}
       >
         {canManageSilences && (
-          <Form form={silenceForm} layout="vertical" initialValues={{ domain: 'BUSINESS' }}>
+          <Form
+            form={silenceForm}
+            layout="vertical"
+            initialValues={{ domain: 'BUSINESS', recurrence: 'ONCE', timeZone: DEFAULT_TIME_ZONE }}
+          >
             <Flex gap={8}>
               <Form.Item name="domain" label={t('sysAlerts.domain')} style={{ flex: 1 }}>
                 <Select
@@ -826,6 +862,57 @@ const SystemAlertsPage = () => {
                 <Input />
               </Form.Item>
             </Flex>
+            <Flex gap={8} align="start">
+              <Form.Item name="recurrence" label={t('sysAlerts.recurrence')} style={{ flex: 1 }}>
+                <Select
+                  options={[
+                    { value: 'ONCE', label: t('sysAlerts.recurrenceOnce') },
+                    { value: 'DAILY', label: t('sysAlerts.recurrenceDaily') },
+                    { value: 'WEEKLY', label: t('sysAlerts.recurrenceWeekly') },
+                  ]}
+                />
+              </Form.Item>
+              {silenceRecurrence !== 'ONCE' && (
+                <Form.Item
+                  name="timeZone"
+                  label={t('sysAlerts.timeZone')}
+                  style={{ flex: 1 }}
+                  rules={[{ required: true, message: t('sysAlerts.timeZoneRequired') }]}
+                  extra={t('sysAlerts.timeZoneHelp')}
+                >
+                  <Input placeholder="Asia/Shanghai" />
+                </Form.Item>
+              )}
+            </Flex>
+            {silenceRecurrence !== 'ONCE' && (
+              <Flex gap={8} align="start">
+                {silenceRecurrence === 'WEEKLY' && (
+                  <Form.Item
+                    name="recurrenceDays"
+                    label={t('sysAlerts.recurrenceDays')}
+                    style={{ flex: 1 }}
+                    rules={[{ required: true, message: t('sysAlerts.recurrenceDaysRequired') }]}
+                  >
+                    <Select
+                      mode="multiple"
+                      options={WEEKDAYS.map((day) => ({
+                        value: day.value,
+                        label: t(day.key),
+                      }))}
+                    />
+                  </Form.Item>
+                )}
+                <Form.Item
+                  name="recurrenceUntil"
+                  label={t('sysAlerts.recurrenceUntil')}
+                  style={{ flex: 1 }}
+                  rules={[{ required: true, message: t('sysAlerts.recurrenceUntilRequired') }]}
+                  extra={t('sysAlerts.recurrenceUntilHelp')}
+                >
+                  <Input type="datetime-local" />
+                </Form.Item>
+              </Flex>
+            )}
             <Flex gap={8}>
               <Form.Item
                 name="startsAt"
@@ -864,6 +951,13 @@ const SystemAlertsPage = () => {
             {silences.map((silence) => (
               <Flex key={silence.id} justify="space-between" align="center" gap={8}>
                 <Text>
+                  {silence.recurrence && silence.recurrence !== 'ONCE' && (
+                    <Tag color="blue">
+                      {silence.recurrence === 'DAILY'
+                        ? t('sysAlerts.recurrenceDaily')
+                        : t('sysAlerts.recurrenceWeekly')}
+                    </Tag>
+                  )}
                   {silence.domain ?? t('common.all')} ·{' '}
                   {silence.instanceId ?? t('sysAlerts.allInstances')} · {silence.startsAt} -{' '}
                   {silence.endsAt}
@@ -871,6 +965,11 @@ const SystemAlertsPage = () => {
                     ? ` · ${Object.entries(silence.labels)
                         .map(([key, value]) => `${key}=${value}`)
                         .join(', ')}`
+                    : ''}
+                  {silence.recurrence && silence.recurrence !== 'ONCE'
+                    ? ` · ${silence.timeZone} · ${t('sysAlerts.repeatsUntil', {
+                        time: silence.recurrenceUntil ?? '',
+                      })}`
                     : ''}
                 </Text>
                 {canManageSilences && (

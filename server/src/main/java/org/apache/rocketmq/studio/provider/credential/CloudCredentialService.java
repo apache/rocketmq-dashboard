@@ -22,11 +22,13 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +40,10 @@ import java.util.List;
 @RequiredArgsConstructor
 @Service
 public class CloudCredentialService {
+
+    private static final int MAX_EXPORT_CREDENTIALS = 10_000;
+    private static final String EXPORT_CSV_HEADER =
+            "Name,Vendor,Access Key,Remark,Created,Modified\r\n";
 
     private final CloudCredentialRepository credentialRepository;
     private final InstanceRepository instanceRepository;
@@ -55,6 +61,21 @@ public class CloudCredentialService {
         if (page < 1 || pageSize < 1 || pageSize > 100) throw new BusinessException(400, "Invalid page or pageSize");
         PageResult<CloudCredentialVO> result = credentialRepository.findPage(vendor, search, page, pageSize);
         return PageResult.of(result.getItems().stream().map(this::maskAccessKey).toList(), result.getTotal(), page, pageSize);
+    }
+
+    public String exportMaskedCsv(InstanceVendor vendor, String search) {
+        PageResult<CloudCredentialVO> result = credentialRepository.findPage(vendor, search, 1, MAX_EXPORT_CREDENTIALS);
+        if (result.getTotal() > MAX_EXPORT_CREDENTIALS) {
+            throw new BusinessException(400, "Cloud credential export exceeds the maximum of "
+                    + MAX_EXPORT_CREDENTIALS + " records; narrow the filters");
+        }
+        StringBuilder csv = new StringBuilder("\uFEFF").append(EXPORT_CSV_HEADER);
+        for (CloudCredentialVO credential : result.getItems()) {
+            CloudCredentialVO masked = maskAccessKey(credential);
+            CsvUtil.appendRow(csv, masked.getName(), masked.getVendor(), masked.getAccessKey(),
+                    masked.getRemark(), masked.getGmtCreate(), masked.getGmtModified());
+        }
+        return csv.toString();
     }
 
     public CloudCredentialVO create(CloudCredentialVO credential) {
@@ -130,8 +151,12 @@ public class CloudCredentialService {
         if (instanceRepository.existsByCredentialId(id)) {
             throw new BusinessException(400, "Cloud credential is referenced by existing instances");
         }
-        if (!credentialRepository.deleteById(id)) {
-            throw new BusinessException(404, "Cloud credential not found: " + id);
+        try {
+            if (!credentialRepository.deleteById(id)) {
+                throw new BusinessException(404, "Cloud credential not found: " + id);
+            }
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException(409, "Cloud credential is referenced by existing instances");
         }
         invalidateCloudClients(existing);
         recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(id), null,

@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 
-import client from './client';
+import { API_BASE_URL } from '../config';
+import client, { handleSessionUnauthorized } from './client';
 
 const MAX_SSE_EVENT_CHARS = 1024 * 1024;
 
@@ -187,7 +188,7 @@ export async function chatStream(
   signal?: AbortSignal,
   onEnhance?: (prompt: string) => void,
 ) {
-  const response = await fetch('/api/ai/chat', {
+  const response = await fetch(`${API_BASE_URL}/ai/chat`, {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -197,6 +198,9 @@ export async function chatStream(
     signal,
   });
 
+  if (response.status === 401) {
+    handleSessionUnauthorized();
+  }
   if (!response.ok) {
     throw await parseHttpError(response);
   }

@@ -29,4 +29,9 @@ public interface RmqAlertCollectionLeaseMapper extends BaseMapper<RmqAlertCollec
             + "AND (expires_at <= #{now} OR holder_id = #{holderId})")
     int acquire(@Param("leaseName") String leaseName, @Param("holderId") String holderId,
             @Param("now") LocalDateTime now, @Param("expiresAt") LocalDateTime expiresAt);
+
+    @Update("UPDATE rmq_alert_collection_lease SET expires_at = #{expiresAt}, gmt_modified = #{now} "
+            + "WHERE lease_name = #{leaseName} AND holder_id = #{holderId} AND expires_at > #{now}")
+    int renew(@Param("leaseName") String leaseName, @Param("holderId") String holderId,
+            @Param("now") LocalDateTime now, @Param("expiresAt") LocalDateTime expiresAt);
 }

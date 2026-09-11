@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.persistence.entity.RmqMetricSnapshot;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMetricSnapshotMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -42,6 +43,7 @@ public class MybatisPlusMetricSnapshotRepository implements MetricSnapshotReposi
     private final ObjectMapper objectMapper;
 
     @Override
+    @Transactional
     public void saveAll(List<MetricSample> samples) {
         for (MetricSample sample : samples) {
             mapper.insert(toEntity(sample));

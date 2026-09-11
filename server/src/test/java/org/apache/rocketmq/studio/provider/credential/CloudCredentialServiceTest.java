@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.credential;
 
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 
 import java.util.List;
@@ -38,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -249,6 +252,24 @@ class CloudCredentialServiceTest {
     }
 
     @Test
+    void deleteShouldTranslateConcurrentInstanceReferenceToConflictTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(1L);
+        stored.setVendor(InstanceVendor.ALIYUN);
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
+        when(instanceRepository.existsByCredentialId(1L)).thenReturn(false);
+        when(credentialRepository.deleteById(1L))
+                .thenThrow(new DataIntegrityViolationException("foreign key constraint"));
+
+        assertThatThrownBy(() -> service.delete(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential is referenced by existing instances")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        verify(aliyunClientFactory, never()).invalidateCredential(any());
+    }
+
+    @Test
     void revealShouldReturnUnmaskedCredentialTest() {
         CloudCredentialVO stored = new CloudCredentialVO();
         stored.setId(1L);
@@ -273,5 +294,35 @@ class CloudCredentialServiceTest {
     @Test
     void repositoryShouldTolerateLegacyPlainSecretTest() {
         assertThat(CredentialUtils.decodeBase64("not base64 !!!")).isEqualTo("not base64 !!!");
+    }
+
+    @Test
+    void exportShouldRenderMaskedCsvWithoutSecretsTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(1L);
+        stored.setName("aliyun-test");
+        stored.setVendor(InstanceVendor.ALIYUN);
+        stored.setAccessKey("LTAI5tUnitTestKey000000001");
+        stored.setSecretKey("secret-value");
+        stored.setRemark("rotation pending");
+        when(credentialRepository.findPage(InstanceVendor.ALIYUN, "prod", 1, 10_000))
+                .thenReturn(PageResult.of(List.of(stored), 1, 1, 10_000));
+
+        String csv = service.exportMaskedCsv(InstanceVendor.ALIYUN, "prod");
+
+        assertThat(csv).startsWith("\uFEFFName,Vendor,Access Key,Remark,Created,Modified\r\n");
+        assertThat(csv).contains("\"aliyun-test\",\"ALIYUN\",\"LTAI****0001\",\"rotation pending\"");
+        assertThat(csv).doesNotContain("secret-value");
+        assertThat(csv).doesNotContain("LTAI5tUnitTestKey000000001");
+    }
+
+    @Test
+    void exportShouldRejectResultBeyondBoundTest() {
+        when(credentialRepository.findPage(isNull(), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
+
+        assertThatThrownBy(() -> service.exportMaskedCsv(null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("narrow the filters");
     }
 }

@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.credential;
 
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -24,9 +25,11 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CloudCredentialController.class)
@@ -50,5 +53,27 @@ class CloudCredentialControllerTest {
         mockMvc.perform(get("/api/cloud-credentials/1/credentials"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+    }
+
+    @Test
+    void exportCredentialsShouldReturnCsvEnvelope() throws Exception {
+        when(credentialService.exportMaskedCsv(null, null)).thenReturn("\"Name\",\"Vendor\"\r\n");
+
+        mockMvc.perform(get("/api/cloud-credentials/export"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").value("\"Name\",\"Vendor\"\r\n"));
+    }
+
+    @Test
+    void exportCredentialsShouldPassVendorAndSearchFilters() throws Exception {
+        when(credentialService.exportMaskedCsv(InstanceVendor.ALIYUN, "prod")).thenReturn("csv");
+
+        mockMvc.perform(get("/api/cloud-credentials/export")
+                        .param("vendor", "ALIYUN")
+                        .param("search", "prod"))
+                .andExpect(status().isOk());
+
+        verify(credentialService).exportMaskedCsv(InstanceVendor.ALIYUN, "prod");
     }
 }

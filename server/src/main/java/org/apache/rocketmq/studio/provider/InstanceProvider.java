@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
@@ -157,6 +158,16 @@ public interface InstanceProvider {
 
     List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                         String tag, String key, Long startTime, Long endTime);
+
+    /**
+     * Message query with an explicit provider truncation signal. Providers that page remote APIs
+     * should return a bounded result and set {@code mayBeTruncated} when they stop at the budget.
+     */
+    default MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId,
+                                                      String tag, String key, Long startTime, Long endTime) {
+        return MessageQueryResult.complete(queryMessages(instanceId, topic, msgId, tag, key,
+                startTime, endTime));
+    }
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
 

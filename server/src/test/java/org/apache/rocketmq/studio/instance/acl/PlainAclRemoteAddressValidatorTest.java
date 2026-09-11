@@ -56,6 +56,9 @@ class PlainAclRemoteAddressValidatorTest {
         "2001:db8::gggg",
         "1050::0005:0600:300c:200-1",
         "1050::0005:*:300c:1",
+        "::*",
+        "::1-20",
+        "::1-20:*",
         "not-an-address"
     })
     void shouldRejectExpressionsThePlainAclParserCannotUse(String expression) {

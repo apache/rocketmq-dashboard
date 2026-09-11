@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.util.BrokerRuntimeStats;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -210,9 +211,10 @@ public class RocketMQClusterProvider implements ClusterProvider {
             // Use master address (brokerId = 0) preferentially
             String masterAddr = brokerData.getBrokerAddrs().get(0L);
             if (!StringUtils.hasText(masterAddr)) {
-                masterAddr = brokerData.getBrokerAddrs().values().stream()
-                        .filter(StringUtils::hasText)
-                        .findFirst()
+                masterAddr = brokerData.getBrokerAddrs().entrySet().stream()
+                        .filter(entry -> StringUtils.hasText(entry.getValue()))
+                        .min(Map.Entry.comparingByKey())
+                        .map(Map.Entry::getValue)
                         .orElse(null);
             }
             if (!StringUtils.hasText(masterAddr)) {
@@ -265,7 +267,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 builder.tpsIn(parseTpsValue(putTps));
             }
 
-            String getTransferredTps = table.get("getTransferredTps");
+            String getTransferredTps = BrokerRuntimeStats.outboundTps(table);
             if (getTransferredTps != null && !getTransferredTps.isEmpty()) {
                 builder.tpsOut(parseTpsValue(getTransferredTps));
             }
@@ -284,6 +286,16 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     // keep default
                 }
             }
+
+            // Daily message counters, mirroring the runtime stat keys the broker publishes.
+            builder.putMessagesToday(BrokerRuntimeStats.dailyCounterDelta(table,
+                    "msgPutTotalTodayMorning", "msgPutTotalTodayNow"));
+            builder.putMessagesYesterday(BrokerRuntimeStats.dailyCounterDelta(table,
+                    "msgPutTotalYesterdayMorning", "msgPutTotalTodayMorning"));
+            builder.getMessagesToday(BrokerRuntimeStats.dailyCounterDelta(table,
+                    "msgGetTotalTodayMorning", "msgGetTotalTodayNow"));
+            builder.getMessagesYesterday(BrokerRuntimeStats.dailyCounterDelta(table,
+                    "msgGetTotalYesterdayMorning", "msgGetTotalTodayMorning"));
             return true;
         } catch (Exception e) {
             log.warn("Failed to get runtime info for broker at {}: {}", brokerAddr, e.getMessage());

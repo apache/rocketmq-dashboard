@@ -59,7 +59,6 @@ import {
   QueueBrowserResults,
 } from '../../components/QueueBrowser';
 import type { MessageQueryHistory, TraceQueryHistory } from '../../api/messageHistory';
-import { getMessageQueryResults } from '../../api/messageHistory';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import {
@@ -71,6 +70,10 @@ import {
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import {
+  readMessageTraceTopic,
+  writeMessageTraceTopic,
+} from '../../utils/messageTraceTopicStorage';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeMessageTrace,
@@ -397,13 +400,18 @@ const MessagePageContent = ({
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceQueryMode, setTraceQueryMode] = useState<'msgid' | 'key'>('msgid');
   const [traceQueryValue, setTraceQueryValue] = useState('');
-  const [customTraceTopic, setCustomTraceTopic] = useState('');
+  const [customTraceTopic, setCustomTraceTopic] = useState(() =>
+    readMessageTraceTopic(selectedInstanceId),
+  );
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
   const queryGenerationRef = useRef(0);
+  // The query whose results the table currently shows. Pagination must re-run this
+  // committed query, not whatever the form inputs hold at the moment a page is clicked.
+  const committedQueryRef = useRef<{ mode: QueryMode; params: MessageQuery } | null>(null);
   const traceGenerationRef = useRef(0);
   const traceCacheRef = useRef(new Map<string, Promise<TraceRecord | null>>());
   const traceDiagnostics = useMemo(() => analyzeMessageTrace(traceData), [traceData]);
@@ -415,6 +423,10 @@ const MessagePageContent = ({
     },
     [],
   );
+
+  useEffect(() => {
+    writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
+  }, [customTraceTopic, selectedInstanceId]);
 
   const currentQueryParams: MessageQuery =
     queryMode === 'topic'
@@ -439,6 +451,7 @@ const MessagePageContent = ({
     setResultMayBeTruncated(false);
     setQueryError(null);
     setQueryLoading(false);
+    committedQueryRef.current = null;
   };
 
   const handleReset = () => {
@@ -487,6 +500,9 @@ const MessagePageContent = ({
         pageSize,
       });
       if (queryGenerationRef.current !== requestGeneration) return;
+      // Commit only the query whose results are actually on screen: a failed or superseded
+      // request must not become the query that pagination re-runs.
+      committedQueryRef.current = { mode, params: normalizedParams };
       setMessages(result.items);
       setMessageTotal(result.total);
       setMessagePage(result.page);
@@ -520,48 +536,28 @@ const MessagePageContent = ({
       setDateRange([dayjs(record.startTime), dayjs(record.endTime)]);
     }
     setHistoryDrawerOpen(false);
-    const requestGeneration = queryGenerationRef.current + 1;
-    queryGenerationRef.current = requestGeneration;
-    setQueryLoading(true);
-    setQueryError(null);
-    try {
-      const results = await getMessageQueryResults(record.id);
-      if (queryGenerationRef.current !== requestGeneration) return;
-      const mapped: MessageRecord[] = results.map((r) => ({
-        msgId: r.msgId,
-        topic: r.topic,
-        tag: r.tag || null,
-        key: r.key || null,
-        brokerName: r.brokerName || null,
-        queueId: r.queueId,
-        queueOffset: r.queueOffset,
-        body: '',
-        storeTime: r.storeTime,
-        bornHost: r.bornHost,
-        storeHost: r.storeHost,
-        properties: {},
-        size: r.size,
-      }));
-      setMessages(mapped);
-      setMessageTotal(mapped.length);
-      setMessagePage(1);
-      setResultMayBeTruncated(false);
-      message.success(`已加载历史查询结果，共 ${mapped.length} 条`);
-    } catch (error) {
-      if (queryGenerationRef.current === requestGeneration) {
-        setQueryError(getErrorMessage(error, '加载历史结果失败'));
-      }
-    } finally {
-      if (queryGenerationRef.current === requestGeneration) {
-        setQueryLoading(false);
-      }
-    }
+    // Re-run the historical query through the same live path so it is normalized and committed
+    // exactly like a normal search: the displayed page and any later pagination then share one
+    // query. Loading the archived snapshot here instead would splice snapshot page 1 with a live
+    // page 2 on the next pagination click — the very mix this fix removes.
+    const params: MessageQuery =
+      mode === 'topic'
+        ? {
+            topic: record.topic,
+            ...(record.startTime !== undefined ? { startTime: record.startTime } : {}),
+            ...(record.endTime !== undefined ? { endTime: record.endTime } : {}),
+          }
+        : mode === 'key'
+          ? { topic: record.topic, key: record.messageKey || undefined }
+          : { topic: record.topic, msgId: record.msgId || undefined };
+    await executeQuery(mode, params);
   };
 
   const replayTraceRecord = (record: TraceQueryHistory) => {
     handleQueryModeChange('msgid');
     setSelectedTopic(record.topic);
     setMsgIdInput(record.msgId);
+    setCustomTraceTopic(record.traceTopic?.trim() || '');
     setHistoryDrawerOpen(false);
     void executeQuery('msgid', { topic: record.topic, msgId: record.msgId });
   };
@@ -577,15 +573,24 @@ const MessagePageContent = ({
     setTraceError(null);
     setTraceQueryMode('msgid');
     setTraceQueryValue(record.msgId);
-    const cacheKey = JSON.stringify([selectedInstanceId, record.topic, record.msgId]);
+    const normalizedTraceTopic = customTraceTopic.trim();
+    const cacheKey = JSON.stringify([
+      selectedInstanceId,
+      record.topic,
+      record.msgId,
+      normalizedTraceTopic,
+    ]);
     let traceRequest = traceCacheRef.current.get(cacheKey);
     if (!traceRequest) {
-      traceRequest = getMessageTrace(record.msgId, selectedInstanceId, record.topic).catch(
-        (error) => {
-          traceCacheRef.current.delete(cacheKey);
-          throw error;
-        },
-      );
+      traceRequest = getMessageTrace(
+        record.msgId,
+        selectedInstanceId,
+        record.topic,
+        normalizedTraceTopic,
+      ).catch((error) => {
+        traceCacheRef.current.delete(cacheKey);
+        throw error;
+      });
       traceCacheRef.current.set(cacheKey, traceRequest);
     }
     try {
@@ -625,6 +630,10 @@ const MessagePageContent = ({
     traceGenerationRef.current = requestGeneration;
     const value = traceQueryValue.trim();
     if (!value) {
+      // The bump above already invalidated any in-flight trace load, so its guarded
+      // finally block will never reset traceLoading — stop it here instead.
+      setTraceData(null);
+      setTraceLoading(false);
       setTraceError(traceQueryMode === 'key' ? '请输入 Message Key' : '请输入 Message ID');
       return;
     }
@@ -709,7 +718,8 @@ const MessagePageContent = ({
       title: 'Topic',
       dataIndex: 'topic',
       key: 'topic',
-      width: 170,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 170,
       ellipsis: true,
       sorter: (a, b) => a.topic.localeCompare(b.topic),
       render: (topic: string) => (
@@ -729,7 +739,7 @@ const MessagePageContent = ({
       title: 'Key',
       dataIndex: 'key',
       key: 'key',
-      width: 120,
+      minWidth: 120,
       ellipsis: true,
       render: (key: string | null) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{key || '-'}</span>
@@ -739,7 +749,7 @@ const MessagePageContent = ({
       title: 'Message ID',
       dataIndex: 'msgId',
       key: 'msgId',
-      width: 260,
+      minWidth: 260,
       render: (id: string) => (
         <Text
           copyable={{ text: id }}
@@ -1189,10 +1199,14 @@ const MessagePageContent = ({
               total: messageTotal,
               showSizeChanger: true,
               showTotal: (total) => `共 ${total} 条消息`,
-              onChange: (page, pageSize) =>
-                void executeQuery(queryMode, currentQueryParams, page, pageSize),
+              onChange: (page, pageSize) => {
+                const committed = committedQueryRef.current;
+                if (!committed) return;
+                void executeQuery(committed.mode, committed.params, page, pageSize);
+              },
             }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(columns) }}
           />
         </Card>

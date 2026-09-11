@@ -34,12 +34,15 @@ import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -47,6 +50,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -297,6 +304,25 @@ class InstanceServiceTest {
     }
 
     @Test
+    void listInstancesShouldClearPreviouslyLoadedCountsWhenRefreshFailsTest() {
+        InstanceVO instance = InstanceVO.builder().name("stale-counts").build();
+        instance.setId(6L);
+        instance.setTopicCount(12);
+        instance.setConsumerGroupCount(8);
+        instance.setResourceCountsAvailable(true);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("6"))
+                .thenThrow(new IllegalStateException("provider unavailable"));
+
+        InstanceVO result = instanceService.listInstances(null, null).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isFalse();
+        assertThat(result.getTopicCount()).isZero();
+        assertThat(result.getConsumerGroupCount()).isZero();
+    }
+
+    @Test
     void listInstancesShouldApplyASingleDeadlineToSlowCountsTest() throws InterruptedException {
         // Three hung providers: waiting per future would cost 3s each (9s total); a shared
         // deadline must bound the whole batch to roughly one timeout.
@@ -321,6 +347,62 @@ class InstanceServiceTest {
                 .as("batch must not wait one timeout per instance")
                 .isLessThan(2L * InstanceService.COUNT_TIMEOUT_SECONDS * 1000);
         assertThat(result).allSatisfy(vo -> assertThat(vo.isResourceCountsAvailable()).isFalse());
+    }
+
+    @Test
+    void timedOutCountTaskShouldNotMutateReturnedInstanceAfterRequestCompletesTest() throws Exception {
+        InstanceVO slow = InstanceVO.builder().name("slow").build();
+        slow.setId(24L);
+        when(instanceRepository.findAll()).thenReturn(List.of(slow));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        CountDownLatch topicCountStarted = new CountDownLatch(1);
+        CountDownLatch releaseProvider = new CountDownLatch(1);
+        CountDownLatch providerFinished = new CountDownLatch(1);
+        when(instanceProvider.countTopics("24")).thenAnswer(invocation -> {
+            topicCountStarted.countDown();
+            boolean interrupted = false;
+            while (true) {
+                try {
+                    releaseProvider.await();
+                    break;
+                } catch (InterruptedException exception) {
+                    // Simulate a vendor SDK that does not abort an in-flight HTTP request
+                    // when Future.cancel(true) interrupts the worker.
+                    interrupted = true;
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return 7;
+        });
+        when(instanceProvider.countGroups("24")).thenAnswer(invocation -> {
+            providerFinished.countDown();
+            return 5;
+        });
+
+        try {
+            List<InstanceVO> result = instanceService.listInstances(null, null);
+
+            assertThat(topicCountStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(result).singleElement().satisfies(instance -> {
+                assertThat(instance.isResourceCountsAvailable()).isFalse();
+                assertThat(instance.getTopicCount()).isZero();
+                assertThat(instance.getConsumerGroupCount()).isZero();
+            });
+
+            releaseProvider.countDown();
+            assertThat(providerFinished.await(1, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(result).singleElement().satisfies(instance -> {
+                assertThat(instance.isResourceCountsAvailable()).isFalse();
+                assertThat(instance.getTopicCount()).isZero();
+                assertThat(instance.getConsumerGroupCount()).isZero();
+            });
+        } finally {
+            releaseProvider.countDown();
+        }
     }
 
     @Test
@@ -776,6 +858,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("1")).thenReturn(0);
         when(instanceProvider.countGroups("1")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "missing"));
 
@@ -798,6 +881,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("2")).thenReturn(0);
         when(instanceProvider.countGroups("2")).thenReturn(0);
         when(instanceRepository.deleteById(2L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "inst-b"));
 
@@ -819,6 +903,7 @@ class InstanceServiceTest {
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
         when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException(oversizedMessage));
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a"));
 
@@ -845,6 +930,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("1")).thenReturn(0);
         when(instanceProvider.countGroups("1")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", " inst-a ", "inst-a"));
 
@@ -917,6 +1003,36 @@ class InstanceServiceTest {
 
         verify(instanceRepository).deleteById(1L);
         verify(adminFactory).release("namesrv:9876");
+    }
+
+    @Test
+    void deleteInstanceShouldDeferEndpointReleaseUntilAfterCommitTest() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("to-delete")
+                .endpoint("namesrv:9876")
+                .build();
+        existing.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.findAll()).thenReturn(List.of());
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            instanceService.deleteInstance(1L);
+
+            verify(adminFactory, never()).release(any());
+            verify(clientPool, never()).release(any());
+
+            for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
+                sync.afterCommit();
+            }
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(adminFactory).release("namesrv:9876");
+        verify(clientPool).release("namesrv:9876");
     }
 
     @Test
@@ -1519,6 +1635,62 @@ class InstanceServiceTest {
         assertThat(created.getEndpoint()).isEqualTo("vpc.tencent:8080");
         assertThat(created.getType()).isEqualTo(InstanceType.CLOUD);
         assertThat(created.getVendor()).isEqualTo(InstanceVendor.TENCENT);
+    }
+
+    @Test
+    void createCloudInstanceShouldTranslateDeletedCredentialDuringSaveToConflictTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId(1L)
+                .cloudInstanceId("rmq-cn-race")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-race");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-cn-race")).thenReturn(detail);
+        when(instanceRepository.save(any(InstanceVO.class)))
+                .thenThrow(new DataIntegrityViolationException(
+                        "foreign key constraint fk_instance_cloud_credential"));
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential no longer exists: 1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        verify(operationAuditService, never()).record(anyString(), anyString(), anyString(), any(), anyString(),
+                anyString(), any());
+    }
+
+    @Test
+    void createCloudInstanceShouldNotTranslateUnrelatedForeignKeyViolationTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId(1L)
+                .cloudInstanceId("rmq-cn-race")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(1L);
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById(1L)).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-race");
+        detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance(1L, "cn-hangzhou", "rmq-cn-race")).thenReturn(detail);
+        DataIntegrityViolationException violation = new DataIntegrityViolationException(
+                "foreign key constraint fk_instance_owner");
+        when(instanceRepository.save(any(InstanceVO.class))).thenThrow(violation);
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance)).isSameAs(violation);
     }
 
     @Test

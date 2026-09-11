@@ -59,6 +59,7 @@ class DemoDataSqlCompatibilityTest {
             assertThat(allIdsAreNumeric(connection, "rmq_instance")).isTrue();
             assertThat(allIdsAreNumeric(connection, "rmq_acl_rule")).isTrue();
             assertThat(allIdsAreNumeric(connection, "rmq_acl_user")).isTrue();
+            assertThat(hasImportedKey(connection, "rmq_instance", "fk_instance_cloud_credential")).isTrue();
         }
     }
 
@@ -160,6 +161,18 @@ class DemoDataSqlCompatibilityTest {
     private static boolean hasColumn(Connection connection, String table, String column) throws SQLException {
         try (ResultSet columns = connection.getMetaData().getColumns(null, null, table, column)) {
             return columns.next();
+        }
+    }
+
+    private static boolean hasImportedKey(Connection connection, String table, String foreignKeyName)
+            throws SQLException {
+        try (ResultSet keys = connection.getMetaData().getImportedKeys(null, null, table)) {
+            while (keys.next()) {
+                if (foreignKeyName.equalsIgnoreCase(keys.getString("FK_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

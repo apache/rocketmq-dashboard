@@ -74,8 +74,10 @@ class RegistryProbeRunner implements AutoCloseable {
      * or failing entry contributes an empty result without affecting the others.
      */
     List<ClusterVO> probeAll(List<NameserverRegistryVO> entries, ProbeFunction function) {
-        return entries.stream()
+        List<CompletableFuture<List<ClusterVO>>> probes = entries.stream()
                 .map(entry -> probeOne(entry, function))
+                .toList();
+        return probes.stream()
                 .map(CompletableFuture::join)
                 .flatMap(List::stream)
                 .toList();

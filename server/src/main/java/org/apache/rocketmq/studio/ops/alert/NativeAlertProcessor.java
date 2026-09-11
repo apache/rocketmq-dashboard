@@ -29,6 +29,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -106,7 +107,7 @@ public class NativeAlertProcessor {
         List<AlertRuleVO> rules = alertService.listRules(scope.domain()).stream()
                 .filter(rule -> rule.getId() != null)
                 .filter(AlertRuleVO::isEnabled)
-                .filter(rule -> scope.metricKeys().contains(rule.getMetric()))
+                .filter(rule -> scope.metricKeys().contains(StringUtils.trimWhitespace(rule.getMetric())))
                 .filter(rule -> rule.getInstanceId() == null || scope.instanceId().equals(rule.getInstanceId()))
                 .toList();
         if (rules.isEmpty()) {
@@ -115,6 +116,7 @@ public class NativeAlertProcessor {
         Set<AlertStateKey> presentKeys = samples.stream()
                 .filter(scope::contains)
                 .flatMap(sample -> rules.stream()
+                        .filter(rule -> sample.metricKey().equals(StringUtils.trimWhitespace(rule.getMetric())))
                         .filter(rule -> NativeAlertRuleScopeMatcher.matches(rule, sample))
                         .map(rule -> new AlertStateKey(rule.getId(),
                                 AlertFingerprint.of(rule.getId(), sample.instanceId(), sample.labels()))))

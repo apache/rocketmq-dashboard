@@ -189,10 +189,6 @@ class K8sCertServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("K8s certificate request is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
-        assertThatThrownBy(() -> k8sCertService.renewCert(null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("K8s certificate request is required")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
         assertThatThrownBy(() -> k8sCertService.deleteCert(null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("K8s certificate request is required")
@@ -398,73 +394,6 @@ class K8sCertServiceTest {
         assertThat(sampleCert.getK8sId()).isEqualTo("rocketmq-tls");
         assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
         assertThat(sampleCert.getGmtModified()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
-    }
-
-    @Test
-    void renewCertShouldRenewCertValidity() {
-        sampleCert.setStatus(CertStatus.expired);
-        sampleCert.setDaysRemaining(0);
-        LocalDateTime originalNotBefore = sampleCert.getNotBefore();
-        LocalDateTime originalNotAfter = sampleCert.getNotAfter();
-
-        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
-        when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        RenewCertDTO command = RenewCertDTO.builder().id(1L).build();
-
-        K8sCertVO result = k8sCertService.renewCert(command);
-        LocalDateTime now = LocalDateTime.now(CLOCK);
-
-        assertThat(result.getStatus()).isEqualTo(CertStatus.valid);
-        assertThat(result.getDaysRemaining()).isEqualTo(365);
-        assertThat(result.getNotBefore()).isEqualTo(now);
-        assertThat(result.getNotAfter()).isEqualTo(now.plusYears(1));
-        assertThat(result.getGmtModified()).isEqualTo(now);
-        assertThat(result.getId()).isEqualTo(1L);
-        assertThat(result.getGmtCreate()).isEqualTo(sampleCert.getGmtCreate());
-        assertThat(result).isNotSameAs(sampleCert);
-        assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.expired);
-        assertThat(sampleCert.getDaysRemaining()).isZero();
-        assertThat(sampleCert.getNotBefore()).isEqualTo(originalNotBefore);
-        assertThat(sampleCert.getNotAfter()).isEqualTo(originalNotAfter);
-        verify(k8sCertRepository).save(any(K8sCertVO.class));
-        verify(operationAuditService).record(eq("RENEW_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
-                eq("1"), eq(null), eq("k8sId=rocketmq-tls, cluster=prod-cluster"),
-                eq("SUCCESS"), eq(null));
-    }
-
-    @Test
-    void renewCertShouldNotMutateStoredCertWhenSaveFails() {
-        sampleCert.setStatus(CertStatus.expired);
-        sampleCert.setDaysRemaining(0);
-        LocalDateTime originalNotBefore = sampleCert.getNotBefore();
-        LocalDateTime originalNotAfter = sampleCert.getNotAfter();
-
-        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
-        when(k8sCertRepository.save(any(K8sCertVO.class))).thenThrow(new IllegalStateException("save failed"));
-
-        RenewCertDTO command = RenewCertDTO.builder().id(1L).build();
-
-        assertThatThrownBy(() -> k8sCertService.renewCert(command))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("save failed");
-
-        assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.expired);
-        assertThat(sampleCert.getDaysRemaining()).isZero();
-        assertThat(sampleCert.getNotBefore()).isEqualTo(originalNotBefore);
-        assertThat(sampleCert.getNotAfter()).isEqualTo(originalNotAfter);
-        assertThat(sampleCert.getGmtModified()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
-    }
-
-    @Test
-    void renewCertShouldThrowWhenNotFound() {
-        when(k8sCertRepository.findById(999L)).thenReturn(Optional.empty());
-
-        RenewCertDTO command = RenewCertDTO.builder().id(999L).build();
-
-        assertThatThrownBy(() -> k8sCertService.renewCert(command))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Certificate not found: 999");
     }
 
     @Test

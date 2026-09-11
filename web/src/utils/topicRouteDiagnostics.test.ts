@@ -147,6 +147,31 @@ describe('topic route diagnostics', () => {
     );
   });
 
+  it('reports topic-level queue skew once without blaming each broker', () => {
+    const diagnostics = analyzeTopicRoutes([
+      route({ brokerName: 'broker-a', writeQueues: 12, readQueues: 12 }),
+      route({
+        brokerName: 'broker-b',
+        brokerAddr: '10.0.1.1:10911',
+        masterAddr: '10.0.1.1:10911',
+        brokerAddrs: {
+          '0': '10.0.1.1:10911',
+          '1': '10.0.1.2:10911',
+        },
+        writeQueues: 2,
+        readQueues: 2,
+      }),
+    ]);
+
+    expect(diagnostics.status).toBe('warning');
+    expect(diagnostics.issues.filter((item) => item.code === 'WRITE_QUEUE_SKEW')).toHaveLength(1);
+    expect(diagnostics.issues.filter((item) => item.code === 'READ_QUEUE_SKEW')).toHaveLength(1);
+    expect(diagnostics.distributions).toEqual([
+      expect.objectContaining({ brokerName: 'broker-a', status: 'healthy', issues: [] }),
+      expect.objectContaining({ brokerName: 'broker-b', status: 'healthy', issues: [] }),
+    ]);
+  });
+
   it('infers read and write permissions from legacy route payloads', () => {
     const diagnostics = analyzeTopicRoutes([
       route({

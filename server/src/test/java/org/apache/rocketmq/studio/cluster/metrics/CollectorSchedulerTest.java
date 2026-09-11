@@ -30,6 +30,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -329,6 +331,72 @@ class CollectorSchedulerTest {
 
         verify(snapshots, never()).saveAll(any());
         verify(processor).processSuccessfulCollection(any(MetricCollectionScope.class), org.mockito.ArgumentMatchers.eq(List.of()));
+    }
+
+    @Test
+    void renewsLeaseWhileAnEmptyCollectionPassIsStillRunningTest() throws Exception {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("PT0.2S");
+        properties.setCollectionLeaseRenewalInterval("PT1S");
+        properties.setCollectionTimeout("PT1S");
+        InstanceVO instance = InstanceVO.builder().name("slow-empty").build();
+        InstanceRepository instances = mock(InstanceRepository.class);
+        when(instances.findAll()).thenReturn(List.of(instance));
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        when(collector.supports(instance)).thenReturn(true);
+        when(collector.collect(instance)).thenAnswer(invocation -> {
+            Thread.sleep(350);
+            return List.of();
+        });
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        when(lease.tryAcquire()).thenReturn(true);
+        when(lease.renew()).thenReturn(true);
+        ExecutorService collectionExecutor = Executors.newFixedThreadPool(1);
+        ScheduledExecutorService renewalExecutor = Executors.newSingleThreadScheduledExecutor();
+        CollectorScheduler scheduler = new CollectorScheduler(properties, instances, List.of(collector), List.of(),
+                mock(MetricSnapshotRepository.class), mock(NativeAlertProcessor.class), lease, collectionExecutor,
+                renewalExecutor);
+
+        try {
+            scheduler.collect();
+            verify(lease, atLeast(3)).renew();
+        } finally {
+            scheduler.stopCollectionExecutor();
+        }
+    }
+
+    @Test
+    void stopsAnActivePassWhenLeaseRenewalFailsTest() throws Exception {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setCollectionLeaseDuration("PT0.2S");
+        properties.setCollectionLeaseRenewalInterval("PT1S");
+        properties.setCollectionTimeout("PT1S");
+        InstanceVO instance = InstanceVO.builder().name("lease-lost").build();
+        InstanceRepository instances = mock(InstanceRepository.class);
+        when(instances.findAll()).thenReturn(List.of(instance));
+        ClusterMetricsCollector collector = mock(ClusterMetricsCollector.class);
+        when(collector.supports(instance)).thenReturn(true);
+        when(collector.collect(instance)).thenAnswer(invocation -> {
+            Thread.sleep(350);
+            return List.of(sampleFor(instance));
+        });
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+        NativeAlertProcessor processor = mock(NativeAlertProcessor.class);
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        when(lease.tryAcquire()).thenReturn(true);
+        when(lease.renew()).thenReturn(false);
+        ExecutorService collectionExecutor = Executors.newFixedThreadPool(1);
+        ScheduledExecutorService renewalExecutor = Executors.newSingleThreadScheduledExecutor();
+        CollectorScheduler scheduler = new CollectorScheduler(properties, instances, List.of(collector), List.of(),
+                snapshots, processor, lease, collectionExecutor, renewalExecutor);
+
+        try {
+            scheduler.collect();
+            verify(snapshots, never()).saveAll(any());
+            verify(processor, never()).processSuccessfulCollection(any(), any());
+        } finally {
+            scheduler.stopCollectionExecutor();
+        }
     }
 
     private static MetricSample sampleFor(InstanceVO instance) {

@@ -22,29 +22,35 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
+  Statistic,
   Switch,
   Table,
   Tag,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DownloadSimple, Key, Plus } from '@phosphor-icons/react';
+import { DownloadSimple, Key, Plus, SignOut } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { changePassword } from '../../api/auth';
 import {
   createStudioUser,
+  getStudioUserSessionOverview,
   listAllStudioUsers as exportStudioUsers,
   listStudioUsers,
   resetStudioUserPassword,
+  revokeStudioUserSessions,
   setStudioUserEnabled,
   type StudioUser,
+  type StudioUserSessionOverview,
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { tableScrollX } from '../../utils/table';
 
 interface CreateFormValues {
   username: string;
@@ -68,6 +74,15 @@ const STUDIO_USER_EXPORT_COLUMNS: CsvColumn<StudioUser>[] = [
   { header: 'Username', value: (user) => user.username },
   { header: 'Role', value: (user) => (user.admin ? 'Admin' : 'User') },
   { header: 'Status', value: (user) => (user.enabled ? 'Enabled' : 'Disabled') },
+  { header: 'Active Sessions', value: (user) => user.activeSessionCount ?? 0 },
+  {
+    header: 'Last Session Seen At',
+    value: (user) => dateTime(user.lastSessionSeenAt ?? undefined),
+  },
+  {
+    header: 'Nearest Session Expires At',
+    value: (user) => dateTime(user.nearestSessionExpiresAt ?? undefined),
+  },
   { header: 'Password Changed At', value: (user) => dateTime(user.passwordChangedAt) },
   { header: 'Created At', value: (user) => dateTime(user.gmtCreate) },
   { header: 'Modified At', value: (user) => dateTime(user.gmtModified) },
@@ -86,6 +101,7 @@ const UserManagementPage = () => {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
+  const [sessionOverview, setSessionOverview] = useState<StudioUserSessionOverview | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
@@ -105,6 +121,7 @@ const UserManagementPage = () => {
       requestSeqRef.current += 1;
       setUsers([]);
       setTotal(0);
+      setSessionOverview(null);
       return;
     }
     const requestId = ++requestSeqRef.current;
@@ -112,14 +129,18 @@ const UserManagementPage = () => {
       if (requestId === requestSeqRef.current) setLoading(true);
     });
     try {
-      const result = await listStudioUsers({
-        search: debouncedSearch || undefined,
-        admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
-        enabled: statusFilter === undefined ? undefined : statusFilter === 'enabled',
-        page,
-        pageSize,
-      });
+      const [result, overview] = await Promise.all([
+        listStudioUsers({
+          search: debouncedSearch || undefined,
+          admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
+          enabled: statusFilter === undefined ? undefined : statusFilter === 'enabled',
+          page,
+          pageSize,
+        }),
+        getStudioUserSessionOverview().catch(() => null),
+      ]);
       if (requestId !== requestSeqRef.current) return;
+      setSessionOverview(overview);
       if (result.items.length === 0 && result.total > 0 && page > 1) {
         const lastPage = Math.max(1, Math.ceil(result.total / result.size));
         if (page > lastPage) {
@@ -164,21 +185,39 @@ const UserManagementPage = () => {
     }
   };
 
-  const setEnabled = async (record: StudioUser, enabled: boolean) => {
-    if (mutatingUserIdsRef.current.has(record.id)) return;
-    mutatingUserIdsRef.current.add(record.id);
+  /**
+   * Runs one mutation for a single user behind the shared in-flight guard, so a row can never
+   * have a status update and a session revocation overlapping. The guard is released on both the
+   * success and the failure path.
+   */
+  const runUserMutation = async (
+    targetUserId: number,
+    action: () => Promise<void>,
+    errorMessage: string,
+  ) => {
+    if (mutatingUserIdsRef.current.has(targetUserId)) return;
+    mutatingUserIdsRef.current.add(targetUserId);
     setMutatingUserIds(new Set(mutatingUserIdsRef.current));
     try {
-      await setStudioUserEnabled(record.id, enabled);
-      message.success(enabled ? '用户已启用' : '用户已禁用，全部会话已注销');
-      await loadUsers();
+      await action();
     } catch {
-      message.error('更新用户状态失败');
+      message.error(errorMessage);
     } finally {
-      mutatingUserIdsRef.current.delete(record.id);
+      mutatingUserIdsRef.current.delete(targetUserId);
       setMutatingUserIds(new Set(mutatingUserIdsRef.current));
     }
   };
+
+  const setEnabled = (record: StudioUser, enabled: boolean) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await setStudioUserEnabled(record.id, enabled);
+        message.success(enabled ? '用户已启用' : '用户已禁用，全部会话已注销');
+        await loadUsers();
+      },
+      '更新用户状态失败',
+    );
 
   const updatePassword = async () => {
     if (!passwordTarget) return;
@@ -199,6 +238,27 @@ const UserManagementPage = () => {
       message.error('修改密码失败');
     }
   };
+
+  const revokeSessions = (record: StudioUser) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        const result = await revokeStudioUserSessions(record.id);
+        if (result.revokedSessionCount > 0) {
+          message.success(`已注销 ${result.revokedSessionCount} 个活跃会话`);
+        } else {
+          message.success('没有可注销的活跃会话');
+        }
+        if (record.id === userId && result.revokedSessionCount > 0) {
+          clearAuth();
+          navigate('/login', { replace: true });
+          return;
+        }
+        await loadUsers();
+      },
+      '注销用户会话失败',
+    );
+
   const openCreateUserModal = () => setCreateOpen(true);
   const handleExportUsers = useCallback(async () => {
     if (!admin) return;
@@ -220,29 +280,84 @@ const UserManagementPage = () => {
     }
     setUserExporting(false);
   }, [admin, roleFilter, search, statusFilter]);
+  // Declared widths total 1116px, which stays inside the usable content width of a normal
+  // 1440px viewport (220px Sider plus page and Card padding), so the table does not show a
+  // horizontal scrollbar by default. Columns whose text can be longer than that truncate with
+  // the full value on hover instead of wrapping.
   const columns: ColumnsType<StudioUser> = [
-    { title: '用户名', dataIndex: 'username' },
-    { title: '用户 ID', dataIndex: 'id', width: 100 },
+    { title: '用户名', dataIndex: 'username', width: 120, ellipsis: true },
+    { title: '用户 ID', dataIndex: 'id', width: 88 },
     {
       title: '权限',
       dataIndex: 'admin',
+      width: 92,
       render: (value: boolean) => (value ? <Tag color="blue">管理员</Tag> : <Tag>普通用户</Tag>),
     },
     {
       title: '状态',
       dataIndex: 'enabled',
+      width: 92,
       render: (value: boolean) =>
         value ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>,
     },
-    { title: '创建时间', dataIndex: 'gmtCreate', render: dateTime },
+    {
+      title: '活跃会话',
+      dataIndex: 'activeSessionCount',
+      width: 84,
+      render: (value?: number) => {
+        const count = value ?? 0;
+        return <Tag color={count > 0 ? 'processing' : 'default'}>{count}</Tag>;
+      },
+    },
+    {
+      title: '最近活跃',
+      dataIndex: 'lastSessionSeenAt',
+      width: 140,
+      ellipsis: true,
+      render: dateTime,
+    },
+    {
+      title: '最近过期',
+      dataIndex: 'nearestSessionExpiresAt',
+      width: 140,
+      ellipsis: true,
+      render: dateTime,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'gmtCreate',
+      width: 140,
+      ellipsis: true,
+      render: dateTime,
+    },
     {
       title: '操作',
       key: 'actions',
+      width: 220,
       render: (_, record) => (
         <Space>
           <Button size="small" icon={<Key size={14} />} onClick={() => setPasswordTarget(record)}>
             改密
           </Button>
+          <Popconfirm
+            title={`注销 ${record.username} 的活跃会话？`}
+            description="用户需要重新登录，账号状态不会改变。"
+            okText="注销"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            disabled={(record.activeSessionCount ?? 0) === 0}
+            onConfirm={() => void revokeSessions(record)}
+          >
+            <Button
+              size="small"
+              danger
+              icon={<SignOut size={14} />}
+              disabled={(record.activeSessionCount ?? 0) === 0}
+              loading={mutatingUserIds.has(record.id)}
+            >
+              会话
+            </Button>
+          </Popconfirm>
           <Switch
             checked={record.enabled}
             loading={mutatingUserIds.has(record.id)}
@@ -294,6 +409,7 @@ const UserManagementPage = () => {
               username: '',
               admin: !!admin,
               enabled: true,
+              activeSessionCount: 0,
               passwordChangedAt: '',
               gmtCreate: '',
               gmtModified: '',
@@ -303,6 +419,22 @@ const UserManagementPage = () => {
           修改我的密码
         </Button>
       </Card>
+      {admin && sessionOverview && (
+        <Card title="会话概览" style={{ marginBottom: 16 }}>
+          <Flex gap={32} wrap>
+            <Statistic title="活跃会话" value={sessionOverview.activeSessionCount} />
+            <Statistic title="活跃用户" value={sessionOverview.activeUserCount} />
+            <Statistic
+              title={`未来 ${sessionOverview.expiringSoonWindowMinutes} 分钟过期`}
+              value={sessionOverview.expiringSoonSessionCount}
+            />
+            <Statistic
+              title={`${sessionOverview.staleSessionThresholdMinutes} 分钟未活跃`}
+              value={sessionOverview.staleSessionCount}
+            />
+          </Flex>
+        </Card>
+      )}
       {admin && (
         <Card>
           <Flex gap={12} wrap style={{ marginBottom: 16 }}>
@@ -352,6 +484,8 @@ const UserManagementPage = () => {
             loading={loading}
             columns={columns}
             dataSource={users}
+            tableLayout="fixed"
+            scroll={{ x: tableScrollX(columns) }}
             pagination={{
               current: page,
               pageSize,

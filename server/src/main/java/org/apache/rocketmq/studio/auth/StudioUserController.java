@@ -29,12 +29,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/studio-users")
 @RequiredArgsConstructor
 public class StudioUserController {
 
     private final AuthService authService;
+
+    @GetMapping("/sessions/overview")
+    public Result<StudioUserSessionOverviewVO> sessionOverview() {
+        return Result.ok(authService.getSessionOverview());
+    }
 
     @GetMapping
     public Result<PageResult<StudioUserVO>> list(
@@ -45,8 +53,15 @@ public class StudioUserController {
             @RequestParam(defaultValue = "20") int pageSize) {
         PageResult<RmqStudioUser> result = authService.listUsers(
                 search, admin, enabled, page, pageSize);
+        List<RmqStudioUser> users = result.getItems();
+        Map<Long, StudioUserSessionSummaryVO> sessionSummaries =
+                authService.listActiveSessionSummaries(users.stream()
+                        .map(RmqStudioUser::getId)
+                        .toList());
         return Result.ok(PageResult.of(
-                result.getItems().stream().map(StudioUserVO::from).toList(),
+                users.stream()
+                        .map(user -> StudioUserVO.from(user, sessionSummaries.get(user.getId())))
+                        .toList(),
                 result.getTotal(), result.getPage(), result.getSize()));
     }
 
@@ -67,5 +82,14 @@ public class StudioUserController {
                                       @Valid @RequestBody ResetPasswordDTO request) {
         authService.changePassword(userId, null, request.getNewPassword(), false);
         return Result.ok();
+    }
+
+    @PostMapping("/{userId}/sessions/revoke")
+    public Result<StudioUserSessionRevokeVO> revokeSessions(@PathVariable Long userId) {
+        int revokedSessionCount = authService.revokeSessionsForUser(userId);
+        return Result.ok(StudioUserSessionRevokeVO.builder()
+                .userId(userId)
+                .revokedSessionCount(revokedSessionCount)
+                .build());
     }
 }

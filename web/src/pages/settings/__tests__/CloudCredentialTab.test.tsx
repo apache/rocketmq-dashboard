@@ -19,10 +19,12 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
+import { downloadBlob } from '../../../utils/download';
 import type { CloudCredentialPage } from '../../../api/cloudCredential';
 import {
   createCloudCredential,
   deleteCloudCredential,
+  exportCloudCredentials,
   listCloudCredentials,
   updateCloudCredential,
 } from '../../../api/cloudCredential';
@@ -33,8 +35,13 @@ import { CloudCredentialTab } from '../CloudCredentialTab';
 vi.mock('../../../api/cloudCredential', () => ({
   createCloudCredential: vi.fn(),
   deleteCloudCredential: vi.fn(),
+  exportCloudCredentials: vi.fn(),
   listCloudCredentials: vi.fn(),
   updateCloudCredential: vi.fn(),
+}));
+
+vi.mock('../../../utils/download', () => ({
+  downloadBlob: vi.fn(),
 }));
 
 const credentials: CloudCredentialPage = {
@@ -285,5 +292,34 @@ describe('CloudCredentialTab', () => {
     await waitFor(() =>
       expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, '', 1, 20),
     );
+  });
+
+  it('downloads the backend CSV export with the active filters', async () => {
+    vi.mocked(exportCloudCredentials).mockResolvedValue(
+      '"Name","Vendor"\r\n"aliyun-test","ALIYUN"\r\n',
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    await waitFor(() => expect(exportCloudCredentials).toHaveBeenCalledWith(undefined, ''));
+    expect(downloadBlob).toHaveBeenCalledTimes(1);
+    const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0];
+    expect((blob as Blob).type).toBe('text/csv;charset=utf-8');
+    expect(filename).toMatch(/^rocketmq-cloud-credentials-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  it('reports an export failure instead of downloading an empty file', async () => {
+    vi.mocked(exportCloudCredentials).mockRejectedValue(new Error('boom'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(await screen.findByText('导出云凭据失败，请稍后重试')).toBeInTheDocument();
+    expect(downloadBlob).not.toHaveBeenCalled();
   });
 });

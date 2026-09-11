@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.provider.alibaba;
 
+import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponseBody;
+import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,5 +36,34 @@ class AliyunConvertersTest {
 
         assertThat(result.getTopicCount()).isEqualTo(Integer.MAX_VALUE);
         assertThat(result.getGroupCount()).isZero();
+    }
+
+    @Test
+    void toSubscriptionEntryShouldDeriveFilterModeFromTheExpressionType() {
+        ListConsumerGroupSubscriptionsResponseBody.Data data =
+                ListConsumerGroupSubscriptionsResponseBody.Data.builder()
+                        .topicName("orders")
+                        .filterExpression("orderType = 'A'")
+                        .filterExpressionType("SQL92")
+                        .consistency(true)
+                        .build();
+
+        SubscriptionEntryVO entry = AliyunConverters.toSubscriptionEntry(data);
+
+        assertThat(entry.getFilterMode()).isEqualTo("SQL");
+    }
+
+    @Test
+    void toSubscriptionEntryShouldKeepTagFilterMode() {
+        ListConsumerGroupSubscriptionsResponseBody.Data data =
+                ListConsumerGroupSubscriptionsResponseBody.Data.builder()
+                        .topicName("orders")
+                        .filterExpression("tag-a")
+                        .filterExpressionType("TAG")
+                        .build();
+
+        SubscriptionEntryVO entry = AliyunConverters.toSubscriptionEntry(data);
+
+        assertThat(entry.getFilterMode()).isEqualTo("TAG");
     }
 }

@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -81,6 +81,28 @@ describe('NotificationDeliveriesPage', () => {
 
     await waitFor(() => expect(retryAlertDelivery).toHaveBeenCalledWith(7));
     await waitFor(() => expect(listAlertDeliveriesPage).toHaveBeenCalledTimes(2));
+  });
+
+  it('queues one retry when the action is clicked twice before rendering', async () => {
+    const retry = deferred<void>();
+    vi.mocked(retryAlertDelivery).mockImplementation(() => retry.promise);
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    const retryButton = screen.getByRole('button', { name: '重新投递' });
+    act(() => {
+      retryButton.click();
+      retryButton.click();
+    });
+
+    expect(retryAlertDelivery).toHaveBeenCalledTimes(1);
+    retry.resolve();
   });
 
   it('refreshes a completed retry with the latest filters', async () => {

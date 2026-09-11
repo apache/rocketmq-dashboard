@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,7 +55,8 @@ public class AlertNotificationSuppressionService {
                 if (!AlertCorrelationScope.matches(event, candidate)) {
                     continue;
                 }
-                String incident = candidate.getFingerprint() == null ? String.valueOf(candidate.getId())
+                String incident = candidate.getFingerprint() == null
+                        ? legacyIncidentKey(candidate)
                         : candidate.getFingerprint();
                 latestByIncident.merge(incident, candidate, (left, right) -> later(left, right) ? left : right);
             }
@@ -65,8 +67,23 @@ public class AlertNotificationSuppressionService {
             page++;
         }
         return latestByIncident.values().stream()
-                .filter(candidate -> "FIRING".equalsIgnoreCase(candidate.getTransition()))
+                // REMINDER is emitted only while the state stays FIRING, so an incident whose
+                // latest in-window event is a REMINDER is still active; only RESOLVED ends it.
+                .filter(candidate -> "FIRING".equalsIgnoreCase(candidate.getTransition())
+                        || "REMINDER".equalsIgnoreCase(candidate.getTransition()))
                 .max(Comparator.comparing(SystemAlertVO::getTime, Comparator.nullsLast(Comparator.naturalOrder())));
+    }
+
+    private static String legacyIncidentKey(SystemAlertVO alert) {
+        Map<String, String> identityLabels = new LinkedHashMap<>();
+        if (alert.getLabels() != null) {
+            identityLabels.putAll(alert.getLabels());
+        }
+        long ruleId = alert.getRuleId() == null ? 0L : alert.getRuleId();
+        if (alert.getRuleId() == null && alert.getTitle() != null) {
+            identityLabels.put("__legacy_title", alert.getTitle());
+        }
+        return "legacy:" + AlertFingerprint.of(ruleId, alert.getInstanceId(), identityLabels);
     }
 
     private static boolean later(SystemAlertVO left, SystemAlertVO right) {

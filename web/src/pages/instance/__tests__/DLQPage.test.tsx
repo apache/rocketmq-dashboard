@@ -259,6 +259,42 @@ describe('DLQ page', () => {
     );
   });
 
+  it('shows user properties in the DLQ message drawer', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-1',
+          topic: 'orders',
+          queueId: 0,
+          offset: 7,
+          storeTime: 1_700_000_000_000,
+          keys: 'key-1',
+          body: 'payload',
+          bodyBase64: null,
+          properties: { traceId: 'abc-123', region: 'cn-east-1' },
+          propertiesTruncated: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    } satisfies DLQMessagePage);
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+
+    const keyCell = await screen.findByText('key-1');
+    const row = keyCell.closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /expand/i }));
+
+    expect(await screen.findByText('traceId')).toBeInTheDocument();
+    expect(screen.getByText('abc-123')).toBeInTheDocument();
+    expect(screen.getByText('region')).toBeInTheDocument();
+    expect(screen.getByText('cn-east-1')).toBeInTheDocument();
+  });
+
   it('exports the dead-letter messages of a group as Excel', async () => {
     vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
       blob: new Blob(['xlsx-bytes'], {
@@ -394,6 +430,31 @@ describe('DLQ page', () => {
     await user.click(screen.getByRole('button', { name: '确认重投' }));
 
     expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
+  });
+
+  it('submits one resend when confirm is clicked twice before rendering', async () => {
+    let resolveResend!: (result: DLQResendResult) => void;
+    vi.mocked(messageService.resendDLQ).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveResend = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    const confirm = screen.getByRole('button', { name: '确认重投' });
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+
+    expect(messageService.resendDLQ).toHaveBeenCalledTimes(1);
+    await act(async () => resolveResend({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
   });
 
   it('warns when DLQ resend scans only part of the available queues', async () => {

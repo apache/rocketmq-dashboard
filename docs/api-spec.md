@@ -61,50 +61,50 @@
 | 18 | GET | `/api/k8s-certs` | K8s 证书列表 |
 | 19 | POST | `/api/k8s-certs/create` | 添加证书 |
 | 20 | POST | `/api/k8s-certs/update` | 更新证书 |
-| 21 | POST | `/api/k8s-certs/renew` | 续期证书 |
-| 22 | POST | `/api/k8s-certs/delete` | 删除证书 |
-| 23 | GET | `/api/topics` | Topic 列表 |
-| 24 | POST | `/api/topics/create` | 创建 Topic |
-| 25 | POST | `/api/topics/update` | 更新 Topic |
-| 26 | POST | `/api/topics/delete` | 删除 Topic |
-| 27 | GET | `/api/topics/:name/routes` | Topic 路由 |
-| 28 | GET | `/api/topics/:name/consumers` | Topic 消费者 |
-| 29 | POST | `/api/topics/send` | 发送消息到 Topic |
-| 30 | GET | `/api/groups` | 消费组列表 |
-| 31 | GET | `/api/groups/:name` | 消费组详情 |
-| 32 | GET | `/api/groups/:name/progress` | 消费进度 |
-| 33 | GET | `/api/groups/:name/subscriptions` | 订阅详情 |
-| 34 | POST | `/api/groups/create` | 创建消费组 |
-| 35 | POST | `/api/groups/delete` | 删除消费组 |
-| 36 | POST | `/api/groups/reset-offset` | 重置位点 |
-| 37 | POST | `/api/groups/import` | 导入配置 |
-| 38 | GET | `/api/groups/export` | 导出配置 |
-| 39 | GET | `/api/acl/rules` | ACL 规则列表 |
-| 40 | POST | `/api/acl/rules/create` | 创建 ACL 规则 |
-| 41 | POST | `/api/acl/rules/delete` | 删除 ACL 规则 |
-| 42 | GET | `/api/acl/users` | ACL 用户列表 |
-| 43 | POST | `/api/acl/users/create` | 创建 ACL 用户 |
-| 44 | POST | `/api/acl/users/delete` | 删除 ACL 用户 |
-| 45 | GET | `/api/messages` | 消息查询 |
-| 46 | GET | `/api/messages/:msgId/trace` | 消息轨迹 |
-| 47 | GET | `/api/dlq` | 死信队列列表 |
-| 48 | POST | `/api/dlq/resend` | 重发死信 |
-| 49 | GET | `/api/clients` | 客户端连接列表 |
-| 50 | GET | `/api/alert-rules` | 告警规则列表 |
-| 51 | POST | `/api/alert-rules/create` | 创建告警规则 |
-| 52 | POST | `/api/alert-rules/update` | 更新告警规则 |
-| 53 | POST | `/api/alert-rules/toggle` | 切换启用状态 |
-| 54 | POST | `/api/alert-rules/delete` | 删除告警规则 |
-| 55 | GET | `/api/system-alerts` | 系统告警列表 |
-| 56 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
-| 57 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
-| 58 | GET | `/api/audit-logs` | 审计日志列表 |
-| 59 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
-| 60 | GET | `/api/audit-logs/export` | 导出审计日志 |
-| 61 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
-| 62 | GET | `/api/settings/general` | 获取通用设置 |
-| 63 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 64 | GET | `/api/settings/datasources` | 数据源列表 |
+| 21 | POST | `/api/k8s-certs/delete` | 删除证书 |
+| 22 | GET | `/api/topics` | Topic 列表 |
+| 23 | POST | `/api/topics/create` | 创建 Topic |
+| 24 | POST | `/api/topics/update` | 更新 Topic |
+| 25 | POST | `/api/topics/delete` | 删除 Topic |
+| 26 | GET | `/api/topics/:name/routes` | Topic 路由 |
+| 27 | GET | `/api/topics/:name/consumers` | Topic 消费者 |
+| 28 | POST | `/api/topics/send` | 发送消息到 Topic |
+| 29 | GET | `/api/groups` | 消费组列表 |
+| 30 | GET | `/api/groups/:name` | 消费组详情 |
+| 31 | GET | `/api/groups/:name/progress` | 消费进度 |
+| 32 | GET | `/api/groups/:name/subscriptions` | 订阅详情 |
+| 33 | POST | `/api/groups/create` | 创建消费组 |
+| 34 | POST | `/api/groups/delete` | 删除消费组 |
+| 35 | POST | `/api/groups/reset-offset` | 重置位点 |
+| 36 | POST | `/api/groups/import` | 导入配置 |
+| 37 | GET | `/api/groups/export` | 导出配置 |
+| 38 | GET | `/api/acl/rules` | ACL 规则列表 |
+| 39 | POST | `/api/acl/rules/create` | 创建 ACL 规则 |
+| 40 | POST | `/api/acl/rules/delete` | 删除 ACL 规则 |
+| 41 | GET | `/api/acl/users` | ACL 用户列表 |
+| 42 | POST | `/api/acl/users/create` | 创建 ACL 用户 |
+| 43 | POST | `/api/acl/users/delete` | 删除 ACL 用户 |
+| 44 | GET | `/api/messages` | 消息查询 |
+| 45 | GET | `/api/messages/:msgId/trace` | 消息轨迹 |
+| 46 | GET | `/api/dlq` | 死信队列列表 |
+| 47 | POST | `/api/dlq/resend` | 重发死信 |
+| 48 | GET | `/api/clients` | 客户端连接列表 |
+| 49 | GET | `/api/alert-rules` | 告警规则列表 |
+| 50 | POST | `/api/alert-rules/create` | 创建告警规则 |
+| 51 | POST | `/api/alert-rules/update` | 更新告警规则 |
+| 52 | POST | `/api/alert-rules/toggle` | 切换启用状态 |
+| 53 | POST | `/api/alert-rules/delete` | 删除告警规则 |
+| 54 | GET | `/api/system-alerts` | 系统告警列表 |
+| 55 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
+| 56 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
+| 57 | GET | `/api/audit-logs` | 审计日志列表 |
+| 58 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
+| 59 | GET | `/api/audit-logs/export` | 导出审计日志 |
+| 60 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
+| 61 | GET | `/api/settings/general` | 获取通用设置 |
+| 62 | POST | `/api/settings/general/save` | 保存通用设置 |
+| 63 | GET | `/api/settings/datasources` | 数据源选择器列表（未分页） |
+| 64 | GET | `/api/settings/datasources/page` | 分页数据源列表 |
 | 65 | POST | `/api/settings/datasources/create` | 创建数据源 |
 | 66 | POST | `/api/settings/datasources/update` | 更新数据源 |
 | 67 | POST | `/api/settings/datasources/delete` | 删除数据源 |
@@ -623,6 +623,8 @@ POST /api/proxies/restart
 
 ### 4.12 获取 K8s 证书列表
 
+K8s 证书接口仅管理 Studio 本地配置记录，不会连接 Kubernetes API，也不会创建、修改或删除集群中的 Secret 或证书资源。
+
 ```
 GET /api/k8s-certs
 ```
@@ -680,21 +682,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 续期 K8s 证书
-
-```
-POST /api/k8s-certs/renew
-```
-
-**Request Body:**
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `id` | `string` | 是 | 证书 ID |
-
-**Response `data`:** `K8sCertInfo`
-
-### 4.16 删除 K8s 证书
+### 4.15 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete
@@ -1759,11 +1747,13 @@ POST /api/settings/general/save
 
 **Response `data`:** `null`
 
-### 14.3 获取数据源列表
+### 14.3 获取数据源选择器列表（未分页）
 
 ```
 GET /api/settings/datasources
 ```
+
+用于选择器、下拉框等需要一次性加载全部数据源的场景；不支持 `search`、`type`、`page` 或 `pageSize`。设置页表格应使用 14.4 的分页接口。
 
 **Response `data`:** `DataSource[]`
 
@@ -1771,12 +1761,39 @@ GET /api/settings/datasources
 |------|------|------|
 | `key` | `string` | 数据源 ID |
 | `name` | `string` | 名称 |
-| `type` | `string` | 类型: `Prometheus` / `VictoriaMetrics` / `Thanos` |
+| `type` | `string` | 类型: `Prometheus` / `VictoriaMetrics` / `Thanos` / `Mimir` / `Cortex` / `ARMS` |
 | `url` | `string` | 连接 URL |
 | `auth` | `string` | 认证方式: `None` / `Basic Auth` / `Bearer Token` |
-| `status` | `string` | 状态: `healthy` / `error` |
+| `status` | `string?` | 连接状态，可能为空 |
+| `instanceIds` | `string[]?` | 绑定的实例 ID 列表；为空或省略表示全局可用 |
 
-### 14.4 创建数据源
+### 14.4 分页获取数据源列表
+
+```
+GET /api/settings/datasources/page?search={keyword}&type={type}&page={page}&pageSize={pageSize}
+```
+
+用于设置页表格的搜索、类型筛选和分页加载；与 14.3 的未分页 selector endpoint 区分使用。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `search` | `string` | 否 | 按数据源名称等库存字段搜索 |
+| `type` | `string` | 否 | 按数据源类型过滤，值同 `DataSource.type` |
+| `page` | `number` | 否 | 页码，默认 `1`，必须大于等于 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，范围 `1`-`100` |
+
+**Response `data`:** `PageResult<DataSource>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `DataSource[]` | 当前页数据，结构同 14.3 |
+| `total` | `number` | 匹配筛选条件的数据源总数 |
+| `page` | `number` | 当前页码（回显请求中的 `page`） |
+| `size` | `number` | 每页条数（回显请求中的 `pageSize`） |
+
+### 14.5 创建数据源
 
 ```
 POST /api/settings/datasources/create
@@ -1793,7 +1810,7 @@ POST /api/settings/datasources/create
 
 **Response `data`:** `DataSource`
 
-### 14.5 更新数据源
+### 14.6 更新数据源
 
 ```
 POST /api/settings/datasources/update
@@ -1811,7 +1828,7 @@ POST /api/settings/datasources/update
 
 **Response `data`:** `DataSource`
 
-### 14.6 删除数据源
+### 14.7 删除数据源
 
 ```
 POST /api/settings/datasources/delete
@@ -1825,7 +1842,7 @@ POST /api/settings/datasources/delete
 
 **Response `data`:** `null`
 
-### 14.7 测试数据源连接
+### 14.8 测试数据源连接
 
 ```
 POST /api/settings/datasources/test
@@ -2189,4 +2206,4 @@ GET /api/metrics/grafana/dashboards/export
 | **顺序类型** | `PARTITON_ORDER`, `MESSAGES_ORDER` |
 | **通知渠道** | `dingtalk`, `email`, `sms` |
 | **LLM 提供商** | `openai`, `azure`, `ollama`, `qwen` |
-| **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos` |
+| **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos`, `Mimir`, `Cortex`, `ARMS` |

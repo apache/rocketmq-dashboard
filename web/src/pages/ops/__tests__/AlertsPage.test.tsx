@@ -16,7 +16,7 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { AlertRule, NativeAlertMetricInfo, PageResult } from '../../../api/ops';
@@ -315,6 +315,54 @@ describe('AlertsPage', () => {
     expect(screen.getByText('21')).toBeInTheDocument();
   });
 
+  it('resets page, search and status filters when the domain switches', async () => {
+    vi.mocked(listAlertRulesPage).mockClear();
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: [cloneRule(alertRules[0])],
+      total: 21,
+      page: 2,
+      size: 20,
+    });
+    const user = userEvent.setup();
+    const { rerender } = renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await user.type(screen.getByPlaceholderText('搜索规则名称或指标'), 'disk');
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith(
+        'CLUSTER',
+        expect.objectContaining({ search: 'disk' }),
+      ),
+    );
+    const secondPage = document.querySelector('.ant-pagination-item-2') as HTMLElement | null;
+    if (!secondPage) throw new Error('Pagination page 2 not found');
+    await user.click(secondPage);
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith(
+        'CLUSTER',
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+
+    rerender(
+      <App>
+        <LangProvider>
+          <AlertsPage domain="BUSINESS" />
+        </LangProvider>
+      </App>,
+    );
+
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith('BUSINESS', {
+        enabled: undefined,
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+      }),
+    );
+    expect(screen.getByPlaceholderText('搜索规则名称或指标')).toHaveValue('');
+  });
+
   it('uses the business rule API and loads only business metrics for the selected instance', async () => {
     vi.mocked(listNativeAlertMetrics).mockResolvedValue([
       {
@@ -477,6 +525,49 @@ describe('AlertsPage', () => {
     await user.click(screen.getByText('${ruleName}'));
 
     expect(template).toHaveValue('Alert: ${ruleName}');
+  });
+
+  it('renders a local notification template preview with unknown variable notices', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    await user.type(screen.getByRole('textbox', { name: '规则名称' }), 'Disk hot');
+    const template = screen.getByRole('textbox', { name: '通知模板' });
+    fireEvent.change(template, { target: { value: '[${level}] ${ruleName} ${owner}' } });
+
+    const preview = screen.getByText('通知预览').closest('.ant-card');
+    if (!preview) throw new Error('Notification preview card not found');
+
+    await waitFor(() => {
+      expect(
+        within(preview as HTMLElement).getByText('[WARNING] Disk hot ${owner}'),
+      ).toBeInTheDocument();
+    });
+    expect(within(preview as HTMLElement).getByText('需关注')).toBeInTheDocument();
+    expect(
+      within(preview as HTMLElement).getByText('未知变量不会被替换：owner'),
+    ).toBeInTheDocument();
+    expect(
+      within(preview as HTMLElement).getByText('已使用变量：level, ruleName'),
+    ).toBeInTheDocument();
+  });
+
+  it('fills the notification template with the documented default example', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    const template = screen.getByRole('textbox', { name: '通知模板' });
+    await user.click(screen.getByRole('button', { name: '填入默认模板' }));
+
+    expect((template as HTMLTextAreaElement).value).toContain('${title}');
+    expect((template as HTMLTextAreaElement).value).toContain('${labels}');
+
+    const preview = screen.getByText('通知预览').closest('.ant-card');
+    if (!preview) throw new Error('Notification preview card not found');
+    expect(within(preview as HTMLElement).getByText(/Broker 磁盘使用率过高/)).toBeInTheDocument();
+    expect(within(preview as HTMLElement).getByText('未发现模板问题')).toBeInTheDocument();
   });
 
   it('exposes optional cluster and broker scopes for cluster rules', async () => {

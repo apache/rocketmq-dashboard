@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Table,
   Card,
   Button,
@@ -33,6 +34,8 @@ import {
   Badge,
   Typography,
   Flex,
+  Progress,
+  Statistic,
   message,
 } from 'antd';
 import {
@@ -66,6 +69,7 @@ import {
 import type { AclRule, AclUser, AclClusterConfig, PlainAccessConfig } from '../../api/acl';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { tableScrollX } from '../../utils/table';
+import { analyzeAclRisk, type AclRiskIssue } from '../../utils/aclRiskDiagnostics';
 
 type AclEntityId = AclRule['id'];
 type AclRuleFormValues = Pick<
@@ -138,6 +142,7 @@ const AclPageContent = ({
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
   const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
+  const [userRefreshKey, setUserRefreshKey] = useState(0);
   const [ruleTotal, setRuleTotal] = useState(0);
   const [rulePage, setRulePage] = useState(1);
   const [rulePageSize, setRulePageSize] = useState(20);
@@ -247,6 +252,7 @@ const AclPageContent = ({
     userPage,
     userPageSize,
     userKeyword,
+    userRefreshKey,
   ]);
 
   /* ─── Rule helpers ─── */
@@ -336,11 +342,7 @@ const AclPageContent = ({
   const handleDeleteRule = async (id: AclEntityId) => {
     try {
       await deleteAclRule(id, selectedInstanceId);
-      if (rules.length === 1 && rulePage > 1) {
-        setRulePage((prev) => prev - 1);
-      } else {
-        setRuleRefreshKey((prev) => prev + 1);
-      }
+      setRuleRefreshKey((prev) => prev + 1);
       message.success(t('acl.ruleDeleted'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -417,13 +419,15 @@ const AclPageContent = ({
         setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? normalized : u)));
         message.success(t('acl.userUpdated'));
       } else {
-        const created = await createAclUser({
+        await createAclUser({
           username: values.username,
           admin: values.admin ?? false,
           clusters: values.clusters ?? [],
           instanceId: selectedInstanceId,
         });
-        setUsers((prev) => [normalizeUser(created), ...prev]);
+        // Reload the authoritative server page so the pagination total and page count
+        // stay consistent with the created row (same refresh pattern as the rules tab).
+        setUserRefreshKey((prev) => prev + 1);
         message.success(t('acl.userAdded'));
       }
       setUserModalOpen(false);
@@ -438,7 +442,9 @@ const AclPageContent = ({
   const handleDeleteUser = async (id: AclEntityId) => {
     try {
       await deleteAclUser(id, selectedInstanceId);
-      setUsers((prev) => prev.filter((u) => u.id !== id));
+      // Reload the authoritative server page so the pagination total follows the delete
+      // and an emptied last page falls back to the previous one (same as the rules tab).
+      setUserRefreshKey((prev) => prev + 1);
       message.success(t('acl.userDeleted'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -575,7 +581,8 @@ const AclPageContent = ({
       title: t('acl.principal'),
       dataIndex: 'principal',
       key: 'principal',
-      width: 200,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 200,
       sorter: (a, b) => a.principal.localeCompare(b.principal),
       render: (text: string) => (
         <Space size={6}>
@@ -593,7 +600,7 @@ const AclPageContent = ({
     {
       title: t('acl.resource'),
       key: 'resource',
-      width: 240,
+      minWidth: 240,
       sorter: (a, b) => a.resource.localeCompare(b.resource),
       render: (_: unknown, record: AclRule) => (
         <Space size={6}>
@@ -709,7 +716,8 @@ const AclPageContent = ({
       title: t('acl.username'),
       dataIndex: 'username',
       key: 'username',
-      width: 200,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 200,
       sorter: (a, b) => a.username.localeCompare(b.username),
       render: (text: string, record: NormalizedAclUser) => (
         <Space size={6}>
@@ -856,6 +864,18 @@ const AclPageContent = ({
     DENY: 'red',
   };
 
+  const riskSeverityColor: Record<AclRiskIssue['severity'], string> = {
+    critical: 'red',
+    warning: 'gold',
+    info: 'blue',
+  };
+
+  const riskSeverityText: Record<AclRiskIssue['severity'], string> = {
+    critical: t('acl.riskCritical'),
+    warning: t('acl.riskWarning'),
+    info: t('acl.riskInfo'),
+  };
+
   const plainColumns: ColumnsType<PlainAccessConfig> = [
     {
       title: t('acl.accessKey'),
@@ -939,6 +959,109 @@ const AclPageContent = ({
           {t('common.edit')}
         </Button>
       ),
+    },
+  ];
+
+  const aclRiskDiagnostics = clusterConfig ? analyzeAclRisk(clusterConfig) : null;
+
+  const aclRiskProgressStatus =
+    aclRiskDiagnostics?.status === 'critical'
+      ? 'exception'
+      : aclRiskDiagnostics?.status === 'healthy'
+        ? 'success'
+        : 'normal';
+
+  const aclRiskStrokeColor =
+    aclRiskDiagnostics?.status === 'critical'
+      ? '#ff4d4f'
+      : aclRiskDiagnostics?.status === 'warning'
+        ? '#faad14'
+        : '#52c41a';
+
+  const aclRiskSummaryItems = aclRiskDiagnostics
+    ? [
+        {
+          key: 'adminAccountCount',
+          label: t('acl.riskAdminAccounts'),
+          value: aclRiskDiagnostics.summary.adminAccountCount,
+        },
+        {
+          key: 'defaultAllowAccountCount',
+          label: t('acl.riskDefaultAllows'),
+          value: aclRiskDiagnostics.summary.defaultAllowAccountCount,
+        },
+        {
+          key: 'wildcardPermissionAccountCount',
+          label: t('acl.riskWildcardAccounts'),
+          value: aclRiskDiagnostics.summary.wildcardPermissionAccountCount,
+        },
+        {
+          key: 'broadWhitelistCount',
+          label: t('acl.riskBroadWhitelists'),
+          value: aclRiskDiagnostics.summary.broadWhitelistCount,
+        },
+      ]
+    : [];
+
+  const aclRiskColumns: ColumnsType<AclRiskIssue> = [
+    {
+      title: t('acl.riskSeverity'),
+      dataIndex: 'severity',
+      key: 'severity',
+      width: 100,
+      render: (severity: AclRiskIssue['severity']) => (
+        <Tag color={riskSeverityColor[severity]}>{riskSeverityText[severity]}</Tag>
+      ),
+    },
+    {
+      title: t('acl.riskItem'),
+      key: 'item',
+      minWidth: 260,
+      render: (_: unknown, record) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text strong>{record.title}</Typography.Text>
+          <Typography.Text type="secondary">{record.description}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: t('acl.accessKey'),
+      dataIndex: 'account',
+      key: 'account',
+      width: 160,
+      render: (account?: string) =>
+        account ? (
+          <Typography.Text style={{ fontFamily: 'monospace' }}>{account}</Typography.Text>
+        ) : (
+          <span style={{ color: '#8c8c8c' }}>-</span>
+        ),
+    },
+    {
+      title: t('acl.riskEvidence'),
+      dataIndex: 'evidence',
+      key: 'evidence',
+      minWidth: 220,
+      render: (evidence: string[]) => (
+        <Space size={4} wrap>
+          {evidence.length === 0 ? (
+            <span style={{ color: '#8c8c8c' }}>-</span>
+          ) : (
+            evidence.map((item) => (
+              <Typography.Text key={item} code>
+                {item}
+              </Typography.Text>
+            ))
+          )}
+        </Space>
+      ),
+    },
+    {
+      title: t('acl.riskRecommendation'),
+      dataIndex: 'recommendation',
+      key: 'recommendation',
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 280,
+      render: (text: string) => <Typography.Text>{text}</Typography.Text>,
     },
   ];
 
@@ -1085,6 +1208,7 @@ const AclPageContent = ({
                       },
                     }}
                     size="small"
+                    tableLayout="fixed"
                     scroll={{ x: tableScrollX(ruleColumns) }}
                   />
                 </div>
@@ -1138,6 +1262,7 @@ const AclPageContent = ({
                       },
                     }}
                     size="small"
+                    tableLayout="fixed"
                     scroll={{ x: tableScrollX(userColumns) }}
                   />
                 </div>
@@ -1221,6 +1346,82 @@ const AclPageContent = ({
                           ))
                         )}
                       </div>
+
+                      {aclRiskDiagnostics && (
+                        <div
+                          data-testid="acl-risk-diagnostics"
+                          style={{
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 8,
+                            padding: 16,
+                            marginBottom: 16,
+                          }}
+                        >
+                          <Flex gap={20} align="center" wrap="wrap" style={{ marginBottom: 16 }}>
+                            <Progress
+                              type="circle"
+                              percent={aclRiskDiagnostics.score}
+                              size={96}
+                              status={aclRiskProgressStatus}
+                              strokeColor={aclRiskStrokeColor}
+                              format={(percent) => `${percent}`}
+                            />
+                            <div style={{ minWidth: 220, flex: '1 1 260px' }}>
+                              <Typography.Title level={5} style={{ margin: 0 }}>
+                                {t('acl.riskDiagnostics')}
+                              </Typography.Title>
+                              <Typography.Text type="secondary">
+                                {aclRiskDiagnostics.statusText}
+                              </Typography.Text>
+                              <div style={{ marginTop: 8 }}>
+                                <Tag color={aclRiskDiagnostics.statusColor}>
+                                  {t('acl.riskIssues')}: {aclRiskDiagnostics.issues.length}
+                                </Tag>
+                                <Tag>
+                                  {t('acl.accountCount')}: {aclRiskDiagnostics.summary.accountCount}
+                                </Tag>
+                              </div>
+                            </div>
+                            <Flex gap={16} wrap="wrap" style={{ flex: '2 1 420px' }}>
+                              {aclRiskSummaryItems.map((item) => (
+                                <div key={item.key} style={{ minWidth: 118 }}>
+                                  <Statistic
+                                    title={item.label}
+                                    value={item.value}
+                                    valueStyle={{ fontSize: 22 }}
+                                  />
+                                </div>
+                              ))}
+                            </Flex>
+                          </Flex>
+
+                          {aclRiskDiagnostics.issues.length === 0 ? (
+                            <Alert type="success" showIcon message={t('acl.riskHealthyMessage')} />
+                          ) : (
+                            <Table<AclRiskIssue>
+                              columns={aclRiskColumns}
+                              dataSource={aclRiskDiagnostics.issues}
+                              rowKey="id"
+                              pagination={false}
+                              size="small"
+                              tableLayout="fixed"
+                              scroll={{ x: tableScrollX(aclRiskColumns) }}
+                              style={{ marginBottom: 12 }}
+                            />
+                          )}
+
+                          <div>
+                            <Typography.Text strong>{t('acl.riskRecommendations')}</Typography.Text>
+                            <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+                              {aclRiskDiagnostics.recommendations.map((item) => (
+                                <li key={item}>
+                                  <Typography.Text>{item}</Typography.Text>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Accounts table */}
                       <Table<PlainAccessConfig>

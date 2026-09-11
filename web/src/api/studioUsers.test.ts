@@ -18,7 +18,12 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import client from './client';
-import { listAllStudioUsers as loadStudioUsersForExport, listStudioUsers } from './studioUsers';
+import {
+  getStudioUserSessionOverview,
+  listAllStudioUsers as loadStudioUsersForExport,
+  listStudioUsers,
+  revokeStudioUserSessions,
+} from './studioUsers';
 
 const mock = new MockAdapter(client);
 const exportQuery = { search: 'op', admin: false };
@@ -88,5 +93,37 @@ describe('studio users API', () => {
       exportRequestParams[0],
       exportRequestParams[1],
     ]);
+  });
+
+  it('loads the global Studio session overview', async () => {
+    mock.onGet('/studio-users/sessions/overview').reply(200, {
+      code: 200,
+      data: {
+        activeSessionCount: 5,
+        activeUserCount: 3,
+        expiringSoonSessionCount: 1,
+        staleSessionCount: 2,
+        expiringSoonWindowMinutes: 5,
+        staleSessionThresholdMinutes: 15,
+      },
+    });
+
+    const overview = await getStudioUserSessionOverview();
+
+    expect(overview.activeSessionCount).toBe(5);
+    expect(overview.activeUserCount).toBe(3);
+    expect(mock.history.get[0].url).toBe('/studio-users/sessions/overview');
+  });
+
+  it('revokes a users active Studio sessions', async () => {
+    mock.onPost('/studio-users/7/sessions/revoke').reply(200, {
+      code: 200,
+      data: { userId: 7, revokedSessionCount: 3 },
+    });
+
+    const result = await revokeStudioUserSessions(7);
+
+    expect(result).toEqual({ userId: 7, revokedSessionCount: 3 });
+    expect(mock.history.post[0].url).toBe('/studio-users/7/sessions/revoke');
   });
 });

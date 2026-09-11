@@ -44,8 +44,10 @@ import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -55,6 +57,7 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -207,6 +210,25 @@ class TencentInstanceProviderTest {
                 .containsExactly("TopicName", "TopicType");
         assertThat(captor.getValue().getFilters()[0].getValues()).containsExactly("fifo");
         assertThat(captor.getValue().getFilters()[1].getValues()).containsExactly("FIFO");
+    }
+
+    @Test
+    void listTopicsShouldFallBackToNormalTypeWhenTopicTypeMissingTest() throws Exception {
+        when(client.DescribeTopicList(any())).thenAnswer(invocation -> {
+            DescribeTopicListResponse response = new DescribeTopicListResponse();
+            response.setData(new TopicItem[]{
+                    topicItem("orders-untyped", null, 4L),
+                    topicItem("orders-unknown", "NEW_TYPE", 4L)});
+            return response;
+        });
+        DescribeTopicResponse detail = new DescribeTopicResponse();
+        when(client.DescribeTopic(any())).thenReturn(detail);
+
+        List<TopicVO> topics = provider.listTopics(STUDIO_INSTANCE_ID, null, null);
+
+        assertThat(topics).hasSize(2);
+        assertThat(topics).allSatisfy(topic -> assertThat(topic.getType()).isEqualTo(TopicType.NORMAL));
+        assertThat(topics).allSatisfy(topic -> assertThat(topic.getPerm()).isEqualTo(TopicPerm.RW));
     }
 
     @Test
@@ -535,6 +557,7 @@ class TencentInstanceProviderTest {
         assertThat(groups.get(0).getRetryMaxTimes()).isEqualTo(16);
         assertThat(groups.get(0).getGmtCreate()).isNotNull();
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+        assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
         assertThat(groups.get(0).getInstances()).isNotNull().isEmpty();
     }
 
@@ -913,6 +936,51 @@ class TencentInstanceProviderTest {
         assertThat(requests.get(1).getTaskRequestId())
                 .isEqualTo(requests.get(0).getTaskRequestId())
                 .isNotBlank();
+    }
+
+    @Test
+    void queryMessagesShouldReportTheProviderResultBudget() throws Exception {
+        // A full first page and a large TotalCount mean the provider stopped because it reached
+        // its result budget, not because Tencent returned the final page.
+        MessageItem[] page1Items = new MessageItem[TencentInstanceProvider.MESSAGE_LIMIT];
+        for (int i = 0; i < page1Items.length; i++) {
+            MessageItem item = new MessageItem();
+            item.setMsgId("MSG-" + (i + 1));
+            item.setProduceTime("2024-09-12 14:06:55,591");
+            page1Items[i] = item;
+        }
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setData(page1Items);
+        response.setTotalCount((long) TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT + 1L);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).hasSize(TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT);
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(client, org.mockito.Mockito.times(
+                        TencentInstanceProvider.MESSAGE_QUERY_HARD_LIMIT
+                                / TencentInstanceProvider.MESSAGE_LIMIT))
+                .DescribeMessageList(any());
+    }
+
+    @Test
+    void queryMessagesShouldReportCompleteWhenTencentReturnsAShortPage() throws Exception {
+        MessageItem one = new MessageItem();
+        one.setMsgId("MSG-1");
+        one.setProduceTime("2024-09-12 14:06:55,591");
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setData(new MessageItem[]{one});
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).hasSize(1);
+        assertThat(result.mayBeTruncated()).isFalse();
     }
 
     @Test

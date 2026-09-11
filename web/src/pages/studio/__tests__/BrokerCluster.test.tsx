@@ -265,6 +265,48 @@ describe('BrokerCluster Page', () => {
     expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
   });
 
+  it('clears topology from the previous instance when the next instance fails to load', async () => {
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 1,
+        name: 'instance-1',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '10.0.1.20:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'instance-2',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '10.0.2.20:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    vi.mocked(listClusters)
+      .mockResolvedValueOnce(clusterFixture)
+      .mockRejectedValueOnce(new Error('instance-2 unavailable'));
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => expect(listClusters).toHaveBeenLastCalledWith('instance-2'));
+    await waitFor(() => expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '导出' })).toBeDisabled();
+  });
+
   it('polls only while live refresh is enabled and the document is visible', async () => {
     const visibilityState = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     renderWithProviders(<BrokerCluster />);

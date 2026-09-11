@@ -36,6 +36,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.RequiredArgsConstructor;
@@ -171,9 +172,10 @@ public class RocketMQClientProvider implements ClientProvider {
                             connection, ClientType.Producer, topic, producerGroup, null))
                     .toList();
         } catch (MQClientException e) {
-            if (isTopicNotExist(e)) {
-                // A non-existent topic is a normal "nothing here" outcome — the client
-                // page should show an empty list, not a 502 that looks like a failure.
+            if (isTopicNotExist(e) || isGroupConnectionAbsent(e)) {
+                // A missing topic route or an offline producer group are normal "nothing
+                // here" outcomes — the client page should show an empty list, not a 502
+                // that looks like a failure.
                 return List.of();
             }
             throw new BusinessException(502,
@@ -182,6 +184,17 @@ public class RocketMQClientProvider implements ClientProvider {
             throw new BusinessException(502,
                     "Failed to query producer connections: " + rootMessage(e));
         }
+    }
+
+    private boolean isGroupConnectionAbsent(MQClientException e) {
+        if (MqResponseCodes.hasResponseCode(e, ResponseCode.CONSUMER_NOT_ONLINE)) {
+            // rocketmq-tools examineConsumerConnectionInfo throws CONSUMER_NOT_ONLINE (206)
+            // for a group with no online connections.
+            return true;
+        }
+        String message = e.getErrorMessage() == null ? e.getMessage() : e.getErrorMessage();
+        return message != null && (message.contains("Not found the consumer group connection")
+                || message.contains("Not found the producer group connection"));
     }
 
     private boolean isTopicNotExist(MQClientException e) {
@@ -324,6 +337,12 @@ public class RocketMQClientProvider implements ClientProvider {
                             groupEntry.getValue()));
                 }
             } catch (Exception e) {
+                if (e instanceof MQClientException clientException && isGroupConnectionAbsent(clientException)) {
+                    // An offline group is a normal "no connections right now" answer, not a
+                    // broken scan — count it so an all-offline cluster stays an empty result.
+                    successfulGroupQueries++;
+                    continue;
+                }
                 log.warn("Failed to examine consumer connection for group={}, skipping", group, e);
             }
         }
