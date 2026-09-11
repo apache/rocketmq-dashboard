@@ -487,6 +487,38 @@ describe('Consumer page', () => {
     confirmSpy.mockRestore();
   });
 
+  it('reloads the paginated group list after creating a group', async () => {
+    const created = { ...group, name: 'cg-created' };
+    vi.mocked(consumerService.listConsumerGroupPage)
+      .mockResolvedValueOnce(groupPage([group]))
+      .mockResolvedValue(groupPage([created, group]));
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+    expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(1);
+
+    const createButton = screen.getByRole('button', { name: '创建 Group' });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    await user.click(createButton);
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Group 名称'), 'cg-created');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(consumerService.createConsumerGroup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(2));
+    expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, pageSize: 20 }),
+    );
+    expect(await screen.findByText('cg-created')).toBeInTheDocument();
+    expect(screen.getByText('共 2 个 Group')).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
   it('prefills the group search from the ?group= query parameter', async () => {
     renderWithProviders(<ConsumerPage />, '/instance/consumer?group=remote-cg');
 

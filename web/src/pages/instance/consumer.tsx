@@ -370,7 +370,7 @@ const ConsumerPageContent = ({
     [t, selectedInstanceId, search],
   );
 
-  const reloadConsumerGroupPageAfterDelete = useCallback(async () => {
+  const reloadConsumerGroupPage = useCallback(async () => {
     await loadConsumerGroupPage(page, pageSize);
   }, [loadConsumerGroupPage, page, pageSize]);
 
@@ -822,10 +822,7 @@ const ConsumerPageContent = ({
     setImportRows([...nextRows]);
 
     if (createdGroups.length > 0) {
-      setGroups((previous) => {
-        const createdNames = new Set(createdGroups.map((group) => group.name));
-        return [...createdGroups, ...previous.filter((group) => !createdNames.has(group.name))];
-      });
+      await reloadConsumerGroupPage();
     }
 
     const failedCount = nextRows.filter((row) => row.status === 'failed').length;
@@ -1040,7 +1037,7 @@ const ConsumerPageContent = ({
                 cancelText: '取消',
                 onOk: async () => {
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
-                  await reloadConsumerGroupPageAfterDelete();
+                  await reloadConsumerGroupPage();
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
                   message.success(`消费组 ${record.name} 已删除`);
                 },
@@ -1471,7 +1468,7 @@ const ConsumerPageContent = ({
                       names,
                       selectedInstanceId || undefined,
                     );
-                    if (deleted.length > 0) await reloadConsumerGroupPageAfterDelete();
+                    if (deleted.length > 0) await reloadConsumerGroupPage();
                     if (failed.length > 0) {
                       message.warning(
                         `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
@@ -2275,7 +2272,7 @@ const ConsumerPageContent = ({
                 onOk: async () => {
                   setSubmitting(true);
                   try {
-                    const created = await createConsumerGroup({
+                    await createConsumerGroup({
                       name: values.name,
                       subscriptionMode: values.subscriptionMode,
                       consumeType: values.consumeType,
@@ -2285,10 +2282,10 @@ const ConsumerPageContent = ({
                       subscribedTopics: [],
                       instanceId: selectedInstanceId,
                     });
-                    setGroups((prev) => [
-                      created,
-                      ...prev.filter((group) => group.name !== created.name),
-                    ]);
+                    // The list is server-paginated: refetch the current page so the new
+                    // group lands where the server sorts it and the total stays truthful,
+                    // mirroring the topic inventory behavior after create.
+                    await reloadConsumerGroupPage();
                     message.success(`消费组 ${values.name} 创建成功`);
                     setCreateModalOpen(false);
                     form.resetFields();
