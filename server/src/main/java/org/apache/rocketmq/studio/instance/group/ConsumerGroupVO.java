@@ -41,6 +41,8 @@ public class ConsumerGroupVO extends BaseEntity {
     private String deliveryOrderType;
     private int retryMaxTimes;
     private int delaySeconds;
+    /** Broker-side consume TPS reported by the same consume-stats query that fills totalLag. */
+    private double consumeTps;
     /** Whether the provider successfully read broker-side consume stats for this group. */
     private boolean consumeStatsAvailable;
     /** Whether broker consume stats include a consumed-message timestamp for delay calculation. */

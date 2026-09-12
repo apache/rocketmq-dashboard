@@ -82,6 +82,7 @@ const group: ConsumerGroup = {
   consumeType: 'CLUSTERING',
   onlineInstances: 1,
   totalLag: 10,
+  consumeTps: 33.5,
   subscribedTopics: ['remote-topic'],
   subscriptionDataType: 'NORMAL',
   retryMaxTimes: 16,
@@ -292,6 +293,18 @@ describe('Consumer page', () => {
       pageSize: 20,
       search: undefined,
     });
+  });
+
+  it('renders the broker consume TPS for every group row', async () => {
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([{ ...group, name: 'tps-cg', totalLag: 2340, consumeTps: 845.2 }]),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('tps-cg')).toBeInTheDocument();
+    // antd renders the column title twice (sticky-holder measurement), so assert on all copies.
+    expect(screen.getAllByText('消费 TPS').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('845.2').length).toBeGreaterThan(0);
   });
 
   afterEach(() => {

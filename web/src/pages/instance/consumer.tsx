@@ -68,7 +68,7 @@ import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
-import { formatDateTime } from '../../utils/format';
+import { formatDateTime, formatNumber } from '../../utils/format';
 import type {
   ConsumerGroup,
   ConsumerInstance,
@@ -957,6 +957,15 @@ const ConsumerPageContent = ({
         ) : (
           <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
         ),
+    },
+    {
+      title: '消费 TPS',
+      dataIndex: 'consumeTps',
+      key: 'consumeTps',
+      width: 96,
+      align: 'right',
+      sorter: (a, b) => (a.consumeTps ?? 0) - (b.consumeTps ?? 0),
+      render: (tps: number) => formatNumber(tps ?? 0),
     },
     {
       title: '消费延迟',
