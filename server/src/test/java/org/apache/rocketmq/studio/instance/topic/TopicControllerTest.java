@@ -336,6 +336,22 @@ class TopicControllerTest {
     }
 
     @Test
+    void sendMessageShouldBindTypedDeliveryOptions() throws Exception {
+        mockMvc.perform(post("/api/topics/send").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"instanceId":"instance-a","topic":"orders","body":"event",
+                                 "messageType":"DELAY","deliveryTimestamp":1788825600123}
+                                """))
+                .andExpect(status().isOk());
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(metadataService).sendMessage(request.capture());
+        assertThat(request.getValue().getMessageType().name()).isEqualTo("DELAY");
+        assertThat(request.getValue().getDeliveryTimestamp()).isEqualTo(1788825600123L);
+        assertThat(request.getValue().getInstanceId()).isEqualTo("instance-a");
+        assertThat(request.getValue().getMessageGroup()).isNull();
+    }
+
+    @Test
     void deleteTopicShouldReturnSuccess() throws Exception {
         mockMvc.perform(post("/api/topics/delete")
                         .contentType(MediaType.APPLICATION_JSON)

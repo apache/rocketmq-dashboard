@@ -41,7 +41,9 @@ import {
   message,
   App,
   Progress,
+  DatePicker,
 } from 'antd';
+import type { Dayjs } from 'dayjs';
 import type { TableColumnsType } from 'antd';
 import {
   PlusOutlined,
@@ -164,6 +166,8 @@ type SendMessageFormValues = {
   body: string;
   propsText?: string;
   properties?: MessagePropertyInput[];
+  messageGroup?: string;
+  deliveryTime?: Dayjs;
 };
 
 const visibleTopics = (
@@ -632,6 +636,7 @@ const TopicPage = () => {
     } else if (key === 'send') {
       setSendTopic(topic);
       setPropsMode('form');
+      sendForm.resetFields();
       sendForm.setFieldsValue({ topic: topic.name, tag: '', key: '', body: '', properties: [] });
       setSendModalOpen(true);
     } else if (key === 'delete') {
@@ -1357,6 +1362,7 @@ const TopicPage = () => {
 
   // ─── Send message modal submit ────────────────────────────────
   const handleSend = async () => {
+    if (sendTopic?.type === 'TRANSACTION') return;
     let values: SendMessageFormValues;
     try {
       values = await sendForm.validateFields();
@@ -1388,6 +1394,12 @@ const TopicPage = () => {
         key: payloadPreview.normalized.key,
         body: payloadPreview.normalized.body,
         properties: payloadPreview.properties,
+        ...(sendTopic?.type === 'FIFO'
+          ? { messageType: 'FIFO' as const, messageGroup: values.messageGroup }
+          : {}),
+        ...(sendTopic?.type === 'DELAY'
+          ? { messageType: 'DELAY' as const, deliveryTimestamp: values.deliveryTime?.valueOf() }
+          : {}),
       });
       // Keep the modal open for consecutive sends
       message.success(`消息发送成功！MsgId: ${result.msgId}`);
@@ -1841,6 +1853,7 @@ const TopicPage = () => {
         okText="发送"
         cancelText="取消"
         confirmLoading={sending}
+        okButtonProps={{ disabled: sendTopic?.type === 'TRANSACTION' }}
         width={640}
         destroyOnHidden
       >
@@ -1853,6 +1866,44 @@ const TopicPage = () => {
           <Form.Item label="Topic" name="topic" rules={[{ required: true }]}>
             <Input disabled />
           </Form.Item>
+
+          {sendTopic?.type === 'FIFO' && (
+            <Form.Item
+              label="Message group"
+              name="messageGroup"
+              extra="Use the same group for messages that must share a queue."
+              rules={[{ required: true, whitespace: true, message: 'Message group is required' }]}
+            >
+              <Input placeholder="For example: order-123" />
+            </Form.Item>
+          )}
+          {sendTopic?.type === 'DELAY' && (
+            <Form.Item
+              label="Delivery time (local)"
+              name="deliveryTime"
+              extra="Choose a future time. The broker controls the maximum delay and delivery precision."
+              rules={[
+                { required: true, message: 'Delivery time is required' },
+                {
+                  validator: (_, value: Dayjs | undefined) =>
+                    !value || value.valueOf() > Date.now()
+                      ? Promise.resolve()
+                      : Promise.reject(new Error('Delivery time must be in the future')),
+                },
+              ]}
+            >
+              <DatePicker showTime style={{ width: '100%' }} />
+            </Form.Item>
+          )}
+          {sendTopic?.type === 'TRANSACTION' && (
+            <Alert
+              type="info"
+              showIcon
+              message="Transaction messages require an application transaction producer"
+              description="Use a producer that can commit, roll back and answer broker transaction checks."
+              style={{ marginBottom: 16 }}
+            />
+          )}
 
           <Row gutter={16}>
             <Col span={12}>

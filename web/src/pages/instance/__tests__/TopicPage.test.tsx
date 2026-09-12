@@ -20,6 +20,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App, Modal } from 'antd';
+import dayjs from 'dayjs';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { BrokerRoute, Topic } from '../../../api/metadata';
 import { parseMessageProperties } from '../../../utils/messageProperties';
@@ -903,6 +904,85 @@ describe('TopicPage', () => {
     await waitFor(() =>
       expect(screen.getByText(/发送前预检未通过：属性名重复/)).toBeInTheDocument(),
     );
+    expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
+  });
+
+  it('requires a FIFO message group and sends it through the existing modal', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([{ ...buildTopics(1)[0], type: 'FIFO' }]);
+    renderWithProviders();
+    await screen.findByText('topic-01');
+    await user.click(
+      document.querySelector('.ant-table-tbody button:has(.anticon-send)') as HTMLElement,
+    );
+    const dialog = await getSendDialog();
+    fireEvent.change(dialog.querySelector('textarea') as HTMLTextAreaElement, {
+      target: { value: 'event' },
+    });
+    await user.click(dialog.querySelector('.ant-modal-footer .ant-btn-primary') as HTMLElement);
+    expect(await within(dialog).findByText('Message group is required')).toBeInTheDocument();
+    expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
+    await user.type(within(dialog).getByLabelText('Message group'), 'order-123');
+    await user.click(dialog.querySelector('.ant-modal-footer .ant-btn-primary') as HTMLElement);
+    await waitFor(() =>
+      expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageType: 'FIFO',
+          messageGroup: 'order-123',
+          topic: 'topic-01',
+          body: 'event',
+        }),
+      ),
+    );
+    expect(topicServiceMocks.sendTopicMessage.mock.calls[0][0]).not.toHaveProperty(
+      'deliveryTimestamp',
+    );
+  });
+
+  it('validates a DELAY delivery time and submits its epoch milliseconds', async () => {
+    const user = userEvent.setup();
+    const delivery = dayjs().add(1, 'hour').startOf('second');
+    mockTopicsList([{ ...buildTopics(1)[0], type: 'DELAY' }]);
+    renderWithProviders();
+    await screen.findByText('topic-01');
+    await user.click(
+      document.querySelector('.ant-table-tbody button:has(.anticon-send)') as HTMLElement,
+    );
+    const dialog = await getSendDialog();
+    fireEvent.change(dialog.querySelector('textarea') as HTMLTextAreaElement, {
+      target: { value: 'event' },
+    });
+    await user.click(dialog.querySelector('.ant-modal-footer .ant-btn-primary') as HTMLElement);
+    expect(await within(dialog).findByText('Delivery time is required')).toBeInTheDocument();
+    const input = within(dialog).getByLabelText('Delivery time (local)');
+    await user.type(input, delivery.format('YYYY-MM-DD HH:mm:ss'));
+    await user.keyboard('{Enter}');
+    await user.click(dialog.querySelector('.ant-modal-footer .ant-btn-primary') as HTMLElement);
+    await waitFor(() =>
+      expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageType: 'DELAY',
+          deliveryTimestamp: delivery.valueOf(),
+          body: 'event',
+        }),
+      ),
+    );
+    expect(topicServiceMocks.sendTopicMessage.mock.calls[0][0]).not.toHaveProperty('messageGroup');
+  });
+
+  it('explains why a transaction topic cannot use ordinary message sending', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([{ ...buildTopics(1)[0], type: 'TRANSACTION' }]);
+    renderWithProviders();
+    await screen.findByText('topic-01');
+    await user.click(
+      document.querySelector('.ant-table-tbody button:has(.anticon-send)') as HTMLElement,
+    );
+    const dialog = await getSendDialog();
+    expect(
+      within(dialog).getByText('Transaction messages require an application transaction producer'),
+    ).toBeInTheDocument();
+    expect(dialog.querySelector('.ant-modal-footer .ant-btn-primary')).toBeDisabled();
     expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
   });
 
