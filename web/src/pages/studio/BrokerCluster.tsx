@@ -32,6 +32,7 @@ import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import BrokerTimerDialog from '../../components/BrokerTimerDialog';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
@@ -190,6 +191,7 @@ const BrokerClusterPage = () => {
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+  const [timerTarget, setTimerTarget] = useState<{ instanceId: string; brokerName: string }>();
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
@@ -325,6 +327,25 @@ const BrokerClusterPage = () => {
     (activeTab === 'broker' && brokerData.length === 0);
 
   const brokerColumns = [
+    {
+      title: 'Timer',
+      key: 'timer',
+      render: (_: unknown, broker: BrokerRecord) => (
+        <Button
+          size="small"
+          disabled={!selectedInstanceId || isMockMode()}
+          onClick={() =>
+            selectedInstanceId &&
+            setTimerTarget({
+              instanceId: selectedInstanceId,
+              brokerName: broker.brokerName,
+            })
+          }
+        >
+          Timer status
+        </Button>
+      ),
+    },
     {
       title: t('brokerCluster.k8sCluster'),
       dataIndex: 'k8sCluster',
@@ -497,6 +518,13 @@ const BrokerClusterPage = () => {
 
   return (
     <div style={{ padding: 0 }}>
+      {timerTarget && timerTarget.instanceId === selectedInstanceId && (
+        <BrokerTimerDialog
+          key={timerTarget.instanceId + '/' + timerTarget.brokerName}
+          {...timerTarget}
+          onClose={() => setTimerTarget(undefined)}
+        />
+      )}
       <div
         style={{
           display: 'flex',
@@ -521,7 +549,10 @@ const BrokerClusterPage = () => {
           <Select
             aria-label="选择实例"
             value={selectedInstanceId}
-            onChange={setSelectedInstanceId}
+            onChange={(value) => {
+              setTimerTarget(undefined);
+              setSelectedInstanceId(value);
+            }}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
