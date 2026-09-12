@@ -19,7 +19,8 @@ package org.apache.rocketmq.studio.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.apache.rocketmq.studio.ops.ai.tool.ToolAccessPolicy;
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolDefinition;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.springframework.http.HttpMethod;
@@ -28,10 +29,14 @@ import org.springframework.http.MediaType;
 import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 public class AuthInterceptor implements HandlerInterceptor {
 
+    private static final String TOOL_EXECUTION_PREFIX = "/api/ai/tools/";
+    private static final String TOOL_EXECUTION_SUFFIX = "/execute";
     private static final Set<String> READER_POST_PATHS = Set.of(
             "/api/auth/logout",
             "/api/auth/password",
@@ -42,19 +47,14 @@ public class AuthInterceptor implements HandlerInterceptor {
     private final AuthProperties authProperties;
     private final AuthService authService;
     private final SettingsRepository settingsRepository;
-    private final ToolAccessPolicy toolAccessPolicy;
+    private final ToolCatalog toolCatalog;
 
     public AuthInterceptor(AuthProperties authProperties, AuthService authService,
-                           SettingsRepository settingsRepository) {
-        this(authProperties, authService, settingsRepository, null);
-    }
-
-    public AuthInterceptor(AuthProperties authProperties, AuthService authService,
-                           SettingsRepository settingsRepository, ToolAccessPolicy toolAccessPolicy) {
+                           SettingsRepository settingsRepository, ToolCatalog toolCatalog) {
         this.authProperties = authProperties;
         this.authService = authService;
         this.settingsRepository = settingsRepository;
-        this.toolAccessPolicy = toolAccessPolicy;
+        this.toolCatalog = toolCatalog;
     }
 
     @Override
@@ -62,9 +62,7 @@ public class AuthInterceptor implements HandlerInterceptor {
                              Object handler) throws Exception {
         AuthenticatedUserContext.clear();
         if (!isLoginRequired() || CorsUtils.isPreFlightRequest(request)
-                || isPublicPath(requestPath(request)) || authService == null) {
-            // Slice tests and minimal contexts may not provide AuthService; fall back to no
-            // enforcement, matching the documented AuthWebConfig behaviour.
+                || isPublicPath(requestPath(request))) {
             return true;
         }
         String authorization = AuthCookie.authorization(request, authProperties);
@@ -92,10 +90,7 @@ public class AuthInterceptor implements HandlerInterceptor {
      * settings UI actually changes the enforced policy.
      */
     private boolean isLoginRequired() {
-        if (authProperties != null && authProperties.isLoginRequired()) {
-            return true;
-        }
-        if (settingsRepository == null) {
+        if (authProperties.isLoginRequired()) {
             return true;
         }
         try {
@@ -115,10 +110,32 @@ public class AuthInterceptor implements HandlerInterceptor {
             return isAdminOnlyGetPath(path);
         }
         String normalizedPath = normalizePath(stripPathParameters(path));
-        if (toolAccessPolicy != null && toolAccessPolicy.isToolExecutionPath(normalizedPath)) {
-            return !toolAccessPolicy.isReaderAccessiblePath(normalizedPath);
+        if (isToolExecutionPath(normalizedPath)) {
+            return !isReaderAccessibleToolPath(normalizedPath);
         }
         return !HttpMethod.POST.matches(method) || !READER_POST_PATHS.contains(normalizePath(path));
+    }
+
+    private boolean isToolExecutionPath(String path) {
+        return path.startsWith(TOOL_EXECUTION_PREFIX)
+                && path.endsWith(TOOL_EXECUTION_SUFFIX);
+    }
+
+    private boolean isReaderAccessibleToolPath(String path) {
+        String encodedName = path.substring(
+                TOOL_EXECUTION_PREFIX.length(),
+                path.length() - TOOL_EXECUTION_SUFFIX.length());
+        if (encodedName.isBlank()) {
+            return false;
+        }
+        try {
+            String toolName = URLDecoder.decode(encodedName, StandardCharsets.UTF_8);
+            return toolCatalog.find(toolName)
+                    .map(ToolDefinition::isLowRiskReadOnly)
+                    .orElse(false);
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     private boolean isAdminOnlyGetPath(String path) {

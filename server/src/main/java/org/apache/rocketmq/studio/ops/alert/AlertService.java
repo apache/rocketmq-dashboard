@@ -68,6 +68,13 @@ public class AlertService {
         return alertRepository.findAllRules();
     }
 
+    public List<AlertRuleVO> findRules(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(400, "A resolved Instance is required for alert rules");
+        }
+        return alertRepository.findRules(instanceId);
+    }
+
     public PageResult<AlertRuleVO> listRules(String search, Boolean enabled, int page,
                                              int pageSize) {
         validateRulePagination(page, pageSize);

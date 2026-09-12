@@ -78,7 +78,7 @@ class GlobalExceptionHandlerTest {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
         org.springframework.web.servlet.resource.NoResourceFoundException ex =
                 new org.springframework.web.servlet.resource.NoResourceFoundException(
-                        org.springframework.http.HttpMethod.GET, "missing-resource");
+                        org.springframework.http.HttpMethod.GET, "missing-resource", "");
         org.apache.rocketmq.studio.common.domain.Result<?> result =
                 handler.handleNoResourceFoundException(ex);
         org.assertj.core.api.Assertions.assertThat(result.getCode()).isEqualTo(404);

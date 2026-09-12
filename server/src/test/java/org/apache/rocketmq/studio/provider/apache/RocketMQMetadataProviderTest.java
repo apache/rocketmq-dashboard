@@ -55,6 +55,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.ArgumentCaptor;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -94,6 +95,26 @@ class RocketMQMetadataProviderTest {
     private RocketMQMetadataProvider newProvider() {
         return new RocketMQMetadataProvider(mock(MqAdminExtFactory.class), new RocketMQProperties(),
                 topicMapper, groupMapper, runtimeAdminClientResolver);
+    }
+
+    @Test
+    void configuredTopicAndGroupQueriesRetainPhysicalClusterAndEmptyInstancePredicates() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(runtimeAdminClientResolver.configuredClusterName("DefaultCluster")).thenReturn("DefaultCluster");
+        when(topicMapper.selectList(any())).thenReturn(List.of());
+        when(groupMapper.selectList(any())).thenReturn(List.of());
+        RocketMQMetadataProvider provider = newProvider();
+        provider.listTopics("DefaultCluster", null, null, null);
+        provider.listConsumerGroups("DefaultCluster", null, null);
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> topics = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> groups = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectList(topics.capture());
+        verify(groupMapper).selectList(groups.capture());
+        for (LambdaQueryWrapper<?> query : List.of(topics.getValue(), groups.getValue())) {
+            assertThat(query.getSqlSegment()).contains("instance_id =", "cluster_id =");
+            assertThat(query.getParamNameValuePairs().values()).contains("", "DefaultCluster");
+        }
     }
 
     @Test

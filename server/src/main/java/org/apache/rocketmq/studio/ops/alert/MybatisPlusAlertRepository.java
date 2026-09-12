@@ -62,6 +62,13 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
+    public List<AlertRuleVO> findRules(String instanceId) {
+        return ruleMapper.selectList(new QueryWrapper<RmqAlertRule>()
+                        .in("instance_id", instanceId).orderByAsc("name")).stream()
+                .map(MybatisPlusAlertRepository::toRuleVO).toList();
+    }
+
+    @Override
     public PageResult<AlertRuleVO> findRulePage(String search, Boolean enabled,
                                                  int page, int pageSize) {
         QueryWrapper<RmqAlertRule> query = ruleQuery(search, enabled);

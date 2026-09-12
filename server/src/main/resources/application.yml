@@ -4,23 +4,19 @@ server:
 spring:
   application:
     name: rocketmq-studio
-  profiles:
-    active: dev
+  cache:
+    type: simple
+  http:
+    converters:
+      preferred-json-mapper: jackson2
+#  profiles:
+#    active: dev
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/rocketmq?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:studio123}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      # Studio is polled by multiple tabs / dashboards; the Spring Boot default of 10
-      # connections saturates fast under concurrent filters + alerting. 30 leaves
-      # headroom without overwhelming a default MySQL max-connections=151.
-      maximum-pool-size: 30
-      minimum-idle: 5
-      connection-timeout: 5000
-      idle-timeout: 300000
-      max-lifetime: 1200000
-      pool-name: studio-pool
       leak-detection-threshold: 30000
   mail:
     host: ${STUDIO_ALERTING_SMTP_HOST:}
@@ -30,6 +26,26 @@ spring:
     properties:
       mail.smtp.auth: ${STUDIO_ALERTING_SMTP_AUTH:true}
       mail.smtp.starttls.enable: ${STUDIO_ALERTING_SMTP_STARTTLS:true}
+  ai:
+    mcp:
+      server:
+        enabled: true
+        protocol: STREAMABLE
+        name: rocketmq-studio
+        version: '@project.version@'
+        type: SYNC
+        instructions: >-
+          RocketMQ Studio exposes RocketMQ operational tools through MCP.
+          Call rmq.capabilities for the selected cluster before choosing tools.
+          Only call a tool when the returned capabilities include all capabilities
+          required by its description. Recheck capabilities when switching clusters.
+        streamable-http:
+          mcp-endpoint: /api/mcp
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
 
 mybatis-plus:
   configuration:
@@ -66,7 +82,7 @@ management:
 
 studio:
   cors:
-    allowed-origins: ${STUDIO_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+    allowed-origins: ${STUDIO_CORS_ALLOWED_ORIGINS:http://localhost:5174,http://127.0.0.1:5174}
   auth:
     login-required: ${STUDIO_AUTH_LOGIN_REQUIRED:true}
     # Production defaults. The dev profile disables Secure so local HTTP works without extra environment variables.
@@ -74,11 +90,16 @@ studio:
     session-cookie-secure: ${STUDIO_AUTH_SESSION_COOKIE_SECURE:true}
     session-cookie-same-site: ${STUDIO_AUTH_SESSION_COOKIE_SAME_SITE:Strict}
     users:
-      - username: ${STUDIO_AUTH_ADMIN_USERNAME:}
-        password: ${STUDIO_AUTH_ADMIN_PASSWORD:}
+      - username: ${STUDIO_AUTH_ADMIN_USERNAME:admin}
+        password: ${STUDIO_AUTH_ADMIN_PASSWORD:admin}
         admin: true
   cluster:
     seed-demo-data: ${STUDIO_CLUSTER_SEED_DEMO_DATA:false}
+    admin:
+      credentials:
+        rmq-test:
+          access-key: rocketmq2
+          secret-key: 12345678
   metrics:
     prometheus:
       base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}
@@ -88,10 +109,15 @@ studio:
       password: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:}
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
-    namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:}
+    namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:localhost:9876}
   query-history:
     retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
     cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}
+  ai:
+    allow-l3-tools: ${STUDIO_AI_ALLOW_L3_TOOLS:false}
+    # Optional for startup and read-only tools. Mutation preview/apply require
+    # a base64-encoded secret of at least 32 bytes after decoding.
+    token-secret: ${STUDIO_AI_TOKEN_SECRET:}
   alerting:
     collection-interval: ${STUDIO_ALERTING_COLLECTION_INTERVAL:PT30S}
     collection-parallelism: ${STUDIO_ALERTING_COLLECTION_PARALLELISM:4}

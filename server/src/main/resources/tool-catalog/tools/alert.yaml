@@ -1,0 +1,69 @@
+version: 2.0.0
+tools:
+  - name: rmq.alert.rule.list
+    cli:
+      resource: alert-rule
+      verb: list
+    description: List alert rules explicitly bound to the selected Studio Instance; global and other Instance rules are excluded.
+    riskLevel: L1
+    permission: alert:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        search:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - name
+              - metric
+              - threshold
+              - channels
+              - enabled
+            additionalProperties: false
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+                minLength: 1
+              metric:
+                type: string
+                minLength: 1
+              operator:
+                type: string
+              threshold:
+                type: number
+              thresholdUnit:
+                type: string
+              duration:
+                type: string
+              channels:
+                type: array
+                items:
+                  type: string
+              enabled:
+                type: boolean
+              description:
+                type: string
+    viewHint: table
+    deprecated: false

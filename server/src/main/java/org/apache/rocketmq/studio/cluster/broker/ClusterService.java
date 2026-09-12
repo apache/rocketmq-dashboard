@@ -130,6 +130,11 @@ public class ClusterService {
         return List.of();
     }
 
+    /**
+     * Verifies that a tool cluster target is confined to the authenticated Instance.
+     * A distinct cluster id must resolve through that Instance's provider and credentials;
+     * the global repository is deliberately not consulted at this security boundary.
+     */
     public ClusterVO getCluster(String id) {
         log.info("Getting cluster detail: {}", id);
         ClusterVO live = clusterProvider.refreshClusterDetail(id);
@@ -148,6 +153,13 @@ public class ClusterService {
             return live;
         }
         throw new BusinessException(503, "Cluster details are unavailable: " + id);
+    }
+
+    public List<ProxyVO> listProxiesForInstance(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            throw new BusinessException(400, "Instance is required for proxy discovery");
+        }
+        return clusterProvider.discoverProxies(instanceId);
     }
 
     public List<ProxyVO> listProxies(String clusterId) {
@@ -238,9 +250,24 @@ public class ClusterService {
     }
 
     public ClusterConfigUpdateResultVO updateClusterConfig(UpdateConfigDTO command) {
+        return updateClusterConfig(command, null);
+    }
+
+    public ClusterConfigUpdateResultVO updateClusterConfig(UpdateConfigDTO command, String instanceId) {
+        if (instanceId != null) {
+            command.setInstanceId(instanceId);
+        }
+        return updateClusterConfigInternal(command, instanceId);
+    }
+
+    private ClusterConfigUpdateResultVO updateClusterConfigInternal(UpdateConfigDTO command, String instanceId) {
         log.info("Updating cluster config for: {}", command.getId());
         requireMatchingDefaultQueueNums(command);
-        ClusterVO cluster = resolveCluster(command.getId(), command.getInstanceId());
+        ClusterVO cluster = instanceId == null ? resolveCluster(command.getId(), command.getInstanceId())
+                : requireSingleCluster(instanceId);
+        if (instanceId != null) {
+            command.setId(cluster.getId());
+        }
 
         ClusterConfigVO config = copyConfig(cluster.getConfig());
         applyConfig(command, config);
@@ -290,6 +317,46 @@ public class ClusterService {
                 .successfulBrokers(List.copyOf(successfulBrokers))
                 .failedBrokers(List.copyOf(failedBrokers))
                 .build();
+    }
+
+    public Map<String, ClusterConfigVO> readBrokerConfigs(String instanceId) {
+        Map<String, ClusterConfigVO> configs = new java.util.TreeMap<>();
+        ClusterVO cluster = requireSingleCluster(instanceId);
+        if (cluster.getBrokers() != null) {
+            for (BrokerVO broker : cluster.getBrokers()) {
+                configs.put(broker.getAddr(), brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId));
+            }
+        }
+        return configs;
+    }
+
+    public Map<String, ClusterConfigVO> proposeBrokerConfigs(UpdateConfigDTO command, Map<String, ClusterConfigVO> current) {
+        requireMatchingDefaultQueueNums(command);
+        Map<String, ClusterConfigVO> proposed = new java.util.TreeMap<>();
+        current.forEach((address, config) -> {
+            ClusterConfigVO changed = copyConfig(config);
+            applyConfig(command, changed);
+            proposed.put(address, changed);
+        });
+        return proposed;
+    }
+
+    public ClusterVO requireSingleCluster(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            throw new BusinessException(400, "Instance is required for cluster discovery");
+        }
+        List<ClusterVO> clusters = clusterProvider.discoverClusters(instanceId);
+        if (clusters == null || clusters.isEmpty()) {
+            throw new BusinessException(503, "Cluster details are unavailable for instance: " + instanceId);
+        }
+        if (clusters.size() != 1) {
+            throw new BusinessException(409, "Instance exposes multiple Broker clusters: " + instanceId);
+        }
+        ClusterVO cluster = clusters.getFirst();
+        if (cluster.getId() == null || cluster.getId().isBlank()) {
+            throw new BusinessException(503, "Broker cluster name is unavailable for instance: " + instanceId);
+        }
+        return cluster;
     }
 
     private void applyConfig(UpdateConfigDTO command, ClusterConfigVO config) {

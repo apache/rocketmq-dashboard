@@ -1,0 +1,94 @@
+version: 2.0.0
+tools:
+  - name: rmq.metrics.query
+    cli:
+      resource: metrics
+      verb: query
+    description: "Query the dedicated metrics data source explicitly bound only to the selected Instance. Shared or unbound sources are unsupported."
+    riskLevel: L1
+    permission: metrics:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - metric
+        - start
+        - end
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        metric:
+          type: string
+          minLength: 1
+        profileId:
+          type: string
+        semanticMetric:
+          type: string
+        start:
+          type: integer
+          description: Unix timestamp in seconds (PromQL query_range start).
+        end:
+          type: integer
+          description: Unix timestamp in seconds (PromQL query_range end).
+        step:
+          type: string
+          description: PromQL step duration, e.g. "15s", "1m".
+    outputSchema:
+      type: object
+      required:
+        - resultType
+        - series
+        - warnings
+      additionalProperties: false
+      properties:
+        resultType:
+          type: string
+        series:
+          type: array
+          items:
+            type: object
+            required:
+              - labels
+              - values
+            additionalProperties: false
+            properties:
+              labels:
+                type: object
+                additionalProperties:
+                  type: string
+              values:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - timestamp
+                    - value
+                  additionalProperties: false
+                  properties:
+                    timestamp:
+                      type: number
+                    value:
+                      type: string
+              histograms:
+                type:
+                  - array
+                  - 'null'
+                items:
+                  type: object
+                  required:
+                    - timestamp
+                    - histogram
+                  additionalProperties: false
+                  properties:
+                    timestamp:
+                      type: number
+                    histogram: {}
+        warnings:
+          type: array
+          items:
+            type: string
+    viewHint: object
+    deprecated: false

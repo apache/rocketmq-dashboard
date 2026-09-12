@@ -24,6 +24,8 @@ import java.util.Optional;
 public interface AlertRepository {
     List<AlertRuleVO> findAllRules();
 
+    List<AlertRuleVO> findRules(String instanceId);
+
     PageResult<AlertRuleVO> findRulePage(String search, Boolean enabled, int page, int pageSize);
 
     PageResult<AlertRuleVO> findRulesPage(AlertRuleQuery query);

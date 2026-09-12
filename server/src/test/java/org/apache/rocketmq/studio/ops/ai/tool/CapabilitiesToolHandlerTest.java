@@ -16,45 +16,42 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool;
 
-import org.apache.rocketmq.studio.cluster.broker.ClusterService;
-import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
-import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
-import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.ops.ai.tool.handler.CapabilitiesToolHandler;
+
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.CapabilityResolver;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.CapabilitiesOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ClusterInput;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class CapabilitiesToolHandlerTest {
 
     @Test
-    void nullClusterVersionIsEmittedAsBlankString() {
-        // The Apache runtime provider reports no cluster version; the projection must not
-        // emit a null into the schema-required "version" string.
-        ClusterVO cluster = ClusterVO.builder()
-                .name("DefaultCluster")
-                .type(ClusterType.V4_DIRECT)
-                .status(ClusterStatus.healthy)
-                .build();
-        cluster.setId("DefaultCluster");
-
-        ClusterService clusterService = mock(ClusterService.class);
-        when(clusterService.getCluster("DefaultCluster")).thenReturn(cluster);
+    void projectsSortedCapabilitiesFromTheBoundInstance() {
         CapabilityResolver capabilityResolver = mock(CapabilityResolver.class);
-        when(capabilityResolver.resolve(cluster)).thenReturn(List.of("REMOTING"));
+        when(capabilityResolver.resolve("instance-a"))
+                .thenReturn(new LinkedHashSet<>(List.of("TOPIC_MANAGEMENT", "REMOTING")));
 
-        Object output = new CapabilitiesToolHandler(clusterService, capabilityResolver)
-                .execute(Map.of("cluster", "DefaultCluster"));
+        CapabilitiesOutput result = new CapabilitiesToolHandler(capabilityResolver)
+                .execute(
+                        new ClusterInput("DefaultCluster"),
+                        ToolExecutionContext.of(
+                                "instance-a", null, Map.of("cluster", "DefaultCluster")));
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) output;
-        assertThat(result.get("cluster")).isEqualTo("DefaultCluster");
-        assertThat(result.get("type")).isEqualTo("V4_DIRECT");
-        assertThat(result.get("version")).isEqualTo("");
-        assertThat(result.get("capabilities")).isEqualTo(List.of("REMOTING"));
+        assertThat(result.cluster()).isEqualTo("instance-a");
+        assertThat(result.capabilities())
+                .containsExactly("REMOTING", "TOPIC_MANAGEMENT");
+        verify(capabilityResolver).resolve("instance-a");
+        verifyNoMoreInteractions(capabilityResolver);
     }
 }

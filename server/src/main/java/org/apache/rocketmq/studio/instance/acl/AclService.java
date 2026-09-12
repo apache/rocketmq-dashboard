@@ -26,7 +26,7 @@ import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.util.EntityIds;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
-import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
 import lombok.RequiredArgsConstructor;
@@ -50,14 +50,14 @@ public class AclService {
 
     private final AclRepository aclRepository;
     private final OperationAuditService operationAuditService;
-    private final InstanceRepository instanceRepository;
+    private final InstanceResolver instanceResolver;
     private final TencentAclService tencentAclService;
 
     public AclCapabilitiesVO capabilities(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
+        InstanceVO instance = instanceResolver.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (instance.getVendor() == InstanceVendor.TENCENT) {
             return new AclCapabilitiesVO(instance.getId(), instance.getVendor(), instance.getType(),
@@ -104,6 +104,32 @@ public class AclService {
         AclRuleVO saved = aclRepository.saveRule(rule);
         auditRule("CREATE_ACL_RULE", saved);
         return saved;
+    }
+
+    public AclRuleVO getRule(String id, String instanceId) {
+        if (!StringUtils.hasText(id)) {
+            throw new BusinessException(400, "ACL rule id is required");
+        }
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.listRules(instanceId, null).stream()
+                    .filter(rule -> id.equals(rule.getPrincipal())
+                            || rule.getId() != null && id.equals(rule.getId().toString()))
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+        }
+        return aclRepository.findRuleById(EntityIds.parseId(id))
+                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+    }
+
+    public AclUserVO getUser(String id, String instanceId) {
+        if (!StringUtils.hasText(id)) {
+            throw new BusinessException(400, "ACL user id is required");
+        }
+        return listUsers(instanceId).stream()
+                .filter(user -> id.equals(user.getUsername())
+                        || user.getId() != null && id.equals(user.getId().toString()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
     }
 
     public AclRuleVO updateRule(AclRuleVO rule, String instanceId) {
@@ -332,7 +358,7 @@ public class AclService {
         if (!StringUtils.hasText(instanceId)) {
             return false;
         }
-        return instanceRepository.findByIdentifier(instanceId)
+        return instanceResolver.findByIdentifier(instanceId)
                 .map(instance -> instance.getVendor() == InstanceVendor.TENCENT)
                 .orElse(false);
     }

@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditConstants.Operation;
 import org.apache.rocketmq.studio.audit.OperationAuditConstants.ResourceType;
 import org.apache.rocketmq.studio.audit.OperationAuditConstants.Result;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
@@ -38,6 +39,8 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 
@@ -48,7 +51,11 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 @Slf4j
@@ -61,20 +68,20 @@ public class MetadataService {
     private final MetadataProvider metadataProvider;
     private final AdminClient adminClient;
     private final InstanceProviderRegistry providerRegistry;
-    private final org.apache.rocketmq.studio.instance.InstanceRepository instanceRepository;
+    private final InstanceResolver instanceResolver;
     private final OperationAuditService operationAuditService;
+    private final MessageService messageService;
 
     /**
-     * External callers address instances by their globally unique instance ID (name);
-     * internal storage keys rows by the numeric primary key. Resolve the identifier
-     * before any DB-backed lookup; unknown identifiers pass through unchanged so the
-     * downstream 404/empty semantics stay intact.
+     * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical
+     * names from the configured connection. Metadata providers apply the corresponding storage
+     * scope separately; unresolved identifiers retain the downstream 404/empty semantics.
      */
     String normalizeInstanceId(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             return instanceId;
         }
-        return instanceRepository.findByIdentifier(instanceId)
+        return instanceResolver.findByIdentifier(instanceId)
                 .map(org.apache.rocketmq.studio.instance.InstanceVO::getName)
                 .orElse(instanceId);
     }
@@ -93,7 +100,21 @@ public class MetadataService {
             return metadataProvider.listTopics(
                     normalizeFilter(clusterId), normalizeFilter(type), normalizeFilter(search));
         }
-        return resolve(instanceId).listTopics(instanceId, normalizeFilter(type), normalizeFilter(search));
+        return resolve(instanceId).listTopics(instanceId, normalizeFilter(type), normalizeFilter(search)).stream()
+                .filter(topic -> !StringUtils.hasText(clusterId) || clusterId.equals(topic.getClusterId())).toList();
+    }
+
+    public Optional<TopicVO> findTopic(
+            String instanceId, String clusterId, String name) {
+        String topicName = requireName(name, "topic name");
+        return unique(listTopics(instanceId, clusterId, null, topicName).stream()
+                .filter(topic -> topicName.equals(topic.getName())).toList(), "Topic " + topicName);
+    }
+
+    public TopicVO getTopic(String instanceId, String clusterId, String name) {
+        String topicName = requireName(name, "topic name");
+        return findTopic(instanceId, clusterId, topicName)
+                .orElseThrow(() -> new BusinessException(404, "Topic not found: " + topicName));
     }
 
     public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
@@ -115,39 +136,43 @@ public class MetadataService {
 
 
     public TopicVO createTopic(TopicVO topic) {
+        return createTopic(topic == null ? null : topic.getInstanceId(), topic);
+    }
+
+    public TopicVO createTopic(String instanceId, TopicVO topic) {
         requireTopic(topic);
         if (SystemTopicFilter.isSystem(topic.getName())) {
             throw new BusinessException(400, "System topics cannot be created: " + topic.getName());
         }
-        String instanceId = topic.getInstanceId();
+        topic.setInstanceId(instanceId);
         InstanceProvider provider = resolve(instanceId);
         return executeWithAudit(provider, Operation.CREATE_TOPIC, ResourceType.TOPIC, topic.getName(),
                 instanceId, topicDetail(topic), () -> provider.createTopic(instanceId, topic));
     }
 
-
     public TopicVO updateTopic(TopicVO topic) {
+        return updateTopic(topic == null ? null : topic.getInstanceId(), topic);
+    }
+
+    public TopicVO updateTopic(String instanceId, TopicVO topic) {
         requireTopic(topic);
-        String instanceId = topic.getInstanceId();
+        topic.setInstanceId(instanceId);
         InstanceProvider provider = resolve(instanceId);
         return executeWithAudit(provider, Operation.UPDATE_TOPIC, ResourceType.TOPIC, topic.getName(),
                 instanceId, topicDetail(topic), () -> provider.updateTopic(instanceId, topic));
     }
-
 
     public void deleteTopic(String name) {
         deleteTopic(null, name);
     }
 
     public void deleteTopic(String instanceId, String name) {
-        instanceId = normalizeInstanceId(instanceId);
+        String target = normalizeInstanceId(instanceId);
         String topicName = requireName(name, "topic name");
-        InstanceProvider provider = resolve(instanceId);
-        String normalizedInstanceId = instanceId;
+        InstanceProvider provider = resolve(target);
         executeWithAudit(provider, Operation.DELETE_TOPIC, ResourceType.TOPIC,
-                topicName, instanceId, null, () -> provider.deleteTopic(normalizedInstanceId, topicName));
+                topicName, target, null, () -> provider.deleteTopic(target, topicName));
     }
-
 
     public List<BrokerRouteVO> getTopicRoutes(String name) {
         return getTopicRoutes(null, name);
@@ -195,6 +220,43 @@ public class MetadataService {
         return adminClient.sendMessage(request);
     }
 
+    /**
+     * Re-publishes one stored message to a target topic. The original broker message is read
+     * through the instance-aware message service and only the application payload/properties are
+     * copied; broker offsets and delivery metadata are never reused.
+     */
+    public SendMessageVO resendMessage(String instanceId, String sourceTopic, String msgId, String targetTopic) {
+        MessageRecordVO original = findMessageForResend(instanceId, sourceTopic, msgId);
+        return resendMessage(instanceId, original, targetTopic);
+    }
+
+    public SendMessageVO resendMessage(String instanceId, MessageRecordVO original, String targetTopic) {
+        String destination = StringUtils.hasText(targetTopic) ? targetTopic.trim() : original.getTopic();
+        if (!StringUtils.hasText(destination)) {
+            throw new BusinessException(400, "target topic is required when the source message has no topic");
+        }
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId(normalizeInstanceId(instanceId))
+                .topic(destination)
+                .tag(original.getTag())
+                .key(original.getKey())
+                .body(original.getBody())
+                .properties(original.getProperties() == null ? null : Map.copyOf(original.getProperties()))
+                .build();
+        return sendMessage(request);
+    }
+
+    /** Loads the exact source message used by resend without exposing or publishing its body. */
+    public MessageRecordVO findMessageForResend(String instanceId, String sourceTopic, String msgId) {
+        String messageId = requireName(msgId, "message id");
+        List<MessageRecordVO> matches = messageService.queryMessages(
+                instanceId, normalizeFilter(sourceTopic), messageId, null, null, null, null);
+        return matches.stream()
+                .filter(message -> messageId.equals(message.getMsgId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404, "Message not found: " + messageId));
+    }
+
     // ── ConsumerGroupVO ───────────────────────────────────────────────
 
 
@@ -207,7 +269,8 @@ public class MetadataService {
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
             return metadataProvider.listConsumerGroups(normalizeFilter(clusterId), normalizeFilter(search));
         }
-        return resolve(instanceId).listConsumerGroups(instanceId, normalizeFilter(search));
+        return resolve(instanceId).listConsumerGroups(instanceId, normalizeFilter(search)).stream()
+                .filter(group -> !StringUtils.hasText(clusterId) || clusterId.equals(group.getClusterId())).toList();
     }
 
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
@@ -247,13 +310,41 @@ public class MetadataService {
      * frontend keeps the existing row unchanged.
      */
     public ConsumerGroupVO refreshConsumerGroup(String instanceId, String name) {
-        instanceId = normalizeInstanceId(instanceId);
+        return findConsumerGroup(instanceId, name).orElse(null);
+    }
+
+    public Optional<ConsumerGroupVO> findConsumerGroup(String instanceId, String name) {
+        String normalizedInstanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
-        return listConsumerGroups(instanceId, null, normalizeFilter(groupName))
-                .stream()
-                .filter(group -> groupName.equals(group.getName()))
-                .findFirst()
-                .orElse(null);
+        return unique(listConsumerGroups(normalizedInstanceId, null, groupName).stream()
+                .filter(group -> groupName.equals(group.getName())).toList(), "Consumer group " + groupName);
+    }
+
+    public List<ConsumerGroupVO> consumerGroupConfigurations(String instanceId, String name) {
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, null, name).stream()
+                .filter(group -> name.equals(group.getName())).toList();
+        if (groups.isEmpty()) throw new BusinessException(404, "Consumer group not found: " + name);
+        return groups;
+    }
+
+    /** Runtime statistics cover the Instance-wide group; repeated physical configurations are not summed. */
+    public ConsumerGroupVO consumerGroupRuntimeView(String instanceId, String name) {
+        List<ConsumerGroupVO> groups = consumerGroupConfigurations(instanceId, name);
+        if (groups.size() == 1) return groups.get(0);
+        ConsumerGroupVO runtime = getConsumerGroup(instanceId, name);
+        runtime.setInstanceId(normalizeInstanceId(instanceId));
+        return runtime;
+    }
+
+    public ConsumerGroupVO requireConsumerGroup(String instanceId, String name) {
+        return findConsumerGroup(instanceId, name)
+                .orElseThrow(() -> new BusinessException(404, "Consumer group not found: " + name));
+    }
+
+    private <T> Optional<T> unique(List<T> matches, String resource) {
+        if (matches.size() > 1) throw new BusinessException(409,
+                resource + " exists in multiple Broker clusters; a physical target is required for configuration changes");
+        return matches.stream().findFirst();
     }
 
 
@@ -280,11 +371,24 @@ public class MetadataService {
 
 
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
-        String instanceId = group == null ? null : group.getInstanceId();
+        return saveConsumerGroup(group == null ? null : group.getInstanceId(), group, Operation.CREATE_GROUP,
+                (provider, instanceId) -> provider.createConsumerGroup(instanceId, group));
+    }
+
+    public ConsumerGroupVO updateConsumerGroup(ConsumerGroupVO group) {
+        return saveConsumerGroup(group == null ? null : group.getInstanceId(), group, Operation.UPDATE_GROUP,
+                (provider, instanceId) -> provider.updateConsumerGroup(instanceId, group));
+    }
+
+    private ConsumerGroupVO saveConsumerGroup(String instanceId, ConsumerGroupVO group, String operation,
+                                              BiFunction<InstanceProvider, String, ConsumerGroupVO> mutation) {
+        if (group != null) {
+            group.setInstanceId(instanceId);
+        }
         InstanceProvider provider = resolve(instanceId);
-        return executeWithAudit(provider, Operation.CREATE_GROUP, ResourceType.GROUP,
+        return executeWithAudit(provider, operation, ResourceType.GROUP,
                 group == null ? null : group.getName(), instanceId, consumerGroupDetail(group),
-                () -> provider.createConsumerGroup(instanceId, group));
+                () -> mutation.apply(provider, instanceId));
     }
 
     public ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name) {
@@ -307,14 +411,16 @@ public class MetadataService {
     }
 
     public void deleteConsumerGroup(String instanceId, String name) {
-        instanceId = normalizeInstanceId(instanceId);
-        String groupName = requireName(name, "consumer group name");
-        InstanceProvider provider = resolve(instanceId);
-        String normalizedInstanceId = instanceId;
-        executeWithAudit(provider, Operation.DELETE_GROUP, ResourceType.GROUP,
-                groupName, instanceId, null, () -> provider.deleteConsumerGroup(normalizedInstanceId, groupName));
+        String target = normalizeInstanceId(instanceId);
+        deleteConsumerGroup(target, name, (provider, groupName) -> provider.deleteConsumerGroup(target, groupName));
     }
 
+    private void deleteConsumerGroup(String instanceId, String name, BiConsumer<InstanceProvider, String> mutation) {
+        String groupName = requireName(name, "consumer group name");
+        InstanceProvider provider = resolve(instanceId);
+        executeWithAudit(provider, Operation.DELETE_GROUP, ResourceType.GROUP,
+                groupName, instanceId, null, () -> mutation.accept(provider, groupName));
+    }
 
     public void resetOffset(String name, long timestamp, String topic) {
         resetOffset(null, name, timestamp, topic);
@@ -337,6 +443,35 @@ public class MetadataService {
         executeWithAudit(provider, Operation.RESET_OFFSET, ResourceType.GROUP, groupName, instanceId,
                 "topic=" + topicName + ", timestamp=" + timestamp,
                 () -> provider.resetOffset(normalizedInstanceId, groupName, timestamp, topicName));
+    }
+
+    /**
+     * Advances a consumer group's offsets to the current time. When topic is omitted every
+     * currently registered subscription is advanced independently.
+     */
+    public List<String> skipAccumulated(String instanceId, String name, String topic) {
+        String groupName = requireName(name, "consumer group name");
+        List<String> topics = resolveSkipAccumulatedTopics(instanceId, groupName, topic);
+        long timestamp = System.currentTimeMillis();
+        topics.forEach(subscriptionTopic -> resetOffset(instanceId, groupName, timestamp, subscriptionTopic));
+        return topics;
+    }
+
+    /** Resolves the exact topic scope used by skip-accumulated without changing offsets. */
+    public List<String> resolveSkipAccumulatedTopics(String instanceId, String name, String topic) {
+        String groupName = requireName(name, "consumer group name");
+        List<String> topics = StringUtils.hasText(topic)
+                ? List.of(topic.trim())
+                : getGroupSubscriptions(instanceId, groupName).stream()
+                        .map(SubscriptionEntryVO::getTopic)
+                        .filter(StringUtils::hasText)
+                        .map(String::trim)
+                        .distinct()
+                        .toList();
+        if (topics.isEmpty()) {
+            throw new BusinessException(404, "No subscribed topics found for consumer group: " + groupName);
+        }
+        return topics;
     }
 
 
@@ -600,25 +735,18 @@ public class MetadataService {
 
     private void executeWithAudit(InstanceProvider provider, String operation, String resourceType,
                                   String resourceName, String instanceId, String detail, Runnable action) {
-        if (provider.vendor() == InstanceVendor.APACHE) {
+        executeWithAudit(provider, operation, resourceType, resourceName, instanceId, detail, () -> {
             action.run();
-            return;
-        }
-        try {
-            action.run();
-            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.SUCCESS, null);
-        } catch (RuntimeException failure) {
-            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.FAILED,
-                    failure.getMessage());
-            throw failure;
-        }
+            return null;
+        });
     }
 
     private void recordAudit(String operation, String resourceType, String resourceName, String instanceId,
                              String detail, String result, String errorMessage) {
         try {
-            operationAuditService.record(operation, resourceType, resourceName, instanceId,
-                    detail, result, errorMessage);
+            var instance = instanceResolver.findByIdentifier(instanceId).orElse(null);
+            operationAuditService.record(operation, resourceType, resourceName,
+                    instance == null ? instanceId : instance.getName(), detail, result, errorMessage);
         } catch (Exception auditFailure) {
             log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
                     auditFailure.getMessage());

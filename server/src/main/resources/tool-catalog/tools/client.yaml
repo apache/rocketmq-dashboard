@@ -1,0 +1,182 @@
+version: 2.0.0
+tools:
+  - name: rmq.client.describe
+    cli:
+      resource: client
+      verb: describe
+    description: Describe one RocketMQ client connection by clientId in one cluster.
+    riskLevel: L1
+    permission: client:read
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - clientId
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        clientId:
+          type: string
+          minLength: 1
+        type:
+          type: string
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - clientId
+              - type
+              - groupOrTopic
+              - producerGroup
+              - protocol
+              - address
+              - language
+              - version
+              - connectedAt
+              - partial
+              - clusterName
+            additionalProperties: false
+            properties:
+              clientId:
+                type: string
+              type:
+                type:
+                  - string
+                  - 'null'
+              groupOrTopic:
+                type:
+                  - string
+                  - 'null'
+              producerGroup:
+                type:
+                  - string
+                  - 'null'
+              protocol:
+                type:
+                  - string
+                  - 'null'
+              address:
+                type:
+                  - string
+                  - 'null'
+              language:
+                type:
+                  - string
+                  - 'null'
+              version:
+                type:
+                  - string
+                  - 'null'
+              connectedAt:
+                type:
+                  - string
+                  - 'null'
+              partial:
+                type: boolean
+              clusterName:
+                type:
+                  - string
+                  - 'null'
+    viewHint: table
+    deprecated: false
+  - name: rmq.client.list
+    cli:
+      resource: client
+      verb: list
+    description: List RocketMQ client connections in one Studio cluster.
+    riskLevel: L1
+    permission: client:read
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        type:
+          type: string
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - clientId
+              - type
+              - groupOrTopic
+              - producerGroup
+              - protocol
+              - address
+              - language
+              - version
+              - connectedAt
+              - partial
+              - clusterName
+            additionalProperties: false
+            properties:
+              clientId:
+                type: string
+              type:
+                type:
+                  - string
+                  - 'null'
+              groupOrTopic:
+                type:
+                  - string
+                  - 'null'
+              producerGroup:
+                type:
+                  - string
+                  - 'null'
+              protocol:
+                type:
+                  - string
+                  - 'null'
+              address:
+                type:
+                  - string
+                  - 'null'
+              language:
+                type:
+                  - string
+                  - 'null'
+              version:
+                type:
+                  - string
+                  - 'null'
+              connectedAt:
+                type:
+                  - string
+                  - 'null'
+              partial:
+                type: boolean
+              clusterName:
+                type:
+                  - string
+                  - 'null'
+    viewHint: table
+    deprecated: false

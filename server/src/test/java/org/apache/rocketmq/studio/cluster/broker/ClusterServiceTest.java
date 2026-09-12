@@ -51,6 +51,7 @@ import org.assertj.core.api.ThrowableAssert;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -360,13 +361,9 @@ class ClusterServiceTest {
         });
         verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
         verifyNoInteractions(brokerConfigService);
-        verify(auditService).record(
-                eq("UPDATE_CLUSTER_CONFIG"),
-                eq("CLUSTER"),
-                eq("CLUSTER:cluster-1"),
-                eq("cluster-1"),
-                org.mockito.ArgumentMatchers.contains("No broker address"),
-                eq("FAILED"));
+        verify(auditService).record(eq("UPDATE_CLUSTER_CONFIG"), eq("CLUSTER"),
+                eq("CLUSTER:cluster-1"), eq("cluster-1"),
+                argThat(d -> d != null && d.contains("No broker address")), eq("FAILED"));
     }
 
     @Test
@@ -451,13 +448,9 @@ class ClusterServiceTest {
         verify(brokerConfigService).updateBrokerConfig(
                 eq("10.0.0.2:10911"), eq("cluster-1"), any());
         verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
-        verify(auditService).record(
-                eq("UPDATE_CLUSTER_CONFIG"),
-                eq("CLUSTER"),
-                eq("CLUSTER:cluster-1"),
-                eq("cluster-1"),
-                org.mockito.ArgumentMatchers.contains("10.0.0.2:10911"),
-                eq("PARTIAL"));
+        verify(auditService).record(eq("UPDATE_CLUSTER_CONFIG"), eq("CLUSTER"),
+                eq("CLUSTER:cluster-1"), eq("cluster-1"),
+                argThat(d -> d != null && d.contains("10.0.0.2:10911")), eq("PARTIAL"));
     }
 
     @Test
@@ -808,4 +801,60 @@ class ClusterServiceTest {
                 .hasMessageContaining(message)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
     }
+    @Test
+    void instanceConfigUpdateUsesDiscoveredPhysicalClusterAndSelectedConnection() {
+        sampleCluster.setId("DefaultCluster");
+        when(clusterProvider.discoverClusters("prod-apache")).thenReturn(List.of(sampleCluster));
+        UpdateConfigDTO command = UpdateConfigDTO.builder().writeQueueNums(16).build();
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command, "prod-apache");
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
+        assertThat(command.getId()).isEqualTo("DefaultCluster");
+        assertThat(command.getInstanceId()).isEqualTo("prod-apache");
+        verify(brokerConfigService).updateBrokerConfig(
+                eq("10.0.0.1:10911"), eq("DefaultCluster"), eq("prod-apache"), any());
+        verify(clusterProvider, never()).refreshClusterDetail(any());
+        verify(clusterProvider, never()).refreshClusterDetail(any(), any());
+    }
+
+    @Test
+    void instanceConfigPreviewUsesTheSameDiscoveredCluster() {
+        sampleCluster.setId("DefaultCluster");
+        when(clusterProvider.discoverClusters("prod-apache")).thenReturn(List.of(sampleCluster));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", "prod-apache"))
+                .thenReturn(sampleCluster.getConfig());
+        assertThat(clusterService.readBrokerConfigs("prod-apache"))
+                .containsOnlyKeys("10.0.0.1:10911");
+        verify(clusterProvider, never()).refreshClusterDetail(any());
+    }
+
+    @Test
+    void instanceConfigOperationsRejectEmptyAndAmbiguousDiscoveryWithoutFallback() {
+        for (List<ClusterVO> clusters : List.of(List.<ClusterVO>of(), List.of(sampleCluster, sampleCluster))) {
+            when(clusterProvider.discoverClusters("prod-apache")).thenReturn(clusters);
+            int expectedCode = clusters.isEmpty() ? 503 : 409;
+            assertThatThrownBy(() -> clusterService.readBrokerConfigs("prod-apache"))
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            error -> assertThat(error.getCode()).isEqualTo(expectedCode));
+            assertThatThrownBy(() -> clusterService.updateClusterConfig(
+                    UpdateConfigDTO.builder().writeQueueNums(16).build(), "prod-apache"))
+                    .isInstanceOfSatisfying(BusinessException.class,
+                            error -> assertThat(error.getCode()).isEqualTo(expectedCode));
+        }
+        verify(clusterProvider, never()).refreshClusterDetail(any());
+        verify(clusterProvider, never()).refreshClusterDetail(any(), any());
+        verifyNoInteractions(brokerConfigService, clusterRepository);
+    }
+
+    @Test
+    void failedInstanceDiscoveryNeverUsesDefaultNameServer() {
+        when(clusterProvider.discoverClusters("prod-apache"))
+                .thenThrow(new BusinessException(502, "Selected NameServer unavailable"));
+        assertThatThrownBy(() -> clusterService.requireSingleCluster("prod-apache"))
+                .hasMessageContaining("Selected NameServer unavailable");
+        verify(clusterProvider, never()).refreshClusterDetail(any());
+        verifyNoInteractions(brokerConfigService, clusterRepository);
+    }
+
 }

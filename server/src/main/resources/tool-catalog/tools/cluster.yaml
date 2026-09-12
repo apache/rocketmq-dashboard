@@ -1,0 +1,61 @@
+version: 2.0.0
+tools:
+  - name: rmq.cluster.list
+    cli:
+      resource: cluster
+      verb: list
+    description: List RocketMQ clusters available in Studio.
+    riskLevel: L1
+    permission: cluster:read
+    requiredCapabilities:
+      - CLUSTER_TOPOLOGY
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required:
+        - cluster
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - name
+              - type
+              - status
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                minLength: 1
+              name:
+                type: string
+                minLength: 1
+              type:
+                enum:
+                  - V4_DIRECT
+                  - V5_PROXY_LOCAL
+                  - V5_PROXY_CLUSTER
+              status:
+                enum:
+                  - healthy
+                  - warning
+                  - error
+                  - offline
+              version:
+                type: string
+    viewHint: table
+    deprecated: false

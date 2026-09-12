@@ -142,8 +142,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(instanceId != null, RmqTopic::getInstanceId,
+                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
+                .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
@@ -162,8 +166,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
             String search, int page, int pageSize) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(instanceId != null, RmqTopic::getInstanceId,
+                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
+                .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
@@ -223,8 +231,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(instanceId != null, RmqGroup::getInstanceId,
+                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
+                .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName);
@@ -240,8 +252,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(instanceId != null, RmqGroup::getInstanceId,
+                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
+                .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);

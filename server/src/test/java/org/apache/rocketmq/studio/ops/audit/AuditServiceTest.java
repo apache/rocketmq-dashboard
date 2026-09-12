@@ -56,7 +56,7 @@ class AuditServiceTest {
     void recordShouldCaptureAuthenticatedOperator() {
         AuthenticatedUserContext.setUsername("operator-user");
 
-        auditService.record("CREATE", "topic-a", "created topic", "SUCCESS");
+        auditService.record("CREATE", null, "topic-a", null, "created topic", "SUCCESS");
 
         ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
         verify(auditRepository).save(captor.capture());
@@ -65,7 +65,7 @@ class AuditServiceTest {
 
     @Test
     void recordShouldPreserveClusterIdWhenProvided() {
-        auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:prod-cn", "prod-cn",
+        auditService.record("UPDATE_CLUSTER_CONFIG", null, "CLUSTER:prod-cn", "prod-cn",
                 "updated broker config", "SUCCESS");
 
         ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
