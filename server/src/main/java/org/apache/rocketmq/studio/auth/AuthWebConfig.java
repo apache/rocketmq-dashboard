@@ -18,9 +18,8 @@
 package org.apache.rocketmq.studio.auth;
 
 import lombok.RequiredArgsConstructor;
-import org.apache.rocketmq.studio.ops.ai.tool.ToolAccessPolicy;
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -35,20 +34,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @RequiredArgsConstructor
 public class AuthWebConfig implements WebMvcConfigurer {
 
-    private final ObjectProvider<AuthProperties> authPropertiesProvider;
-    private final ObjectProvider<AuthService> authServiceProvider;
-    private final ObjectProvider<SettingsRepository> settingsRepositoryProvider;
-    private final ObjectProvider<ToolAccessPolicy> toolAccessPolicyProvider;
+    private final AuthProperties authProperties;
+    private final AuthService authService;
+    private final SettingsRepository settingsRepository;
+    private final ToolCatalog toolCatalog;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // Slice tests and minimal contexts may not provide any of these beans; when they are
-        // missing the interceptor falls back to the static login-required property (effectively
-        // no enforcement), matching the old conditional-registration behaviour.
-        registry.addInterceptor(new AuthInterceptor(authPropertiesProvider.getIfAvailable(),
-                        authServiceProvider.getIfAvailable(),
-                        settingsRepositoryProvider.getIfAvailable(),
-                        toolAccessPolicyProvider.getIfAvailable()))
-                .addPathPatterns("/api/**");
+        registry.addInterceptor(new AuthInterceptor(
+                        authProperties, authService, settingsRepository,
+                        toolCatalog))
+                .addPathPatterns("/api/**")
+                .excludePathPatterns("/api/mcp/**");
     }
 }

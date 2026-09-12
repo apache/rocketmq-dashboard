@@ -16,18 +16,25 @@
  */
 package org.apache.rocketmq.studio;
 
-import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalog;
-import org.apache.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
+import org.apache.rocketmq.studio.ops.ai.tool.service.ToolDiscoveryService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.MybatisPlusInstanceRepository;
 import org.apache.rocketmq.studio.persistence.mapper.RmqInstanceMapper;
+import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerProperties;
+import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerStreamableHttpProperties;
+import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -42,7 +49,7 @@ class StudioApplicationTest {
     private ToolCatalog toolCatalog;
 
     @Autowired
-    private ToolGatewayService toolGatewayService;
+    private ToolDiscoveryService toolDiscoveryService;
 
     @Autowired
     private RmqInstanceMapper instanceMapper;
@@ -53,15 +60,72 @@ class StudioApplicationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private McpServerProperties mcpServerProperties;
+
+    @Autowired
+    private McpServerStreamableHttpProperties mcpServerStreamableHttpProperties;
+
+    @Autowired
+    private ApplicationContext applicationContext;
+
+    @Autowired
+    private WebMvcStreamableServerTransportProvider mcpTransportProvider;
+
     @Test
     void applicationContextLoadsWithInitializedDevSchema() throws Exception {
-        assertThat(toolCatalog.getVersion()).isEqualTo("1.0.0");
-        assertThat(toolGatewayService.discover(null)).isNotEmpty();
+        assertThat(toolCatalog.list()).isNotEmpty();
+        assertThatThrownBy(() -> toolDiscoveryService.listTools(null))
+                .isInstanceOf(ToolExecutionException.class);
         assertThat(instanceMapper.selectList(null)).isEmpty();
 
         mockMvc.perform(get("/api/instances"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void mcpServerUsesSingleStreamableHttpEndpoint() {
+        assertThat(mcpServerProperties.getProtocol())
+                .isEqualTo(McpServerProperties.ServerProtocol.STREAMABLE);
+        assertThat(mcpServerStreamableHttpProperties.getMcpEndpoint())
+                .isEqualTo("/api/mcp");
+        assertThat(applicationContext.containsBean("webMvcStreamableServerTransportProvider"))
+                .isTrue();
+        assertThat(applicationContext.containsBean("webMvcSseServerTransportProvider"))
+                .isFalse();
+    }
+
+    @Test
+    void streamableHttpEndpointNegotiatesAnMcpSession() throws Exception {
+        String protocolVersion = mcpTransportProvider.protocolVersions().getFirst();
+        MockMvc transportMockMvc = MockMvcBuilders
+                .routerFunctions(mcpTransportProvider.getRouterFunction())
+                .build();
+
+        transportMockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/api/mcp")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .accept(
+                                org.springframework.http.MediaType.APPLICATION_JSON,
+                                org.springframework.http.MediaType.TEXT_EVENT_STREAM)
+                        .content("""
+                                {
+                                  "jsonrpc": "2.0",
+                                  "id": 1,
+                                  "method": "initialize",
+                                  "params": {
+                                    "protocolVersion": "%s",
+                                    "capabilities": {},
+                                    "clientInfo": {"name": "studio-test", "version": "1.0"}
+                                  }
+                                }
+                                """.formatted(protocolVersion)))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().exists("Mcp-Session-Id"))
+                .andExpect(jsonPath("$.jsonrpc").value("2.0"))
+                .andExpect(jsonPath("$.result.protocolVersion").value(protocolVersion));
     }
 
     @Test

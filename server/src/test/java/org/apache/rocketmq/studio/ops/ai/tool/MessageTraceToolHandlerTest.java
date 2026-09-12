@@ -16,11 +16,15 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool;
 
+import org.apache.rocketmq.studio.ops.ai.tool.handler.message.MessageTraceToolHandler;
+
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryByIdInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceOutput;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,11 +32,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.context;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,22 +68,19 @@ class MessageTraceToolHandlerTest {
         when(messageService.getMessageTrace(eq("instance-a"), eq("msg-1"), eq("TopicA")))
                 .thenReturn(trace);
 
-        Object result = handler.execute(Map.of(
-                "cluster", "instance-a", "msgId", "msg-1", "topic", "TopicA"));
+        MessageTraceOutput result = handler.execute(
+                new MessageQueryByIdInput("instance-a", "msg-1", "TopicA"),
+                context("instance-a"));
 
-        assertThat(result).isInstanceOf(Map.class);
-        Map<?, ?> row = (Map<?, ?>) result;
-        assertThat(row.get("msgId")).isEqualTo("msg-1");
-        List<?> nodes = (List<?>) row.get("nodes");
-        assertThat(nodes).hasSize(1);
-        Map<?, ?> node = (Map<?, ?>) nodes.get(0);
-        assertThat(node.get("title")).isEqualTo("Send message");
-        assertThat(node.get("status")).isEqualTo("SUCCESS");
-        List<?> statuses = (List<?>) row.get("consumerStatus");
-        assertThat(statuses).hasSize(1);
-        Map<?, ?> status = (Map<?, ?>) statuses.get(0);
-        assertThat(status.get("group")).isEqualTo("group-a");
-        assertThat(status.get("deliveryStatus")).isEqualTo("success");
+        assertThat(result.msgId()).isEqualTo("msg-1");
+        assertThat(result.nodes()).singleElement().satisfies(node -> {
+            assertThat(node.title()).isEqualTo("Send message");
+            assertThat(node.status()).isEqualTo("SUCCESS");
+        });
+        assertThat(result.consumerStatus()).singleElement().satisfies(status -> {
+            assertThat(status.group()).isEqualTo("group-a");
+            assertThat(status.deliveryStatus()).isEqualTo("success");
+        });
 
         verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
     }

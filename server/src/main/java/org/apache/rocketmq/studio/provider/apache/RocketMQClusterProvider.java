@@ -84,7 +84,11 @@ public class RocketMQClusterProvider implements ClusterProvider {
             log.debug("NameServer address not configured, returning empty cluster list");
             return Collections.emptyList();
         }
-        return discoverClustersAt(namesrvAddr, instanceId);
+        List<ClusterVO> clusters = discoverClustersAt(namesrvAddr, instanceId);
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        return configuredCluster == null ? clusters : clusters.stream()
+                .filter(cluster -> configuredCluster.equals(cluster.getId())).toList();
     }
 
     @Override
@@ -106,7 +110,6 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 Map<String, Set<String>> clusterAddrTable = clusterInfo.getClusterAddrTable();
                 Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
 
-                List<ProxyVO> proxies = discoverProxiesViaHeartbeatSyncer(admin);
 
                 List<ClusterVO> clusters = new ArrayList<>();
                 for (Map.Entry<String, Set<String>> entry : clusterAddrTable.entrySet()) {
@@ -117,7 +120,6 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     List<NameServerVO> nameServers = buildNameServerList(namesrvAddr);
 
                     ClusterVO cluster = buildClusterVO(clusterName, brokers, nameServers);
-                    cluster.setProxies(proxies);
                     clusters.add(cluster);
                 }
                 return clusters;
@@ -161,7 +163,6 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 List<NameServerVO> nameServers = buildNameServerList(namesrvAddr);
 
                 ClusterVO cluster = buildClusterVO(clusterId, brokers, nameServers);
-                cluster.setProxies(discoverProxiesViaHeartbeatSyncer(admin));
                 return cluster;
             });
         } catch (Exception e) {
@@ -172,6 +173,26 @@ public class RocketMQClusterProvider implements ClusterProvider {
             throw new BusinessException(502,
                     "Failed to refresh cluster detail for " + clusterId + ": " + rootMessage(e));
         }
+    }
+
+    @Override
+    public List<ProxyVO> discoverProxies(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) throw new BusinessException(400, "Instance is required");
+        return runtimeAdminClientResolver.execute(instanceId, this::discoverProxiesViaHeartbeatSyncer);
+    }
+
+    @Override
+    public List<BrokerVO> discoverBrokers(String instanceId, String brokerName) {
+        return runtimeAdminClientResolver.execute(instanceId, admin -> {
+            ClusterInfo info = admin.examineBrokerClusterInfo();
+            if (info == null || info.getBrokerAddrTable() == null)
+                throw new BusinessException(503, "Broker topology is unavailable");
+            Map<String, BrokerData> table = info.getBrokerAddrTable();
+            if (brokerName != null && !table.containsKey(brokerName))
+                throw new BusinessException(404, "Broker not found in Instance: " + brokerName);
+            Set<String> names = brokerName == null ? new java.util.TreeSet<>(table.keySet()) : Set.of(brokerName);
+            return buildBrokerList(admin, names, table);
+        });
     }
 
     /**

@@ -1,0 +1,36 @@
+version: 2.0.0
+tools:
+  - name: rmq.capabilities
+    cli:
+      resource: cluster
+      verb: capabilities
+    description: Return the selected cluster's capabilities to determine which tool requirements it satisfies.
+    riskLevel: L1
+    permission: cluster:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - cluster
+        - capabilities
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        capabilities:
+          type: array
+          description: Sorted unique capability labels; a tool requires all of its declared capabilities.
+          uniqueItems: true
+          items:
+            type: string
+    viewHint: object
+    deprecated: false

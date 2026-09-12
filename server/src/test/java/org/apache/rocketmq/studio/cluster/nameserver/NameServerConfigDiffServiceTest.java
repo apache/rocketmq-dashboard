@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.nameserver;
 
+import static org.mockito.Mockito.verifyNoInteractions;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
@@ -319,4 +320,23 @@ class NameServerConfigDiffServiceTest {
         }
         return properties;
     }
+    @Test
+    void compareForInstanceUsesOnlyRegisteredEndpointsAndRuntimeCredentials() throws Exception {
+        when(runtimeAdminClientResolver.resolveEndpoint("prod-apache")).thenReturn("selected-ns:9876");
+        when(runtimeAdminClientResolver.execute(eq("prod-apache"), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
+            return action.apply(admin);
+        });
+        when(admin.getNameServerConfig(List.of("selected-ns:9876")))
+                .thenReturn(Map.of("selected-ns:9876", properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compareForInstance("prod-apache");
+
+        assertThat(result.getCluster()).isEqualTo("prod-apache");
+        assertThat(result.isComplete()).isTrue();
+        assertThat(result.getNodes()).extracting(NameServerConfigDiffVO.NodeStatusVO::getAddress)
+                .containsExactly("selected-ns:9876");
+        verifyNoInteractions(clusterService, adminFactory);
+    }
+
 }

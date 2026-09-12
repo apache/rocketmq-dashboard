@@ -1,0 +1,870 @@
+version: 2.0.0
+tools:
+  - name: rmq.group.list
+    cli:
+      resource: group
+      verb: list
+    description: List RocketMQ consumer groups in one Studio cluster.
+    riskLevel: L1
+    permission: group:read
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        search:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - onlineInstances
+              - totalLag
+              - subscribedTopics
+              - retryMaxTimes
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                minLength: 1
+              namespace:
+                type: string
+              clusterId:
+                type: string
+              subscriptionMode:
+                enum:
+                  - Push
+                  - Pop
+              consumeType:
+                enum:
+                  - CLUSTERING
+                  - BROADCASTING
+              onlineInstances:
+                type: integer
+              totalLag:
+                type: integer
+              subscribedTopics:
+                type: array
+                items:
+                  type: string
+              retryMaxTimes:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.group.describe
+    cli:
+      resource: group
+      verb: describe
+    description: Describe one RocketMQ consumer group, including subscription summary and health.
+    riskLevel: L1
+    permission: group:read
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        namespace:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+      - cluster
+      - group
+      - onlineInstances
+      - totalLag
+      - subscribedTopics
+      - subscriptions
+      - delaySeconds
+      - health
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        namespace:
+          type: string
+        instanceId:
+          type: string
+        subscriptionMode:
+          enum:
+          - Push
+          - Pop
+        consumeType:
+          enum:
+          - CLUSTERING
+          - BROADCASTING
+        onlineInstances:
+          type: integer
+          minimum: 0
+        totalLag:
+          type: integer
+          minimum: -1
+        subscribedTopics:
+          type: array
+          items:
+            type: string
+        subscriptionDataType:
+          type: string
+        deliveryOrderType:
+          type: string
+        retryMaxTimes:
+          type: integer
+          minimum: 0
+        delaySeconds:
+          type: integer
+          minimum: 0
+        subscriptions:
+          type: array
+          items:
+            type: object
+            required:
+            - topic
+            additionalProperties: false
+            properties:
+              topic:
+                type: string
+                minLength: 1
+              expression:
+                type: string
+              type:
+                type: string
+              filterMode:
+                type: string
+              consistency:
+                type: string
+        instances:
+          type: array
+          items:
+            type: object
+            required:
+            - protocol
+            - subscribedTopics
+            - topicLag
+            additionalProperties: false
+            properties:
+              clientId:
+                type: string
+              protocol:
+                enum:
+                - gRPC
+                - Remoting
+                - UNKNOWN
+              address:
+                type: string
+              subscribedTopics:
+                type: array
+                items:
+                  type: string
+              lastHeartbeat:
+                type: string
+              topicLag:
+                type: object
+                additionalProperties:
+                  type: integer
+        health:
+          type: object
+          required:
+          - status
+          - reasons
+          additionalProperties: false
+          properties:
+            status:
+              enum:
+              - HEALTHY
+              - WARNING
+              - UNHEALTHY
+              - UNKNOWN
+            reasons:
+              type: array
+              items:
+                type: string
+        configurations:
+          type: array
+          items:
+            type: object
+            required:
+            - name
+            - onlineInstances
+            - totalLag
+            - subscribedTopics
+            - retryMaxTimes
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                minLength: 1
+              namespace:
+                type: string
+              clusterId:
+                type: string
+              subscriptionMode:
+                enum:
+                - Push
+                - Pop
+              consumeType:
+                enum:
+                - CLUSTERING
+                - BROADCASTING
+              onlineInstances:
+                type: integer
+              totalLag:
+                type: integer
+              subscribedTopics:
+                type: array
+                items:
+                  type: string
+              retryMaxTimes:
+                type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.group.consume_progress
+    cli:
+      resource: group
+      verb: consume-progress
+    description: Get queue-level consume progress and backlog for one RocketMQ consumer group, optionally filtered by topic.
+    riskLevel: L1
+    permission: group:read
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+        - totalLag
+        - queues
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        group:
+          type: string
+        topic:
+          type: string
+        totalLag:
+          type: integer
+          minimum: -1
+        queues:
+          type: array
+          items:
+            type: object
+            required:
+              - broker
+              - queueId
+              - brokerOffset
+              - consumerOffset
+              - lag
+            additionalProperties: false
+            properties:
+              broker:
+                type: string
+              queueId:
+                type: integer
+                minimum: 0
+              brokerOffset:
+                type: integer
+                minimum: -1
+              consumerOffset:
+                type: integer
+                minimum: -1
+              lag:
+                type: integer
+                minimum: -1
+    viewHint: table
+    deprecated: false
+  - name: rmq.group.clients
+    cli:
+      resource: group
+      verb: clients
+    description: List online consumer clients for one RocketMQ consumer group.
+    riskLevel: L1
+    permission: group:read
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+        - totalClients
+        - clients
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        group:
+          type: string
+        topic:
+          type: string
+        totalClients:
+          type: integer
+          minimum: 0
+        clients:
+          type: array
+          items:
+            type: object
+            required:
+              - protocol
+              - subscribedTopics
+              - topicLag
+            additionalProperties: false
+            properties:
+              clientId:
+                type: string
+              protocol:
+                enum:
+                  - gRPC
+                  - Remoting
+                  - UNKNOWN
+              address:
+                type: string
+              language:
+                type: string
+              version:
+                type: string
+              active:
+                type: boolean
+              subscribedTopics:
+                type: array
+                items:
+                  type: string
+              lastHeartbeat:
+                type: string
+              topicLag:
+                type: object
+                additionalProperties:
+                  type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.group.create
+    cli:
+      resource: group
+      verb: create
+    description: Create a RocketMQ consumer group.
+    riskLevel: L2
+    permission: group:write
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        namespace:
+          type: string
+          minLength: 1
+        subscriptionMode:
+          enum:
+            - Push
+            - Pop
+        consumeType:
+          enum:
+            - CLUSTERING
+            - BROADCASTING
+        subscriptionDataType:
+          type: string
+          minLength: 1
+        deliveryOrderType:
+          type: string
+          minLength: 1
+        retryMaxTimes:
+          type: integer
+          minimum: 0
+        delaySeconds:
+          type: integer
+          minimum: 0
+        confirm_token:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false
+  - name: rmq.group.update
+    cli:
+      resource: group
+      verb: update
+    description: Update a RocketMQ consumer group.
+    riskLevel: L2
+    permission: group:write
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      anyOf:
+        - required:
+            - namespace
+        - required:
+            - subscriptionMode
+        - required:
+            - consumeType
+        - required:
+            - subscriptionDataType
+        - required:
+            - deliveryOrderType
+        - required:
+            - retryMaxTimes
+        - required:
+            - delaySeconds
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        namespace:
+          type: string
+          minLength: 1
+        subscriptionMode:
+          enum:
+            - Push
+            - Pop
+        consumeType:
+          enum:
+            - CLUSTERING
+            - BROADCASTING
+        subscriptionDataType:
+          type: string
+          minLength: 1
+        deliveryOrderType:
+          type: string
+          minLength: 1
+        retryMaxTimes:
+          type: integer
+          minimum: 0
+        delaySeconds:
+          type: integer
+          minimum: 0
+        confirm_token:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false
+  - name: rmq.group.delete
+    cli:
+      resource: group
+      verb: delete
+    description: Delete a RocketMQ consumer group.
+    riskLevel: L3
+    permission: group:delete
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false
+  - name: rmq.group.reset_offset
+    cli:
+      resource: group
+      verb: reset-offset
+    description: Reset consumer offset for a group on a topic to a timestamp.
+    riskLevel: L2
+    permission: group:write
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+        - topic
+        - timestamp
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+          minLength: 1
+        timestamp:
+          type: integer
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - reset
+            - group
+            - topic
+            - timestamp
+          additionalProperties: false
+          properties:
+            reset:
+              type: boolean
+            group:
+              type: string
+            topic:
+              type: string
+            timestamp:
+              type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.group.skip_accumulated
+    cli:
+      resource: group
+      verb: skip-accumulated
+    description: "Skip accumulated messages by moving the actual consumer queues to their ends recorded in preview."
+    riskLevel: L2
+    permission: group:write
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - skipped
+            - group
+            - topics
+          additionalProperties: false
+          properties:
+            skipped:
+              type: boolean
+            group:
+              type: string
+            topics:
+              type: array
+              items:
+                type: string
+    viewHint: object
+    deprecated: false

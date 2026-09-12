@@ -25,10 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,14 +41,13 @@ class AiServiceTest {
     @Mock
     private LlmGateway llmGateway;
 
-    @Mock
-    private McpServerRegistry mcpServerRegistry;
-
     private AiService aiService;
 
     @BeforeEach
     void setUp() {
-        aiService = new AiService(llmGateway, mcpServerRegistry, new ObjectMapper());
+        aiService = new AiService(
+                llmGateway,
+                new ObjectMapper());
     }
 
     @Test
@@ -147,72 +143,6 @@ class AiServiceTest {
     }
 
     @Test
-    void listToolsShouldReturnAllTools() {
-        AiToolVO tool1 = AiToolVO.builder().name("list_topics").description("List all topics").build();
-        AiToolVO tool2 = AiToolVO.builder().name("query_metrics").description("Query cluster metrics").build();
-        AiToolVO tool3 = AiToolVO.builder().name("send_message").description("Send a test message").build();
-        when(mcpServerRegistry.listTools()).thenReturn(Arrays.asList(tool1, tool2, tool3));
-
-        List<AiToolVO> result = aiService.listTools();
-
-        assertThat(result).hasSize(3);
-        assertThat(result.get(0).getName()).isEqualTo("list_topics");
-        assertThat(result.get(0).getDescription()).isEqualTo("List all topics");
-        assertThat(result.get(1).getName()).isEqualTo("query_metrics");
-        assertThat(result.get(2).getName()).isEqualTo("send_message");
-    }
-
-    @Test
-    void listToolsShouldReturnEmptyListWhenNoTools() {
-        when(mcpServerRegistry.listTools()).thenReturn(Collections.emptyList());
-
-        List<AiToolVO> result = aiService.listTools();
-
-        assertThat(result).isEmpty();
-    }
-
-    @Test
-    void listToolsShouldIncludeParameters() {
-        Map<String, Object> params = new HashMap<>();
-        params.put("clusterId", "string");
-        params.put("limit", "integer");
-        AiToolVO tool = AiToolVO.builder()
-                .name("list_topics")
-                .description("List all topics")
-                .parameters(params)
-                .build();
-        when(mcpServerRegistry.listTools()).thenReturn(List.of(tool));
-
-        List<AiToolVO> result = aiService.listTools();
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getParameters()).isNotNull();
-        assertThat(result.get(0).getParameters()).isInstanceOf(Map.class);
-    }
-
-    @Test
-    void listToolsForClusterDelegatesClusterSelection() {
-        when(mcpServerRegistry.listTools("cluster-001")).thenReturn(Collections.emptyList());
-
-        List<AiToolVO> result = aiService.listTools("cluster-001");
-
-        assertThat(result).isEmpty();
-        verify(mcpServerRegistry).listTools("cluster-001");
-    }
-
-    @Test
-    void executeToolDelegatesStructuredInput() {
-        Map<String, Object> input = Map.of("cluster", "cluster-001");
-        Map<String, Object> output = Map.of("cluster", "cluster-001");
-        when(mcpServerRegistry.execute("rmq.capabilities", input)).thenReturn(output);
-
-        Object result = aiService.executeTool("rmq.capabilities", input);
-
-        assertThat(result).isSameAs(output);
-        verify(mcpServerRegistry).execute("rmq.capabilities", input);
-    }
-
-    @Test
     void chatRejectsNullRequest() {
         assertThatThrownBy(() -> aiService.chat(null))
                 .isInstanceOf(BusinessException.class)
@@ -244,17 +174,6 @@ class AiServiceTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getResult()).contains("Command context must not exceed");
         verifyNoInteractions(llmGateway);
-    }
-
-    @Test
-    void executeToolRejectsOversizedInputBeforeCallingRegistry() {
-        Map<String, Object> input = Map.of(
-                "payload", "x".repeat(AiPayloadGuard.MAX_TOOL_INPUT_BYTES));
-
-        assertThatThrownBy(() -> aiService.executeTool("rmq.capabilities", input))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Tool input must not exceed");
-        verifyNoInteractions(mcpServerRegistry);
     }
 
     @Test

@@ -1,0 +1,371 @@
+version: 2.0.0
+tools:
+  - name: rmq.message.trace
+    cli:
+      resource: message
+      verb: trace
+    description: Return the message trace timeline for one message id.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities:
+      - MESSAGE_TRACE
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - msgId
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        msgId:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+    outputSchema:
+      type: object
+      required:
+        - msgId
+        - nodes
+      additionalProperties: false
+      properties:
+        msgId:
+          type: string
+        nodes:
+          type: array
+          items:
+            type: object
+            required:
+              - title
+            additionalProperties: false
+            properties:
+              title:
+                type: string
+              timestamp:
+                type: integer
+              status:
+                type: string
+              costTime:
+                type: integer
+              description:
+                type: string
+        consumerStatus:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              group:
+                type: string
+              deliveryStatus:
+                type: string
+              consumeTime:
+                type: integer
+              retryCount:
+                type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.message.query_by_id
+    cli:
+      resource: message
+      verb: query-by-id
+    description: Query a single RocketMQ message by its message id within a topic.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities:
+      - MESSAGE_QUERY
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - msgId
+        - topic
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        msgId:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - msgId
+              - topic
+              - storeTime
+              - bodyTruncated
+              - size
+            additionalProperties: false
+            properties:
+              msgId:
+                type: string
+              topic:
+                type: string
+              tag:
+                type: string
+              key:
+                type: string
+              storeTime:
+                type: integer
+              storeHost:
+                type: string
+              bornHost:
+                type: string
+              body:
+                type: string
+              bodyEncoding:
+                type: string
+              bodyTruncated:
+                type: boolean
+              size:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.message.query_by_key
+    cli:
+      resource: message
+      verb: query-by-key
+    description: Query RocketMQ messages by business key within a topic.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities:
+      - MESSAGE_QUERY
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - key
+        - topic
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        key:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+          minLength: 1
+        startTime:
+          type: integer
+        endTime:
+          type: integer
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - msgId
+              - topic
+              - storeTime
+              - bodyTruncated
+              - size
+            additionalProperties: false
+            properties:
+              msgId:
+                type: string
+              topic:
+                type: string
+              tag:
+                type: string
+              key:
+                type: string
+              storeTime:
+                type: integer
+              storeHost:
+                type: string
+              bornHost:
+                type: string
+              body:
+                type: string
+              bodyEncoding:
+                type: string
+              bodyTruncated:
+                type: boolean
+              size:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.message.query_by_topic
+    cli:
+      resource: message
+      verb: query-by-topic
+    description: Query RocketMQ messages by topic and optional time range in one cluster.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities:
+      - MESSAGE_QUERY
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - topic
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        topic:
+          type: string
+          minLength: 1
+        tag:
+          type: string
+        startTime:
+          type: integer
+        endTime:
+          type: integer
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - msgId
+              - topic
+              - storeTime
+              - bodyTruncated
+              - size
+            additionalProperties: false
+            properties:
+              msgId:
+                type: string
+              topic:
+                type: string
+              tag:
+                type: string
+              key:
+                type: string
+              storeTime:
+                type: integer
+              storeHost:
+                type: string
+              bornHost:
+                type: string
+              body:
+                type: string
+              bodyEncoding:
+                type: string
+              bodyTruncated:
+                type: boolean
+              size:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.message.resend
+    cli:
+      resource: message
+      verb: resend
+    description: Republish an existing message to its original topic or a selected target topic.
+    riskLevel: L2
+    permission: message:write
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - msgId
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        msgId:
+          type: string
+          minLength: 1
+        sourceTopic:
+          type: string
+          minLength: 1
+        targetTopic:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - resent
+            - originalMsgId
+            - targetTopic
+          additionalProperties: false
+          properties:
+            resent:
+              type: boolean
+            originalMsgId:
+              type: string
+            newMsgId:
+              type: string
+            targetTopic:
+              type: string
+    viewHint: object
+    deprecated: false
