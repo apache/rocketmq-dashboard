@@ -60,6 +60,9 @@ import {
   SlidersHorizontal,
 } from '@phosphor-icons/react';
 import { ImportOutlined, ExportOutlined, DeleteOutlined, SyncOutlined } from '@ant-design/icons';
+import QueueOffsetDialog from '../../components/QueueOffsetDialog';
+import type { QueueOffsetTarget } from '../../api/queueOffset';
+import { isMockMode } from '../../services/dataMode';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -271,6 +274,7 @@ const ConsumerPageContent = ({
   const [modeFilter, setModeFilter] = useState<string>('ALL');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
+  const [queueOffsetTarget, setQueueOffsetTarget] = useState<QueueOffsetTarget | null>(null);
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
@@ -1227,6 +1231,36 @@ const ConsumerPageContent = ({
      Modal: Queue Progress Tab
      ═══════════════════════════════════════════ */
   const queueColumns: ColumnsType<QueueProgress> = [
+    {
+      title: 'Offset action',
+      key: 'offsetAction',
+      width: 140,
+      render: (_, queue) => (
+        <Button
+          size="small"
+          disabled={
+            isCloudInstance ||
+            isMockMode() ||
+            !selectedInstanceId ||
+            selectedGroup?.subscriptionMode?.toUpperCase() === 'POP' ||
+            selectedGroup?.consumeType?.toUpperCase() === 'BROADCASTING'
+          }
+          onClick={() =>
+            selectedInstanceId &&
+            selectedGroup &&
+            setQueueOffsetTarget({
+              instanceId: selectedInstanceId,
+              group: selectedGroup.name,
+              topic: queue.topic,
+              brokerName: queue.broker,
+              queueId: queue.queueId,
+            })
+          }
+        >
+          Set offset
+        </Button>
+      ),
+    },
     {
       title: 'Topic 主题',
       dataIndex: 'topic',
@@ -2391,6 +2425,15 @@ const ConsumerPageContent = ({
           )}
         </Form>
       </Modal>
+
+      {queueOffsetTarget && (
+        <QueueOffsetDialog
+          key={JSON.stringify(queueOffsetTarget)}
+          target={queueOffsetTarget}
+          onClose={() => setQueueOffsetTarget(null)}
+          onApplied={() => void loadProgress(queueOffsetTarget.group, true)}
+        />
+      )}
 
       {/* ═══════════════════════════════════════════
          Import Group Modal
