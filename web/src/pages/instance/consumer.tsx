@@ -65,6 +65,8 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
+import { ConsumerOffsetCopyDialog } from '../../components/ConsumerOffsetCopyDialog';
+import { isMockMode } from '../../services/dataMode';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
@@ -271,6 +273,7 @@ const ConsumerPageContent = ({
   const [modeFilter, setModeFilter] = useState<string>('ALL');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
+  const [copyTarget, setCopyTarget] = useState<{ topic: string; sourceGroup: string }>();
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
@@ -1227,6 +1230,26 @@ const ConsumerPageContent = ({
      Modal: Queue Progress Tab
      ═══════════════════════════════════════════ */
   const queueColumns: ColumnsType<QueueProgress> = [
+    ...(!isCloudInstance && selectedInstance && !isMockMode()
+      ? [
+          {
+            title: 'Offset migration',
+            key: 'offset-copy',
+            width: 150,
+            render: (_: unknown, row: QueueProgress) => (
+              <Button
+                size="small"
+                onClick={() => {
+                  if (selectedGroupName)
+                    setCopyTarget({ topic: row.topic, sourceGroup: selectedGroupName });
+                }}
+              >
+                Copy topic offsets
+              </Button>
+            ),
+          },
+        ]
+      : []),
     {
       title: 'Topic 主题',
       dataIndex: 'topic',
@@ -1412,6 +1435,14 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
+      {copyTarget && selectedInstanceId && (
+        <ConsumerOffsetCopyDialog
+          key={`${selectedInstanceId}/${copyTarget.sourceGroup}/${copyTarget.topic}`}
+          instanceId={selectedInstanceId}
+          {...copyTarget}
+          onClose={() => setCopyTarget(undefined)}
+        />
+      )}
       {/* ─── Header ─── */}
       <PageHeader
         title={t('group.title')}
