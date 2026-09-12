@@ -30,6 +30,13 @@ import java.time.format.DateTimeFormatter;
 @Data
 public class DLQMessageExcelRow {
 
+    /**
+     * POI rejects any cell whose text exceeds this many characters, so one oversized dead-letter
+     * body would otherwise abort the whole export with a 502.
+     */
+    private static final int MAX_EXCEL_CELL_CHARS = 32_767;
+    private static final String TRUNCATION_SUFFIX = "...[truncated]";
+
     private static final DateTimeFormatter STORE_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -60,7 +67,19 @@ public class DLQMessageExcelRow {
                 Instant.ofEpochMilli(vo.getStoreTime()), ZoneId.systemDefault()).format(STORE_TIME_FORMAT));
         row.setReconsumeTimes(vo.getReconsumeTimes());
         row.setKeys(vo.getKeys());
-        row.setBody(vo.getBody());
+        row.setBody(abbreviateBody(vo.getBody()));
         return row;
+    }
+
+    private static String abbreviateBody(String body) {
+        if (body == null || body.length() <= MAX_EXCEL_CELL_CHARS) {
+            return body;
+        }
+        int keep = MAX_EXCEL_CELL_CHARS - TRUNCATION_SUFFIX.length();
+        // Back off onto a code-point boundary so the cut never splits a surrogate pair.
+        if (Character.isHighSurrogate(body.charAt(keep - 1))) {
+            keep--;
+        }
+        return body.substring(0, keep) + TRUNCATION_SUFFIX;
     }
 }
