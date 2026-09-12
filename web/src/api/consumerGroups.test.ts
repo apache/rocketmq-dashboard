@@ -40,6 +40,7 @@ const group = {
   consumeType: 'CLUSTERING',
   onlineInstances: 1,
   totalLag: 0,
+  consumeTps: 0,
   subscribedTopics: ['orders'],
   subscriptionDataType: 'NORMAL',
   retryMaxTimes: 16,

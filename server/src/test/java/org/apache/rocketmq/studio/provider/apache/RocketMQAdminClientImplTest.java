@@ -236,6 +236,25 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void getConsumerGroupSurfacesConsumeTpsFromConsumeStatsTest() throws Exception {
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        connection.setConnectionSet(new java.util.HashSet<>());
+        when(adminExt.examineConsumerConnectionInfo("orders")).thenReturn(connection);
+
+        org.apache.rocketmq.remoting.protocol.admin.ConsumeStats stats =
+                new org.apache.rocketmq.remoting.protocol.admin.ConsumeStats();
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-a", 0), offsetWrapper(100L, 60L));
+        stats.setConsumeTps(123.5);
+        when(adminExt.examineConsumeStats("orders")).thenReturn(stats);
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.isConsumeStatsAvailable()).isTrue();
+        assertThat(group.getConsumeTps()).isEqualTo(123.5);
+    }
+
+    @Test
     void getConsumerGroupReportsUnknownTotalLagWhenAnyQueueOffsetIsUnknownTest() throws Exception {
         org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
                 new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();

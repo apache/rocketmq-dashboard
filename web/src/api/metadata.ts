@@ -101,6 +101,7 @@ export interface ConsumerGroup {
   consumeType: string;
   onlineInstances: number;
   totalLag: number;
+  consumeTps: number;
   subscribedTopics: string[];
   subscriptionDataType: string;
   deliveryOrderType?: string;

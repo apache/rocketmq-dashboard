@@ -173,6 +173,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 return;
             }
             vo.setConsumeStatsAvailable(true);
+            vo.setConsumeTps(stats.getConsumeTps());
             if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }

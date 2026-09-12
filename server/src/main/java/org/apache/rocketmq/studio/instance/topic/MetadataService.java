@@ -450,12 +450,13 @@ public class MetadataService {
     private String buildConsumerGroupCsv(List<ConsumerGroupVO> groups) {
         StringBuilder csv = new StringBuilder();
         CsvUtil.appendRow(csv, "Name", "Namespace", "Cluster ID", "Subscription Mode", "Consume Type",
-                "Online Instances", "Total Lag", "Delay Seconds", "Subscription Data Type",
+                "Online Instances", "Total Lag", "Consume TPS", "Delay Seconds", "Subscription Data Type",
                 "Delivery Order Type", "Retry Max Times", "Subscribed Topics", "Created At", "Updated At");
         for (ConsumerGroupVO group : groups) {
             CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
                     toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
-                    group.getOnlineInstances(), lagText(group.getTotalLag()), group.getDelaySeconds(),
+                    group.getOnlineInstances(), lagText(group.getTotalLag()), group.getConsumeTps(),
+                    group.getDelaySeconds(),
                     group.getSubscriptionDataType(), group.getDeliveryOrderType(), group.getRetryMaxTimes(),
                     String.join(";", group.getSubscribedTopics() == null ? List.of() : group.getSubscribedTopics()),
                     group.getGmtCreate(), group.getGmtModified());

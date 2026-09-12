@@ -28,6 +28,7 @@ const group = (overrides: Partial<ConsumerGroup> = {}): ConsumerGroup => ({
   consumeType: 'CLUSTERING',
   onlineInstances: 1,
   totalLag: 12,
+  consumeTps: 0,
   subscribedTopics: ['orders'],
   subscriptionDataType: 'NORMAL',
   retryMaxTimes: 16,
@@ -94,6 +95,7 @@ describe('consumer group diagnostics', () => {
       group({
         onlineInstances: 0,
         totalLag: 2_400,
+        consumeTps: 0,
         delaySeconds: 1_900,
         instances: [],
       }),
@@ -125,6 +127,7 @@ describe('consumer group diagnostics', () => {
     const diagnostics = analyzeConsumerGroupHealth(
       group({
         totalLag: -1,
+        consumeTps: 0,
         delaySeconds: 360,
         instances: [
           {

@@ -576,6 +576,18 @@ class MetadataServiceTest {
     }
 
     @Test
+    void exportConsumerGroupsShouldIncludeConsumeTpsColumn() {
+        ConsumerGroupVO group = consumerGroup("orders-cg", "orders", 40, SubscriptionMode.Pop);
+        group.setConsumeTps(123.5);
+        when(apacheProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
+
+        String csv = metadataService.exportConsumerGroups("instance-a", null, null, List.of());
+
+        assertThat(csv).contains("\"Consume TPS\"");
+        assertThat(csv).contains("\"orders-cg\",\"orders\",\"cluster-a\",\"Pop\",\"CLUSTERING\",\"1\",\"40\",\"123.5\"");
+    }
+
+    @Test
     void importConsumerGroupsShouldContinueAfterRowFailure() {
         when(apacheProvider.createConsumerGroup(eq("instance-a"), any(ConsumerGroupVO.class)))
                 .thenAnswer(invocation -> {
