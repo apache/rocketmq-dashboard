@@ -150,6 +150,30 @@ class ApacheRocketMqBusinessMetricsCollectorTest {
                 });
     }
 
+    @Test
+    void reportsUnavailableQueueLagWhenProgressCarriesSentinelTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO orders = group("orders", "cluster-a", ConsumerLagResolver.UNKNOWN);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(orders));
+        // resolveDiff passes the -1 unknown sentinel through into QueueProgressVO.diffTotal
+        // (RocketMQ 5.0 gRPC consumers), so progress can legitimately carry it.
+        when(provider.getGroupProgress("local", "orders")).thenReturn(List.of(QueueProgressVO.builder()
+                .topic("orders-topic").diffTotal(ConsumerLagResolver.UNKNOWN).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqBusinessMetricsCollector(registry).collect(apacheInstance());
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.CONSUMER_LAG_MAX_QUEUE)
+                || sample.metricKey().equals(ApacheRocketMqBusinessMetricsCollector.TOPIC_BACKLOG_TOTAL))
+                .hasSize(2).allSatisfy(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_LAG_UNKNOWN");
+                });
+    }
+
     private static ConsumerGroupVO group(String name, String clusterId, long lag) {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName(name);
