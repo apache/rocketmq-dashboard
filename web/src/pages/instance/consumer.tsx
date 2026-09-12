@@ -95,6 +95,8 @@ import {
   updateConsumerGroupSettings,
 } from '../../services/consumerService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import { isMockMode } from '../../services/dataMode';
+import { ConsumerTimeSpanDialog } from '../../components/ConsumerTimeSpanDialog';
 import {
   parseCsvTable,
   RESOURCE_NAME_MAX_LENGTH,
@@ -270,6 +272,9 @@ const ConsumerPageContent = ({
   const [pageSize, setPageSize] = useState(20);
   const [modeFilter, setModeFilter] = useState<string>('ALL');
   const [modalOpen, setModalOpen] = useState(false);
+  const [timeSpanTarget, setTimeSpanTarget] = useState<{ topic: string; group: string } | null>(
+    null,
+  );
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -1227,6 +1232,26 @@ const ConsumerPageContent = ({
      Modal: Queue Progress Tab
      ═══════════════════════════════════════════ */
   const queueColumns: ColumnsType<QueueProgress> = [
+    ...(!isCloudInstance && selectedInstance && !isMockMode()
+      ? [
+          {
+            title: 'Time span',
+            key: 'timeSpan',
+            width: 130,
+            render: (_: unknown, row: QueueProgress) => (
+              <Button
+                size="small"
+                onClick={() => {
+                  if (selectedGroupName)
+                    setTimeSpanTarget({ topic: row.topic, group: selectedGroupName });
+                }}
+              >
+                Inspect times
+              </Button>
+            ),
+          },
+        ]
+      : []),
     {
       title: 'Topic 主题',
       dataIndex: 'topic',
@@ -1588,6 +1613,14 @@ const ConsumerPageContent = ({
       {/* ═══════════════════════════════════════════
          Detail Modal
          ═══════════════════════════════════════════ */}
+      {timeSpanTarget && selectedInstanceId && (
+        <ConsumerTimeSpanDialog
+          key={timeSpanTarget.group + ':' + timeSpanTarget.topic}
+          instanceId={selectedInstanceId}
+          {...timeSpanTarget}
+          onClose={() => setTimeSpanTarget(null)}
+        />
+      )}
       <Modal
         title={
           selectedGroup ? (
