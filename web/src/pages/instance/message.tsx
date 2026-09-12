@@ -51,6 +51,9 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import TransactionRecoveryDialog from '../../components/TransactionRecoveryDialog';
+import { supportsApacheRuntime } from '../../api/instance';
+import { isMockMode } from '../../services/dataMode';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
 import {
@@ -316,13 +319,15 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
    MessagePage
    ═══════════════════════════════════════════ */
 type InstanceFilterProps = {
+  canRecoverTransactions: boolean;
   selectedInstanceId: string | undefined;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
 };
 
 const MessagePage = () => {
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
+    useInstanceFilter();
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
@@ -330,6 +335,9 @@ const MessagePage = () => {
     <MessagePageContent
       key={selectedInstanceId || 'no-instance'}
       selectedInstanceId={selectedInstanceId}
+      canRecoverTransactions={
+        !!selectedInstance && supportsApacheRuntime(selectedInstance) && !isMockMode()
+      }
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
     />
@@ -340,6 +348,7 @@ const MessagePage = () => {
    MessagePageContent
    ═══════════════════════════════════════════ */
 const MessagePageContent = ({
+  canRecoverTransactions,
   selectedInstanceId,
   selectInstance,
   instanceOptions,
@@ -392,6 +401,8 @@ const MessagePageContent = ({
   const [resultMayBeTruncated, setResultMayBeTruncated] = useState(false);
   const [queryLoading, setQueryLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryId, setRecoveryId] = useState('');
   const [modalTab, setModalTab] = useState('content');
   const [selectedMsg, setSelectedMsg] = useState<MessageRecord | null>(null);
   const [traceData, setTraceData] = useState<TraceRecord | null>(null);
@@ -882,6 +893,26 @@ const MessagePageContent = ({
                 {selectedMsg.msgId}
               </Paragraph>
             </Descriptions.Item>
+            {selectedMsg.offsetMsgId && (
+              <Descriptions.Item label="Physical offset ID" span={2}>
+                <Space direction="vertical">
+                  <Paragraph copyable style={{ marginBottom: 0, fontFamily: 'monospace' }}>
+                    {selectedMsg.offsetMsgId}
+                  </Paragraph>
+                  {selectedMsg.topic === 'TRANS_CHECK_MAX_TIME_TOPIC' && canRecoverTransactions && (
+                    <Button
+                      onClick={() => {
+                        setRecoveryId(selectedMsg.offsetMsgId!);
+                        setModalOpen(false);
+                        setRecoveryOpen(true);
+                      }}
+                    >
+                      Recover this transaction
+                    </Button>
+                  )}
+                </Space>
+              </Descriptions.Item>
+            )}
             <Descriptions.Item label="Topic">
               <Tag color={TOPIC_TAG_COLORS[selectedMsg.topic] || 'default'}>
                 {selectedMsg.topic}
@@ -1018,7 +1049,28 @@ const MessagePageContent = ({
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('message.title')} subtitle="按 Topic、Key 或 Message ID 检索消息" />
+      <PageHeader
+        title={t('message.title')}
+        subtitle="按 Topic、Key 或 Message ID 检索消息"
+        extra={
+          <Button
+            disabled={!canRecoverTransactions}
+            onClick={() => {
+              setRecoveryId('');
+              setRecoveryOpen(true);
+            }}
+          >
+            Recover transaction checks
+          </Button>
+        }
+      />
+      {recoveryOpen && selectedInstanceId && (
+        <TransactionRecoveryDialog
+          instanceId={selectedInstanceId}
+          initialId={recoveryId}
+          onClose={() => setRecoveryOpen(false)}
+        />
+      )}
 
       {/* ── Query Form ── */}
       <Card style={{ marginBottom: 16 }}>

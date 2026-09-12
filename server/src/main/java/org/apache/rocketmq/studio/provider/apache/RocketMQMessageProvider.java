@@ -704,6 +704,8 @@ public class RocketMQMessageProvider implements MessageProvider {
         Map<String, String> displayProperties = MessagePropertyDisplay.limitProperties(properties);
         return MessageRecordVO.builder()
                 .msgId(messageExt.getMsgId())
+                .offsetMsgId(messageExt instanceof org.apache.rocketmq.common.message.MessageClientExt client
+                        ? client.getOffsetMsgId() : messageExt.getMsgId())
                 .topic(messageExt.getTopic())
                 .tag(messageExt.getTags())
                 .key(messageExt.getKeys())

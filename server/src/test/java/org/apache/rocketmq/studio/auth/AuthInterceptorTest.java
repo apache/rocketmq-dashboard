@@ -603,6 +603,25 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
     }
 
+    @Test
+    void transactionRecoveryAndPreviewRequireAdmin() throws Exception {
+        TestSession session = login(false);
+        for (String path : List.of("/api/messages/transaction-recovery", "/api/messages/transaction-recovery/preview")) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            assertThat(session.interceptor().preHandle(authenticatedRequest("POST", path, session.token()),
+                    response, new Object())).isFalse();
+            assertThat(response.getStatus()).isEqualTo(403);
+        }
+    }
+
+    @Test
+    void transactionRecoveryAllowsAuthenticatedAdmin() throws Exception {
+        TestSession session = login(true);
+        assertThat(session.interceptor().preHandle(authenticatedRequest("POST",
+                "/api/messages/transaction-recovery", session.token()),
+                new MockHttpServletResponse(), new Object())).isTrue();
+    }
+
     private TestSession login(boolean admin) {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
