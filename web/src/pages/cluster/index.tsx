@@ -49,6 +49,7 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
+import InfoBanner from '../../components/InfoBanner';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { countClusterComponents } from './clusterStats';
@@ -1277,6 +1278,7 @@ const ClusterPage = () => {
 
     return (
       <div>
+        <InfoBanner description={t('cluster.nsAddressHelp')} />
         <Flex justify="space-between" style={{ marginBottom: 16 }}>
           <Space>
             <Input.Search
@@ -1792,6 +1794,7 @@ const ClusterPage = () => {
           <Form.Item
             name="namesrvAddr"
             label={t('cluster.nsAddr')}
+            extra={t('cluster.nsAddrExtra')}
             rules={[{ required: true, message: t('cluster.nsAddr') }]}
           >
             <Input placeholder={t('cluster.nsAddrPlaceholder')} />

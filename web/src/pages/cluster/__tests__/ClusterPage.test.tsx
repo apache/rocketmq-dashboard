@@ -514,6 +514,26 @@ describe('Cluster page', () => {
     confirmSpy.mockRestore();
   });
 
+  it('explains the supported NameServer address formats in the registry form', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    expect(
+      await screen.findByText(
+        'Studio 会直接连接此地址。可填写 SLB 地址、Headless Service DNS，或用逗号分隔多个地址。',
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /新建 NameServer/ }));
+    const dialog = await screen.findByRole('dialog', { name: /新建 NameServer/ });
+    expect(within(dialog).getByLabelText('NameServer 地址')).toHaveAttribute(
+      'placeholder',
+      '例：slb.example.com:9876 或 rocketmq-nameserver.mq.svc.cluster.local:9876',
+    );
+    expect(within(dialog).getByText('多个地址请使用逗号分隔。')).toBeInTheDocument();
+  });
+
   it('opens NameServer config drift details from a registry row', async () => {
     const user = userEvent.setup();
     clusterServiceMocks.listRegistryClusters.mockResolvedValue([

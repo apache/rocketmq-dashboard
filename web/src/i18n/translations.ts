@@ -194,7 +194,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.upgrade': { zh: '升级', en: 'Upgrade' },
   'cluster.createCluster': { zh: '新建集群', en: 'New Cluster' },
   'cluster.nsAddr': { zh: 'NameServer 地址', en: 'NameServer Address' },
-  'cluster.nsAddrPlaceholder': { zh: '例：10.0.1.1:9876', en: 'e.g. 10.0.1.1:9876' },
+  'cluster.nsAddrPlaceholder': {
+    zh: '例：slb.example.com:9876 或 rocketmq-nameserver.mq.svc.cluster.local:9876',
+    en: 'e.g. slb.example.com:9876 or rocketmq-nameserver.mq.svc.cluster.local:9876',
+  },
+  'cluster.nsAddrExtra': {
+    zh: '多个地址请使用逗号分隔。',
+    en: 'Separate multiple addresses with commas.',
+  },
+  'cluster.nsAddressHelp': {
+    zh: 'Studio 会直接连接此地址。可填写 SLB 地址、Headless Service DNS，或用逗号分隔多个地址。',
+    en: 'Studio connects to this address directly. Enter an SLB address, a headless Service DNS name, or a comma-separated list of addresses.',
+  },
   'cluster.k8sNamespace': { zh: 'K8s Namespace', en: 'K8s Namespace' },
   'cluster.k8sId': { zh: 'k8s ID', en: 'k8s ID' },
   'clients.selectClusterPlaceholder': { zh: '选择 Broker 集群', en: 'Select Broker cluster' },
