@@ -69,6 +69,9 @@ import {
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import { supportsApacheRuntime } from '../../api/instance';
+import { isMockMode } from '../../services/dataMode';
+import { ConsumeQueueDialog, type ConsumeQueueTarget } from '../../components/ConsumeQueueDialog';
 import { downloadBlob } from '../../utils/download';
 import {
   readMessageTraceTopic,
@@ -316,13 +319,15 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
    MessagePage
    ═══════════════════════════════════════════ */
 type InstanceFilterProps = {
+  canInspectIndex: boolean;
   selectedInstanceId: string | undefined;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
 };
 
 const MessagePage = () => {
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
+    useInstanceFilter();
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
@@ -332,6 +337,9 @@ const MessagePage = () => {
       selectedInstanceId={selectedInstanceId}
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
+      canInspectIndex={
+        !!selectedInstance && supportsApacheRuntime(selectedInstance) && !isMockMode()
+      }
     />
   );
 };
@@ -340,6 +348,7 @@ const MessagePage = () => {
    MessagePageContent
    ═══════════════════════════════════════════ */
 const MessagePageContent = ({
+  canInspectIndex,
   selectedInstanceId,
   selectInstance,
   instanceOptions,
@@ -381,6 +390,7 @@ const MessagePageContent = ({
   }, [loadTopicOptions]);
   const [queryMode, setQueryMode] = useState<QueryMode>('topic');
   const queueBrowser = useQueueBrowser(selectedInstanceId);
+  const [indexTarget, setIndexTarget] = useState<ConsumeQueueTarget | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
   const [keyInput, setKeyInput] = useState('');
@@ -1149,7 +1159,30 @@ const MessagePageContent = ({
         </Space>
       </Card>
 
-      {queryMode === 'queue' && <QueueBrowserResults state={queueBrowser} />}
+      {queryMode === 'queue' && (
+        <QueueBrowserResults
+          state={queueBrowser}
+          onInspectIndex={
+            canInspectIndex
+              ? (queue) => {
+                  if (queueBrowser.topic)
+                    setIndexTarget({
+                      topic: queueBrowser.topic,
+                      brokerName: queue.brokerName,
+                      queueId: queue.queueId,
+                    });
+                }
+              : undefined
+          }
+        />
+      )}
+      {indexTarget && selectedInstanceId && canInspectIndex && (
+        <ConsumeQueueDialog
+          instanceId={selectedInstanceId}
+          target={indexTarget}
+          onClose={() => setIndexTarget(null)}
+        />
+      )}
 
       {topicError && (
         <Alert
