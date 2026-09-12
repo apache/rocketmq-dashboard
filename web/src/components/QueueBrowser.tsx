@@ -34,6 +34,7 @@ import {
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import type { MessageRecord, QueueOffset } from '../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../api/message';
+import QueueFilterPreview from './QueueFilterPreview';
 
 const { Text, Paragraph } = Typography;
 
@@ -61,6 +62,7 @@ export const useQueueBrowser = (instanceId?: string) => {
   const [offsets, setOffsets] = useState<Record<string, number>>({});
   const [pulling, setPulling] = useState<Set<string>>(() => new Set());
   const [entries, setEntries] = useState<PulledEntry[]>([]);
+  const [filterQueue, setFilterQueue] = useState<QueueOffset | null>(null);
   const requestSeqRef = useRef(0);
   const loadingRef = useRef(false);
   const pullingRef = useRef(new Set<string>());
@@ -72,6 +74,7 @@ export const useQueueBrowser = (instanceId?: string) => {
       setQueues([]);
       setOffsets({});
       setEntries([]);
+      setFilterQueue(null);
       loadingRef.current = false;
       setLoading(false);
       pullingRef.current.clear();
@@ -87,6 +90,7 @@ export const useQueueBrowser = (instanceId?: string) => {
     setQueues([]);
     setOffsets({});
     setEntries([]);
+    setFilterQueue(null);
     try {
       const result = await getQueueOffsets({ instanceId, topic });
       if (requestId !== requestSeqRef.current) return;
@@ -145,6 +149,9 @@ export const useQueueBrowser = (instanceId?: string) => {
   };
 
   return {
+    instanceId,
+    filterQueue,
+    setFilterQueue,
     topic,
     setTopic,
     queues,
@@ -280,14 +287,23 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                 render: (_: unknown, record: QueueOffset) => {
                   const key = `${record.brokerName}-${record.queueId}`;
                   return (
-                    <Button
-                      size="small"
-                      type="primary"
-                      loading={state.pulling.has(key)}
-                      onClick={() => void state.handlePull(record)}
-                    >
-                      查看
-                    </Button>
+                    <Space direction="vertical" size={4}>
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={state.pulling.has(key)}
+                        onClick={() => void state.handlePull(record)}
+                      >
+                        查看
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => state.setFilterQueue(record)}
+                        aria-label={`Preview filter on ${record.brokerName} queue ${record.queueId}`}
+                      >
+                        Filter
+                      </Button>
+                    </Space>
                   );
                 },
               },
@@ -391,6 +407,19 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
           )}
         </div>
       </Flex>
+    )}
+    {state.filterQueue && state.instanceId && state.topic && (
+      <QueueFilterPreview
+        key={`${state.instanceId}:${state.topic}:${state.filterQueue.brokerName}:${state.filterQueue.queueId}`}
+        instanceId={state.instanceId}
+        topic={state.topic}
+        queue={state.filterQueue}
+        initialOffset={
+          state.offsets[`${state.filterQueue.brokerName}-${state.filterQueue.queueId}`] ??
+          state.filterQueue.minOffset
+        }
+        onClose={() => state.setFilterQueue(null)}
+      />
     )}
   </Card>
 );

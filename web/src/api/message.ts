@@ -2,6 +2,9 @@ import client from './client';
 
 // Matches mock/messages.ts
 export interface MessageRecord {
+  bodyEncoding?: string;
+  bodyTruncated?: boolean;
+  propertiesTruncated?: boolean;
   msgId: string;
   topic: string;
   tag: string | null;
@@ -249,6 +252,36 @@ export interface QueueOffset {
   queueId: number;
   minOffset: number;
   maxOffset: number;
+}
+
+export interface QueueFilterPage {
+  items: MessageRecord[];
+  startOffset: number;
+  nextOffset: number;
+  minOffset: number;
+  maxOffset: number;
+  hasMore: boolean;
+  offsetAdjusted: boolean;
+  status: string;
+}
+
+export async function previewQueueFilter(
+  params: {
+    instanceId: string;
+    topic: string;
+    brokerName: string;
+    queueId: number;
+    offset: number;
+    expressionType: 'TAG' | 'SQL92';
+    expression: string;
+  },
+  signal?: AbortSignal,
+) {
+  const response = await client.get<{ data: QueueFilterPage }>('/messages/queue-filter-preview', {
+    params,
+    signal,
+  });
+  return response.data.data;
 }
 
 export async function getQueueOffsets(params: { instanceId: string; topic: string }) {

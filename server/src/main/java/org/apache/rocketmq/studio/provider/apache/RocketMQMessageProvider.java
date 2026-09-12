@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.consumer.MessageSelector;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -39,6 +40,8 @@ import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
+import org.apache.rocketmq.studio.instance.message.QueueFilterPreviewDTO;
+import org.apache.rocketmq.studio.instance.message.QueueFilterPageVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -245,6 +248,57 @@ public class RocketMQMessageProvider implements MessageProvider {
                 log.warn("pullMessageAtOffset(topic={}, broker={}, queue={}, offset={}) failed: {}",
                         topic, brokerName, queueId, offset, e.getMessage());
                 throw new BusinessException(502, "Failed to pull message at offset: " + e.getMessage());
+            }
+        });
+    }
+
+    @Override
+    public QueueFilterPageVO previewQueueFilter(QueueFilterPreviewDTO request) {
+        MessageSelector selector = "SQL92".equals(request.getExpressionType())
+                ? MessageSelector.bySql(request.getExpression()) : MessageSelector.byTag(request.getExpression());
+        return runtimeAdminClientResolver.executePullConsumer(request.getInstanceId(), consumer -> {
+            try {
+                MessageQueue queue = new MessageQueue(request.getTopic(), request.getBrokerName(), request.getQueueId());
+                Set<MessageQueue> readable = consumer.fetchSubscribeMessageQueues(request.getTopic());
+                if (readable == null || !readable.contains(queue)) {
+                    throw new BusinessException(404, "Queue is not present in the topic's readable route");
+                }
+                long min = consumer.minOffset(queue);
+                long max = consumer.maxOffset(queue);
+                if (min < 0 || max < min) {
+                    throw new BusinessException(502, "Broker returned unavailable queue bounds");
+                }
+                long start = clampOffset(request.getOffset(), min, max);
+                if (start == max) {
+                    return new QueueFilterPageVO(List.of(), start, max, min, max, false,
+                            start != request.getOffset(), PullStatus.NO_NEW_MSG.name());
+                }
+                // A preview never commits offsets or loops over an unbounded queue. The next
+                // cursor is useful even for NO_MATCHED_MSG, so callers can continue explicitly.
+                PullResult pull = consumer.pull(queue, selector, start, 20, 3000L);
+                if (pull == null || pull.getPullStatus() == null || pull.getMinOffset() < 0
+                        || pull.getMaxOffset() < pull.getMinOffset()) {
+                    throw new BusinessException(502, "Broker returned an invalid filter preview result");
+                }
+                long next = clampOffset(pull.getNextBeginOffset(), pull.getMinOffset(), pull.getMaxOffset());
+                PullStatus status = pull.getPullStatus();
+                if (next == start && status != PullStatus.NO_NEW_MSG
+                        || next < start && status != PullStatus.OFFSET_ILLEGAL) {
+                    throw new BusinessException(502, "Broker filter preview did not advance the queue position");
+                }
+                List<MessageRecordVO> items = status == PullStatus.FOUND && pull.getMsgFoundList() != null
+                        ? pull.getMsgFoundList().stream().map(message -> toRecordVO(message, request.getBrokerName())).toList()
+                        : List.of();
+                return new QueueFilterPageVO(items, start, next, pull.getMinOffset(), pull.getMaxOffset(),
+                        next < pull.getMaxOffset() && status != PullStatus.NO_NEW_MSG,
+                        start != request.getOffset() || status == PullStatus.OFFSET_ILLEGAL, status.name());
+            } catch (BusinessException exception) {
+                throw exception;
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new BusinessException(502, "Queue filter preview was interrupted");
+            } catch (Exception exception) {
+                throw new BusinessException(502, "Failed to preview queue filter: " + exception.getMessage());
             }
         });
     }
