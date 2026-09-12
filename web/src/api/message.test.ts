@@ -21,6 +21,7 @@ import client from './client';
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  locateQueueByTime,
   queryMessagePage,
   queryMessages,
 } from './message';
@@ -28,6 +29,22 @@ import {
 const mock = new MockAdapter(client);
 
 describe('message API', () => {
+  it('passes queue identity and epoch milliseconds to the time lookup endpoint', async () => {
+    const params = {
+      instanceId: 'instance-a',
+      topic: 'orders',
+      brokerName: 'broker-a',
+      queueId: 2,
+      timestamp: 0,
+    };
+    const position = { brokerName: 'broker-a', queueId: 2, minOffset: 0, maxOffset: 1, offset: 0 };
+    mock.onGet('/messages/queue-position').reply((config) => {
+      expect(config.params).toEqual(params);
+      return [200, { code: 200, data: position }];
+    });
+    await expect(locateQueueByTime(params)).resolves.toEqual(position);
+  });
+
   beforeEach(() => {
     mock.reset();
     vi.stubGlobal('localStorage', { getItem: vi.fn().mockReturnValue(null) });

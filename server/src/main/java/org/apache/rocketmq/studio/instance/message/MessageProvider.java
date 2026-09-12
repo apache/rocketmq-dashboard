@@ -34,6 +34,8 @@ public interface MessageProvider {
 
     List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic);
 
+    QueueTimestampVO locateQueueByTime(String instanceId, String topic, String brokerName, int queueId, long timestamp);
+
     MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName, int queueId, long offset);
 
     default DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {

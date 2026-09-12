@@ -24,6 +24,7 @@ import { formatTimeMs, useQueueBrowser } from '../QueueBrowser';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
+  locateQueueByTime: vi.fn(),
   pullMessageAtOffset: vi.fn(),
 }));
 

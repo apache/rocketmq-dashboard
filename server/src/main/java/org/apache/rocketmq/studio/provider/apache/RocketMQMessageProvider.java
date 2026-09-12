@@ -39,6 +39,7 @@ import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
+import org.apache.rocketmq.studio.instance.message.QueueTimestampVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -226,6 +227,40 @@ public class RocketMQMessageProvider implements MessageProvider {
                 throw new BusinessException(502, "Failed to get queue offsets: " + e.getMessage());
             }
             return result;
+        });
+    }
+
+    @Override
+    public QueueTimestampVO locateQueueByTime(String instanceId, String topic, String brokerName,
+                                              int queueId, long timestamp) {
+        return runtimeAdminClientResolver.executePullConsumer(instanceId, consumer -> {
+            try {
+                MessageQueue queue = new MessageQueue(topic, brokerName, queueId);
+                Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
+                if (queues == null || !queues.contains(queue)) {
+                    throw new BusinessException(404, "Queue is not present in the topic's readable route");
+                }
+                long minOffset = consumer.minOffset(queue);
+                long maxOffset = consumer.maxOffset(queue);
+                if (minOffset < 0 || maxOffset < minOffset) {
+                    throw new BusinessException(502, "Broker returned unavailable queue bounds");
+                }
+                if (minOffset == maxOffset) {
+                    return new QueueTimestampVO(brokerName, queueId, minOffset, maxOffset, null);
+                }
+                long searchedOffset = consumer.searchOffset(queue, timestamp);
+                if (searchedOffset < 0) {
+                    throw new BusinessException(502, "Broker could not locate a queue offset for the timestamp");
+                }
+                // Time lookup is approximate. Keep the result within the readable snapshot,
+                // including when the requested time is outside the retained message range.
+                long offset = Math.max(minOffset, Math.min(searchedOffset, maxOffset - 1));
+                return new QueueTimestampVO(brokerName, queueId, minOffset, maxOffset, offset);
+            } catch (BusinessException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new BusinessException(502, "Failed to locate queue by time: " + exception.getMessage());
+            }
         });
     }
 

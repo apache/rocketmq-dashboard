@@ -82,6 +82,15 @@ public class MessageController {
         return Result.ok(messageService.getQueueOffsets(instanceId, topic));
     }
 
+    @GetMapping("/queue-position")
+    public Result<QueueTimestampVO> locateQueueByTime(@RequestParam String instanceId,
+                                                      @RequestParam String topic,
+                                                      @RequestParam String brokerName,
+                                                      @RequestParam int queueId,
+                                                      @RequestParam long timestamp) {
+        return Result.ok(messageService.locateQueueByTime(instanceId, topic, brokerName, queueId, timestamp));
+    }
+
     @GetMapping("/queue-message")
     public Result<MessageRecordVO> pullMessageAtOffset(@RequestParam String instanceId,
                                                        @RequestParam String topic,
