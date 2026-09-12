@@ -603,6 +603,24 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
     }
 
+    @Test
+    void coldReadWritesRequireAdminWhileSnapshotsAllowReaders() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletResponse denied = new MockHttpServletResponse();
+        assertThat(session.interceptor().preHandle(authenticatedRequest("POST",
+                "/api/brokers/cold-read/config", session.token()), denied, new Object())).isFalse();
+        assertThat(denied.getStatus()).isEqualTo(403);
+        assertThat(session.interceptor().preHandle(authenticatedRequest("GET",
+                "/api/brokers/cold-read", session.token()), new MockHttpServletResponse(), new Object())).isTrue();
+    }
+
+    @Test
+    void coldReadWritesAllowAuthenticatedAdmins() throws Exception {
+        TestSession session = login(true);
+        assertThat(session.interceptor().preHandle(authenticatedRequest("POST",
+                "/api/brokers/cold-read/config", session.token()), new MockHttpServletResponse(), new Object())).isTrue();
+    }
+
     private TestSession login(boolean admin) {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);

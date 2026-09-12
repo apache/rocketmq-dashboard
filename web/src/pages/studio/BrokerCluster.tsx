@@ -32,6 +32,7 @@ import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import ColdReadDialog from '../../components/ColdReadDialog';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
@@ -190,6 +191,10 @@ const BrokerClusterPage = () => {
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+  const [coldReadTarget, setColdReadTarget] = useState<{
+    instanceId: string;
+    brokerName: string;
+  }>();
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
@@ -325,6 +330,25 @@ const BrokerClusterPage = () => {
     (activeTab === 'broker' && brokerData.length === 0);
 
   const brokerColumns = [
+    {
+      title: 'Cold read',
+      key: 'coldRead',
+      render: (_: unknown, broker: BrokerRecord) => (
+        <Button
+          size="small"
+          disabled={!selectedInstanceId || isMockMode()}
+          onClick={() =>
+            selectedInstanceId &&
+            setColdReadTarget({
+              instanceId: selectedInstanceId,
+              brokerName: broker.brokerName,
+            })
+          }
+        >
+          Cold-read control
+        </Button>
+      ),
+    },
     {
       title: t('brokerCluster.k8sCluster'),
       dataIndex: 'k8sCluster',
@@ -497,6 +521,13 @@ const BrokerClusterPage = () => {
 
   return (
     <div style={{ padding: 0 }}>
+      {coldReadTarget && coldReadTarget.instanceId === selectedInstanceId && (
+        <ColdReadDialog
+          key={coldReadTarget.instanceId + '/' + coldReadTarget.brokerName}
+          {...coldReadTarget}
+          onClose={() => setColdReadTarget(undefined)}
+        />
+      )}
       <div
         style={{
           display: 'flex',
@@ -521,7 +552,10 @@ const BrokerClusterPage = () => {
           <Select
             aria-label="选择实例"
             value={selectedInstanceId}
-            onChange={setSelectedInstanceId}
+            onChange={(value) => {
+              setColdReadTarget(undefined);
+              setSelectedInstanceId(value);
+            }}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
